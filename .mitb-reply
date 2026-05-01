@@ -1,1 +1,0 @@
-Done — `Action` and `Impulse` have been moved into `behavior.rs`. The `lib.rs` declares `mod behavior` and re-exports via `pub use behavior::{Action, Impulse}`, so existing imports remain unchanged. Code compiles cleanly.
