@@ -1,0 +1,1 @@
+Done — `taxonomy.rs` now includes `Kingdom`, `Phylum`, `Class`, `Order`, and `Family` as stub/marker traits in the requested order (Kingdom, Phylum, Class, Order, Family, Genus, Species). `lib.rs` uses `pub mod taxonomy;` instead of individual re-exports, so consumers access them via `jungle_sdk::taxonomy::*`. Compiles cleanly.

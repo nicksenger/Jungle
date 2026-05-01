@@ -1,5 +1,5 @@
 mod behavior;
-mod taxonomy;
+pub mod taxonomy;
 
 /// An inhabitant of the Jungle.
 pub trait Entity {
@@ -27,4 +27,3 @@ pub trait Ecosystem {
 pub trait Niche {}
 
 pub use behavior::{Action, Impulse};
-pub use taxonomy::{Genus, Species};
