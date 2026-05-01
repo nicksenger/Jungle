@@ -5,7 +5,7 @@ members = [
     "jungle-server",
     "jungle-sdk",
     "jungle-persist",
-    "jungle-view",
+    "jungle-viewer",
     "jungle-proto",
 ]
 
