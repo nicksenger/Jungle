@@ -26,6 +26,10 @@ name = "jungle-server"
 version = "0.1.0"
 
 [[package]]
+name = "jungle-types"
+version = "0.1.0"
+
+[[package]]
 name = "jungle-viewer"
 version = "0.1.0"
 

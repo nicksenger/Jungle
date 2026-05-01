@@ -7,6 +7,7 @@ members = [
     "jungle-persist",
     "jungle-viewer",
     "jungle-proto",
+    "jungle-types",
 ]
 
 [workspace.dependencies]

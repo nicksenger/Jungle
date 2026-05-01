@@ -1,1 +1,1 @@
-Done — renamed `Animal::Appearance` to `Animal::Form`.
+Done — added `jungle-types` as a new workspace member. Created the crate at `jungle-types/` with a standard `Cargo.toml` and `src/lib.rs`, and added it to the workspace members list. Workspace builds cleanly.
