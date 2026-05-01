@@ -1,1 +1,0 @@
-Done — removed the 3 associated types (`Appearance`, `Motivation`, `Instinct`) and the 2 methods that referenced them (`observe`, `influence`) from the `Entity` trait in `jungle-sdk/src/lib.rs`. The trait is now empty. Build and tests pass.
