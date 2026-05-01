@@ -3,9 +3,6 @@
 /// These traits define the grouping hierarchy used to organize
 /// species and animals within the ecosystem.
 
-/// Kingdom-level grouping
-pub trait Kingdom {}
-
 /// Phylum-level grouping
 pub trait Phylum {}
 

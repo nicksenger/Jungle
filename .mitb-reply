@@ -1,1 +1,1 @@
-Done — taxonomy.rs now includes all seven traits (Kingdom, Phylum, Class, Order, Family, Genus, Species) as stub/marker traits in the correct order, and lib.rs uses `pub mod taxonomy;` instead of individual reexports.
+Done — removed the `Kingdom` trait from `jungle-sdk/src/taxonomy.rs` since we're only dealing with Animals (Kingdom Animalia), so the trait was redundant. Build and tests still pass.
