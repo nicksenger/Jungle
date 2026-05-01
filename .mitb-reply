@@ -1,1 +1,1 @@
-Done — added `Ecosystem` and `Niche` stub traits.
+Done — added `serde` as a workspace dependency and constrained `Impulse::Input` and `Impulse::Output` with `Serialize + DeserializeOwned`. jungle-sdk compiles cleanly.

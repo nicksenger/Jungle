@@ -10,4 +10,5 @@ members = [
 ]
 
 [workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
 inception = { path = "../inception/inception" }

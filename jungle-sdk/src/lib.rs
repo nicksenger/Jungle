@@ -21,8 +21,8 @@ pub trait Ecosystem {}
 pub trait Niche {}
 
 pub trait Impulse {
-    type Input;
-    type Output;
+    type Input: serde::Serialize + serde::de::DeserializeOwned;
+    type Output: serde::Serialize + serde::de::DeserializeOwned;
 }
 
 pub trait Action: Impulse {}
