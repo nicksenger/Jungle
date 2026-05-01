@@ -1,10 +1,1 @@
-Renamed `Niches` to `Roles` and added new associated type `Members` on `Ecosystem`:
-
-```rust
-pub trait Ecosystem {
-    type Roles;
-    type Members;
-}
-```
-
-Build passes.
+Done — `Action` and `Impulse` have been moved into a new `behavior.rs` module. The `lib.rs` now declares `mod behavior` and re-exports both traits via `pub use behavior::{Action, Impulse}`, so existing `use jungle_sdk::Action` / `use jungle_sdk::Impulse` imports remain unchanged.
