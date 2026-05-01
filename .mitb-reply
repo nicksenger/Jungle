@@ -1,7 +1,1 @@
-Done — swapped the traits as requested:
-
-- **`Entity`** now has the associated types (`Appearance`, `Motivation`, `Instinct`) plus the behaviors (`observe`, `influence`)
-- **`Animal`** now just has the associated types — no longer a supertrait of `Entity`
-- Updated doc comments to reference the correct trait names
-
-The code compiles cleanly.
+Done — renamed `Roles` to `Niches` in the `Ecosystem` trait at `jungle-sdk/src/lib.rs:35`.

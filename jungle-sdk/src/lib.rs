@@ -32,7 +32,7 @@ pub trait Animal {
 }
 
 pub trait Ecosystem {
-    type Roles;
+    type Niches;
     type Members;
 }
 
