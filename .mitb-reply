@@ -1,1 +1,1 @@
-Done — added `type Input;` and `type Output;` associated types to the `Impulse` trait, and removed the doc comments from both `Impulse` and `Action`.
+Done — added `Ecosystem` and `Niche` stub traits.

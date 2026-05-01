@@ -16,6 +16,10 @@ pub trait Animal: Entity {
     fn drive(&self, motive: Self::Motive);
 }
 
+pub trait Ecosystem {}
+
+pub trait Niche {}
+
 pub trait Impulse {
     type Input;
     type Output;
