@@ -3,8 +3,8 @@ pub trait Entity {
     /// The result of observing this `Entity`
     type Appearance;
 
-    /// What motivates the `Entity`
-    type Motive;
+    /// What drives this `Entity` to change its behavior
+    type Motivation;
 
     /// The fundamental behavior of this `Entity`.
     type Instinct;
@@ -13,7 +13,7 @@ pub trait Entity {
 /// An active member of the current Jungle ecosystem.
 pub trait Animal: Entity {
     fn observe(&self) -> Self::Appearance;
-    fn drive(&self, motive: Self::Motive);
+    fn drive(&self, motive: Self::Motivation);
 }
 
 pub trait Ecosystem {}

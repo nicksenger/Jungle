@@ -1,1 +1,9 @@
-Done — added `serde` as a workspace dependency and constrained `Impulse::Input` and `Impulse::Output` with `Serialize + DeserializeOwned`. jungle-sdk compiles cleanly.
+Addressed in this iteration. Changes made:
+
+- Renamed `Motive` → `Motivation` (type alias in `Entity` trait and all references)
+- Updated doc comment to "What drives this `Entity` to change its behavior"
+
+Updated files:
+- `jungle-sdk/src/lib.rs` (lines 6–7, 16)
+
+Build verified with `cargo check`.
