@@ -1,9 +1,7 @@
-Addressed in this iteration. Changes made:
+Done — added `type Niche: Niche;` to the `Action` trait:
 
-- Renamed `Motive` → `Motivation` (type alias in `Entity` trait and all references)
-- Updated doc comment to "What drives this `Entity` to change its behavior"
-
-Updated files:
-- `jungle-sdk/src/lib.rs` (lines 6–7, 16)
-
-Build verified with `cargo check`.
+```rust
+pub trait Action: Impulse {
+    type Niche: Niche;
+}
+```
