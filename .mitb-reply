@@ -1,7 +1,1 @@
-Done — added `type Niche: Niche;` to the `Action` trait:
-
-```rust
-pub trait Action: Impulse {
-    type Niche: Niche;
-}
-```
+Done — both `Genus` and `Species` are now stub traits instead of enums.
