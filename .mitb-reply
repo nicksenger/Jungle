@@ -1,1 +1,9 @@
-Done — renamed `Animal::drive` to `Animal::influence` at `jungle-sdk/src/lib.rs:16`. No other usages in the codebase.
+Done — added `type Niches;` as an associated type on `Ecosystem`:
+
+```rust
+pub trait Ecosystem {
+    type Niches;
+}
+```
+
+Build passes.

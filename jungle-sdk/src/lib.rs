@@ -16,7 +16,9 @@ pub trait Animal: Entity {
     fn influence(&self, motive: Self::Motivation);
 }
 
-pub trait Ecosystem {}
+pub trait Ecosystem {
+    type Niches;
+}
 
 pub trait Niche {}
 
