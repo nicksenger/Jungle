@@ -1,1 +1,1 @@
-Done — renamed the workspace member from `jungle-view` to `jungle-viewer` across the directory, package name, and workspace members list.
+Added the two stub traits — `Impulse` and `Action: Impulse {}` — right after the `Animal` trait. Both are minimal placeholders with a TODO comment, matching the style of the surrounding code.
