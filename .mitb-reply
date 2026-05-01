@@ -1,1 +1,7 @@
-Done — removed the `Kingdom` trait from `jungle-sdk/src/taxonomy.rs` since we're only dealing with Animals (Kingdom Animalia), so the trait was redundant. Build and tests still pass.
+Done — swapped the traits as requested:
+
+- **`Entity`** now has the associated types (`Appearance`, `Motivation`, `Instinct`) plus the behaviors (`observe`, `influence`)
+- **`Animal`** now just has the associated types — no longer a supertrait of `Entity`
+- Updated doc comments to reference the correct trait names
+
+The code compiles cleanly.
