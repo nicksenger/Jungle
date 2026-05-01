@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "jungle-core",
+    "jungle-server",
+    "jungle-sdk",
+    "jungle-persist",
+    "jungle-view",
+    "jungle-proto",
+]
