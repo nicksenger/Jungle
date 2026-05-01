@@ -1,1 +1,1 @@
-Fixed — changed to "What motivates the `Entity`".
+Done — added `type Input;` and `type Output;` associated types to the `Impulse` trait, and removed the doc comments from both `Impulse` and `Action`.

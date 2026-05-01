@@ -16,12 +16,11 @@ pub trait Animal: Entity {
     fn drive(&self, motive: Self::Motive);
 }
 
-/// An internal motivation or drive to act.
 pub trait Impulse {
-    // TODO: flesh out as needed
+    type Input;
+    type Output;
 }
 
-/// An action that drives behavior.
 pub trait Action: Impulse {}
 
 /// Grouping for `Species`
