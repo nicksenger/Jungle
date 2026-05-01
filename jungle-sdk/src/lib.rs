@@ -17,7 +17,8 @@ pub trait Animal: Entity {
 }
 
 pub trait Ecosystem {
-    type Niches;
+    type Roles;
+    type Members;
 }
 
 pub trait Niche {}

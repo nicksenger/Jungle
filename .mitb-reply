@@ -1,8 +1,9 @@
-Done — added `type Niches;` as an associated type on `Ecosystem`:
+Renamed `Niches` to `Roles` and added new associated type `Members` on `Ecosystem`:
 
 ```rust
 pub trait Ecosystem {
-    type Niches;
+    type Roles;
+    type Members;
 }
 ```
 
