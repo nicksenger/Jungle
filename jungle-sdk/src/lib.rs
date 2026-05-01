@@ -13,7 +13,7 @@ pub trait Entity {
 /// An active member of the current Jungle ecosystem.
 pub trait Animal: Entity {
     fn observe(&self) -> Self::Appearance;
-    fn drive(&self, motive: Self::Motivation);
+    fn influence(&self, motive: Self::Motivation);
 }
 
 pub trait Ecosystem {}

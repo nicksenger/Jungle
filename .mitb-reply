@@ -1,1 +1,1 @@
-Done — both `Genus` and `Species` are now stub traits instead of enums.
+Done — renamed `Animal::drive` to `Animal::influence` at `jungle-sdk/src/lib.rs:16`. No other usages in the codebase.
