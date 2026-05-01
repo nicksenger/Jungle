@@ -1,1 +1,1 @@
-Done. Moved the `Entity` trait from `jungle-sdk/src/lib.rs` into `jungle-core/src/lib.rs` and added a `pub use jungle_core::Entity` re-export in `jungle-sdk` for backwards compatibility. All workspace members compile cleanly.
+Done — added `typosaurus` as a workspace dependency in the root `Cargo.toml` with `path = "../typosaurus"`, and consumed it in `jungle-types/Cargo.toml` via `typosaurus = { workspace = true }`. Workspace builds cleanly.
