@@ -3,7 +3,7 @@ pub trait Entity {
     /// The result of observing this `Entity`
     type Appearance;
 
-    /// What is required to drive this `Entity`
+    /// What motivates the `Entity`
     type Motive;
 
     /// The fundamental behavior of this `Entity`.

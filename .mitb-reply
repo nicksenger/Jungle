@@ -1,5 +1,1 @@
-Done — replaced the `Action` struct + impl with a trait as suggested:
-
-```rust
-pub trait Action: Impulse {}
-```
+Fixed — changed to "What motivates the `Entity`".
