@@ -1,4 +1,17 @@
-/// jungle-core
-pub fn hello() -> &'static str {
-    concat!("Hello from ", env!("CARGO_PKG_NAME"), "!")
+/// An inhabitant of the Jungle.
+pub trait Entity {
+    /// The result of observing this `Entity`.
+    type Appearance;
+
+    /// What drives this `Entity` to change its behavior.
+    type Motivation;
+
+    /// The fundamental behavior of this `Entity`.
+    type Instinct;
+
+    /// Observe this entity and return its visual representation.
+    fn observe(&self) -> Self::Appearance;
+
+    /// Influence this entity's behavior given a motivation.
+    fn influence(&self, motive: Self::Motivation);
 }

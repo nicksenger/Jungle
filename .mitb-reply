@@ -1,1 +1,1 @@
-Done — added `jungle-types` as a new workspace member. Created the crate at `jungle-types/` with a standard `Cargo.toml` and `src/lib.rs`, and added it to the workspace members list. Workspace builds cleanly.
+Done. Moved the `Entity` trait from `jungle-sdk/src/lib.rs` into `jungle-core/src/lib.rs` and added a `pub use jungle_core::Entity` re-export in `jungle-sdk` for backwards compatibility. All workspace members compile cleanly.
