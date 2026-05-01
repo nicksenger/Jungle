@@ -8,3 +8,6 @@ members = [
     "jungle-view",
     "jungle-proto",
 ]
+
+[workspace.dependencies]
+inception = { path = "../inception/inception" }
