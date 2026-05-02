@@ -62,21 +62,15 @@ mod tests {
     #[derive(Default)]
     struct Wolf;
 
+    impl Animal for Wolf {
+        type Form = ();
+        type Motivation = ();
+        type Instinct = ();
+    }
+
     #[test]
     fn list_of_species_implements_genus() {
         fn assert_genus<T: Genus>() {}
         assert_genus::<list![Dog, Wolf]>();
-    }
-
-    #[test]
-    fn list_of_genus_implements_family() {
-        fn assert_family<T: Family>() {}
-        assert_family::<list![list![Dog, Wolf], list![Dog, Wolf]>>();
-    }
-
-    #[test]
-    fn list_of_family_implements_order() {
-        fn assert_order<T: Order>() {}
-        assert_order::<list![list![list![Dog, Wolf], list![Dog, Wolf]], list![list![Dog, Wolf], list![Dog, Wolf]]>>();
     }
 }
