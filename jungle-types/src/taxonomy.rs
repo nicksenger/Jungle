@@ -78,6 +78,19 @@ mod tests {
         num::consts::{U1, U2},
     };
 
+    /// Blanket self-equality for all animals.
+    ///
+    /// Rust's orphan rules prevent a direct `impl<T: Animal> Equality<T> for T`
+    /// in this crate (since `Equality` is defined externally in `typosaurus`).
+    /// Instead, we define a local helper trait that all `Animal`s implement,
+    /// then implement `Equality` for that local trait.
+    pub trait SelfEq {
+        type Out;
+    }
+    impl<T: Animal> SelfEq for T {
+        type Out = True;
+    }
+
     #[derive(Default)]
     struct Dog;
 
@@ -102,9 +115,17 @@ mod tests {
         type Symbionts = ();
     }
 
-    impl<T: Animal> Equality<T> for T {
-        type Out = True;
+    // Generate Equality impls for every animal via the local SelfEq trait.
+    macro_rules! impl_equality_self {
+        ($($t:ty),* $(,)?) => {
+            $(
+                impl Equality<$t> for $t {
+                    type Out = <$t as SelfEq>::Out;
+                }
+            )*
+        };
     }
+    impl_equality_self!(Dog, Wolf);
 
     #[test]
     fn list_of_species_implements_genus() {
