@@ -16,6 +16,4 @@ pub trait Entity {
     fn influence(&self, motive: Self::Motivation);
 }
 
-/// A trait for entities that embody a Wild ecosystem — a collective whole greater
-/// than the sum of its parts, representing the will of the ecosystem as one.
-pub trait Wild {}
+pub trait Jungle {}
