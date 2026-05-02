@@ -70,6 +70,8 @@ impl<T> Species for T where T: Animal {}
 mod tests {
     use super::*;
     use typosaurus::{
+        bool::True,
+        cmp::Equality,
         assert_type_eq,
         collections::list::Flatten,
         list,
@@ -98,6 +100,14 @@ mod tests {
         type Instinct = ();
         type Niches = ();
         type Symbionts = ();
+    }
+
+    impl Equality<Dog> for Dog {
+        type Out = True;
+    }
+
+    impl Equality<Wolf> for Wolf {
+        type Out = True;
     }
 
     #[test]
