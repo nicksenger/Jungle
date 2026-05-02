@@ -1,3 +1,4 @@
+use core::marker::PhantomData;
 use typosaurus::cmp::Equality;
 use typosaurus::num::Unsigned;
 
@@ -31,9 +32,23 @@ pub trait Animal {
     type Niches;
 }
 
-/// Blanket `Equality` for any two `Animal`s, based on their `Id` types.
+/// A newtype wrapper proving that two `Animal` types are equal
+/// when their `Id`s are equal.
+///
+/// This type exists to work around Rust's orphan rules: implementing
+/// `Equality<U>` directly for a generic `Animal` type would be disallowed
+/// because neither the `Equality` trait nor `T` is defined locally.
+///
+/// Instead, this newtype is local to this crate, so the orphan rule is
+/// satisfied. Equality is derived from the `Id` associated type.
+pub struct AnimalEquality<T, U>(PhantomData<(T, U)>)
+where
+    T: Animal,
+    U: Animal;
+
+/// Blanket `Equality` for any two `Animal` newtypes, based on their `Id` types.
 /// Two `Animal` types are equal iff their `Id`s are equal.
-impl<T, U> Equality<U> for T
+impl<T, U> Equality<AnimalEquality<T, U>> for AnimalEquality<T, U>
 where
     T: Animal,
     U: Animal,
