@@ -1,4 +1,5 @@
 use crate::Animal;
+use typosaurus::collections::list::{Empty, List};
 
 /// Taxonomic traits for Jungle entities.
 ///
@@ -23,9 +24,11 @@ pub trait Genus {}
 /// Grouping for `Animal`
 pub trait Species {}
 
+impl Genus for Empty {}
+impl<T, U> Genus for List<(T, U)> where T: Species, U: Genus {}
+
 impl<T> Species for T
 where
     T: Animal,
 {
 }
-
