@@ -18,7 +18,7 @@ version = "0.1.0"
 name = "jungle-sdk"
 version = "0.1.0"
 dependencies = [
- "jungle-core",
+ "jungle-types",
  "serde",
 ]
 

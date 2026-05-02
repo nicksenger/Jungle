@@ -1,1 +1,1 @@
-Done — added `typosaurus` as a workspace dependency in the root `Cargo.toml` with `path = "../typosaurus"`, and consumed it in `jungle-types/Cargo.toml` via `typosaurus = { workspace = true }`. Workspace builds cleanly.
+Done — removed the `jungle_core::Entity` reexport from `jungle-sdk/src/lib.rs` and replaced the `jungle-core` dependency with `jungle-types` in `jungle-sdk/Cargo.toml`. `jungle-sdk` no longer depends on `jungle-core`.

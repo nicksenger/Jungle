@@ -1,8 +1,6 @@
 mod behavior;
 pub mod taxonomy;
 
-pub use jungle_core::Entity;
-
 /// A living creature within the Jungle ecosystem.
 pub trait Animal {
     /// The result of observing this `Animal`.
