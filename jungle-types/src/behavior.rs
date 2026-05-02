@@ -3,7 +3,8 @@
 /// These traits define the contract for actions an entity can take
 /// and the impulses that drive those actions.
 
-use crate::taxonomy::Niche;
+/// Niche for an ecological role
+pub trait Niche {}
 
 /// A trait for types that define the input/output contract of an action.
 pub trait Impulse {
