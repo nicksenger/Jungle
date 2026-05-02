@@ -32,3 +32,33 @@ where
     T: Animal,
 {
 }
+
+#[cfg(test)]
+mod tests {
+    use typosaurus::list;
+    use super::*;
+
+    #[derive(Default)]
+    struct Dog;
+
+    impl Animal for Dog {
+        type Form = ();
+        type Motivation = ();
+        type Instinct = ();
+    }
+
+    #[derive(Default)]
+    struct Wolf;
+
+    impl Animal for Wolf {
+        type Form = ();
+        type Motivation = ();
+        type Instinct = ();
+    }
+
+    #[test]
+    fn list_of_species_implements_genus() {
+        fn assert_genus<T: Genus>() {}
+        assert_genus::<list![Dog, Wolf]>();
+    }
+}
