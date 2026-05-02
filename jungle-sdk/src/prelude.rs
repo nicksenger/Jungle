@@ -1,3 +1,3 @@
 pub use jungle_types::{
-    Action, Animal, Class, Ecosystem, Family, Genus, Impulse, Order, Phylum, Species,
+    Action, Animal, Class, Ecosystem, Family, Genus, Impulse, Niche, Order, Phylum, Species,
 };

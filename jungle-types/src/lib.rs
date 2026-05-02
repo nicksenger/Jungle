@@ -18,5 +18,5 @@ pub trait Ecosystem {
     type Members;
 }
 
-pub use behavior::{Action, Impulse};
+pub use behavior::{Action, Impulse, Niche};
 pub use taxonomy::{Class, Family, Genus, Order, Phylum, Species};

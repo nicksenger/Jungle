@@ -3,6 +3,11 @@
 /// These traits define the contract for actions an entity can take
 /// and the impulses that drive those actions.
 
+/// A niche represents an ecological role that groups related actions.
+pub trait Niche {
+    type Actions;
+}
+
 /// A trait for types that define the input/output contract of an action.
 pub trait Impulse {
     type Input: serde::Serialize + serde::de::DeserializeOwned;
