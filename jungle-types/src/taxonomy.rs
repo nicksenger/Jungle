@@ -27,6 +27,18 @@ pub trait Species {}
 impl Genus for Empty {}
 impl<T, U> Genus for List<(T, U)> where T: Species, U: Genus {}
 
+impl Family for Empty {}
+impl<T, U> Family for List<(T, U)> where T: Genus, U: Family {}
+
+impl Order for Empty {}
+impl<T, U> Order for List<(T, U)> where T: Family, U: Order {}
+
+impl Class for Empty {}
+impl<T, U> Class for List<(T, U)> where T: Order, U: Class {}
+
+impl Phylum for Empty {}
+impl<T, U> Phylum for List<(T, U)> where T: Class, U: Phylum {}
+
 impl<T> Species for T
 where
     T: Animal,
@@ -50,15 +62,21 @@ mod tests {
     #[derive(Default)]
     struct Wolf;
 
-    impl Animal for Wolf {
-        type Form = ();
-        type Motivation = ();
-        type Instinct = ();
-    }
-
     #[test]
     fn list_of_species_implements_genus() {
         fn assert_genus<T: Genus>() {}
         assert_genus::<list![Dog, Wolf]>();
+    }
+
+    #[test]
+    fn list_of_genus_implements_family() {
+        fn assert_family<T: Family>() {}
+        assert_family::<list![list![Dog, Wolf], list![Dog, Wolf]>>();
+    }
+
+    #[test]
+    fn list_of_family_implements_order() {
+        fn assert_order<T: Order>() {}
+        assert_order::<list![list![list![Dog, Wolf], list![Dog, Wolf]], list![list![Dog, Wolf], list![Dog, Wolf]]>>();
     }
 }
