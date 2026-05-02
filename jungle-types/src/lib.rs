@@ -11,6 +11,9 @@ pub struct Id<T: Unsigned>(pub T);
 
 /// A living creature within the Jungle ecosystem.
 pub trait Animal {
+    /// A type-level identifier for this `Animal`.
+    type Id;
+
     /// The fundamental behavior of this `Animal`.
     type Instinct;
 
