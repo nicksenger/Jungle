@@ -13,6 +13,7 @@ pub trait Animal {
     type Instinct;
 }
 
+/// A collection of Jungle `Niche`s and the `Animal`s that fill them.
 pub trait Ecosystem {
     type Niches;
     type Members;
