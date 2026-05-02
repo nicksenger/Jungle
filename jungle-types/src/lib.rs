@@ -1,6 +1,5 @@
 mod behavior;
-mod vessel;
-pub mod taxonomy;
+mod taxonomy;
 
 /// A living creature within the Jungle ecosystem.
 pub trait Animal {
@@ -27,5 +26,4 @@ pub trait Ecosystem {
 }
 
 pub use behavior::{Action, Impulse, Niche};
-pub use vessel::Vessel;
 pub use taxonomy::{Class, Family, Genus, Order, Phylum, Species};

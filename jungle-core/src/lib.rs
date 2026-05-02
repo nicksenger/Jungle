@@ -17,3 +17,6 @@ pub trait Entity {
 }
 
 pub trait Jungle {}
+
+/// A vessel is a container for an entity within the Jungle ecosystem.
+pub trait Vessel<T: Jungle> {}
