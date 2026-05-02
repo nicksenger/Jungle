@@ -25,30 +25,51 @@ pub trait Genus {}
 pub trait Species {}
 
 impl Genus for Empty {}
-impl<T, U> Genus for List<(T, U)> where T: Species, U: Genus {}
-
-impl Family for Empty {}
-impl<T, U> Family for List<(T, U)> where T: Genus, U: Family {}
-
-impl Order for Empty {}
-impl<T, U> Order for List<(T, U)> where T: Family, U: Order {}
-
-impl Class for Empty {}
-impl<T, U> Class for List<(T, U)> where T: Order, U: Class {}
-
-impl Phylum for Empty {}
-impl<T, U> Phylum for List<(T, U)> where T: Class, U: Phylum {}
-
-impl<T> Species for T
+impl<T, U> Genus for List<(T, U)>
 where
-    T: Animal,
+    T: Species,
+    U: Genus,
 {
 }
 
+impl Family for Empty {}
+impl<T, U> Family for List<(T, U)>
+where
+    T: Genus,
+    U: Family,
+{
+}
+
+impl Order for Empty {}
+impl<T, U> Order for List<(T, U)>
+where
+    T: Family,
+    U: Order,
+{
+}
+
+impl Class for Empty {}
+impl<T, U> Class for List<(T, U)>
+where
+    T: Order,
+    U: Class,
+{
+}
+
+impl Phylum for Empty {}
+impl<T, U> Phylum for List<(T, U)>
+where
+    T: Class,
+    U: Phylum,
+{
+}
+
+impl<T> Species for T where T: Animal {}
+
 #[cfg(test)]
 mod tests {
-    use typosaurus::list;
     use super::*;
+    use typosaurus::{assert_type_eq, collections::list::Flatten, list};
 
     #[derive(Default)]
     struct Dog;
@@ -72,5 +93,14 @@ mod tests {
     fn list_of_species_implements_genus() {
         fn assert_genus<T: Genus>() {}
         assert_genus::<list![Dog, Wolf]>();
+    }
+
+    #[test]
+    fn flat() {
+        typosaurus::elements! { Dog, Wolf };
+        type X = list![list![Dog, Wolf]];
+        type Y = Flatten<X>;
+
+        assert_type_eq!(Y, list![Dog, Wolf]);
     }
 }
