@@ -6,19 +6,29 @@ use crate::Animal;
 /// species and animals within the ecosystem.
 
 /// Phylum-level grouping
-pub trait Phylum {}
+pub trait Phylum {
+    type Taxa: Class;
+}
 
 /// Class-level grouping
-pub trait Class {}
+pub trait Class {
+    type Taxa: Order;
+}
 
 /// Order-level grouping
-pub trait Order {}
+pub trait Order {
+    type Taxa: Family;
+}
 
 /// Family-level grouping
-pub trait Family {}
+pub trait Family {
+    type Taxa: Genus;
+}
 
 /// Grouping for `Species`
-pub trait Genus {}
+pub trait Genus {
+    type Taxa: Species;
+}
 
 /// Grouping for `Animal`
 pub trait Species {}
