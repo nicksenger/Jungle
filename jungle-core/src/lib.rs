@@ -15,3 +15,6 @@ pub trait Entity {
     /// Influence this entity's behavior given a motivation.
     fn influence(&self, motive: Self::Motivation);
 }
+
+/// An empty marker trait for entities with an "anima" (soul/spirit).
+pub trait Anima {}
