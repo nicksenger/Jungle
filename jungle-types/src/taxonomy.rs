@@ -102,11 +102,7 @@ mod tests {
         type Symbionts = ();
     }
 
-    impl Equality<Dog> for Dog {
-        type Out = True;
-    }
-
-    impl Equality<Wolf> for Wolf {
+    impl<T: Animal> Equality<T> for T {
         type Out = True;
     }
 
