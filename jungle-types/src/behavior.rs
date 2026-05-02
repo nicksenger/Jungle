@@ -17,3 +17,7 @@ pub trait Impulse {
 /// A trait for actions, which are a kind of impulse.
 pub trait Action: Impulse {
 }
+
+/// A trait for instincts, which are a kind of impulse.
+pub trait Instinct: Impulse {
+}
