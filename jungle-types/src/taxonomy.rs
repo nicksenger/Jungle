@@ -3,6 +3,9 @@
 /// These traits define the grouping hierarchy used to organize
 /// species and animals within the ecosystem.
 
+/// Niche for an ecological role
+pub trait Niche {}
+
 /// Phylum-level grouping
 pub trait Phylum {}
 

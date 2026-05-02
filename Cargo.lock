@@ -19,7 +19,6 @@ name = "jungle-sdk"
 version = "0.1.0"
 dependencies = [
  "jungle-types",
- "serde",
 ]
 
 [[package]]
@@ -30,6 +29,7 @@ version = "0.1.0"
 name = "jungle-types"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "typosaurus",
 ]
 
