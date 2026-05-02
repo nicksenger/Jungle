@@ -7,27 +7,27 @@ use crate::Animal;
 
 /// Phylum-level grouping
 pub trait Phylum {
-    type Taxa: Class;
+    type Taxa;
 }
 
 /// Class-level grouping
 pub trait Class {
-    type Taxa: Order;
+    type Taxa;
 }
 
 /// Order-level grouping
 pub trait Order {
-    type Taxa: Family;
+    type Taxa;
 }
 
 /// Family-level grouping
 pub trait Family {
-    type Taxa: Genus;
+    type Taxa;
 }
 
 /// Grouping for `Species`
 pub trait Genus {
-    type Taxa: Species;
+    type Taxa;
 }
 
 /// Grouping for `Animal`
