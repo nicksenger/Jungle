@@ -69,24 +69,35 @@ impl<T> Species for T where T: Animal {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use typosaurus::{assert_type_eq, collections::list::Flatten, list};
+    use typosaurus::{
+        assert_type_eq,
+        collections::list::Flatten,
+        list,
+        num::consts::{U1, U2},
+    };
 
     #[derive(Default)]
     struct Dog;
 
     impl Animal for Dog {
+        type Id = U1;
         type Form = ();
         type Motivation = ();
         type Instinct = ();
+        type Niches = ();
+        type Symbionts = ();
     }
 
     #[derive(Default)]
     struct Wolf;
 
     impl Animal for Wolf {
+        type Id = U2;
         type Form = ();
         type Motivation = ();
         type Instinct = ();
+        type Niches = ();
+        type Symbionts = ();
     }
 
     #[test]
@@ -97,7 +108,6 @@ mod tests {
 
     #[test]
     fn flat() {
-        typosaurus::elements! { Dog, Wolf };
         type X = list![list![Dog, Wolf]];
         type Y = Flatten<X>;
 

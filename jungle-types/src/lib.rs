@@ -1,3 +1,4 @@
+use typosaurus::cmp::Equality;
 use typosaurus::num::Unsigned;
 
 mod behavior;
@@ -28,6 +29,17 @@ pub trait Animal {
 
     /// The ecological roles this `Animal` interacts with.
     type Niches;
+}
+
+/// Blanket `Equality` for any two `Animal`s, based on their `Id` types.
+/// Two `Animal` types are equal iff their `Id`s are equal.
+impl<T, U> Equality<U> for T
+where
+    T: Animal,
+    U: Animal,
+    T::Id: Equality<U::Id>,
+{
+    type Out = <T::Id as Equality<U::Id>>::Out;
 }
 
 /// A collection of Jungle `Niche`s and the `Animal`s that fill them.
