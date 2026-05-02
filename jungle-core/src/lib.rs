@@ -16,5 +16,6 @@ pub trait Entity {
     fn influence(&self, motive: Self::Motivation);
 }
 
-/// An empty marker trait for entities with an "anima" (soul/spirit).
-pub trait Anima {}
+/// A trait for entities that embody a Wild ecosystem — a collective whole greater
+/// than the sum of its parts, representing the will of the ecosystem as one.
+pub trait Wild {}
