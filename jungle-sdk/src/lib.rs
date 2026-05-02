@@ -3,7 +3,7 @@ pub mod taxonomy;
 
 /// A living creature within the Jungle ecosystem.
 pub trait Animal {
-    /// The result of observing this `Animal`.
+    /// How this `Animal` may appear to observers.
     type Form;
 
     /// What drives this `Animal` to change its behavior.

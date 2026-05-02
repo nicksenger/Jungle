@@ -1,1 +1,1 @@
-Done — removed the `jungle_core::Entity` reexport from `jungle-sdk/src/lib.rs` and replaced the `jungle-core` dependency with `jungle-types` in `jungle-sdk/Cargo.toml`. `jungle-sdk` no longer depends on `jungle-core`.
+Done — updated to "How this `Animal` may appear to observers."
