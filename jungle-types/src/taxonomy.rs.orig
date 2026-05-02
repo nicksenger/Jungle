@@ -1,5 +1,3 @@
-use crate::Animal;
-
 /// Taxonomic traits for Jungle entities.
 ///
 /// These traits define the grouping hierarchy used to organize
@@ -22,9 +20,3 @@ pub trait Genus {}
 
 /// Grouping for `Animal`
 pub trait Species {}
-
-impl<T> Species for T
-where
-    T: Animal,
-{
-}
