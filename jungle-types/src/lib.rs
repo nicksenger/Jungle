@@ -1,5 +1,13 @@
+use typosaurus::num::Unsigned;
+
 mod behavior;
 mod taxonomy;
+
+/// A newtype wrapper around an [`Unsigned`] constant.
+///
+/// Provides a typed handle for compile-time numeric constants used
+/// as type-level identifiers within the Jungle ecosystem.
+pub struct Id<T: Unsigned>(pub T);
 
 /// A living creature within the Jungle ecosystem.
 pub trait Animal {
