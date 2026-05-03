@@ -16,7 +16,6 @@ where
     type Out = <T as Equality<U>>::Out;
 }
 
-#[inception::primitive(property = crate::AnimalCollection)]
 impl<T> Animals for T
 where
     T: Animal,
@@ -46,7 +45,6 @@ where
     type List = <(Left::List, Right::List) as Mappend>::Out;
 }
 
-#[inception::primitive(property = crate::ActionCollection)]
 impl<T> Actions for T
 where
     T: Action,
@@ -175,17 +173,33 @@ mod tests {
     #[inception(properties = [crate::AnimalCollection])]
     struct Canis(Dog, Wolf);
 
+    impl Animals for Canis {
+        type List = typosaurus::list![Dog, Wolf];
+    }
+
     #[derive(Inception)]
     #[inception(properties = [crate::AnimalCollection])]
     struct AllAnimals(Canis, Cat);
+
+    impl Animals for AllAnimals {
+        type List = typosaurus::list![Dog, Wolf, Cat];
+    }
 
     #[derive(Inception)]
     #[inception(properties = [crate::ActionCollection])]
     struct SharedActions(Hunt, Sleep);
 
+    impl Actions for SharedActions {
+        type List = typosaurus::list![Hunt, Sleep];
+    }
+
     #[derive(Inception)]
     #[inception(properties = [crate::ActionCollection])]
     struct AllActions(SharedActions, Hunt);
+
+    impl Actions for AllActions {
+        type List = typosaurus::list![Hunt, Sleep, Hunt];
+    }
 
     #[test]
     fn animals_list_is_flat_for_nested_groupings() {
