@@ -27,8 +27,8 @@ pub trait Animal {
     /// Organisms that live in close association with this `Animal`.
     type Symbionts;
 
-    /// The ecological roles this `Animal` interacts with.
-    type Niches;
+    /// The actions this `Animal` can take.
+    type Actions;
 }
 
 /// A newtype wrapper proving that two `Animal` types are equal
@@ -56,10 +56,10 @@ where
     type Out = <T::Id as Equality<U::Id>>::Out;
 }
 
-/// A collection of Jungle `Niche`s and the `Animal`s that fill them.
+/// A collection of Jungle entities and the `Animal`s that fill them.
 pub trait Ecosystem {
-    type Niches;
+    type Actions;
     type Animals;
 }
 
-pub use behavior::{Action, Niche};
+pub use behavior::Action;
