@@ -16,6 +16,7 @@ where
     type Out = <T as Equality<U>>::Out;
 }
 
+#[inception::primitive(property = crate::AnimalCollection)]
 impl<T> Animals for T
 where
     T: Animal,
@@ -45,6 +46,7 @@ where
     type List = <(Left::List, Right::List) as Mappend>::Out;
 }
 
+#[inception::primitive(property = crate::ActionCollection)]
 impl<T> Actions for T
 where
     T: Action,
@@ -77,6 +79,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{Action, Actions, Animal, Animals, Id, Instinct};
+    use inception::Inception;
     use typosaurus::collections::list::{Atom, DeepFlatten};
     use typosaurus::assert_type_eq;
     use typosaurus::num::consts::{U0, U1};
@@ -131,14 +134,20 @@ mod tests {
 
     struct Cat;
     struct Dog;
+    struct Wolf;
     struct CatInstinct;
     struct DogInstinct;
+    struct WolfInstinct;
 
     impl Instinct for CatInstinct {
         type Actions = ();
     }
 
     impl Instinct for DogInstinct {
+        type Actions = ();
+    }
+
+    impl Instinct for WolfInstinct {
         type Actions = ();
     }
 
@@ -153,6 +162,28 @@ mod tests {
         type Instinct = DogInstinct;
         type Actions = Sleep;
     }
+
+    impl Animal for Wolf {
+        type Id = Id<U0>;
+        type Instinct = WolfInstinct;
+        type Actions = Hunt;
+    }
+
+    #[derive(Inception)]
+    #[inception(properties = [crate::AnimalCollection])]
+    struct Canis(Dog, Wolf);
+
+    #[derive(Inception)]
+    #[inception(properties = [crate::AnimalCollection])]
+    struct AllAnimals(Canis, Cat);
+
+    #[derive(Inception)]
+    #[inception(properties = [crate::ActionCollection])]
+    struct SharedActions(Hunt, Sleep);
+
+    #[derive(Inception)]
+    #[inception(properties = [crate::ActionCollection])]
+    struct AllActions(SharedActions, Hunt);
 
     #[test]
     fn animals_list_is_flat_for_nested_groupings() {
@@ -179,6 +210,24 @@ mod tests {
         assert_type_eq!(
             <Grouping as Actions>::List,
             typosaurus::list![Hunt, Sleep, Hunt, Sleep]
+        );
+    }
+
+    #[test]
+    fn animals_list_is_flat_for_derived_groups() {
+        assert_type_eq!(<Canis as Animals>::List, typosaurus::list![Dog, Wolf]);
+        assert_type_eq!(
+            <AllAnimals as Animals>::List,
+            typosaurus::list![Dog, Wolf, Cat]
+        );
+    }
+
+    #[test]
+    fn actions_list_is_flat_for_derived_groups() {
+        assert_type_eq!(<SharedActions as Actions>::List, typosaurus::list![Hunt, Sleep]);
+        assert_type_eq!(
+            <AllActions as Actions>::List,
+            typosaurus::list![Hunt, Sleep, Hunt]
         );
     }
 }

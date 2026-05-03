@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 serde = { workspace = true }
 typosaurus = { workspace = true }
+inception = { workspace = true }
 futures = "0.3"

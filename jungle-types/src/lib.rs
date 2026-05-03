@@ -2,6 +2,10 @@ mod behavior;
 mod meta;
 pub use behavior::{Action, Instinct};
 pub use meta::Id;
+pub struct InceptionGrouping;
+
+impl inception::Property for InceptionGrouping {}
+impl<T> inception::OptIn<T> for InceptionGrouping where T: inception::DataType {}
 
 /// A collection of Jungle entities and the Animals that fill them.
 ///
