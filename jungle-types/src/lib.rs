@@ -70,3 +70,4 @@ pub trait Channel {
     /// Process a stream of inputs, yielding a stream of outputs.
     fn channel(self, input: impl futures::Stream<Item = Self::In>) -> impl futures::Stream<Item = Self::Out>;
 }
+
