@@ -23,9 +23,6 @@ pub trait Animal {
 
     /// The fundamental behavior of this Animal.
     type Instinct;
-
-    /// The actions this Animal can take.
-    type Actions;
 }
 
 pub struct AnimalCollection;

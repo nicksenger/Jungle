@@ -88,7 +88,6 @@ mod tests {
             impl Animal for $name {
                 type Id = Id<$id>;
                 type Instinct = ();
-                type Actions = ();
             }
         };
     }
@@ -154,19 +153,16 @@ mod tests {
     impl Animal for Cat {
         type Id = Id<U0>;
         type Instinct = CatInstinct;
-        type Actions = Hunt;
     }
 
     impl Animal for Dog {
         type Id = Id<U1>;
         type Instinct = DogInstinct;
-        type Actions = Sleep;
     }
 
     impl Animal for Wolf {
         type Id = Id<U0>;
         type Instinct = WolfInstinct;
-        type Actions = Hunt;
     }
 
     #[derive(Inception)]
