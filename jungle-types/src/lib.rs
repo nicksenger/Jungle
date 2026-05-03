@@ -61,3 +61,19 @@ pub trait Ecosystem {
     type Animals;
 }
 
+
+/// An entity that can be observed, revealing its appearance.
+pub trait Observe {
+    /// The appearance revealed when this entity is observed.
+    type Appearance;
+
+    fn observe(&self) -> Self::Appearance;
+}
+
+/// An entity that can be influenced by an external motive.
+pub trait Influence {
+    /// The motive used to influence this entity.
+    type Motive;
+
+    fn influence(&self, motive: Self::Motive);
+}
