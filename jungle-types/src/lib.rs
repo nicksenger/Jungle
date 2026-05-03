@@ -62,24 +62,14 @@ pub trait Ecosystem {
 }
 
 
-/// An entity that can be observed, revealing its appearance.
-pub trait Observe {
-    /// The appearance revealed when this entity is observed.
-    type Appearance;
+/// A channel that transforms a stream of inputs into a stream of outputs.
+pub trait Channel {
+    /// The input type accepted by this channel.
+    type In;
 
-    /// A stream that yields appearances over time.
-    type Stream: futures::Stream<Item = Self::Appearance>;
+    /// The output type produced by this channel.
+    type Out;
 
-    fn observe(&self) -> Self::Appearance;
-}
-
-/// An entity that can be influenced by an external motive.
-pub trait Influence {
-    /// The motive used to influence this entity.
-    type Motive;
-
-    /// A sink that accepts motives.
-    type Sink: futures::Sink<Self::Motive>;
-
-    fn influence(&self, motive: Self::Motive);
+    /// Process a stream of inputs, yielding a stream of outputs.
+    fn channel(self, input: impl futures::Stream<Item = Self::In>) -> impl futures::Stream<Item = Self::Out>;
 }
