@@ -18,5 +18,5 @@ pub trait Entity {
 
 pub trait Jungle {}
 
-/// A vessel carries out the will of the Jungle.
-pub trait Vessel<T: Jungle> {}
+/// A worker carries out the will of the Jungle.
+pub trait Worker<T: Jungle> {}
