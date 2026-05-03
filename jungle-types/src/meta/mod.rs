@@ -1,3 +1,18 @@
+use typosaurus::cmp::Equality;
+use typosaurus::num::Unsigned;
+
+/// Newtype wrapper around an Unsigned constant.
+pub struct Id<T: Unsigned>(pub T);
+
+/// Blanket impl: `Id<T>` is equal to `Id<U>` iff `T` is equal to `U`.
+impl<T, U> Equality<Id<U>> for Id<T>
+where
+    T: Unsigned + Equality<U>,
+    U: Unsigned,
+{
+    type Out = <T as Equality<U>>::Out;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{Animal, Id};
