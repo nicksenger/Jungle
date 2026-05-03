@@ -3,6 +3,15 @@ mod meta;
 pub use behavior::{Action, Instinct};
 pub use meta::Id;
 
+/// A collection of Jungle entities and the Animals that fill them.
+///
+/// This is defined before [`Animal`] so downstream types can reference it
+/// when specifying associated collections.
+pub trait Ecosystem {
+    type Actions;
+    type Animals;
+}
+
 /// A living creature within the Jungle ecosystem.
 pub trait Animal {
     /// A type-level identifier for this Animal.
@@ -21,12 +30,6 @@ pub trait Host {
     type Symbionts;
 }
 
-/// A collection of Jungle entities and the Animals that fill them.
-pub trait Ecosystem {
-    type Actions;
-    type Animals;
-}
-
 /// A trait that transforms a stream of inputs into a stream of outputs.
 pub trait Evoke {
     /// The input type accepted by this evoke.
@@ -37,4 +40,14 @@ pub trait Evoke {
 
     /// Process a stream of inputs, yielding a stream of outputs.
     fn evoke(self, input: impl futures::Stream<Item = Self::In>) -> impl futures::Stream<Item = Self::Out>;
+}
+
+/// Any collection of [`Animal`]s.
+pub trait Animals {
+    type List;
+}
+
+/// Any collection of [`Action`]s.
+pub trait Actions {
+    type List;
 }
