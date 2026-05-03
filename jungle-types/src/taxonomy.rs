@@ -75,7 +75,7 @@ mod tests {
         assert_type_eq,
         collections::list::Flatten,
         list,
-        num::consts::{U1, U2},
+        num::consts::{U1, U2, U3, U4, U5},
     };
 
     /// Blanket self-equality for all animals.
@@ -139,5 +139,111 @@ mod tests {
         type Y = Flatten<X>;
 
         assert_type_eq!(Y, list![Dog, Wolf]);
+    }
+
+    #[derive(Default)]
+    struct Cat;
+
+    impl Animal for Cat {
+        type Id = U2;
+        type Form = ();
+        type Motivation = ();
+        type Instinct = ();
+        type Niches = ();
+        type Symbionts = ();
+    }
+
+    #[derive(Default)]
+    struct Horse;
+
+    impl Animal for Horse {
+        type Id = U3;
+        type Form = ();
+        type Motivation = ();
+        type Instinct = ();
+        type Niches = ();
+        type Symbionts = ();
+    }
+
+    #[derive(Default)]
+    struct Eagle;
+
+    impl Animal for Eagle {
+        type Id = U4;
+        type Form = ();
+        type Motivation = ();
+        type Instinct = ();
+        type Niches = ();
+        type Symbionts = ();
+    }
+
+    #[derive(Default)]
+    struct Shark;
+
+    impl Animal for Shark {
+        type Id = U5;
+        type Form = ();
+        type Motivation = ();
+        type Instinct = ();
+        type Niches = ();
+        type Symbionts = ();
+    }
+
+    impl_equality_self!(Cat, Horse, Eagle, Shark);
+
+    /// A genus with multiple species: Canis (dog, wolf)
+    type Canis = list![Dog, Wolf];
+
+    /// A genus with a single species: Felis (cat)
+    type Felis = list![Cat];
+
+    /// A family with multiple genera: Canidae
+    type Canidae = list![Canis, Felis];
+
+    /// An order with multiple families
+    type Carnivora = list![Canidae];
+
+    /// A class with multiple orders
+    type Mammalia = list![Carnivora];
+
+    /// A phylum with multiple classes
+    type Chordata = list![Mammalia];
+
+    #[test]
+    fn genus_trait() {
+        fn assert_genus<T: Genus>() {}
+        assert_genus::<list![Dog, Wolf]>();
+        assert_genus::<list![Cat]>();
+    }
+
+    #[test]
+    fn family_trait() {
+        fn assert_family<T: Family>() {}
+        assert_family::<Canidae>();
+    }
+
+    #[test]
+    fn order_trait() {
+        fn assert_order<T: Order>() {}
+        assert_order::<Carnivora>();
+    }
+
+    #[test]
+    fn class_trait() {
+        fn assert_class<T: Class>() {}
+        assert_class::<Mammalia>();
+    }
+
+    #[test]
+    fn phylum_trait() {
+        fn assert_phylum<T: Phylum>() {}
+        assert_phylum::<Chordata>();
+    }
+
+    #[test]
+    fn deep_hierarchy_flat() {
+        type Nested = list![list![list![list![Dog, Wolf], list![Cat]], list![Horse]]];
+        type Flattened = Flatten<Nested>;
+        assert_type_eq!(Flattened, list![Dog, Wolf, Cat, Horse]);
     }
 }
