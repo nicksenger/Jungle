@@ -9,6 +9,9 @@ pub trait Instinct {
 
 /// A behavior that transforms a single input into a single output.
 pub trait Action {
+    /// A type-level identifier for this Action.
+    type Id;
+
     /// The input type accepted by this action.
     type In: Serialize + DeserializeOwned;
 
