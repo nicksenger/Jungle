@@ -1,4 +1,4 @@
-use crate::{Action, Animal};
+use crate::{Action, Actions, Animal, Animals};
 use typosaurus::collections::list;
 use typosaurus::cmp::Equality;
 use typosaurus::num::Unsigned;
@@ -14,11 +14,6 @@ where
     U: Unsigned,
 {
     type Out = <T as Equality<U>>::Out;
-}
-
-/// Any collection of [`Animal`]s with a flat type-level list of members.
-pub trait Animals {
-    type List;
 }
 
 impl<T> Animals for T
@@ -48,11 +43,6 @@ where
     (Left::List, Right::List): Mappend,
 {
     type List = <(Left::List, Right::List) as Mappend>::Out;
-}
-
-/// Any collection of [`Action`]s with a flat type-level list of members.
-pub trait Actions {
-    type List;
 }
 
 impl<T> Actions for T

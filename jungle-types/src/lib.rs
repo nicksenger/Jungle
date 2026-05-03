@@ -1,7 +1,7 @@
 mod behavior;
 mod meta;
 pub use behavior::{Action, Instinct};
-pub use meta::{Actions, Animals, Id};
+pub use meta::Id;
 
 /// A collection of Jungle entities and the Animals that fill them.
 ///
@@ -22,6 +22,16 @@ pub trait Animal {
 
     /// The actions this Animal can take.
     type Actions;
+}
+
+/// Any collection of [`Animal`]s with a flat type-level list of members.
+pub trait Animals {
+    type List;
+}
+
+/// Any collection of [`Action`]s with a flat type-level list of members.
+pub trait Actions {
+    type List;
 }
 
 /// An organism that hosts symbionts.
