@@ -67,6 +67,9 @@ pub trait Observe {
     /// The appearance revealed when this entity is observed.
     type Appearance;
 
+    /// A stream that yields appearances over time.
+    type Stream: futures::Stream<Item = Self::Appearance>;
+
     fn observe(&self) -> Self::Appearance;
 }
 
@@ -74,6 +77,9 @@ pub trait Observe {
 pub trait Influence {
     /// The motive used to influence this entity.
     type Motive;
+
+    /// A sink that accepts motives.
+    type Sink: futures::Sink<Self::Motive>;
 
     fn influence(&self, motive: Self::Motive);
 }
