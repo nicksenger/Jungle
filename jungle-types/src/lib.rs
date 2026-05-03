@@ -2,7 +2,6 @@ use core::marker::PhantomData;
 use typosaurus::cmp::Equality;
 use typosaurus::num::Unsigned;
 
-mod behavior;
 
 /// A newtype wrapper around an [`Unsigned`] constant.
 ///
@@ -62,4 +61,3 @@ pub trait Ecosystem {
     type Animals;
 }
 
-pub use behavior::Action;
