@@ -62,4 +62,4 @@ pub trait Ecosystem {
     type Animals;
 }
 
-pub use behavior::{Action, Impulse, Niche};
+pub use behavior::{Action, Niche};
