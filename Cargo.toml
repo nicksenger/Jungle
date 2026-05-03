@@ -5,9 +5,12 @@ members = [
     "jungle-server",
     "jungle-sdk",
     "jungle-persist",
-    "jungle-view",
+    "jungle-viewer",
     "jungle-proto",
+    "jungle-types",
 ]
 
 [workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
 inception = { path = "../inception/inception" }
+typosaurus = { path = "../typosaurus" }
