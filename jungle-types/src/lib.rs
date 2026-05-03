@@ -25,20 +25,12 @@ pub trait Animal {
     type Instinct;
 }
 
-pub struct AnimalCollection;
-
-impl inception::Property for AnimalCollection {}
-
 /// Any collection of [`Animal`]s with a flat type-level list of members.
 pub trait Animals {
     type List;
 }
 
 /// Any collection of [`Action`]s with a flat type-level list of members.
-pub struct ActionCollection;
-
-impl inception::Property for ActionCollection {}
-
 pub trait Actions {
     type List;
 }
