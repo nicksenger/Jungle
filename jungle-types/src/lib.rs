@@ -29,14 +29,14 @@ pub trait Ecosystem {
     type Animals;
 }
 
-/// A channel that transforms a stream of inputs into a stream of outputs.
-pub trait Channel {
-    /// The input type accepted by this channel.
+/// A trait that transforms a stream of inputs into a stream of outputs.
+pub trait Evoke {
+    /// The input type accepted by this evoke.
     type In;
 
-    /// The output type produced by this channel.
+    /// The output type produced by this evoke.
     type Out;
 
     /// Process a stream of inputs, yielding a stream of outputs.
-    fn channel(self, input: impl futures::Stream<Item = Self::In>) -> impl futures::Stream<Item = Self::Out>;
+    fn evoke(self, input: impl futures::Stream<Item = Self::In>) -> impl futures::Stream<Item = Self::Out>;
 }
