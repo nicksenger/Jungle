@@ -18,3 +18,35 @@ where
 {
     type Out = <T::Id as Equality<U::Id>>::Out;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AnimalEquality;
+    use crate::{Animal, Id};
+    use typosaurus::bool::{False, True};
+    use typosaurus::cmp::IsEqual;
+    use typosaurus::num::consts::{U0, U1};
+    use typosaurus::assert_type_eq;
+
+    struct AnimalA;
+    impl Animal for AnimalA {
+        type Id = Id<U0>;
+        type Instinct = ();
+        type Actions = ();
+    }
+
+    struct AnimalB;
+    impl Animal for AnimalB {
+        type Id = Id<U1>;
+        type Instinct = ();
+        type Actions = ();
+    }
+
+    type SelfEqA = <(AnimalEquality<AnimalA, AnimalA>, AnimalEquality<AnimalA, AnimalA>) as IsEqual>::Out;
+    type SelfEqB = <(AnimalEquality<AnimalB, AnimalB>, AnimalEquality<AnimalB, AnimalB>) as IsEqual>::Out;
+    type NotEqAB = <(AnimalEquality<AnimalA, AnimalB>, AnimalEquality<AnimalA, AnimalB>) as IsEqual>::Out;
+
+    assert_type_eq!(SelfEqA, True);
+    assert_type_eq!(SelfEqB, True);
+    assert_type_eq!(NotEqAB, False);
+}
