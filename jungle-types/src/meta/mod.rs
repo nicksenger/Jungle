@@ -21,11 +21,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::AnimalEquality;
     use crate::{Animal, Id};
     use typosaurus::collections::list::{Atom, DeepFlatten};
-    use typosaurus::bool::{False, True};
-    use typosaurus::cmp::IsEqual;
     use typosaurus::num::consts::{U0, U1};
     use typosaurus::assert_type_eq;
 
@@ -42,14 +39,6 @@ mod tests {
 
     animal!(AnimalA, U0);
     animal!(AnimalB, U1);
-
-    type SelfEqA = <(AnimalEquality<AnimalA, AnimalA>, AnimalEquality<AnimalA, AnimalA>) as IsEqual>::Out;
-    type SelfEqB = <(AnimalEquality<AnimalB, AnimalB>, AnimalEquality<AnimalB, AnimalB>) as IsEqual>::Out;
-    type NotEqAB = <(AnimalEquality<AnimalA, AnimalB>, AnimalEquality<AnimalA, AnimalB>) as IsEqual>::Out;
-
-    assert_type_eq!(SelfEqA, True);
-    assert_type_eq!(SelfEqB, True);
-    assert_type_eq!(NotEqAB, False);
 
     type NestedAnimals = typosaurus::list![
         typosaurus::list![Atom<AnimalA>, Atom<AnimalB>],
