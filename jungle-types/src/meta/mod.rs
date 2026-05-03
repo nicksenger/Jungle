@@ -112,22 +112,24 @@ mod tests {
 
     impl Action for Hunt {
         type Id = Id<U0>;
+        type State = ();
         type In = ();
         type Out = ();
         type Err = ();
 
-        async fn act(_input: Self::In) -> Result<Self::Out, Self::Err> {
+        async fn act(_state: &Self::State, _input: Self::In) -> Result<Self::Out, Self::Err> {
             Ok(())
         }
     }
 
     impl Action for Sleep {
         type Id = Id<U1>;
+        type State = ();
         type In = ();
         type Out = ();
         type Err = ();
 
-        async fn act(_input: Self::In) -> Result<Self::Out, Self::Err> {
+        async fn act(_state: &Self::State, _input: Self::In) -> Result<Self::Out, Self::Err> {
             Ok(())
         }
     }

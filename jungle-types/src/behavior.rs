@@ -12,6 +12,9 @@ pub trait Action {
     /// A type-level identifier for this Action.
     type Id;
 
+    /// The shared state consumed by this action.
+    type State;
+
     /// The input type accepted by this action.
     type In: Serialize + DeserializeOwned;
 
@@ -22,5 +25,5 @@ pub trait Action {
     type Err;
 
     /// Process one input into one output.
-    async fn act(input: Self::In) -> Result<Self::Out, Self::Err>;
+    async fn act(state: &Self::State, input: Self::In) -> Result<Self::Out, Self::Err>;
 }
