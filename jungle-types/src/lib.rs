@@ -1,4 +1,6 @@
+mod behavior;
 mod meta;
+pub use behavior::Action;
 pub use meta::Id;
 
 /// A living creature within the Jungle ecosystem.
