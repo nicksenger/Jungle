@@ -5,6 +5,9 @@
 
 /// A niche represents an ecological role that groups related actions.
 pub trait Niche {
+    /// A type-level identifier for this `Niche`.
+    type Id: typosaurus::num::Unsigned;
+
     type Actions;
 }
 
