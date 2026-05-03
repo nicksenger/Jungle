@@ -3,7 +3,6 @@ use typosaurus::cmp::Equality;
 use typosaurus::num::Unsigned;
 
 mod behavior;
-mod taxonomy;
 
 /// A newtype wrapper around an [`Unsigned`] constant.
 ///
@@ -64,4 +63,3 @@ pub trait Ecosystem {
 }
 
 pub use behavior::{Action, Impulse, Niche};
-pub use taxonomy::{Class, Family, Genus, Order, Phylum, Species};
