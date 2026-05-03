@@ -17,17 +17,14 @@ pub trait Animal {
     /// The fundamental behavior of this `Animal`.
     type Instinct;
 
-    /// How this `Animal` may appear to observers.
-    type Form;
-
-    /// What drives this `Animal` to change its behavior.
-    type Motivation;
-
-    /// Organisms that live in close association with this `Animal`.
-    type Symbionts;
-
     /// The actions this `Animal` can take.
     type Actions;
+}
+
+/// An organism that hosts symbionts.
+pub trait Host {
+    /// Organisms that live in close association with this `Host`.
+    type Symbionts;
 }
 
 /// A newtype wrapper proving that two `Animal` types are equal
