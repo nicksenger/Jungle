@@ -23,24 +23,25 @@ where
 mod tests {
     use super::AnimalEquality;
     use crate::{Animal, Id};
+    use typosaurus::collections::list::{Atom, DeepFlatten};
     use typosaurus::bool::{False, True};
     use typosaurus::cmp::IsEqual;
     use typosaurus::num::consts::{U0, U1};
     use typosaurus::assert_type_eq;
 
-    struct AnimalA;
-    impl Animal for AnimalA {
-        type Id = Id<U0>;
-        type Instinct = ();
-        type Actions = ();
+    macro_rules! animal {
+        ($name:ident, $id:ty) => {
+            struct $name;
+            impl Animal for $name {
+                type Id = Id<$id>;
+                type Instinct = ();
+                type Actions = ();
+            }
+        };
     }
 
-    struct AnimalB;
-    impl Animal for AnimalB {
-        type Id = Id<U1>;
-        type Instinct = ();
-        type Actions = ();
-    }
+    animal!(AnimalA, U0);
+    animal!(AnimalB, U1);
 
     type SelfEqA = <(AnimalEquality<AnimalA, AnimalA>, AnimalEquality<AnimalA, AnimalA>) as IsEqual>::Out;
     type SelfEqB = <(AnimalEquality<AnimalB, AnimalB>, AnimalEquality<AnimalB, AnimalB>) as IsEqual>::Out;
@@ -49,4 +50,13 @@ mod tests {
     assert_type_eq!(SelfEqA, True);
     assert_type_eq!(SelfEqB, True);
     assert_type_eq!(NotEqAB, False);
+
+    type NestedAnimals = typosaurus::list![
+        typosaurus::list![Atom<AnimalA>, Atom<AnimalB>],
+        typosaurus::list![Atom<AnimalA>],
+        Atom<AnimalB>
+    ];
+    type FlatAnimals = DeepFlatten<NestedAnimals>;
+
+    assert_type_eq!(FlatAnimals, typosaurus::list![AnimalA, AnimalB, AnimalA, AnimalB]);
 }
