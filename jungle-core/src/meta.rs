@@ -67,4 +67,5 @@ where
         <T::Actions as Actions>::List,
     >>::Out: Truthy,
 {
+    type Animals = <T::Animals as Animals>::List;
 }
