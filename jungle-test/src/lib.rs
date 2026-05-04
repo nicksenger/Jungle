@@ -3,8 +3,8 @@ mod tests {
     use inception::{primitive, Inception};
     use jungle_core::Jungle;
     use jungle_types::{
-        Action, ActionMember, ActionSet, Actions, Animal, AnimalMember, AnimalSet, Animals,
-        Ecosystem, Id, Ident, Identified, Instinct, JungleActions, JungleAnimals,
+        Action, ActionMember, ActionSet, Actions, Animal, AnimalActionSet, AnimalMember, AnimalSet,
+        Animals, Ecosystem, Id, Ident, Identified, Instinct, JungleActions, JungleAnimals,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::collections::list;
@@ -159,6 +159,12 @@ mod tests {
 
         type PredatorList = list![Tiger, Jaguar, Anaconda];
         assert_type_eq!(AnimalSet<Predators>, PredatorList);
+    }
+
+    #[test]
+    fn animal_action_set() {
+        type AllAnimalActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
+        assert_type_eq!(AnimalActionSet<AllAnimals>, AllAnimalActions);
     }
 
     #[test]

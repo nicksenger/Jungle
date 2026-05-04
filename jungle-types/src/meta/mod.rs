@@ -1,11 +1,11 @@
 use typosaurus::cmp::Equality;
 use typosaurus::collections::{
     list,
-    sp::{Node, SPFlatten},
+    sp::{FlattenNodes, Node, SPDedupNodes, SPFlatten},
 };
 use typosaurus::num::Unsigned;
 
-use super::{Actions, Animals};
+use super::{Actions, Animal, Animals, Instinct};
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
@@ -51,6 +51,26 @@ where
     type Out = list::List<(Head, TailOut)>;
 }
 
+pub trait KeepActionNodes {
+    type Out;
+}
+impl KeepActionNodes for list::Empty {
+    type Out = list::Empty;
+}
+impl<K, Tail, TailOut> KeepActionNodes for list::List<(Node<K, ()>, Tail)>
+where
+    Tail: KeepActionNodes<Out = TailOut>,
+{
+    type Out = TailOut;
+}
+impl<K, Head, Tail, TailOut> KeepActionNodes for list::List<(Node<K, Head>, Tail)>
+where
+    Head: ActionMember,
+    Tail: KeepActionNodes<Out = TailOut>,
+{
+    type Out = list::List<(Node<K, Head>, TailOut)>;
+}
+
 pub trait StripAnimalHeaders {
     type Out;
 }
@@ -73,3 +93,29 @@ where
 
 pub type ActionSet<T> = <SPFlatten<<T as Actions>::List> as StripActionHeaders>::Out;
 pub type AnimalSet<T> = <SPFlatten<<T as Animals>::List> as StripAnimalHeaders>::Out;
+
+pub trait CollectAnimalInstinctActions {
+    type Out;
+}
+impl CollectAnimalInstinctActions for list::Empty {
+    type Out = list::Empty;
+}
+impl<Head, Tail, TailOut> CollectAnimalInstinctActions for list::List<(Head, Tail)>
+where
+    Head: Animal,
+    <Head as Animal>::Instinct: Instinct,
+    <<Head as Animal>::Instinct as Instinct>::Actions: Actions,
+    <<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List: FlattenNodes,
+    SPFlatten<<<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List>:
+        KeepActionNodes,
+    Tail: CollectAnimalInstinctActions<Out = TailOut>,
+{
+    type Out = list::List<(
+        <SPFlatten<<<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List> as KeepActionNodes>::Out,
+        TailOut,
+    )>;
+}
+
+pub type AnimalActionSet<T> = <SPDedupNodes<
+    SPFlatten<<AnimalSet<T> as CollectAnimalInstinctActions>::Out>,
+> as StripActionHeaders>::Out;
