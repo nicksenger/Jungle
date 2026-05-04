@@ -189,6 +189,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "jungle-cli"
+version = "0.1.0"
+
+[[package]]
 name = "jungle-core"
 version = "0.1.0"
 dependencies = [
@@ -213,6 +217,10 @@ dependencies = [
 
 [[package]]
 name = "jungle-server"
+version = "0.1.0"
+
+[[package]]
+name = "jungle-test"
 version = "0.1.0"
 
 [[package]]
