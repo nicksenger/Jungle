@@ -118,6 +118,18 @@ pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
     WithAnimalState,
 >>::Out;
 
+pub trait AnimalStatesCompatible<From>: Animals {}
+impl<T, From> AnimalStatesCompatible<From> for T
+where
+    T: Animals,
+    <T as Animals>::List: FlattenNodes,
+    SPFlatten<<T as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<T>: Container,
+    (AnimalSet<T>, WithAnimalState): Map<<AnimalSet<T> as Container>::Content, WithAnimalState>,
+    AnimalStates<T>: AllFrom<From>,
+{
+}
+
 pub trait CollectAnimalInstinctActions {
     type Out;
 }

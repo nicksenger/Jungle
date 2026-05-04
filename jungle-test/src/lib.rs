@@ -68,9 +68,16 @@ mod tests {
     #[inception(properties = [Ident, JungleActions])]
     struct Prey(BasicNeeds, Flee);
 
+    struct SharedState;
+    impl<T> From<&T> for SharedState {
+        fn from(_value: &T) -> Self {
+            Self
+        }
+    }
+
     macro_rules! animal {
         ($name:ident, $id:ty, $instinct:ty) => {
-            animal!($name, $id, (), $instinct);
+            animal!($name, $id, SharedState, $instinct);
         };
 
         ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
