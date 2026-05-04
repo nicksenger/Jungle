@@ -1,4 +1,4 @@
-#![recursion_limit = "512"]
+#![recursion_limit = "1024"]
 
 //! Shared test utilities crate for the Jungle workspace.
 
@@ -45,15 +45,17 @@ mod tests {
     define_action!(Drink, U3);
     define_action!(Hunt, U4);
 
-    struct BasicNeeds;
-    impl Actions for BasicNeeds {
-        type List = typosaurus::list![Eat, Sleep, Forage, Drink];
-    }
+    #[derive(Inception)]
+    #[inception(properties = [JungleAction])]
+    struct BasicNeeds(Eat, Sleep, Forage, Drink);
 
-    struct Predation;
-    impl Actions for Predation {
-        type List = typosaurus::list![Hunt];
-    }
+    #[derive(Inception)]
+    #[inception(properties = [JungleAction])]
+    struct Predation(Hunt);
+
+    #[derive(Inception)]
+    #[inception(properties = [JungleAction])]
+    struct Predator(BasicNeeds, Predation);
 
     macro_rules! define_animal {
         ($name:ident, $id:ty, $instinct:ty) => {
