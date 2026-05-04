@@ -3,3 +3,4 @@ mod meta;
 pub trait Jungle {
     fn manifest(self) -> impl std::future::Future<Output = Result<(), jungle_types::Error>>;
 }
+
