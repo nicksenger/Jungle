@@ -113,7 +113,7 @@ where
     type Out = <T as Animal>::State;
 }
 
-pub type AnimalStateSet<T> = <(AnimalSet<T>, WithAnimalState) as Map<
+pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
     <AnimalSet<T> as Container>::Content,
     WithAnimalState,
 >>::Out;

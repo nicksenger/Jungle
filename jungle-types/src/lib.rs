@@ -6,7 +6,7 @@ pub use error::Error;
 use inception::*;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AnimalActionSet, AnimalMember, AnimalSet, AnimalStateSet,
+    ActionMember, ActionSet, AnimalActionSet, AnimalMember, AnimalSet, AnimalStates,
     StripActionHeaders,
     StripAnimalHeaders,
 };

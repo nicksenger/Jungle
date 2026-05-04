@@ -4,7 +4,7 @@ mod tests {
     use jungle_core::Jungle;
     use jungle_types::{
         Action, ActionMember, ActionSet, Actions, Animal, AnimalActionSet, AnimalMember, AnimalSet,
-        AnimalStateSet, Animals, Ecosystem, Id, Ident, Identified, Instinct, JungleActions,
+        AnimalStates, Animals, Ecosystem, Id, Ident, Identified, Instinct, JungleActions,
         JungleAnimals,
     };
     use typosaurus::assert_type_eq;
@@ -188,7 +188,7 @@ mod tests {
         struct StatefulAnimals(StatefulGorilla, StatefulTiger);
 
         type StatefulAnimalStates = list![ApeState, CatState];
-        assert_type_eq!(AnimalStateSet<StatefulAnimals>, StatefulAnimalStates);
+        assert_type_eq!(AnimalStates<StatefulAnimals>, StatefulAnimalStates);
     }
 
     #[test]
