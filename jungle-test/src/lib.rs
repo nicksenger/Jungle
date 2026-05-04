@@ -2,17 +2,19 @@
 mod tests {
     use inception::{primitive, Inception};
     use jungle_types::{
-        Action, Actions, Animal, Animals, Ecosystem, Id, Ident, Identified, Instinct,
-        JungleActions, JungleAnimals,
+        Action, ActionMember, ActionSet, Actions, Animal, AnimalMember, AnimalSet, Animals,
+        Ecosystem, Id, Ident, Identified, Instinct, JungleActions, JungleAnimals,
     };
     use typosaurus::assert_type_eq;
+    use typosaurus::collections::list;
     use typosaurus::collections::sp::{Node, SPFlatten};
     use typosaurus::list;
     use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 
-    macro_rules! define_action {
+    macro_rules! action {
         ($name:ident, $id:ty) => {
             struct $name;
+            impl ActionMember for $name {}
 
             impl Action for $name {
                 type Id = Id<$id>;
@@ -41,12 +43,12 @@ mod tests {
         };
     }
 
-    define_action!(Eat, U0);
-    define_action!(Sleep, U1);
-    define_action!(Forage, U2);
-    define_action!(Drink, U3);
-    define_action!(Hunt, U4);
-    define_action!(Flee, U5);
+    action!(Eat, U0);
+    action!(Sleep, U1);
+    action!(Forage, U2);
+    action!(Drink, U3);
+    action!(Hunt, U4);
+    action!(Flee, U5);
 
     #[derive(Inception)]
     #[inception(properties = [Ident, JungleActions])]
@@ -64,9 +66,10 @@ mod tests {
     #[inception(properties = [Ident, JungleActions])]
     struct Prey(BasicNeeds, Flee);
 
-    macro_rules! define_animal {
+    macro_rules! animal {
         ($name:ident, $id:ty, $instinct:ty) => {
             struct $name;
+            impl AnimalMember for $name {}
 
             impl Animal for $name {
                 type Id = Id<$id>;
@@ -105,13 +108,13 @@ mod tests {
         type Actions = Prey;
     }
 
-    define_animal!(Gorilla, U0, ApeInstinct);
-    define_animal!(Chimpanzee, U1, ApeInstinct);
-    define_animal!(Tiger, U2, CatInstinct);
-    define_animal!(Jaguar, U3, CatInstinct);
-    define_animal!(Anaconda, U4, AnacondaInstinct);
-    define_animal!(Hippo, U5, GrazerInstinct);
-    define_animal!(Elephant, U6, GrazerInstinct);
+    animal!(Gorilla, U0, ApeInstinct);
+    animal!(Chimpanzee, U1, ApeInstinct);
+    animal!(Tiger, U2, CatInstinct);
+    animal!(Jaguar, U3, CatInstinct);
+    animal!(Anaconda, U4, AnacondaInstinct);
+    animal!(Hippo, U5, GrazerInstinct);
+    animal!(Elephant, U6, GrazerInstinct);
 
     #[derive(Inception)]
     #[inception(properties = [Ident, JungleAnimals])]
@@ -141,37 +144,19 @@ mod tests {
 
     #[test]
     fn composite_actions() {
-        use typosaurus::collections::list::{Skip, Take};
-        type BasicList = list![
-            Node<U0, Eat>,
-            Node<U1, Sleep>,
-            Node<U2, Forage>,
-            Node<U3, Drink>
-        ];
-        assert_type_eq!(
-            Skip<SPFlatten<<BasicNeeds as Actions>::List>, U1>,
-            BasicList
-        );
+        type BasicList = list![Eat, Sleep, Forage, Drink];
+        assert_type_eq!(ActionSet<BasicNeeds>, BasicList);
 
-        type PredatorList = list![
-            Node<U0, Eat>,
-            Node<U1, Sleep>,
-            Node<U2, Forage>,
-            Node<U3, Drink>
-            Node<U4, Hunt>
-        ];
-        assert_type_eq!(
-            Take<Skip<SPFlatten<<Predator as Actions>::List>, U2>, U4>,
-            Take<PredatorList, U4>
-        );
+        type PredatorList = list![Eat, Sleep, Forage, Drink, Hunt];
+        assert_type_eq!(ActionSet<Predator>, PredatorList);
     }
 
     #[test]
     fn composite_animals() {
-        //type ApeList = list![Gorilla, Chimpanzee];
-        //assert_type_eq!(SPFlatten<<Apes as Animals>::List>, ApeList);
+        type ApeList = list![Gorilla, Chimpanzee];
+        assert_type_eq!(AnimalSet<Apes>, ApeList);
 
-        //type PredatorList = list![Jaguar, Tiger, Anaconda];
-        //assert_type_eq!(<Predators as Animals>::List, PredatorList);
+        type PredatorList = list![Tiger, Jaguar, Anaconda];
+        assert_type_eq!(AnimalSet<Predators>, PredatorList);
     }
 }

@@ -5,6 +5,9 @@ pub use behavior::{Action, Instinct};
 pub use error::Error;
 use inception::*;
 pub use meta::Id;
+pub use meta::{
+    ActionMember, ActionSet, AnimalMember, AnimalSet, StripActionHeaders, StripAnimalHeaders,
+};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
