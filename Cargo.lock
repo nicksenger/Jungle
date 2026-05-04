@@ -223,7 +223,11 @@ version = "0.1.0"
 name = "jungle-test"
 version = "0.1.0"
 dependencies = [
+ "inception",
+ "jungle-core",
  "jungle-sdk",
+ "jungle-types",
+ "typosaurus",
 ]
 
 [[package]]
