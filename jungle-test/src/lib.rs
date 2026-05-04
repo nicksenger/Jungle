@@ -163,6 +163,9 @@ mod tests {
 
     #[test]
     fn animal_action_set() {
+        type ApeAnimalActions = list![Eat, Sleep, Forage, Drink, Flee];
+        assert_type_eq!(AnimalActionSet<Apes>, ApeAnimalActions);
+
         type AllAnimalActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
         assert_type_eq!(AnimalActionSet<AllAnimals>, AllAnimalActions);
     }
