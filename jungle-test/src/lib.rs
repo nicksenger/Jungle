@@ -1,4 +1,5 @@
 //! Shared test utilities crate for the Jungle workspace.
+#![recursion_limit = "2048"]
 
 #[cfg(test)]
 mod tests {
@@ -104,7 +105,7 @@ mod tests {
 
     struct AnacondaInstinct;
     impl Instinct for AnacondaInstinct {
-        type Actions = PredatorActions;
+        type Actions = Predator;
     }
 
     struct GrazerInstinct;
@@ -165,5 +166,13 @@ mod tests {
         assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U4>, Anaconda);
         assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U5>, Hippo);
         assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U6>, Elephant);
+    }
+
+    #[test]
+    fn predator_actions_list_is_flat() {
+        assert_type_eq!(
+            <Predator as Actions>::List,
+            typosaurus::list![Eat, Sleep, Forage, Drink, Hunt]
+        );
     }
 }
