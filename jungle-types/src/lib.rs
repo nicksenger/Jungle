@@ -12,12 +12,8 @@ use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
 
-/// A collection of Jungle entities and the Animals that fill them.
-///
-/// This is defined before [`Animal`] so downstream types can reference it
-/// when specifying associated collections.
+/// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
-    type Actions;
     type Animals;
 }
 
@@ -25,6 +21,9 @@ pub trait Ecosystem {
 pub trait Animal {
     /// A type-level identifier for this Animal.
     type Id;
+
+    /// The state of this `Animal` at any given time.
+    type State;
 
     /// The fundamental behavior of this Animal.
     type Instinct;

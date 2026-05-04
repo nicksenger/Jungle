@@ -73,6 +73,7 @@ mod tests {
 
             impl Animal for $name {
                 type Id = Id<$id>;
+                type State = ();
                 type Instinct = $instinct;
             }
 

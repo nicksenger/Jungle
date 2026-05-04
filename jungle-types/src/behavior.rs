@@ -2,9 +2,9 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::future::Future;
 
-/// The innate behavior definition for an Animal.
+/// The innate behavior of an `Animal`.
 pub trait Instinct {
-    /// The actions available to this instinct.
+    /// The `Action`s taken by `Animal`s with this `Instinct`.
     type Actions;
 }
 
