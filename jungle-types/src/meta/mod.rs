@@ -43,8 +43,11 @@ mod tests {
         type Out = ();
         type Err = ();
 
-        async fn act(_state: &Self::State, _input: Self::In) -> Result<Self::Out, Self::Err> {
-            Ok(())
+        fn act(
+            _state: &Self::State,
+            _input: Self::In,
+        ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+            std::future::ready(Ok(()))
         }
     }
 
@@ -55,8 +58,11 @@ mod tests {
         type Out = ();
         type Err = ();
 
-        async fn act(_state: &Self::State, _input: Self::In) -> Result<Self::Out, Self::Err> {
-            Ok(())
+        fn act(
+            _state: &Self::State,
+            _input: Self::In,
+        ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+            std::future::ready(Ok(()))
         }
     }
 

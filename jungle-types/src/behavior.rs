@@ -1,5 +1,6 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::future::Future;
 
 /// The innate behavior definition for an Animal.
 pub trait Instinct {
@@ -25,5 +26,8 @@ pub trait Action {
     type Err;
 
     /// Process one input into one output.
-    async fn act(state: &Self::State, input: Self::In) -> Result<Self::Out, Self::Err>;
+    fn act(
+        state: &Self::State,
+        input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>>;
 }

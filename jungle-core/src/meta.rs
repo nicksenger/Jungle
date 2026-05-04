@@ -69,8 +69,8 @@ where
 {
     type Animals = <T::Animals as Animals>::List;
 
-    async fn manifest(self) -> Result<(), jungle_types::Error> {
+    fn manifest(self) -> impl std::future::Future<Output = Result<(), jungle_types::Error>> {
         drop(self);
-        Ok(())
+        std::future::ready(Ok(()))
     }
 }
