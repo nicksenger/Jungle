@@ -4,7 +4,8 @@ mod tests {
     use jungle_core::Jungle;
     use jungle_types::{
         Action, ActionMember, ActionSet, Actions, Animal, AnimalActionSet, AnimalMember, AnimalSet,
-        Animals, Ecosystem, Id, Ident, Identified, Instinct, JungleActions, JungleAnimals,
+        AnimalStateSet, Animals, Ecosystem, Id, Ident, Identified, Instinct, JungleActions,
+        JungleAnimals,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::collections::list;
@@ -69,12 +70,16 @@ mod tests {
 
     macro_rules! animal {
         ($name:ident, $id:ty, $instinct:ty) => {
+            animal!($name, $id, (), $instinct);
+        };
+
+        ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
             struct $name;
             impl AnimalMember for $name {}
 
             impl Animal for $name {
                 type Id = Id<$id>;
-                type State = ();
+                type State = $state;
                 type Instinct = $instinct;
             }
 
@@ -168,6 +173,22 @@ mod tests {
 
         type AllAnimalActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
         assert_type_eq!(AnimalActionSet<AllAnimals>, AllAnimalActions);
+    }
+
+    #[test]
+    fn animal_state_set() {
+        struct ApeState;
+        struct CatState;
+
+        animal!(StatefulGorilla, U0, ApeState, ApeInstinct);
+        animal!(StatefulTiger, U1, CatState, CatInstinct);
+
+        #[derive(Inception)]
+        #[inception(properties = [Ident, JungleAnimals])]
+        struct StatefulAnimals(StatefulGorilla, StatefulTiger);
+
+        type StatefulAnimalStates = list![ApeState, CatState];
+        assert_type_eq!(AnimalStateSet<StatefulAnimals>, StatefulAnimalStates);
     }
 
     #[test]

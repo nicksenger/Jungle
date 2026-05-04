@@ -6,7 +6,8 @@ pub use error::Error;
 use inception::*;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AnimalActionSet, AnimalMember, AnimalSet, StripActionHeaders,
+    ActionMember, ActionSet, AnimalActionSet, AnimalMember, AnimalSet, AnimalStateSet,
+    StripActionHeaders,
     StripAnimalHeaders,
 };
 use typosaurus::collections::list::{self, List as TList};

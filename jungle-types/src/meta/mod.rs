@@ -2,8 +2,10 @@ use typosaurus::cmp::Equality;
 use typosaurus::collections::{
     list,
     sp::{FlattenNodes, Node, SPDedupNodes, SPFlatten},
+    Container,
 };
 use typosaurus::num::Unsigned;
+use typosaurus::traits::functor::{Map, Mapper};
 
 use super::{Actions, Animal, Animals, Instinct};
 
@@ -102,6 +104,19 @@ where
 
 pub type ActionSet<T> = <SPFlatten<<T as Actions>::List> as StripActionHeaders>::Out;
 pub type AnimalSet<T> = <SPFlatten<<T as Animals>::List> as StripAnimalHeaders>::Out;
+
+pub struct WithAnimalState;
+impl<T> Mapper<T> for WithAnimalState
+where
+    T: Animal,
+{
+    type Out = <T as Animal>::State;
+}
+
+pub type AnimalStateSet<T> = <(AnimalSet<T>, WithAnimalState) as Map<
+    <AnimalSet<T> as Container>::Content,
+    WithAnimalState,
+>>::Out;
 
 pub trait CollectAnimalInstinctActions {
     type Out;
