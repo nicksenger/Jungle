@@ -1,5 +1,3 @@
-#![recursion_limit = "1024"]
-
 //! Shared test utilities crate for the Jungle workspace.
 
 #[cfg(test)]
@@ -47,15 +45,35 @@ mod tests {
 
     #[derive(Inception)]
     #[inception(properties = [JungleAction])]
-    struct BasicNeeds(Eat, Sleep, Forage, Drink);
+    struct BasicNeeds {
+        eat: Eat,
+        sleep: Sleep,
+        forage: Forage,
+        drink: Drink,
+    }
 
     #[derive(Inception)]
     #[inception(properties = [JungleAction])]
-    struct Predation(Hunt);
+    struct Predation {
+        hunt: Hunt,
+    }
 
     #[derive(Inception)]
     #[inception(properties = [JungleAction])]
-    struct Predator(BasicNeeds, Predation);
+    struct Predator {
+        basic_needs: BasicNeeds,
+        predation: Predation,
+    }
+
+    struct ApeActions;
+    impl Actions for ApeActions {
+        type List = typosaurus::list![Eat, Sleep, Forage, Drink];
+    }
+
+    struct PredatorActions;
+    impl Actions for PredatorActions {
+        type List = typosaurus::list![Hunt];
+    }
 
     macro_rules! define_animal {
         ($name:ident, $id:ty, $instinct:ty) => {
@@ -76,22 +94,22 @@ mod tests {
 
     struct ApeInstinct;
     impl Instinct for ApeInstinct {
-        type Actions = BasicNeeds;
+        type Actions = ApeActions;
     }
 
     struct CatInstinct;
     impl Instinct for CatInstinct {
-        type Actions = Predation;
+        type Actions = PredatorActions;
     }
 
     struct AnacondaInstinct;
     impl Instinct for AnacondaInstinct {
-        type Actions = Predation;
+        type Actions = PredatorActions;
     }
 
     struct GrazerInstinct;
     impl Instinct for GrazerInstinct {
-        type Actions = BasicNeeds;
+        type Actions = ApeActions;
     }
 
     define_animal!(Gorilla, U0, ApeInstinct);
