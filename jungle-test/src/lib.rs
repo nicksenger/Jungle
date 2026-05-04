@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use inception::{primitive, Inception};
+    use jungle_core::Jungle;
     use jungle_types::{
         Action, ActionMember, ActionSet, Actions, Animal, AnimalMember, AnimalSet, Animals,
         Ecosystem, Id, Ident, Identified, Instinct, JungleActions, JungleAnimals,
@@ -158,5 +159,14 @@ mod tests {
 
         type PredatorList = list![Tiger, Jaguar, Anaconda];
         assert_type_eq!(AnimalSet<Predators>, PredatorList);
+    }
+
+    #[test]
+    fn jungle_impl() {
+        fn is_jungle<T: Jungle>() {}
+
+        struct Zoo;
+
+        is_jungle::<Zoo>();
     }
 }
