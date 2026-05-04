@@ -24,7 +24,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{Action, Actions, Animal, Animals, Id, Instinct, JungleAction, JungleAnimal};
+    use crate::{Action, Actions, Animal, Animals, Id, Instinct, JungleActions, JungleAnimals};
     use inception::{primitive, Inception};
     use typosaurus::assert_type_eq;
     use typosaurus::num::consts::{U0, U1};
@@ -98,35 +98,35 @@ mod tests {
         type Instinct = DogInstinct;
     }
 
-    #[primitive(property = JungleAnimal)]
+    #[primitive(property = JungleAnimals)]
     impl Animals for Cat {
         type List = typosaurus::list![Cat];
     }
 
-    #[primitive(property = JungleAnimal)]
+    #[primitive(property = JungleAnimals)]
     impl Animals for Dog {
         type List = typosaurus::list![Dog];
     }
 
-    #[primitive(property = JungleAction)]
+    #[primitive(property = JungleActions)]
     impl Actions for Hunt {
         type List = typosaurus::list![Hunt];
     }
 
-    #[primitive(property = JungleAction)]
+    #[primitive(property = JungleActions)]
     impl Actions for Sleep {
         type List = typosaurus::list![Sleep];
     }
 
     #[derive(Inception)]
-    #[inception(properties = [JungleAnimal])]
+    #[inception(properties = [JungleAnimals])]
     struct PairGroup {
         left: Cat,
         right: Dog,
     }
 
     #[derive(Inception)]
-    #[inception(properties = [JungleAction])]
+    #[inception(properties = [JungleActions])]
     struct ActionPair {
         hunt: Hunt,
         sleep: Sleep,

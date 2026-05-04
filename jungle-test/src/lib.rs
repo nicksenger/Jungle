@@ -5,7 +5,7 @@ mod tests {
     use inception::{primitive, Inception};
     use jungle_core::Jungle;
     use jungle_types::{
-        Action, Actions, Animal, Animals, Ecosystem, Id, Instinct, JungleAction, JungleAnimal,
+        Action, Actions, Animal, Animals, Ecosystem, Id, Instinct, JungleActions, JungleAnimals,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
@@ -29,7 +29,7 @@ mod tests {
                 }
             }
 
-            #[primitive(property = JungleAction)]
+            #[primitive(property = JungleActions)]
             impl Actions for $name {
                 type List =
                     typosaurus::collections::list::List<($name, typosaurus::collections::list::Empty)>;
@@ -44,7 +44,7 @@ mod tests {
     define_action!(Hunt, U4);
 
     #[derive(Inception)]
-    #[inception(properties = [JungleAction])]
+    #[inception(properties = [JungleActions])]
     struct BasicNeeds {
         eat: Eat,
         sleep: Sleep,
@@ -53,13 +53,13 @@ mod tests {
     }
 
     #[derive(Inception)]
-    #[inception(properties = [JungleAction])]
+    #[inception(properties = [JungleActions])]
     struct Predation {
         hunt: Hunt,
     }
 
     #[derive(Inception)]
-    #[inception(properties = [JungleAction])]
+    #[inception(properties = [JungleActions])]
     struct Predator {
         basic_needs: BasicNeeds,
         predation: Predation,
@@ -84,7 +84,7 @@ mod tests {
                 type Instinct = $instinct;
             }
 
-            #[primitive(property = JungleAnimal)]
+            #[primitive(property = JungleAnimals)]
             impl Animals for $name {
                 type List =
                     typosaurus::collections::list::List<($name, typosaurus::collections::list::Empty)>;
@@ -121,27 +121,27 @@ mod tests {
     define_animal!(Elephant, U6, GrazerInstinct);
 
     #[derive(Inception)]
-    #[inception(properties = [JungleAnimal])]
+    #[inception(properties = [JungleAnimals])]
     struct Apes {
         gorilla: Gorilla,
         chimpanzee: Chimpanzee,
     }
 
     #[derive(Inception)]
-    #[inception(properties = [JungleAnimal])]
+    #[inception(properties = [JungleAnimals])]
     struct Cats {
         tiger: Tiger,
         jaguar: Jaguar,
     }
 
     struct ZooAnimals;
-    #[primitive(property = JungleAnimal)]
+    #[primitive(property = JungleAnimals)]
     impl Animals for ZooAnimals {
         type List = typosaurus::list![Gorilla, Chimpanzee, Tiger, Jaguar, Anaconda, Hippo, Elephant];
     }
 
     struct ZooActions;
-    #[primitive(property = JungleAction)]
+    #[primitive(property = JungleActions)]
     impl Actions for ZooActions {
         type List = typosaurus::list![Eat, Sleep, Forage, Drink, Hunt];
     }
