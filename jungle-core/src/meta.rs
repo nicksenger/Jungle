@@ -68,4 +68,9 @@ where
     >>::Out: Truthy,
 {
     type Animals = <T::Animals as Animals>::List;
+
+    async fn manifest(self) -> Result<(), jungle_types::Error> {
+        drop(self);
+        Ok(())
+    }
 }

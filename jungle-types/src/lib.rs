@@ -1,8 +1,10 @@
 #![recursion_limit = "512"]
 
 mod behavior;
+mod error;
 mod meta;
 pub use behavior::{Action, Instinct};
+pub use error::Error;
 pub use meta::Id;
 use inception::*;
 use typosaurus::collections::list;
