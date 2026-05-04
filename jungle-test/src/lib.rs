@@ -147,7 +147,7 @@ mod tests {
         fn assert_jungle<T: Jungle>() {}
         assert_jungle::<Zoo>();
 
-        type ZooAnimalList = <ZooAnimals as Animals>::List;
+        type ZooAnimalList = <Zoo as Jungle>::Animals;
         assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U0>, Gorilla);
         assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U1>, Chimpanzee);
         assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U2>, Tiger);
