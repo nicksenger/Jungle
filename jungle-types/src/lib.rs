@@ -27,7 +27,7 @@ pub trait Animal {
 }
 
 /// Any collection of [`Animal`]s with a flat type-level list of members.
-#[inception(property = AnimalsProperty, types)]
+#[inception(property = JungleAnimal, types)]
 pub trait Animals {
     #[induce(
         base = list::Empty,
@@ -39,7 +39,7 @@ pub trait Animals {
 }
 
 /// Any collection of [`Action`]s with a flat type-level list of members.
-#[inception(property = ActionsProperty, types)]
+#[inception(property = JungleAction, types)]
 pub trait Actions {
     #[induce(
         base = list::Empty,
