@@ -1,11 +1,13 @@
 use typosaurus::cmp::Equality;
 use typosaurus::collections::{
     list,
-    sp::{Node, SPFlatten},
+    sp::{FlattenNodes, Node, SPDedupNodes, SPFlatten},
+    Container,
 };
 use typosaurus::num::Unsigned;
+use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Actions, Animals};
+use super::{Actions, Animal, Animals, Instinct};
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
@@ -31,6 +33,15 @@ where
 pub trait ActionMember {}
 pub trait AnimalMember {}
 
+pub trait AllFrom<T> {}
+impl<T> AllFrom<T> for list::Empty {}
+impl<T, A, B> AllFrom<T> for list::List<(A, B)>
+where
+    T: Into<A>,
+    B: AllFrom<T>,
+{
+}
+
 pub trait StripActionHeaders {
     type Out;
 }
@@ -49,6 +60,26 @@ where
     Tail: StripActionHeaders<Out = TailOut>,
 {
     type Out = list::List<(Head, TailOut)>;
+}
+
+pub trait KeepActionNodes {
+    type Out;
+}
+impl KeepActionNodes for list::Empty {
+    type Out = list::Empty;
+}
+impl<K, Tail, TailOut> KeepActionNodes for list::List<(Node<K, ()>, Tail)>
+where
+    Tail: KeepActionNodes<Out = TailOut>,
+{
+    type Out = TailOut;
+}
+impl<K, Head, Tail, TailOut> KeepActionNodes for list::List<(Node<K, Head>, Tail)>
+where
+    Head: ActionMember,
+    Tail: KeepActionNodes<Out = TailOut>,
+{
+    type Out = list::List<(Node<K, Head>, TailOut)>;
 }
 
 pub trait StripAnimalHeaders {
@@ -73,3 +104,54 @@ where
 
 pub type ActionSet<T> = <SPFlatten<<T as Actions>::List> as StripActionHeaders>::Out;
 pub type AnimalSet<T> = <SPFlatten<<T as Animals>::List> as StripAnimalHeaders>::Out;
+
+pub struct WithAnimalState;
+impl<T> Mapper<T> for WithAnimalState
+where
+    T: Animal,
+{
+    type Out = <T as Animal>::State;
+}
+
+pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
+    <AnimalSet<T> as Container>::Content,
+    WithAnimalState,
+>>::Out;
+
+pub trait AnimalStatesCompatible<From>: Animals {}
+impl<T, From> AnimalStatesCompatible<From> for T
+where
+    T: Animals,
+    <T as Animals>::List: FlattenNodes,
+    SPFlatten<<T as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<T>: Container,
+    (AnimalSet<T>, WithAnimalState): Map<<AnimalSet<T> as Container>::Content, WithAnimalState>,
+    AnimalStates<T>: AllFrom<From>,
+{
+}
+
+pub trait CollectAnimalInstinctActions {
+    type Out;
+}
+impl CollectAnimalInstinctActions for list::Empty {
+    type Out = list::Empty;
+}
+impl<Head, Tail, TailOut> CollectAnimalInstinctActions for list::List<(Head, Tail)>
+where
+    Head: Animal,
+    <Head as Animal>::Instinct: Instinct,
+    <<Head as Animal>::Instinct as Instinct>::Actions: Actions,
+    <<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List: FlattenNodes,
+    SPFlatten<<<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List>:
+        KeepActionNodes,
+    Tail: CollectAnimalInstinctActions<Out = TailOut>,
+{
+    type Out = list::List<(
+        <SPFlatten<<<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List> as KeepActionNodes>::Out,
+        TailOut,
+    )>;
+}
+
+pub type AnimalActionSet<T> = <SPDedupNodes<
+    SPFlatten<<AnimalSet<T> as CollectAnimalInstinctActions>::Out>,
+> as StripActionHeaders>::Out;
