@@ -1,8 +1,5 @@
-use crate::{Action, Actions, Animal, Animals};
 use typosaurus::cmp::Equality;
-use typosaurus::collections::list;
 use typosaurus::num::Unsigned;
-use typosaurus::traits::semigroup::Mappend;
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
@@ -16,69 +13,11 @@ where
     type Out = <T as Equality<U>>::Out;
 }
 
-impl<T> Animals for T
-where
-    T: Animal,
-{
-    type List = typosaurus::list![T];
-}
-
-impl Animals for list::Empty {
-    type List = list::Empty;
-}
-
-impl<Head, Tail> Animals for list::List<(Head, Tail)>
-where
-    Head: Animals,
-    Tail: Animals,
-    (Head::List, Tail::List): Mappend,
-{
-    type List = <(Head::List, Tail::List) as Mappend>::Out;
-}
-
-impl<Left, Right> Animals for (Left, Right)
-where
-    Left: Animals,
-    Right: Animals,
-    (Left::List, Right::List): Mappend,
-{
-    type List = <(Left::List, Right::List) as Mappend>::Out;
-}
-
-impl<T> Actions for T
-where
-    T: Action,
-{
-    type List = typosaurus::list![T];
-}
-
-impl Actions for list::Empty {
-    type List = list::Empty;
-}
-
-impl<Head, Tail> Actions for list::List<(Head, Tail)>
-where
-    Head: Actions,
-    Tail: Actions,
-    (Head::List, Tail::List): Mappend,
-{
-    type List = <(Head::List, Tail::List) as Mappend>::Out;
-}
-
-impl<Left, Right> Actions for (Left, Right)
-where
-    Left: Actions,
-    Right: Actions,
-    (Left::List, Right::List): Mappend,
-{
-    type List = <(Left::List, Right::List) as Mappend>::Out;
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{Action, Actions, Animal, Animals, Id, Instinct};
+    use crate::{Action, Actions, ActionsProperty, Animal, Animals, AnimalsProperty, Id, Instinct};
+    use inception::{primitive, Inception};
     use typosaurus::assert_type_eq;
-    use typosaurus::collections::list::{Atom, DeepFlatten};
     use typosaurus::num::consts::{U0, U1};
 
     macro_rules! animal {
@@ -93,18 +32,6 @@ mod tests {
 
     animal!(AnimalA, U0);
     animal!(AnimalB, U1);
-
-    type NestedAnimals = typosaurus::list![
-        typosaurus::list![Atom<AnimalA>, Atom<AnimalB>],
-        typosaurus::list![Atom<AnimalA>],
-        Atom<AnimalB>
-    ];
-    type FlatAnimals = DeepFlatten<NestedAnimals>;
-
-    assert_type_eq!(
-        FlatAnimals,
-        typosaurus::list![AnimalA, AnimalB, AnimalA, AnimalB]
-    );
 
     struct Hunt;
     struct Sleep;
@@ -156,28 +83,47 @@ mod tests {
         type Instinct = DogInstinct;
     }
 
-    #[test]
-    fn animals_list_is_flat_for_nested_groupings() {
-        type Grouping =
-            typosaurus::list![Cat, typosaurus::list![Dog], (Cat, typosaurus::list![Dog])];
+    #[primitive(property = AnimalsProperty)]
+    impl Animals for Cat {
+        type List = typosaurus::list![Cat];
+    }
 
-        assert_type_eq!(
-            <Grouping as Animals>::List,
-            typosaurus::list![Cat, Dog, Cat, Dog]
-        );
+    #[primitive(property = AnimalsProperty)]
+    impl Animals for Dog {
+        type List = typosaurus::list![Dog];
+    }
+
+    #[primitive(property = ActionsProperty)]
+    impl Actions for Hunt {
+        type List = typosaurus::list![Hunt];
+    }
+
+    #[primitive(property = ActionsProperty)]
+    impl Actions for Sleep {
+        type List = typosaurus::list![Sleep];
+    }
+
+    #[derive(Inception)]
+    #[inception(properties = [AnimalsProperty])]
+    struct PairGroup {
+        left: Cat,
+        right: Dog,
+    }
+
+    #[derive(Inception)]
+    #[inception(properties = [ActionsProperty])]
+    struct ActionPair {
+        hunt: Hunt,
+        sleep: Sleep,
     }
 
     #[test]
-    fn actions_list_is_flat_for_nested_groupings() {
-        type Grouping = typosaurus::list![
-            Hunt,
-            typosaurus::list![Sleep],
-            (Hunt, typosaurus::list![Sleep])
-        ];
+    fn animals_list_is_flat_for_derived_groupings() {
+        assert_type_eq!(<PairGroup as Animals>::List, typosaurus::list![Cat, Dog]);
+    }
 
-        assert_type_eq!(
-            <Grouping as Actions>::List,
-            typosaurus::list![Hunt, Sleep, Hunt, Sleep]
-        );
+    #[test]
+    fn actions_list_is_flat_for_derived_groupings() {
+        assert_type_eq!(<ActionPair as Actions>::List, typosaurus::list![Hunt, Sleep]);
     }
 }
