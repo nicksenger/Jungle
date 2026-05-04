@@ -31,3 +31,4 @@ pub trait Action {
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>>;
 }
+
