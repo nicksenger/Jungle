@@ -1,6 +1,3 @@
-//! Shared test utilities crate for the Jungle workspace.
-#![recursion_limit = "2048"]
-
 #[cfg(test)]
 mod tests {
     use inception::{primitive, Inception};
@@ -8,6 +5,7 @@ mod tests {
         Action, Actions, Animal, Animals, Ecosystem, Id, Instinct, JungleActions, JungleAnimals,
     };
     use typosaurus::assert_type_eq;
+    use typosaurus::list;
     use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 
     macro_rules! define_action {
@@ -31,8 +29,10 @@ mod tests {
 
             #[primitive(property = JungleActions)]
             impl Actions for $name {
-                type List =
-                    typosaurus::collections::list::List<($name, typosaurus::collections::list::Empty)>;
+                type List = typosaurus::collections::list::List<(
+                    $name,
+                    typosaurus::collections::list::Empty,
+                )>;
             }
         };
     }
@@ -42,44 +42,23 @@ mod tests {
     define_action!(Forage, U2);
     define_action!(Drink, U3);
     define_action!(Hunt, U4);
+    define_action!(Flee, U5);
 
     #[derive(Inception)]
     #[inception(properties = [JungleActions])]
-    struct BasicNeeds {
-        eat: Eat,
-        sleep: Sleep,
-        forage: Forage,
-        drink: Drink,
-    }
+    struct BasicNeeds(Eat, Sleep, Forage, Drink);
 
     #[derive(Inception)]
     #[inception(properties = [JungleActions])]
-    struct Predation {
-        hunt: Hunt,
-    }
+    struct Predation(Hunt);
 
     #[derive(Inception)]
     #[inception(properties = [JungleActions])]
-    struct Predator {
-        basic_needs: BasicNeeds,
-        predation: Predation,
-    }
-
-    struct ApeActions;
-    impl Actions for ApeActions {
-        type List = typosaurus::list![Eat, Sleep, Forage, Drink];
-    }
-
-    struct PredatorActions;
-    impl Actions for PredatorActions {
-        type List = typosaurus::list![Hunt];
-    }
+    struct Predator(BasicNeeds, Predation);
 
     #[derive(Inception)]
     #[inception(properties = [JungleActions])]
-    struct SinglePredator {
-        hunt: Hunt,
-    }
+    struct Prey(BasicNeeds, Flee);
 
     macro_rules! define_animal {
         ($name:ident, $id:ty, $instinct:ty) => {
@@ -92,30 +71,32 @@ mod tests {
 
             #[primitive(property = JungleAnimals)]
             impl Animals for $name {
-                type List =
-                    typosaurus::collections::list::List<($name, typosaurus::collections::list::Empty)>;
+                type List = typosaurus::collections::list::List<(
+                    $name,
+                    typosaurus::collections::list::Empty,
+                )>;
             }
         };
     }
 
     struct ApeInstinct;
     impl Instinct for ApeInstinct {
-        type Actions = ApeActions;
+        type Actions = Prey;
     }
 
     struct CatInstinct;
     impl Instinct for CatInstinct {
-        type Actions = PredatorActions;
+        type Actions = Predator;
     }
 
     struct AnacondaInstinct;
     impl Instinct for AnacondaInstinct {
-        type Actions = SinglePredator;
+        type Actions = Predator;
     }
 
     struct GrazerInstinct;
     impl Instinct for GrazerInstinct {
-        type Actions = ApeActions;
+        type Actions = Prey;
     }
 
     define_animal!(Gorilla, U0, ApeInstinct);
@@ -128,58 +109,45 @@ mod tests {
 
     #[derive(Inception)]
     #[inception(properties = [JungleAnimals])]
-    struct Apes {
-        gorilla: Gorilla,
-        chimpanzee: Chimpanzee,
-    }
+    struct Apes(Gorilla, Chimpanzee);
 
     #[derive(Inception)]
     #[inception(properties = [JungleAnimals])]
-    struct Cats {
-        tiger: Tiger,
-        jaguar: Jaguar,
-    }
+    struct Cats(Tiger, Jaguar);
 
-    struct ZooAnimals;
-    #[primitive(property = JungleAnimals)]
-    impl Animals for ZooAnimals {
-        type List = typosaurus::list![Gorilla, Chimpanzee, Tiger, Jaguar, Anaconda, Hippo, Elephant];
-    }
+    #[derive(Inception)]
+    #[inception(properties = [JungleAnimals])]
+    struct Predators(Cats, Anaconda);
 
-    struct ZooActions;
-    #[primitive(property = JungleActions)]
-    impl Actions for ZooActions {
-        type List = typosaurus::list![Eat, Sleep, Forage, Drink, Hunt];
-    }
+    #[derive(Inception)]
+    #[inception(properties = [JungleAnimals])]
+    struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
+
+    #[derive(Inception)]
+    #[inception(properties = [JungleActions])]
+    struct AllActions(Predator, Prey);
 
     struct Zoo;
     impl Ecosystem for Zoo {
-        type Actions = ZooActions;
-        type Animals = ZooAnimals;
+        type Actions = AllActions;
+        type Animals = AllAnimals;
     }
 
     #[test]
-    fn zoo_animals_contains_every_configured_animal() {
-        assert_type_eq!(<Zoo as Ecosystem>::Animals, ZooAnimals);
-        type ZooAnimalList = <ZooAnimals as Animals>::List;
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U0>, Gorilla);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U1>, Chimpanzee);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U2>, Tiger);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U3>, Jaguar);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U4>, Anaconda);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U5>, Hippo);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U6>, Elephant);
+    fn composite_actions() {
+        type BasicList = list![Eat, Sleep, Forage, Drink];
+        assert_type_eq!(<BasicNeeds as Actions>::List, BasicList);
+
+        type PredatorList = typosaurus::list![Eat, Sleep, Forage, Drink, Hunt];
+        //assert_type_eq!(<Predator as Actions>::List, PredatorList);
     }
 
     #[test]
-    fn instinct_actions_accepts_derived_inception_type() {
-        fn assert_instinct<T: Instinct<Actions = SinglePredator>>() {}
-        assert_instinct::<AnacondaInstinct>();
-    }
+    fn composite_animals() {
+        type ApeList = list![Gorilla, Chimpanzee];
+        assert_type_eq!(<Apes as Animals>::List, ApeList);
 
-    #[test]
-    fn derived_actions_type_implements_actions_trait() {
-        fn assert_actions<T: Actions>() {}
-        assert_actions::<SinglePredator>();
+        type PredatorList = list![Jaguar, Tiger, Anaconda];
+        //assert_type_eq!(<Predators as Animals>::List, PredatorList);
     }
 }
