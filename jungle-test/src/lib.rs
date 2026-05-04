@@ -45,24 +45,14 @@ mod tests {
     define_action!(Drink, U3);
     define_action!(Hunt, U4);
 
-    #[derive(Inception)]
-    #[inception(properties = [JungleAction])]
-    struct BasicNeeds {
-        eat: Eat,
-        sleep: Sleep,
-        forage: Forage,
-        drink: Drink,
+    struct BasicNeeds;
+    impl Actions for BasicNeeds {
+        type List = typosaurus::list![Eat, Sleep, Forage, Drink];
     }
 
-    #[derive(Inception)]
-    #[inception(properties = [JungleAction])]
-    struct Predation {
-        hunt: Hunt,
-    }
-
-    struct NoActions;
-    impl Actions for NoActions {
-        type List = typosaurus::collections::list::Empty;
+    struct Predation;
+    impl Actions for Predation {
+        type List = typosaurus::list![Hunt];
     }
 
     macro_rules! define_animal {
@@ -84,22 +74,22 @@ mod tests {
 
     struct ApeInstinct;
     impl Instinct for ApeInstinct {
-        type Actions = NoActions;
+        type Actions = BasicNeeds;
     }
 
     struct CatInstinct;
     impl Instinct for CatInstinct {
-        type Actions = NoActions;
+        type Actions = Predation;
     }
 
     struct AnacondaInstinct;
     impl Instinct for AnacondaInstinct {
-        type Actions = NoActions;
+        type Actions = Predation;
     }
 
     struct GrazerInstinct;
     impl Instinct for GrazerInstinct {
-        type Actions = NoActions;
+        type Actions = BasicNeeds;
     }
 
     define_animal!(Gorilla, U0, ApeInstinct);

@@ -1,33 +1,80 @@
-use jungle_types::{Actions, Animal, Animals, Ecosystem, Instinct};
-use typosaurus::bool::{And, Truthy};
+use jungle_types::{Action, Actions, Animal, Animals, Ecosystem, Instinct};
+use typosaurus::bool::{And, Or, Truthy, False};
+use typosaurus::cmp::IsEqual;
 use typosaurus::collections::{list, Container};
+use typosaurus::traits::functor::{Map, Mapper};
 use typosaurus::traits::monoid::Mempty;
 use typosaurus::traits::semigroup::Mappend;
 
 use crate::Jungle;
 
-trait AnimalActionList {
+struct ActionIdOf;
+
+impl<T> Mapper<T> for ActionIdOf
+where
+    T: Action,
+{
+    type Out = <T as Action>::Id;
+}
+
+trait ActionIdList {
     type List;
 }
 
-impl AnimalActionList for list::Empty {
+impl<T> ActionIdList for T
+where
+    T: Actions,
+    <T as Actions>::List: Container,
+    (<T as Actions>::List, ActionIdOf): Map<<<T as Actions>::List as Container>::Content, ActionIdOf>,
+{
+    type List =
+        <(<T as Actions>::List, ActionIdOf) as Map<<<T as Actions>::List as Container>::Content, ActionIdOf>>::Out;
+}
+
+trait AnimalActionIdList {
+    type List;
+}
+
+impl AnimalActionIdList for list::Empty {
     type List = list::Empty;
 }
 
-impl<Head, Tail> AnimalActionList for list::List<(Head, Tail)>
+impl<Head> AnimalActionIdList for list::List<(Head, list::Empty)>
 where
     Head: Animal,
     Head::Instinct: Instinct,
-    <Head::Instinct as Instinct>::Actions: Actions,
-    Tail: AnimalActionList,
+    <Head::Instinct as Instinct>::Actions: ActionIdList,
+{
+    type List = <<Head::Instinct as Instinct>::Actions as ActionIdList>::List;
+}
+
+impl<Head1, Head2, Tail> AnimalActionIdList for list::List<(Head1, list::List<(Head2, Tail)>)>
+where
+    Head1: Animal,
+    Head1::Instinct: Instinct,
+    <Head1::Instinct as Instinct>::Actions: ActionIdList,
+    Head2: Animal,
+    Head2::Instinct: Instinct,
+    <Head2::Instinct as Instinct>::Actions: ActionIdList,
+    Tail: AnimalActionIdList,
     (
-        <<Head::Instinct as Instinct>::Actions as Actions>::List,
-        <Tail as AnimalActionList>::List,
+        <<Head1::Instinct as Instinct>::Actions as ActionIdList>::List,
+        <<Head2::Instinct as Instinct>::Actions as ActionIdList>::List,
+    ): Mappend,
+    (
+        <(
+            <<Head1::Instinct as Instinct>::Actions as ActionIdList>::List,
+            <<Head2::Instinct as Instinct>::Actions as ActionIdList>::List,
+        ) as Mappend>::Out,
+        <Tail as AnimalActionIdList>::List,
     ): Mappend,
 {
     type List = <(
-        <<Head::Instinct as Instinct>::Actions as Actions>::List,
-        <Tail as AnimalActionList>::List,
+        <(
+            <<Head1::Instinct as Instinct>::Actions as ActionIdList>::List,
+            <<Head2::Instinct as Instinct>::Actions as ActionIdList>::List,
+        ) as Mappend>::Out,
+        <Tail as AnimalActionIdList>::List,
     ) as Mappend>::Out;
 }
 
@@ -42,16 +89,52 @@ where
     type Out = <typosaurus::bool::monoid::Both as Mempty>::Out;
 }
 
-impl<Head, Tail, Superset> IsSubsetOf<Superset> for list::List<(Head, Tail)>
+impl<Head, Superset> IsSubsetOf<Superset> for list::List<(Head, list::Empty)>
 where
-    (Superset, Head): list::IsContainedBy,
+    Superset: IsContainedByEq<Head>,
+{
+    type Out = <Superset as IsContainedByEq<Head>>::Out;
+}
+
+impl<Head1, Head2, Tail, Superset> IsSubsetOf<Superset>
+    for list::List<(Head1, list::List<(Head2, Tail)>)>
+where
+    Superset: IsContainedByEq<Head1>,
+    Superset: IsContainedByEq<Head2>,
     Tail: IsSubsetOf<Superset>,
-    (<(Superset, Head) as list::IsContainedBy>::Out, <Tail as IsSubsetOf<Superset>>::Out): And,
+    (<Superset as IsContainedByEq<Head1>>::Out, <Superset as IsContainedByEq<Head2>>::Out): And,
+    (
+        <(
+            <Superset as IsContainedByEq<Head1>>::Out,
+            <Superset as IsContainedByEq<Head2>>::Out,
+        ) as And>::Out,
+        <Tail as IsSubsetOf<Superset>>::Out,
+    ): And,
 {
     type Out = <(
-        <(Superset, Head) as list::IsContainedBy>::Out,
+        <(
+            <Superset as IsContainedByEq<Head1>>::Out,
+            <Superset as IsContainedByEq<Head2>>::Out,
+        ) as And>::Out,
         <Tail as IsSubsetOf<Superset>>::Out,
     ) as And>::Out;
+}
+
+trait IsContainedByEq<T> {
+    type Out;
+}
+
+impl<T> IsContainedByEq<T> for list::Empty {
+    type Out = False;
+}
+
+impl<Head, Tail, T> IsContainedByEq<T> for list::List<(Head, Tail)>
+where
+    (T, Head): IsEqual,
+    Tail: IsContainedByEq<T>,
+    (<(T, Head) as IsEqual>::Out, <Tail as IsContainedByEq<T>>::Out): Or,
+{
+    type Out = <(<(T, Head) as IsEqual>::Out, <Tail as IsContainedByEq<T>>::Out) as Or>::Out;
 }
 
 impl<T> Jungle for T
@@ -61,10 +144,12 @@ where
     T::Actions: Actions,
     <T::Animals as Animals>::List: Container,
     <T::Actions as Actions>::List: Container,
-    <T::Animals as Animals>::List: AnimalActionList,
-    <<T::Animals as Animals>::List as AnimalActionList>::List: IsSubsetOf<<T::Actions as Actions>::List>,
-    <<<T::Animals as Animals>::List as AnimalActionList>::List as IsSubsetOf<
-        <T::Actions as Actions>::List,
+    <T::Animals as Animals>::List: AnimalActionIdList,
+    T::Actions: ActionIdList,
+    <<T::Animals as Animals>::List as AnimalActionIdList>::List:
+        IsSubsetOf<<T::Actions as ActionIdList>::List>,
+    <<<T::Animals as Animals>::List as AnimalActionIdList>::List as IsSubsetOf<
+        <T::Actions as ActionIdList>::List,
     >>::Out: Truthy,
 {
     type Animals = <T::Animals as Animals>::List;
