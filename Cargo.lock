@@ -191,6 +191,10 @@ dependencies = [
 [[package]]
 name = "jungle-core"
 version = "0.1.0"
+dependencies = [
+ "jungle-types",
+ "typosaurus",
+]
 
 [[package]]
 name = "jungle-persist"
