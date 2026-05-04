@@ -7,6 +7,7 @@ mod tests {
     use jungle_types::{
         Action, Actions, Animal, Animals, Ecosystem, Id, Instinct, JungleActions, JungleAnimals,
     };
+    use typosaurus::assert_type_eq;
     use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 
     macro_rules! define_action {
@@ -155,6 +156,19 @@ mod tests {
     impl Ecosystem for Zoo {
         type Actions = ZooActions;
         type Animals = ZooAnimals;
+    }
+
+    #[test]
+    fn zoo_animals_contains_every_configured_animal() {
+        assert_type_eq!(<Zoo as Ecosystem>::Animals, ZooAnimals);
+        type ZooAnimalList = <ZooAnimals as Animals>::List;
+        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U0>, Gorilla);
+        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U1>, Chimpanzee);
+        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U2>, Tiger);
+        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U3>, Jaguar);
+        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U4>, Anaconda);
+        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U5>, Hippo);
+        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U6>, Elephant);
     }
 
     #[test]
