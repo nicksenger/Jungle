@@ -1,12 +1,10 @@
-#![recursion_limit = "512"]
-
 mod behavior;
 mod error;
 mod meta;
 pub use behavior::{Action, Instinct};
 pub use error::Error;
-pub use meta::Id;
 use inception::*;
+pub use meta::Id;
 
 /// A collection of Jungle entities and the Animals that fill them.
 ///
@@ -65,5 +63,8 @@ pub trait Evoke {
     type Out;
 
     /// Process a stream of inputs, yielding a stream of outputs.
-    fn evoke(self, input: impl futures::Stream<Item = Self::In>) -> impl futures::Stream<Item = Self::Out>;
+    fn evoke(
+        self,
+        input: impl futures::Stream<Item = Self::In>,
+    ) -> impl futures::Stream<Item = Self::Out>;
 }
