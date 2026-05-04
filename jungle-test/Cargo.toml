@@ -1,8 +1,11 @@
 [package]
-name = "jungle-core"
+name = "jungle-test"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+jungle-core = { path = "../jungle-core" }
+jungle-sdk = { path = "../jungle-sdk" }
 jungle-types = { path = "../jungle-types" }
+inception = { workspace = true }
 typosaurus = { workspace = true }

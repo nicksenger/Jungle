@@ -1,10 +1,5 @@
-/// An inhabitant of the Jungle.
-pub trait Entity {
-    /// The fundamental behavior of this `Entity`.
-    type Instinct;
+mod meta;
+
+pub trait Jungle {
+    fn manifest(self) -> impl std::future::Future<Output = Result<(), jungle_types::Error>>;
 }
-
-pub trait Jungle {}
-
-/// A worker carries out the will of the Jungle.
-pub trait Worker<T: Jungle> {}

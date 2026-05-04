@@ -2,9 +2,12 @@
 resolver = "2"
 members = [
     "jungle-core",
+    "jungle-cli",
+    "jungle-macros",
     "jungle-server",
     "jungle-sdk",
     "jungle-persist",
+    "jungle-test",
     "jungle-viewer",
     "jungle-proto",
     "jungle-types",
