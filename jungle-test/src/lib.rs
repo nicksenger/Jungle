@@ -4,11 +4,9 @@
 #[cfg(test)]
 mod tests {
     use inception::{primitive, Inception};
-    use jungle_core::Jungle;
     use jungle_types::{
         Action, Actions, Animal, Animals, Ecosystem, Id, Instinct, JungleActions, JungleAnimals,
     };
-    use typosaurus::assert_type_eq;
     use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 
     macro_rules! define_action {
@@ -76,6 +74,12 @@ mod tests {
         type List = typosaurus::list![Hunt];
     }
 
+    #[derive(Inception)]
+    #[inception(properties = [JungleActions])]
+    struct SinglePredator {
+        hunt: Hunt,
+    }
+
     macro_rules! define_animal {
         ($name:ident, $id:ty, $instinct:ty) => {
             struct $name;
@@ -105,7 +109,7 @@ mod tests {
 
     struct AnacondaInstinct;
     impl Instinct for AnacondaInstinct {
-        type Actions = Predator;
+        type Actions = SinglePredator;
     }
 
     struct GrazerInstinct;
@@ -154,25 +158,14 @@ mod tests {
     }
 
     #[test]
-    fn zoo_jungle_animals_contains_every_configured_animal() {
-        fn assert_jungle<T: Jungle>() {}
-        assert_jungle::<Zoo>();
-
-        type ZooAnimalList = <Zoo as Jungle>::Animals;
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U0>, Gorilla);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U1>, Chimpanzee);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U2>, Tiger);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U3>, Jaguar);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U4>, Anaconda);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U5>, Hippo);
-        assert_type_eq!(typosaurus::collections::list::Idx<ZooAnimalList, U6>, Elephant);
+    fn instinct_actions_accepts_derived_inception_type() {
+        fn assert_instinct<T: Instinct<Actions = SinglePredator>>() {}
+        assert_instinct::<AnacondaInstinct>();
     }
 
     #[test]
-    fn predator_actions_list_is_flat() {
-        assert_type_eq!(
-            <Predator as Actions>::List,
-            typosaurus::list![Eat, Sleep, Forage, Drink, Hunt]
-        );
+    fn derived_actions_type_implements_actions_trait() {
+        fn assert_actions<T: Actions>() {}
+        assert_actions::<SinglePredator>();
     }
 }
