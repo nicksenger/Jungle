@@ -165,8 +165,6 @@ mod tests {
     fn jungle_impl() {
         fn is_jungle<T: Jungle>() {}
 
-        struct Zoo;
-
         is_jungle::<Zoo>();
     }
 }
