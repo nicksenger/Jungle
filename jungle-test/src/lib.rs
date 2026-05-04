@@ -200,8 +200,7 @@ mod tests {
 
     #[test]
     fn jungle_impl() {
-        fn is_jungle<T: Jungle>() {}
-
-        is_jungle::<Zoo>();
+        let zoo = Zoo;
+        let jungle_fut = zoo.manifest();
     }
 }
