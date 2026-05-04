@@ -31,6 +31,15 @@ where
 pub trait ActionMember {}
 pub trait AnimalMember {}
 
+pub trait AllFrom<T> {}
+impl<T> AllFrom<T> for list::Empty {}
+impl<T, A, B> AllFrom<T> for list::List<(A, B)>
+where
+    T: Into<A>,
+    B: AllFrom<T>,
+{
+}
+
 pub trait StripActionHeaders {
     type Out;
 }
