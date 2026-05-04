@@ -139,7 +139,6 @@ mod tests {
 
     struct Zoo;
     impl Ecosystem for Zoo {
-        type Actions = AllActions;
         type Animals = AllAnimals;
     }
 

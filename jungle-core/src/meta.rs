@@ -5,6 +5,7 @@ use crate::Jungle;
 impl<T> Jungle for T
 where
     T: Ecosystem,
+    <T as Ecosystem>::Animals: Animals,
 {
     type Animals = <T::Animals as Animals>::List;
 
