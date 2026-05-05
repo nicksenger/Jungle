@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::future::Future;
 use std::marker::PhantomData;
 
-use crate::{ActionMember, Animal, Awaiting, FlowActions, Yielding};
+use crate::{ActionMember, Animal, Waiting, FlowActions, Running};
 use inception::primitive;
 use typosaurus::collections::sp::Node;
 
@@ -106,7 +106,7 @@ pub trait AspectStep<T: Animal, A: Action> {
 }
 
 /// A primitive workflow step that adapts an [`Action`] to the
-/// [`Yielding`]/[`Awaiting`] temporal protocol.
+/// [`Running`]/[`Waiting`] temporal protocol.
 pub struct ActionStep<T, A, Step>
 where
     T: Animal,
@@ -129,8 +129,8 @@ where
     }
 }
 
-#[primitive(property = crate::JungleYielding)]
-impl<T, A, Step> Yielding for ActionStep<T, A, Step>
+#[primitive(property = crate::JungleRunning)]
+impl<T, A, Step> Running for ActionStep<T, A, Step>
 where
     T: Animal,
     A: Action,
@@ -146,8 +146,8 @@ where
     }
 }
 
-#[primitive(property = crate::JungleAwaiting)]
-impl<T, A, Step> Awaiting for ActionStep<T, A, Step>
+#[primitive(property = crate::JungleWaiting)]
+impl<T, A, Step> Waiting for ActionStep<T, A, Step>
 where
     T: Animal,
     A: Action,

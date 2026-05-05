@@ -1,8 +1,8 @@
 use inception::Inception;
 use jungle_types::{
-    Action, ActionCompletion, ActionRequest, ActionStep, AnimalActionSet, AspectStep, Awaiting,
+    Action, ActionCompletion, ActionRequest, ActionStep, AnimalActionSet, AspectStep, Waiting,
     ErasedStep, Id, Ident, JungleAnimals, JungleFlow, TestExecutor, TestFlow,
-    TypedErasedStep, Whole, Yielding,
+    TypedErasedStep, Whole, Running,
 };
 use serde_json::json;
 use typosaurus::assert_type_eq;
@@ -103,15 +103,15 @@ impl Executor {
     where
         Step: StepExecutor,
     {
-        let (state, request) = <Step as Yielding>::run((state, input));
+        let (state, request) = <Step as Running>::run((state, input));
         let _prepared = request.into_input();
-        <Step as Awaiting>::accept((state, completion))
+        <Step as Waiting>::accept((state, completion))
     }
 }
 
 trait StepExecutor:
-    Yielding<In = (i32, i32), Out = (i32, ActionRequest<Self::Action>)>
-    + Awaiting<In = (i32, ActionCompletion<Self::Action>), Out = (i32, i32)>
+    Running<In = (i32, i32), Out = (i32, ActionRequest<Self::Action>)>
+    + Waiting<In = (i32, ActionCompletion<Self::Action>), Out = (i32, i32)>
 {
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }

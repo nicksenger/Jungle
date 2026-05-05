@@ -115,8 +115,8 @@ impl<T> YieldingTail<T> {
 
 /// A phase that runs until it emits an output, then transitions to an
 /// awaiting phase that expects the next external input.
-#[inception(property = JungleYielding, signature(input = In, output = Out))]
-pub trait Yielding {
+#[inception(property = JungleRunning, signature(input = In, output = Out))]
+pub trait Running {
     /// Input used to start/resume this yielding phase.
     type In;
 
@@ -131,13 +131,13 @@ pub trait Yielding {
         input
     }
 
-    fn merge<H, R>(_l: H, r: R, input: Self::In) -> Yielded<<H as Yielding>::Out, AwaitingTail<R>>
+    fn merge<H, R>(_l: H, r: R, input: Self::In) -> Yielded<<H as Running>::Out, AwaitingTail<R>>
     where
-        H: Yielding<In = Self::In>,
+        H: Running<In = Self::In>,
     {
         let _ = _l;
         Yielded {
-            output: <H as Yielding>::run(input),
+            output: <H as Running>::run(input),
             awaiting: AwaitingTail(r),
         }
     }
@@ -148,19 +148,19 @@ pub trait Yielding {
         input
     }
 
-    fn join<F>(fields: F, input: Self::In) -> <F as Yielding>::Out
+    fn join<F>(fields: F, input: Self::In) -> <F as Running>::Out
     where
-        F: Yielding<In = Self::In>,
+        F: Running<In = Self::In>,
     {
         let _ = fields;
-        <F as Yielding>::run(input)
+        <F as Running>::run(input)
     }
 }
 
 /// A phase that awaits an external input, then transitions back to a yielding
 /// phase.
-#[inception(property = JungleAwaiting, signature(input = In, output = Out))]
-pub trait Awaiting {
+#[inception(property = JungleWaiting, signature(input = In, output = Out))]
+pub trait Waiting {
     /// External input expected at this await point.
     type In;
 
@@ -175,13 +175,13 @@ pub trait Awaiting {
         input
     }
 
-    fn merge<H, R>(_l: H, r: R, input: Self::In) -> Awaited<<H as Awaiting>::Out, YieldingTail<R>>
+    fn merge<H, R>(_l: H, r: R, input: Self::In) -> Awaited<<H as Waiting>::Out, YieldingTail<R>>
     where
-        H: Awaiting<In = Self::In>,
+        H: Waiting<In = Self::In>,
     {
         let _ = _l;
         Awaited {
-            output: <H as Awaiting>::accept(input),
+            output: <H as Waiting>::accept(input),
             yielding: YieldingTail(r),
         }
     }
@@ -192,36 +192,36 @@ pub trait Awaiting {
         input
     }
 
-    fn join<F>(fields: F, input: Self::In) -> <F as Awaiting>::Out
+    fn join<F>(fields: F, input: Self::In) -> <F as Waiting>::Out
     where
-        F: Awaiting<In = Self::In>,
+        F: Waiting<In = Self::In>,
     {
         let _ = fields;
-        <F as Awaiting>::accept(input)
+        <F as Waiting>::accept(input)
     }
 }
 
-impl<T> Awaiting for AwaitingTail<T>
+impl<T> Waiting for AwaitingTail<T>
 where
-    T: Awaiting,
+    T: Waiting,
 {
-    type In = <T as Awaiting>::In;
-    type Out = <T as Awaiting>::Out;
+    type In = <T as Waiting>::In;
+    type Out = <T as Waiting>::Out;
 
     fn accept(input: Self::In) -> Self::Out {
-        <T as Awaiting>::accept(input)
+        <T as Waiting>::accept(input)
     }
 }
 
-impl<T> Yielding for YieldingTail<T>
+impl<T> Running for YieldingTail<T>
 where
-    T: Yielding,
+    T: Running,
 {
-    type In = <T as Yielding>::In;
-    type Out = <T as Yielding>::Out;
+    type In = <T as Running>::In;
+    type Out = <T as Running>::Out;
 
     fn run(input: Self::In) -> Self::Out {
-        <T as Yielding>::run(input)
+        <T as Running>::run(input)
     }
 }
 

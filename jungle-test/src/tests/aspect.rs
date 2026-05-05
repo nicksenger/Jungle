@@ -1,7 +1,7 @@
 use inception::Inception;
 use jungle_types::{
-    ActionCompletion, ActionStep, Aspect, AspectStep, Awaiting, ErasedStep, JungleFlow,
-    TestExecutor, TestFlow, TypedErasedStep, Yielding,
+    ActionCompletion, ActionStep, Aspect, AspectStep, Waiting, ErasedStep, JungleFlow,
+    TestExecutor, TestFlow, TypedErasedStep, Running,
 };
 use serde_json::json;
 use std::marker::PhantomData;
@@ -129,10 +129,10 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 10 },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) = <GorillaStep as Yielding>::run((gorilla_state, 2));
+    let (gorilla_state, gorilla_request) = <GorillaStep as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
     let (gorilla_state, gorilla_emitted) =
-        <GorillaStep as Awaiting>::accept((gorilla_state, Ok(20)));
+        <GorillaStep as Waiting>::accept((gorilla_state, Ok(20)));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
     assert_eq!(gorilla_state.bananas, 3);
@@ -141,9 +141,9 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6 },
         stripes: 9,
     };
-    let (tiger_state, tiger_request) = <TigerStep as Yielding>::run((tiger_state, 4));
+    let (tiger_state, tiger_request) = <TigerStep as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) = <TigerStep as Awaiting>::accept((tiger_state, Ok(15)));
+    let (tiger_state, tiger_emitted) = <TigerStep as Waiting>::accept((tiger_state, Ok(15)));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
     assert_eq!(tiger_state.stripes, 9);

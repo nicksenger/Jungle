@@ -1,5 +1,5 @@
 use crate::{
-    Action, ActionCompletion, ActionRequest, ActionStep, Animal, AspectStep, Awaiting, Yielding,
+    Action, ActionCompletion, ActionRequest, ActionStep, Animal, AspectStep, Waiting, Running,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -70,10 +70,10 @@ where
                 .map_err(|err| TestExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, request) = <ActionStep<T, A, Step> as Yielding>::run((state, typed_input));
+        let (state, request) = <ActionStep<T, A, Step> as Running>::run((state, typed_input));
         let _prepared: ActionRequest<A> = request;
         let (state, emitted) =
-            <ActionStep<T, A, Step> as Awaiting>::accept((state, typed_completion));
+            <ActionStep<T, A, Step> as Waiting>::accept((state, typed_completion));
         let emitted = serde_json::to_value(emitted)
             .map_err(|err| TestExecutorError::EmitSerialize(err.to_string()))?;
         Ok((state, emitted))
