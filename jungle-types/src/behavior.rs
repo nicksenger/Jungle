@@ -66,7 +66,7 @@ pub type ActionCompletion<A> = Result<<A as Action>::Out, <A as Action>::Err>;
 pub trait ActionInputMapper<T: Animal, A: Action> {
     type In;
 
-    fn map_input(&self, state: &T::State, input: Self::In) -> A::In;
+    fn map_input(state: &T::State, input: Self::In) -> A::In;
 }
 
 /// Maps an action completion back into updated animal state plus emitted
@@ -74,7 +74,7 @@ pub trait ActionInputMapper<T: Animal, A: Action> {
 pub trait ActionOutputMapper<T: Animal, A: Action> {
     type Out;
 
-    fn map_output(&self, state: &mut T::State, output: ActionCompletion<A>) -> Self::Out;
+    fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out;
 }
 
 /// A primitive workflow step that adapts an [`Action`] to the
@@ -86,9 +86,8 @@ where
     Prepare: ActionInputMapper<T, A>,
     Apply: ActionOutputMapper<T, A>,
 {
-    prepare: Prepare,
-    apply: Apply,
     marker: PhantomData<fn() -> (T, A)>,
+    mapper_marker: PhantomData<fn() -> (Prepare, Apply)>,
 }
 
 impl<T, A, Prepare, Apply> ActionStep<T, A, Prepare, Apply>
@@ -98,11 +97,10 @@ where
     Prepare: ActionInputMapper<T, A>,
     Apply: ActionOutputMapper<T, A>,
 {
-    pub fn new(prepare: Prepare, apply: Apply) -> Self {
+    pub fn new() -> Self {
         Self {
-            prepare,
-            apply,
             marker: PhantomData,
+            mapper_marker: PhantomData,
         }
     }
 }
@@ -118,8 +116,8 @@ where
     type In = (T::State, <Prepare as ActionInputMapper<T, A>>::In);
     type Out = (T::State, ActionRequest<A>);
 
-    fn run(self, (state, input): Self::In) -> Self::Out {
-        let action_input = self.prepare.map_input(&state, input);
+    fn run((state, input): Self::In) -> Self::Out {
+        let action_input = <Prepare as ActionInputMapper<T, A>>::map_input(&state, input);
         (state, ActionRequest::<A>::new(action_input))
     }
 }
@@ -135,8 +133,8 @@ where
     type In = (T::State, ActionCompletion<A>);
     type Out = (T::State, <Apply as ActionOutputMapper<T, A>>::Out);
 
-    fn accept(self, (mut state, output): Self::In) -> Self::Out {
-        let emitted = self.apply.map_output(&mut state, output);
+    fn accept((mut state, output): Self::In) -> Self::Out {
+        let emitted = <Apply as ActionOutputMapper<T, A>>::map_output(&mut state, output);
         (state, emitted)
     }
 }

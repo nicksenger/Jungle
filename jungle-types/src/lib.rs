@@ -111,18 +111,23 @@ pub trait Yielding {
     type Out;
 
     /// Run until this phase yields output and transitions to an awaiting phase.
-    fn run(self, input: Self::In) -> Self::Out;
+    fn run(input: Self::In) -> Self::Out;
 
     fn nothing(input: Self::In) -> Self::In {
         input
     }
 
-    fn merge<H, R>(l: H, r: R, input: Self::In) -> Yielded<<H as Yielding>::Out, AwaitingTail<R>>
+    fn merge<H, R>(
+        _l: H,
+        r: R,
+        input: Self::In,
+    ) -> Yielded<<H as Yielding>::Out, AwaitingTail<R>>
     where
         H: Yielding<In = Self::In>,
     {
+        let _ = _l;
         Yielded {
-            output: <H as Yielding>::run(l.access(), input),
+            output: <H as Yielding>::run(input),
             awaiting: AwaitingTail(r),
         }
     }
@@ -137,7 +142,8 @@ pub trait Yielding {
     where
         F: Yielding<In = Self::In>,
     {
-        <F as Yielding>::run(fields, input)
+        let _ = fields;
+        <F as Yielding>::run(input)
     }
 }
 
@@ -153,18 +159,23 @@ pub trait Awaiting {
     type Out;
 
     /// Accept awaited input and transition to the next yielding phase.
-    fn accept(self, input: Self::In) -> Self::Out;
+    fn accept(input: Self::In) -> Self::Out;
 
     fn nothing(input: Self::In) -> Self::In {
         input
     }
 
-    fn merge<H, R>(l: H, r: R, input: Self::In) -> Awaited<<H as Awaiting>::Out, YieldingTail<R>>
+    fn merge<H, R>(
+        _l: H,
+        r: R,
+        input: Self::In,
+    ) -> Awaited<<H as Awaiting>::Out, YieldingTail<R>>
     where
         H: Awaiting<In = Self::In>,
     {
+        let _ = _l;
         Awaited {
-            output: <H as Awaiting>::accept(l.access(), input),
+            output: <H as Awaiting>::accept(input),
             yielding: YieldingTail(r),
         }
     }
@@ -179,7 +190,8 @@ pub trait Awaiting {
     where
         F: Awaiting<In = Self::In>,
     {
-        <F as Awaiting>::accept(fields, input)
+        let _ = fields;
+        <F as Awaiting>::accept(input)
     }
 }
 
@@ -190,8 +202,8 @@ where
     type In = <T as Awaiting>::In;
     type Out = <T as Awaiting>::Out;
 
-    fn accept(self, input: Self::In) -> Self::Out {
-        <T as Awaiting>::accept(self.0, input)
+    fn accept(input: Self::In) -> Self::Out {
+        <T as Awaiting>::accept(input)
     }
 }
 
@@ -202,8 +214,8 @@ where
     type In = <T as Yielding>::In;
     type Out = <T as Yielding>::Out;
 
-    fn run(self, input: Self::In) -> Self::Out {
-        <T as Yielding>::run(self.0, input)
+    fn run(input: Self::In) -> Self::Out {
+        <T as Yielding>::run(input)
     }
 }
 

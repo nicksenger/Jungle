@@ -23,7 +23,7 @@ struct PrepareGather;
 impl ActionInputMapper<GatherAnimal, GatherAction> for PrepareGather {
     type In = i32;
 
-    fn map_input(&self, _state: &(), input: Self::In) -> i32 {
+    fn map_input(_state: &(), input: Self::In) -> i32 {
         input + 4
     }
 }
@@ -32,25 +32,23 @@ struct ApplyGather;
 impl ActionOutputMapper<GatherAnimal, GatherAction> for ApplyGather {
     type Out = i32;
 
-    fn map_output(&self, _state: &mut (), output: ActionCompletion<GatherAction>) -> Self::Out {
+    fn map_output(_state: &mut (), output: ActionCompletion<GatherAction>) -> Self::Out {
         output.expect("gather action should succeed")
     }
 }
 
 #[test]
 fn action_step_adapts_action_to_temporal_protocol() {
-    let step = ActionStep::<GatherAnimal, GatherAction, PrepareGather, ApplyGather>::new(
-        PrepareGather,
-        ApplyGather,
-    );
-    let (dependency, request) = step.run(((), 3));
+    let (dependency, request) =
+        <ActionStep<GatherAnimal, GatherAction, PrepareGather, ApplyGather> as Yielding>::run(
+            ((), 3),
+        );
     assert_eq!(request.into_input(), 7);
 
-    let apply_step = ActionStep::<GatherAnimal, GatherAction, PrepareGather, ApplyGather>::new(
-        PrepareGather,
-        ApplyGather,
-    );
-    let (next_dependency, emitted) = apply_step.accept((dependency, Ok(9)));
+    let (next_dependency, emitted) =
+        <ActionStep<GatherAnimal, GatherAction, PrepareGather, ApplyGather> as Awaiting>::accept(
+            (dependency, Ok(9)),
+        );
     assert_eq!(emitted, 9);
     assert_eq!(next_dependency, ());
 }
