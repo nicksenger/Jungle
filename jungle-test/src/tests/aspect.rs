@@ -1,3 +1,4 @@
+use inception::Inception;
 use jungle_sdk as jungle;
 use jungle_types::{
     ActionCompletion, ActionStep, Aspect, AspectStep, Running, TestExecutor, Waiting,
@@ -116,13 +117,13 @@ where
 type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
 type CoreEnergyEatActionStep<T, Focus> = ActionStep<T, Eat, CoreEnergyStep<Focus>>;
 
-#[jungle::instinct]
+#[derive(Inception, jungle::Instinct)]
 struct GorillaInstinct(
     CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>,
     CoreEnergyEatActionStep<Gorilla, GorillaCoreAspect>,
 );
 
-#[jungle::instinct]
+#[derive(Inception, jungle::Instinct)]
 struct TigerInstinct(
     CoreEnergySleepActionStep<Tiger, TigerCoreAspect>,
     CoreEnergyEatActionStep<Tiger, TigerCoreAspect>,

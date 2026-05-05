@@ -1,3 +1,4 @@
+use inception::Inception;
 use jungle_sdk as jungle;
 use jungle_types::{
     ActionCompletion, ActionStep, AspectStep, Identity, Running, Waiting,
@@ -32,7 +33,7 @@ impl AspectStep<GatherCreature, GatherAction> for GatherMapper {
     }
 }
 
-#[jungle::flow]
+#[derive(Inception, jungle::Flow)]
 struct GatherInstinct(ActionStep<GatherCreature, GatherAction, GatherMapper>);
 
 #[test]

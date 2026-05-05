@@ -1,10 +1,69 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse::Parser, parse_macro_input, parse_quote, punctuated::Punctuated, Item, Path};
+use syn::{
+    parse::Parser, parse_macro_input, parse_quote, punctuated::Punctuated, DeriveInput, Item,
+    Path,
+};
 
 #[proc_macro]
 pub fn noop(input: TokenStream) -> TokenStream {
     input
+}
+
+fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = input.ident;
+    let impl_params = input.generics.params.iter().cloned().collect::<Vec<_>>();
+    let where_preds = input
+        .generics
+        .where_clause
+        .as_ref()
+        .map(|wc| wc.predicates.iter().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let (_, ty_generics, _) = input.generics.split_for_impl();
+
+    quote! {
+        inception::inception_opt_in_register!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
+    }
+    .into()
+}
+
+#[proc_macro_derive(Instinct)]
+pub fn derive_instinct(input: TokenStream) -> TokenStream {
+    derive_with_properties(
+        input,
+        &[
+            parse_quote!(jungle_types::JungleFlow),
+            parse_quote!(jungle_types::JungleDynFlow),
+        ],
+    )
+}
+
+#[proc_macro_derive(Flow)]
+pub fn derive_flow(input: TokenStream) -> TokenStream {
+    derive_with_properties(input, &[parse_quote!(jungle_types::JungleFlow)])
+}
+
+#[proc_macro_derive(Animals)]
+pub fn derive_animals(input: TokenStream) -> TokenStream {
+    derive_with_properties(
+        input,
+        &[
+            parse_quote!(jungle_types::Ident),
+            parse_quote!(jungle_types::JungleCreatures),
+        ],
+    )
+}
+
+#[proc_macro_derive(Actions)]
+pub fn derive_actions(input: TokenStream) -> TokenStream {
+    derive_with_properties(
+        input,
+        &[
+            parse_quote!(jungle_types::Ident),
+            parse_quote!(jungle_types::JungleActions),
+        ],
+    )
 }
 
 fn attrs_mut(item: &mut Item) -> Result<&mut Vec<syn::Attribute>, syn::Error> {
