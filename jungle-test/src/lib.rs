@@ -3,9 +3,10 @@ mod tests {
     use inception::{primitive, Inception};
     use jungle_core::Jungle;
     use jungle_types::{
-        Action, ActionMember, ActionSet, Actions, Animal, AnimalActionSet, AnimalMember, AnimalSet,
-        AnimalStates, Animals, Ecosystem, Id, Ident, Identified, Instinct, JungleActions,
-        JungleAnimals,
+        Action, ActionCompletion, ActionInputMapper, ActionMember, ActionOutputMapper, ActionSet,
+        ActionStep, Actions, Animal, AnimalActionSet, AnimalMember, AnimalSet, AnimalStates,
+        Animals, Awaiting, Ecosystem, Id, Ident, Identified, Instinct, JungleActions,
+        JungleAnimals, Yielding,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::collections::list;
@@ -202,5 +203,67 @@ mod tests {
     fn jungle_impl() {
         let zoo = Zoo;
         let jungle_fut = zoo.manifest();
+    }
+
+    struct EnergyState {
+        energy: i32,
+    }
+
+    struct GatherAction;
+    impl Action for GatherAction {
+        type Id = Id<U0>;
+        type State = EnergyState;
+        type In = i32;
+        type Out = i32;
+        type Err = ();
+
+        fn act(
+            _state: &Self::State,
+            input: Self::In,
+        ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+            std::future::ready(Ok(input + 1))
+        }
+    }
+
+    struct PrepareGather;
+    impl ActionInputMapper<GatherAction> for PrepareGather {
+        type In = i32;
+
+        fn map_input(&self, state: &EnergyState, input: Self::In) -> i32 {
+            state.energy + input
+        }
+    }
+
+    struct ApplyGather;
+    impl ActionOutputMapper<GatherAction> for ApplyGather {
+        type Out = i32;
+
+        fn map_output(
+            &self,
+            state: &mut EnergyState,
+            output: ActionCompletion<GatherAction>,
+        ) -> Self::Out {
+            let value = output.expect("gather action should succeed");
+            state.energy = value;
+            value
+        }
+    }
+
+    #[test]
+    fn action_step_adapts_action_to_temporal_protocol() {
+        let step = ActionStep::<GatherAction, PrepareGather, ApplyGather>::new(
+            PrepareGather,
+            ApplyGather,
+        );
+        let (state, request) = step.run((EnergyState { energy: 4 }, 3));
+        assert_eq!(request.into_input(), 7);
+
+        let apply_step = ActionStep::<GatherAction, PrepareGather, ApplyGather>::new(
+            PrepareGather,
+            ApplyGather,
+        );
+        let (next_state, emitted) = apply_step.accept((state, Ok(9)));
+        assert_eq!(emitted, 9);
+        assert_eq!(next_state.energy, 9);
     }
 }

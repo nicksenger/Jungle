@@ -2,7 +2,9 @@ mod behavior;
 mod error;
 mod instinct;
 mod meta;
-pub use behavior::Action;
+pub use behavior::{
+    Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionRequest, ActionStep,
+};
 pub use error::Error;
 pub use instinct::Instinct;
 use inception::*;
