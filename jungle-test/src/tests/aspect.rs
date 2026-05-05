@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 use typosaurus::num::consts::{U0, U1, U2};
 
 action!(
-    AdjustEnergy,
+    Sleep,
     U0,
     in = i32,
     out = i32,
@@ -63,7 +63,7 @@ impl Aspect<TigerState> for TigerCoreAspect {
 
 struct CoreEnergyStep<Focus>(PhantomData<fn() -> Focus>);
 
-impl<T, Focus> AspectStep<T, AdjustEnergy> for CoreEnergyStep<Focus>
+impl<T, Focus> AspectStep<T, Sleep> for CoreEnergyStep<Focus>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
@@ -76,8 +76,8 @@ where
         core.energy + input
     }
 
-    fn apply(core: &mut CoreState, output: ActionCompletion<AdjustEnergy>) -> Self::Out {
-        let value = output.expect("adjust energy should succeed");
+    fn apply(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
+        let value = output.expect("sleep should succeed");
         core.energy = value;
         value
     }
@@ -85,11 +85,11 @@ where
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
-struct GorillaInstinct(ActionStep<Gorilla, AdjustEnergy, CoreEnergyStep<GorillaCoreAspect>>);
+struct GorillaInstinct(ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>>);
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
-struct TigerInstinct(ActionStep<Tiger, AdjustEnergy, CoreEnergyStep<TigerCoreAspect>>);
+struct TigerInstinct(ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>>);
 
 animal!(
     Gorilla,
@@ -104,8 +104,8 @@ animal!(
     instinct = TigerInstinct
 );
 
-type GorillaStep = ActionStep<Gorilla, AdjustEnergy, CoreEnergyStep<GorillaCoreAspect>>;
-type TigerStep = ActionStep<Tiger, AdjustEnergy, CoreEnergyStep<TigerCoreAspect>>;
+type GorillaStep = ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>>;
+type TigerStep = ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>>;
 
 impl TestFlow for GorillaInstinct {
     type State = GorillaState;
