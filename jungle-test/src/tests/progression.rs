@@ -3,6 +3,7 @@ use jungle_types::{
     Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionRequest, ActionStep,
     AnimalActionSet, Awaiting, Id, Ident, JungleAnimals, JungleWorkflowActions, Yielding,
 };
+use std::marker::PhantomData;
 use typosaurus::assert_type_eq;
 use typosaurus::list;
 use typosaurus::num::consts::{U0, U1};
@@ -109,6 +110,59 @@ impl Executor {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ProgressStepKey {
+    Seed,
+    Finish,
+}
+
+trait ErasedStepExecutor {
+    fn progress(&self, state: i32, input: i32, completion: Result<i32, ()>) -> (i32, i32);
+}
+
+struct TypedErasedStep<Step>(PhantomData<fn() -> Step>);
+impl<Step> TypedErasedStep<Step> {
+    fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<Step> ErasedStepExecutor for TypedErasedStep<Step>
+where
+    Step: StepExecutor,
+{
+    fn progress(&self, state: i32, input: i32, completion: Result<i32, ()>) -> (i32, i32) {
+        Executor::progress::<Step>(state, input, completion)
+    }
+}
+
+struct ErasedExecutor {
+    seed: Box<dyn ErasedStepExecutor>,
+    finish: Box<dyn ErasedStepExecutor>,
+}
+
+impl ErasedExecutor {
+    fn new() -> Self {
+        Self {
+            seed: Box::new(TypedErasedStep::<SeedStep>::new()),
+            finish: Box::new(TypedErasedStep::<FinishStep>::new()),
+        }
+    }
+
+    fn progress(
+        &self,
+        step: ProgressStepKey,
+        state: i32,
+        input: i32,
+        completion: Result<i32, ()>,
+    ) -> (i32, i32) {
+        match step {
+            ProgressStepKey::Seed => self.seed.progress(state, input, completion),
+            ProgressStepKey::Finish => self.finish.progress(state, input, completion),
+        }
+    }
+}
+
 trait StepExecutor: Yielding<In = (i32, i32), Out = (i32, ActionRequest<Self::Action>)>
     + Awaiting<In = (i32, ActionCompletion<Self::Action>), Out = (i32, i32)>
 {
@@ -139,6 +193,21 @@ fn executor_progresses_simple_instinct_steps() {
 
     let (state_after_finish, emitted_finish) =
         Executor::progress::<FinishStep>(state_after_seed, 4, Ok(36));
+    assert_eq!(state_after_finish, 36);
+    assert_eq!(emitted_finish, 36);
+}
+
+#[test]
+fn erased_executor_progresses_without_step_type_parameters() {
+    let executor = ErasedExecutor::new();
+
+    let (state_after_seed, emitted_seed) =
+        executor.progress(ProgressStepKey::Seed, 0, 5, Ok(8));
+    assert_eq!(state_after_seed, 8);
+    assert_eq!(emitted_seed, 8);
+
+    let (state_after_finish, emitted_finish) =
+        executor.progress(ProgressStepKey::Finish, state_after_seed, 4, Ok(36));
     assert_eq!(state_after_finish, 36);
     assert_eq!(emitted_finish, 36);
 }
