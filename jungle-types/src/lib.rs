@@ -74,8 +74,27 @@ pub struct Yielded<Y, A> {
 }
 
 /// Output produced by an awaiting phase.
-pub struct Awaited<Y> {
+pub struct Awaited<A, Y> {
+    pub output: A,
     pub yielding: Y,
+}
+
+/// Marks a composed tail as the next awaiting continuation.
+pub struct AwaitingTail<T>(pub T);
+
+/// Marks a composed tail as the next yielding continuation.
+pub struct YieldingTail<T>(pub T);
+
+impl<T> AwaitingTail<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T> YieldingTail<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
 }
 
 /// A phase that runs until it emits an output, then transitions to an
@@ -85,7 +104,8 @@ pub trait Yielding {
     /// Input used to start/resume this yielding phase.
     type In;
 
-    /// A typed transition frame, typically `Yielded<Output, NextAwaiting>`.
+    /// A typed transition frame, typically
+    /// `Yielded<Output, AwaitingTail<NextAwaitingState>>`.
     type Out;
 
     /// Run until this phase yields output and transitions to an awaiting phase.
@@ -95,13 +115,14 @@ pub trait Yielding {
         input
     }
 
-    fn merge<H, R>(l: H, r: R, input: Self::In) -> <R as Yielding>::Out
+    fn merge<H, R>(l: H, r: R, input: Self::In) -> Yielded<<H as Yielding>::Out, AwaitingTail<R>>
     where
         H: Yielding<In = Self::In>,
-        R: Yielding<In = <H as Yielding>::Out>,
     {
-        let next = <H as Yielding>::run(l.access(), input);
-        <R as Yielding>::run(r, next)
+        Yielded {
+            output: <H as Yielding>::run(l.access(), input),
+            awaiting: AwaitingTail(r),
+        }
     }
 
     fn merge_variant_field<H, R>(_l: H, _r: R, input: Self::In) -> Self::In {
@@ -125,7 +146,8 @@ pub trait Awaiting {
     /// External input expected at this await point.
     type In;
 
-    /// A typed transition frame, typically `Awaited<NextYielding>`.
+    /// A typed transition frame, typically
+    /// `Awaited<Output, YieldingTail<NextYieldingState>>`.
     type Out;
 
     /// Accept awaited input and transition to the next yielding phase.
@@ -135,13 +157,14 @@ pub trait Awaiting {
         input
     }
 
-    fn merge<H, R>(l: H, r: R, input: Self::In) -> <R as Awaiting>::Out
+    fn merge<H, R>(l: H, r: R, input: Self::In) -> Awaited<<H as Awaiting>::Out, YieldingTail<R>>
     where
         H: Awaiting<In = Self::In>,
-        R: Awaiting<In = <H as Awaiting>::Out>,
     {
-        let next = <H as Awaiting>::accept(l.access(), input);
-        <R as Awaiting>::accept(r, next)
+        Awaited {
+            output: <H as Awaiting>::accept(l.access(), input),
+            yielding: YieldingTail(r),
+        }
     }
 
     fn merge_variant_field<H, R>(_l: H, _r: R, input: Self::In) -> Self::In {
@@ -155,6 +178,30 @@ pub trait Awaiting {
         F: Awaiting<In = Self::In>,
     {
         <F as Awaiting>::accept(fields, input)
+    }
+}
+
+impl<T> Awaiting for AwaitingTail<T>
+where
+    T: Awaiting,
+{
+    type In = <T as Awaiting>::In;
+    type Out = <T as Awaiting>::Out;
+
+    fn accept(self, input: Self::In) -> Self::Out {
+        <T as Awaiting>::accept(self.0, input)
+    }
+}
+
+impl<T> Yielding for YieldingTail<T>
+where
+    T: Yielding,
+{
+    type In = <T as Yielding>::In;
+    type Out = <T as Yielding>::Out;
+
+    fn run(self, input: Self::In) -> Self::Out {
+        <T as Yielding>::run(self.0, input)
     }
 }
 
