@@ -21,13 +21,13 @@ mod tests {
 
             impl Action for $name {
                 type Id = Id<$id>;
-                type State = ();
+                type Dependency = ();
                 type In = ();
                 type Out = ();
                 type Err = ();
 
                 fn act(
-                    _state: &Self::State,
+                    _dependency: &Self::Dependency,
                     _input: Self::In,
                 ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
                     std::future::ready(Ok(()))
@@ -208,13 +208,13 @@ mod tests {
     struct GatherAction;
     impl Action for GatherAction {
         type Id = Id<U0>;
-        type State = ();
+        type Dependency = ();
         type In = i32;
         type Out = i32;
         type Err = ();
 
         fn act(
-            _state: &Self::State,
+            _dependency: &Self::Dependency,
             input: Self::In,
         ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
             std::future::ready(Ok(input + 1))
@@ -249,15 +249,15 @@ mod tests {
             PrepareGather,
             ApplyGather,
         );
-        let (state, request) = step.run(((), 3));
+        let (dependency, request) = step.run(((), 3));
         assert_eq!(request.into_input(), 7);
 
         let apply_step = ActionStep::<GatherAction, PrepareGather, ApplyGather>::new(
             PrepareGather,
             ApplyGather,
         );
-        let (next_state, emitted) = apply_step.accept((state, Ok(9)));
+        let (next_dependency, emitted) = apply_step.accept((dependency, Ok(9)));
         assert_eq!(emitted, 9);
-        assert_eq!(next_state, ());
+        assert_eq!(next_dependency, ());
     }
 }

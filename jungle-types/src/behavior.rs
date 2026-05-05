@@ -11,8 +11,8 @@ pub trait Action {
     /// A type-level identifier for this Action.
     type Id;
 
-    /// The shared state consumed by this action.
-    type State;
+    /// The shared dependency consumed by this action.
+    type Dependency;
 
     /// The input type accepted by this action.
     type In: Serialize + DeserializeOwned;
@@ -25,7 +25,7 @@ pub trait Action {
 
     /// Process one input into one output.
     fn act(
-        state: &Self::State,
+        dependency: &Self::Dependency,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>>;
 }
@@ -50,30 +50,30 @@ impl<A: Action> ActionRequest<A> {
 
     pub fn act<'a>(
         self,
-        state: &'a A::State,
+        dependency: &'a A::Dependency,
     ) -> impl Future<Output = Result<A::Out, A::Err>> + 'a
     where
         A: 'a,
     {
-        A::act(state, self.input)
+        A::act(dependency, self.input)
     }
 }
 
 /// A completed action result consumed by an awaiting workflow phase.
 pub type ActionCompletion<A> = Result<<A as Action>::Out, <A as Action>::Err>;
 
-/// Maps workflow input plus current state into an action input.
+/// Maps workflow input plus current dependency into an action input.
 pub trait ActionInputMapper<A: Action> {
     type In;
 
-    fn map_input(&self, state: &A::State, input: Self::In) -> A::In;
+    fn map_input(&self, dependency: &A::Dependency, input: Self::In) -> A::In;
 }
 
-/// Maps an action completion back into state plus emitted workflow output.
+/// Maps an action completion back into dependency plus emitted workflow output.
 pub trait ActionOutputMapper<A: Action> {
     type Out;
 
-    fn map_output(&self, state: &mut A::State, output: ActionCompletion<A>) -> Self::Out;
+    fn map_output(&self, dependency: &mut A::Dependency, output: ActionCompletion<A>) -> Self::Out;
 }
 
 /// A primitive workflow step that adapts an [`Action`] to the
@@ -111,12 +111,12 @@ where
     Prepare: ActionInputMapper<A>,
     Apply: ActionOutputMapper<A>,
 {
-    type In = (A::State, <Prepare as ActionInputMapper<A>>::In);
-    type Out = (A::State, ActionRequest<A>);
+    type In = (A::Dependency, <Prepare as ActionInputMapper<A>>::In);
+    type Out = (A::Dependency, ActionRequest<A>);
 
-    fn run(self, (state, input): Self::In) -> Self::Out {
-        let action_input = self.prepare.map_input(&state, input);
-        (state, ActionRequest::<A>::new(action_input))
+    fn run(self, (dependency, input): Self::In) -> Self::Out {
+        let action_input = self.prepare.map_input(&dependency, input);
+        (dependency, ActionRequest::<A>::new(action_input))
     }
 }
 
@@ -127,11 +127,11 @@ where
     Prepare: ActionInputMapper<A>,
     Apply: ActionOutputMapper<A>,
 {
-    type In = (A::State, ActionCompletion<A>);
-    type Out = (A::State, <Apply as ActionOutputMapper<A>>::Out);
+    type In = (A::Dependency, ActionCompletion<A>);
+    type Out = (A::Dependency, <Apply as ActionOutputMapper<A>>::Out);
 
-    fn accept(self, (mut state, output): Self::In) -> Self::Out {
-        let emitted = self.apply.map_output(&mut state, output);
-        (state, emitted)
+    fn accept(self, (mut dependency, output): Self::In) -> Self::Out {
+        let emitted = self.apply.map_output(&mut dependency, output);
+        (dependency, emitted)
     }
 }
