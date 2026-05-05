@@ -106,11 +106,12 @@ animal!(
 
 type GorillaStep = ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>>;
 type TigerStep = ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>>;
+type DynFlow<T> = Vec<Box<dyn ErasedStep<T>>>;
 
 impl TestFlow for GorillaInstinct {
     type State = GorillaState;
 
-    fn build_steps() -> Vec<Box<dyn ErasedStep<Self::State>>> {
+    fn build_steps() -> DynFlow<Self::State> {
         vec![Box::new(TypedErasedStep::<GorillaStep>::new())]
     }
 }
@@ -118,7 +119,7 @@ impl TestFlow for GorillaInstinct {
 impl TestFlow for TigerInstinct {
     type State = TigerState;
 
-    fn build_steps() -> Vec<Box<dyn ErasedStep<Self::State>>> {
+    fn build_steps() -> DynFlow<Self::State> {
         vec![Box::new(TypedErasedStep::<TigerStep>::new())]
     }
 }
