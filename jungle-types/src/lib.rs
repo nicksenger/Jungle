@@ -14,7 +14,10 @@ pub use meta::{
     ActionMember, ActionSet, AllFrom, AnimalActionSet, AnimalMember, AnimalSet, AnimalStates,
     AnimalStatesCompatible, StripActionHeaders, StripAnimalHeaders,
 };
-pub use test_executor::{ErasedStep, TestExecutor, TestExecutorError, TestFlow, TypedErasedStep};
+pub use test_executor::{
+    BuildTestFlow, DynFlow, ErasedStep, JungleTestFlow, TestExecutor, TestExecutorError, TestFlow,
+    TypedErasedStep,
+};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;

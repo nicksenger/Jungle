@@ -1,8 +1,7 @@
 use inception::Inception;
 use jungle_types::{
     Action, ActionCompletion, ActionRequest, ActionStep, AnimalActionSet, AspectStep, Waiting,
-    ErasedStep, Id, Ident, JungleAnimals, JungleFlow, TestExecutor, TestFlow,
-    TypedErasedStep, Whole, Running,
+    Id, Ident, JungleAnimals, JungleFlow, JungleTestFlow, TestExecutor, Whole, Running,
 };
 use serde_json::json;
 use typosaurus::assert_type_eq;
@@ -78,7 +77,7 @@ impl AspectStep<ProgressAnimal, FinishAction> for FinishMapper {
 }
 
 #[derive(Inception)]
-#[inception(properties = [JungleFlow])]
+#[inception(properties = [JungleFlow, JungleTestFlow])]
 struct ProgressInstinct(
     ActionStep<ProgressAnimal, SeedAction, SeedMapper>,
     ActionStep<ProgressAnimal, FinishAction, FinishMapper>,
@@ -122,17 +121,6 @@ where
     Step: AspectStep<ProgressAnimal, A, Aspect = Whole, In = i32, Out = i32>,
 {
     type Action = A;
-}
-
-impl TestFlow for ProgressInstinct {
-    type State = i32;
-
-    fn build_steps() -> Vec<Box<dyn ErasedStep<Self::State>>> {
-        vec![
-            Box::new(TypedErasedStep::<SeedStep>::new()),
-            Box::new(TypedErasedStep::<FinishStep>::new()),
-        ]
-    }
 }
 
 #[test]

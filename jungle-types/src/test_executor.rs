@@ -1,9 +1,12 @@
 use crate::{
     Action, ActionCompletion, ActionRequest, ActionStep, Animal, AspectStep, Waiting, Running,
 };
+use inception::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
+
+pub type DynFlow<State> = Vec<Box<dyn ErasedStep<State>>>;
 
 pub trait ErasedStep<State> {
     fn progress(
@@ -32,8 +35,7 @@ pub enum TestExecutorError {
 
 pub trait TestFlow {
     type State;
-
-    fn build_steps() -> Vec<Box<dyn ErasedStep<Self::State>>>;
+    fn build_steps() -> DynFlow<Self::State>;
 }
 
 pub struct TypedErasedStep<Step>(core::marker::PhantomData<fn() -> Step>);
@@ -80,10 +82,62 @@ where
     }
 }
 
+#[inception(property = JungleTestFlow, signature(input = Input, output = Output))]
+pub trait BuildTestFlow<Input> {
+    type Output;
+
+    fn push_steps(steps: Input) -> Self::Output;
+
+    fn nothing(steps: Input) -> Input {
+        steps
+    }
+
+    fn merge<H, R>(_l: H, _r: R, steps: Input) -> <R as BuildTestFlow<<H as BuildTestFlow<Input>>::Output>>::Output
+    where
+        H: BuildTestFlow<Input>,
+        R: BuildTestFlow<<H as BuildTestFlow<Input>>::Output>,
+    {
+        let steps = <H as BuildTestFlow<_>>::push_steps(steps);
+        <R as BuildTestFlow<_>>::push_steps(steps)
+    }
+
+    fn merge_variant_field<H, R>(_l: H, _r: R, steps: Input) -> Input {
+        let _ = (_l, _r);
+        let _ = core::marker::PhantomData::<(H, R)>;
+        steps
+    }
+
+    fn join<F>(_fields: F, steps: Input) -> <F as BuildTestFlow<Input>>::Output
+    where
+        F: BuildTestFlow<Input>,
+    {
+        <F as BuildTestFlow<_>>::push_steps(steps)
+    }
+}
+
+#[inception::primitive(property = crate::JungleTestFlow)]
+impl<T, A, Step> BuildTestFlow<DynFlow<T::State>> for ActionStep<T, A, Step>
+where
+    T: Animal + 'static,
+    A: Action + 'static,
+    A::Out: DeserializeOwned,
+    A::Err: DeserializeOwned,
+    Step: AspectStep<T, A> + 'static,
+    Step::In: DeserializeOwned,
+    Step::Out: Serialize,
+{
+    type Output = DynFlow<T::State>;
+
+    fn push_steps(mut steps: DynFlow<T::State>) -> Self::Output {
+        steps.push(Box::new(TypedErasedStep::<ActionStep<T, A, Step>>::new()));
+        steps
+    }
+}
+
 pub struct TestExecutor<A>
 where
     A: Animal,
-    A::Instinct: TestFlow<State = A::State>,
+    A::Instinct: BuildTestFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
     steps: Vec<Box<dyn ErasedStep<A::State>>>,
@@ -93,12 +147,12 @@ where
 impl<A> TestExecutor<A>
 where
     A: Animal,
-    A::Instinct: TestFlow<State = A::State>,
+    A::Instinct: BuildTestFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     pub fn new(state: A::State) -> Self {
         Self {
             state: Some(state),
-            steps: <A::Instinct as TestFlow>::build_steps(),
+            steps: <A::Instinct as BuildTestFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
             cursor: 0,
         }
     }

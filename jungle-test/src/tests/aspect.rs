@@ -1,7 +1,7 @@
 use inception::Inception;
 use jungle_types::{
-    ActionCompletion, ActionStep, Aspect, AspectStep, Waiting, ErasedStep, JungleFlow,
-    TestExecutor, TestFlow, TypedErasedStep, Running,
+    ActionCompletion, ActionStep, Aspect, AspectStep, Waiting, JungleFlow, JungleTestFlow,
+    TestExecutor, Running,
 };
 use serde_json::json;
 use std::marker::PhantomData;
@@ -86,11 +86,11 @@ where
 type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
 
 #[derive(Inception)]
-#[inception(properties = [JungleFlow])]
+#[inception(properties = [JungleFlow, JungleTestFlow])]
 struct GorillaInstinct(CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>);
 
 #[derive(Inception)]
-#[inception(properties = [JungleFlow])]
+#[inception(properties = [JungleFlow, JungleTestFlow])]
 struct TigerInstinct(CoreEnergySleepActionStep<Tiger, TigerCoreAspect>);
 
 animal!(
@@ -108,23 +108,6 @@ animal!(
 
 type GorillaStep = CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>;
 type TigerStep = CoreEnergySleepActionStep<Tiger, TigerCoreAspect>;
-type DynFlow<T> = Vec<Box<dyn ErasedStep<T>>>;
-
-impl TestFlow for GorillaInstinct {
-    type State = GorillaState;
-
-    fn build_steps() -> DynFlow<Self::State> {
-        vec![Box::new(TypedErasedStep::<GorillaStep>::new())]
-    }
-}
-
-impl TestFlow for TigerInstinct {
-    type State = TigerState;
-
-    fn build_steps() -> DynFlow<Self::State> {
-        vec![Box::new(TypedErasedStep::<TigerStep>::new())]
-    }
-}
 
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {
