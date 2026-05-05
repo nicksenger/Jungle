@@ -15,7 +15,7 @@ pub use meta::{
     AnimalStatesCompatible, StripActionHeaders, StripAnimalHeaders,
 };
 pub use test_executor::{
-    BuildTestFlow, DynFlow, ErasedStep, JungleTestFlow, TestExecutor, TestExecutorError, TestFlow,
+    BuildTestFlow, DynFlow, ErasedStep, JungleDynFlow, TestExecutor, TestExecutorError, TestFlow,
     TypedErasedStep,
 };
 use typosaurus::collections::list::{self, List as TList};

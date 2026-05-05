@@ -1,6 +1,6 @@
 use inception::Inception;
 use jungle_types::{
-    ActionCompletion, ActionStep, Aspect, AspectStep, Waiting, JungleFlow, JungleTestFlow,
+    ActionCompletion, ActionStep, Aspect, AspectStep, Waiting, JungleDynFlow, JungleFlow,
     TestExecutor, Running,
 };
 use serde_json::json;
@@ -86,11 +86,11 @@ where
 type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
 
 #[derive(Inception)]
-#[inception(properties = [JungleFlow, JungleTestFlow])]
+#[inception(properties = [JungleFlow, JungleDynFlow])]
 struct GorillaInstinct(CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>);
 
 #[derive(Inception)]
-#[inception(properties = [JungleFlow, JungleTestFlow])]
+#[inception(properties = [JungleFlow, JungleDynFlow])]
 struct TigerInstinct(CoreEnergySleepActionStep<Tiger, TigerCoreAspect>);
 
 animal!(

@@ -1,7 +1,7 @@
 use inception::Inception;
 use jungle_types::{
     Action, ActionCompletion, ActionRequest, ActionStep, AnimalActionSet, AspectStep, Waiting,
-    Id, Ident, JungleAnimals, JungleFlow, JungleTestFlow, TestExecutor, Whole, Running,
+    Id, Ident, JungleAnimals, JungleDynFlow, JungleFlow, TestExecutor, Whole, Running,
 };
 use serde_json::json;
 use typosaurus::assert_type_eq;
@@ -77,7 +77,7 @@ impl AspectStep<ProgressAnimal, FinishAction> for FinishMapper {
 }
 
 #[derive(Inception)]
-#[inception(properties = [JungleFlow, JungleTestFlow])]
+#[inception(properties = [JungleFlow, JungleDynFlow])]
 struct ProgressInstinct(
     ActionStep<ProgressAnimal, SeedAction, SeedMapper>,
     ActionStep<ProgressAnimal, FinishAction, FinishMapper>,

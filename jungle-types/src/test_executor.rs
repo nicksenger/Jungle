@@ -82,7 +82,7 @@ where
     }
 }
 
-#[inception(property = JungleTestFlow, signature(input = Input, output = Output))]
+#[inception(property = JungleDynFlow, signature(input = Input, output = Output))]
 pub trait BuildTestFlow<Input> {
     type Output;
 
@@ -115,7 +115,7 @@ pub trait BuildTestFlow<Input> {
     }
 }
 
-#[inception::primitive(property = crate::JungleTestFlow)]
+#[inception::primitive(property = crate::JungleDynFlow)]
 impl<T, A, Step> BuildTestFlow<DynFlow<T::State>> for ActionStep<T, A, Step>
 where
     T: Animal + 'static,
