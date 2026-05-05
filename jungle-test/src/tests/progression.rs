@@ -1,7 +1,7 @@
 use inception::Inception;
 use jungle_types::{
     Action, ActionCompletion, ActionRequest, ActionStep, CreatureActionSet, AspectStep, Waiting,
-    Id, Ident, JungleCreatures, JungleDynFlow, JungleFlow, TestExecutor, Whole, Running,
+    Id, Ident, JungleCreatures, JungleDynFlow, JungleFlow, TestExecutor, Identity, Running,
 };
 use serde_json::json;
 use typosaurus::assert_type_eq;
@@ -44,7 +44,7 @@ impl Action for FinishAction {
 
 struct SeedMapper;
 impl AspectStep<ProgressCreature, SeedAction> for SeedMapper {
-    type Aspect = Whole;
+    type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
@@ -61,7 +61,7 @@ impl AspectStep<ProgressCreature, SeedAction> for SeedMapper {
 
 struct FinishMapper;
 impl AspectStep<ProgressCreature, FinishAction> for FinishMapper {
-    type Aspect = Whole;
+    type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
@@ -118,7 +118,7 @@ trait StepExecutor:
 impl<A, Step> StepExecutor for ActionStep<ProgressCreature, A, Step>
 where
     A: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
-    Step: AspectStep<ProgressCreature, A, Aspect = Whole, In = i32, Out = i32>,
+    Step: AspectStep<ProgressCreature, A, Aspect = Identity, In = i32, Out = i32>,
 {
     type Action = A;
 }

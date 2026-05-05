@@ -1,6 +1,6 @@
 use inception::Inception;
 use jungle_types::{
-    ActionCompletion, ActionStep, AspectStep, Waiting, JungleFlow, Whole, Running,
+    ActionCompletion, ActionStep, AspectStep, Waiting, JungleFlow, Identity, Running,
 };
 use typosaurus::num::consts::U0;
 
@@ -19,7 +19,7 @@ animal!(GatherCreature, U0, instinct = GatherInstinct);
 
 struct GatherMapper;
 impl AspectStep<GatherCreature, GatherAction> for GatherMapper {
-    type Aspect = Whole;
+    type Aspect = Identity;
     type In = i32;
     type Out = i32;
 

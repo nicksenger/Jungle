@@ -4,7 +4,7 @@ mod instinct;
 mod meta;
 mod test_executor;
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, ActionStep, Aspect, AspectStep, Whole,
+    Action, ActionCompletion, ActionRequest, ActionStep, Aspect, AspectStep, Identity,
 };
 pub use error::Error;
 use inception::*;

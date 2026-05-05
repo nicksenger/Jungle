@@ -5,7 +5,7 @@ mod tests {
     use jungle_types::{
         Action, ActionCompletion, ActionSet, ActionStep, Creature, CreatureActionSet, CreatureSet,
         CreatureStates, AspectStep, Ecosystem, Ident, JungleActions, JungleCreatures,
-        JungleFlow, Whole,
+        JungleFlow, Identity,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::list;
@@ -148,7 +148,7 @@ mod tests {
         A: Action<In = ()>,
         A: Action<Out = (), Err = ()>,
     {
-        type Aspect = Whole;
+        type Aspect = Identity;
         type In = ();
         type Out = ();
 

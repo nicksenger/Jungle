@@ -73,9 +73,9 @@ pub trait Aspect<State> {
 }
 
 /// Focuses to the full state itself.
-pub struct Whole;
+pub struct Identity;
 
-impl<State> Aspect<State> for Whole {
+impl<State> Aspect<State> for Identity {
     type View = State;
 
     fn view(state: &State) -> &Self::View {
