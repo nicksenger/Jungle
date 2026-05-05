@@ -63,32 +63,6 @@ impl<A: Action> ActionRequest<A> {
 /// A completed action result consumed by an awaiting workflow phase.
 pub type ActionCompletion<A> = Result<<A as Action>::Out, <A as Action>::Err>;
 
-/// Maps workflow input plus current animal state into an action input.
-pub trait ActionInputMapper<T: Animal, A: Action> {
-    type In;
-
-    fn map_input(state: &T::State, input: Self::In) -> A::In;
-}
-
-/// Maps an action completion back into updated animal state plus emitted
-/// workflow output.
-pub trait ActionOutputMapper<T: Animal, A: Action> {
-    type Out;
-
-    fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out;
-}
-
-/// Unified mapper that adapts workflow input/state to action input and maps
-/// action completion back into workflow output.
-pub trait ActionMapper<T: Animal, A: Action> {
-    type In;
-    type Out;
-
-    fn map_input(state: &T::State, input: Self::In) -> A::In;
-
-    fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out;
-}
-
 /// Projects a larger state into a focused mutable substate.
 pub trait Aspect<State> {
     type View;
@@ -98,151 +72,103 @@ pub trait Aspect<State> {
     fn view_mut(state: &mut State) -> &mut Self::View;
 }
 
-/// Maps action transitions against a focused state view.
-pub trait FocusedActionMapper<View, A: Action> {
+/// Focuses to the full state itself.
+pub struct Whole;
+
+impl<State> Aspect<State> for Whole {
+    type View = State;
+
+    fn view(state: &State) -> &Self::View {
+        state
+    }
+
+    fn view_mut(state: &mut State) -> &mut Self::View {
+        state
+    }
+}
+
+/// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
+/// of animal state.
+pub trait AspectStep<T: Animal, A: Action> {
+    type Aspect: Aspect<T::State>;
     type In;
     type Out;
 
-    fn map_input(view: &View, input: Self::In) -> A::In;
+    fn prepare(
+        view: &<<Self as AspectStep<T, A>>::Aspect as Aspect<T::State>>::View,
+        input: Self::In,
+    ) -> A::In;
 
-    fn map_output(view: &mut View, output: ActionCompletion<A>) -> Self::Out;
+    fn apply(
+        view: &mut <<Self as AspectStep<T, A>>::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<A>,
+    ) -> Self::Out;
 }
-
-/// Adapts a focused mapper through an [`Aspect`] so it can power a full-state
-/// [`ActionMapper`].
-pub struct AspectMapper<Focus, Mapper>(PhantomData<fn() -> (Focus, Mapper)>);
-
-impl<T, A, Focus, Mapper> ActionMapper<T, A> for AspectMapper<Focus, Mapper>
-where
-    T: Animal,
-    A: Action,
-    Focus: Aspect<T::State>,
-    Mapper: FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>,
-{
-    type In = <Mapper as FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>>::In;
-    type Out = <Mapper as FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>>::Out;
-
-    fn map_input(state: &T::State, input: Self::In) -> A::In {
-        let view = <Focus as Aspect<T::State>>::view(state);
-        <Mapper as FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>>::map_input(
-            view, input,
-        )
-    }
-
-    fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
-        let view = <Focus as Aspect<T::State>>::view_mut(state);
-        <Mapper as FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>>::map_output(
-            view, output,
-        )
-    }
-}
-
-pub struct MapperInput<M>(PhantomData<fn() -> M>);
-
-impl<T, A, M> ActionInputMapper<T, A> for MapperInput<M>
-where
-    T: Animal,
-    A: Action,
-    M: ActionMapper<T, A>,
-{
-    type In = <M as ActionMapper<T, A>>::In;
-
-    fn map_input(state: &T::State, input: Self::In) -> A::In {
-        <M as ActionMapper<T, A>>::map_input(state, input)
-    }
-}
-
-pub struct MapperOutput<M>(PhantomData<fn() -> M>);
-
-impl<T, A, M> ActionOutputMapper<T, A> for MapperOutput<M>
-where
-    T: Animal,
-    A: Action,
-    M: ActionMapper<T, A>,
-{
-    type Out = <M as ActionMapper<T, A>>::Out;
-
-    fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
-        <M as ActionMapper<T, A>>::map_output(state, output)
-    }
-}
-
-pub type ActionMapperStep<T, A, Mapper> =
-    ActionStep<T, A, MapperInput<Mapper>, MapperOutput<Mapper>>;
-
-/// Action step backed by a focused mapper over an [`Aspect`] of state.
-pub type AspectActionStep<T, A, Focus, Mapper> =
-    ActionMapperStep<T, A, AspectMapper<Focus, Mapper>>;
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Yielding`]/[`Awaiting`] temporal protocol.
-pub struct ActionStep<T, A, Prepare, Apply = Prepare>
+pub struct ActionStep<T, A, Step>
 where
     T: Animal,
     A: Action,
-    Prepare: ActionInputMapper<T, A>,
-    Apply: ActionOutputMapper<T, A>,
+    Step: AspectStep<T, A>,
 {
-    marker: PhantomData<fn() -> (T, A)>,
-    mapper_marker: PhantomData<fn() -> (Prepare, Apply)>,
+    marker: PhantomData<fn() -> (T, A, Step)>,
 }
 
-impl<T, A, Prepare, Apply> ActionStep<T, A, Prepare, Apply>
+impl<T, A, Step> ActionStep<T, A, Step>
 where
     T: Animal,
     A: Action,
-    Prepare: ActionInputMapper<T, A>,
-    Apply: ActionOutputMapper<T, A>,
+    Step: AspectStep<T, A>,
 {
     pub fn new() -> Self {
         Self {
             marker: PhantomData,
-            mapper_marker: PhantomData,
         }
     }
 }
 
 #[primitive(property = crate::JungleYielding)]
-impl<T, A, Prepare, Apply> Yielding for ActionStep<T, A, Prepare, Apply>
+impl<T, A, Step> Yielding for ActionStep<T, A, Step>
 where
     T: Animal,
     A: Action,
-    Prepare: ActionInputMapper<T, A>,
-    Apply: ActionOutputMapper<T, A>,
+    Step: AspectStep<T, A>,
 {
-    type In = (T::State, <Prepare as ActionInputMapper<T, A>>::In);
+    type In = (T::State, <Step as AspectStep<T, A>>::In);
     type Out = (T::State, ActionRequest<A>);
 
     fn run((state, input): Self::In) -> Self::Out {
-        let action_input = <Prepare as ActionInputMapper<T, A>>::map_input(&state, input);
+        let view = <<Step as AspectStep<T, A>>::Aspect as Aspect<T::State>>::view(&state);
+        let action_input = <Step as AspectStep<T, A>>::prepare(view, input);
         (state, ActionRequest::<A>::new(action_input))
     }
 }
 
 #[primitive(property = crate::JungleAwaiting)]
-impl<T, A, Prepare, Apply> Awaiting for ActionStep<T, A, Prepare, Apply>
+impl<T, A, Step> Awaiting for ActionStep<T, A, Step>
 where
     T: Animal,
     A: Action,
-    Prepare: ActionInputMapper<T, A>,
-    Apply: ActionOutputMapper<T, A>,
+    Step: AspectStep<T, A>,
 {
     type In = (T::State, ActionCompletion<A>);
-    type Out = (T::State, <Apply as ActionOutputMapper<T, A>>::Out);
+    type Out = (T::State, <Step as AspectStep<T, A>>::Out);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let emitted = <Apply as ActionOutputMapper<T, A>>::map_output(&mut state, output);
+        let view = <<Step as AspectStep<T, A>>::Aspect as Aspect<T::State>>::view_mut(&mut state);
+        let emitted = <Step as AspectStep<T, A>>::apply(view, output);
         (state, emitted)
     }
 }
 
 #[primitive(property = crate::JungleFlowActions)]
-impl<T, A, Prepare, Apply> FlowActions for ActionStep<T, A, Prepare, Apply>
+impl<T, A, Step> FlowActions for ActionStep<T, A, Step>
 where
     T: Animal,
     A: Action + ActionMember,
-    Prepare: ActionInputMapper<T, A>,
-    Apply: ActionOutputMapper<T, A>,
+    Step: AspectStep<T, A>,
 {
     type List = Node<<A as Action>::Id, A>;
 }

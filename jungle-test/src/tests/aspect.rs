@@ -1,9 +1,10 @@
 use inception::Inception;
 use jungle_types::{
-    ActionCompletion, Aspect, AspectActionStep, Awaiting, ErasedStep, FocusedActionMapper,
-    JungleFlowActions, TestExecutor, TestFlow, TypedErasedStep, Yielding,
+    ActionCompletion, ActionStep, Aspect, AspectStep, Awaiting, ErasedStep, JungleFlowActions,
+    TestExecutor, TestFlow, TypedErasedStep, Yielding,
 };
 use serde_json::json;
+use std::marker::PhantomData;
 use typosaurus::num::consts::{U0, U1, U2};
 
 action!(
@@ -60,16 +61,22 @@ impl Aspect<TigerState> for TigerCoreAspect {
     }
 }
 
-struct CoreEnergyMapper;
-impl FocusedActionMapper<CoreState, AdjustEnergy> for CoreEnergyMapper {
+struct CoreEnergyStep<Focus>(PhantomData<fn() -> Focus>);
+
+impl<T, Focus> AspectStep<T, AdjustEnergy> for CoreEnergyStep<Focus>
+where
+    T: jungle_types::Animal,
+    Focus: Aspect<T::State, View = CoreState>,
+{
+    type Aspect = Focus;
     type In = i32;
     type Out = i32;
 
-    fn map_input(core: &CoreState, input: Self::In) -> i32 {
+    fn prepare(core: &CoreState, input: Self::In) -> i32 {
         core.energy + input
     }
 
-    fn map_output(core: &mut CoreState, output: ActionCompletion<AdjustEnergy>) -> Self::Out {
+    fn apply(core: &mut CoreState, output: ActionCompletion<AdjustEnergy>) -> Self::Out {
         let value = output.expect("adjust energy should succeed");
         core.energy = value;
         value
@@ -78,15 +85,11 @@ impl FocusedActionMapper<CoreState, AdjustEnergy> for CoreEnergyMapper {
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
-struct GorillaInstinct(
-    AspectActionStep<GorillaAnimal, AdjustEnergy, GorillaCoreAspect, CoreEnergyMapper>,
-);
+struct GorillaInstinct(ActionStep<GorillaAnimal, AdjustEnergy, CoreEnergyStep<GorillaCoreAspect>>);
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
-struct TigerInstinct(
-    AspectActionStep<TigerAnimal, AdjustEnergy, TigerCoreAspect, CoreEnergyMapper>,
-);
+struct TigerInstinct(ActionStep<TigerAnimal, AdjustEnergy, CoreEnergyStep<TigerCoreAspect>>);
 
 animal!(
     GorillaAnimal,
@@ -101,9 +104,8 @@ animal!(
     instinct = TigerInstinct
 );
 
-type GorillaStep =
-    AspectActionStep<GorillaAnimal, AdjustEnergy, GorillaCoreAspect, CoreEnergyMapper>;
-type TigerStep = AspectActionStep<TigerAnimal, AdjustEnergy, TigerCoreAspect, CoreEnergyMapper>;
+type GorillaStep = ActionStep<GorillaAnimal, AdjustEnergy, CoreEnergyStep<GorillaCoreAspect>>;
+type TigerStep = ActionStep<TigerAnimal, AdjustEnergy, CoreEnergyStep<TigerCoreAspect>>;
 
 impl TestFlow for GorillaInstinct {
     type State = GorillaState;

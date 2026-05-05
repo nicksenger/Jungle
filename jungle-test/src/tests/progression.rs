@@ -1,8 +1,8 @@
 use inception::Inception;
 use jungle_types::{
-    Action, ActionCompletion, ActionMapper, ActionMapperStep, ActionRequest, AnimalActionSet,
-    Awaiting, ErasedStep, Id, Ident, JungleAnimals, JungleFlowActions, TestExecutor, TestFlow,
-    TypedErasedStep, Yielding,
+    Action, ActionCompletion, ActionRequest, ActionStep, AnimalActionSet, AspectStep, Awaiting,
+    ErasedStep, Id, Ident, JungleAnimals, JungleFlowActions, TestExecutor, TestFlow,
+    TypedErasedStep, Whole, Yielding,
 };
 use serde_json::json;
 use typosaurus::assert_type_eq;
@@ -44,15 +44,16 @@ impl Action for FinishAction {
 }
 
 struct SeedMapper;
-impl ActionMapper<ProgressAnimal, SeedAction> for SeedMapper {
+impl AspectStep<ProgressAnimal, SeedAction> for SeedMapper {
+    type Aspect = Whole;
     type In = i32;
     type Out = i32;
 
-    fn map_input(_state: &i32, input: Self::In) -> i32 {
+    fn prepare(_state: &i32, input: Self::In) -> i32 {
         input + 1
     }
 
-    fn map_output(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Out {
+    fn apply(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Out {
         let value = output.expect("seed action should succeed");
         *state = value;
         value
@@ -60,15 +61,16 @@ impl ActionMapper<ProgressAnimal, SeedAction> for SeedMapper {
 }
 
 struct FinishMapper;
-impl ActionMapper<ProgressAnimal, FinishAction> for FinishMapper {
+impl AspectStep<ProgressAnimal, FinishAction> for FinishMapper {
+    type Aspect = Whole;
     type In = i32;
     type Out = i32;
 
-    fn map_input(state: &i32, input: Self::In) -> i32 {
+    fn prepare(state: &i32, input: Self::In) -> i32 {
         *state + input
     }
 
-    fn map_output(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Out {
+    fn apply(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Out {
         let value = output.expect("finish action should succeed");
         *state = value;
         value
@@ -78,8 +80,8 @@ impl ActionMapper<ProgressAnimal, FinishAction> for FinishMapper {
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
 struct ProgressInstinct(
-    ActionMapperStep<ProgressAnimal, SeedAction, SeedMapper>,
-    ActionMapperStep<ProgressAnimal, FinishAction, FinishMapper>,
+    ActionStep<ProgressAnimal, SeedAction, SeedMapper>,
+    ActionStep<ProgressAnimal, FinishAction, FinishMapper>,
 );
 
 animal!(ProgressAnimal, U0, i32, ProgressInstinct);
@@ -88,8 +90,8 @@ animal!(ProgressAnimal, U0, i32, ProgressInstinct);
 #[inception(properties = [Ident, JungleAnimals])]
 struct ProgressAnimals(ProgressAnimal);
 
-type SeedStep = ActionMapperStep<ProgressAnimal, SeedAction, SeedMapper>;
-type FinishStep = ActionMapperStep<ProgressAnimal, FinishAction, FinishMapper>;
+type SeedStep = ActionStep<ProgressAnimal, SeedAction, SeedMapper>;
+type FinishStep = ActionStep<ProgressAnimal, FinishAction, FinishMapper>;
 
 struct Executor;
 impl Executor {
@@ -114,10 +116,10 @@ trait StepExecutor:
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<A, Map> StepExecutor for ActionMapperStep<ProgressAnimal, A, Map>
+impl<A, Step> StepExecutor for ActionStep<ProgressAnimal, A, Step>
 where
     A: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
-    Map: ActionMapper<ProgressAnimal, A, In = i32, Out = i32>,
+    Step: AspectStep<ProgressAnimal, A, Aspect = Whole, In = i32, Out = i32>,
 {
     type Action = A;
 }

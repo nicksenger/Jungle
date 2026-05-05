@@ -4,9 +4,7 @@ mod instinct;
 mod meta;
 mod test_executor;
 pub use behavior::{
-    Action, ActionCompletion, ActionInputMapper, ActionMapper, ActionMapperStep,
-    ActionOutputMapper, ActionRequest, ActionStep, Aspect, AspectActionStep, AspectMapper,
-    FocusedActionMapper,
+    Action, ActionCompletion, ActionRequest, ActionStep, Aspect, AspectStep, Whole,
 };
 pub use error::Error;
 use inception::*;

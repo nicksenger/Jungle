@@ -1,6 +1,5 @@
 use crate::{
-    Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionRequest, ActionStep,
-    Animal, Awaiting, Yielding,
+    Action, ActionCompletion, ActionRequest, ActionStep, Animal, AspectStep, Awaiting, Yielding,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -45,17 +44,15 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
-impl<T, A, Prepare, Apply> ErasedStep<T::State>
-    for TypedErasedStep<ActionStep<T, A, Prepare, Apply>>
+impl<T, A, Step> ErasedStep<T::State> for TypedErasedStep<ActionStep<T, A, Step>>
 where
     T: Animal,
     A: Action,
     A::Out: DeserializeOwned,
     A::Err: DeserializeOwned,
-    Prepare: ActionInputMapper<T, A>,
-    Prepare::In: DeserializeOwned,
-    Apply: ActionOutputMapper<T, A>,
-    Apply::Out: Serialize,
+    Step: AspectStep<T, A>,
+    Step::In: DeserializeOwned,
+    Step::Out: Serialize,
 {
     fn progress(
         &self,
@@ -63,7 +60,7 @@ where
         input: Value,
         completion: Result<Value, Value>,
     ) -> Result<(T::State, Value), TestExecutorError> {
-        let typed_input = serde_json::from_value::<Prepare::In>(input)
+        let typed_input = serde_json::from_value::<Step::In>(input)
             .map_err(|err| TestExecutorError::InputDeserialize(err.to_string()))?;
 
         let typed_completion: ActionCompletion<A> = match completion {
@@ -73,11 +70,10 @@ where
                 .map_err(|err| TestExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, request) =
-            <ActionStep<T, A, Prepare, Apply> as Yielding>::run((state, typed_input));
+        let (state, request) = <ActionStep<T, A, Step> as Yielding>::run((state, typed_input));
         let _prepared: ActionRequest<A> = request;
         let (state, emitted) =
-            <ActionStep<T, A, Prepare, Apply> as Awaiting>::accept((state, typed_completion));
+            <ActionStep<T, A, Step> as Awaiting>::accept((state, typed_completion));
         let emitted = serde_json::to_value(emitted)
             .map_err(|err| TestExecutorError::EmitSerialize(err.to_string()))?;
         Ok((state, emitted))

@@ -3,9 +3,9 @@ mod tests {
     use inception::Inception;
     use jungle_core::Jungle;
     use jungle_types::{
-        Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionSet, ActionStep,
-        Animal, AnimalActionSet, AnimalSet, AnimalStates, Ecosystem, Ident, JungleActions,
-        JungleAnimals, JungleFlowActions,
+        Action, ActionCompletion, ActionSet, ActionStep, Animal, AnimalActionSet, AnimalSet,
+        AnimalStates, AspectStep, Ecosystem, Ident, JungleActions, JungleAnimals,
+        JungleFlowActions, Whole,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::list;
@@ -141,26 +141,20 @@ mod tests {
         };
     }
 
-    struct UnitInput;
-    impl<T, A> ActionInputMapper<T, A> for UnitInput
+    struct UnitOkStep;
+    impl<T, A> AspectStep<T, A> for UnitOkStep
     where
         T: Animal,
         A: Action<In = ()>,
-    {
-        type In = ();
-
-        fn map_input(_state: &T::State, _input: Self::In) {}
-    }
-
-    struct ExpectOk;
-    impl<T, A> ActionOutputMapper<T, A> for ExpectOk
-    where
-        T: Animal,
         A: Action<Out = (), Err = ()>,
     {
+        type Aspect = Whole;
+        type In = ();
         type Out = ();
 
-        fn map_output(_state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
+        fn prepare(_state: &T::State, _input: Self::In) -> A::In {}
+
+        fn apply(_state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
             output.expect("workflow action should succeed");
         }
     }
@@ -170,11 +164,11 @@ mod tests {
             #[derive(Inception)]
             #[inception(properties = [JungleFlowActions])]
             struct $name(
-                ActionStep<$animal, Eat, UnitInput, ExpectOk>,
-                ActionStep<$animal, Sleep, UnitInput, ExpectOk>,
-                ActionStep<$animal, Forage, UnitInput, ExpectOk>,
-                ActionStep<$animal, Drink, UnitInput, ExpectOk>,
-                ActionStep<$animal, Flee, UnitInput, ExpectOk>,
+                ActionStep<$animal, Eat, UnitOkStep>,
+                ActionStep<$animal, Sleep, UnitOkStep>,
+                ActionStep<$animal, Forage, UnitOkStep>,
+                ActionStep<$animal, Drink, UnitOkStep>,
+                ActionStep<$animal, Flee, UnitOkStep>,
             );
         };
     }
@@ -184,11 +178,11 @@ mod tests {
             #[derive(Inception)]
             #[inception(properties = [JungleFlowActions])]
             struct $name(
-                ActionStep<$animal, Eat, UnitInput, ExpectOk>,
-                ActionStep<$animal, Sleep, UnitInput, ExpectOk>,
-                ActionStep<$animal, Forage, UnitInput, ExpectOk>,
-                ActionStep<$animal, Drink, UnitInput, ExpectOk>,
-                ActionStep<$animal, Hunt, UnitInput, ExpectOk>,
+                ActionStep<$animal, Eat, UnitOkStep>,
+                ActionStep<$animal, Sleep, UnitOkStep>,
+                ActionStep<$animal, Forage, UnitOkStep>,
+                ActionStep<$animal, Drink, UnitOkStep>,
+                ActionStep<$animal, Hunt, UnitOkStep>,
             );
         };
     }
@@ -269,21 +263,21 @@ mod tests {
         #[derive(Inception)]
         #[inception(properties = [JungleFlowActions])]
         struct StatefulGorillaInstinct(
-            ActionStep<StatefulGorilla, Eat, UnitInput, ExpectOk>,
-            ActionStep<StatefulGorilla, Sleep, UnitInput, ExpectOk>,
-            ActionStep<StatefulGorilla, Forage, UnitInput, ExpectOk>,
-            ActionStep<StatefulGorilla, Drink, UnitInput, ExpectOk>,
-            ActionStep<StatefulGorilla, Flee, UnitInput, ExpectOk>,
+            ActionStep<StatefulGorilla, Eat, UnitOkStep>,
+            ActionStep<StatefulGorilla, Sleep, UnitOkStep>,
+            ActionStep<StatefulGorilla, Forage, UnitOkStep>,
+            ActionStep<StatefulGorilla, Drink, UnitOkStep>,
+            ActionStep<StatefulGorilla, Flee, UnitOkStep>,
         );
 
         #[derive(Inception)]
         #[inception(properties = [JungleFlowActions])]
         struct StatefulTigerInstinct(
-            ActionStep<StatefulTiger, Eat, UnitInput, ExpectOk>,
-            ActionStep<StatefulTiger, Sleep, UnitInput, ExpectOk>,
-            ActionStep<StatefulTiger, Forage, UnitInput, ExpectOk>,
-            ActionStep<StatefulTiger, Drink, UnitInput, ExpectOk>,
-            ActionStep<StatefulTiger, Hunt, UnitInput, ExpectOk>,
+            ActionStep<StatefulTiger, Eat, UnitOkStep>,
+            ActionStep<StatefulTiger, Sleep, UnitOkStep>,
+            ActionStep<StatefulTiger, Forage, UnitOkStep>,
+            ActionStep<StatefulTiger, Drink, UnitOkStep>,
+            ActionStep<StatefulTiger, Hunt, UnitOkStep>,
         );
 
         animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);

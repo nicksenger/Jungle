@@ -1,6 +1,6 @@
 use inception::Inception;
 use jungle_types::{
-    ActionCompletion, ActionMapper, ActionMapperStep, Awaiting, JungleFlowActions, Yielding,
+    ActionCompletion, ActionStep, AspectStep, Awaiting, JungleFlowActions, Whole, Yielding,
 };
 use typosaurus::num::consts::U0;
 
@@ -18,31 +18,32 @@ action!(
 animal!(GatherAnimal, U0, instinct = GatherInstinct);
 
 struct GatherMapper;
-impl ActionMapper<GatherAnimal, GatherAction> for GatherMapper {
+impl AspectStep<GatherAnimal, GatherAction> for GatherMapper {
+    type Aspect = Whole;
     type In = i32;
     type Out = i32;
 
-    fn map_input(_state: &(), input: Self::In) -> i32 {
+    fn prepare(_state: &(), input: Self::In) -> i32 {
         input + 4
     }
 
-    fn map_output(_state: &mut (), output: ActionCompletion<GatherAction>) -> Self::Out {
+    fn apply(_state: &mut (), output: ActionCompletion<GatherAction>) -> Self::Out {
         output.expect("gather action should succeed")
     }
 }
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
-struct GatherInstinct(ActionMapperStep<GatherAnimal, GatherAction, GatherMapper>);
+struct GatherInstinct(ActionStep<GatherAnimal, GatherAction, GatherMapper>);
 
 #[test]
 fn action_step_adapts_action_to_temporal_protocol() {
     let (dependency, request) =
-        <ActionMapperStep<GatherAnimal, GatherAction, GatherMapper> as Yielding>::run(((), 3));
+        <ActionStep<GatherAnimal, GatherAction, GatherMapper> as Yielding>::run(((), 3));
     assert_eq!(request.into_input(), 7);
 
     let (next_dependency, emitted) =
-        <ActionMapperStep<GatherAnimal, GatherAction, GatherMapper> as Awaiting>::accept((
+        <ActionStep<GatherAnimal, GatherAction, GatherMapper> as Awaiting>::accept((
             dependency,
             Ok(9),
         ));
