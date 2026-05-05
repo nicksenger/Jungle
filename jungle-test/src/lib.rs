@@ -13,6 +13,32 @@ mod tests {
     use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 
     macro_rules! action {
+        (
+            $name:ident,
+            $id:ty,
+            in = $in:ty,
+            out = $out:ty,
+            err = $err:ty,
+            act = |$dependency:ident, $input:ident| $body:block
+        ) => {
+            struct $name;
+
+            impl Action for $name {
+                type Id = Id<$id>;
+                type Dependency = ();
+                type In = $in;
+                type Out = $out;
+                type Err = $err;
+
+                fn act(
+                    $dependency: &Self::Dependency,
+                    $input: Self::In,
+                ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                    $body
+                }
+            }
+        };
+
         ($name:ident, $id:ty) => {
             struct $name;
             impl ActionMember for $name {}
@@ -75,6 +101,20 @@ mod tests {
     }
 
     macro_rules! animal {
+        ($name:ident, $id:ty, state = $state:ty, instinct = $instinct:ty) => {
+            struct $name;
+
+            impl Animal for $name {
+                type Id = Id<$id>;
+                type State = $state;
+                type Instinct = $instinct;
+            }
+        };
+
+        ($name:ident, $id:ty, instinct = $instinct:ty) => {
+            animal!($name, $id, state = (), instinct = $instinct);
+        };
+
         ($name:ident, $id:ty, $instinct:ty) => {
             animal!($name, $id, SharedState, $instinct);
         };
