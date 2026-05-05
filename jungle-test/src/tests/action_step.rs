@@ -1,6 +1,6 @@
-use inception::Inception;
+use jungle_sdk as jungle;
 use jungle_types::{
-    ActionCompletion, ActionStep, AspectStep, Waiting, JungleFlow, Identity, Running,
+    ActionCompletion, ActionStep, AspectStep, Identity, Running, Waiting,
 };
 use typosaurus::num::consts::U0;
 
@@ -32,8 +32,7 @@ impl AspectStep<GatherCreature, GatherAction> for GatherMapper {
     }
 }
 
-#[derive(Inception)]
-#[inception(properties = [JungleFlow])]
+#[jungle::flow]
 struct GatherInstinct(ActionStep<GatherCreature, GatherAction, GatherMapper>);
 
 #[test]

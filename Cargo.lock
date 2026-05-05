@@ -150,6 +150,11 @@ dependencies = [
 [[package]]
 name = "jungle-macros"
 version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "jungle-persist"
@@ -163,6 +168,7 @@ version = "0.1.0"
 name = "jungle-sdk"
 version = "0.1.0"
 dependencies = [
+ "jungle-macros",
  "jungle-types",
 ]
 

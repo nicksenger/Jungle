@@ -1,7 +1,6 @@
-use inception::Inception;
+use jungle_sdk as jungle;
 use jungle_types::{
-    ActionCompletion, ActionStep, Aspect, AspectStep, Waiting, JungleDynFlow, JungleFlow,
-    TestExecutor, Running,
+    ActionCompletion, ActionStep, Aspect, AspectStep, Running, TestExecutor, Waiting,
 };
 use serde_json::json;
 use std::marker::PhantomData;
@@ -117,15 +116,13 @@ where
 type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
 type CoreEnergyEatActionStep<T, Focus> = ActionStep<T, Eat, CoreEnergyStep<Focus>>;
 
-#[derive(Inception)]
-#[inception(properties = [JungleFlow, JungleDynFlow])]
+#[jungle::instinct]
 struct GorillaInstinct(
     CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>,
     CoreEnergyEatActionStep<Gorilla, GorillaCoreAspect>,
 );
 
-#[derive(Inception)]
-#[inception(properties = [JungleFlow, JungleDynFlow])]
+#[jungle::instinct]
 struct TigerInstinct(
     CoreEnergySleepActionStep<Tiger, TigerCoreAspect>,
     CoreEnergyEatActionStep<Tiger, TigerCoreAspect>,
