@@ -37,7 +37,7 @@ impl AspectStep<GatherAnimal, GatherAction> for GatherMapper {
 struct GatherInstinct(ActionStep<GatherAnimal, GatherAction, GatherMapper>);
 
 #[test]
-fn action_step_adapts_action_to_temporal_protocol() {
+fn action_step_adapts_action() {
     let (dependency, request) =
         <ActionStep<GatherAnimal, GatherAction, GatherMapper> as Running>::run(((), 3));
     assert_eq!(request.into_input(), 7);
