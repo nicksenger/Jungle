@@ -15,10 +15,10 @@ action!(
     }
 );
 
-animal!(GatherAnimal, U0, instinct = GatherInstinct);
+animal!(GatherCreature, U0, instinct = GatherInstinct);
 
 struct GatherMapper;
-impl AspectStep<GatherAnimal, GatherAction> for GatherMapper {
+impl AspectStep<GatherCreature, GatherAction> for GatherMapper {
     type Aspect = Whole;
     type In = i32;
     type Out = i32;
@@ -34,16 +34,16 @@ impl AspectStep<GatherAnimal, GatherAction> for GatherMapper {
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlow])]
-struct GatherInstinct(ActionStep<GatherAnimal, GatherAction, GatherMapper>);
+struct GatherInstinct(ActionStep<GatherCreature, GatherAction, GatherMapper>);
 
 #[test]
 fn action_step_adapts_action() {
     let (dependency, request) =
-        <ActionStep<GatherAnimal, GatherAction, GatherMapper> as Running>::run(((), 3));
+        <ActionStep<GatherCreature, GatherAction, GatherMapper> as Running>::run(((), 3));
     assert_eq!(request.into_input(), 7);
 
     let (next_dependency, emitted) =
-        <ActionStep<GatherAnimal, GatherAction, GatherMapper> as Waiting>::accept((
+        <ActionStep<GatherCreature, GatherAction, GatherMapper> as Waiting>::accept((
             dependency,
             Ok(9),
         ));

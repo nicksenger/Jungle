@@ -31,7 +31,7 @@ where
 }
 
 pub trait ActionMember {}
-pub trait AnimalMember {}
+pub trait CreatureMember {}
 
 pub trait AllFrom<T> {}
 impl<T> AllFrom<T> for list::Empty {}
@@ -82,68 +82,68 @@ where
     type Out = list::List<(Node<K, Head>, TailOut)>;
 }
 
-pub trait StripAnimalHeaders {
+pub trait StripCreatureHeaders {
     type Out;
 }
-impl StripAnimalHeaders for list::Empty {
+impl StripCreatureHeaders for list::Empty {
     type Out = list::Empty;
 }
-impl<K, Tail, TailOut> StripAnimalHeaders for list::List<(Node<K, ()>, Tail)>
+impl<K, Tail, TailOut> StripCreatureHeaders for list::List<(Node<K, ()>, Tail)>
 where
-    Tail: StripAnimalHeaders<Out = TailOut>,
+    Tail: StripCreatureHeaders<Out = TailOut>,
 {
     type Out = TailOut;
 }
-impl<K, Head, Tail, TailOut> StripAnimalHeaders for list::List<(Node<K, Head>, Tail)>
+impl<K, Head, Tail, TailOut> StripCreatureHeaders for list::List<(Node<K, Head>, Tail)>
 where
-    Head: AnimalMember,
-    Tail: StripAnimalHeaders<Out = TailOut>,
+    Head: CreatureMember,
+    Tail: StripCreatureHeaders<Out = TailOut>,
 {
     type Out = list::List<(Head, TailOut)>;
 }
 
 pub type ActionSet<T> = <SPFlatten<<T as Actions>::List> as StripActionHeaders>::Out;
-pub type AnimalSet<T> = <SPFlatten<<T as Creatures>::List> as StripAnimalHeaders>::Out;
+pub type CreatureSet<T> = <SPFlatten<<T as Creatures>::List> as StripCreatureHeaders>::Out;
 
-pub struct WithAnimalState;
-impl<T> Mapper<T> for WithAnimalState
+pub struct WithCreatureState;
+impl<T> Mapper<T> for WithCreatureState
 where
     T: Creature,
 {
     type Out = <T as Creature>::State;
 }
 
-pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
-    <AnimalSet<T> as Container>::Content,
-    WithAnimalState,
+pub type CreatureStates<T> = <(CreatureSet<T>, WithCreatureState) as Map<
+    <CreatureSet<T> as Container>::Content,
+    WithCreatureState,
 >>::Out;
 
-pub trait AnimalStatesCompatible<From>: Creatures {}
-impl<T, From> AnimalStatesCompatible<From> for T
+pub trait CreatureStatesCompatible<From>: Creatures {}
+impl<T, From> CreatureStatesCompatible<From> for T
 where
     T: Creatures,
     <T as Creatures>::List: FlattenNodes,
-    SPFlatten<<T as Creatures>::List>: StripAnimalHeaders,
-    AnimalSet<T>: Container,
-    (AnimalSet<T>, WithAnimalState): Map<<AnimalSet<T> as Container>::Content, WithAnimalState>,
-    AnimalStates<T>: AllFrom<From>,
+    SPFlatten<<T as Creatures>::List>: StripCreatureHeaders,
+    CreatureSet<T>: Container,
+    (CreatureSet<T>, WithCreatureState): Map<<CreatureSet<T> as Container>::Content, WithCreatureState>,
+    CreatureStates<T>: AllFrom<From>,
 {
 }
 
-pub trait CollectAnimalInstinctActions {
+pub trait CollectCreatureInstinctActions {
     type Out;
 }
-impl CollectAnimalInstinctActions for list::Empty {
+impl CollectCreatureInstinctActions for list::Empty {
     type Out = list::Empty;
 }
-impl<Head, Tail, TailOut> CollectAnimalInstinctActions for list::List<(Head, Tail)>
+impl<Head, Tail, TailOut> CollectCreatureInstinctActions for list::List<(Head, Tail)>
 where
     Head: Creature,
     <Head as Creature>::Instinct: Instinct,
     <Head as Creature>::Instinct: FlowActions,
     <<Head as Creature>::Instinct as FlowActions>::List: FlattenNodes,
     SPFlatten<<<Head as Creature>::Instinct as FlowActions>::List>: KeepActionNodes,
-    Tail: CollectAnimalInstinctActions<Out = TailOut>,
+    Tail: CollectCreatureInstinctActions<Out = TailOut>,
 {
     type Out = list::List<(
         <SPFlatten<<<Head as Creature>::Instinct as FlowActions>::List> as KeepActionNodes>::Out,
@@ -151,6 +151,6 @@ where
     )>;
 }
 
-pub type AnimalActionSet<T> = <SPDedupNodes<
-    SPFlatten<<AnimalSet<T> as CollectAnimalInstinctActions>::Out>,
+pub type CreatureActionSet<T> = <SPDedupNodes<
+    SPFlatten<<CreatureSet<T> as CollectCreatureInstinctActions>::Out>,
 > as StripActionHeaders>::Out;

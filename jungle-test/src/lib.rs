@@ -3,8 +3,8 @@ mod tests {
     use inception::Inception;
     use jungle_core::Jungle;
     use jungle_types::{
-        Action, ActionCompletion, ActionSet, ActionStep, Creature, AnimalActionSet, AnimalSet,
-        AnimalStates, AspectStep, Ecosystem, Ident, JungleActions, JungleCreatures,
+        Action, ActionCompletion, ActionSet, ActionStep, Creature, CreatureActionSet, CreatureSet,
+        CreatureStates, AspectStep, Ecosystem, Ident, JungleActions, JungleCreatures,
         JungleFlow, Whole,
     };
     use typosaurus::assert_type_eq;
@@ -121,7 +121,7 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
             struct $name;
-            impl jungle_types::AnimalMember for $name {}
+            impl jungle_types::CreatureMember for $name {}
 
             impl jungle_types::Creature for $name {
                 type Id = jungle_types::Id<$id>;
@@ -217,7 +217,7 @@ mod tests {
 
     #[derive(Inception)]
     #[inception(properties = [Ident, JungleCreatures])]
-    struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
+    struct AllCreatures(Cats, Apes, Anaconda, Hippo, Elephant);
 
     #[derive(Inception)]
     #[inception(properties = [Ident, JungleActions])]
@@ -225,7 +225,7 @@ mod tests {
 
     struct Zoo;
     impl Ecosystem for Zoo {
-        type Creatures = AllAnimals;
+        type Creatures = AllCreatures;
     }
 
     #[test]
@@ -240,19 +240,19 @@ mod tests {
     #[test]
     fn composite_animals() {
         type ApeList = list![Gorilla, Chimpanzee];
-        assert_type_eq!(AnimalSet<Apes>, ApeList);
+        assert_type_eq!(CreatureSet<Apes>, ApeList);
 
         type PredatorList = list![Tiger, Jaguar, Anaconda];
-        assert_type_eq!(AnimalSet<Predators>, PredatorList);
+        assert_type_eq!(CreatureSet<Predators>, PredatorList);
     }
 
     #[test]
     fn animal_action_set() {
-        type ApeAnimalActions = list![Eat, Sleep, Forage, Drink, Flee];
-        assert_type_eq!(AnimalActionSet<Apes>, ApeAnimalActions);
+        type ApeCreatureActions = list![Eat, Sleep, Forage, Drink, Flee];
+        assert_type_eq!(CreatureActionSet<Apes>, ApeCreatureActions);
 
-        type AllAnimalActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
-        assert_type_eq!(AnimalActionSet<AllAnimals>, AllAnimalActions);
+        type AllCreatureActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
+        assert_type_eq!(CreatureActionSet<AllCreatures>, AllCreatureActions);
     }
 
     #[test]
@@ -285,10 +285,10 @@ mod tests {
 
         #[derive(Inception)]
         #[inception(properties = [Ident, JungleCreatures])]
-        struct StatefulAnimals(StatefulGorilla, StatefulTiger);
+        struct StatefulCreatures(StatefulGorilla, StatefulTiger);
 
-        type StatefulAnimalStates = list![ApeState, CatState];
-        assert_type_eq!(AnimalStates<StatefulAnimals>, StatefulAnimalStates);
+        type StatefulCreatureStates = list![ApeState, CatState];
+        assert_type_eq!(CreatureStates<StatefulCreatures>, StatefulCreatureStates);
     }
 
     #[test]

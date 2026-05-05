@@ -1,6 +1,6 @@
 use inception::Inception;
 use jungle_types::{
-    Action, ActionCompletion, ActionRequest, ActionStep, AnimalActionSet, AspectStep, Waiting,
+    Action, ActionCompletion, ActionRequest, ActionStep, CreatureActionSet, AspectStep, Waiting,
     Id, Ident, JungleCreatures, JungleDynFlow, JungleFlow, TestExecutor, Whole, Running,
 };
 use serde_json::json;
@@ -43,7 +43,7 @@ impl Action for FinishAction {
 }
 
 struct SeedMapper;
-impl AspectStep<ProgressAnimal, SeedAction> for SeedMapper {
+impl AspectStep<ProgressCreature, SeedAction> for SeedMapper {
     type Aspect = Whole;
     type In = i32;
     type Out = i32;
@@ -60,7 +60,7 @@ impl AspectStep<ProgressAnimal, SeedAction> for SeedMapper {
 }
 
 struct FinishMapper;
-impl AspectStep<ProgressAnimal, FinishAction> for FinishMapper {
+impl AspectStep<ProgressCreature, FinishAction> for FinishMapper {
     type Aspect = Whole;
     type In = i32;
     type Out = i32;
@@ -79,18 +79,18 @@ impl AspectStep<ProgressAnimal, FinishAction> for FinishMapper {
 #[derive(Inception)]
 #[inception(properties = [JungleFlow, JungleDynFlow])]
 struct ProgressInstinct(
-    ActionStep<ProgressAnimal, SeedAction, SeedMapper>,
-    ActionStep<ProgressAnimal, FinishAction, FinishMapper>,
+    ActionStep<ProgressCreature, SeedAction, SeedMapper>,
+    ActionStep<ProgressCreature, FinishAction, FinishMapper>,
 );
 
-animal!(ProgressAnimal, U0, i32, ProgressInstinct);
+animal!(ProgressCreature, U0, i32, ProgressInstinct);
 
 #[derive(Inception)]
 #[inception(properties = [Ident, JungleCreatures])]
-struct ProgressAnimals(ProgressAnimal);
+struct ProgressCreatures(ProgressCreature);
 
-type SeedStep = ActionStep<ProgressAnimal, SeedAction, SeedMapper>;
-type FinishStep = ActionStep<ProgressAnimal, FinishAction, FinishMapper>;
+type SeedStep = ActionStep<ProgressCreature, SeedAction, SeedMapper>;
+type FinishStep = ActionStep<ProgressCreature, FinishAction, FinishMapper>;
 
 struct Executor;
 impl Executor {
@@ -115,10 +115,10 @@ trait StepExecutor:
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<A, Step> StepExecutor for ActionStep<ProgressAnimal, A, Step>
+impl<A, Step> StepExecutor for ActionStep<ProgressCreature, A, Step>
 where
     A: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
-    Step: AspectStep<ProgressAnimal, A, Aspect = Whole, In = i32, Out = i32>,
+    Step: AspectStep<ProgressCreature, A, Aspect = Whole, In = i32, Out = i32>,
 {
     type Action = A;
 }
@@ -126,7 +126,7 @@ where
 #[test]
 fn workflow_action_set_is_extracted_from_instinct_composite() {
     type Expected = list![SeedAction, FinishAction];
-    type Extracted = AnimalActionSet<ProgressAnimals>;
+    type Extracted = CreatureActionSet<ProgressCreatures>;
     assert_type_eq!(Extracted, Expected);
 }
 
@@ -144,7 +144,7 @@ fn executor_progresses_simple_instinct_steps() {
 
 #[test]
 fn test_executor_next_advances_without_step_type_parameters() {
-    let mut executor = TestExecutor::<ProgressAnimal>::new(0);
+    let mut executor = TestExecutor::<ProgressCreature>::new(0);
 
     let emitted_seed = executor.next(json!(5), Ok(json!(8))).expect("seed step");
     assert_eq!(emitted_seed, json!(8));
@@ -157,7 +157,7 @@ fn test_executor_next_advances_without_step_type_parameters() {
 
 #[test]
 fn test_executor_advance_to_end_runs_remaining_flow() {
-    let mut executor = TestExecutor::<ProgressAnimal>::new(0);
+    let mut executor = TestExecutor::<ProgressCreature>::new(0);
     let emitted = executor
         .advance_to_end(vec![(json!(5), Ok(json!(8))), (json!(4), Ok(json!(36)))])
         .expect("flow should advance");

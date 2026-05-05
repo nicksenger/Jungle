@@ -11,8 +11,8 @@ use inception::*;
 pub use instinct::Instinct;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AllFrom, AnimalActionSet, AnimalMember, AnimalSet, AnimalStates,
-    AnimalStatesCompatible, StripActionHeaders, StripAnimalHeaders,
+    ActionMember, ActionSet, AllFrom, CreatureActionSet, CreatureMember, CreatureSet, CreatureStates,
+    CreatureStatesCompatible, StripActionHeaders, StripCreatureHeaders,
 };
 pub use test_executor::{
     BuildTestFlow, DynFlow, ErasedStep, JungleDynFlow, TestExecutor, TestExecutorError, TestFlow,
