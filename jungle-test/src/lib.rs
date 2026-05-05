@@ -205,14 +205,10 @@ mod tests {
         let jungle_fut = zoo.manifest();
     }
 
-    struct EnergyState {
-        energy: i32,
-    }
-
     struct GatherAction;
     impl Action for GatherAction {
         type Id = Id<U0>;
-        type State = EnergyState;
+        type State = ();
         type In = i32;
         type Out = i32;
         type Err = ();
@@ -229,8 +225,8 @@ mod tests {
     impl ActionInputMapper<GatherAction> for PrepareGather {
         type In = i32;
 
-        fn map_input(&self, state: &EnergyState, input: Self::In) -> i32 {
-            state.energy + input
+        fn map_input(&self, _state: &(), input: Self::In) -> i32 {
+            input + 4
         }
     }
 
@@ -240,12 +236,10 @@ mod tests {
 
         fn map_output(
             &self,
-            state: &mut EnergyState,
+            _state: &mut (),
             output: ActionCompletion<GatherAction>,
         ) -> Self::Out {
-            let value = output.expect("gather action should succeed");
-            state.energy = value;
-            value
+            output.expect("gather action should succeed")
         }
     }
 
@@ -255,7 +249,7 @@ mod tests {
             PrepareGather,
             ApplyGather,
         );
-        let (state, request) = step.run((EnergyState { energy: 4 }, 3));
+        let (state, request) = step.run(((), 3));
         assert_eq!(request.into_input(), 7);
 
         let apply_step = ActionStep::<GatherAction, PrepareGather, ApplyGather>::new(
@@ -264,6 +258,6 @@ mod tests {
         );
         let (next_state, emitted) = apply_step.accept((state, Ok(9)));
         assert_eq!(emitted, 9);
-        assert_eq!(next_state.energy, 9);
+        assert_eq!(next_state, ());
     }
 }
