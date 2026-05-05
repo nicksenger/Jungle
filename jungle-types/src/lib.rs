@@ -69,11 +69,11 @@ pub trait Actions {
 
 /// A trait that transforms one impulse input into one impulse output.
 #[inception(property = JungleImpulse, signature(input = In, output = Out))]
-pub trait Impulse<State = ()> {
+pub trait Impulse {
     type In;
     type Out;
 
-    fn impulse(&mut self, state: &mut State, input: Self::In) -> Self::Out;
+    fn impulse(&mut self, input: Self::In) -> Self::Out;
 
     fn nothing(input: Self::In) -> Self::In {
         input
@@ -82,28 +82,27 @@ pub trait Impulse<State = ()> {
     fn merge<H, R>(
         l: H,
         mut r: R,
-        state: &mut State,
         input: Self::In,
-    ) -> <R as Impulse<State>>::Out
+    ) -> <R as Impulse>::Out
     where
-        H: Impulse<State, In = Self::In>,
-        R: Impulse<State, In = <H as Impulse<State>>::Out>,
+        H: Impulse<In = Self::In>,
+        R: Impulse<In = <H as Impulse>::Out>,
     {
-        let next = l.access().impulse(state, input);
-        r.impulse(state, next)
+        let next = l.access().impulse(input);
+        r.impulse(next)
     }
 
-    fn merge_variant_field<H, R>(_l: H, _r: R, state: &mut State, input: Self::In) -> Self::In {
-        let _ = (_l, _r, state);
+    fn merge_variant_field<H, R>(_l: H, _r: R, input: Self::In) -> Self::In {
+        let _ = (_l, _r);
         let _ = core::marker::PhantomData::<(H, R)>;
         input
     }
 
-    fn join<F>(mut fields: F, state: &mut State, input: Self::In) -> <F as Impulse<State>>::Out
+    fn join<F>(mut fields: F, input: Self::In) -> <F as Impulse>::Out
     where
-        F: Impulse<State, In = Self::In>,
+        F: Impulse<In = Self::In>,
     {
-        fields.impulse(state, input)
+        fields.impulse(input)
     }
 }
 
