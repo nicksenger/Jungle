@@ -3,14 +3,12 @@ mod tests {
     use inception::{primitive, Inception};
     use jungle_core::Jungle;
     use jungle_types::{
-        Action, ActionCompletion, ActionInputMapper, ActionMember, ActionOutputMapper, ActionSet,
-        ActionStep, Actions, Animal, AnimalActionSet, AnimalMember, AnimalSet, AnimalStates,
-        Animals, Awaiting, Ecosystem, Id, Ident, Identified, Instinct, JungleActions,
-        JungleAnimals, Yielding,
+        Action, ActionMember, ActionSet, Actions, Animal, AnimalActionSet, AnimalMember,
+        AnimalSet, AnimalStates, Animals, Ecosystem, Id, Ident, Identified, Instinct,
+        JungleActions, JungleAnimals,
     };
     use typosaurus::assert_type_eq;
-    use typosaurus::collections::list;
-    use typosaurus::collections::sp::{Node, SPFlatten};
+    use typosaurus::collections::sp::Node;
     use typosaurus::list;
     use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 
@@ -205,67 +203,5 @@ mod tests {
         let jungle_fut = zoo.manifest();
     }
 
-    struct GatherAction;
-    impl Action for GatherAction {
-        type Id = Id<U0>;
-        type Dependency = ();
-        type In = i32;
-        type Out = i32;
-        type Err = ();
-
-        fn act(
-            _dependency: &Self::Dependency,
-            input: Self::In,
-        ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-            std::future::ready(Ok(input + 1))
-        }
-    }
-
-    struct GatherAnimal;
-    impl Animal for GatherAnimal {
-        type Id = Id<U0>;
-        type State = ();
-        type Instinct = ApeInstinct;
-    }
-
-    struct PrepareGather;
-    impl ActionInputMapper<GatherAnimal, GatherAction> for PrepareGather {
-        type In = i32;
-
-        fn map_input(&self, _state: &(), input: Self::In) -> i32 {
-            input + 4
-        }
-    }
-
-    struct ApplyGather;
-    impl ActionOutputMapper<GatherAnimal, GatherAction> for ApplyGather {
-        type Out = i32;
-
-        fn map_output(
-            &self,
-            _state: &mut (),
-            output: ActionCompletion<GatherAction>,
-        ) -> Self::Out {
-            output.expect("gather action should succeed")
-        }
-    }
-
-    #[test]
-    fn action_step_adapts_action_to_temporal_protocol() {
-        let step = ActionStep::<GatherAnimal, GatherAction, PrepareGather, ApplyGather>::new(
-            PrepareGather,
-            ApplyGather,
-        );
-        let (dependency, request) = step.run(((), 3));
-        assert_eq!(request.into_input(), 7);
-
-        let apply_step =
-            ActionStep::<GatherAnimal, GatherAction, PrepareGather, ApplyGather>::new(
-            PrepareGather,
-            ApplyGather,
-        );
-        let (next_dependency, emitted) = apply_step.accept((dependency, Ok(9)));
-        assert_eq!(emitted, 9);
-        assert_eq!(next_dependency, ());
-    }
+    mod action_step;
 }
