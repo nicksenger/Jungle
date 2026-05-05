@@ -1,7 +1,6 @@
 use inception::Inception;
 use jungle_types::{
-    ActionCompletion, ActionMapper, ActionMapperStep, Awaiting,
-    JungleFlowActions, Yielding,
+    ActionCompletion, ActionMapper, ActionMapperStep, Awaiting, JungleFlowActions, Yielding,
 };
 use typosaurus::num::consts::U0;
 
@@ -39,15 +38,14 @@ struct GatherInstinct(ActionMapperStep<GatherAnimal, GatherAction, GatherMapper>
 #[test]
 fn action_step_adapts_action_to_temporal_protocol() {
     let (dependency, request) =
-        <ActionMapperStep<GatherAnimal, GatherAction, GatherMapper> as Yielding>::run(
-            ((), 3),
-        );
+        <ActionMapperStep<GatherAnimal, GatherAction, GatherMapper> as Yielding>::run(((), 3));
     assert_eq!(request.into_input(), 7);
 
     let (next_dependency, emitted) =
-        <ActionMapperStep<GatherAnimal, GatherAction, GatherMapper> as Awaiting>::accept(
-            (dependency, Ok(9)),
-        );
+        <ActionMapperStep<GatherAnimal, GatherAction, GatherMapper> as Awaiting>::accept((
+            dependency,
+            Ok(9),
+        ));
     assert_eq!(emitted, 9);
     assert_eq!(next_dependency, ());
 }

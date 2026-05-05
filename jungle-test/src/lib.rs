@@ -4,8 +4,8 @@ mod tests {
     use jungle_core::Jungle;
     use jungle_types::{
         Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionSet, ActionStep,
-        Animal, AnimalActionSet, AnimalSet, AnimalStates, Ecosystem, Ident, JungleAnimals,
-        JungleActions, JungleFlowActions,
+        Animal, AnimalActionSet, AnimalSet, AnimalStates, Ecosystem, Ident, JungleActions,
+        JungleAnimals, JungleFlowActions,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::list;
@@ -304,5 +304,6 @@ mod tests {
     }
 
     mod action_step;
+    mod aspect;
     mod progression;
 }

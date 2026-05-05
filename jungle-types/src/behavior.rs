@@ -89,6 +89,54 @@ pub trait ActionMapper<T: Animal, A: Action> {
     fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out;
 }
 
+/// Projects a larger state into a focused mutable substate.
+pub trait Aspect<State> {
+    type View;
+
+    fn view(state: &State) -> &Self::View;
+
+    fn view_mut(state: &mut State) -> &mut Self::View;
+}
+
+/// Maps action transitions against a focused state view.
+pub trait FocusedActionMapper<View, A: Action> {
+    type In;
+    type Out;
+
+    fn map_input(view: &View, input: Self::In) -> A::In;
+
+    fn map_output(view: &mut View, output: ActionCompletion<A>) -> Self::Out;
+}
+
+/// Adapts a focused mapper through an [`Aspect`] so it can power a full-state
+/// [`ActionMapper`].
+pub struct AspectMapper<Focus, Mapper>(PhantomData<fn() -> (Focus, Mapper)>);
+
+impl<T, A, Focus, Mapper> ActionMapper<T, A> for AspectMapper<Focus, Mapper>
+where
+    T: Animal,
+    A: Action,
+    Focus: Aspect<T::State>,
+    Mapper: FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>,
+{
+    type In = <Mapper as FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>>::In;
+    type Out = <Mapper as FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>>::Out;
+
+    fn map_input(state: &T::State, input: Self::In) -> A::In {
+        let view = <Focus as Aspect<T::State>>::view(state);
+        <Mapper as FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>>::map_input(
+            view, input,
+        )
+    }
+
+    fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
+        let view = <Focus as Aspect<T::State>>::view_mut(state);
+        <Mapper as FocusedActionMapper<<Focus as Aspect<T::State>>::View, A>>::map_output(
+            view, output,
+        )
+    }
+}
+
 pub struct MapperInput<M>(PhantomData<fn() -> M>);
 
 impl<T, A, M> ActionInputMapper<T, A> for MapperInput<M>
@@ -121,6 +169,10 @@ where
 
 pub type ActionMapperStep<T, A, Mapper> =
     ActionStep<T, A, MapperInput<Mapper>, MapperOutput<Mapper>>;
+
+/// Action step backed by a focused mapper over an [`Aspect`] of state.
+pub type AspectActionStep<T, A, Focus, Mapper> =
+    ActionMapperStep<T, A, AspectMapper<Focus, Mapper>>;
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Yielding`]/[`Awaiting`] temporal protocol.

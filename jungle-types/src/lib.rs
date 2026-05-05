@@ -5,7 +5,8 @@ mod meta;
 mod test_executor;
 pub use behavior::{
     Action, ActionCompletion, ActionInputMapper, ActionMapper, ActionMapperStep,
-    ActionOutputMapper, ActionRequest, ActionStep,
+    ActionOutputMapper, ActionRequest, ActionStep, Aspect, AspectActionStep, AspectMapper,
+    FocusedActionMapper,
 };
 pub use error::Error;
 use inception::*;
