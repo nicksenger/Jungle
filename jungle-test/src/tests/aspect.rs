@@ -18,6 +18,17 @@ action!(
     }
 );
 
+action!(
+    Eat,
+    U1,
+    in = i32,
+    out = i32,
+    err = (),
+    act = |_dependency, input| {
+        std::future::ready(Ok(input + 1))
+    }
+);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct CoreState {
     energy: i32,
@@ -83,15 +94,42 @@ where
     }
 }
 
+impl<T, Focus> AspectStep<T, Eat> for CoreEnergyStep<Focus>
+where
+    T: jungle_types::Creature,
+    Focus: Aspect<T::State, View = CoreState>,
+{
+    type Aspect = Focus;
+    type In = i32;
+    type Out = i32;
+
+    fn prepare(core: &CoreState, input: Self::In) -> i32 {
+        core.energy + input
+    }
+
+    fn apply(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
+        let value = output.expect("eat should succeed");
+        core.energy = value;
+        value
+    }
+}
+
 type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
+type CoreEnergyEatActionStep<T, Focus> = ActionStep<T, Eat, CoreEnergyStep<Focus>>;
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlow, JungleDynFlow])]
-struct GorillaInstinct(CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>);
+struct GorillaInstinct(
+    CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>,
+    CoreEnergyEatActionStep<Gorilla, GorillaCoreAspect>,
+);
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlow, JungleDynFlow])]
-struct TigerInstinct(CoreEnergySleepActionStep<Tiger, TigerCoreAspect>);
+struct TigerInstinct(
+    CoreEnergySleepActionStep<Tiger, TigerCoreAspect>,
+    CoreEnergyEatActionStep<Tiger, TigerCoreAspect>,
+);
 
 animal!(
     Gorilla,
@@ -145,9 +183,14 @@ fn test_executor_runs_aspected_steps() {
         .next(json!(3), Ok(json!(11)))
         .expect("gorilla aspect step");
     assert_eq!(gorilla_emitted, json!(11));
+    assert!(!gorilla.is_complete());
+    let gorilla_emitted = gorilla
+        .next(json!(2), Ok(json!(13)))
+        .expect("gorilla aspect step");
+    assert_eq!(gorilla_emitted, json!(13));
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
-    assert_eq!(gorilla_state.core.energy, 11);
+    assert_eq!(gorilla_state.core.energy, 13);
     assert_eq!(gorilla_state.bananas, 2);
 
     let mut tiger = TestExecutor::<Tiger>::new(TigerState {
@@ -158,8 +201,13 @@ fn test_executor_runs_aspected_steps() {
         .next(json!(1), Ok(json!(9)))
         .expect("tiger aspect step");
     assert_eq!(tiger_emitted, json!(9));
+    assert!(!tiger.is_complete());
+    let tiger_emitted = tiger
+        .next(json!(2), Ok(json!(11)))
+        .expect("tiger aspect step");
+    assert_eq!(tiger_emitted, json!(11));
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
-    assert_eq!(tiger_state.core.energy, 9);
+    assert_eq!(tiger_state.core.energy, 11);
     assert_eq!(tiger_state.stripes, 7);
 }
