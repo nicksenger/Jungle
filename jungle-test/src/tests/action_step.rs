@@ -1,7 +1,7 @@
 use inception::Inception;
 use jungle_types::{
     ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionStep, Awaiting,
-    JungleWorkflowActions, Yielding,
+    JungleFlowActions, Yielding,
 };
 use typosaurus::num::consts::U0;
 
@@ -37,7 +37,7 @@ impl ActionOutputMapper<GatherAnimal, GatherAction> for ApplyGather {
 }
 
 #[derive(Inception)]
-#[inception(properties = [JungleWorkflowActions])]
+#[inception(properties = [JungleFlowActions])]
 struct GatherInstinct(ActionStep<GatherAnimal, GatherAction, PrepareGather, ApplyGather>);
 
 #[test]

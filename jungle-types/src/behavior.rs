@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::future::Future;
 use std::marker::PhantomData;
 
-use crate::{ActionMember, Animal, Awaiting, WorkflowActions, Yielding};
+use crate::{ActionMember, Animal, Awaiting, FlowActions, Yielding};
 use inception::primitive;
 use typosaurus::collections::sp::Node;
 
@@ -140,8 +140,8 @@ where
     }
 }
 
-#[primitive(property = crate::JungleWorkflowActions)]
-impl<T, A, Prepare, Apply> WorkflowActions for ActionStep<T, A, Prepare, Apply>
+#[primitive(property = crate::JungleFlowActions)]
+impl<T, A, Prepare, Apply> FlowActions for ActionStep<T, A, Prepare, Apply>
 where
     T: Animal,
     A: Action + ActionMember,

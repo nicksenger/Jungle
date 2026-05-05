@@ -1,7 +1,7 @@
 use inception::Inception;
 use jungle_types::{
     Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionRequest, ActionStep,
-    AnimalActionSet, Awaiting, Id, Ident, JungleAnimals, JungleWorkflowActions, Yielding,
+    AnimalActionSet, Awaiting, Id, Ident, JungleAnimals, JungleFlowActions, Yielding,
 };
 use std::marker::PhantomData;
 use typosaurus::assert_type_eq;
@@ -83,7 +83,7 @@ impl ActionOutputMapper<ProgressAnimal, FinishAction> for ApplyFinish {
 }
 
 #[derive(Inception)]
-#[inception(properties = [JungleWorkflowActions])]
+#[inception(properties = [JungleFlowActions])]
 struct ProgressInstinct(
     ActionStep<ProgressAnimal, SeedAction, PrepareSeed, ApplySeed>,
     ActionStep<ProgressAnimal, FinishAction, PrepareFinish, ApplyFinish>,

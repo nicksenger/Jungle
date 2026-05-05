@@ -70,13 +70,13 @@ pub trait Actions {
 }
 
 /// A collection of [`Action`]s extractable from an executable workflow.
-#[inception(property = JungleWorkflowActions, types)]
-pub trait WorkflowActions {
+#[inception(property = JungleFlowActions, types)]
+pub trait FlowActions {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as WorkflowActions>::List, <Tail as WorkflowActions>::List)>,
-        merge_variant = TList<(<Head as WorkflowActions>::List, <Tail as WorkflowActions>::List)>,
-        join = TList<(Node<U0, ()>, <Fields as WorkflowActions>::List)>
+        merge = TList<(<Head as FlowActions>::List, <Tail as FlowActions>::List)>,
+        merge_variant = TList<(<Head as FlowActions>::List, <Tail as FlowActions>::List)>,
+        join = TList<(Node<U0, ()>, <Fields as FlowActions>::List)>
     )]
     type List;
 }
