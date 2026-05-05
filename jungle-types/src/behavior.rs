@@ -112,11 +112,11 @@ where
     Apply: ActionOutputMapper<A>,
 {
     type In = (A::State, <Prepare as ActionInputMapper<A>>::In);
-    type Out = (A::State, ActionRequest<A>);
+    type Out = futures::future::Ready<(A::State, ActionRequest<A>)>;
 
     fn run(self, (state, input): Self::In) -> Self::Out {
         let action_input = self.prepare.map_input(&state, input);
-        (state, ActionRequest::<A>::new(action_input))
+        futures::future::ready((state, ActionRequest::<A>::new(action_input)))
     }
 }
 
