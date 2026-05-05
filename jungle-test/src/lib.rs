@@ -5,7 +5,7 @@ mod tests {
     use jungle_types::{
         Action, ActionCompletion, ActionSet, ActionStep, Animal, AnimalActionSet, AnimalSet,
         AnimalStates, AspectStep, Ecosystem, Ident, JungleActions, JungleAnimals,
-        JungleFlowActions, Whole,
+        JungleFlow, Whole,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::list;
@@ -162,7 +162,7 @@ mod tests {
     macro_rules! prey_instinct {
         ($name:ident, $animal:ty) => {
             #[derive(Inception)]
-            #[inception(properties = [JungleFlowActions])]
+            #[inception(properties = [JungleFlow])]
             struct $name(
                 ActionStep<$animal, Eat, UnitOkStep>,
                 ActionStep<$animal, Sleep, UnitOkStep>,
@@ -176,7 +176,7 @@ mod tests {
     macro_rules! predator_instinct {
         ($name:ident, $animal:ty) => {
             #[derive(Inception)]
-            #[inception(properties = [JungleFlowActions])]
+            #[inception(properties = [JungleFlow])]
             struct $name(
                 ActionStep<$animal, Eat, UnitOkStep>,
                 ActionStep<$animal, Sleep, UnitOkStep>,
@@ -261,7 +261,7 @@ mod tests {
         struct CatState;
 
         #[derive(Inception)]
-        #[inception(properties = [JungleFlowActions])]
+        #[inception(properties = [JungleFlow])]
         struct StatefulGorillaInstinct(
             ActionStep<StatefulGorilla, Eat, UnitOkStep>,
             ActionStep<StatefulGorilla, Sleep, UnitOkStep>,
@@ -271,7 +271,7 @@ mod tests {
         );
 
         #[derive(Inception)]
-        #[inception(properties = [JungleFlowActions])]
+        #[inception(properties = [JungleFlow])]
         struct StatefulTigerInstinct(
             ActionStep<StatefulTiger, Eat, UnitOkStep>,
             ActionStep<StatefulTiger, Sleep, UnitOkStep>,

@@ -163,7 +163,7 @@ where
     }
 }
 
-#[primitive(property = crate::JungleFlowActions)]
+#[primitive(property = crate::JungleFlow)]
 impl<T, A, Step> FlowActions for ActionStep<T, A, Step>
 where
     T: Animal,

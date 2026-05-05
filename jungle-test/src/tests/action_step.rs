@@ -1,6 +1,6 @@
 use inception::Inception;
 use jungle_types::{
-    ActionCompletion, ActionStep, AspectStep, Awaiting, JungleFlowActions, Whole, Yielding,
+    ActionCompletion, ActionStep, AspectStep, Awaiting, JungleFlow, Whole, Yielding,
 };
 use typosaurus::num::consts::U0;
 
@@ -33,7 +33,7 @@ impl AspectStep<GatherAnimal, GatherAction> for GatherMapper {
 }
 
 #[derive(Inception)]
-#[inception(properties = [JungleFlowActions])]
+#[inception(properties = [JungleFlow])]
 struct GatherInstinct(ActionStep<GatherAnimal, GatherAction, GatherMapper>);
 
 #[test]

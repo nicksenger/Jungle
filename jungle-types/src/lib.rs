@@ -72,7 +72,7 @@ pub trait Actions {
 }
 
 /// A collection of [`Action`]s extractable from an executable workflow.
-#[inception(property = JungleFlowActions, types)]
+#[inception(property = JungleFlow, types)]
 pub trait FlowActions {
     #[induce(
         base = list::Empty,
