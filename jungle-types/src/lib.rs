@@ -22,20 +22,20 @@ use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
 
-/// A collection of `Animals` which act together as a system.
+/// A collection of `Creatures` which act together as a system.
 pub trait Ecosystem {
-    type Animals;
+    type Creatures;
 }
 
 /// A living creature within the Jungle ecosystem.
-pub trait Animal {
-    /// A type-level identifier for this Animal.
+pub trait Creature {
+    /// A type-level identifier for this Creature.
     type Id;
 
-    /// The state of this `Animal` at any given time.
+    /// The state of this `Creature` at any given time.
     type State;
 
-    /// The fundamental behavior of this Animal.
+    /// The fundamental behavior of this Creature.
     type Instinct;
 }
 
@@ -50,14 +50,14 @@ pub trait Identified {
     type Id;
 }
 
-/// Any collection of [`Animal`]s with a flat type-level list of members.
-#[inception(property = JungleAnimals, types)]
-pub trait Animals {
+/// Any collection of [`Creature`]s with a flat type-level list of members.
+#[inception(property = JungleCreatures, types)]
+pub trait Creatures {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
-        merge_variant = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Animals>::List)> where { Self: Identified }
+        merge = TList<(<Head as Creatures>::List, <Tail as Creatures>::List)>,
+        merge_variant = TList<(<Head as Creatures>::List, <Tail as Creatures>::List)>,
+        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Creatures>::List)> where { Self: Identified }
     )]
     type List;
 }

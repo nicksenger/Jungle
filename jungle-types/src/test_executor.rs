@@ -1,5 +1,5 @@
 use crate::{
-    Action, ActionCompletion, ActionRequest, ActionStep, Animal, AspectStep, Waiting, Running,
+    Action, ActionCompletion, ActionRequest, ActionStep, Creature, AspectStep, Waiting, Running,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -48,7 +48,7 @@ impl<Step> TypedErasedStep<Step> {
 
 impl<T, A, Step> ErasedStep<T::State> for TypedErasedStep<ActionStep<T, A, Step>>
 where
-    T: Animal,
+    T: Creature,
     A: Action,
     A::Out: DeserializeOwned,
     A::Err: DeserializeOwned,
@@ -118,7 +118,7 @@ pub trait BuildTestFlow<Input> {
 #[inception::primitive(property = crate::JungleDynFlow)]
 impl<T, A, Step> BuildTestFlow<DynFlow<T::State>> for ActionStep<T, A, Step>
 where
-    T: Animal + 'static,
+    T: Creature + 'static,
     A: Action + 'static,
     A::Out: DeserializeOwned,
     A::Err: DeserializeOwned,
@@ -136,7 +136,7 @@ where
 
 pub struct TestExecutor<A>
 where
-    A: Animal,
+    A: Creature,
     A::Instinct: BuildTestFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
@@ -146,7 +146,7 @@ where
 
 impl<A> TestExecutor<A>
 where
-    A: Animal,
+    A: Creature,
     A::Instinct: BuildTestFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     pub fn new(state: A::State) -> Self {

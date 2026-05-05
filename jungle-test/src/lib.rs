@@ -3,8 +3,8 @@ mod tests {
     use inception::Inception;
     use jungle_core::Jungle;
     use jungle_types::{
-        Action, ActionCompletion, ActionSet, ActionStep, Animal, AnimalActionSet, AnimalSet,
-        AnimalStates, AspectStep, Ecosystem, Ident, JungleActions, JungleAnimals,
+        Action, ActionCompletion, ActionSet, ActionStep, Creature, AnimalActionSet, AnimalSet,
+        AnimalStates, AspectStep, Ecosystem, Ident, JungleActions, JungleCreatures,
         JungleFlow, Whole,
     };
     use typosaurus::assert_type_eq;
@@ -104,7 +104,7 @@ mod tests {
         ($name:ident, $id:ty, state = $state:ty, instinct = $instinct:ty) => {
             struct $name;
 
-            impl jungle_types::Animal for $name {
+            impl jungle_types::Creature for $name {
                 type Id = jungle_types::Id<$id>;
                 type State = $state;
                 type Instinct = $instinct;
@@ -123,14 +123,14 @@ mod tests {
             struct $name;
             impl jungle_types::AnimalMember for $name {}
 
-            impl jungle_types::Animal for $name {
+            impl jungle_types::Creature for $name {
                 type Id = jungle_types::Id<$id>;
                 type State = $state;
                 type Instinct = $instinct;
             }
 
-            #[inception::primitive(property = jungle_types::JungleAnimals)]
-            impl jungle_types::Animals for $name {
+            #[inception::primitive(property = jungle_types::JungleCreatures)]
+            impl jungle_types::Creatures for $name {
                 type List = typosaurus::collections::sp::Node<$id, $name>;
             }
 
@@ -144,7 +144,7 @@ mod tests {
     struct UnitOkStep;
     impl<T, A> AspectStep<T, A> for UnitOkStep
     where
-        T: Animal,
+        T: Creature,
         A: Action<In = ()>,
         A: Action<Out = (), Err = ()>,
     {
@@ -204,19 +204,19 @@ mod tests {
     prey_instinct!(ElephantInstinct, Elephant);
 
     #[derive(Inception)]
-    #[inception(properties = [Ident, JungleAnimals])]
+    #[inception(properties = [Ident, JungleCreatures])]
     struct Apes(Gorilla, Chimpanzee);
 
     #[derive(Inception)]
-    #[inception(properties = [Ident, JungleAnimals])]
+    #[inception(properties = [Ident, JungleCreatures])]
     struct Cats(Tiger, Jaguar);
 
     #[derive(Inception)]
-    #[inception(properties = [Ident, JungleAnimals])]
+    #[inception(properties = [Ident, JungleCreatures])]
     struct Predators(Cats, Anaconda);
 
     #[derive(Inception)]
-    #[inception(properties = [Ident, JungleAnimals])]
+    #[inception(properties = [Ident, JungleCreatures])]
     struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
 
     #[derive(Inception)]
@@ -225,7 +225,7 @@ mod tests {
 
     struct Zoo;
     impl Ecosystem for Zoo {
-        type Animals = AllAnimals;
+        type Creatures = AllAnimals;
     }
 
     #[test]
@@ -284,7 +284,7 @@ mod tests {
         animal!(StatefulTiger, U1, CatState, StatefulTigerInstinct);
 
         #[derive(Inception)]
-        #[inception(properties = [Ident, JungleAnimals])]
+        #[inception(properties = [Ident, JungleCreatures])]
         struct StatefulAnimals(StatefulGorilla, StatefulTiger);
 
         type StatefulAnimalStates = list![ApeState, CatState];

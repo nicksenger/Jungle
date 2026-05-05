@@ -7,7 +7,7 @@ use typosaurus::collections::{
 use typosaurus::num::Unsigned;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Actions, Animal, Animals, FlowActions, Instinct};
+use super::{Actions, Creature, Creatures, FlowActions, Instinct};
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
@@ -103,14 +103,14 @@ where
 }
 
 pub type ActionSet<T> = <SPFlatten<<T as Actions>::List> as StripActionHeaders>::Out;
-pub type AnimalSet<T> = <SPFlatten<<T as Animals>::List> as StripAnimalHeaders>::Out;
+pub type AnimalSet<T> = <SPFlatten<<T as Creatures>::List> as StripAnimalHeaders>::Out;
 
 pub struct WithAnimalState;
 impl<T> Mapper<T> for WithAnimalState
 where
-    T: Animal,
+    T: Creature,
 {
-    type Out = <T as Animal>::State;
+    type Out = <T as Creature>::State;
 }
 
 pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
@@ -118,12 +118,12 @@ pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
     WithAnimalState,
 >>::Out;
 
-pub trait AnimalStatesCompatible<From>: Animals {}
+pub trait AnimalStatesCompatible<From>: Creatures {}
 impl<T, From> AnimalStatesCompatible<From> for T
 where
-    T: Animals,
-    <T as Animals>::List: FlattenNodes,
-    SPFlatten<<T as Animals>::List>: StripAnimalHeaders,
+    T: Creatures,
+    <T as Creatures>::List: FlattenNodes,
+    SPFlatten<<T as Creatures>::List>: StripAnimalHeaders,
     AnimalSet<T>: Container,
     (AnimalSet<T>, WithAnimalState): Map<<AnimalSet<T> as Container>::Content, WithAnimalState>,
     AnimalStates<T>: AllFrom<From>,
@@ -138,15 +138,15 @@ impl CollectAnimalInstinctActions for list::Empty {
 }
 impl<Head, Tail, TailOut> CollectAnimalInstinctActions for list::List<(Head, Tail)>
 where
-    Head: Animal,
-    <Head as Animal>::Instinct: Instinct,
-    <Head as Animal>::Instinct: FlowActions,
-    <<Head as Animal>::Instinct as FlowActions>::List: FlattenNodes,
-    SPFlatten<<<Head as Animal>::Instinct as FlowActions>::List>: KeepActionNodes,
+    Head: Creature,
+    <Head as Creature>::Instinct: Instinct,
+    <Head as Creature>::Instinct: FlowActions,
+    <<Head as Creature>::Instinct as FlowActions>::List: FlattenNodes,
+    SPFlatten<<<Head as Creature>::Instinct as FlowActions>::List>: KeepActionNodes,
     Tail: CollectAnimalInstinctActions<Out = TailOut>,
 {
     type Out = list::List<(
-        <SPFlatten<<<Head as Animal>::Instinct as FlowActions>::List> as KeepActionNodes>::Out,
+        <SPFlatten<<<Head as Creature>::Instinct as FlowActions>::List> as KeepActionNodes>::Out,
         TailOut,
     )>;
 }

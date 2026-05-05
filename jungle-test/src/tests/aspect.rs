@@ -65,7 +65,7 @@ struct CoreEnergyStep<Focus>(PhantomData<fn() -> Focus>);
 
 impl<T, Focus> AspectStep<T, Sleep> for CoreEnergyStep<Focus>
 where
-    T: jungle_types::Animal,
+    T: jungle_types::Creature,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Aspect = Focus;

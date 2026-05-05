@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::future::Future;
 use std::marker::PhantomData;
 
-use crate::{ActionMember, Animal, Waiting, FlowActions, Running};
+use crate::{ActionMember, Creature, Waiting, FlowActions, Running};
 use inception::primitive;
 use typosaurus::collections::sp::Node;
 
@@ -88,8 +88,8 @@ impl<State> Aspect<State> for Whole {
 }
 
 /// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
-/// of animal state.
-pub trait AspectStep<T: Animal, A: Action> {
+/// of creature state.
+pub trait AspectStep<T: Creature, A: Action> {
     type Aspect: Aspect<T::State>;
     type In;
     type Out;
@@ -109,7 +109,7 @@ pub trait AspectStep<T: Animal, A: Action> {
 /// [`Running`]/[`Waiting`] temporal protocol.
 pub struct ActionStep<T, A, Step>
 where
-    T: Animal,
+    T: Creature,
     A: Action,
     Step: AspectStep<T, A>,
 {
@@ -118,7 +118,7 @@ where
 
 impl<T, A, Step> ActionStep<T, A, Step>
 where
-    T: Animal,
+    T: Creature,
     A: Action,
     Step: AspectStep<T, A>,
 {
@@ -132,7 +132,7 @@ where
 #[primitive(property = crate::JungleRunning)]
 impl<T, A, Step> Running for ActionStep<T, A, Step>
 where
-    T: Animal,
+    T: Creature,
     A: Action,
     Step: AspectStep<T, A>,
 {
@@ -149,7 +149,7 @@ where
 #[primitive(property = crate::JungleWaiting)]
 impl<T, A, Step> Waiting for ActionStep<T, A, Step>
 where
-    T: Animal,
+    T: Creature,
     A: Action,
     Step: AspectStep<T, A>,
 {
@@ -166,7 +166,7 @@ where
 #[primitive(property = crate::JungleFlow)]
 impl<T, A, Step> FlowActions for ActionStep<T, A, Step>
 where
-    T: Animal,
+    T: Creature,
     A: Action + ActionMember,
     Step: AspectStep<T, A>,
 {
