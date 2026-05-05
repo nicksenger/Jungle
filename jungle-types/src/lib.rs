@@ -2,18 +2,20 @@ mod behavior;
 mod error;
 mod instinct;
 mod meta;
+mod test_executor;
 pub use behavior::{
     Action, ActionCompletion, ActionInputMapper, ActionMapper, ActionMapperStep,
     ActionOutputMapper, ActionRequest, ActionStep,
 };
 pub use error::Error;
-pub use instinct::Instinct;
 use inception::*;
+pub use instinct::Instinct;
 pub use meta::Id;
 pub use meta::{
     ActionMember, ActionSet, AllFrom, AnimalActionSet, AnimalMember, AnimalSet, AnimalStates,
     AnimalStatesCompatible, StripActionHeaders, StripAnimalHeaders,
 };
+pub use test_executor::{ErasedStep, TestExecutor, TestExecutorError, TestFlow, TypedErasedStep};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
@@ -130,11 +132,7 @@ pub trait Yielding {
         input
     }
 
-    fn merge<H, R>(
-        _l: H,
-        r: R,
-        input: Self::In,
-    ) -> Yielded<<H as Yielding>::Out, AwaitingTail<R>>
+    fn merge<H, R>(_l: H, r: R, input: Self::In) -> Yielded<<H as Yielding>::Out, AwaitingTail<R>>
     where
         H: Yielding<In = Self::In>,
     {
@@ -178,11 +176,7 @@ pub trait Awaiting {
         input
     }
 
-    fn merge<H, R>(
-        _l: H,
-        r: R,
-        input: Self::In,
-    ) -> Awaited<<H as Awaiting>::Out, YieldingTail<R>>
+    fn merge<H, R>(_l: H, r: R, input: Self::In) -> Awaited<<H as Awaiting>::Out, YieldingTail<R>>
     where
         H: Awaiting<In = Self::In>,
     {

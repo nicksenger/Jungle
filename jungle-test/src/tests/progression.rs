@@ -1,9 +1,10 @@
 use inception::Inception;
 use jungle_types::{
-    Action, ActionCompletion, ActionMapper, ActionMapperStep, ActionRequest,
-    AnimalActionSet, Awaiting, Id, Ident, JungleAnimals, JungleFlowActions, Yielding,
+    Action, ActionCompletion, ActionMapper, ActionMapperStep, ActionRequest, AnimalActionSet,
+    Awaiting, ErasedStep, Id, Ident, JungleAnimals, JungleFlowActions, TestExecutor, TestFlow,
+    TypedErasedStep, Yielding,
 };
-use std::marker::PhantomData;
+use serde_json::json;
 use typosaurus::assert_type_eq;
 use typosaurus::list;
 use typosaurus::num::consts::{U0, U1};
@@ -92,7 +93,11 @@ type FinishStep = ActionMapperStep<ProgressAnimal, FinishAction, FinishMapper>;
 
 struct Executor;
 impl Executor {
-    fn progress<Step>(state: i32, input: i32, completion: ActionCompletion<Step::Action>) -> (i32, i32)
+    fn progress<Step>(
+        state: i32,
+        input: i32,
+        completion: ActionCompletion<Step::Action>,
+    ) -> (i32, i32)
     where
         Step: StepExecutor,
     {
@@ -102,60 +107,8 @@ impl Executor {
     }
 }
 
-#[derive(Clone, Copy)]
-enum ProgressStepKey {
-    Seed,
-    Finish,
-}
-
-trait ErasedStepExecutor {
-    fn progress(&self, state: i32, input: i32, completion: Result<i32, ()>) -> (i32, i32);
-}
-
-struct TypedErasedStep<Step>(PhantomData<fn() -> Step>);
-impl<Step> TypedErasedStep<Step> {
-    fn new() -> Self {
-        Self(PhantomData)
-    }
-}
-
-impl<Step> ErasedStepExecutor for TypedErasedStep<Step>
-where
-    Step: StepExecutor,
-{
-    fn progress(&self, state: i32, input: i32, completion: Result<i32, ()>) -> (i32, i32) {
-        Executor::progress::<Step>(state, input, completion)
-    }
-}
-
-struct ErasedExecutor {
-    seed: Box<dyn ErasedStepExecutor>,
-    finish: Box<dyn ErasedStepExecutor>,
-}
-
-impl ErasedExecutor {
-    fn new() -> Self {
-        Self {
-            seed: Box::new(TypedErasedStep::<SeedStep>::new()),
-            finish: Box::new(TypedErasedStep::<FinishStep>::new()),
-        }
-    }
-
-    fn progress(
-        &self,
-        step: ProgressStepKey,
-        state: i32,
-        input: i32,
-        completion: Result<i32, ()>,
-    ) -> (i32, i32) {
-        match step {
-            ProgressStepKey::Seed => self.seed.progress(state, input, completion),
-            ProgressStepKey::Finish => self.finish.progress(state, input, completion),
-        }
-    }
-}
-
-trait StepExecutor: Yielding<In = (i32, i32), Out = (i32, ActionRequest<Self::Action>)>
+trait StepExecutor:
+    Yielding<In = (i32, i32), Out = (i32, ActionRequest<Self::Action>)>
     + Awaiting<In = (i32, ActionCompletion<Self::Action>), Out = (i32, i32)>
 {
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
@@ -167,6 +120,17 @@ where
     Map: ActionMapper<ProgressAnimal, A, In = i32, Out = i32>,
 {
     type Action = A;
+}
+
+impl TestFlow for ProgressInstinct {
+    type State = i32;
+
+    fn build_steps() -> Vec<Box<dyn ErasedStep<Self::State>>> {
+        vec![
+            Box::new(TypedErasedStep::<SeedStep>::new()),
+            Box::new(TypedErasedStep::<FinishStep>::new()),
+        ]
+    }
 }
 
 #[test]
@@ -189,16 +153,26 @@ fn executor_progresses_simple_instinct_steps() {
 }
 
 #[test]
-fn erased_executor_progresses_without_step_type_parameters() {
-    let executor = ErasedExecutor::new();
+fn test_executor_next_advances_without_step_type_parameters() {
+    let mut executor = TestExecutor::<ProgressAnimal>::new(0);
 
-    let (state_after_seed, emitted_seed) =
-        executor.progress(ProgressStepKey::Seed, 0, 5, Ok(8));
-    assert_eq!(state_after_seed, 8);
-    assert_eq!(emitted_seed, 8);
+    let emitted_seed = executor.next(json!(5), Ok(json!(8))).expect("seed step");
+    assert_eq!(emitted_seed, json!(8));
 
-    let (state_after_finish, emitted_finish) =
-        executor.progress(ProgressStepKey::Finish, state_after_seed, 4, Ok(36));
-    assert_eq!(state_after_finish, 36);
-    assert_eq!(emitted_finish, 36);
+    let emitted_finish = executor.next(json!(4), Ok(json!(36))).expect("finish step");
+    assert_eq!(emitted_finish, json!(36));
+    assert!(executor.is_complete());
+    assert_eq!(executor.into_state(), 36);
+}
+
+#[test]
+fn test_executor_advance_to_end_runs_remaining_flow() {
+    let mut executor = TestExecutor::<ProgressAnimal>::new(0);
+    let emitted = executor
+        .advance_to_end(vec![(json!(5), Ok(json!(8))), (json!(4), Ok(json!(36)))])
+        .expect("flow should advance");
+
+    assert_eq!(emitted, vec![json!(8), json!(36)]);
+    assert!(executor.is_complete());
+    assert_eq!(executor.into_state(), 36);
 }
