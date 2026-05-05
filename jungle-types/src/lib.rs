@@ -67,25 +67,95 @@ pub trait Actions {
     type List;
 }
 
-/// A single typed phase in a temporal workflow.
-///
-/// A phase first runs until it yields `Yield`, then accepts `Await` to
-/// transition into `Next`.
-pub trait Phase {
-    /// The value emitted when this phase reaches its next suspension point.
-    type Yield;
+/// Output produced by a yielding phase.
+pub struct Yielded<Y, A> {
+    pub output: Y,
+    pub awaiting: A,
+}
 
-    /// The input required to resume this workflow after yielding.
-    type Await;
+/// Output produced by an awaiting phase.
+pub struct Awaited<Y> {
+    pub yielding: Y,
+}
 
-    /// The next phase reached after resuming with `Await`.
-    type Next;
+/// A phase that runs until it emits an output, then transitions to an
+/// awaiting phase that expects the next external input.
+#[inception(property = JungleYielding, signature(input = In, output = Out))]
+pub trait Yielding {
+    /// Input used to start/resume this yielding phase.
+    type In;
 
-    /// Run this phase until it yields a value.
-    fn run(&mut self) -> Self::Yield;
+    /// A typed transition frame, typically `Yielded<Output, NextAwaiting>`.
+    type Out;
 
-    /// Resume after a yielded value by providing the expected input.
-    fn resume(self, input: Self::Await) -> Self::Next;
+    /// Run until this phase yields output and transitions to an awaiting phase.
+    fn run(self, input: Self::In) -> Self::Out;
+
+    fn nothing(input: Self::In) -> Self::In {
+        input
+    }
+
+    fn merge<H, R>(l: H, r: R, input: Self::In) -> <R as Yielding>::Out
+    where
+        H: Yielding<In = Self::In>,
+        R: Yielding<In = <H as Yielding>::Out>,
+    {
+        let next = <H as Yielding>::run(l.access(), input);
+        <R as Yielding>::run(r, next)
+    }
+
+    fn merge_variant_field<H, R>(_l: H, _r: R, input: Self::In) -> Self::In {
+        let _ = (_l, _r);
+        let _ = core::marker::PhantomData::<(H, R)>;
+        input
+    }
+
+    fn join<F>(fields: F, input: Self::In) -> <F as Yielding>::Out
+    where
+        F: Yielding<In = Self::In>,
+    {
+        <F as Yielding>::run(fields, input)
+    }
+}
+
+/// A phase that awaits an external input, then transitions back to a yielding
+/// phase.
+#[inception(property = JungleAwaiting, signature(input = In, output = Out))]
+pub trait Awaiting {
+    /// External input expected at this await point.
+    type In;
+
+    /// A typed transition frame, typically `Awaited<NextYielding>`.
+    type Out;
+
+    /// Accept awaited input and transition to the next yielding phase.
+    fn accept(self, input: Self::In) -> Self::Out;
+
+    fn nothing(input: Self::In) -> Self::In {
+        input
+    }
+
+    fn merge<H, R>(l: H, r: R, input: Self::In) -> <R as Awaiting>::Out
+    where
+        H: Awaiting<In = Self::In>,
+        R: Awaiting<In = <H as Awaiting>::Out>,
+    {
+        let next = <H as Awaiting>::accept(l.access(), input);
+        <R as Awaiting>::accept(r, next)
+    }
+
+    fn merge_variant_field<H, R>(_l: H, _r: R, input: Self::In) -> Self::In {
+        let _ = (_l, _r);
+        let _ = core::marker::PhantomData::<(H, R)>;
+        input
+    }
+
+    fn join<F>(fields: F, input: Self::In) -> <F as Awaiting>::Out
+    where
+        F: Awaiting<In = Self::In>,
+    {
+        <F as Awaiting>::accept(fields, input)
+    }
 }
 
 /// An organism that hosts symbionts.
