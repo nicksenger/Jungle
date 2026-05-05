@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::future::Future;
 use std::marker::PhantomData;
 
-use crate::{Awaiting, Yielding};
+use crate::{Animal, Awaiting, Yielding};
 use inception::primitive;
 
 /// A behavior that transforms a single input into a single output.
@@ -62,38 +62,41 @@ impl<A: Action> ActionRequest<A> {
 /// A completed action result consumed by an awaiting workflow phase.
 pub type ActionCompletion<A> = Result<<A as Action>::Out, <A as Action>::Err>;
 
-/// Maps workflow input plus current dependency into an action input.
-pub trait ActionInputMapper<A: Action> {
+/// Maps workflow input plus current animal state into an action input.
+pub trait ActionInputMapper<T: Animal, A: Action> {
     type In;
 
-    fn map_input(&self, dependency: &A::Dependency, input: Self::In) -> A::In;
+    fn map_input(&self, state: &T::State, input: Self::In) -> A::In;
 }
 
-/// Maps an action completion back into dependency plus emitted workflow output.
-pub trait ActionOutputMapper<A: Action> {
+/// Maps an action completion back into updated animal state plus emitted
+/// workflow output.
+pub trait ActionOutputMapper<T: Animal, A: Action> {
     type Out;
 
-    fn map_output(&self, dependency: &mut A::Dependency, output: ActionCompletion<A>) -> Self::Out;
+    fn map_output(&self, state: &mut T::State, output: ActionCompletion<A>) -> Self::Out;
 }
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Yielding`]/[`Awaiting`] temporal protocol.
-pub struct ActionStep<A, Prepare, Apply>
+pub struct ActionStep<T, A, Prepare, Apply>
 where
+    T: Animal,
     A: Action,
-    Prepare: ActionInputMapper<A>,
-    Apply: ActionOutputMapper<A>,
+    Prepare: ActionInputMapper<T, A>,
+    Apply: ActionOutputMapper<T, A>,
 {
     prepare: Prepare,
     apply: Apply,
-    marker: PhantomData<fn() -> A>,
+    marker: PhantomData<fn() -> (T, A)>,
 }
 
-impl<A, Prepare, Apply> ActionStep<A, Prepare, Apply>
+impl<T, A, Prepare, Apply> ActionStep<T, A, Prepare, Apply>
 where
+    T: Animal,
     A: Action,
-    Prepare: ActionInputMapper<A>,
-    Apply: ActionOutputMapper<A>,
+    Prepare: ActionInputMapper<T, A>,
+    Apply: ActionOutputMapper<T, A>,
 {
     pub fn new(prepare: Prepare, apply: Apply) -> Self {
         Self {
@@ -105,33 +108,35 @@ where
 }
 
 #[primitive(property = crate::JungleYielding)]
-impl<A, Prepare, Apply> Yielding for ActionStep<A, Prepare, Apply>
+impl<T, A, Prepare, Apply> Yielding for ActionStep<T, A, Prepare, Apply>
 where
+    T: Animal,
     A: Action,
-    Prepare: ActionInputMapper<A>,
-    Apply: ActionOutputMapper<A>,
+    Prepare: ActionInputMapper<T, A>,
+    Apply: ActionOutputMapper<T, A>,
 {
-    type In = (A::Dependency, <Prepare as ActionInputMapper<A>>::In);
-    type Out = (A::Dependency, ActionRequest<A>);
+    type In = (T::State, <Prepare as ActionInputMapper<T, A>>::In);
+    type Out = (T::State, ActionRequest<A>);
 
-    fn run(self, (dependency, input): Self::In) -> Self::Out {
-        let action_input = self.prepare.map_input(&dependency, input);
-        (dependency, ActionRequest::<A>::new(action_input))
+    fn run(self, (state, input): Self::In) -> Self::Out {
+        let action_input = self.prepare.map_input(&state, input);
+        (state, ActionRequest::<A>::new(action_input))
     }
 }
 
 #[primitive(property = crate::JungleAwaiting)]
-impl<A, Prepare, Apply> Awaiting for ActionStep<A, Prepare, Apply>
+impl<T, A, Prepare, Apply> Awaiting for ActionStep<T, A, Prepare, Apply>
 where
+    T: Animal,
     A: Action,
-    Prepare: ActionInputMapper<A>,
-    Apply: ActionOutputMapper<A>,
+    Prepare: ActionInputMapper<T, A>,
+    Apply: ActionOutputMapper<T, A>,
 {
-    type In = (A::Dependency, ActionCompletion<A>);
-    type Out = (A::Dependency, <Apply as ActionOutputMapper<A>>::Out);
+    type In = (T::State, ActionCompletion<A>);
+    type Out = (T::State, <Apply as ActionOutputMapper<T, A>>::Out);
 
-    fn accept(self, (mut dependency, output): Self::In) -> Self::Out {
-        let emitted = self.apply.map_output(&mut dependency, output);
-        (dependency, emitted)
+    fn accept(self, (mut state, output): Self::In) -> Self::Out {
+        let emitted = self.apply.map_output(&mut state, output);
+        (state, emitted)
     }
 }

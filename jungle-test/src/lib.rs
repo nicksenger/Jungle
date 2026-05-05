@@ -221,8 +221,15 @@ mod tests {
         }
     }
 
+    struct GatherAnimal;
+    impl Animal for GatherAnimal {
+        type Id = Id<U0>;
+        type State = ();
+        type Instinct = ApeInstinct;
+    }
+
     struct PrepareGather;
-    impl ActionInputMapper<GatherAction> for PrepareGather {
+    impl ActionInputMapper<GatherAnimal, GatherAction> for PrepareGather {
         type In = i32;
 
         fn map_input(&self, _state: &(), input: Self::In) -> i32 {
@@ -231,7 +238,7 @@ mod tests {
     }
 
     struct ApplyGather;
-    impl ActionOutputMapper<GatherAction> for ApplyGather {
+    impl ActionOutputMapper<GatherAnimal, GatherAction> for ApplyGather {
         type Out = i32;
 
         fn map_output(
@@ -245,14 +252,15 @@ mod tests {
 
     #[test]
     fn action_step_adapts_action_to_temporal_protocol() {
-        let step = ActionStep::<GatherAction, PrepareGather, ApplyGather>::new(
+        let step = ActionStep::<GatherAnimal, GatherAction, PrepareGather, ApplyGather>::new(
             PrepareGather,
             ApplyGather,
         );
         let (dependency, request) = step.run(((), 3));
         assert_eq!(request.into_input(), 7);
 
-        let apply_step = ActionStep::<GatherAction, PrepareGather, ApplyGather>::new(
+        let apply_step =
+            ActionStep::<GatherAnimal, GatherAction, PrepareGather, ApplyGather>::new(
             PrepareGather,
             ApplyGather,
         );
