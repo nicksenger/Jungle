@@ -83,13 +83,15 @@ where
     }
 }
 
-#[derive(Inception)]
-#[inception(properties = [JungleFlow])]
-struct GorillaInstinct(ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>>);
+type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlow])]
-struct TigerInstinct(ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>>);
+struct GorillaInstinct(CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>);
+
+#[derive(Inception)]
+#[inception(properties = [JungleFlow])]
+struct TigerInstinct(CoreEnergySleepActionStep<Tiger, TigerCoreAspect>);
 
 animal!(
     Gorilla,
@@ -104,8 +106,8 @@ animal!(
     instinct = TigerInstinct
 );
 
-type GorillaStep = ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>>;
-type TigerStep = ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>>;
+type GorillaStep = CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>;
+type TigerStep = CoreEnergySleepActionStep<Tiger, TigerCoreAspect>;
 type DynFlow<T> = Vec<Box<dyn ErasedStep<T>>>;
 
 impl TestFlow for GorillaInstinct {
