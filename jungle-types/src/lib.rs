@@ -67,43 +67,25 @@ pub trait Actions {
     type List;
 }
 
-/// A trait that transforms one impulse input into one impulse output.
-#[inception(property = JungleImpulse, signature(input = In, output = Out))]
-pub trait Impulse {
-    type In;
-    type Out;
+/// A single typed phase in a temporal workflow.
+///
+/// A phase first runs until it yields `Yield`, then accepts `Await` to
+/// transition into `Next`.
+pub trait Phase {
+    /// The value emitted when this phase reaches its next suspension point.
+    type Yield;
 
-    fn impulse(&mut self, input: Self::In) -> Self::Out;
+    /// The input required to resume this workflow after yielding.
+    type Await;
 
-    fn nothing(input: Self::In) -> Self::In {
-        input
-    }
+    /// The next phase reached after resuming with `Await`.
+    type Next;
 
-    fn merge<H, R>(
-        l: H,
-        mut r: R,
-        input: Self::In,
-    ) -> <R as Impulse>::Out
-    where
-        H: Impulse<In = Self::In>,
-        R: Impulse<In = <H as Impulse>::Out>,
-    {
-        let next = l.access().impulse(input);
-        r.impulse(next)
-    }
+    /// Run this phase until it yields a value.
+    fn run(&mut self) -> Self::Yield;
 
-    fn merge_variant_field<H, R>(_l: H, _r: R, input: Self::In) -> Self::In {
-        let _ = (_l, _r);
-        let _ = core::marker::PhantomData::<(H, R)>;
-        input
-    }
-
-    fn join<F>(mut fields: F, input: Self::In) -> <F as Impulse>::Out
-    where
-        F: Impulse<In = Self::In>,
-    {
-        fields.impulse(input)
-    }
+    /// Resume after a yielded value by providing the expected input.
+    fn resume(self, input: Self::Await) -> Self::Next;
 }
 
 /// An organism that hosts symbionts.
