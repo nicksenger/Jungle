@@ -67,6 +67,18 @@ pub trait Actions {
     type List;
 }
 
+/// Any collection of impulses with a flat type-level list of members.
+#[inception(property = JungleImpulse, types)]
+pub trait Impulse {
+    #[induce(
+        base = list::Empty,
+        merge = TList<(<Head as Impulse>::List, <Tail as Impulse>::List)>,
+        merge_variant = TList<(<Head as Impulse>::List, <Tail as Impulse>::List)>,
+        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Impulse>::List)> where { Self: Identified }
+    )]
+    type List;
+}
+
 /// An organism that hosts symbionts.
 pub trait Host {
     /// Organisms that live in close association with this Host.
