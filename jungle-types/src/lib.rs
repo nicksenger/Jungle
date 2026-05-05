@@ -67,16 +67,44 @@ pub trait Actions {
     type List;
 }
 
-/// Any collection of impulses with a flat type-level list of members.
-#[inception(property = JungleImpulse, types)]
-pub trait Impulse {
-    #[induce(
-        base = list::Empty,
-        merge = TList<(<Head as Impulse>::List, <Tail as Impulse>::List)>,
-        merge_variant = TList<(<Head as Impulse>::List, <Tail as Impulse>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Impulse>::List)> where { Self: Identified }
-    )]
-    type List;
+/// A trait that transforms one impulse input into one impulse output.
+#[inception(property = JungleImpulse, signature(input = In, output = Out))]
+pub trait Impulse<State = ()> {
+    type In;
+    type Out;
+
+    fn impulse(&mut self, state: &mut State, input: Self::In) -> Self::Out;
+
+    fn nothing(input: Self::In) -> Self::In {
+        input
+    }
+
+    fn merge<H, R>(
+        l: H,
+        mut r: R,
+        state: &mut State,
+        input: Self::In,
+    ) -> <R as Impulse<State>>::Out
+    where
+        H: Impulse<State, In = Self::In>,
+        R: Impulse<State, In = <H as Impulse<State>>::Out>,
+    {
+        let next = l.access().impulse(state, input);
+        r.impulse(state, next)
+    }
+
+    fn merge_variant_field<H, R>(_l: H, _r: R, state: &mut State, input: Self::In) -> Self::In {
+        let _ = (_l, _r, state);
+        let _ = core::marker::PhantomData::<(H, R)>;
+        input
+    }
+
+    fn join<F>(mut fields: F, state: &mut State, input: Self::In) -> <F as Impulse<State>>::Out
+    where
+        F: Impulse<State, In = Self::In>,
+    {
+        fields.impulse(state, input)
+    }
 }
 
 /// An organism that hosts symbionts.
