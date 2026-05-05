@@ -9,4 +9,3 @@ jungle-sdk = { path = "../jungle-sdk" }
 jungle-types = { path = "../jungle-types" }
 inception = { workspace = true }
 typosaurus = { workspace = true }
-futures = "0.3"

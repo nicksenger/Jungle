@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use futures::executor::block_on;
     use inception::{primitive, Inception};
     use jungle_core::Jungle;
     use jungle_types::{
@@ -256,7 +255,7 @@ mod tests {
             PrepareGather,
             ApplyGather,
         );
-        let (state, request) = block_on(step.run((EnergyState { energy: 4 }, 3)));
+        let (state, request) = step.run((EnergyState { energy: 4 }, 3));
         assert_eq!(request.into_input(), 7);
 
         let apply_step = ActionStep::<GatherAction, PrepareGather, ApplyGather>::new(

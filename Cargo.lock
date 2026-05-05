@@ -227,7 +227,6 @@ version = "0.1.0"
 name = "jungle-test"
 version = "0.1.0"
 dependencies = [
- "futures",
  "inception",
  "jungle-core",
  "jungle-sdk",
