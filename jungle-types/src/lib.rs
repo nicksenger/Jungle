@@ -3,7 +3,8 @@ mod error;
 mod instinct;
 mod meta;
 pub use behavior::{
-    Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionRequest, ActionStep,
+    Action, ActionCompletion, ActionInputMapper, ActionMapper, ActionMapperStep,
+    ActionOutputMapper, ActionRequest, ActionStep,
 };
 pub use error::Error;
 pub use instinct::Instinct;

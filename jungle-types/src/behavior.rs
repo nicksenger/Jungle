@@ -78,9 +78,53 @@ pub trait ActionOutputMapper<T: Animal, A: Action> {
     fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out;
 }
 
+/// Unified mapper that adapts workflow input/state to action input and maps
+/// action completion back into workflow output.
+pub trait ActionMapper<T: Animal, A: Action> {
+    type In;
+    type Out;
+
+    fn map_input(state: &T::State, input: Self::In) -> A::In;
+
+    fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out;
+}
+
+pub struct MapperInput<M>(PhantomData<fn() -> M>);
+
+impl<T, A, M> ActionInputMapper<T, A> for MapperInput<M>
+where
+    T: Animal,
+    A: Action,
+    M: ActionMapper<T, A>,
+{
+    type In = <M as ActionMapper<T, A>>::In;
+
+    fn map_input(state: &T::State, input: Self::In) -> A::In {
+        <M as ActionMapper<T, A>>::map_input(state, input)
+    }
+}
+
+pub struct MapperOutput<M>(PhantomData<fn() -> M>);
+
+impl<T, A, M> ActionOutputMapper<T, A> for MapperOutput<M>
+where
+    T: Animal,
+    A: Action,
+    M: ActionMapper<T, A>,
+{
+    type Out = <M as ActionMapper<T, A>>::Out;
+
+    fn map_output(state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
+        <M as ActionMapper<T, A>>::map_output(state, output)
+    }
+}
+
+pub type ActionMapperStep<T, A, Mapper> =
+    ActionStep<T, A, MapperInput<Mapper>, MapperOutput<Mapper>>;
+
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Yielding`]/[`Awaiting`] temporal protocol.
-pub struct ActionStep<T, A, Prepare, Apply>
+pub struct ActionStep<T, A, Prepare, Apply = Prepare>
 where
     T: Animal,
     A: Action,

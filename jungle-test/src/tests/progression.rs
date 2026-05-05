@@ -1,6 +1,6 @@
 use inception::Inception;
 use jungle_types::{
-    Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionRequest, ActionStep,
+    Action, ActionCompletion, ActionMapper, ActionMapperStep, ActionRequest,
     AnimalActionSet, Awaiting, Id, Ident, JungleAnimals, JungleFlowActions, Yielding,
 };
 use std::marker::PhantomData;
@@ -42,18 +42,14 @@ impl Action for FinishAction {
     }
 }
 
-struct PrepareSeed;
-impl ActionInputMapper<ProgressAnimal, SeedAction> for PrepareSeed {
+struct SeedMapper;
+impl ActionMapper<ProgressAnimal, SeedAction> for SeedMapper {
     type In = i32;
+    type Out = i32;
 
     fn map_input(_state: &i32, input: Self::In) -> i32 {
         input + 1
     }
-}
-
-struct ApplySeed;
-impl ActionOutputMapper<ProgressAnimal, SeedAction> for ApplySeed {
-    type Out = i32;
 
     fn map_output(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Out {
         let value = output.expect("seed action should succeed");
@@ -62,18 +58,14 @@ impl ActionOutputMapper<ProgressAnimal, SeedAction> for ApplySeed {
     }
 }
 
-struct PrepareFinish;
-impl ActionInputMapper<ProgressAnimal, FinishAction> for PrepareFinish {
+struct FinishMapper;
+impl ActionMapper<ProgressAnimal, FinishAction> for FinishMapper {
     type In = i32;
+    type Out = i32;
 
     fn map_input(state: &i32, input: Self::In) -> i32 {
         *state + input
     }
-}
-
-struct ApplyFinish;
-impl ActionOutputMapper<ProgressAnimal, FinishAction> for ApplyFinish {
-    type Out = i32;
 
     fn map_output(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Out {
         let value = output.expect("finish action should succeed");
@@ -85,8 +77,8 @@ impl ActionOutputMapper<ProgressAnimal, FinishAction> for ApplyFinish {
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
 struct ProgressInstinct(
-    ActionStep<ProgressAnimal, SeedAction, PrepareSeed, ApplySeed>,
-    ActionStep<ProgressAnimal, FinishAction, PrepareFinish, ApplyFinish>,
+    ActionMapperStep<ProgressAnimal, SeedAction, SeedMapper>,
+    ActionMapperStep<ProgressAnimal, FinishAction, FinishMapper>,
 );
 
 animal!(ProgressAnimal, U0, i32, ProgressInstinct);
@@ -95,8 +87,8 @@ animal!(ProgressAnimal, U0, i32, ProgressInstinct);
 #[inception(properties = [Ident, JungleAnimals])]
 struct ProgressAnimals(ProgressAnimal);
 
-type SeedStep = ActionStep<ProgressAnimal, SeedAction, PrepareSeed, ApplySeed>;
-type FinishStep = ActionStep<ProgressAnimal, FinishAction, PrepareFinish, ApplyFinish>;
+type SeedStep = ActionMapperStep<ProgressAnimal, SeedAction, SeedMapper>;
+type FinishStep = ActionMapperStep<ProgressAnimal, FinishAction, FinishMapper>;
 
 struct Executor;
 impl Executor {
@@ -169,11 +161,10 @@ trait StepExecutor: Yielding<In = (i32, i32), Out = (i32, ActionRequest<Self::Ac
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<A, Prep, Apply> StepExecutor for ActionStep<ProgressAnimal, A, Prep, Apply>
+impl<A, Map> StepExecutor for ActionMapperStep<ProgressAnimal, A, Map>
 where
     A: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
-    Prep: ActionInputMapper<ProgressAnimal, A, In = i32>,
-    Apply: ActionOutputMapper<ProgressAnimal, A, Out = i32>,
+    Map: ActionMapper<ProgressAnimal, A, In = i32, Out = i32>,
 {
     type Action = A;
 }
