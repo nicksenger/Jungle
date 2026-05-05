@@ -2,12 +2,6 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::future::Future;
 
-/// The innate behavior of an `Animal`.
-pub trait Instinct {
-    /// The `Action`s taken by `Animal`s with this `Instinct`.
-    type Actions;
-}
-
 /// A behavior that transforms a single input into a single output.
 pub trait Action {
     /// A type-level identifier for this Action.
@@ -31,4 +25,3 @@ pub trait Action {
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>>;
 }
-

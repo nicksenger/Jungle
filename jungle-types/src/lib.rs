@@ -1,8 +1,10 @@
 mod behavior;
 mod error;
+mod instinct;
 mod meta;
-pub use behavior::{Action, Instinct};
+pub use behavior::Action;
 pub use error::Error;
+pub use instinct::Instinct;
 use inception::*;
 pub use meta::Id;
 pub use meta::{
@@ -85,4 +87,3 @@ pub trait Evoke {
         input: impl futures::Stream<Item = Self::In>,
     ) -> impl futures::Stream<Item = Self::Out>;
 }
-
