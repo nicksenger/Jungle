@@ -85,27 +85,27 @@ where
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
-struct GorillaInstinct(ActionStep<GorillaAnimal, AdjustEnergy, CoreEnergyStep<GorillaCoreAspect>>);
+struct GorillaInstinct(ActionStep<Gorilla, AdjustEnergy, CoreEnergyStep<GorillaCoreAspect>>);
 
 #[derive(Inception)]
 #[inception(properties = [JungleFlowActions])]
-struct TigerInstinct(ActionStep<TigerAnimal, AdjustEnergy, CoreEnergyStep<TigerCoreAspect>>);
+struct TigerInstinct(ActionStep<Tiger, AdjustEnergy, CoreEnergyStep<TigerCoreAspect>>);
 
 animal!(
-    GorillaAnimal,
+    Gorilla,
     U1,
     state = GorillaState,
     instinct = GorillaInstinct
 );
 animal!(
-    TigerAnimal,
+    Tiger,
     U2,
     state = TigerState,
     instinct = TigerInstinct
 );
 
-type GorillaStep = ActionStep<GorillaAnimal, AdjustEnergy, CoreEnergyStep<GorillaCoreAspect>>;
-type TigerStep = ActionStep<TigerAnimal, AdjustEnergy, CoreEnergyStep<TigerCoreAspect>>;
+type GorillaStep = ActionStep<Gorilla, AdjustEnergy, CoreEnergyStep<GorillaCoreAspect>>;
+type TigerStep = ActionStep<Tiger, AdjustEnergy, CoreEnergyStep<TigerCoreAspect>>;
 
 impl TestFlow for GorillaInstinct {
     type State = GorillaState;
@@ -151,7 +151,7 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
 
 #[test]
 fn test_executor_runs_aspected_steps() {
-    let mut gorilla = TestExecutor::<GorillaAnimal>::new(GorillaState {
+    let mut gorilla = TestExecutor::<Gorilla>::new(GorillaState {
         core: CoreState { energy: 5 },
         bananas: 2,
     });
@@ -164,7 +164,7 @@ fn test_executor_runs_aspected_steps() {
     assert_eq!(gorilla_state.core.energy, 11);
     assert_eq!(gorilla_state.bananas, 2);
 
-    let mut tiger = TestExecutor::<TigerAnimal>::new(TigerState {
+    let mut tiger = TestExecutor::<Tiger>::new(TigerState {
         core: CoreState { energy: 8 },
         stripes: 7,
     });
