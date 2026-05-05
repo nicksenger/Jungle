@@ -69,6 +69,18 @@ pub trait Actions {
     type List;
 }
 
+/// A collection of [`Action`]s extractable from an executable workflow.
+#[inception(property = JungleWorkflowActions, types)]
+pub trait WorkflowActions {
+    #[induce(
+        base = list::Empty,
+        merge = TList<(<Head as WorkflowActions>::List, <Tail as WorkflowActions>::List)>,
+        merge_variant = TList<(<Head as WorkflowActions>::List, <Tail as WorkflowActions>::List)>,
+        join = TList<(Node<U0, ()>, <Fields as WorkflowActions>::List)>
+    )]
+    type List;
+}
+
 /// Output produced by a yielding phase.
 pub struct Yielded<Y, A> {
     pub output: Y,

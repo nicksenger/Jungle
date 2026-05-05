@@ -1,14 +1,13 @@
 #[cfg(test)]
 mod tests {
-    use inception::{primitive, Inception};
+    use inception::Inception;
     use jungle_core::Jungle;
     use jungle_types::{
-        Action, ActionMember, ActionSet, Actions, Animal, AnimalActionSet, AnimalMember,
-        AnimalSet, AnimalStates, Animals, Ecosystem, Id, Ident, Identified, Instinct,
-        JungleActions, JungleAnimals,
+        Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionSet, ActionStep,
+        Animal, AnimalActionSet, AnimalSet, AnimalStates, Ecosystem, Ident, JungleAnimals,
+        JungleActions, JungleWorkflowActions,
     };
     use typosaurus::assert_type_eq;
-    use typosaurus::collections::sp::Node;
     use typosaurus::list;
     use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 
@@ -22,9 +21,10 @@ mod tests {
             act = |$dependency:ident, $input:ident| $body:block
         ) => {
             struct $name;
+            impl jungle_types::ActionMember for $name {}
 
-            impl Action for $name {
-                type Id = Id<$id>;
+            impl jungle_types::Action for $name {
+                type Id = jungle_types::Id<$id>;
                 type Dependency = ();
                 type In = $in;
                 type Out = $out;
@@ -41,10 +41,10 @@ mod tests {
 
         ($name:ident, $id:ty) => {
             struct $name;
-            impl ActionMember for $name {}
+            impl jungle_types::ActionMember for $name {}
 
-            impl Action for $name {
-                type Id = Id<$id>;
+            impl jungle_types::Action for $name {
+                type Id = jungle_types::Id<$id>;
                 type Dependency = ();
                 type In = ();
                 type Out = ();
@@ -58,13 +58,13 @@ mod tests {
                 }
             }
 
-            #[primitive(property = JungleActions)]
-            impl Actions for $name {
-                type List = Node<$id, $name>;
+            #[inception::primitive(property = jungle_types::JungleActions)]
+            impl jungle_types::Actions for $name {
+                type List = typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[primitive(property = Ident)]
-            impl Identified for $name {
+            #[inception::primitive(property = jungle_types::Ident)]
+            impl jungle_types::Identified for $name {
                 type Id = $id;
             }
         };
@@ -104,8 +104,8 @@ mod tests {
         ($name:ident, $id:ty, state = $state:ty, instinct = $instinct:ty) => {
             struct $name;
 
-            impl Animal for $name {
-                type Id = Id<$id>;
+            impl jungle_types::Animal for $name {
+                type Id = jungle_types::Id<$id>;
                 type State = $state;
                 type Instinct = $instinct;
             }
@@ -121,53 +121,93 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
             struct $name;
-            impl AnimalMember for $name {}
+            impl jungle_types::AnimalMember for $name {}
 
-            impl Animal for $name {
-                type Id = Id<$id>;
+            impl jungle_types::Animal for $name {
+                type Id = jungle_types::Id<$id>;
                 type State = $state;
                 type Instinct = $instinct;
             }
 
-            #[primitive(property = JungleAnimals)]
-            impl Animals for $name {
-                type List = Node<$id, $name>;
+            #[inception::primitive(property = jungle_types::JungleAnimals)]
+            impl jungle_types::Animals for $name {
+                type List = typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[primitive(property = Ident)]
-            impl Identified for $name {
+            #[inception::primitive(property = jungle_types::Ident)]
+            impl jungle_types::Identified for $name {
                 type Id = $id;
             }
         };
     }
 
-    struct ApeInstinct;
-    impl Instinct for ApeInstinct {
-        type Actions = Prey;
+    struct UnitInput;
+    impl<T, A> ActionInputMapper<T, A> for UnitInput
+    where
+        T: Animal,
+        A: Action<In = ()>,
+    {
+        type In = ();
+
+        fn map_input(_state: &T::State, _input: Self::In) {}
     }
 
-    struct CatInstinct;
-    impl Instinct for CatInstinct {
-        type Actions = Predator;
+    struct ExpectOk;
+    impl<T, A> ActionOutputMapper<T, A> for ExpectOk
+    where
+        T: Animal,
+        A: Action<Out = (), Err = ()>,
+    {
+        type Out = ();
+
+        fn map_output(_state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
+            output.expect("workflow action should succeed");
+        }
     }
 
-    struct AnacondaInstinct;
-    impl Instinct for AnacondaInstinct {
-        type Actions = Predator;
+    macro_rules! prey_instinct {
+        ($name:ident, $animal:ty) => {
+            #[derive(Inception)]
+            #[inception(properties = [JungleWorkflowActions])]
+            struct $name(
+                ActionStep<$animal, Eat, UnitInput, ExpectOk>,
+                ActionStep<$animal, Sleep, UnitInput, ExpectOk>,
+                ActionStep<$animal, Forage, UnitInput, ExpectOk>,
+                ActionStep<$animal, Drink, UnitInput, ExpectOk>,
+                ActionStep<$animal, Flee, UnitInput, ExpectOk>,
+            );
+        };
     }
 
-    struct GrazerInstinct;
-    impl Instinct for GrazerInstinct {
-        type Actions = Prey;
+    macro_rules! predator_instinct {
+        ($name:ident, $animal:ty) => {
+            #[derive(Inception)]
+            #[inception(properties = [JungleWorkflowActions])]
+            struct $name(
+                ActionStep<$animal, Eat, UnitInput, ExpectOk>,
+                ActionStep<$animal, Sleep, UnitInput, ExpectOk>,
+                ActionStep<$animal, Forage, UnitInput, ExpectOk>,
+                ActionStep<$animal, Drink, UnitInput, ExpectOk>,
+                ActionStep<$animal, Hunt, UnitInput, ExpectOk>,
+            );
+        };
     }
 
-    animal!(Gorilla, U0, ApeInstinct);
-    animal!(Chimpanzee, U1, ApeInstinct);
-    animal!(Tiger, U2, CatInstinct);
-    animal!(Jaguar, U3, CatInstinct);
+    animal!(Gorilla, U0, GorillaInstinct);
+    animal!(Chimpanzee, U1, ChimpanzeeInstinct);
+    animal!(Tiger, U2, TigerInstinct);
+    animal!(Jaguar, U3, JaguarInstinct);
     animal!(Anaconda, U4, AnacondaInstinct);
-    animal!(Hippo, U5, GrazerInstinct);
-    animal!(Elephant, U6, GrazerInstinct);
+    animal!(Hippo, U5, HippoInstinct);
+    animal!(Elephant, U6, ElephantInstinct);
+
+    prey_instinct!(GorillaInstinct, Gorilla);
+    prey_instinct!(ChimpanzeeInstinct, Chimpanzee);
+    predator_instinct!(TigerInstinct, Tiger);
+    predator_instinct!(JaguarInstinct, Jaguar);
+    predator_instinct!(AnacondaInstinct, Anaconda);
+    prey_instinct!(HippoInstinct, Hippo);
+    prey_instinct!(ElephantInstinct, Elephant);
 
     #[derive(Inception)]
     #[inception(properties = [Ident, JungleAnimals])]
@@ -226,8 +266,28 @@ mod tests {
         struct ApeState;
         struct CatState;
 
-        animal!(StatefulGorilla, U0, ApeState, ApeInstinct);
-        animal!(StatefulTiger, U1, CatState, CatInstinct);
+        #[derive(Inception)]
+        #[inception(properties = [JungleWorkflowActions])]
+        struct StatefulGorillaInstinct(
+            ActionStep<StatefulGorilla, Eat, UnitInput, ExpectOk>,
+            ActionStep<StatefulGorilla, Sleep, UnitInput, ExpectOk>,
+            ActionStep<StatefulGorilla, Forage, UnitInput, ExpectOk>,
+            ActionStep<StatefulGorilla, Drink, UnitInput, ExpectOk>,
+            ActionStep<StatefulGorilla, Flee, UnitInput, ExpectOk>,
+        );
+
+        #[derive(Inception)]
+        #[inception(properties = [JungleWorkflowActions])]
+        struct StatefulTigerInstinct(
+            ActionStep<StatefulTiger, Eat, UnitInput, ExpectOk>,
+            ActionStep<StatefulTiger, Sleep, UnitInput, ExpectOk>,
+            ActionStep<StatefulTiger, Forage, UnitInput, ExpectOk>,
+            ActionStep<StatefulTiger, Drink, UnitInput, ExpectOk>,
+            ActionStep<StatefulTiger, Hunt, UnitInput, ExpectOk>,
+        );
+
+        animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);
+        animal!(StatefulTiger, U1, CatState, StatefulTigerInstinct);
 
         #[derive(Inception)]
         #[inception(properties = [Ident, JungleAnimals])]
@@ -244,4 +304,5 @@ mod tests {
     }
 
     mod action_step;
+    mod progression;
 }

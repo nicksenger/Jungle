@@ -1,10 +1,9 @@
+use inception::Inception;
 use jungle_types::{
-    Action, ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionStep, Animal, Awaiting,
-    Id, Yielding,
+    ActionCompletion, ActionInputMapper, ActionOutputMapper, ActionStep, Awaiting,
+    JungleWorkflowActions, Yielding,
 };
 use typosaurus::num::consts::U0;
-
-use super::ApeInstinct;
 
 action!(
     GatherAction,
@@ -17,7 +16,7 @@ action!(
     }
 );
 
-animal!(GatherAnimal, U0, instinct = ApeInstinct);
+animal!(GatherAnimal, U0, instinct = GatherInstinct);
 
 struct PrepareGather;
 impl ActionInputMapper<GatherAnimal, GatherAction> for PrepareGather {
@@ -36,6 +35,10 @@ impl ActionOutputMapper<GatherAnimal, GatherAction> for ApplyGather {
         output.expect("gather action should succeed")
     }
 }
+
+#[derive(Inception)]
+#[inception(properties = [JungleWorkflowActions])]
+struct GatherInstinct(ActionStep<GatherAnimal, GatherAction, PrepareGather, ApplyGather>);
 
 #[test]
 fn action_step_adapts_action_to_temporal_protocol() {

@@ -7,7 +7,7 @@ use typosaurus::collections::{
 use typosaurus::num::Unsigned;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Actions, Animal, Animals, Instinct};
+use super::{Actions, Animal, Animals, Instinct, WorkflowActions};
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
@@ -140,14 +140,13 @@ impl<Head, Tail, TailOut> CollectAnimalInstinctActions for list::List<(Head, Tai
 where
     Head: Animal,
     <Head as Animal>::Instinct: Instinct,
-    <<Head as Animal>::Instinct as Instinct>::Actions: Actions,
-    <<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List: FlattenNodes,
-    SPFlatten<<<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List>:
-        KeepActionNodes,
+    <Head as Animal>::Instinct: WorkflowActions,
+    <<Head as Animal>::Instinct as WorkflowActions>::List: FlattenNodes,
+    SPFlatten<<<Head as Animal>::Instinct as WorkflowActions>::List>: KeepActionNodes,
     Tail: CollectAnimalInstinctActions<Out = TailOut>,
 {
     type Out = list::List<(
-        <SPFlatten<<<<Head as Animal>::Instinct as Instinct>::Actions as Actions>::List> as KeepActionNodes>::Out,
+        <SPFlatten<<<Head as Animal>::Instinct as WorkflowActions>::List> as KeepActionNodes>::Out,
         TailOut,
     )>;
 }
@@ -155,4 +154,3 @@ where
 pub type AnimalActionSet<T> = <SPDedupNodes<
     SPFlatten<<AnimalSet<T> as CollectAnimalInstinctActions>::Out>,
 > as StripActionHeaders>::Out;
-

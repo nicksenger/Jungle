@@ -3,8 +3,9 @@ use serde::Serialize;
 use std::future::Future;
 use std::marker::PhantomData;
 
-use crate::{Animal, Awaiting, Yielding};
+use crate::{ActionMember, Animal, Awaiting, WorkflowActions, Yielding};
 use inception::primitive;
+use typosaurus::collections::sp::Node;
 
 /// A behavior that transforms a single input into a single output.
 pub trait Action {
@@ -137,4 +138,15 @@ where
         let emitted = <Apply as ActionOutputMapper<T, A>>::map_output(&mut state, output);
         (state, emitted)
     }
+}
+
+#[primitive(property = crate::JungleWorkflowActions)]
+impl<T, A, Prepare, Apply> WorkflowActions for ActionStep<T, A, Prepare, Apply>
+where
+    T: Animal,
+    A: Action + ActionMember,
+    Prepare: ActionInputMapper<T, A>,
+    Apply: ActionOutputMapper<T, A>,
+{
+    type List = Node<<A as Action>::Id, A>;
 }
