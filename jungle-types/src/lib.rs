@@ -18,9 +18,24 @@ pub use test_executor::{
     BuildTestFlow, DynFlow, ErasedStep, JungleDynFlow, TestExecutor, TestExecutorError, TestFlow,
     TypedErasedStep,
 };
+use std::marker::PhantomData;
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
+
+/// A tagged union over two possible outputs.
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
+/// Predicate used by [`Conditional`] to choose a branch.
+pub trait Condition<In> {
+    fn choose(input: &In) -> bool;
+}
+
+/// A flow combinator that chooses either `L` or `R` at runtime.
+pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
 
 /// A collection of `Creatures` which act together as a system.
 pub trait Ecosystem {
@@ -226,6 +241,51 @@ where
     fn run(input: Self::In) -> Self::Out {
         <T as Running>::run(input)
     }
+}
+
+#[primitive(property = JungleRunning)]
+impl<P, L, R> Running for Conditional<P, L, R>
+where
+    L: Running,
+    R: Running<In = L::In>,
+    P: Condition<L::In>,
+{
+    type In = L::In;
+    type Out = Either<L::Out, R::Out>;
+
+    fn run(input: Self::In) -> Self::Out {
+        if <P as Condition<L::In>>::choose(&input) {
+            Either::Left(<L as Running>::run(input))
+        } else {
+            Either::Right(<R as Running>::run(input))
+        }
+    }
+}
+
+#[primitive(property = JungleWaiting)]
+impl<P, L, R> Waiting for Conditional<P, L, R>
+where
+    L: Waiting,
+    R: Waiting,
+{
+    type In = Either<L::In, R::In>;
+    type Out = Either<L::Out, R::Out>;
+
+    fn accept(input: Self::In) -> Self::Out {
+        match input {
+            Either::Left(input) => Either::Left(<L as Waiting>::accept(input)),
+            Either::Right(input) => Either::Right(<R as Waiting>::accept(input)),
+        }
+    }
+}
+
+#[primitive(property = JungleFlow)]
+impl<P, L, R> FlowActions for Conditional<P, L, R>
+where
+    L: FlowActions,
+    R: FlowActions,
+{
+    type List = TList<(L::List, R::List)>;
 }
 
 /// An organism that hosts symbionts.

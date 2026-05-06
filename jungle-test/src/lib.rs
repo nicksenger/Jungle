@@ -285,5 +285,6 @@ mod tests {
 
     mod action_step;
     mod aspect;
+    mod conditional;
     mod progression;
 }
