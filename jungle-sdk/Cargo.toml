@@ -5,5 +5,7 @@ edition = "2021"
 
 [dependencies]
 inception = { workspace = true }
+jungle-core = { path = "../jungle-core" }
 jungle-macros = { path = "../jungle-macros" }
 jungle-types = { path = "../jungle-types" }
+typosaurus = { workspace = true }

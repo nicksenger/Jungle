@@ -1,11 +1,11 @@
 use jungle_sdk::{Instinct, Jungle};
-use jungle_types::{
+use jungle_sdk::types::{
     ActionCompletion, ActionStep, AspectStep, Identity, LoopCondition, Running, TestExecutor,
     Waiting, While,
 };
 use serde_json::json;
 use std::future::ready;
-use typosaurus::num::consts::U0;
+use jungle_sdk::typosaurus::num::consts::U0;
 
 action!(
     TickAction,

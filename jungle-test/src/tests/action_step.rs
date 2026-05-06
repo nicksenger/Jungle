@@ -1,7 +1,7 @@
 use jungle_sdk::{Flow, Jungle};
-use jungle_types::{ActionCompletion, ActionStep, AspectStep, Identity, Running, Waiting};
+use jungle_sdk::types::{ActionCompletion, ActionStep, AspectStep, Identity, Running, Waiting};
 use std::future::ready;
-use typosaurus::num::consts::U0;
+use jungle_sdk::typosaurus::num::consts::U0;
 
 action!(
     GatherAction,

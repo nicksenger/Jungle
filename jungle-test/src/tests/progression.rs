@@ -1,13 +1,14 @@
 use jungle_sdk::{Creatures, Instinct, Jungle};
-use jungle_types::{
+use jungle_sdk::types as jungle_types;
+use jungle_sdk::types::{
     Action, ActionCompletion, ActionRequest, ActionStep, AspectStep, CreatureActionSet, Id,
     Identity, Running, TestExecutor, Waiting,
 };
 use serde_json::json;
 use std::future::ready;
-use typosaurus::assert_type_eq;
-use typosaurus::list;
-use typosaurus::num::consts::{U0, U1};
+use jungle_sdk::typosaurus::assert_type_eq;
+use jungle_sdk::typosaurus::list;
+use jungle_sdk::typosaurus::num::consts::{U0, U1};
 
 struct SeedAction;
 impl jungle_types::ActionMember for SeedAction {}

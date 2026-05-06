@@ -169,8 +169,10 @@ name = "jungle-sdk"
 version = "0.1.0"
 dependencies = [
  "inception",
+ "jungle-core",
  "jungle-macros",
  "jungle-types",
+ "typosaurus",
 ]
 
 [[package]]
@@ -181,12 +183,8 @@ version = "0.1.0"
 name = "jungle-test"
 version = "0.1.0"
 dependencies = [
- "inception",
- "jungle-core",
  "jungle-sdk",
- "jungle-types",
  "serde_json",
- "typosaurus",
 ]
 
 [[package]]

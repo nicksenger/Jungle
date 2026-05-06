@@ -1,15 +1,20 @@
 #[cfg(test)]
+extern crate jungle_sdk as inception;
+#[cfg(test)]
+extern crate jungle_sdk as jungle_types;
+
+#[cfg(test)]
 mod tests {
 
-    use jungle_core::Jungle as _;
+    use jungle_sdk::core::Jungle as _;
     use jungle_sdk::{Actions, Creatures, Flow, Jungle};
-    use jungle_types::{
+    use jungle_sdk::types::{
         Action, ActionCompletion, ActionSet, ActionStep, AspectStep, Creature, CreatureActionSet,
         CreatureSet, CreatureStates, Ecosystem, Identity,
     };
-    use typosaurus::assert_type_eq;
-    use typosaurus::list;
-    use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
+    use jungle_sdk::typosaurus::assert_type_eq;
+    use jungle_sdk::typosaurus::list;
+    use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 
     macro_rules! action {
         (
@@ -21,10 +26,10 @@ mod tests {
             act = |$dependency:ident, $input:ident| $body:expr
         ) => {
             struct $name;
-            impl jungle_types::ActionMember for $name {}
+            impl jungle_sdk::types::ActionMember for $name {}
 
-            impl jungle_types::Action for $name {
-                type Id = jungle_types::Id<$id>;
+            impl jungle_sdk::types::Action for $name {
+                type Id = jungle_sdk::types::Id<$id>;
                 type Dependency = ();
                 type In = $in;
                 type Out = $out;
@@ -41,10 +46,10 @@ mod tests {
 
         ($name:ident, $id:ty) => {
             struct $name;
-            impl jungle_types::ActionMember for $name {}
+            impl jungle_sdk::types::ActionMember for $name {}
 
-            impl jungle_types::Action for $name {
-                type Id = jungle_types::Id<$id>;
+            impl jungle_sdk::types::Action for $name {
+                type Id = jungle_sdk::types::Id<$id>;
                 type Dependency = ();
                 type In = ();
                 type Out = ();
@@ -58,13 +63,13 @@ mod tests {
                 }
             }
 
-            #[inception::primitive(property = jungle_types::JungleActions)]
-            impl jungle_types::Actions for $name {
-                type List = typosaurus::collections::sp::Node<$id, $name>;
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
+            impl jungle_sdk::types::Actions for $name {
+                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[inception::primitive(property = jungle_types::Ident)]
-            impl jungle_types::Identified for $name {
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
         };
@@ -100,8 +105,8 @@ mod tests {
         ($name:ident, $id:ty, state = $state:ty, instinct = $instinct:ty) => {
             struct $name;
 
-            impl jungle_types::Creature for $name {
-                type Id = jungle_types::Id<$id>;
+            impl jungle_sdk::types::Creature for $name {
+                type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Instinct = $instinct;
             }
@@ -117,21 +122,21 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
             struct $name;
-            impl jungle_types::CreatureMember for $name {}
+            impl jungle_sdk::types::CreatureMember for $name {}
 
-            impl jungle_types::Creature for $name {
-                type Id = jungle_types::Id<$id>;
+            impl jungle_sdk::types::Creature for $name {
+                type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Instinct = $instinct;
             }
 
-            #[inception::primitive(property = jungle_types::JungleCreatures)]
-            impl jungle_types::Creatures for $name {
-                type List = typosaurus::collections::sp::Node<$id, $name>;
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleCreatures)]
+            impl jungle_sdk::types::Creatures for $name {
+                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[inception::primitive(property = jungle_types::Ident)]
-            impl jungle_types::Identified for $name {
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
         };

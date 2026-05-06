@@ -1,12 +1,13 @@
 use jungle_sdk::{Instinct, Jungle};
-use jungle_types::{
+use jungle_sdk::types as jungle_types;
+use jungle_sdk::types::{
     ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Identity,
     LoopCondition, Running, TestExecutor, Waiting, While,
 };
 use serde_json::json;
 use std::future::ready;
 use std::marker::PhantomData;
-use typosaurus::num::consts::{U0, U1, U2, U3};
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 
 action!(Sleep, U0, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input + 1)));
 action!(Eat, U1, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input + 1)));
