@@ -1,10 +1,9 @@
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, AspectStep, Identity, LoopCondition, Running, Executor,
-    Waiting, While,
+    ActionCompletion, ActionStep, AspectStep, Executor, Identity, LoopCondition, Running, Waiting,
+    While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Instinct;
-use serde_json::json;
 use std::future::ready;
 
 action!(
@@ -80,10 +79,10 @@ fn while_waiting_passthroughs_optional_branch() {
 fn executor_repeats_until_condition_fails() {
     let mut loop_executor = Executor::<Looper>::new(0);
     let emitted: Vec<i32> = loop_executor
-        .advance_to_end(vec![
-            (json!(1), Ok(json!(1))),
-            (json!(1), Ok(json!(2))),
-            (json!(1), Ok(json!(3))),
+        .advance_to_end_typed(vec![
+            (1, Ok::<i32, ()>(1)),
+            (1, Ok::<i32, ()>(2)),
+            (1, Ok::<i32, ()>(3)),
         ])
         .expect("while loop should advance");
     assert_eq!(emitted, vec![1, 2, 3]);

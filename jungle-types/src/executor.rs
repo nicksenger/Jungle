@@ -5,7 +5,8 @@ use crate::{
 use inception::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use serde_json::Value;
+
+type Serialized = Vec<u8>;
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
 pub type ErasedStep<State> = dyn ErasedFlow<State>;
@@ -14,9 +15,9 @@ pub trait ErasedFlow<State> {
     fn progress(
         &mut self,
         state: State,
-        input: Value,
-        completion: Result<Value, Value>,
-    ) -> Result<(State, Value), ExecutorError>;
+        input: Serialized,
+        completion: Result<Serialized, Serialized>,
+    ) -> Result<(State, Serialized), ExecutorError>;
 
     fn is_complete(&self) -> bool;
 
@@ -84,23 +85,23 @@ where
     fn progress(
         &mut self,
         state: T::State,
-        input: Value,
-        completion: Result<Value, Value>,
-    ) -> Result<(T::State, Value), ExecutorError> {
-        let typed_input = serde_json::from_value::<Step::In>(input)
+        input: Serialized,
+        completion: Result<Serialized, Serialized>,
+    ) -> Result<(T::State, Serialized), ExecutorError> {
+        let typed_input = postcard::from_bytes::<Step::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
 
         let typed_completion: ActionCompletion<A> = match completion {
-            Ok(output) => Ok(serde_json::from_value::<A::Out>(output)
+            Ok(output) => Ok(postcard::from_bytes::<A::Out>(&output)
                 .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
-            Err(error) => Err(serde_json::from_value::<A::Err>(error)
+            Err(error) => Err(postcard::from_bytes::<A::Err>(&error)
                 .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
         let (state, _request) = <ActionStep<T, A, Step> as Running>::run((state, typed_input));
         let (state, emitted) =
             <ActionStep<T, A, Step> as crate::Waiting>::accept((state, typed_completion));
-        let emitted = serde_json::to_value(emitted)
+        let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.complete = true;
         Ok((state, emitted))
@@ -162,11 +163,11 @@ where
     fn progress(
         &mut self,
         state: State,
-        input: Value,
-        completion: Result<Value, Value>,
-    ) -> Result<(State, Value), ExecutorError> {
+        input: Serialized,
+        completion: Result<Serialized, Serialized>,
+    ) -> Result<(State, Serialized), ExecutorError> {
         if self.active_branch.is_none() {
-            let typed_input = serde_json::from_value::<In>(input.clone())
+            let typed_input = postcard::from_bytes::<In>(&input)
                 .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
             let choose_left = (self.choose_left)(&(state.clone(), typed_input));
             self.active_branch = Some(if choose_left {
@@ -241,9 +242,9 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
     fn progress(
         &mut self,
         state: State,
-        input: Value,
-        completion: Result<Value, Value>,
-    ) -> Result<(State, Value), ExecutorError> {
+        input: Serialized,
+        completion: Result<Serialized, Serialized>,
+    ) -> Result<(State, Serialized), ExecutorError> {
         if self.complete {
             return Err(ExecutorError::Complete);
         }
@@ -443,8 +444,8 @@ where
 
     pub fn next<Emitted>(
         &mut self,
-        input: Value,
-        completion: Result<Value, Value>,
+        input: Serialized,
+        completion: Result<Serialized, Serialized>,
     ) -> Result<Emitted, ExecutorError>
     where
         Emitted: DeserializeOwned,
@@ -465,7 +466,7 @@ where
         }
         self.state = Some(state);
         self.settle_without_progress()?;
-        serde_json::from_value(emitted)
+        postcard::from_bytes(&emitted)
             .map_err(|err| ExecutorError::EmitDeserialize(err.to_string()))
     }
 
@@ -480,12 +481,12 @@ where
         Err: Serialize,
         Emitted: DeserializeOwned,
     {
-        let input = serde_json::to_value(input)
+        let input = postcard::to_allocvec(&input)
             .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
         let completion = match completion {
-            Ok(output) => Ok(serde_json::to_value(output)
+            Ok(output) => Ok(postcard::to_allocvec(&output)
                 .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?),
-            Err(error) => Err(serde_json::to_value(error)
+            Err(error) => Err(postcard::to_allocvec(&error)
                 .map_err(|err| ExecutorError::ErrorSerialize(err.to_string()))?),
         };
 
@@ -494,7 +495,7 @@ where
 
     pub fn advance_to_end<Emitted>(
         &mut self,
-        inputs: impl IntoIterator<Item = (Value, Result<Value, Value>)>,
+        inputs: impl IntoIterator<Item = (Serialized, Result<Serialized, Serialized>)>,
     ) -> Result<Vec<Emitted>, ExecutorError>
     where
         Emitted: DeserializeOwned,
@@ -524,12 +525,12 @@ where
         let inputs = inputs
             .into_iter()
             .map(|(input, completion)| {
-                let input = serde_json::to_value(input)
+                let input = postcard::to_allocvec(&input)
                     .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
                 let completion = match completion {
-                    Ok(output) => Ok(serde_json::to_value(output)
+                    Ok(output) => Ok(postcard::to_allocvec(&output)
                         .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?),
-                    Err(error) => Err(serde_json::to_value(error)
+                    Err(error) => Err(postcard::to_allocvec(&error)
                         .map_err(|err| ExecutorError::ErrorSerialize(err.to_string()))?),
                 };
                 Ok((input, completion))

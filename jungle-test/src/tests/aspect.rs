@@ -1,12 +1,11 @@
 use jungle_sdk::inception::Inception;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Identity,
-    Lens, LoopCondition, Running, Executor, Waiting, While,
+    ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Executor,
+    Identity, Lens, LoopCondition, Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::Instinct;
-use serde_json::json;
 use std::future::ready;
 use std::marker::PhantomData;
 
@@ -292,22 +291,22 @@ fn executor_runs_aspected_steps() {
 
     let mut gorilla_emitted: Vec<i32> = vec![
         gorilla
-            .next(json!(0), Ok(json!(6)))
+            .next_typed(0, Ok::<i32, ()>(6))
             .expect("gorilla step 1 should advance"),
         gorilla
-            .next(json!(0), Ok(json!(7)))
+            .next_typed(0, Ok::<i32, ()>(7))
             .expect("gorilla step 2 should advance"),
         gorilla
-            .next(json!(0), Ok(json!(6)))
+            .next_typed(0, Ok::<i32, ()>(6))
             .expect("gorilla step 3 should advance"),
     ];
     let gorilla_tail: Vec<i32> = gorilla
-        .advance_to_end(vec![
-            (json!(0), Ok(json!(7))),
-            (json!(0), Ok(json!(8))),
-            (json!(0), Ok(json!(7))),
-            (json!(0), Ok(json!(8))),
-            (json!(0), Ok(json!(9))),
+        .advance_to_end_typed(vec![
+            (0, Ok::<i32, ()>(7)),
+            (0, Ok::<i32, ()>(8)),
+            (0, Ok::<i32, ()>(7)),
+            (0, Ok::<i32, ()>(8)),
+            (0, Ok::<i32, ()>(9)),
         ])
         .expect("gorilla loop should advance");
     gorilla_emitted.extend(gorilla_tail);
@@ -325,13 +324,13 @@ fn executor_runs_aspected_steps() {
     assert!(!tiger.is_complete());
 
     let tiger_emitted: Vec<i32> = tiger
-        .advance_to_end(vec![
-            (json!(0), Ok(json!(9))),
-            (json!(0), Ok(json!(10))),
-            (json!(0), Ok(json!(9))),
-            (json!(0), Ok(json!(10))),
-            (json!(0), Ok(json!(11))),
-            (json!(0), Ok(json!(10))),
+        .advance_to_end_typed(vec![
+            (0, Ok::<i32, ()>(9)),
+            (0, Ok::<i32, ()>(10)),
+            (0, Ok::<i32, ()>(9)),
+            (0, Ok::<i32, ()>(10)),
+            (0, Ok::<i32, ()>(11)),
+            (0, Ok::<i32, ()>(10)),
         ])
         .expect("tiger loop should advance");
     assert_eq!(tiger_emitted, vec![9, 10, 9, 10, 11, 10]);

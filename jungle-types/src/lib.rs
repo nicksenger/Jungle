@@ -1,12 +1,16 @@
 mod behavior;
 mod error;
+mod executor;
 mod instinct;
 mod meta;
-mod executor;
 pub use behavior::{
     Action, ActionCompletion, ActionRequest, ActionStep, Aspect, AspectStep, Identity, Lens,
 };
 pub use error::Error;
+pub use executor::{
+    BuildFlow, DynFlow, ErasedStep, Executor, ExecutorError, ExecutorFlow, JungleDynFlow,
+    TypedErasedStep,
+};
 use inception::*;
 pub use instinct::Instinct;
 pub use meta::Id;
@@ -15,10 +19,6 @@ pub use meta::{
     CreatureStates, CreatureStatesCompatible, StripActionHeaders, StripCreatureHeaders,
 };
 use std::marker::PhantomData;
-pub use executor::{
-    BuildFlow, DynFlow, ErasedStep, JungleDynFlow, Executor, ExecutorError, ExecutorFlow,
-    TypedErasedStep,
-};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
