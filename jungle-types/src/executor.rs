@@ -16,20 +16,20 @@ pub trait ErasedFlow<State> {
         state: State,
         input: Value,
         completion: Result<Value, Value>,
-    ) -> Result<(State, Value), TestExecutorError>;
+    ) -> Result<(State, Value), ExecutorError>;
 
     fn is_complete(&self) -> bool;
 
     fn try_complete_without_progress(
         &mut self,
         state: State,
-    ) -> Result<(State, bool), TestExecutorError> {
+    ) -> Result<(State, bool), ExecutorError> {
         Ok((state, false))
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum TestExecutorError {
+pub enum ExecutorError {
     #[error("executor is already complete")]
     Complete,
     #[error("input serialization failed: {0}")]
@@ -52,7 +52,7 @@ pub enum TestExecutorError {
     NotEnoughCompletions,
 }
 
-pub trait TestFlow {
+pub trait ExecutorFlow {
     type State;
     fn build_steps() -> DynFlow<Self::State>;
 }
@@ -86,22 +86,22 @@ where
         state: T::State,
         input: Value,
         completion: Result<Value, Value>,
-    ) -> Result<(T::State, Value), TestExecutorError> {
+    ) -> Result<(T::State, Value), ExecutorError> {
         let typed_input = serde_json::from_value::<Step::In>(input)
-            .map_err(|err| TestExecutorError::InputDeserialize(err.to_string()))?;
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
 
         let typed_completion: ActionCompletion<A> = match completion {
             Ok(output) => Ok(serde_json::from_value::<A::Out>(output)
-                .map_err(|err| TestExecutorError::OutputDeserialize(err.to_string()))?),
+                .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
             Err(error) => Err(serde_json::from_value::<A::Err>(error)
-                .map_err(|err| TestExecutorError::ErrorDeserialize(err.to_string()))?),
+                .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
         let (state, _request) = <ActionStep<T, A, Step> as Running>::run((state, typed_input));
         let (state, emitted) =
             <ActionStep<T, A, Step> as crate::Waiting>::accept((state, typed_completion));
         let emitted = serde_json::to_value(emitted)
-            .map_err(|err| TestExecutorError::EmitSerialize(err.to_string()))?;
+            .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.complete = true;
         Ok((state, emitted))
     }
@@ -164,10 +164,10 @@ where
         state: State,
         input: Value,
         completion: Result<Value, Value>,
-    ) -> Result<(State, Value), TestExecutorError> {
+    ) -> Result<(State, Value), ExecutorError> {
         if self.active_branch.is_none() {
             let typed_input = serde_json::from_value::<In>(input.clone())
-                .map_err(|err| TestExecutorError::InputDeserialize(err.to_string()))?;
+                .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
             let choose_left = (self.choose_left)(&(state.clone(), typed_input));
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
@@ -177,7 +177,7 @@ where
         }
 
         if self.cursor >= self.branch_len() {
-            return Err(TestExecutorError::Complete);
+            return Err(ExecutorError::Complete);
         }
 
         let (state, emitted) = match self.active_branch {
@@ -243,14 +243,14 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
         state: State,
         input: Value,
         completion: Result<Value, Value>,
-    ) -> Result<(State, Value), TestExecutorError> {
+    ) -> Result<(State, Value), ExecutorError> {
         if self.complete {
-            return Err(TestExecutorError::Complete);
+            return Err(ExecutorError::Complete);
         }
 
         if !(self.should_continue)(&state) {
             self.complete = true;
-            return Err(TestExecutorError::Complete);
+            return Err(ExecutorError::Complete);
         }
 
         self.ensure_iteration_ready();
@@ -277,7 +277,7 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
     fn try_complete_without_progress(
         &mut self,
         state: State,
-    ) -> Result<(State, bool), TestExecutorError> {
+    ) -> Result<(State, bool), ExecutorError> {
         if self.complete {
             return Ok((state, true));
         }
@@ -290,7 +290,7 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
 }
 
 #[inception(property = JungleDynFlow, signature(input = Input, output = Output))]
-pub trait BuildTestFlow<Input> {
+pub trait BuildFlow<Input> {
     type Output;
 
     fn push_steps(steps: Input) -> Self::Output;
@@ -303,13 +303,13 @@ pub trait BuildTestFlow<Input> {
         _l: H,
         _r: R,
         steps: Input,
-    ) -> <R as BuildTestFlow<<H as BuildTestFlow<Input>>::Output>>::Output
+    ) -> <R as BuildFlow<<H as BuildFlow<Input>>::Output>>::Output
     where
-        H: BuildTestFlow<Input>,
-        R: BuildTestFlow<<H as BuildTestFlow<Input>>::Output>,
+        H: BuildFlow<Input>,
+        R: BuildFlow<<H as BuildFlow<Input>>::Output>,
     {
-        let steps = <H as BuildTestFlow<_>>::push_steps(steps);
-        <R as BuildTestFlow<_>>::push_steps(steps)
+        let steps = <H as BuildFlow<_>>::push_steps(steps);
+        <R as BuildFlow<_>>::push_steps(steps)
     }
 
     fn merge_variant_field<H, R>(_l: H, _r: R, steps: Input) -> Input {
@@ -318,16 +318,16 @@ pub trait BuildTestFlow<Input> {
         steps
     }
 
-    fn join<F>(_fields: F, steps: Input) -> <F as BuildTestFlow<Input>>::Output
+    fn join<F>(_fields: F, steps: Input) -> <F as BuildFlow<Input>>::Output
     where
-        F: BuildTestFlow<Input>,
+        F: BuildFlow<Input>,
     {
-        <F as BuildTestFlow<_>>::push_steps(steps)
+        <F as BuildFlow<_>>::push_steps(steps)
     }
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<T, A, Step> BuildTestFlow<DynFlow<T::State>> for ActionStep<T, A, Step>
+impl<T, A, Step> BuildFlow<DynFlow<T::State>> for ActionStep<T, A, Step>
 where
     T: Creature + 'static,
     A: Action + 'static,
@@ -346,19 +346,19 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, P, L, R> BuildTestFlow<DynFlow<State>> for Conditional<P, L, R>
+impl<State, In, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
 where
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
     P: Condition<(State, In)> + 'static,
-    L: BuildTestFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
-    R: BuildTestFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
-        let left = <L as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new());
-        let right = <R as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new());
+        let left = <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
+        let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let choose_left =
             Box::new(|input: &(State, In)| <P as Condition<(State, In)>>::choose(input));
         steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(
@@ -371,39 +371,39 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, C, F> BuildTestFlow<DynFlow<State>> for While<C, F>
+impl<State, C, F> BuildFlow<DynFlow<State>> for While<C, F>
 where
     State: 'static,
     C: LoopCondition<State> + 'static,
-    F: BuildTestFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let should_continue =
             Box::new(|state: &State| <C as LoopCondition<State>>::should_continue(state));
-        let build_body = Box::new(|| <F as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        let build_body = Box::new(|| <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         steps.push(Box::new(WhileErasedFlow::new(should_continue, build_body)));
         steps
     }
 }
 
-pub struct TestExecutor<A>
+pub struct Executor<A>
 where
     A: Creature,
-    A::Instinct: BuildTestFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
     steps: DynFlow<A::State>,
     cursor: usize,
 }
 
-impl<A> TestExecutor<A>
+impl<A> Executor<A>
 where
     A: Creature,
-    A::Instinct: BuildTestFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
-    fn settle_without_progress(&mut self) -> Result<(), TestExecutorError> {
+    fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
             if self.cursor >= self.steps.len() {
                 break;
@@ -428,7 +428,7 @@ where
     pub fn new(state: A::State) -> Self {
         let mut executor = Self {
             state: Some(state),
-            steps: <A::Instinct as BuildTestFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
+            steps: <A::Instinct as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
             cursor: 0,
         };
         executor
@@ -445,13 +445,13 @@ where
         &mut self,
         input: Value,
         completion: Result<Value, Value>,
-    ) -> Result<Emitted, TestExecutorError>
+    ) -> Result<Emitted, ExecutorError>
     where
         Emitted: DeserializeOwned,
     {
         self.settle_without_progress()?;
         if self.is_complete() {
-            return Err(TestExecutorError::Complete);
+            return Err(ExecutorError::Complete);
         }
 
         let state = self.state.take().expect("executor state is always present");
@@ -466,14 +466,14 @@ where
         self.state = Some(state);
         self.settle_without_progress()?;
         serde_json::from_value(emitted)
-            .map_err(|err| TestExecutorError::EmitDeserialize(err.to_string()))
+            .map_err(|err| ExecutorError::EmitDeserialize(err.to_string()))
     }
 
     pub fn next_typed<In, Out, Err, Emitted>(
         &mut self,
         input: In,
         completion: Result<Out, Err>,
-    ) -> Result<Emitted, TestExecutorError>
+    ) -> Result<Emitted, ExecutorError>
     where
         In: Serialize,
         Out: Serialize,
@@ -481,12 +481,12 @@ where
         Emitted: DeserializeOwned,
     {
         let input = serde_json::to_value(input)
-            .map_err(|err| TestExecutorError::InputSerialize(err.to_string()))?;
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
         let completion = match completion {
             Ok(output) => Ok(serde_json::to_value(output)
-                .map_err(|err| TestExecutorError::OutputSerialize(err.to_string()))?),
+                .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?),
             Err(error) => Err(serde_json::to_value(error)
-                .map_err(|err| TestExecutorError::ErrorSerialize(err.to_string()))?),
+                .map_err(|err| ExecutorError::ErrorSerialize(err.to_string()))?),
         };
 
         self.next(input, completion)
@@ -495,7 +495,7 @@ where
     pub fn advance_to_end<Emitted>(
         &mut self,
         inputs: impl IntoIterator<Item = (Value, Result<Value, Value>)>,
-    ) -> Result<Vec<Emitted>, TestExecutorError>
+    ) -> Result<Vec<Emitted>, ExecutorError>
     where
         Emitted: DeserializeOwned,
     {
@@ -505,7 +505,7 @@ where
         while !self.is_complete() {
             let (input, completion) = completions
                 .next()
-                .ok_or(TestExecutorError::NotEnoughCompletions)?;
+                .ok_or(ExecutorError::NotEnoughCompletions)?;
             emitted.push(self.next(input, completion)?);
         }
         Ok(emitted)
@@ -514,7 +514,7 @@ where
     pub fn advance_to_end_typed<In, Out, Err, Emitted>(
         &mut self,
         inputs: impl IntoIterator<Item = (In, Result<Out, Err>)>,
-    ) -> Result<Vec<Emitted>, TestExecutorError>
+    ) -> Result<Vec<Emitted>, ExecutorError>
     where
         In: Serialize,
         Out: Serialize,
@@ -525,12 +525,12 @@ where
             .into_iter()
             .map(|(input, completion)| {
                 let input = serde_json::to_value(input)
-                    .map_err(|err| TestExecutorError::InputSerialize(err.to_string()))?;
+                    .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
                 let completion = match completion {
                     Ok(output) => Ok(serde_json::to_value(output)
-                        .map_err(|err| TestExecutorError::OutputSerialize(err.to_string()))?),
+                        .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?),
                     Err(error) => Err(serde_json::to_value(error)
-                        .map_err(|err| TestExecutorError::ErrorSerialize(err.to_string()))?),
+                        .map_err(|err| ExecutorError::ErrorSerialize(err.to_string()))?),
                 };
                 Ok((input, completion))
             })

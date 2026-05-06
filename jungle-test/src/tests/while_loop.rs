@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, AspectStep, Identity, LoopCondition, Running, TestExecutor,
+    ActionCompletion, ActionStep, AspectStep, Identity, LoopCondition, Running, Executor,
     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
@@ -77,8 +77,8 @@ fn while_waiting_passthroughs_optional_branch() {
 }
 
 #[test]
-fn test_executor_repeats_until_condition_fails() {
-    let mut loop_executor = TestExecutor::<Looper>::new(0);
+fn executor_repeats_until_condition_fails() {
+    let mut loop_executor = Executor::<Looper>::new(0);
     let emitted: Vec<i32> = loop_executor
         .advance_to_end(vec![
             (json!(1), Ok(json!(1))),
@@ -92,8 +92,8 @@ fn test_executor_repeats_until_condition_fails() {
 }
 
 #[test]
-fn test_executor_completes_zero_iteration_loop() {
-    let loop_executor = TestExecutor::<Looper>::new(3);
+fn executor_completes_zero_iteration_loop() {
+    let loop_executor = Executor::<Looper>::new(3);
     assert!(loop_executor.is_complete());
     assert_eq!(loop_executor.into_state(), 3);
 }

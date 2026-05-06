@@ -2,7 +2,7 @@ mod behavior;
 mod error;
 mod instinct;
 mod meta;
-mod test_executor;
+mod executor;
 pub use behavior::{
     Action, ActionCompletion, ActionRequest, ActionStep, Aspect, AspectStep, Identity, Lens,
 };
@@ -15,8 +15,8 @@ pub use meta::{
     CreatureStates, CreatureStatesCompatible, StripActionHeaders, StripCreatureHeaders,
 };
 use std::marker::PhantomData;
-pub use test_executor::{
-    BuildTestFlow, DynFlow, ErasedStep, JungleDynFlow, TestExecutor, TestExecutorError, TestFlow,
+pub use executor::{
+    BuildFlow, DynFlow, ErasedStep, JungleDynFlow, Executor, ExecutorError, ExecutorFlow,
     TypedErasedStep,
 };
 use typosaurus::collections::list::{self, List as TList};
