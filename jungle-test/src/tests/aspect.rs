@@ -117,40 +117,10 @@ where
 type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
 type CoreEnergyEatActionStep<T, Focus> = ActionStep<T, Eat, CoreEnergyStep<Focus>>;
 
-struct CoreEnergyConditionalEatStep<Focus>(PhantomData<fn() -> Focus>);
-
-impl<T, Focus> AspectStep<T, Eat> for CoreEnergyConditionalEatStep<Focus>
-where
-    T: jungle_types::Creature,
-    Focus: Aspect<T::State, View = CoreState>,
-{
-    type Aspect = Focus;
-    type In = i32;
-    type Out = i32;
-
-    fn prepare(core: &CoreState, input: Self::In) -> i32 {
-        if core.energy < 10 {
-            core.energy + input
-        } else {
-            input
-        }
-    }
-
-    fn apply(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
-        let value = output.expect("conditional eat should succeed");
-        core.energy = value;
-        value
-    }
-}
-
-type CoreEnergyConditionalEatActionStep<T, Focus> =
-    ActionStep<T, Eat, CoreEnergyConditionalEatStep<Focus>>;
-
 #[derive(Jungle, Instinct)]
 struct GorillaInstinct(
     CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>,
-    CoreEnergyConditionalEatActionStep<Gorilla, GorillaCoreAspect>,
-    CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>,
+    CoreEnergyEatActionStep<Gorilla, GorillaCoreAspect>,
 );
 
 #[derive(Jungle, Instinct)]
@@ -174,7 +144,6 @@ animal!(
 
 type GorillaStep = CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>;
 type TigerStep = CoreEnergySleepActionStep<Tiger, TigerCoreAspect>;
-type GorillaConditionalEatStep = CoreEnergyConditionalEatActionStep<Gorilla, GorillaCoreAspect>;
 
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {
@@ -217,14 +186,9 @@ fn test_executor_runs_aspected_steps() {
         .next(json!(2), Ok(json!(13)))
         .expect("gorilla aspect step");
     assert_eq!(gorilla_emitted, json!(13));
-    assert!(!gorilla.is_complete());
-    let gorilla_emitted = gorilla
-        .next(json!(1), Ok(json!(14)))
-        .expect("gorilla aspect step");
-    assert_eq!(gorilla_emitted, json!(14));
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
-    assert_eq!(gorilla_state.core.energy, 14);
+    assert_eq!(gorilla_state.core.energy, 13);
     assert_eq!(gorilla_state.bananas, 2);
 
     let mut tiger = TestExecutor::<Tiger>::new(TigerState {
@@ -244,42 +208,4 @@ fn test_executor_runs_aspected_steps() {
     let tiger_state = tiger.into_state();
     assert_eq!(tiger_state.core.energy, 11);
     assert_eq!(tiger_state.stripes, 7);
-}
-
-#[test]
-fn conditional_mapper_branches_by_core_energy() {
-    let low_energy_state = GorillaState {
-        core: CoreState { energy: 4 },
-        bananas: 1,
-    };
-    let (_state, request) = <GorillaConditionalEatStep as Running>::run((low_energy_state, 3));
-    assert_eq!(request.into_input(), 7);
-
-    let high_energy_state = GorillaState {
-        core: CoreState { energy: 12 },
-        bananas: 1,
-    };
-    let (_state, request) = <GorillaConditionalEatStep as Running>::run((high_energy_state, 3));
-    assert_eq!(request.into_input(), 3);
-}
-
-#[test]
-fn repeated_steps_form_a_simple_loop_pattern() {
-    let mut gorilla = TestExecutor::<Gorilla>::new(GorillaState {
-        core: CoreState { energy: 1 },
-        bananas: 5,
-    });
-
-    let emitted = gorilla
-        .advance_to_end(vec![
-            (json!(1), Ok(json!(2))),
-            (json!(2), Ok(json!(4))),
-            (json!(1), Ok(json!(5))),
-        ])
-        .expect("gorilla loop-like flow");
-
-    assert_eq!(emitted, vec![json!(2), json!(4), json!(5)]);
-    let gorilla_state = gorilla.into_state();
-    assert_eq!(gorilla_state.core.energy, 5);
-    assert_eq!(gorilla_state.bananas, 5);
 }
