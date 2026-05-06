@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, ActionStep, AspectStep, CreatureActionSet, Executor,
+    Action, ActionCompletion, ActionRequest, Task, AspectStep, CreatureActionSet, Executor,
     Id, Identity, ManualExecutor, Running, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -53,7 +53,7 @@ impl AspectStep<ProgressCreature, SeedAction> for Seed {
         input + 1
     }
 
-    fn apply(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Out {
+    fn process(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Out {
         let value = output.expect("seed action should succeed");
         *state = value;
         value
@@ -70,7 +70,7 @@ impl AspectStep<ProgressCreature, FinishAction> for Finish {
         *state + input
     }
 
-    fn apply(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Out {
+    fn process(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Out {
         let value = output.expect("finish action should succeed");
         *state = value;
         value
@@ -79,8 +79,8 @@ impl AspectStep<ProgressCreature, FinishAction> for Finish {
 
 #[derive(Instinct)]
 struct ProgressInstinct(
-    ActionStep<ProgressCreature, SeedAction, Seed>,
-    ActionStep<ProgressCreature, FinishAction, Finish>,
+    Task<ProgressCreature, SeedAction, Seed>,
+    Task<ProgressCreature, FinishAction, Finish>,
 );
 
 animal!(ProgressCreature, U0, i32, ProgressInstinct);
@@ -88,8 +88,8 @@ animal!(ProgressCreature, U0, i32, ProgressInstinct);
 #[derive(Creatures)]
 struct ProgressCreatures(ProgressCreature);
 
-type SeedStep = ActionStep<ProgressCreature, SeedAction, Seed>;
-type FinishStep = ActionStep<ProgressCreature, FinishAction, Finish>;
+type SeedStep = Task<ProgressCreature, SeedAction, Seed>;
+type FinishStep = Task<ProgressCreature, FinishAction, Finish>;
 
 struct StepHarness;
 impl StepHarness {
@@ -114,7 +114,7 @@ trait StepExecutor:
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<A, Step> StepExecutor for ActionStep<ProgressCreature, A, Step>
+impl<A, Step> StepExecutor for Task<ProgressCreature, A, Step>
 where
     A: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
     Step: AspectStep<ProgressCreature, A, Aspect = Identity, In = i32, Out = i32>,

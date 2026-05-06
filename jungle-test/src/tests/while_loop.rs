@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, AspectStep, Executor, Identity, LoopCondition, ManualExecutor,
+    ActionCompletion, Task, AspectStep, Executor, Identity, LoopCondition, ManualExecutor,
     Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
@@ -27,14 +27,14 @@ impl AspectStep<Looper, TickAction> for Tick {
         *state + input
     }
 
-    fn apply(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Out {
+    fn process(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Out {
         let value = output.expect("tick action should succeed");
         *state = value;
         value
     }
 }
 
-type TickFlow = ActionStep<Looper, TickAction, Tick>;
+type TickFlow = Task<Looper, TickAction, Tick>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {

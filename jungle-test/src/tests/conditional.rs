@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, AspectStep, Condition, Conditional, Either, Executor, Identity,
+    ActionCompletion, Task, AspectStep, Condition, Conditional, Either, Executor, Identity,
     ManualExecutor, Running, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
@@ -44,7 +44,7 @@ impl AspectStep<ConditionalCreature, LeftAction> for Left {
         *state + input
     }
 
-    fn apply(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::Out {
+    fn process(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::Out {
         let value = output.expect("left action should succeed");
         *state = value;
         value
@@ -61,15 +61,15 @@ impl AspectStep<ConditionalCreature, RightAction> for Right {
         *state - input
     }
 
-    fn apply(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::Out {
+    fn process(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::Out {
         let value = output.expect("right action should succeed");
         *state = value;
         value % 2 == 0
     }
 }
 
-type LeftFlow = ActionStep<ConditionalCreature, LeftAction, Left>;
-type RightFlow = ActionStep<ConditionalCreature, RightAction, Right>;
+type LeftFlow = Task<ConditionalCreature, LeftAction, Left>;
+type RightFlow = Task<ConditionalCreature, RightAction, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
@@ -189,7 +189,7 @@ fn executor_executable_request_runs_without_static_action_dispatch() {
     let completion = run_now(request.run()).expect("left action should execute");
     let _left_emitted = left
         .complete_serialized(completion)
-        .expect("left completion should apply");
+        .expect("left completion should process");
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 6);
 
@@ -204,7 +204,7 @@ fn executor_executable_request_runs_without_static_action_dispatch() {
     let completion = run_now(request.run()).expect("right action should execute");
     let _right_emitted = right
         .complete_serialized(completion)
-        .expect("right completion should apply");
+        .expect("right completion should process");
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 0);
 }

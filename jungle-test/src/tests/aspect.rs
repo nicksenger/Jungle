@@ -1,7 +1,7 @@
 use jungle_sdk::inception::Inception;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either,
+    Action, ActionCompletion, Task, Aspect, AspectStep, Condition, Conditional, Either,
     Executor, Identity, Lens, LoopCondition, Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
@@ -52,7 +52,7 @@ where
         core.energy + input
     }
 
-    fn apply(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn process(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
         core.energy = value;
         value
@@ -72,7 +72,7 @@ where
         core.energy + input
     }
 
-    fn apply(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
+    fn process(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
@@ -89,7 +89,7 @@ impl AspectStep<Gorilla, Eat> for GorillaEat {
         state.core.energy + input
     }
 
-    fn apply(state: &mut GorillaState, output: ActionCompletion<Eat>) -> Self::Out {
+    fn process(state: &mut GorillaState, output: ActionCompletion<Eat>) -> Self::Out {
         let value = output.expect("eat should succeed");
         state.core.energy = value;
         state.bananas -= 1;
@@ -107,7 +107,7 @@ impl AspectStep<Gorilla, Sleep> for GorillaSleep {
         state.core.energy + input
     }
 
-    fn apply(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn process(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
         state.core.energy = value;
         state.core.age += 1;
@@ -125,7 +125,7 @@ impl AspectStep<Gorilla, Forage> for GorillaForage {
         state.core.energy + input
     }
 
-    fn apply(state: &mut GorillaState, output: ActionCompletion<Forage>) -> Self::Out {
+    fn process(state: &mut GorillaState, output: ActionCompletion<Forage>) -> Self::Out {
         let value = output.expect("forage should succeed");
         state.core.energy = value;
         state.bananas += 1;
@@ -143,7 +143,7 @@ impl AspectStep<Tiger, Eat> for TigerEat {
         core.energy + input
     }
 
-    fn apply(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
+    fn process(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
@@ -160,7 +160,7 @@ impl AspectStep<Tiger, Sleep> for TigerSleep {
         core.energy + input
     }
 
-    fn apply(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn process(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
         core.energy = value;
         value
@@ -177,7 +177,7 @@ impl AspectStep<Tiger, Hunt> for TigerHunt {
         state.core.energy + input
     }
 
-    fn apply(state: &mut TigerState, output: ActionCompletion<Hunt>) -> Self::Out {
+    fn process(state: &mut TigerState, output: ActionCompletion<Hunt>) -> Self::Out {
         let value = output.expect("hunt should succeed");
         state.core.energy = value;
         state.stripes += 1;
@@ -187,9 +187,9 @@ impl AspectStep<Tiger, Hunt> for TigerHunt {
 
 #[derive(Instinct)]
 struct GorillaLoopSequence(
-    ActionStep<Gorilla, Eat, GorillaEat>,
-    ActionStep<Gorilla, Sleep, GorillaSleep>,
-    ActionStep<Gorilla, Forage, GorillaForage>,
+    Task<Gorilla, Eat, GorillaEat>,
+    Task<Gorilla, Sleep, GorillaSleep>,
+    Task<Gorilla, Forage, GorillaForage>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -213,11 +213,11 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 struct TigerLoopSequence(
     Conditional<
         TigerStripesAreEven,
-        ActionStep<Tiger, Eat, TigerEat>,
-        ActionStep<Tiger, Sleep, TigerSleep>,
+        Task<Tiger, Eat, TigerEat>,
+        Task<Tiger, Sleep, TigerSleep>,
     >,
-    ActionStep<Tiger, Sleep, TigerSleep>,
-    ActionStep<Tiger, Hunt, TigerHunt>,
+    Task<Tiger, Sleep, TigerSleep>,
+    Task<Tiger, Hunt, TigerHunt>,
 );
 
 struct TigerUnderHundredStripes;
@@ -271,13 +271,13 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) = <ActionStep<
+    let (gorilla_state, gorilla_request) = <Task<
         Gorilla,
         Sleep,
         CoreEnergyStep<Lens<GorillaState, U0>>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
-    let (gorilla_state, gorilla_emitted) = <ActionStep<
+    let (gorilla_state, gorilla_emitted) = <Task<
         Gorilla,
         Sleep,
         CoreEnergyStep<Lens<GorillaState, U0>>,
@@ -291,13 +291,13 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6, age: 12 },
         stripes: 9,
     };
-    let (tiger_state, tiger_request) = <ActionStep<
+    let (tiger_state, tiger_request) = <Task<
         Tiger,
         Sleep,
         CoreEnergyStep<Lens<TigerState, U0>>,
     > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) = <ActionStep<
+    let (tiger_state, tiger_emitted) = <Task<
         Tiger,
         Sleep,
         CoreEnergyStep<Lens<TigerState, U0>>,
@@ -381,8 +381,8 @@ fn executor_runs_aspected_steps() {
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     let even = <Conditional<
         TigerStripesAreEven,
-        ActionStep<Tiger, Eat, TigerEat>,
-        ActionStep<Tiger, Sleep, TigerSleep>,
+        Task<Tiger, Eat, TigerEat>,
+        Task<Tiger, Sleep, TigerSleep>,
     > as Running>::run((
         TigerState {
             core: CoreState { energy: 5, age: 1 },
@@ -397,8 +397,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 
     let odd = <Conditional<
         TigerStripesAreEven,
-        ActionStep<Tiger, Eat, TigerEat>,
-        ActionStep<Tiger, Sleep, TigerSleep>,
+        Task<Tiger, Eat, TigerEat>,
+        Task<Tiger, Sleep, TigerSleep>,
     > as Running>::run((
         TigerState {
             core: CoreState { energy: 5, age: 1 },

@@ -169,7 +169,7 @@ pub trait AspectStep<T: Creature, A: Action> {
         input: Self::In,
     ) -> A::In;
 
-    fn apply(
+    fn process(
         view: &mut <<Self as AspectStep<T, A>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<A>,
     ) -> Self::Out;
@@ -177,7 +177,7 @@ pub trait AspectStep<T: Creature, A: Action> {
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Running`]/[`Waiting`] temporal protocol.
-pub struct ActionStep<T, A, Step>
+pub struct Task<T, A, Step>
 where
     T: Creature,
     A: Action,
@@ -186,7 +186,7 @@ where
     marker: PhantomData<fn() -> (T, A, Step)>,
 }
 
-impl<T, A, Step> ActionStep<T, A, Step>
+impl<T, A, Step> Task<T, A, Step>
 where
     T: Creature,
     A: Action,
@@ -200,7 +200,7 @@ where
 }
 
 #[primitive(property = crate::JungleRunning)]
-impl<T, A, Step> Running for ActionStep<T, A, Step>
+impl<T, A, Step> Running for Task<T, A, Step>
 where
     T: Creature,
     A: Action,
@@ -217,7 +217,7 @@ where
 }
 
 #[primitive(property = crate::JungleWaiting)]
-impl<T, A, Step> Waiting for ActionStep<T, A, Step>
+impl<T, A, Step> Waiting for Task<T, A, Step>
 where
     T: Creature,
     A: Action,
@@ -228,13 +228,13 @@ where
 
     fn accept((mut state, output): Self::In) -> Self::Out {
         let view = <<Step as AspectStep<T, A>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let emitted = <Step as AspectStep<T, A>>::apply(view, output);
+        let emitted = <Step as AspectStep<T, A>>::process(view, output);
         (state, emitted)
     }
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, A, Step> FlowActions for ActionStep<T, A, Step>
+impl<T, A, Step> FlowActions for Task<T, A, Step>
 where
     T: Creature,
     A: Action + ActionMember,
