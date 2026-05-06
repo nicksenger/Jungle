@@ -419,7 +419,7 @@ fn executor_advances_with_executable_requests_and_dynamic_action_order() {
         stripes: 98,
     });
 
-    let emitted = run_now(tiger.advance_to_end_with(0i32, &()))
+    let emitted = run_now(tiger.advance_to_end_with(0i32))
         .expect("tiger flow should execute through dynamic requests");
     assert_eq!(emitted.len(), 6);
     assert!(tiger.is_complete());

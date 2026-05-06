@@ -11,7 +11,7 @@ use std::pin::Pin;
 type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
 type ActionFuture = Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>>>>;
-type ActionRunner = Box<dyn FnOnce(Serialized) -> ActionFuture>;
+type ActionRunner = Box<dyn FnOnce() -> ActionFuture>;
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
 pub type ErasedStep<State> = dyn ErasedFlow<State>;
@@ -33,22 +33,8 @@ impl ExecutableActionRequest {
         deserialize_request(self.request.clone())
     }
 
-    pub fn run_with_serialized(
-        self,
-        dependency: Serialized,
-    ) -> impl Future<Output = Result<SerializedCompletion, ExecutorError>> {
-        (self.runner)(dependency)
-    }
-
-    pub async fn run_with<Dependency>(
-        self,
-        dependency: &Dependency,
-    ) -> Result<SerializedCompletion, ExecutorError>
-    where
-        Dependency: Serialize,
-    {
-        let dependency = serialize_input(dependency)?;
-        self.run_with_serialized(dependency).await
+    pub fn run(self) -> impl Future<Output = Result<SerializedCompletion, ExecutorError>> {
+        (self.runner)()
     }
 }
 
@@ -139,8 +125,8 @@ impl<Step> TypedErasedStep<Step> {
 impl<T, A, Step> ErasedFlow<T::State> for TypedErasedStep<ActionStep<T, A, Step>>
 where
     T: Creature,
-    A: Action,
-    A::Dependency: DeserializeOwned + 'static,
+    A: Action<Dependency = ()>,
+    A::Dependency: 'static,
     A::In: 'static,
     A::Out: 'static,
     A::Err: Serialize + 'static,
@@ -189,11 +175,9 @@ where
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
-        let runner: ActionRunner = Box::new(move |dependency: Serialized| {
+        let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
-                let dependency = postcard::from_bytes::<A::Dependency>(&dependency)
-                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-                let completion = <A as Action>::act(&dependency, action_input).await;
+                let completion = <A as Action>::act(&(), action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -564,8 +548,7 @@ pub trait BuildFlow<Input> {
 impl<T, A, Step> BuildFlow<DynFlow<T::State>> for ActionStep<T, A, Step>
 where
     T: Creature + 'static,
-    A: Action + 'static,
-    A::Dependency: DeserializeOwned,
+    A: Action<Dependency = ()> + 'static,
     A::Err: Serialize,
     A::Out: DeserializeOwned,
     A::Err: DeserializeOwned,
@@ -974,34 +957,25 @@ where
         Ok(emitted)
     }
 
-    pub async fn next_and_complete_with<Dependency>(
+    pub async fn next_and_complete_with(
         &mut self,
         initial_input: impl Serialize,
-        dependency: &Dependency,
-    ) -> Result<Serialized, ExecutorError>
-    where
-        Dependency: Serialize,
-    {
+    ) -> Result<Serialized, ExecutorError> {
         let request = self.next_executable_request(initial_input)?;
-        let completion = request.run_with(dependency).await?;
+        let completion = request.run().await?;
         self.complete_serialized(completion)
     }
 
-    pub async fn advance_to_end_with<Initial, Dependency>(
+    pub async fn advance_to_end_with<Initial>(
         &mut self,
         initial_input: Initial,
-        dependency: &Dependency,
     ) -> Result<Vec<Serialized>, ExecutorError>
     where
         Initial: Serialize + Clone,
-        Dependency: Serialize,
     {
         let mut emitted = Vec::new();
         while !self.is_complete() {
-            emitted.push(
-                self.next_and_complete_with(initial_input.clone(), dependency)
-                    .await?,
-            );
+            emitted.push(self.next_and_complete_with(initial_input.clone()).await?);
         }
         Ok(emitted)
     }

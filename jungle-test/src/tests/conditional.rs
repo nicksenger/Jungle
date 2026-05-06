@@ -186,7 +186,7 @@ fn executor_executable_request_runs_without_static_action_dispatch() {
         .deserialize_request()
         .expect("left request should deserialize");
     assert_eq!(input, 5);
-    let completion = run_now(request.run_with(&())).expect("left action should execute");
+    let completion = run_now(request.run()).expect("left action should execute");
     let _left_emitted = left
         .complete_serialized(completion)
         .expect("left completion should apply");
@@ -201,7 +201,7 @@ fn executor_executable_request_runs_without_static_action_dispatch() {
         .deserialize_request()
         .expect("right request should deserialize");
     assert_eq!(input, -2);
-    let completion = run_now(request.run_with(&())).expect("right action should execute");
+    let completion = run_now(request.run()).expect("right action should execute");
     let _right_emitted = right
         .complete_serialized(completion)
         .expect("right completion should apply");
