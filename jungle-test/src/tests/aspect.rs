@@ -98,8 +98,6 @@ where
     }
 }
 
-type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
-
 struct GorillaEat;
 impl AspectStep<Gorilla, Eat> for GorillaEat {
     type Aspect = Identity;
@@ -230,13 +228,16 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     }
 }
 
-type TigerEatStep = ActionStep<Tiger, Eat, TigerEat>;
-type TigerSleepStep = ActionStep<Tiger, Sleep, TigerSleep>;
-type TigerHuntStep = ActionStep<Tiger, Hunt, TigerHunt>;
-type TigerFirstStep = Conditional<TigerStripesAreEven, TigerEatStep, TigerSleepStep>;
-
 #[derive(Jungle, Instinct)]
-struct TigerLoopSequence(TigerFirstStep, TigerSleepStep, TigerHuntStep);
+struct TigerLoopSequence(
+    Conditional<
+        TigerStripesAreEven,
+        ActionStep<Tiger, Eat, TigerEat>,
+        ActionStep<Tiger, Sleep, TigerSleep>,
+    >,
+    ActionStep<Tiger, Sleep, TigerSleep>,
+    ActionStep<Tiger, Hunt, TigerHunt>,
+);
 
 struct TigerUnderHundredStripes;
 impl LoopCondition<TigerState> for TigerUnderHundredStripes {
@@ -245,10 +246,8 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     }
 }
 
-type TigerLoopFlow = While<TigerUnderHundredStripes, TigerLoopSequence>;
-
 #[derive(Jungle, Instinct)]
-struct TigerInstinct(TigerLoopFlow);
+struct TigerInstinct(While<TigerUnderHundredStripes, TigerLoopSequence>);
 
 animal!(
     Gorilla,
@@ -257,9 +256,6 @@ animal!(
     instinct = GorillaInstinct
 );
 animal!(Tiger, U2, state = TigerState, instinct = TigerInstinct);
-
-type GorillaStep = CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>;
-type TigerStep = CoreEnergySleepActionStep<Tiger, TigerCoreAspect>;
 
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {
@@ -270,10 +266,17 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) = <GorillaStep as Running>::run((gorilla_state, 2));
+    let (gorilla_state, gorilla_request) =
+        <ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>> as Running>::run((
+            gorilla_state,
+            2,
+        ));
     assert_eq!(gorilla_request.into_input(), 12);
     let (gorilla_state, gorilla_emitted) =
-        <GorillaStep as Waiting>::accept((gorilla_state, Ok(20)));
+        <ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>> as Waiting>::accept((
+            gorilla_state,
+            Ok(20),
+        ));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
     assert_eq!(gorilla_state.core.age, 25);
@@ -283,9 +286,17 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6, age: 12 },
         stripes: 9,
     };
-    let (tiger_state, tiger_request) = <TigerStep as Running>::run((tiger_state, 4));
+    let (tiger_state, tiger_request) =
+        <ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>> as Running>::run((
+            tiger_state,
+            4,
+        ));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) = <TigerStep as Waiting>::accept((tiger_state, Ok(15)));
+    let (tiger_state, tiger_emitted) =
+        <ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>> as Waiting>::accept((
+            tiger_state,
+            Ok(15),
+        ));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
     assert_eq!(tiger_state.core.age, 12);
@@ -377,7 +388,11 @@ fn test_executor_runs_aspected_steps() {
 
 #[test]
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
-    let even = <TigerFirstStep as Running>::run((
+    let even = <Conditional<
+        TigerStripesAreEven,
+        ActionStep<Tiger, Eat, TigerEat>,
+        ActionStep<Tiger, Sleep, TigerSleep>,
+    > as Running>::run((
         TigerState {
             core: CoreState { energy: 5, age: 1 },
             stripes: 8,
@@ -389,7 +404,11 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         Either::Right(_) => panic!("expected eat branch"),
     }
 
-    let odd = <TigerFirstStep as Running>::run((
+    let odd = <Conditional<
+        TigerStripesAreEven,
+        ActionStep<Tiger, Eat, TigerEat>,
+        ActionStep<Tiger, Sleep, TigerSleep>,
+    > as Running>::run((
         TigerState {
             core: CoreState { energy: 5, age: 1 },
             stripes: 9,
