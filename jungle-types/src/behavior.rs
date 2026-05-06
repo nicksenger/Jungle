@@ -67,8 +67,6 @@ pub type ActionCompletion<A> = Result<<A as Action>::Out, <A as Action>::Err>;
 pub trait Aspect<State> {
     type View;
 
-    fn view(state: &State) -> &Self::View;
-
     fn view_mut(state: &mut State) -> &mut Self::View;
 }
 
@@ -77,10 +75,6 @@ pub struct Identity;
 
 impl<State> Aspect<State> for Identity {
     type View = State;
-
-    fn view(state: &State) -> &Self::View {
-        state
-    }
 
     fn view_mut(state: &mut State) -> &mut Self::View {
         state
@@ -139,8 +133,8 @@ where
     type In = (T::State, <Step as AspectStep<T, A>>::In);
     type Out = (T::State, ActionRequest<A>);
 
-    fn run((state, input): Self::In) -> Self::Out {
-        let view = <<Step as AspectStep<T, A>>::Aspect as Aspect<T::State>>::view(&state);
+    fn run((mut state, input): Self::In) -> Self::Out {
+        let view = <<Step as AspectStep<T, A>>::Aspect as Aspect<T::State>>::view_mut(&mut state);
         let action_input = <Step as AspectStep<T, A>>::prepare(view, input);
         (state, ActionRequest::<A>::new(action_input))
     }
