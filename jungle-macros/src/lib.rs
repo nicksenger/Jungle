@@ -2,9 +2,6 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, parse_quote, DeriveInput, Path};
 
-// Pull directly from the upstream inception-macros implementation so we do not
-// maintain a local copy of the derive parsing/generation logic.
-#[path = "../../../inception/inception-macros/src/derive.rs"]
 mod inception_derive;
 
 #[proc_macro]
