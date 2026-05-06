@@ -1,11 +1,10 @@
-use jungle_sdk::Instinct;
 use jungle_sdk::types::{
     ActionCompletion, ActionStep, AspectStep, Identity, LoopCondition, Running, TestExecutor,
     Waiting, While,
 };
-use serde_json::json;
-use std::future::ready;
 use jungle_sdk::typosaurus::num::consts::U0;
+use jungle_sdk::Instinct;
+use std::future::ready;
 
 action!(
     TickAction,
@@ -79,14 +78,14 @@ fn while_waiting_passthroughs_optional_branch() {
 #[test]
 fn test_executor_repeats_until_condition_fails() {
     let mut loop_executor = TestExecutor::<Looper>::new(0);
-    let emitted = loop_executor
+    let emitted: Vec<i32> = loop_executor
         .advance_to_end(vec![
-            (json!(1), Ok(json!(1))),
-            (json!(1), Ok(json!(2))),
-            (json!(1), Ok(json!(3))),
+            (1, Ok::<_, ()>(1)),
+            (1, Ok::<_, ()>(2)),
+            (1, Ok::<_, ()>(3)),
         ])
         .expect("while loop should advance");
-    assert_eq!(emitted, vec![json!(1), json!(2), json!(3)]);
+    assert_eq!(emitted, vec![1, 2, 3]);
     assert!(loop_executor.is_complete());
     assert_eq!(loop_executor.into_state(), 3);
 }

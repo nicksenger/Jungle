@@ -1,11 +1,10 @@
-use jungle_sdk::Instinct;
 use jungle_sdk::types::{
     ActionCompletion, ActionStep, AspectStep, Condition, Conditional, Either, Identity, Running,
     TestExecutor, Waiting,
 };
-use serde_json::json;
-use std::future::ready;
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
+use jungle_sdk::Instinct;
+use std::future::ready;
 
 action!(
     LeftAction,
@@ -120,14 +119,14 @@ fn conditional_waiting_accept_returns_either_branch_output() {
 #[test]
 fn test_executor_dynamically_selects_conditional_branch() {
     let mut left = TestExecutor::<ConditionalCreature>::new(5);
-    let left_emitted = left.next(json!(3), Ok(json!(9))).expect("left branch");
-    assert_eq!(left_emitted, json!(9));
+    let left_emitted: i32 = left.next(3, Ok::<_, ()>(9)).expect("left branch");
+    assert_eq!(left_emitted, 9);
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
     let mut right = TestExecutor::<ConditionalCreature>::new(-2);
-    let right_emitted = right.next(json!(3), Ok(json!(6))).expect("right branch");
-    assert_eq!(right_emitted, json!(true));
+    let right_emitted: bool = right.next(3, Ok::<_, ()>(6)).expect("right branch");
+    assert_eq!(right_emitted, true);
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 6);
 }

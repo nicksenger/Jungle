@@ -55,15 +55,16 @@ pub fn derive_actions(input: TokenStream) -> TokenStream {
     )
 }
 
-fn expand_with_properties(attr: TokenStream, input: TokenStream, properties: &[Path]) -> TokenStream {
+fn expand_with_properties(
+    attr: TokenStream,
+    input: TokenStream,
+    properties: &[Path],
+) -> TokenStream {
     let args = proc_macro2::TokenStream::from(attr);
     if !args.is_empty() {
-        return syn::Error::new_spanned(
-            args,
-            "this attribute does not accept arguments",
-        )
-        .into_compile_error()
-        .into();
+        return syn::Error::new_spanned(args, "this attribute does not accept arguments")
+            .into_compile_error()
+            .into();
     }
 
     let item = parse_macro_input!(input as syn::Item);

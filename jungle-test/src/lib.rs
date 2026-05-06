@@ -7,7 +7,6 @@ extern crate jungle_sdk as jungle_types;
 mod tests {
 
     use jungle_sdk::core::Jungle as _;
-    use jungle_sdk::{Actions, Creatures, Flow};
     use jungle_sdk::types::{
         Action, ActionCompletion, ActionSet, ActionStep, AspectStep, Creature, CreatureActionSet,
         CreatureSet, CreatureStates, Ecosystem, Identity,
@@ -15,6 +14,7 @@ mod tests {
     use jungle_sdk::typosaurus::assert_type_eq;
     use jungle_sdk::typosaurus::list;
     use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
+    use jungle_sdk::{Actions, Creatures, Flow};
 
     macro_rules! action {
         (

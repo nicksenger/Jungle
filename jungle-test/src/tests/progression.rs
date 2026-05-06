@@ -1,14 +1,13 @@
-use jungle_sdk::{Creatures, Instinct};
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionRequest, ActionStep, AspectStep, CreatureActionSet, Id,
     Identity, Running, TestExecutor, Waiting,
 };
-use serde_json::json;
-use std::future::ready;
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
+use jungle_sdk::{Creatures, Instinct};
+use std::future::ready;
 
 struct SeedAction;
 impl jungle_types::ActionMember for SeedAction {}
@@ -146,11 +145,11 @@ fn executor_progresses_simple_instinct_steps() {
 fn test_executor_next_advances_without_step_type_parameters() {
     let mut executor = TestExecutor::<ProgressCreature>::new(0);
 
-    let emitted_seed = executor.next(json!(5), Ok(json!(8))).expect("seed step");
-    assert_eq!(emitted_seed, json!(8));
+    let emitted_seed: i32 = executor.next(5, Ok::<_, ()>(8)).expect("seed step");
+    assert_eq!(emitted_seed, 8);
 
-    let emitted_finish = executor.next(json!(4), Ok(json!(36))).expect("finish step");
-    assert_eq!(emitted_finish, json!(36));
+    let emitted_finish: i32 = executor.next(4, Ok::<_, ()>(36)).expect("finish step");
+    assert_eq!(emitted_finish, 36);
     assert!(executor.is_complete());
     assert_eq!(executor.into_state(), 36);
 }
@@ -158,11 +157,11 @@ fn test_executor_next_advances_without_step_type_parameters() {
 #[test]
 fn test_executor_advance_to_end_runs_remaining_flow() {
     let mut executor = TestExecutor::<ProgressCreature>::new(0);
-    let emitted = executor
-        .advance_to_end(vec![(json!(5), Ok(json!(8))), (json!(4), Ok(json!(36)))])
+    let emitted: Vec<i32> = executor
+        .advance_to_end(vec![(5, Ok::<_, ()>(8)), (4, Ok::<_, ()>(36))])
         .expect("flow should advance");
 
-    assert_eq!(emitted, vec![json!(8), json!(36)]);
+    assert_eq!(emitted, vec![8, 36]);
     assert!(executor.is_complete());
     assert_eq!(executor.into_state(), 36);
 }

@@ -1,5 +1,5 @@
 use crate::{
-    Action, ActionCompletion, ActionStep, Condition, Conditional, Creature, AspectStep,
+    Action, ActionCompletion, ActionStep, AspectStep, Condition, Conditional, Creature,
     LoopCondition, Running, While,
 };
 use inception::*;
@@ -32,14 +32,22 @@ pub trait ErasedFlow<State> {
 pub enum TestExecutorError {
     #[error("executor is already complete")]
     Complete,
+    #[error("input serialization failed: {0}")]
+    InputSerialize(String),
     #[error("input deserialization failed: {0}")]
     InputDeserialize(String),
+    #[error("output serialization failed: {0}")]
+    OutputSerialize(String),
     #[error("output deserialization failed: {0}")]
     OutputDeserialize(String),
+    #[error("error serialization failed: {0}")]
+    ErrorSerialize(String),
     #[error("error deserialization failed: {0}")]
     ErrorDeserialize(String),
     #[error("emit serialization failed: {0}")]
     EmitSerialize(String),
+    #[error("emit deserialization failed: {0}")]
+    EmitDeserialize(String),
     #[error("not enough completions to advance to end")]
     NotEnoughCompletions,
 }
@@ -351,7 +359,8 @@ where
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let left = <L as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new());
         let right = <R as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new());
-        let choose_left = Box::new(|input: &(State, In)| <P as Condition<(State, In)>>::choose(input));
+        let choose_left =
+            Box::new(|input: &(State, In)| <P as Condition<(State, In)>>::choose(input));
         steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(
             left,
             right,
@@ -371,7 +380,8 @@ where
     type Output = DynFlow<State>;
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
-        let should_continue = Box::new(|state: &State| <C as LoopCondition<State>>::should_continue(state));
+        let should_continue =
+            Box::new(|state: &State| <C as LoopCondition<State>>::should_continue(state));
         let build_body = Box::new(|| <F as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new()));
         steps.push(Box::new(WhileErasedFlow::new(should_continue, build_body)));
         steps
@@ -431,15 +441,30 @@ where
         self.cursor >= self.steps.len()
     }
 
-    pub fn next(
+    pub fn next<In, Out, Err, Emitted>(
         &mut self,
-        input: Value,
-        completion: Result<Value, Value>,
-    ) -> Result<Value, TestExecutorError> {
+        input: In,
+        completion: Result<Out, Err>,
+    ) -> Result<Emitted, TestExecutorError>
+    where
+        In: Serialize,
+        Out: Serialize,
+        Err: Serialize,
+        Emitted: DeserializeOwned,
+    {
         self.settle_without_progress()?;
         if self.is_complete() {
             return Err(TestExecutorError::Complete);
         }
+
+        let input = serde_json::to_value(input)
+            .map_err(|err| TestExecutorError::InputSerialize(err.to_string()))?;
+        let completion = match completion {
+            Ok(output) => Ok(serde_json::to_value(output)
+                .map_err(|err| TestExecutorError::OutputSerialize(err.to_string()))?),
+            Err(error) => Err(serde_json::to_value(error)
+                .map_err(|err| TestExecutorError::ErrorSerialize(err.to_string()))?),
+        };
 
         let state = self.state.take().expect("executor state is always present");
         let node = self
@@ -452,13 +477,20 @@ where
         }
         self.state = Some(state);
         self.settle_without_progress()?;
-        Ok(emitted)
+        serde_json::from_value(emitted)
+            .map_err(|err| TestExecutorError::EmitDeserialize(err.to_string()))
     }
 
-    pub fn advance_to_end(
+    pub fn advance_to_end<In, Out, Err, Emitted>(
         &mut self,
-        inputs: impl IntoIterator<Item = (Value, Result<Value, Value>)>,
-    ) -> Result<Vec<Value>, TestExecutorError> {
+        inputs: impl IntoIterator<Item = (In, Result<Out, Err>)>,
+    ) -> Result<Vec<Emitted>, TestExecutorError>
+    where
+        In: Serialize,
+        Out: Serialize,
+        Err: Serialize,
+        Emitted: DeserializeOwned,
+    {
         let mut completions = inputs.into_iter();
         let mut emitted = Vec::new();
         self.settle_without_progress()?;

@@ -125,7 +125,8 @@ where
     <T as Creatures>::List: FlattenNodes,
     SPFlatten<<T as Creatures>::List>: StripCreatureHeaders,
     CreatureSet<T>: Container,
-    (CreatureSet<T>, WithCreatureState): Map<<CreatureSet<T> as Container>::Content, WithCreatureState>,
+    (CreatureSet<T>, WithCreatureState):
+        Map<<CreatureSet<T> as Container>::Content, WithCreatureState>,
     CreatureStates<T>: AllFrom<From>,
 {
 }

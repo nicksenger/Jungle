@@ -6,7 +6,6 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::Instinct;
-use serde_json::json;
 use std::future::ready;
 use std::marker::PhantomData;
 
@@ -290,41 +289,28 @@ fn test_executor_runs_aspected_steps() {
     });
     assert!(!gorilla.is_complete());
 
-    let mut gorilla_emitted = vec![
+    let mut gorilla_emitted: Vec<i32> = vec![
         gorilla
-            .next(json!(0), Ok(json!(6)))
+            .next(0, Ok::<_, ()>(6))
             .expect("gorilla step 1 should advance"),
         gorilla
-            .next(json!(0), Ok(json!(7)))
+            .next(0, Ok::<_, ()>(7))
             .expect("gorilla step 2 should advance"),
         gorilla
-            .next(json!(0), Ok(json!(6)))
+            .next(0, Ok::<_, ()>(6))
             .expect("gorilla step 3 should advance"),
     ];
-    gorilla_emitted.extend(
-        gorilla
-            .advance_to_end(vec![
-                (json!(0), Ok(json!(7))),
-                (json!(0), Ok(json!(8))),
-                (json!(0), Ok(json!(7))),
-                (json!(0), Ok(json!(8))),
-                (json!(0), Ok(json!(9))),
-            ])
-            .expect("gorilla loop should advance"),
-    );
-    assert_eq!(
-        gorilla_emitted,
-        vec![
-            json!(6),
-            json!(7),
-            json!(6),
-            json!(7),
-            json!(8),
-            json!(7),
-            json!(8),
-            json!(9),
-        ]
-    );
+    let gorilla_tail: Vec<i32> = gorilla
+        .advance_to_end(vec![
+            (0, Ok::<_, ()>(7)),
+            (0, Ok::<_, ()>(8)),
+            (0, Ok::<_, ()>(7)),
+            (0, Ok::<_, ()>(8)),
+            (0, Ok::<_, ()>(9)),
+        ])
+        .expect("gorilla loop should advance");
+    gorilla_emitted.extend(gorilla_tail);
+    assert_eq!(gorilla_emitted, vec![6, 7, 6, 7, 8, 7, 8, 9]);
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
     assert_eq!(gorilla_state.core.energy, 9);
@@ -337,27 +323,17 @@ fn test_executor_runs_aspected_steps() {
     });
     assert!(!tiger.is_complete());
 
-    let tiger_emitted = tiger
+    let tiger_emitted: Vec<i32> = tiger
         .advance_to_end(vec![
-            (json!(0), Ok(json!(9))),
-            (json!(0), Ok(json!(10))),
-            (json!(0), Ok(json!(9))),
-            (json!(0), Ok(json!(10))),
-            (json!(0), Ok(json!(11))),
-            (json!(0), Ok(json!(10))),
+            (0, Ok::<_, ()>(9)),
+            (0, Ok::<_, ()>(10)),
+            (0, Ok::<_, ()>(9)),
+            (0, Ok::<_, ()>(10)),
+            (0, Ok::<_, ()>(11)),
+            (0, Ok::<_, ()>(10)),
         ])
         .expect("tiger loop should advance");
-    assert_eq!(
-        tiger_emitted,
-        vec![
-            json!(9),
-            json!(10),
-            json!(9),
-            json!(10),
-            json!(11),
-            json!(10)
-        ]
-    );
+    assert_eq!(tiger_emitted, vec![9, 10, 9, 10, 11, 10]);
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
     assert_eq!(tiger_state.core.energy, 10);
