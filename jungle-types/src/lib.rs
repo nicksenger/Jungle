@@ -4,7 +4,7 @@ mod executor;
 mod instinct;
 mod meta;
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, Task, Aspect, AspectStep, Identity, Lens,
+    Action, ActionCompletion, ActionRequest, ActionTask, Aspect, Task, Identity, Lens,
 };
 pub use error::Error;
 pub use executor::{

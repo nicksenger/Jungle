@@ -1,8 +1,8 @@
 use jungle_sdk::inception::Inception;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Task, Aspect, AspectStep, Condition, Conditional, Either,
-    Executor, Identity, Lens, LoopCondition, Running, Waiting, While,
+    Action, ActionCompletion, ActionTask, Aspect, Condition, Conditional, Either, Executor,
+    Identity, Lens, LoopCondition, Running, Task, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::Instinct;
@@ -39,7 +39,7 @@ struct TigerState {
 
 struct CoreEnergyStep<Focus>(PhantomData<fn() -> Focus>);
 
-impl<T, Focus> AspectStep<T, Sleep> for CoreEnergyStep<Focus>
+impl<T, Focus> Task<T, Sleep> for CoreEnergyStep<Focus>
 where
     T: jungle_types::Creature,
     Focus: Aspect<T::State, View = CoreState>,
@@ -59,7 +59,7 @@ where
     }
 }
 
-impl<T, Focus> AspectStep<T, Eat> for CoreEnergyStep<Focus>
+impl<T, Focus> Task<T, Eat> for CoreEnergyStep<Focus>
 where
     T: jungle_types::Creature,
     Focus: Aspect<T::State, View = CoreState>,
@@ -80,7 +80,7 @@ where
 }
 
 struct GorillaEat;
-impl AspectStep<Gorilla, Eat> for GorillaEat {
+impl Task<Gorilla, Eat> for GorillaEat {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -98,7 +98,7 @@ impl AspectStep<Gorilla, Eat> for GorillaEat {
 }
 
 struct GorillaSleep;
-impl AspectStep<Gorilla, Sleep> for GorillaSleep {
+impl Task<Gorilla, Sleep> for GorillaSleep {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -116,7 +116,7 @@ impl AspectStep<Gorilla, Sleep> for GorillaSleep {
 }
 
 struct GorillaForage;
-impl AspectStep<Gorilla, Forage> for GorillaForage {
+impl Task<Gorilla, Forage> for GorillaForage {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -134,7 +134,7 @@ impl AspectStep<Gorilla, Forage> for GorillaForage {
 }
 
 struct TigerEat;
-impl AspectStep<Tiger, Eat> for TigerEat {
+impl Task<Tiger, Eat> for TigerEat {
     type Aspect = Lens<TigerState, U0>;
     type In = i32;
     type Out = i32;
@@ -151,7 +151,7 @@ impl AspectStep<Tiger, Eat> for TigerEat {
 }
 
 struct TigerSleep;
-impl AspectStep<Tiger, Sleep> for TigerSleep {
+impl Task<Tiger, Sleep> for TigerSleep {
     type Aspect = Lens<TigerState, U0>;
     type In = i32;
     type Out = i32;
@@ -168,7 +168,7 @@ impl AspectStep<Tiger, Sleep> for TigerSleep {
 }
 
 struct TigerHunt;
-impl AspectStep<Tiger, Hunt> for TigerHunt {
+impl Task<Tiger, Hunt> for TigerHunt {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -187,9 +187,9 @@ impl AspectStep<Tiger, Hunt> for TigerHunt {
 
 #[derive(Instinct)]
 struct GorillaLoopSequence(
-    Task<Gorilla, Eat, GorillaEat>,
-    Task<Gorilla, Sleep, GorillaSleep>,
-    Task<Gorilla, Forage, GorillaForage>,
+    ActionTask<Gorilla, Eat, GorillaEat>,
+    ActionTask<Gorilla, Sleep, GorillaSleep>,
+    ActionTask<Gorilla, Forage, GorillaForage>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -213,11 +213,11 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 struct TigerLoopSequence(
     Conditional<
         TigerStripesAreEven,
-        Task<Tiger, Eat, TigerEat>,
-        Task<Tiger, Sleep, TigerSleep>,
+        ActionTask<Tiger, Eat, TigerEat>,
+        ActionTask<Tiger, Sleep, TigerSleep>,
     >,
-    Task<Tiger, Sleep, TigerSleep>,
-    Task<Tiger, Hunt, TigerHunt>,
+    ActionTask<Tiger, Sleep, TigerSleep>,
+    ActionTask<Tiger, Hunt, TigerHunt>,
 );
 
 struct TigerUnderHundredStripes;
@@ -271,13 +271,13 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) = <Task<
+    let (gorilla_state, gorilla_request) = <ActionTask<
         Gorilla,
         Sleep,
         CoreEnergyStep<Lens<GorillaState, U0>>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
-    let (gorilla_state, gorilla_emitted) = <Task<
+    let (gorilla_state, gorilla_emitted) = <ActionTask<
         Gorilla,
         Sleep,
         CoreEnergyStep<Lens<GorillaState, U0>>,
@@ -291,13 +291,13 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6, age: 12 },
         stripes: 9,
     };
-    let (tiger_state, tiger_request) = <Task<
+    let (tiger_state, tiger_request) = <ActionTask<
         Tiger,
         Sleep,
         CoreEnergyStep<Lens<TigerState, U0>>,
     > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) = <Task<
+    let (tiger_state, tiger_emitted) = <ActionTask<
         Tiger,
         Sleep,
         CoreEnergyStep<Lens<TigerState, U0>>,
@@ -381,8 +381,8 @@ fn executor_runs_aspected_steps() {
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     let even = <Conditional<
         TigerStripesAreEven,
-        Task<Tiger, Eat, TigerEat>,
-        Task<Tiger, Sleep, TigerSleep>,
+        ActionTask<Tiger, Eat, TigerEat>,
+        ActionTask<Tiger, Sleep, TigerSleep>,
     > as Running>::run((
         TigerState {
             core: CoreState { energy: 5, age: 1 },
@@ -397,8 +397,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 
     let odd = <Conditional<
         TigerStripesAreEven,
-        Task<Tiger, Eat, TigerEat>,
-        Task<Tiger, Sleep, TigerSleep>,
+        ActionTask<Tiger, Eat, TigerEat>,
+        ActionTask<Tiger, Sleep, TigerSleep>,
     > as Running>::run((
         TigerState {
             core: CoreState { energy: 5, age: 1 },

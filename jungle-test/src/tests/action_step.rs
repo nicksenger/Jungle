@@ -1,4 +1,4 @@
-use jungle_sdk::types::{ActionCompletion, Task, AspectStep, Identity, Running, Waiting};
+use jungle_sdk::types::{ActionCompletion, ActionTask, Identity, Running, Task, Waiting};
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Flow;
 use std::future::ready;
@@ -15,7 +15,7 @@ action!(
 animal!(GatherCreature, U0, instinct = GatherInstinct);
 
 struct Gather;
-impl AspectStep<GatherCreature, GatherAction> for Gather {
+impl Task<GatherCreature, GatherAction> for Gather {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -30,16 +30,16 @@ impl AspectStep<GatherCreature, GatherAction> for Gather {
 }
 
 #[derive(Flow)]
-struct GatherInstinct(Task<GatherCreature, GatherAction, Gather>);
+struct GatherInstinct(ActionTask<GatherCreature, GatherAction, Gather>);
 
 #[test]
 fn action_step_adapts_action() {
     let (dependency, request) =
-        <Task<GatherCreature, GatherAction, Gather> as Running>::run(((), 3));
+        <ActionTask<GatherCreature, GatherAction, Gather> as Running>::run(((), 3));
     assert_eq!(request.into_input(), 7);
 
     let (next_dependency, emitted) =
-        <Task<GatherCreature, GatherAction, Gather> as Waiting>::accept((dependency, Ok(9)));
+        <ActionTask<GatherCreature, GatherAction, Gather> as Waiting>::accept((dependency, Ok(9)));
     assert_eq!(emitted, 9);
     assert_eq!(next_dependency, ());
 }

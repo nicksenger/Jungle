@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    ActionCompletion, Task, AspectStep, Executor, Identity, LoopCondition, ManualExecutor,
-    Running, Waiting, While,
+    ActionCompletion, ActionTask, Executor, Identity, LoopCondition, ManualExecutor, Running,
+    Task, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Instinct;
@@ -18,7 +18,7 @@ action!(
 animal!(Looper, U0, state = i32, instinct = LoopInstinct);
 
 struct Tick;
-impl AspectStep<Looper, TickAction> for Tick {
+impl Task<Looper, TickAction> for Tick {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -34,7 +34,7 @@ impl AspectStep<Looper, TickAction> for Tick {
     }
 }
 
-type TickFlow = Task<Looper, TickAction, Tick>;
+type TickFlow = ActionTask<Looper, TickAction, Tick>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {

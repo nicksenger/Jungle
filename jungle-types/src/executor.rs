@@ -1,5 +1,5 @@
 use crate::{
-    Action, ActionCompletion, Task, AspectStep, Condition, Conditional, Creature,
+    Action, ActionCompletion, ActionTask, Condition, Conditional, Creature, Task,
     LoopCondition, Running, While,
 };
 use inception::*;
@@ -122,7 +122,7 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
-impl<T, A, Step> ErasedFlow<T::State> for TypedErasedStep<Task<T, A, Step>>
+impl<T, A, Step> ErasedFlow<T::State> for TypedErasedStep<ActionTask<T, A, Step>>
 where
     T: Creature,
     A: Action<Dependency = ()>,
@@ -132,7 +132,7 @@ where
     A::Err: Serialize + 'static,
     A::Out: DeserializeOwned,
     A::Err: DeserializeOwned,
-    Step: AspectStep<T, A>,
+    Step: Task<T, A>,
     Step::In: DeserializeOwned,
     Step::Out: Serialize,
 {
@@ -150,7 +150,7 @@ where
 
         let typed_input = postcard::from_bytes::<Step::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Task<T, A, Step> as Running>::run((state, typed_input));
+        let (state, request) = <ActionTask<T, A, Step> as Running>::run((state, typed_input));
         let request = postcard::to_allocvec(&request.into_input())
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         self.waiting_completion = true;
@@ -171,7 +171,7 @@ where
 
         let typed_input = postcard::from_bytes::<Step::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Task<T, A, Step> as Running>::run((state, typed_input));
+        let (state, request) = <ActionTask<T, A, Step> as Running>::run((state, typed_input));
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
@@ -206,7 +206,7 @@ where
         };
 
         let (state, emitted) =
-            <Task<T, A, Step> as crate::Waiting>::accept((state, typed_completion));
+            <ActionTask<T, A, Step> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -545,21 +545,21 @@ pub trait BuildFlow<Input> {
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<T, A, Step> BuildFlow<DynFlow<T::State>> for Task<T, A, Step>
+impl<T, A, Step> BuildFlow<DynFlow<T::State>> for ActionTask<T, A, Step>
 where
     T: Creature + 'static,
     A: Action<Dependency = ()> + 'static,
     A::Err: Serialize,
     A::Out: DeserializeOwned,
     A::Err: DeserializeOwned,
-    Step: AspectStep<T, A> + 'static,
+    Step: Task<T, A> + 'static,
     Step::In: DeserializeOwned,
     Step::Out: Serialize,
 {
     type Output = DynFlow<T::State>;
 
     fn push_steps(mut steps: DynFlow<T::State>) -> Self::Output {
-        steps.push(Box::new(TypedErasedStep::<Task<T, A, Step>>::new()));
+        steps.push(Box::new(TypedErasedStep::<ActionTask<T, A, Step>>::new()));
         steps
     }
 }

@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    ActionCompletion, Task, AspectStep, Condition, Conditional, Either, Executor, Identity,
-    ManualExecutor, Running, Waiting,
+    ActionCompletion, ActionTask, Condition, Conditional, Either, Executor, Identity,
+    ManualExecutor, Running, Task, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Instinct;
@@ -35,7 +35,7 @@ animal!(
 );
 
 struct Left;
-impl AspectStep<ConditionalCreature, LeftAction> for Left {
+impl Task<ConditionalCreature, LeftAction> for Left {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -52,7 +52,7 @@ impl AspectStep<ConditionalCreature, LeftAction> for Left {
 }
 
 struct Right;
-impl AspectStep<ConditionalCreature, RightAction> for Right {
+impl Task<ConditionalCreature, RightAction> for Right {
     type Aspect = Identity;
     type In = i32;
     type Out = bool;
@@ -68,8 +68,8 @@ impl AspectStep<ConditionalCreature, RightAction> for Right {
     }
 }
 
-type LeftFlow = Task<ConditionalCreature, LeftAction, Left>;
-type RightFlow = Task<ConditionalCreature, RightAction, Right>;
+type LeftFlow = ActionTask<ConditionalCreature, LeftAction, Left>;
+type RightFlow = ActionTask<ConditionalCreature, RightAction, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
