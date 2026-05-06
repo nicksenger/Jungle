@@ -343,18 +343,28 @@ fn test_executor_runs_aspected_steps() {
     });
     assert!(!gorilla.is_complete());
 
-    let gorilla_emitted = gorilla
-        .advance_to_end(vec![
-            (json!(0), Ok(json!(6))),
-            (json!(0), Ok(json!(7))),
-            (json!(0), Ok(json!(6))),
-            (json!(0), Ok(json!(7))),
-            (json!(0), Ok(json!(8))),
-            (json!(0), Ok(json!(7))),
-            (json!(0), Ok(json!(8))),
-            (json!(0), Ok(json!(9))),
-        ])
-        .expect("gorilla loop should advance");
+    let mut gorilla_emitted = vec![
+        gorilla
+            .next(json!(0), Ok(json!(6)))
+            .expect("gorilla step 1 should advance"),
+        gorilla
+            .next(json!(0), Ok(json!(7)))
+            .expect("gorilla step 2 should advance"),
+        gorilla
+            .next(json!(0), Ok(json!(6)))
+            .expect("gorilla step 3 should advance"),
+    ];
+    gorilla_emitted.extend(
+        gorilla
+            .advance_to_end(vec![
+                (json!(0), Ok(json!(7))),
+                (json!(0), Ok(json!(8))),
+                (json!(0), Ok(json!(7))),
+                (json!(0), Ok(json!(8))),
+                (json!(0), Ok(json!(9))),
+            ])
+            .expect("gorilla loop should advance"),
+    );
     assert_eq!(
         gorilla_emitted,
         vec![
