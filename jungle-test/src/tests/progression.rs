@@ -1,5 +1,5 @@
 
-use jungle_sdk::{Animals, Instinct, Jungle};
+use jungle_sdk::{Creatures, Instinct, Jungle};
 use jungle_types::{
     Action, ActionCompletion, ActionRequest, ActionStep, AspectStep, CreatureActionSet, Id,
     Identity, Running, TestExecutor, Waiting,
@@ -85,7 +85,7 @@ struct ProgressInstinct(
 
 animal!(ProgressCreature, U0, i32, ProgressInstinct);
 
-#[derive(Jungle, Animals)]
+#[derive(Jungle, Creatures)]
 struct ProgressCreatures(ProgressCreature);
 
 type SeedStep = ActionStep<ProgressCreature, SeedAction, SeedMapper>;

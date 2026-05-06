@@ -44,8 +44,8 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &[parse_quote!(jungle_types::JungleFlow)])
 }
 
-#[proc_macro_derive(Animals)]
-pub fn derive_animals(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Creatures)]
+pub fn derive_creatures(input: TokenStream) -> TokenStream {
     derive_with_properties(
         input,
         &[

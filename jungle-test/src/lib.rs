@@ -2,7 +2,7 @@
 mod tests {
     
     use jungle_core::Jungle as _;
-    use jungle_sdk::{Actions, Animals, Flow, Jungle};
+    use jungle_sdk::{Actions, Creatures, Flow, Jungle};
     use jungle_types::{
         Action, ActionCompletion, ActionSet, ActionStep, Creature, CreatureActionSet, CreatureSet,
         AspectStep, CreatureStates, Ecosystem, Identity,
@@ -197,16 +197,16 @@ mod tests {
     prey_instinct!(HippoInstinct, Hippo);
     prey_instinct!(ElephantInstinct, Elephant);
 
-    #[derive(Jungle, Animals)]
+    #[derive(Jungle, Creatures)]
     struct Apes(Gorilla, Chimpanzee);
 
-    #[derive(Jungle, Animals)]
+    #[derive(Jungle, Creatures)]
     struct Cats(Tiger, Jaguar);
 
-    #[derive(Jungle, Animals)]
+    #[derive(Jungle, Creatures)]
     struct Predators(Cats, Anaconda);
 
-    #[derive(Jungle, Animals)]
+    #[derive(Jungle, Creatures)]
     struct AllCreatures(Cats, Apes, Anaconda, Hippo, Elephant);
 
     #[derive(Jungle, Actions)]
@@ -270,7 +270,7 @@ mod tests {
         animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);
         animal!(StatefulTiger, U1, CatState, StatefulTigerInstinct);
 
-        #[derive(Jungle, Animals)]
+        #[derive(Jungle, Creatures)]
         struct StatefulCreatures(StatefulGorilla, StatefulTiger);
 
         type StatefulCreatureStates = list![ApeState, CatState];
