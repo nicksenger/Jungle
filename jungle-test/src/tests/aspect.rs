@@ -1,13 +1,14 @@
-use jungle_sdk::Instinct;
+use jungle_sdk::inception::Inception;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Identity,
-    LoopCondition, Running, TestExecutor, Waiting, While,
+    Lens, LoopCondition, Running, TestExecutor, Waiting, While,
 };
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
+use jungle_sdk::Instinct;
 use serde_json::json;
 use std::future::ready;
 use std::marker::PhantomData;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 
 action!(Sleep, U0, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input + 1)));
 action!(Eat, U1, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input + 1)));
@@ -20,34 +21,18 @@ struct CoreState {
     age: i32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Inception, Clone, Debug, PartialEq, Eq)]
+#[inception(properties = [jungle_types::JungleOptic])]
 struct GorillaState {
     core: CoreState,
     bananas: i32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Inception, Clone, Debug, PartialEq, Eq)]
+#[inception(properties = [jungle_types::JungleOptic])]
 struct TigerState {
     core: CoreState,
     stripes: u8,
-}
-
-struct GorillaCoreAspect;
-impl Aspect<GorillaState> for GorillaCoreAspect {
-    type View = CoreState;
-
-    fn view(state: &mut GorillaState) -> &mut Self::View {
-        &mut state.core
-    }
-}
-
-struct TigerCoreAspect;
-impl Aspect<TigerState> for TigerCoreAspect {
-    type View = CoreState;
-
-    fn view(state: &mut TigerState) -> &mut Self::View {
-        &mut state.core
-    }
 }
 
 struct CoreEnergyStep<Focus>(PhantomData<fn() -> Focus>);
@@ -148,7 +133,7 @@ impl AspectStep<Gorilla, Forage> for GorillaForage {
 
 struct TigerEat;
 impl AspectStep<Tiger, Eat> for TigerEat {
-    type Aspect = TigerCoreAspect;
+    type Aspect = Lens<TigerState, U0>;
     type In = i32;
     type Out = i32;
 
@@ -165,7 +150,7 @@ impl AspectStep<Tiger, Eat> for TigerEat {
 
 struct TigerSleep;
 impl AspectStep<Tiger, Sleep> for TigerSleep {
-    type Aspect = TigerCoreAspect;
+    type Aspect = Lens<TigerState, U0>;
     type In = i32;
     type Out = i32;
 
@@ -260,17 +245,17 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) =
-        <ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>> as Running>::run((
-            gorilla_state,
-            2,
-        ));
+    let (gorilla_state, gorilla_request) = <ActionStep<
+        Gorilla,
+        Sleep,
+        CoreEnergyStep<Lens<GorillaState, U0>>,
+    > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
-    let (gorilla_state, gorilla_emitted) =
-        <ActionStep<Gorilla, Sleep, CoreEnergyStep<GorillaCoreAspect>> as Waiting>::accept((
-            gorilla_state,
-            Ok(20),
-        ));
+    let (gorilla_state, gorilla_emitted) = <ActionStep<
+        Gorilla,
+        Sleep,
+        CoreEnergyStep<Lens<GorillaState, U0>>,
+    > as Waiting>::accept((gorilla_state, Ok(20)));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
     assert_eq!(gorilla_state.core.age, 25);
@@ -280,17 +265,17 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6, age: 12 },
         stripes: 9,
     };
-    let (tiger_state, tiger_request) =
-        <ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>> as Running>::run((
-            tiger_state,
-            4,
-        ));
+    let (tiger_state, tiger_request) = <ActionStep<
+        Tiger,
+        Sleep,
+        CoreEnergyStep<Lens<TigerState, U0>>,
+    > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) =
-        <ActionStep<Tiger, Sleep, CoreEnergyStep<TigerCoreAspect>> as Waiting>::accept((
-            tiger_state,
-            Ok(15),
-        ));
+    let (tiger_state, tiger_emitted) = <ActionStep<
+        Tiger,
+        Sleep,
+        CoreEnergyStep<Lens<TigerState, U0>>,
+    > as Waiting>::accept((tiger_state, Ok(15)));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
     assert_eq!(tiger_state.core.age, 12);

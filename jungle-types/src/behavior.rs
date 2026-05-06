@@ -2,10 +2,13 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::ops::Sub;
 
-use crate::{ActionMember, Creature, Waiting, FlowActions, Running};
-use inception::primitive;
+use crate::{ActionMember, Creature, FlowActions, Running, Waiting};
+use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
 use typosaurus::collections::sp::Node;
+use typosaurus::num::consts::{U0, U1};
+use typosaurus::num::{Bit, UInt, Unsigned};
 
 /// A behavior that transforms a single input into a single output.
 pub trait Action {
@@ -78,6 +81,83 @@ impl<State> Aspect<State> for Identity {
 
     fn view(state: &mut State) -> &mut Self::View {
         state
+    }
+}
+
+/// Focuses to a field on a state type by its type-level field index.
+pub struct Lens<State, Index>(PhantomData<fn() -> (State, Index)>);
+
+trait FieldAtMut<'a, Index, View> {
+    fn at_mut(self) -> &'a mut View;
+}
+
+impl<'a, Head, Tail, View> FieldAtMut<'a, U0, View> for inception::List<(Head, Tail)>
+where
+    View: 'a,
+    Head: Access<Out = &'a mut View>,
+{
+    fn at_mut(self) -> &'a mut View {
+        self.0 .0.access()
+    }
+}
+
+impl<'a, Head, Tail, U, B, View> FieldAtMut<'a, UInt<U, B>, View> for inception::List<(Head, Tail)>
+where
+    U: Unsigned,
+    B: Bit,
+    UInt<U, B>: Sub<U1>,
+    Tail: FieldAtMut<'a, <UInt<U, B> as Sub<U1>>::Output, View>,
+{
+    fn at_mut(self) -> &'a mut View {
+        self.0 .1.at_mut()
+    }
+}
+
+#[doc(hidden)]
+pub trait FieldContentAt<Index> {
+    type Content;
+}
+
+impl<Head, Tail> FieldContentAt<U0> for inception::List<(Head, Tail)>
+where
+    Head: Field,
+{
+    type Content = <Head as Field>::Content;
+}
+
+impl<Head, Tail, U, B> FieldContentAt<UInt<U, B>> for inception::List<(Head, Tail)>
+where
+    U: Unsigned,
+    B: Bit,
+    UInt<U, B>: Sub<U1>,
+    Tail: FieldContentAt<<UInt<U, B> as Sub<U1>>::Output>,
+{
+    type Content = <Tail as FieldContentAt<<UInt<U, B> as Sub<U1>>::Output>>::Content;
+}
+
+impl<State, Index> Aspect<State> for Lens<State, Index>
+where
+    State: crate::Optic
+        + InceptionTy<crate::JungleOptic, inception::False>
+        + inception::DataType<Ty = inception::StructTy<inception::True>>,
+    <State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields: FieldContentAt<Index>,
+    for<'a> <State as InceptionTy<crate::JungleOptic, inception::False>>::MutFields<'a>: FieldAtMut<
+        'a,
+        Index,
+        <<State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields as FieldContentAt<Index>>::Content,
+    >,
+{
+    type View = <<State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields as FieldContentAt<Index>>::Content;
+
+    fn view(state: &mut State) -> &mut Self::View {
+        let mut header = VariantHeader;
+        let fields =
+            <State as InceptionTy<crate::JungleOptic, inception::False>>::fields_mut(state, &mut header);
+        let view = fields.at_mut();
+        // SAFETY: this `Lens` impl is restricted to struct data types. Struct `fields_mut`
+        // does not route any selected field through `header`, so the returned field reference
+        // is borrowed from `state`, not from `header`.
+        unsafe { core::mem::transmute::<&mut Self::View, &mut Self::View>(view) }
     }
 }
 

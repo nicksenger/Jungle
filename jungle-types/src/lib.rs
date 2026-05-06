@@ -4,21 +4,21 @@ mod instinct;
 mod meta;
 mod test_executor;
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, ActionStep, Aspect, AspectStep, Identity,
+    Action, ActionCompletion, ActionRequest, ActionStep, Aspect, AspectStep, Identity, Lens,
 };
 pub use error::Error;
 use inception::*;
 pub use instinct::Instinct;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AllFrom, CreatureActionSet, CreatureMember, CreatureSet, CreatureStates,
-    CreatureStatesCompatible, StripActionHeaders, StripCreatureHeaders,
+    ActionMember, ActionSet, AllFrom, CreatureActionSet, CreatureMember, CreatureSet,
+    CreatureStates, CreatureStatesCompatible, StripActionHeaders, StripCreatureHeaders,
 };
+use std::marker::PhantomData;
 pub use test_executor::{
     BuildTestFlow, DynFlow, ErasedStep, JungleDynFlow, TestExecutor, TestExecutorError, TestFlow,
     TypedErasedStep,
 };
-use std::marker::PhantomData;
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
@@ -52,6 +52,14 @@ impl<State, In> StatefulInput for (State, In) {
 pub trait LoopCondition<State> {
     fn should_continue(state: &State) -> bool;
 }
+
+/// Property used to opt-in a state type to field-index lenses.
+pub struct JungleOptic;
+impl Property for JungleOptic {}
+
+/// Marker trait proving a type has opted into [`JungleOptic`].
+pub trait Optic: Inception<JungleOptic, False> {}
+impl<T> Optic for T where T: Inception<JungleOptic, False> {}
 
 /// A flow combinator that chooses either `L` or `R` at runtime.
 pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
