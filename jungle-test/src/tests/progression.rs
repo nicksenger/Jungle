@@ -1,4 +1,4 @@
-use inception::Inception;
+
 use jungle_sdk as jungle;
 use jungle_types::{
     Action, ActionCompletion, ActionRequest, ActionStep, AspectStep, CreatureActionSet, Id,
@@ -77,7 +77,7 @@ impl AspectStep<ProgressCreature, FinishAction> for FinishMapper {
     }
 }
 
-#[derive(Inception, jungle::Instinct)]
+#[derive(jungle::Jungle, jungle::Instinct)]
 struct ProgressInstinct(
     ActionStep<ProgressCreature, SeedAction, SeedMapper>,
     ActionStep<ProgressCreature, FinishAction, FinishMapper>,
@@ -85,7 +85,7 @@ struct ProgressInstinct(
 
 animal!(ProgressCreature, U0, i32, ProgressInstinct);
 
-#[derive(Inception, jungle::Animals)]
+#[derive(jungle::Jungle, jungle::Animals)]
 struct ProgressCreatures(ProgressCreature);
 
 type SeedStep = ActionStep<ProgressCreature, SeedAction, SeedMapper>;
