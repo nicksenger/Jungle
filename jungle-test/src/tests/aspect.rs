@@ -1,11 +1,10 @@
-use jungle_sdk::inception::Inception;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionTask, Aspect, Condition, Conditional, Either, Executor,
     Identity, Lens, LoopCondition, Running, Task, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
-use jungle_sdk::Instinct;
+use jungle_sdk::{Instinct, Optic};
 use std::future::ready;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -23,15 +22,13 @@ struct CoreState {
     age: i32,
 }
 
-#[derive(Inception, Clone, Debug, PartialEq, Eq)]
-#[inception(properties = [jungle_types::JungleOptic])]
+#[derive(Optic, Clone, Debug, PartialEq, Eq)]
 struct GorillaState {
     core: CoreState,
     bananas: i32,
 }
 
-#[derive(Inception, Clone, Debug, PartialEq, Eq)]
-#[inception(properties = [jungle_types::JungleOptic])]
+#[derive(Optic, Clone, Debug, PartialEq, Eq)]
 struct TigerState {
     core: CoreState,
     stripes: u8,

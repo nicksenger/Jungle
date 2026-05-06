@@ -55,6 +55,11 @@ pub fn derive_actions(input: TokenStream) -> TokenStream {
     )
 }
 
+#[proc_macro_derive(Optic)]
+pub fn derive_optic(input: TokenStream) -> TokenStream {
+    derive_with_properties(input, &[parse_quote!(jungle_types::JungleOptic)])
+}
+
 fn expand_with_properties(
     attr: TokenStream,
     input: TokenStream,
