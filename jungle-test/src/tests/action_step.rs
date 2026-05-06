@@ -1,5 +1,5 @@
 
-use jungle_sdk as jungle;
+use jungle_sdk::{Flow, Jungle};
 use jungle_types::{
     ActionCompletion, ActionStep, AspectStep, Identity, Running, Waiting,
 };
@@ -33,7 +33,7 @@ impl AspectStep<GatherCreature, GatherAction> for GatherMapper {
     }
 }
 
-#[derive(jungle::Jungle, jungle::Flow)]
+#[derive(Jungle, Flow)]
 struct GatherInstinct(ActionStep<GatherCreature, GatherAction, GatherMapper>);
 
 #[test]
