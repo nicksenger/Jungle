@@ -9,7 +9,7 @@ pub use behavior::{
 pub use error::Error;
 pub use executor::{
     BuildFlow, DynFlow, ErasedStep, Executor, ExecutorError, ExecutorFlow, JungleDynFlow,
-    TypedErasedStep,
+    ManualExecutor, TypedErasedStep,
 };
 use inception::*;
 pub use instinct::Instinct;

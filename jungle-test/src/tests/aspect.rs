@@ -1,8 +1,8 @@
 use jungle_sdk::inception::Inception;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Executor,
-    Identity, Lens, LoopCondition, Running, Waiting, While,
+    ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Identity,
+    Lens, LoopCondition, ManualExecutor, Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::Instinct;
@@ -283,7 +283,7 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
 
 #[test]
 fn executor_runs_aspected_steps() {
-    let mut gorilla = Executor::<Gorilla>::new(GorillaState {
+    let mut gorilla = ManualExecutor::<Gorilla>::new(GorillaState {
         core: CoreState { energy: 5, age: 97 },
         bananas: 2,
     });
@@ -317,7 +317,7 @@ fn executor_runs_aspected_steps() {
     assert_eq!(gorilla_state.core.age, 100);
     assert_eq!(gorilla_state.bananas, 1);
 
-    let mut tiger = Executor::<Tiger>::new(TigerState {
+    let mut tiger = ManualExecutor::<Tiger>::new(TigerState {
         core: CoreState { energy: 8, age: 4 },
         stripes: 98,
     });

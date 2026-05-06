@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionRequest, ActionStep, AspectStep, CreatureActionSet, Executor,
-    Id, Identity, Running, Waiting,
+    Id, Identity, ManualExecutor, Running, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -143,7 +143,7 @@ fn executor_progresses_simple_instinct_steps() {
 
 #[test]
 fn executor_next_advances_with_serialized_completions() {
-    let mut executor = Executor::<ProgressCreature>::new(0);
+    let mut executor = ManualExecutor::<ProgressCreature>::new(0);
 
     let emitted_seed: i32 = executor.next_typed(5, Ok::<i32, ()>(8)).expect("seed step");
     assert_eq!(emitted_seed, 8);
@@ -158,12 +158,34 @@ fn executor_next_advances_with_serialized_completions() {
 
 #[test]
 fn executor_advance_to_end_runs_remaining_flow() {
-    let mut executor = Executor::<ProgressCreature>::new(0);
+    let mut executor = ManualExecutor::<ProgressCreature>::new(0);
     let emitted: Vec<i32> = executor
         .advance_to_end_typed(vec![(5, Ok::<i32, ()>(8)), (4, Ok::<i32, ()>(36))])
         .expect("flow should advance");
 
     assert_eq!(emitted, vec![8, 36]);
+    assert!(executor.is_complete());
+    assert_eq!(executor.into_state(), 36);
+}
+
+#[test]
+fn executor_threads_previous_emitted_output_into_next_input() {
+    let mut executor = Executor::<ProgressCreature>::new(0);
+
+    let request_seed: i32 = executor.next_request().expect("seed request");
+    assert_eq!(request_seed, 1);
+    let emitted_seed: i32 = executor
+        .complete(Ok::<i32, ()>(8))
+        .expect("seed completion");
+    assert_eq!(emitted_seed, 8);
+
+    let request_finish: i32 = executor.next_request().expect("finish request");
+    assert_eq!(request_finish, 16);
+    let emitted_finish: i32 = executor
+        .complete(Ok::<i32, ()>(36))
+        .expect("finish completion");
+    assert_eq!(emitted_finish, 36);
+
     assert!(executor.is_complete());
     assert_eq!(executor.into_state(), 36);
 }

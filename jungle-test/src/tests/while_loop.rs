@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, AspectStep, Executor, Identity, LoopCondition, Running, Waiting,
-    While,
+    ActionCompletion, ActionStep, AspectStep, Executor, Identity, LoopCondition, ManualExecutor,
+    Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Instinct;
@@ -77,7 +77,7 @@ fn while_waiting_passthroughs_optional_branch() {
 
 #[test]
 fn executor_repeats_until_condition_fails() {
-    let mut loop_executor = Executor::<Looper>::new(0);
+    let mut loop_executor = ManualExecutor::<Looper>::new(0);
     let emitted: Vec<i32> = loop_executor
         .advance_to_end_typed(vec![
             (1, Ok::<i32, ()>(1)),
@@ -93,6 +93,35 @@ fn executor_repeats_until_condition_fails() {
 #[test]
 fn executor_completes_zero_iteration_loop() {
     let loop_executor = Executor::<Looper>::new(3);
+    assert!(loop_executor.is_complete());
+    assert_eq!(loop_executor.into_state(), 3);
+}
+
+#[test]
+fn executor_threads_loop_inputs_from_previous_emitted_output() {
+    let mut loop_executor = Executor::<Looper>::new(0);
+
+    let request1: i32 = loop_executor.next_request().expect("request 1");
+    assert_eq!(request1, 0);
+    let emitted1: i32 = loop_executor
+        .complete(Ok::<i32, ()>(1))
+        .expect("complete 1");
+    assert_eq!(emitted1, 1);
+
+    let request2: i32 = loop_executor.next_request().expect("request 2");
+    assert_eq!(request2, 2);
+    let emitted2: i32 = loop_executor
+        .complete(Ok::<i32, ()>(2))
+        .expect("complete 2");
+    assert_eq!(emitted2, 2);
+
+    let request3: i32 = loop_executor.next_request().expect("request 3");
+    assert_eq!(request3, 4);
+    let emitted3: i32 = loop_executor
+        .complete(Ok::<i32, ()>(3))
+        .expect("complete 3");
+    assert_eq!(emitted3, 3);
+
     assert!(loop_executor.is_complete());
     assert_eq!(loop_executor.into_state(), 3);
 }
