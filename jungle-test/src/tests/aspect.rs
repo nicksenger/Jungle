@@ -35,7 +35,7 @@ struct GorillaCoreAspect;
 impl Aspect<GorillaState> for GorillaCoreAspect {
     type View = CoreState;
 
-    fn view_mut(state: &mut GorillaState) -> &mut Self::View {
+    fn view(state: &mut GorillaState) -> &mut Self::View {
         &mut state.core
     }
 }
@@ -44,7 +44,7 @@ struct TigerCoreAspect;
 impl Aspect<TigerState> for TigerCoreAspect {
     type View = CoreState;
 
-    fn view_mut(state: &mut TigerState) -> &mut Self::View {
+    fn view(state: &mut TigerState) -> &mut Self::View {
         &mut state.core
     }
 }
