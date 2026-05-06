@@ -31,30 +31,50 @@ struct TigerState {
     stripes: u8,
 }
 
-struct GorillaCoreAspect;
-impl Aspect<GorillaState> for GorillaCoreAspect {
-    type View = CoreState;
+trait HasCore {
+    fn core(&self) -> &CoreState;
+    fn core_mut(&mut self) -> &mut CoreState;
+}
 
-    fn view(state: &GorillaState) -> &Self::View {
-        &state.core
+impl HasCore for GorillaState {
+    fn core(&self) -> &CoreState {
+        &self.core
     }
-    fn view_mut(state: &mut GorillaState) -> &mut Self::View {
-        &mut state.core
+
+    fn core_mut(&mut self) -> &mut CoreState {
+        &mut self.core
     }
 }
 
-struct TigerCoreAspect;
-impl Aspect<TigerState> for TigerCoreAspect {
-    type View = CoreState;
-
-    fn view(state: &TigerState) -> &Self::View {
-        &state.core
+impl HasCore for TigerState {
+    fn core(&self) -> &CoreState {
+        &self.core
     }
 
-    fn view_mut(state: &mut TigerState) -> &mut Self::View {
-        &mut state.core
+    fn core_mut(&mut self) -> &mut CoreState {
+        &mut self.core
     }
 }
+
+struct CoreAspect<State>(PhantomData<fn() -> State>);
+
+impl<State> Aspect<State> for CoreAspect<State>
+where
+    State: HasCore,
+{
+    type View = CoreState;
+
+    fn view(state: &State) -> &Self::View {
+        state.core()
+    }
+
+    fn view_mut(state: &mut State) -> &mut Self::View {
+        state.core_mut()
+    }
+}
+
+type GorillaCoreAspect = CoreAspect<GorillaState>;
+type TigerCoreAspect = CoreAspect<TigerState>;
 
 struct CoreEnergyStep<Focus>(PhantomData<fn() -> Focus>);
 
