@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::pin::pin;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-action!(Sleep, U0, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input + 1)));
+action!(Sleep, U0, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
 action!(Eat, U1, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input + 1)));
 action!(Forage, U2, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input - 1)));
 action!(Hunt, U3, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input - 1)));
