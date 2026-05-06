@@ -1,20 +1,23 @@
 use crate::{
-    Action, ActionCompletion, ActionRequest, ActionStep, Creature, AspectStep, Waiting, Running,
+    Action, ActionCompletion, ActionStep, Condition, Conditional, Creature, AspectStep, Running,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 
-pub type DynFlow<State> = Vec<Box<dyn ErasedStep<State>>>;
+pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
+pub type ErasedStep<State> = dyn ErasedFlow<State>;
 
-pub trait ErasedStep<State> {
+pub trait ErasedFlow<State> {
     fn progress(
-        &self,
+        &mut self,
         state: State,
         input: Value,
         completion: Result<Value, Value>,
     ) -> Result<(State, Value), TestExecutorError>;
+
+    fn is_complete(&self) -> bool;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -38,15 +41,21 @@ pub trait TestFlow {
     fn build_steps() -> DynFlow<Self::State>;
 }
 
-pub struct TypedErasedStep<Step>(core::marker::PhantomData<fn() -> Step>);
+pub struct TypedErasedStep<Step> {
+    complete: bool,
+    marker: core::marker::PhantomData<fn() -> Step>,
+}
 
 impl<Step> TypedErasedStep<Step> {
     pub fn new() -> Self {
-        Self(core::marker::PhantomData)
+        Self {
+            complete: false,
+            marker: core::marker::PhantomData,
+        }
     }
 }
 
-impl<T, A, Step> ErasedStep<T::State> for TypedErasedStep<ActionStep<T, A, Step>>
+impl<T, A, Step> ErasedFlow<T::State> for TypedErasedStep<ActionStep<T, A, Step>>
 where
     T: Creature,
     A: Action,
@@ -57,7 +66,7 @@ where
     Step::Out: Serialize,
 {
     fn progress(
-        &self,
+        &mut self,
         state: T::State,
         input: Value,
         completion: Result<Value, Value>,
@@ -72,13 +81,113 @@ where
                 .map_err(|err| TestExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, request) = <ActionStep<T, A, Step> as Running>::run((state, typed_input));
-        let _prepared: ActionRequest<A> = request;
+        let (state, _request) = <ActionStep<T, A, Step> as Running>::run((state, typed_input));
         let (state, emitted) =
-            <ActionStep<T, A, Step> as Waiting>::accept((state, typed_completion));
+            <ActionStep<T, A, Step> as crate::Waiting>::accept((state, typed_completion));
         let emitted = serde_json::to_value(emitted)
             .map_err(|err| TestExecutorError::EmitSerialize(err.to_string()))?;
+        self.complete = true;
         Ok((state, emitted))
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+}
+
+enum ActiveBranch {
+    Left,
+    Right,
+}
+
+struct ConditionalErasedFlow<State, In>
+where
+    In: DeserializeOwned,
+{
+    left: DynFlow<State>,
+    right: DynFlow<State>,
+    choose_left: Box<dyn Fn(&(State, In)) -> bool>,
+    active_branch: Option<ActiveBranch>,
+    cursor: usize,
+}
+
+impl<State, In> ConditionalErasedFlow<State, In>
+where
+    In: DeserializeOwned,
+{
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        choose_left: Box<dyn Fn(&(State, In)) -> bool>,
+    ) -> Self {
+        Self {
+            left,
+            right,
+            choose_left,
+            active_branch: None,
+            cursor: 0,
+        }
+    }
+
+    fn branch_len(&self) -> usize {
+        match self.active_branch {
+            Some(ActiveBranch::Left) => self.left.len(),
+            Some(ActiveBranch::Right) => self.right.len(),
+            None => 0,
+        }
+    }
+}
+
+impl<State, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
+where
+    State: Clone,
+    In: DeserializeOwned,
+{
+    fn progress(
+        &mut self,
+        state: State,
+        input: Value,
+        completion: Result<Value, Value>,
+    ) -> Result<(State, Value), TestExecutorError> {
+        if self.active_branch.is_none() {
+            let typed_input = serde_json::from_value::<In>(input.clone())
+                .map_err(|err| TestExecutorError::InputDeserialize(err.to_string()))?;
+            let choose_left = (self.choose_left)(&(state.clone(), typed_input));
+            self.active_branch = Some(if choose_left {
+                ActiveBranch::Left
+            } else {
+                ActiveBranch::Right
+            });
+        }
+
+        if self.cursor >= self.branch_len() {
+            return Err(TestExecutorError::Complete);
+        }
+
+        let (state, emitted) = match self.active_branch {
+            Some(ActiveBranch::Left) => {
+                let node = self
+                    .left
+                    .get_mut(self.cursor)
+                    .expect("cursor was checked against left branch length");
+                node.progress(state, input, completion)?
+            }
+            Some(ActiveBranch::Right) => {
+                let node = self
+                    .right
+                    .get_mut(self.cursor)
+                    .expect("cursor was checked against right branch length");
+                node.progress(state, input, completion)?
+            }
+            None => unreachable!("branch was initialized above"),
+        };
+
+        self.cursor += 1;
+        Ok((state, emitted))
+    }
+
+    fn is_complete(&self) -> bool {
+        self.active_branch.is_some() && self.cursor >= self.branch_len()
     }
 }
 
@@ -92,7 +201,11 @@ pub trait BuildTestFlow<Input> {
         steps
     }
 
-    fn merge<H, R>(_l: H, _r: R, steps: Input) -> <R as BuildTestFlow<<H as BuildTestFlow<Input>>::Output>>::Output
+    fn merge<H, R>(
+        _l: H,
+        _r: R,
+        steps: Input,
+    ) -> <R as BuildTestFlow<<H as BuildTestFlow<Input>>::Output>>::Output
     where
         H: BuildTestFlow<Input>,
         R: BuildTestFlow<<H as BuildTestFlow<Input>>::Output>,
@@ -134,13 +247,37 @@ where
     }
 }
 
+#[inception::primitive(property = crate::JungleDynFlow)]
+impl<State, In, P, L, R> BuildTestFlow<DynFlow<State>> for Conditional<P, L, R>
+where
+    State: Clone + 'static,
+    In: DeserializeOwned + 'static,
+    P: Condition<(State, In)> + 'static,
+    L: BuildTestFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    R: BuildTestFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
+        let left = <L as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new());
+        let right = <R as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new());
+        let choose_left = Box::new(|input: &(State, In)| <P as Condition<(State, In)>>::choose(input));
+        steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(
+            left,
+            right,
+            choose_left,
+        )));
+        steps
+    }
+}
+
 pub struct TestExecutor<A>
 where
     A: Creature,
     A::Instinct: BuildTestFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
-    steps: Vec<Box<dyn ErasedStep<A::State>>>,
+    steps: DynFlow<A::State>,
     cursor: usize,
 }
 
@@ -171,10 +308,15 @@ where
         }
 
         let state = self.state.take().expect("executor state is always present");
-        let step = &self.steps[self.cursor];
-        let (state, emitted) = step.progress(state, input, completion)?;
+        let node = self
+            .steps
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let (state, emitted) = node.progress(state, input, completion)?;
+        if node.is_complete() {
+            self.cursor += 1;
+        }
         self.state = Some(state);
-        self.cursor += 1;
         Ok(emitted)
     }
 

@@ -1,8 +1,9 @@
-use jungle_sdk::{Flow, Jungle};
+use jungle_sdk::{Instinct, Jungle};
 use jungle_types::{
     ActionCompletion, ActionStep, AspectStep, Condition, Conditional, Either, Identity, Running,
-    Waiting,
+    TestExecutor, Waiting,
 };
+use serde_json::json;
 use typosaurus::num::consts::{U0, U1};
 
 action!(
@@ -75,7 +76,7 @@ impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
 
 type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, RightFlow>;
 
-#[derive(Jungle, Flow)]
+#[derive(Jungle, Instinct)]
 struct ConditionalInstinct(ConditionalFlow);
 
 #[test]
@@ -112,4 +113,19 @@ fn conditional_waiting_accept_returns_either_branch_output() {
             assert!(emitted);
         }
     }
+}
+
+#[test]
+fn test_executor_dynamically_selects_conditional_branch() {
+    let mut left = TestExecutor::<ConditionalCreature>::new(5);
+    let left_emitted = left.next(json!(3), Ok(json!(9))).expect("left branch");
+    assert_eq!(left_emitted, json!(9));
+    assert!(left.is_complete());
+    assert_eq!(left.into_state(), 9);
+
+    let mut right = TestExecutor::<ConditionalCreature>::new(-2);
+    let right_emitted = right.next(json!(3), Ok(json!(6))).expect("right branch");
+    assert_eq!(right_emitted, json!(true));
+    assert!(right.is_complete());
+    assert_eq!(right.into_state(), 6);
 }
