@@ -411,3 +411,21 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         Either::Right((_state, request)) => assert_eq!(request.into_input(), 5),
     }
 }
+
+#[test]
+fn executor_advances_with_executable_requests_and_dynamic_action_order() {
+    let mut tiger = Executor::<Tiger>::new(TigerState {
+        core: CoreState { energy: 8, age: 4 },
+        stripes: 98,
+    });
+
+    let emitted = run_now(tiger.advance_to_end_with(0i32, &()))
+        .expect("tiger flow should execute through dynamic requests");
+    assert_eq!(emitted.len(), 6);
+    assert!(tiger.is_complete());
+
+    let tiger_state = tiger.into_state();
+    assert_eq!(tiger_state.core.energy, 301);
+    assert_eq!(tiger_state.core.age, 4);
+    assert_eq!(tiger_state.stripes, 100);
+}

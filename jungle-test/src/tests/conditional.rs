@@ -5,6 +5,9 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Instinct;
 use std::future::ready;
+use std::future::Future;
+use std::pin::pin;
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 action!(
     LeftAction,
@@ -80,6 +83,29 @@ type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, R
 #[derive(Instinct)]
 struct ConditionalInstinct(ConditionalFlow);
 
+fn run_now<F: Future>(future: F) -> F::Output {
+    fn raw_waker() -> RawWaker {
+        fn clone(_: *const ()) -> RawWaker {
+            raw_waker()
+        }
+        fn wake(_: *const ()) {}
+        fn wake_by_ref(_: *const ()) {}
+        fn drop(_: *const ()) {}
+        RawWaker::new(
+            std::ptr::null(),
+            &RawWakerVTable::new(clone, wake, wake_by_ref, drop),
+        )
+    }
+
+    let waker = unsafe { Waker::from_raw(raw_waker()) };
+    let mut cx = Context::from_waker(&waker);
+    let mut future = pin!(future);
+    match Future::poll(future.as_mut(), &mut cx) {
+        Poll::Ready(output) => output,
+        Poll::Pending => panic!("test action future must resolve immediately"),
+    }
+}
+
 #[test]
 fn conditional_run_selects_branch_from_predicate() {
     let left = <ConditionalFlow as Running>::run((5, 3));
@@ -148,4 +174,37 @@ fn executor_requests_and_completes_conditional_branch() {
     assert!(right_emitted);
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 6);
+}
+
+#[test]
+fn executor_executable_request_runs_without_static_action_dispatch() {
+    let mut left = Executor::<ConditionalCreature>::new(5);
+    let request = left
+        .next_executable_request(0i32)
+        .expect("left executable request");
+    let input: i32 = request
+        .deserialize_request()
+        .expect("left request should deserialize");
+    assert_eq!(input, 5);
+    let completion = run_now(request.run_with(&())).expect("left action should execute");
+    let _left_emitted = left
+        .complete_serialized(completion)
+        .expect("left completion should apply");
+    assert!(left.is_complete());
+    assert_eq!(left.into_state(), 6);
+
+    let mut right = Executor::<ConditionalCreature>::new(-2);
+    let request = right
+        .next_executable_request(0i32)
+        .expect("right executable request");
+    let input: i32 = request
+        .deserialize_request()
+        .expect("right request should deserialize");
+    assert_eq!(input, -2);
+    let completion = run_now(request.run_with(&())).expect("right action should execute");
+    let _right_emitted = right
+        .complete_serialized(completion)
+        .expect("right completion should apply");
+    assert!(right.is_complete());
+    assert_eq!(right.into_state(), 0);
 }

@@ -5,12 +5,52 @@ use crate::{
 use inception::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::future::Future;
+use std::pin::Pin;
 
 type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
+type ActionFuture = Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>>>>;
+type ActionRunner = Box<dyn FnOnce(Serialized) -> ActionFuture>;
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
 pub type ErasedStep<State> = dyn ErasedFlow<State>;
+
+pub struct ExecutableActionRequest {
+    request: Serialized,
+    runner: ActionRunner,
+}
+
+impl ExecutableActionRequest {
+    fn new(request: Serialized, runner: ActionRunner) -> Self {
+        Self { request, runner }
+    }
+
+    pub fn deserialize_request<Request>(&self) -> Result<Request, ExecutorError>
+    where
+        Request: DeserializeOwned,
+    {
+        deserialize_request(self.request.clone())
+    }
+
+    pub fn run_with_serialized(
+        self,
+        dependency: Serialized,
+    ) -> impl Future<Output = Result<SerializedCompletion, ExecutorError>> {
+        (self.runner)(dependency)
+    }
+
+    pub async fn run_with<Dependency>(
+        self,
+        dependency: &Dependency,
+    ) -> Result<SerializedCompletion, ExecutorError>
+    where
+        Dependency: Serialize,
+    {
+        let dependency = serialize_input(dependency)?;
+        self.run_with_serialized(dependency).await
+    }
+}
 
 pub trait ErasedFlow<State> {
     fn request(
@@ -24,6 +64,12 @@ pub trait ErasedFlow<State> {
         state: State,
         completion: SerializedCompletion,
     ) -> Result<(State, Serialized), ExecutorError>;
+
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> Result<(State, ExecutableActionRequest), ExecutorError>;
 
     fn is_waiting_completion(&self) -> bool;
 
@@ -94,6 +140,10 @@ impl<T, A, Step> ErasedFlow<T::State> for TypedErasedStep<ActionStep<T, A, Step>
 where
     T: Creature,
     A: Action,
+    A::Dependency: DeserializeOwned + 'static,
+    A::In: 'static,
+    A::Out: 'static,
+    A::Err: Serialize + 'static,
     A::Out: DeserializeOwned,
     A::Err: DeserializeOwned,
     Step: AspectStep<T, A>,
@@ -119,6 +169,37 @@ where
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         self.waiting_completion = true;
         Ok((state, request))
+    }
+
+    fn request_executable(
+        &mut self,
+        state: T::State,
+        input: Serialized,
+    ) -> Result<(T::State, ExecutableActionRequest), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+        if self.waiting_completion {
+            return Err(ExecutorError::AwaitingCompletion);
+        }
+
+        let typed_input = postcard::from_bytes::<Step::In>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        let (state, request) = <ActionStep<T, A, Step> as Running>::run((state, typed_input));
+        let action_input = request.into_input();
+        let request = postcard::to_allocvec(&action_input)
+            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let runner: ActionRunner = Box::new(move |dependency: Serialized| {
+            Box::pin(async move {
+                let dependency = postcard::from_bytes::<A::Dependency>(&dependency)
+                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                let completion = <A as Action>::act(&dependency, action_input).await;
+                serialize_completion(completion)
+            })
+        });
+
+        self.waiting_completion = true;
+        Ok((state, ExecutableActionRequest::new(request, runner)))
     }
 
     fn complete(
@@ -264,6 +345,32 @@ where
         Ok((state, emitted))
     }
 
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+        if self.active_branch.is_none() {
+            let typed_input = postcard::from_bytes::<In>(&input)
+                .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+            let choose_left = (self.choose_left)(&(state.clone(), typed_input));
+            self.active_branch = Some(if choose_left {
+                ActiveBranch::Left
+            } else {
+                ActiveBranch::Right
+            });
+        }
+
+        if self.cursor >= self.branch_len() {
+            return Err(ExecutorError::Complete);
+        }
+
+        let node = self
+            .active_node_mut()
+            .expect("cursor was checked against active branch length");
+        node.request_executable(state, input)
+    }
+
     fn is_waiting_completion(&self) -> bool {
         if self.cursor >= self.branch_len() {
             return false;
@@ -367,6 +474,29 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
         Ok((state, emitted))
     }
 
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+
+        if !(self.should_continue)(&state) {
+            self.complete = true;
+            return Err(ExecutorError::Complete);
+        }
+
+        self.ensure_iteration_ready();
+
+        let node = self
+            .active_body
+            .get_mut(self.body_cursor)
+            .expect("body cursor always points to an active body node");
+        node.request_executable(state, input)
+    }
+
     fn is_waiting_completion(&self) -> bool {
         self.active_body
             .get(self.body_cursor)
@@ -435,6 +565,8 @@ impl<T, A, Step> BuildFlow<DynFlow<T::State>> for ActionStep<T, A, Step>
 where
     T: Creature + 'static,
     A: Action + 'static,
+    A::Dependency: DeserializeOwned,
+    A::Err: Serialize,
     A::Out: DeserializeOwned,
     A::Err: DeserializeOwned,
     Step: AspectStep<T, A> + 'static,
@@ -601,6 +733,25 @@ where
         Ok(request)
     }
 
+    pub fn next_executable_request(
+        &mut self,
+        input: Serialized,
+    ) -> Result<ExecutableActionRequest, ExecutorError> {
+        self.settle_without_progress()?;
+        if self.is_complete() {
+            return Err(ExecutorError::Complete);
+        }
+
+        let state = self.state.take().expect("executor state is always present");
+        let node = self
+            .steps
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let (state, request) = node.request_executable(state, input)?;
+        self.state = Some(state);
+        Ok(request)
+    }
+
     pub fn next_request_typed<In, Request>(&mut self, input: In) -> Result<Request, ExecutorError>
     where
         In: Serialize,
@@ -637,6 +788,29 @@ where
         deserialize_emitted(emitted)
     }
 
+    pub fn complete_serialized(
+        &mut self,
+        completion: SerializedCompletion,
+    ) -> Result<Serialized, ExecutorError> {
+        self.settle_without_progress()?;
+        if self.is_complete() {
+            return Err(ExecutorError::Complete);
+        }
+
+        let state = self.state.take().expect("executor state is always present");
+        let node = self
+            .steps
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        let (state, emitted) = node.complete(state, completion)?;
+        if node.is_complete() {
+            self.cursor += 1;
+        }
+        self.state = Some(state);
+        self.settle_without_progress()?;
+        Ok(emitted)
+    }
+
     pub fn complete_typed<Out, Err, Emitted>(
         &mut self,
         completion: Result<Out, Err>,
@@ -647,7 +821,8 @@ where
         Emitted: DeserializeOwned,
     {
         let completion = serialize_completion(completion)?;
-        self.complete(completion)
+        let emitted = self.complete_serialized(completion)?;
+        deserialize_emitted(emitted)
     }
 
     pub fn next<Emitted>(
@@ -760,6 +935,20 @@ where
         deserialize_request(request)
     }
 
+    pub fn next_executable_request<Initial>(
+        &mut self,
+        initial_input: Initial,
+    ) -> Result<ExecutableActionRequest, ExecutorError>
+    where
+        Initial: Serialize,
+    {
+        let input = match self.last_emitted.take() {
+            Some(input) => input,
+            None => serialize_input(initial_input)?,
+        };
+        self.manual.next_executable_request(input)
+    }
+
     pub fn complete<Out, Err, Emitted>(
         &mut self,
         completion: Result<Out, Err>,
@@ -770,11 +959,50 @@ where
         Emitted: DeserializeOwned + Serialize,
     {
         let completion = serialize_completion(completion)?;
-        let emitted: Emitted = self.manual.complete(completion)?;
-        self.last_emitted = Some(
-            postcard::to_allocvec(&emitted)
-                .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?,
-        );
+        let emitted = self.manual.complete_serialized(completion)?;
+        self.last_emitted = Some(emitted.clone());
+        let emitted: Emitted = deserialize_emitted(emitted)?;
+        Ok(emitted)
+    }
+
+    pub fn complete_serialized(
+        &mut self,
+        completion: SerializedCompletion,
+    ) -> Result<Serialized, ExecutorError> {
+        let emitted = self.manual.complete_serialized(completion)?;
+        self.last_emitted = Some(emitted.clone());
+        Ok(emitted)
+    }
+
+    pub async fn next_and_complete_with<Dependency>(
+        &mut self,
+        initial_input: impl Serialize,
+        dependency: &Dependency,
+    ) -> Result<Serialized, ExecutorError>
+    where
+        Dependency: Serialize,
+    {
+        let request = self.next_executable_request(initial_input)?;
+        let completion = request.run_with(dependency).await?;
+        self.complete_serialized(completion)
+    }
+
+    pub async fn advance_to_end_with<Initial, Dependency>(
+        &mut self,
+        initial_input: Initial,
+        dependency: &Dependency,
+    ) -> Result<Vec<Serialized>, ExecutorError>
+    where
+        Initial: Serialize + Clone,
+        Dependency: Serialize,
+    {
+        let mut emitted = Vec::new();
+        while !self.is_complete() {
+            emitted.push(
+                self.next_and_complete_with(initial_input.clone(), dependency)
+                    .await?,
+            );
+        }
         Ok(emitted)
     }
 

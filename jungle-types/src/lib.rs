@@ -8,8 +8,8 @@ pub use behavior::{
 };
 pub use error::Error;
 pub use executor::{
-    BuildFlow, DynFlow, ErasedStep, Executor, ExecutorError, ExecutorFlow, JungleDynFlow,
-    ManualExecutor, TypedErasedStep,
+    BuildFlow, DynFlow, ErasedStep, ExecutableActionRequest, Executor, ExecutorError, ExecutorFlow,
+    JungleDynFlow, ManualExecutor, TypedErasedStep,
 };
 use inception::*;
 pub use instinct::Instinct;
