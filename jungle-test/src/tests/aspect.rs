@@ -1,13 +1,16 @@
 use jungle_sdk::inception::Inception;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Executor,
-    Identity, Lens, LoopCondition, Running, Waiting, While,
+    Action, ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either,
+    Executor, Identity, Lens, LoopCondition, Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::Instinct;
 use std::future::ready;
+use std::future::Future;
 use std::marker::PhantomData;
+use std::pin::pin;
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 action!(Sleep, U0, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input + 1)));
 action!(Eat, U1, in = i32, out = i32, err = (), act = |_dependency, input| ready(Ok(input + 1)));
@@ -235,6 +238,30 @@ animal!(
 );
 animal!(Tiger, U2, state = TigerState, instinct = TigerInstinct);
 
+fn run_now<F: Future>(future: F) -> F::Output {
+    fn raw_waker() -> RawWaker {
+        fn clone(_: *const ()) -> RawWaker {
+            raw_waker()
+        }
+        fn wake(_: *const ()) {}
+        fn wake_by_ref(_: *const ()) {}
+        fn drop(_: *const ()) {}
+        RawWaker::new(
+            std::ptr::null(),
+            &RawWakerVTable::new(clone, wake, wake_by_ref, drop),
+        )
+    }
+
+    // These test actions resolve immediately (`ready(...)`), so a single poll is enough.
+    let waker = unsafe { Waker::from_raw(raw_waker()) };
+    let mut cx = Context::from_waker(&waker);
+    let mut future = pin!(future);
+    match Future::poll(future.as_mut(), &mut cx) {
+        Poll::Ready(output) => output,
+        Poll::Pending => panic!("test action future must resolve immediately"),
+    }
+}
+
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {
     let gorilla_state = GorillaState {
@@ -290,19 +317,25 @@ fn executor_runs_aspected_steps() {
     assert!(!gorilla.is_complete());
 
     let mut gorilla_emitted: Vec<i32> = Vec::new();
-    for completion in [6, 7, 6, 7, 8, 7, 8, 9] {
-        let _request: i32 = gorilla
+    for step in 0..8 {
+        let request: i32 = gorilla
             .next_request()
             .expect("gorilla request should advance");
+        let completion: i32 = match step % 3 {
+            0 => run_now(Eat::act(&(), request)).expect("eat should succeed"),
+            1 => run_now(Sleep::act(&(), request)).expect("sleep should succeed"),
+            2 => run_now(Forage::act(&(), request)).expect("forage should succeed"),
+            _ => unreachable!(),
+        };
         let emitted: i32 = gorilla
             .complete(Ok::<i32, ()>(completion))
             .expect("gorilla completion should advance");
         gorilla_emitted.push(emitted);
     }
-    assert_eq!(gorilla_emitted, vec![6, 7, 6, 7, 8, 7, 8, 9]);
+    assert_eq!(gorilla_emitted, vec![6, 13, 25, 51, 103, 205, 411, 823]);
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
-    assert_eq!(gorilla_state.core.energy, 9);
+    assert_eq!(gorilla_state.core.energy, 823);
     assert_eq!(gorilla_state.core.age, 100);
     assert_eq!(gorilla_state.bananas, 1);
 
@@ -313,17 +346,33 @@ fn executor_runs_aspected_steps() {
     assert!(!tiger.is_complete());
 
     let mut tiger_emitted: Vec<i32> = Vec::new();
-    for completion in [9, 10, 9, 10, 11, 10] {
-        let _request: i32 = tiger.next_request().expect("tiger request should advance");
+    let mut tiger_stripes: u8 = 98;
+    for step in 0..6 {
+        let request: i32 = tiger.next_request().expect("tiger request should advance");
+        let completion: i32 = match step % 3 {
+            0 => {
+                if tiger_stripes % 2 == 0 {
+                    run_now(Eat::act(&(), request)).expect("eat should succeed")
+                } else {
+                    run_now(Sleep::act(&(), request)).expect("sleep should succeed")
+                }
+            }
+            1 => run_now(Sleep::act(&(), request)).expect("sleep should succeed"),
+            2 => run_now(Hunt::act(&(), request)).expect("hunt should succeed"),
+            _ => unreachable!(),
+        };
         let emitted: i32 = tiger
             .complete(Ok::<i32, ()>(completion))
             .expect("tiger completion should advance");
         tiger_emitted.push(emitted);
+        if step % 3 == 2 {
+            tiger_stripes += 1;
+        }
     }
-    assert_eq!(tiger_emitted, vec![9, 10, 9, 10, 11, 10]);
+    assert_eq!(tiger_emitted, vec![9, 19, 37, 75, 151, 301]);
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
-    assert_eq!(tiger_state.core.energy, 10);
+    assert_eq!(tiger_state.core.energy, 301);
     assert_eq!(tiger_state.core.age, 4);
     assert_eq!(tiger_state.stripes, 100);
 }
