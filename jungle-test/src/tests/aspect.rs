@@ -1,8 +1,8 @@
 use jungle_sdk::inception::Inception;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Identity,
-    Lens, LoopCondition, ManualExecutor, Running, Waiting, While,
+    ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Executor,
+    Identity, Lens, LoopCondition, Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::Instinct;
@@ -283,33 +283,22 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
 
 #[test]
 fn executor_runs_aspected_steps() {
-    let mut gorilla = ManualExecutor::<Gorilla>::new(GorillaState {
+    let mut gorilla = Executor::<Gorilla>::new(GorillaState {
         core: CoreState { energy: 5, age: 97 },
         bananas: 2,
     });
     assert!(!gorilla.is_complete());
 
-    let mut gorilla_emitted: Vec<i32> = vec![
-        gorilla
-            .next_typed(0, Ok::<i32, ()>(6))
-            .expect("gorilla step 1 should advance"),
-        gorilla
-            .next_typed(0, Ok::<i32, ()>(7))
-            .expect("gorilla step 2 should advance"),
-        gorilla
-            .next_typed(0, Ok::<i32, ()>(6))
-            .expect("gorilla step 3 should advance"),
-    ];
-    let gorilla_tail: Vec<i32> = gorilla
-        .advance_to_end_typed(vec![
-            (0, Ok::<i32, ()>(7)),
-            (0, Ok::<i32, ()>(8)),
-            (0, Ok::<i32, ()>(7)),
-            (0, Ok::<i32, ()>(8)),
-            (0, Ok::<i32, ()>(9)),
-        ])
-        .expect("gorilla loop should advance");
-    gorilla_emitted.extend(gorilla_tail);
+    let mut gorilla_emitted: Vec<i32> = Vec::new();
+    for completion in [6, 7, 6, 7, 8, 7, 8, 9] {
+        let _request: i32 = gorilla
+            .next_request()
+            .expect("gorilla request should advance");
+        let emitted: i32 = gorilla
+            .complete(Ok::<i32, ()>(completion))
+            .expect("gorilla completion should advance");
+        gorilla_emitted.push(emitted);
+    }
     assert_eq!(gorilla_emitted, vec![6, 7, 6, 7, 8, 7, 8, 9]);
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
@@ -317,22 +306,20 @@ fn executor_runs_aspected_steps() {
     assert_eq!(gorilla_state.core.age, 100);
     assert_eq!(gorilla_state.bananas, 1);
 
-    let mut tiger = ManualExecutor::<Tiger>::new(TigerState {
+    let mut tiger = Executor::<Tiger>::new(TigerState {
         core: CoreState { energy: 8, age: 4 },
         stripes: 98,
     });
     assert!(!tiger.is_complete());
 
-    let tiger_emitted: Vec<i32> = tiger
-        .advance_to_end_typed(vec![
-            (0, Ok::<i32, ()>(9)),
-            (0, Ok::<i32, ()>(10)),
-            (0, Ok::<i32, ()>(9)),
-            (0, Ok::<i32, ()>(10)),
-            (0, Ok::<i32, ()>(11)),
-            (0, Ok::<i32, ()>(10)),
-        ])
-        .expect("tiger loop should advance");
+    let mut tiger_emitted: Vec<i32> = Vec::new();
+    for completion in [9, 10, 9, 10, 11, 10] {
+        let _request: i32 = tiger.next_request().expect("tiger request should advance");
+        let emitted: i32 = tiger
+            .complete(Ok::<i32, ()>(completion))
+            .expect("tiger completion should advance");
+        tiger_emitted.push(emitted);
+    }
     assert_eq!(tiger_emitted, vec![9, 10, 9, 10, 11, 10]);
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
