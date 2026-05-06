@@ -1,4 +1,4 @@
-use jungle_sdk::instinct;
+use jungle_sdk::Instinct;
 use jungle_sdk::types::{
     ActionCompletion, ActionStep, AspectStep, Identity, LoopCondition, Running, TestExecutor,
     Waiting, While,
@@ -46,7 +46,7 @@ impl LoopCondition<i32> for LessThanThree {
 
 type WhileTickFlow = While<LessThanThree, TickFlow>;
 
-#[instinct]
+#[derive(Instinct)]
 struct LoopInstinct(WhileTickFlow);
 
 #[test]

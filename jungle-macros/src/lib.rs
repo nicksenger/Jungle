@@ -2,27 +2,19 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, parse_quote, DeriveInput, Path};
 
+mod inception_derive;
+
 #[proc_macro]
 pub fn noop(input: TokenStream) -> TokenStream {
     input
 }
 
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = input.ident;
-    let impl_params = input.generics.params.iter().cloned().collect::<Vec<_>>();
-    let where_preds = input
-        .generics
-        .where_clause
-        .as_ref()
-        .map(|wc| wc.predicates.iter().cloned().collect::<Vec<_>>())
-        .unwrap_or_default();
-    let (_, ty_generics, _) = input.generics.split_for_impl();
-
-    quote! {
-        inception::inception_opt_in_register!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
-    }
-    .into()
+    let mut input = parse_macro_input!(input as DeriveInput);
+    input
+        .attrs
+        .push(parse_quote!(#[inception(properties = [#(#properties),*])]));
+    inception_derive::State::gen(quote!(#input).into())
 }
 
 #[proc_macro_derive(Instinct)]

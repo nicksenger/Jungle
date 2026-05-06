@@ -1,4 +1,4 @@
-use jungle_sdk::instinct;
+use jungle_sdk::Instinct;
 use jungle_sdk::types::{
     ActionCompletion, ActionStep, AspectStep, Condition, Conditional, Either, Identity, Running,
     TestExecutor, Waiting,
@@ -78,7 +78,7 @@ impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
 
 type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, RightFlow>;
 
-#[instinct]
+#[derive(Instinct)]
 struct ConditionalInstinct(ConditionalFlow);
 
 #[test]
