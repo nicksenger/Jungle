@@ -7,6 +7,7 @@ use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::{Creatures, Instinct};
+use serde_json::json;
 use std::future::ready;
 
 struct SeedAction;
@@ -142,13 +143,17 @@ fn executor_progresses_simple_instinct_steps() {
 }
 
 #[test]
-fn test_executor_next_advances_without_step_type_parameters() {
+fn test_executor_next_advances_with_serialized_completions() {
     let mut executor = TestExecutor::<ProgressCreature>::new(0);
 
-    let emitted_seed: i32 = executor.next(5, Ok::<_, ()>(8)).expect("seed step");
+    let emitted_seed: i32 = executor
+        .next(json!(5), Ok(json!(8)))
+        .expect("seed step");
     assert_eq!(emitted_seed, 8);
 
-    let emitted_finish: i32 = executor.next(4, Ok::<_, ()>(36)).expect("finish step");
+    let emitted_finish: i32 = executor
+        .next(json!(4), Ok(json!(36)))
+        .expect("finish step");
     assert_eq!(emitted_finish, 36);
     assert!(executor.is_complete());
     assert_eq!(executor.into_state(), 36);
@@ -158,7 +163,7 @@ fn test_executor_next_advances_without_step_type_parameters() {
 fn test_executor_advance_to_end_runs_remaining_flow() {
     let mut executor = TestExecutor::<ProgressCreature>::new(0);
     let emitted: Vec<i32> = executor
-        .advance_to_end(vec![(5, Ok::<_, ()>(8)), (4, Ok::<_, ()>(36))])
+        .advance_to_end(vec![(json!(5), Ok(json!(8))), (json!(4), Ok(json!(36)))])
         .expect("flow should advance");
 
     assert_eq!(emitted, vec![8, 36]);

@@ -4,6 +4,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Instinct;
+use serde_json::json;
 use std::future::ready;
 
 action!(
@@ -80,9 +81,9 @@ fn test_executor_repeats_until_condition_fails() {
     let mut loop_executor = TestExecutor::<Looper>::new(0);
     let emitted: Vec<i32> = loop_executor
         .advance_to_end(vec![
-            (1, Ok::<_, ()>(1)),
-            (1, Ok::<_, ()>(2)),
-            (1, Ok::<_, ()>(3)),
+            (json!(1), Ok(json!(1))),
+            (json!(1), Ok(json!(2))),
+            (json!(1), Ok(json!(3))),
         ])
         .expect("while loop should advance");
     assert_eq!(emitted, vec![1, 2, 3]);

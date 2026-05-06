@@ -441,30 +441,18 @@ where
         self.cursor >= self.steps.len()
     }
 
-    pub fn next<In, Out, Err, Emitted>(
+    pub fn next<Emitted>(
         &mut self,
-        input: In,
-        completion: Result<Out, Err>,
+        input: Value,
+        completion: Result<Value, Value>,
     ) -> Result<Emitted, TestExecutorError>
     where
-        In: Serialize,
-        Out: Serialize,
-        Err: Serialize,
         Emitted: DeserializeOwned,
     {
         self.settle_without_progress()?;
         if self.is_complete() {
             return Err(TestExecutorError::Complete);
         }
-
-        let input = serde_json::to_value(input)
-            .map_err(|err| TestExecutorError::InputSerialize(err.to_string()))?;
-        let completion = match completion {
-            Ok(output) => Ok(serde_json::to_value(output)
-                .map_err(|err| TestExecutorError::OutputSerialize(err.to_string()))?),
-            Err(error) => Err(serde_json::to_value(error)
-                .map_err(|err| TestExecutorError::ErrorSerialize(err.to_string()))?),
-        };
 
         let state = self.state.take().expect("executor state is always present");
         let node = self
@@ -481,14 +469,34 @@ where
             .map_err(|err| TestExecutorError::EmitDeserialize(err.to_string()))
     }
 
-    pub fn advance_to_end<In, Out, Err, Emitted>(
+    pub fn next_typed<In, Out, Err, Emitted>(
         &mut self,
-        inputs: impl IntoIterator<Item = (In, Result<Out, Err>)>,
-    ) -> Result<Vec<Emitted>, TestExecutorError>
+        input: In,
+        completion: Result<Out, Err>,
+    ) -> Result<Emitted, TestExecutorError>
     where
         In: Serialize,
         Out: Serialize,
         Err: Serialize,
+        Emitted: DeserializeOwned,
+    {
+        let input = serde_json::to_value(input)
+            .map_err(|err| TestExecutorError::InputSerialize(err.to_string()))?;
+        let completion = match completion {
+            Ok(output) => Ok(serde_json::to_value(output)
+                .map_err(|err| TestExecutorError::OutputSerialize(err.to_string()))?),
+            Err(error) => Err(serde_json::to_value(error)
+                .map_err(|err| TestExecutorError::ErrorSerialize(err.to_string()))?),
+        };
+
+        self.next(input, completion)
+    }
+
+    pub fn advance_to_end<Emitted>(
+        &mut self,
+        inputs: impl IntoIterator<Item = (Value, Result<Value, Value>)>,
+    ) -> Result<Vec<Emitted>, TestExecutorError>
+    where
         Emitted: DeserializeOwned,
     {
         let mut completions = inputs.into_iter();
@@ -501,6 +509,34 @@ where
             emitted.push(self.next(input, completion)?);
         }
         Ok(emitted)
+    }
+
+    pub fn advance_to_end_typed<In, Out, Err, Emitted>(
+        &mut self,
+        inputs: impl IntoIterator<Item = (In, Result<Out, Err>)>,
+    ) -> Result<Vec<Emitted>, TestExecutorError>
+    where
+        In: Serialize,
+        Out: Serialize,
+        Err: Serialize,
+        Emitted: DeserializeOwned,
+    {
+        let inputs = inputs
+            .into_iter()
+            .map(|(input, completion)| {
+                let input = serde_json::to_value(input)
+                    .map_err(|err| TestExecutorError::InputSerialize(err.to_string()))?;
+                let completion = match completion {
+                    Ok(output) => Ok(serde_json::to_value(output)
+                        .map_err(|err| TestExecutorError::OutputSerialize(err.to_string()))?),
+                    Err(error) => Err(serde_json::to_value(error)
+                        .map_err(|err| TestExecutorError::ErrorSerialize(err.to_string()))?),
+                };
+                Ok((input, completion))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        self.advance_to_end(inputs)
     }
 
     pub fn into_state(self) -> A::State {

@@ -6,6 +6,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::Instinct;
+use serde_json::json;
 use std::future::ready;
 use std::marker::PhantomData;
 
@@ -291,22 +292,22 @@ fn test_executor_runs_aspected_steps() {
 
     let mut gorilla_emitted: Vec<i32> = vec![
         gorilla
-            .next(0, Ok::<_, ()>(6))
+            .next(json!(0), Ok(json!(6)))
             .expect("gorilla step 1 should advance"),
         gorilla
-            .next(0, Ok::<_, ()>(7))
+            .next(json!(0), Ok(json!(7)))
             .expect("gorilla step 2 should advance"),
         gorilla
-            .next(0, Ok::<_, ()>(6))
+            .next(json!(0), Ok(json!(6)))
             .expect("gorilla step 3 should advance"),
     ];
     let gorilla_tail: Vec<i32> = gorilla
         .advance_to_end(vec![
-            (0, Ok::<_, ()>(7)),
-            (0, Ok::<_, ()>(8)),
-            (0, Ok::<_, ()>(7)),
-            (0, Ok::<_, ()>(8)),
-            (0, Ok::<_, ()>(9)),
+            (json!(0), Ok(json!(7))),
+            (json!(0), Ok(json!(8))),
+            (json!(0), Ok(json!(7))),
+            (json!(0), Ok(json!(8))),
+            (json!(0), Ok(json!(9))),
         ])
         .expect("gorilla loop should advance");
     gorilla_emitted.extend(gorilla_tail);
@@ -325,12 +326,12 @@ fn test_executor_runs_aspected_steps() {
 
     let tiger_emitted: Vec<i32> = tiger
         .advance_to_end(vec![
-            (0, Ok::<_, ()>(9)),
-            (0, Ok::<_, ()>(10)),
-            (0, Ok::<_, ()>(9)),
-            (0, Ok::<_, ()>(10)),
-            (0, Ok::<_, ()>(11)),
-            (0, Ok::<_, ()>(10)),
+            (json!(0), Ok(json!(9))),
+            (json!(0), Ok(json!(10))),
+            (json!(0), Ok(json!(9))),
+            (json!(0), Ok(json!(10))),
+            (json!(0), Ok(json!(11))),
+            (json!(0), Ok(json!(10))),
         ])
         .expect("tiger loop should advance");
     assert_eq!(tiger_emitted, vec![9, 10, 9, 10, 11, 10]);
