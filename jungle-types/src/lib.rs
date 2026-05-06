@@ -34,8 +34,30 @@ pub trait Condition<In> {
     fn choose(input: &In) -> bool;
 }
 
+/// Extracts state from flow inputs shaped as `(State, Input)`.
+pub trait StatefulInput {
+    type State;
+    fn state_ref(&self) -> &Self::State;
+}
+
+impl<State, In> StatefulInput for (State, In) {
+    type State = State;
+
+    fn state_ref(&self) -> &Self::State {
+        &self.0
+    }
+}
+
+/// Predicate used by [`While`] to decide whether another iteration runs.
+pub trait LoopCondition<State> {
+    fn should_continue(state: &State) -> bool;
+}
+
 /// A flow combinator that chooses either `L` or `R` at runtime.
 pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
+
+/// A flow combinator that repeatedly executes `F` while `C` is true.
+pub struct While<C, F>(PhantomData<fn() -> (C, F)>);
 
 /// A collection of `Creatures` which act together as a system.
 pub trait Ecosystem {
@@ -286,6 +308,47 @@ where
     R: FlowActions,
 {
     type List = TList<(L::List, R::List)>;
+}
+
+#[primitive(property = JungleRunning)]
+impl<C, F> Running for While<C, F>
+where
+    F: Running,
+    F::In: StatefulInput,
+    C: LoopCondition<<F::In as StatefulInput>::State>,
+{
+    type In = F::In;
+    type Out = Option<F::Out>;
+
+    fn run(input: Self::In) -> Self::Out {
+        if <C as LoopCondition<<F::In as StatefulInput>::State>>::should_continue(input.state_ref())
+        {
+            Some(<F as Running>::run(input))
+        } else {
+            None
+        }
+    }
+}
+
+#[primitive(property = JungleWaiting)]
+impl<C, F> Waiting for While<C, F>
+where
+    F: Waiting,
+{
+    type In = Option<F::In>;
+    type Out = Option<F::Out>;
+
+    fn accept(input: Self::In) -> Self::Out {
+        input.map(<F as Waiting>::accept)
+    }
+}
+
+#[primitive(property = JungleFlow)]
+impl<C, F> FlowActions for While<C, F>
+where
+    F: FlowActions,
+{
+    type List = F::List;
 }
 
 /// An organism that hosts symbionts.

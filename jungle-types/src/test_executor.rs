@@ -1,5 +1,6 @@
 use crate::{
-    Action, ActionCompletion, ActionStep, Condition, Conditional, Creature, AspectStep, Running,
+    Action, ActionCompletion, ActionStep, Condition, Conditional, Creature, AspectStep,
+    LoopCondition, Running, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -18,6 +19,13 @@ pub trait ErasedFlow<State> {
     ) -> Result<(State, Value), TestExecutorError>;
 
     fn is_complete(&self) -> bool;
+
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, bool), TestExecutorError> {
+        Ok((state, false))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -191,6 +199,88 @@ where
     }
 }
 
+struct WhileErasedFlow<State> {
+    should_continue: Box<dyn Fn(&State) -> bool>,
+    build_body: Box<dyn Fn() -> DynFlow<State>>,
+    active_body: DynFlow<State>,
+    body_cursor: usize,
+    complete: bool,
+}
+
+impl<State> WhileErasedFlow<State> {
+    fn new(
+        should_continue: Box<dyn Fn(&State) -> bool>,
+        build_body: Box<dyn Fn() -> DynFlow<State>>,
+    ) -> Self {
+        Self {
+            should_continue,
+            build_body,
+            active_body: Vec::new(),
+            body_cursor: 0,
+            complete: false,
+        }
+    }
+
+    fn ensure_iteration_ready(&mut self) {
+        if self.active_body.is_empty() {
+            self.active_body = (self.build_body)();
+            self.body_cursor = 0;
+        }
+    }
+}
+
+impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
+    fn progress(
+        &mut self,
+        state: State,
+        input: Value,
+        completion: Result<Value, Value>,
+    ) -> Result<(State, Value), TestExecutorError> {
+        if self.complete {
+            return Err(TestExecutorError::Complete);
+        }
+
+        if !(self.should_continue)(&state) {
+            self.complete = true;
+            return Err(TestExecutorError::Complete);
+        }
+
+        self.ensure_iteration_ready();
+
+        let node = self
+            .active_body
+            .get_mut(self.body_cursor)
+            .expect("body cursor always points to an active body node");
+        let (state, emitted) = node.progress(state, input, completion)?;
+        if node.is_complete() {
+            self.body_cursor += 1;
+            if self.body_cursor >= self.active_body.len() {
+                self.active_body.clear();
+                self.body_cursor = 0;
+            }
+        }
+        Ok((state, emitted))
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, bool), TestExecutorError> {
+        if self.complete {
+            return Ok((state, true));
+        }
+        if !(self.should_continue)(&state) {
+            self.complete = true;
+            return Ok((state, true));
+        }
+        Ok((state, false))
+    }
+}
+
 #[inception(property = JungleDynFlow, signature(input = Input, output = Output))]
 pub trait BuildTestFlow<Input> {
     type Output;
@@ -271,6 +361,23 @@ where
     }
 }
 
+#[inception::primitive(property = crate::JungleDynFlow)]
+impl<State, C, F> BuildTestFlow<DynFlow<State>> for While<C, F>
+where
+    State: 'static,
+    C: LoopCondition<State> + 'static,
+    F: BuildTestFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
+        let should_continue = Box::new(|state: &State| <C as LoopCondition<State>>::should_continue(state));
+        let build_body = Box::new(|| <F as BuildTestFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        steps.push(Box::new(WhileErasedFlow::new(should_continue, build_body)));
+        steps
+    }
+}
+
 pub struct TestExecutor<A>
 where
     A: Creature,
@@ -286,12 +393,38 @@ where
     A: Creature,
     A::Instinct: BuildTestFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
+    fn settle_without_progress(&mut self) -> Result<(), TestExecutorError> {
+        loop {
+            if self.cursor >= self.steps.len() {
+                break;
+            }
+
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            let (state, completed) = node.try_complete_without_progress(state)?;
+            self.state = Some(state);
+            if completed {
+                self.cursor += 1;
+                continue;
+            }
+            break;
+        }
+        Ok(())
+    }
+
     pub fn new(state: A::State) -> Self {
-        Self {
+        let mut executor = Self {
             state: Some(state),
             steps: <A::Instinct as BuildTestFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
             cursor: 0,
-        }
+        };
+        executor
+            .settle_without_progress()
+            .expect("initial settle should not fail");
+        executor
     }
 
     pub fn is_complete(&self) -> bool {
@@ -303,6 +436,7 @@ where
         input: Value,
         completion: Result<Value, Value>,
     ) -> Result<Value, TestExecutorError> {
+        self.settle_without_progress()?;
         if self.is_complete() {
             return Err(TestExecutorError::Complete);
         }
@@ -317,6 +451,7 @@ where
             self.cursor += 1;
         }
         self.state = Some(state);
+        self.settle_without_progress()?;
         Ok(emitted)
     }
 
@@ -326,6 +461,7 @@ where
     ) -> Result<Vec<Value>, TestExecutorError> {
         let mut completions = inputs.into_iter();
         let mut emitted = Vec::new();
+        self.settle_without_progress()?;
         while !self.is_complete() {
             let (input, completion) = completions
                 .next()

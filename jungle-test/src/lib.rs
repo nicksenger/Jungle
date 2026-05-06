@@ -287,4 +287,5 @@ mod tests {
     mod aspect;
     mod conditional;
     mod progression;
+    mod while_loop;
 }
