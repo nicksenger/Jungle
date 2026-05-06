@@ -4,20 +4,11 @@ use jungle_types::{
     LoopCondition, Running, TestExecutor, Waiting, While,
 };
 use serde_json::json;
+use std::future::ready;
 use std::marker::PhantomData;
 use typosaurus::num::consts::{U0, U1, U2, U3};
 
-action!(
-    Sleep,
-    U0,
-    in = i32,
-    out = i32,
-    err = (),
-    act = |_dependency, input| {
-        std::future::ready(Ok(input + 1))
-    }
-);
-
+action!(Sleep, U0, in = i32, out = i32, err = (), act = |_dependency, input| { ready(Ok(input + 1)) });
 action!(
     Eat,
     U1,
@@ -76,7 +67,6 @@ impl Aspect<GorillaState> for GorillaCoreAspect {
     fn view(state: &GorillaState) -> &Self::View {
         &state.core
     }
-
     fn view_mut(state: &mut GorillaState) -> &mut Self::View {
         &mut state.core
     }
@@ -139,8 +129,8 @@ where
 
 type CoreEnergySleepActionStep<T, Focus> = ActionStep<T, Sleep, CoreEnergyStep<Focus>>;
 
-struct GorillaEatMapper;
-impl AspectStep<Gorilla, Eat> for GorillaEatMapper {
+struct GorillaEat;
+impl AspectStep<Gorilla, Eat> for GorillaEat {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -157,8 +147,8 @@ impl AspectStep<Gorilla, Eat> for GorillaEatMapper {
     }
 }
 
-struct GorillaSleepMapper;
-impl AspectStep<Gorilla, Sleep> for GorillaSleepMapper {
+struct GorillaSleep;
+impl AspectStep<Gorilla, Sleep> for GorillaSleep {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -175,8 +165,8 @@ impl AspectStep<Gorilla, Sleep> for GorillaSleepMapper {
     }
 }
 
-struct GorillaForageMapper;
-impl AspectStep<Gorilla, Forage> for GorillaForageMapper {
+struct GorillaForage;
+impl AspectStep<Gorilla, Forage> for GorillaForage {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -193,8 +183,8 @@ impl AspectStep<Gorilla, Forage> for GorillaForageMapper {
     }
 }
 
-struct TigerEatMapper;
-impl AspectStep<Tiger, Eat> for TigerEatMapper {
+struct TigerEat;
+impl AspectStep<Tiger, Eat> for TigerEat {
     type Aspect = TigerCoreAspect;
     type In = i32;
     type Out = i32;
@@ -210,8 +200,8 @@ impl AspectStep<Tiger, Eat> for TigerEatMapper {
     }
 }
 
-struct TigerSleepMapper;
-impl AspectStep<Tiger, Sleep> for TigerSleepMapper {
+struct TigerSleep;
+impl AspectStep<Tiger, Sleep> for TigerSleep {
     type Aspect = TigerCoreAspect;
     type In = i32;
     type Out = i32;
@@ -227,8 +217,8 @@ impl AspectStep<Tiger, Sleep> for TigerSleepMapper {
     }
 }
 
-struct TigerHuntMapper;
-impl AspectStep<Tiger, Hunt> for TigerHuntMapper {
+struct TigerHunt;
+impl AspectStep<Tiger, Hunt> for TigerHunt {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -245,12 +235,12 @@ impl AspectStep<Tiger, Hunt> for TigerHuntMapper {
     }
 }
 
-type GorillaEatStep = ActionStep<Gorilla, Eat, GorillaEatMapper>;
-type GorillaSleepStep = ActionStep<Gorilla, Sleep, GorillaSleepMapper>;
-type GorillaForageStep = ActionStep<Gorilla, Forage, GorillaForageMapper>;
-
 #[derive(Jungle, Instinct)]
-struct GorillaLoopSequence(GorillaEatStep, GorillaSleepStep, GorillaForageStep);
+struct GorillaLoopSequence(
+    ActionStep<Gorilla, Eat, GorillaEat>,
+    ActionStep<Gorilla, Sleep, GorillaSleep>,
+    ActionStep<Gorilla, Forage, GorillaForage>,
+);
 
 struct GorillaUnderAgeHundred;
 impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
@@ -259,7 +249,8 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     }
 }
 
-type GorillaLoopFlow = While<GorillaUnderAgeHundred, GorillaLoopSequence>;
+#[derive(Jungle, Instinct)]
+struct GorillaInstinct(While<GorillaUnderAgeHundred, GorillaLoopSequence>);
 
 struct TigerStripesAreEven;
 impl Condition<(TigerState, i32)> for TigerStripesAreEven {
@@ -268,9 +259,9 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     }
 }
 
-type TigerEatStep = ActionStep<Tiger, Eat, TigerEatMapper>;
-type TigerSleepStep = ActionStep<Tiger, Sleep, TigerSleepMapper>;
-type TigerHuntStep = ActionStep<Tiger, Hunt, TigerHuntMapper>;
+type TigerEatStep = ActionStep<Tiger, Eat, TigerEat>;
+type TigerSleepStep = ActionStep<Tiger, Sleep, TigerSleep>;
+type TigerHuntStep = ActionStep<Tiger, Hunt, TigerHunt>;
 type TigerFirstStep = Conditional<TigerStripesAreEven, TigerEatStep, TigerSleepStep>;
 
 #[derive(Jungle, Instinct)]
@@ -286,9 +277,6 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
 type TigerLoopFlow = While<TigerUnderHundredStripes, TigerLoopSequence>;
 
 #[derive(Jungle, Instinct)]
-struct GorillaInstinct(GorillaLoopFlow);
-
-#[derive(Jungle, Instinct)]
 struct TigerInstinct(TigerLoopFlow);
 
 animal!(
@@ -297,12 +285,7 @@ animal!(
     state = GorillaState,
     instinct = GorillaInstinct
 );
-animal!(
-    Tiger,
-    U2,
-    state = TigerState,
-    instinct = TigerInstinct
-);
+animal!(Tiger, U2, state = TigerState, instinct = TigerInstinct);
 
 type GorillaStep = CoreEnergySleepActionStep<Gorilla, GorillaCoreAspect>;
 type TigerStep = CoreEnergySleepActionStep<Tiger, TigerCoreAspect>;
@@ -310,7 +293,10 @@ type TigerStep = CoreEnergySleepActionStep<Tiger, TigerCoreAspect>;
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {
     let gorilla_state = GorillaState {
-        core: CoreState { energy: 10, age: 25 },
+        core: CoreState {
+            energy: 10,
+            age: 25,
+        },
         bananas: 3,
     };
     let (gorilla_state, gorilla_request) = <GorillaStep as Running>::run((gorilla_state, 2));
@@ -402,7 +388,14 @@ fn test_executor_runs_aspected_steps() {
         .expect("tiger loop should advance");
     assert_eq!(
         tiger_emitted,
-        vec![json!(9), json!(10), json!(9), json!(10), json!(11), json!(10)]
+        vec![
+            json!(9),
+            json!(10),
+            json!(9),
+            json!(10),
+            json!(11),
+            json!(10)
+        ]
     );
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
