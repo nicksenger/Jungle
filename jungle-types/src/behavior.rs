@@ -153,11 +153,7 @@ where
         let mut header = VariantHeader;
         let fields =
             <State as InceptionTy<crate::JungleOptic, inception::False>>::fields_mut(state, &mut header);
-        let view = fields.at_mut();
-        // SAFETY: this `Lens` impl is restricted to struct data types. Struct `fields_mut`
-        // does not route any selected field through `header`, so the returned field reference
-        // is borrowed from `state`, not from `header`.
-        unsafe { core::mem::transmute::<&mut Self::View, &mut Self::View>(view) }
+        fields.at_mut()
     }
 }
 
