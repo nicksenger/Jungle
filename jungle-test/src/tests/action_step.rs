@@ -1,4 +1,4 @@
-use jungle_sdk::{Flow, Jungle};
+use jungle_sdk::flow;
 use jungle_sdk::types::{ActionCompletion, ActionStep, AspectStep, Identity, Running, Waiting};
 use std::future::ready;
 use jungle_sdk::typosaurus::num::consts::U0;
@@ -29,7 +29,7 @@ impl AspectStep<GatherCreature, GatherAction> for Gather {
     }
 }
 
-#[derive(Jungle, Flow)]
+#[flow]
 struct GatherInstinct(ActionStep<GatherCreature, GatherAction, Gather>);
 
 #[test]

@@ -1,4 +1,4 @@
-use jungle_sdk::{Instinct, Jungle};
+use jungle_sdk::instinct;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     ActionCompletion, ActionStep, Aspect, AspectStep, Condition, Conditional, Either, Identity,
@@ -198,7 +198,7 @@ impl AspectStep<Tiger, Hunt> for TigerHunt {
     }
 }
 
-#[derive(Jungle, Instinct)]
+#[instinct]
 struct GorillaLoopSequence(
     ActionStep<Gorilla, Eat, GorillaEat>,
     ActionStep<Gorilla, Sleep, GorillaSleep>,
@@ -212,7 +212,7 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     }
 }
 
-#[derive(Jungle, Instinct)]
+#[instinct]
 struct GorillaInstinct(While<GorillaUnderAgeHundred, GorillaLoopSequence>);
 
 struct TigerStripesAreEven;
@@ -222,7 +222,7 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     }
 }
 
-#[derive(Jungle, Instinct)]
+#[instinct]
 struct TigerLoopSequence(
     Conditional<
         TigerStripesAreEven,
@@ -240,7 +240,7 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     }
 }
 
-#[derive(Jungle, Instinct)]
+#[instinct]
 struct TigerInstinct(While<TigerUnderHundredStripes, TigerLoopSequence>);
 
 animal!(

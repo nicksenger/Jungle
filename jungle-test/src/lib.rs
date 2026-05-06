@@ -7,7 +7,7 @@ extern crate jungle_sdk as jungle_types;
 mod tests {
 
     use jungle_sdk::core::Jungle as _;
-    use jungle_sdk::{Actions, Creatures, Flow, Jungle};
+    use jungle_sdk::{actions, animals, flow};
     use jungle_sdk::types::{
         Action, ActionCompletion, ActionSet, ActionStep, AspectStep, Creature, CreatureActionSet,
         CreatureSet, CreatureStates, Ecosystem, Identity,
@@ -82,16 +82,16 @@ mod tests {
     action!(Hunt, U4);
     action!(Flee, U5);
 
-    #[derive(Jungle, Actions)]
+    #[actions]
     struct BasicNeeds(Eat, Sleep, Forage, Drink);
 
-    #[derive(Jungle, Actions)]
+    #[actions]
     struct Predation(Hunt);
 
-    #[derive(Jungle, Actions)]
+    #[actions]
     struct Predator(BasicNeeds, Predation);
 
-    #[derive(Jungle, Actions)]
+    #[actions]
     struct Prey(BasicNeeds, Flee);
 
     struct SharedState;
@@ -162,7 +162,7 @@ mod tests {
 
     macro_rules! prey_instinct {
         ($name:ident, $animal:ty) => {
-            #[derive(Jungle, Flow)]
+            #[flow]
             struct $name(
                 ActionStep<$animal, Eat, UnitOkStep>,
                 ActionStep<$animal, Sleep, UnitOkStep>,
@@ -175,7 +175,7 @@ mod tests {
 
     macro_rules! predator_instinct {
         ($name:ident, $animal:ty) => {
-            #[derive(Jungle, Flow)]
+            #[flow]
             struct $name(
                 ActionStep<$animal, Eat, UnitOkStep>,
                 ActionStep<$animal, Sleep, UnitOkStep>,
@@ -202,19 +202,19 @@ mod tests {
     prey_instinct!(HippoInstinct, Hippo);
     prey_instinct!(ElephantInstinct, Elephant);
 
-    #[derive(Jungle, Creatures)]
+    #[animals]
     struct Apes(Gorilla, Chimpanzee);
 
-    #[derive(Jungle, Creatures)]
+    #[animals]
     struct Cats(Tiger, Jaguar);
 
-    #[derive(Jungle, Creatures)]
+    #[animals]
     struct Predators(Cats, Anaconda);
 
-    #[derive(Jungle, Creatures)]
+    #[animals]
     struct AllCreatures(Cats, Apes, Anaconda, Hippo, Elephant);
 
-    #[derive(Jungle, Actions)]
+    #[actions]
     struct AllActions(Predator, Prey);
 
     struct Zoo;
@@ -254,7 +254,7 @@ mod tests {
         struct ApeState;
         struct CatState;
 
-        #[derive(Jungle, Flow)]
+        #[flow]
         struct StatefulGorillaInstinct(
             ActionStep<StatefulGorilla, Eat, UnitOkStep>,
             ActionStep<StatefulGorilla, Sleep, UnitOkStep>,
@@ -263,7 +263,7 @@ mod tests {
             ActionStep<StatefulGorilla, Flee, UnitOkStep>,
         );
 
-        #[derive(Jungle, Flow)]
+        #[flow]
         struct StatefulTigerInstinct(
             ActionStep<StatefulTiger, Eat, UnitOkStep>,
             ActionStep<StatefulTiger, Sleep, UnitOkStep>,
@@ -275,7 +275,7 @@ mod tests {
         animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);
         animal!(StatefulTiger, U1, CatState, StatefulTigerInstinct);
 
-        #[derive(Jungle, Creatures)]
+        #[animals]
         struct StatefulCreatures(StatefulGorilla, StatefulTiger);
 
         type StatefulCreatureStates = list![ApeState, CatState];
