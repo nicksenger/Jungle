@@ -1,10 +1,10 @@
-
 use jungle_sdk::{Creatures, Instinct, Jungle};
 use jungle_types::{
     Action, ActionCompletion, ActionRequest, ActionStep, AspectStep, CreatureActionSet, Id,
     Identity, Running, TestExecutor, Waiting,
 };
 use serde_json::json;
+use std::future::ready;
 use typosaurus::assert_type_eq;
 use typosaurus::list;
 use typosaurus::num::consts::{U0, U1};
@@ -22,7 +22,7 @@ impl Action for SeedAction {
         _dependency: &Self::Dependency,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(input + 2))
+        ready(Ok(input + 2))
     }
 }
 
@@ -39,12 +39,12 @@ impl Action for FinishAction {
         _dependency: &Self::Dependency,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(input * 3))
+        ready(Ok(input * 3))
     }
 }
 
-struct SeedMapper;
-impl AspectStep<ProgressCreature, SeedAction> for SeedMapper {
+struct Seed;
+impl AspectStep<ProgressCreature, SeedAction> for Seed {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -60,8 +60,8 @@ impl AspectStep<ProgressCreature, SeedAction> for SeedMapper {
     }
 }
 
-struct FinishMapper;
-impl AspectStep<ProgressCreature, FinishAction> for FinishMapper {
+struct Finish;
+impl AspectStep<ProgressCreature, FinishAction> for Finish {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -79,8 +79,8 @@ impl AspectStep<ProgressCreature, FinishAction> for FinishMapper {
 
 #[derive(Jungle, Instinct)]
 struct ProgressInstinct(
-    ActionStep<ProgressCreature, SeedAction, SeedMapper>,
-    ActionStep<ProgressCreature, FinishAction, FinishMapper>,
+    ActionStep<ProgressCreature, SeedAction, Seed>,
+    ActionStep<ProgressCreature, FinishAction, Finish>,
 );
 
 animal!(ProgressCreature, U0, i32, ProgressInstinct);
@@ -88,8 +88,8 @@ animal!(ProgressCreature, U0, i32, ProgressInstinct);
 #[derive(Jungle, Creatures)]
 struct ProgressCreatures(ProgressCreature);
 
-type SeedStep = ActionStep<ProgressCreature, SeedAction, SeedMapper>;
-type FinishStep = ActionStep<ProgressCreature, FinishAction, FinishMapper>;
+type SeedStep = ActionStep<ProgressCreature, SeedAction, Seed>;
+type FinishStep = ActionStep<ProgressCreature, FinishAction, Finish>;
 
 struct Executor;
 impl Executor {

@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
-    
+
     use jungle_core::Jungle as _;
     use jungle_sdk::{Actions, Creatures, Flow, Jungle};
     use jungle_types::{
-        Action, ActionCompletion, ActionSet, ActionStep, Creature, CreatureActionSet, CreatureSet,
-        AspectStep, CreatureStates, Ecosystem, Identity,
+        Action, ActionCompletion, ActionSet, ActionStep, AspectStep, Creature, CreatureActionSet,
+        CreatureSet, CreatureStates, Ecosystem, Identity,
     };
     use typosaurus::assert_type_eq;
     use typosaurus::list;
@@ -18,7 +18,7 @@ mod tests {
             in = $in:ty,
             out = $out:ty,
             err = $err:ty,
-            act = |$dependency:ident, $input:ident| $body:block
+            act = |$dependency:ident, $input:ident| $body:expr
         ) => {
             struct $name;
             impl jungle_types::ActionMember for $name {}

@@ -4,6 +4,7 @@ use jungle_types::{
     Waiting, While,
 };
 use serde_json::json;
+use std::future::ready;
 use typosaurus::num::consts::U0;
 
 action!(
@@ -12,15 +13,13 @@ action!(
     in = i32,
     out = i32,
     err = (),
-    act = |_dependency, input| {
-        std::future::ready(Ok(input + 1))
-    }
+    act = |_dependency, input| ready(Ok(input + 1))
 );
 
 animal!(Looper, U0, state = i32, instinct = LoopInstinct);
 
-struct TickMapper;
-impl AspectStep<Looper, TickAction> for TickMapper {
+struct Tick;
+impl AspectStep<Looper, TickAction> for Tick {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -36,7 +35,7 @@ impl AspectStep<Looper, TickAction> for TickMapper {
     }
 }
 
-type TickFlow = ActionStep<Looper, TickAction, TickMapper>;
+type TickFlow = ActionStep<Looper, TickAction, Tick>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {

@@ -4,6 +4,7 @@ use jungle_types::{
     TestExecutor, Waiting,
 };
 use serde_json::json;
+use std::future::ready;
 use typosaurus::num::consts::{U0, U1};
 
 action!(
@@ -12,9 +13,7 @@ action!(
     in = i32,
     out = i32,
     err = (),
-    act = |_dependency, input| {
-        std::future::ready(Ok(input + 1))
-    }
+    act = |_dependency, input| ready(Ok(input + 1))
 );
 
 action!(
@@ -23,15 +22,18 @@ action!(
     in = i32,
     out = i32,
     err = (),
-    act = |_dependency, input| {
-        std::future::ready(Ok(input + 2))
-    }
+    act = |_dependency, input| ready(Ok(input + 2))
 );
 
-animal!(ConditionalCreature, U0, state = i32, instinct = ConditionalInstinct);
+animal!(
+    ConditionalCreature,
+    U0,
+    state = i32,
+    instinct = ConditionalInstinct
+);
 
-struct LeftMapper;
-impl AspectStep<ConditionalCreature, LeftAction> for LeftMapper {
+struct Left;
+impl AspectStep<ConditionalCreature, LeftAction> for Left {
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -47,8 +49,8 @@ impl AspectStep<ConditionalCreature, LeftAction> for LeftMapper {
     }
 }
 
-struct RightMapper;
-impl AspectStep<ConditionalCreature, RightAction> for RightMapper {
+struct Right;
+impl AspectStep<ConditionalCreature, RightAction> for Right {
     type Aspect = Identity;
     type In = i32;
     type Out = bool;
@@ -64,8 +66,8 @@ impl AspectStep<ConditionalCreature, RightAction> for RightMapper {
     }
 }
 
-type LeftFlow = ActionStep<ConditionalCreature, LeftAction, LeftMapper>;
-type RightFlow = ActionStep<ConditionalCreature, RightAction, RightMapper>;
+type LeftFlow = ActionStep<ConditionalCreature, LeftAction, Left>;
+type RightFlow = ActionStep<ConditionalCreature, RightAction, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
