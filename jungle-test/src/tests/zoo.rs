@@ -482,3 +482,38 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
     assert_eq!(tiger_odd_state.core.rounds, 0);
     assert_eq!(tiger_odd_state.stripes, 7);
 }
+
+#[tokio::test]
+async fn jungle_executor_exposes_state_during_progression() {
+    use jungle_sdk::core::JungleExecutor;
+
+    let zoo = Zoo;
+    let mut gorilla = JungleExecutor::<Zoo, WorkflowGorilla>::new(
+        &zoo,
+        ExecutorApeState {
+            core: CoreState {
+                energy: 5,
+                rounds: 0,
+            },
+            bananas: 4,
+            mood: 2,
+        },
+    );
+
+    while !gorilla.is_complete() {
+        let rounds_before = gorilla.state().core.rounds;
+        let request = gorilla
+            .next_executable_request(1i32)
+            .expect("gorilla request should build");
+        let completion = request.run().await.expect("gorilla action should execute");
+        let _emitted = gorilla
+            .complete_serialized(completion)
+            .expect("gorilla completion should process");
+        assert_eq!(gorilla.state().core.rounds, rounds_before + 1);
+        gorilla.state_mut().bananas += 2;
+    }
+
+    let gorilla_state = gorilla.into_state();
+    assert_eq!(gorilla_state.core.rounds, 4);
+    assert_eq!(gorilla_state.bananas, 12);
+}

@@ -1247,6 +1247,18 @@ where
         self.cursor >= self.steps.len()
     }
 
+    pub fn state(&self) -> &A::State {
+        self.state
+            .as_ref()
+            .expect("executor state is always present")
+    }
+
+    pub fn state_mut(&mut self) -> &mut A::State {
+        self.state
+            .as_mut()
+            .expect("executor state is always present")
+    }
+
     pub fn next_request<Request>(&mut self) -> Result<Request, ExecutorError>
     where
         Request: DeserializeOwned + Default + Serialize,
@@ -1445,6 +1457,18 @@ where
 
     pub fn is_complete(&self) -> bool {
         self.cursor >= self.steps.len()
+    }
+
+    pub fn state(&self) -> &A::State {
+        self.state
+            .as_ref()
+            .expect("executor state is always present")
+    }
+
+    pub fn state_mut(&mut self) -> &mut A::State {
+        self.state
+            .as_mut()
+            .expect("executor state is always present")
     }
 
     pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
@@ -1652,6 +1676,14 @@ where
 
     pub fn is_complete(&self) -> bool {
         self.manual.is_complete()
+    }
+
+    pub fn state(&self) -> &A::State {
+        self.manual.state()
+    }
+
+    pub fn state_mut(&mut self) -> &mut A::State {
+        self.manual.state_mut()
     }
 
     pub fn next_request<Request>(&mut self) -> Result<Request, ExecutorError>

@@ -31,6 +31,14 @@ where
         self.inner.is_complete()
     }
 
+    pub fn state(&self) -> &A::State {
+        self.inner.state()
+    }
+
+    pub fn state_mut(&mut self) -> &mut A::State {
+        self.inner.state_mut()
+    }
+
     pub fn next_request<Request>(&mut self) -> Result<Request, ExecutorError>
     where
         Request: DeserializeOwned + Default + Serialize,
