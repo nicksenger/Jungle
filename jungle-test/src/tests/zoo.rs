@@ -1,4 +1,3 @@
-use super::run_now;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionSet, Creature, CreatureActionSet, CreatureSet, CreatureStates,
@@ -386,8 +385,8 @@ animal!(
     WorkflowTigerInstinct
 );
 
-#[test]
-fn jungle_executor_runs_actions_with_ecosystem_dependency() {
+#[tokio::test]
+async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
     use jungle_sdk::core::JungleExecutor;
 
     let zoo = Zoo;
@@ -411,7 +410,7 @@ fn jungle_executor_runs_actions_with_ecosystem_dependency() {
             .deserialize_request()
             .expect("gorilla request should deserialize");
         gorilla_requests.push(request_input);
-        let completion = run_now(request.run()).expect("gorilla action should execute");
+        let completion = request.run().await.expect("gorilla action should execute");
         let _emitted = gorilla
             .complete_serialized(completion)
             .expect("gorilla completion should process");
@@ -442,7 +441,7 @@ fn jungle_executor_runs_actions_with_ecosystem_dependency() {
             .deserialize_request()
             .expect("tiger request should deserialize");
         tiger_requests.push(request_input);
-        let completion = run_now(request.run()).expect("tiger action should execute");
+        let completion = request.run().await.expect("tiger action should execute");
         let _emitted = tiger
             .complete_serialized(completion)
             .expect("tiger completion should process");
@@ -472,7 +471,7 @@ fn jungle_executor_runs_actions_with_ecosystem_dependency() {
             .deserialize_request()
             .expect("tiger odd request should deserialize");
         tiger_odd_requests.push(request_input);
-        let completion = run_now(request.run()).expect("tiger odd action should execute");
+        let completion = request.run().await.expect("tiger odd action should execute");
         let _emitted = tiger_odd
             .complete_serialized(completion)
             .expect("tiger odd completion should process");

@@ -1,4 +1,3 @@
-use super::run_now;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Action, ActionCompletion, Impulse, Aspect, Condition, Conditional, Either, Executor,
@@ -251,8 +250,8 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
     assert_eq!(tiger_state.stripes, 9);
 }
 
-#[test]
-fn executor_runs_aspected_steps() {
+#[tokio::test]
+async fn executor_runs_aspected_steps() {
     let mut gorilla = Executor::<Gorilla>::new(GorillaState {
         core: CoreState { energy: 5, age: 97 },
         bananas: 2,
@@ -265,9 +264,9 @@ fn executor_runs_aspected_steps() {
             .next_request()
             .expect("gorilla request should advance");
         let completion: i32 = match step % 3 {
-            0 => run_now(Eat::act(&(), request)).expect("eat should succeed"),
-            1 => run_now(Sleep::act(&(), request)).expect("sleep should succeed"),
-            2 => run_now(Forage::act(&(), request)).expect("forage should succeed"),
+            0 => Eat::act(&(), request).await.expect("eat should succeed"),
+            1 => Sleep::act(&(), request).await.expect("sleep should succeed"),
+            2 => Forage::act(&(), request).await.expect("forage should succeed"),
             _ => unreachable!(),
         };
         let emitted: i32 = gorilla
@@ -294,15 +293,15 @@ fn executor_runs_aspected_steps() {
         let completion: i32 = match step % 3 {
             0 => {
                 let request: i32 = tiger.next_request().expect("tiger request should advance");
-                run_now(Eat::act(&(), request)).expect("eat should succeed")
+                Eat::act(&(), request).await.expect("eat should succeed")
             }
             1 => {
                 let request: i32 = tiger.next_request().expect("tiger request should advance");
-                run_now(Sleep::act(&(), request)).expect("sleep should succeed")
+                Sleep::act(&(), request).await.expect("sleep should succeed")
             }
             2 => {
                 let request: () = tiger.next_request().expect("tiger request should advance");
-                run_now(Hunt::act(&(), request)).expect("hunt should succeed")
+                Hunt::act(&(), request).await.expect("hunt should succeed")
             }
             _ => unreachable!(),
         };
@@ -354,14 +353,16 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     }
 }
 
-#[test]
-fn executor_advances_with_executable_requests_and_dynamic_action_order() {
+#[tokio::test]
+async fn executor_advances_with_executable_requests_and_dynamic_action_order() {
     let mut tiger = Executor::<Tiger>::new(TigerState {
         stripes: 98,
         core: CoreState { energy: 8, age: 4 },
     });
 
-    let emitted = run_now(tiger.advance_to_end_with(0i32))
+    let emitted = tiger
+        .advance_to_end_with(0i32)
+        .await
         .expect("tiger flow should execute through dynamic requests");
     assert_eq!(emitted.len(), 7);
     assert!(tiger.is_complete());

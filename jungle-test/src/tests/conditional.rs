@@ -1,4 +1,3 @@
-use super::run_now;
 use jungle_sdk::types::{
     ActionCompletion, Impulse, Condition, Conditional, Either, Executor, Identity,
     ManualExecutor, Running, Task, Waiting,
@@ -153,8 +152,8 @@ fn executor_requests_and_completes_conditional_branch() {
     assert_eq!(right.into_state(), 6);
 }
 
-#[test]
-fn executor_executable_request_runs_without_static_action_dispatch() {
+#[tokio::test]
+async fn executor_executable_request_runs_without_static_action_dispatch() {
     let mut left = Executor::<ConditionalCreature>::new(5);
     let request = left
         .next_executable_request(0i32)
@@ -163,7 +162,7 @@ fn executor_executable_request_runs_without_static_action_dispatch() {
         .deserialize_request()
         .expect("left request should deserialize");
     assert_eq!(input, 5);
-    let completion = run_now(request.run()).expect("left action should execute");
+    let completion = request.run().await.expect("left action should execute");
     let _left_emitted = left
         .complete_serialized(completion)
         .expect("left completion should process");
@@ -178,7 +177,7 @@ fn executor_executable_request_runs_without_static_action_dispatch() {
         .deserialize_request()
         .expect("right request should deserialize");
     assert_eq!(input, -2);
-    let completion = run_now(request.run()).expect("right action should execute");
+    let completion = request.run().await.expect("right action should execute");
     let _right_emitted = right
         .complete_serialized(completion)
         .expect("right completion should process");

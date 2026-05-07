@@ -5,29 +5,6 @@ extern crate jungle_sdk as jungle_types;
 
 #[cfg(test)]
 mod tests {
-    fn run_now<F: std::future::Future>(future: F) -> F::Output {
-        fn raw_waker() -> std::task::RawWaker {
-            fn clone(_: *const ()) -> std::task::RawWaker {
-                raw_waker()
-            }
-            fn wake(_: *const ()) {}
-            fn wake_by_ref(_: *const ()) {}
-            fn drop(_: *const ()) {}
-            std::task::RawWaker::new(
-                std::ptr::null(),
-                &std::task::RawWakerVTable::new(clone, wake, wake_by_ref, drop),
-            )
-        }
-
-        let waker = unsafe { std::task::Waker::from_raw(raw_waker()) };
-        let mut cx = std::task::Context::from_waker(&waker);
-        let mut future = std::pin::pin!(future);
-        match std::future::Future::poll(future.as_mut(), &mut cx) {
-            std::task::Poll::Ready(output) => output,
-            std::task::Poll::Pending => panic!("test action future must resolve immediately"),
-        }
-    }
-
     macro_rules! action {
         (
             $name:ident,
