@@ -14,6 +14,8 @@ pub use executor::{
     ManualExecutor, TypedErasedStep,
 };
 use inception::*;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 pub use instinct::Instinct;
 pub use meta::Id;
 pub use meta::{
@@ -83,6 +85,9 @@ pub trait Creature {
 
     /// The state of this `Creature` at any given time.
     type State;
+
+    /// Serializable seed used to initialize this creature's state.
+    type Seed: Serialize + DeserializeOwned + Into<Self::State>;
 
     /// The fundamental behavior of this Creature.
     type Instinct;

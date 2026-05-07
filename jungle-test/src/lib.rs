@@ -105,6 +105,7 @@ mod tests {
             impl jungle_sdk::types::Creature for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
+                type Seed = $state;
                 type Instinct = $instinct;
             }
         };
@@ -124,6 +125,7 @@ mod tests {
             impl jungle_sdk::types::Creature for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
+                type Seed = $state;
                 type Instinct = $instinct;
             }
 

@@ -14,19 +14,19 @@ action!(Eat, U1, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input
 action!(Forage, U2, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
 action!(Hunt, U3, in = (), out = i32, err = (), act = |_d, _input| ready(Ok(1)));
 
-#[derive(Optic, Clone, Debug, PartialEq, Eq)]
+#[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct CoreState {
     energy: i32,
     age: i32,
 }
 
-#[derive(Optic, Clone, Debug, PartialEq, Eq)]
+#[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct GorillaState {
     core: CoreState,
     bananas: i32,
 }
 
-#[derive(Optic, Clone, Debug, PartialEq, Eq)]
+#[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct TigerState {
     stripes: u8,
     core: CoreState,
