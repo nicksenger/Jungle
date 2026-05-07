@@ -1,206 +1,149 @@
 #[cfg(test)]
+extern crate jungle_sdk as inception;
+#[cfg(test)]
+extern crate jungle_sdk as jungle_types;
+
+#[cfg(test)]
 mod tests {
-    use inception::{primitive, Inception};
-    use jungle_core::Jungle;
-    use jungle_types::{
-        Action, ActionMember, ActionSet, Actions, Animal, AnimalActionSet, AnimalMember, AnimalSet,
-        AnimalStates, Animals, Ecosystem, Id, Ident, Identified, Instinct, JungleActions,
-        JungleAnimals,
-    };
-    use typosaurus::assert_type_eq;
-    use typosaurus::collections::list;
-    use typosaurus::collections::sp::{Node, SPFlatten};
-    use typosaurus::list;
-    use typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-
     macro_rules! action {
-        ($name:ident, $id:ty) => {
+        (
+            $name:ident,
+            $id:ty,
+            dependency = $dependency_ty:ty
+        ) => {
             struct $name;
-            impl ActionMember for $name {}
+            impl jungle_sdk::types::ActionMember for $name {}
 
-            impl Action for $name {
-                type Id = Id<$id>;
-                type State = ();
+            impl jungle_sdk::types::Action for $name {
+                type Id = jungle_sdk::types::Id<$id>;
+                type Dependency = $dependency_ty;
                 type In = ();
                 type Out = ();
                 type Err = ();
 
                 fn act(
-                    _state: &Self::State,
+                    _dependency: &Self::Dependency,
                     _input: Self::In,
                 ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
                     std::future::ready(Ok(()))
                 }
             }
 
-            #[primitive(property = JungleActions)]
-            impl Actions for $name {
-                type List = Node<$id, $name>;
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
+            impl jungle_sdk::types::Actions for $name {
+                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[primitive(property = Ident)]
-            impl Identified for $name {
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            impl jungle_sdk::types::Identified for $name {
+                type Id = $id;
+            }
+        };
+
+        (
+            $name:ident,
+            $id:ty,
+            in = $in:ty,
+            out = $out:ty,
+            err = $err:ty,
+            act = |$dependency:ident, $input:ident| $body:expr
+        ) => {
+            struct $name;
+            impl jungle_sdk::types::ActionMember for $name {}
+
+            impl jungle_sdk::types::Action for $name {
+                type Id = jungle_sdk::types::Id<$id>;
+                type Dependency = ();
+                type In = $in;
+                type Out = $out;
+                type Err = $err;
+
+                fn act(
+                    $dependency: &Self::Dependency,
+                    $input: Self::In,
+                ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                    $body
+                }
+            }
+        };
+
+        ($name:ident, $id:ty) => {
+            struct $name;
+            impl jungle_sdk::types::ActionMember for $name {}
+
+            impl jungle_sdk::types::Action for $name {
+                type Id = jungle_sdk::types::Id<$id>;
+                type Dependency = ();
+                type In = ();
+                type Out = ();
+                type Err = ();
+
+                fn act(
+                    _dependency: &Self::Dependency,
+                    _input: Self::In,
+                ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                    std::future::ready(Ok(()))
+                }
+            }
+
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
+            impl jungle_sdk::types::Actions for $name {
+                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
+            }
+
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
         };
     }
 
-    action!(Eat, U0);
-    action!(Sleep, U1);
-    action!(Forage, U2);
-    action!(Drink, U3);
-    action!(Hunt, U4);
-    action!(Flee, U5);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleActions])]
-    struct BasicNeeds(Eat, Sleep, Forage, Drink);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleActions])]
-    struct Predation(Hunt);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleActions])]
-    struct Predator(BasicNeeds, Predation);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleActions])]
-    struct Prey(BasicNeeds, Flee);
-
-    struct SharedState;
-    impl<T> From<&T> for SharedState {
-        fn from(_value: &T) -> Self {
-            Self
-        }
-    }
-
     macro_rules! animal {
+        ($name:ident, $id:ty, state = $state:ty, instinct = $instinct:ty) => {
+            struct $name;
+
+            impl jungle_sdk::types::Creature for $name {
+                type Id = jungle_sdk::types::Id<$id>;
+                type State = $state;
+                type Seed = $state;
+                type Instinct = $instinct;
+            }
+        };
+
+        ($name:ident, $id:ty, instinct = $instinct:ty) => {
+            animal!($name, $id, state = (), instinct = $instinct);
+        };
+
         ($name:ident, $id:ty, $instinct:ty) => {
             animal!($name, $id, SharedState, $instinct);
         };
 
         ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
             struct $name;
-            impl AnimalMember for $name {}
+            impl jungle_sdk::types::CreatureMember for $name {}
 
-            impl Animal for $name {
-                type Id = Id<$id>;
+            impl jungle_sdk::types::Creature for $name {
+                type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
+                type Seed = $state;
                 type Instinct = $instinct;
             }
 
-            #[primitive(property = JungleAnimals)]
-            impl Animals for $name {
-                type List = Node<$id, $name>;
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleCreatures)]
+            impl jungle_sdk::types::Creatures for $name {
+                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[primitive(property = Ident)]
-            impl Identified for $name {
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
         };
     }
 
-    struct ApeInstinct;
-    impl Instinct for ApeInstinct {
-        type Actions = Prey;
-    }
-
-    struct CatInstinct;
-    impl Instinct for CatInstinct {
-        type Actions = Predator;
-    }
-
-    struct AnacondaInstinct;
-    impl Instinct for AnacondaInstinct {
-        type Actions = Predator;
-    }
-
-    struct GrazerInstinct;
-    impl Instinct for GrazerInstinct {
-        type Actions = Prey;
-    }
-
-    animal!(Gorilla, U0, ApeInstinct);
-    animal!(Chimpanzee, U1, ApeInstinct);
-    animal!(Tiger, U2, CatInstinct);
-    animal!(Jaguar, U3, CatInstinct);
-    animal!(Anaconda, U4, AnacondaInstinct);
-    animal!(Hippo, U5, GrazerInstinct);
-    animal!(Elephant, U6, GrazerInstinct);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleAnimals])]
-    struct Apes(Gorilla, Chimpanzee);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleAnimals])]
-    struct Cats(Tiger, Jaguar);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleAnimals])]
-    struct Predators(Cats, Anaconda);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleAnimals])]
-    struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
-
-    #[derive(Inception)]
-    #[inception(properties = [Ident, JungleActions])]
-    struct AllActions(Predator, Prey);
-
-    struct Zoo;
-    impl Ecosystem for Zoo {
-        type Animals = AllAnimals;
-    }
-
-    #[test]
-    fn composite_actions() {
-        type BasicList = list![Eat, Sleep, Forage, Drink];
-        assert_type_eq!(ActionSet<BasicNeeds>, BasicList);
-
-        type PredatorList = list![Eat, Sleep, Forage, Drink, Hunt];
-        assert_type_eq!(ActionSet<Predator>, PredatorList);
-    }
-
-    #[test]
-    fn composite_animals() {
-        type ApeList = list![Gorilla, Chimpanzee];
-        assert_type_eq!(AnimalSet<Apes>, ApeList);
-
-        type PredatorList = list![Tiger, Jaguar, Anaconda];
-        assert_type_eq!(AnimalSet<Predators>, PredatorList);
-    }
-
-    #[test]
-    fn animal_action_set() {
-        type ApeAnimalActions = list![Eat, Sleep, Forage, Drink, Flee];
-        assert_type_eq!(AnimalActionSet<Apes>, ApeAnimalActions);
-
-        type AllAnimalActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
-        assert_type_eq!(AnimalActionSet<AllAnimals>, AllAnimalActions);
-    }
-
-    #[test]
-    fn animal_state_set() {
-        struct ApeState;
-        struct CatState;
-
-        animal!(StatefulGorilla, U0, ApeState, ApeInstinct);
-        animal!(StatefulTiger, U1, CatState, CatInstinct);
-
-        #[derive(Inception)]
-        #[inception(properties = [Ident, JungleAnimals])]
-        struct StatefulAnimals(StatefulGorilla, StatefulTiger);
-
-        type StatefulAnimalStates = list![ApeState, CatState];
-        assert_type_eq!(AnimalStates<StatefulAnimals>, StatefulAnimalStates);
-    }
-
-    #[test]
-    fn jungle_impl() {
-        let zoo = Zoo;
-        let jungle_fut = zoo.manifest();
-    }
+    mod aspect;
+    mod conditional;
+    mod progression;
+    mod while_loop;
+    mod zoo;
 }

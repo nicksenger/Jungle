@@ -1,12 +1,15 @@
-use jungle_types::{AnimalStatesCompatible, Animals, Ecosystem};
+use jungle_types::{
+    CreatureActionDependenciesCompatible, CreatureStatesCompatible, Creatures, Ecosystem,
+};
 
 use crate::Jungle;
 
 impl<T> Jungle for T
 where
     T: Ecosystem,
-    <T as Ecosystem>::Animals: Animals,
-    for<'a> <T as Ecosystem>::Animals: AnimalStatesCompatible<&'a T>,
+    <T as Ecosystem>::Creatures: Creatures,
+    for<'a> <T as Ecosystem>::Creatures: CreatureStatesCompatible<&'a T>,
+    for<'a> <T as Ecosystem>::Creatures: CreatureActionDependenciesCompatible<&'a T>,
 {
     fn manifest(self) -> impl std::future::Future<Output = Result<(), jungle_types::Error>> {
         drop(self);

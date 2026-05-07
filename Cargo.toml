@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "jungle-core",
     "jungle-cli",
+    "jungle-client",
     "jungle-macros",
     "jungle-server",
     "jungle-sdk",
@@ -15,5 +16,10 @@ members = [
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
+postcard = "1.1"
 inception = { path = "../inception/inception" }
 typosaurus = { path = "../typosaurus" }
+futures = "0.3"
+uuid = "1"
+async-trait = "0.1"
+dyn-clone = "1"

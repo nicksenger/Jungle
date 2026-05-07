@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-jungle-core = { path = "../jungle-core" }
 jungle-sdk = { path = "../jungle-sdk" }
-jungle-types = { path = "../jungle-types" }
-inception = { workspace = true }
-typosaurus = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+futures = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+postcard = { workspace = true, features = ["alloc"] }
