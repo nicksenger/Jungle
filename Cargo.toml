@@ -10,7 +10,6 @@ members = [
     "jungle-persist",
     "jungle-test",
     "jungle-viewer",
-    "jungle-proto",
     "jungle-types",
 ]
 

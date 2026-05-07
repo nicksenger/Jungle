@@ -289,10 +289,6 @@ name = "jungle-persist"
 version = "0.1.0"
 
 [[package]]
-name = "jungle-proto"
-version = "0.1.0"
-
-[[package]]
 name = "jungle-sdk"
 version = "0.1.0"
 dependencies = [
