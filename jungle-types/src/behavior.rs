@@ -6,6 +6,7 @@ use std::ops::Sub;
 
 use crate::{ActionMember, Creature, FlowActions, Running, Waiting};
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
+use typosaurus::collections::list;
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::{U0, U1};
 use typosaurus::num::{Bit, UInt, Unsigned};
@@ -135,8 +136,27 @@ where
     type Content = <Tail as FieldContentAt<<UInt<U, B> as Sub<U1>>::Output>>::Content;
 }
 
-impl<State, Index> Aspect<State> for Lens<State, Index>
+#[doc(hidden)]
+pub trait LensPath<State, Index> {
+    type View;
+
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View;
+}
+
+trait ScalarIndex {}
+
+impl ScalarIndex for U0 {}
+
+impl<U, B> ScalarIndex for UInt<U, B>
 where
+    U: Unsigned,
+    B: Bit,
+{
+}
+
+impl<State, Index> LensPath<State, Index> for ()
+where
+    Index: ScalarIndex,
     State: crate::Optic
         + InceptionTy<crate::JungleOptic, inception::False>
         + inception::DataType<Ty = inception::StructTy<inception::True>>,
@@ -147,13 +167,50 @@ where
         <<State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields as FieldContentAt<Index>>::Content,
     >,
 {
-    type View = <<State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields as FieldContentAt<Index>>::Content;
+    type View =
+        <<State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields as FieldContentAt<Index>>::Content;
 
-    fn view(state: &mut State) -> &mut Self::View {
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
         let mut header = VariantHeader;
         let fields =
             <State as InceptionTy<crate::JungleOptic, inception::False>>::fields_mut(state, &mut header);
         fields.at_mut()
+    }
+}
+
+impl<State, Head, Next, Tail> LensPath<State, list::List<(Head, list::List<(Next, Tail)>)>> for ()
+where
+    (): LensPath<State, Head>,
+    <() as LensPath<State, Head>>::View: 'static,
+    (): LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>,
+{
+    type View = <() as LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>>::View;
+
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+        let head = <() as LensPath<State, Head>>::view(state);
+        <() as LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>>::view(head)
+    }
+}
+
+impl<State, Head> LensPath<State, list::List<(Head, list::Empty)>> for ()
+where
+    (): LensPath<State, Head>,
+{
+    type View = <() as LensPath<State, Head>>::View;
+
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+        <() as LensPath<State, Head>>::view(state)
+    }
+}
+
+impl<State, Index> Aspect<State> for Lens<State, Index>
+where
+    (): LensPath<State, Index>,
+{
+    type View = <() as LensPath<State, Index>>::View;
+
+    fn view(state: &mut State) -> &mut Self::View {
+        <() as LensPath<State, Index>>::view(state)
     }
 }
 

@@ -149,17 +149,17 @@ impl Task<Tiger, Eat> for TigerEat {
 
 struct TigerSleep;
 impl Task<Tiger, Sleep> for TigerSleep {
-    type Aspect = Lens<TigerState, U1>;
+    type Aspect = Lens<TigerState, jungle_sdk::typosaurus::list![U1, U0]>;
     type In = i32;
     type Out = i32;
 
-    fn prepare(core: &CoreState, input: Self::In) -> i32 {
-        core.energy + input
+    fn prepare(energy: &i32, input: Self::In) -> i32 {
+        *energy + input
     }
 
-    fn process(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn process(energy: &mut i32, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
-        core.energy = value;
+        *energy = value;
         value
     }
 }
