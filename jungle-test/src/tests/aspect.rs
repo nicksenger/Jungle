@@ -15,7 +15,7 @@ use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 action!(Sleep, U0, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
 action!(Eat, U1, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
 action!(Forage, U2, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
-action!(Hunt, U3, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
+action!(Hunt, U3, in = (), out = i32, err = (), act = |_d, _input| ready(Ok(1)));
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq)]
 struct CoreState {
@@ -74,6 +74,30 @@ where
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
+    }
+}
+
+struct AddI32<T, Focus, A>(PhantomData<fn() -> (T, Focus, A)>);
+
+impl<T, Focus, A> Task<T, A> for AddI32<T, Focus, A>
+where
+    T: jungle_types::Creature,
+    Focus: Aspect<T::State, View = i32>,
+    A: Action<In = (), Out = i32>,
+{
+    type Aspect = Focus;
+    type In = i32;
+    type Out = i32;
+
+    fn prepare(_value: &i32, _input: Self::In) {}
+
+    fn process(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
+        let delta = match output {
+            Ok(delta) => delta,
+            Err(_) => panic!("action should succeed"),
+        };
+        *value += delta;
+        *value
     }
 }
 
@@ -165,24 +189,6 @@ impl Task<Tiger, Sleep> for TigerSleep {
     }
 }
 
-struct TigerHunt;
-impl Task<Tiger, Hunt> for TigerHunt {
-    type Aspect = Identity;
-    type In = i32;
-    type Out = i32;
-
-    fn prepare(state: &TigerState, input: Self::In) -> i32 {
-        state.core.energy + input
-    }
-
-    fn process(state: &mut TigerState, output: ActionCompletion<Hunt>) -> Self::Out {
-        let value = output.expect("hunt should succeed");
-        state.core.energy = value;
-        state.stripes += 1;
-        value
-    }
-}
-
 #[derive(Instinct)]
 struct GorillaLoopSequence(
     ActionTask<Gorilla, Eat, GorillaEat>,
@@ -215,13 +221,13 @@ struct TigerLoopSequence(
         ActionTask<Tiger, Sleep, TigerSleep>,
     >,
     ActionTask<Tiger, Sleep, TigerSleep>,
-    ActionTask<Tiger, Hunt, TigerHunt>,
+    ActionTask<Tiger, Hunt, AddI32<Tiger, Lens<TigerState, list![U1, U0]>, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
 impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     fn should_continue(state: &TigerState) -> bool {
-        state.stripes < 100
+        state.core.energy < 100
     }
 }
 
@@ -344,35 +350,34 @@ fn executor_runs_aspected_steps() {
     assert!(!tiger.is_complete());
 
     let mut tiger_emitted: Vec<i32> = Vec::new();
-    let mut tiger_stripes: u8 = 98;
-    for step in 0..6 {
-        let request: i32 = tiger.next_request().expect("tiger request should advance");
+    while !tiger.is_complete() {
+        let step = tiger_emitted.len() % 3;
         let completion: i32 = match step % 3 {
             0 => {
-                if tiger_stripes % 2 == 0 {
-                    run_now(Eat::act(&(), request)).expect("eat should succeed")
-                } else {
-                    run_now(Sleep::act(&(), request)).expect("sleep should succeed")
-                }
+                let request: i32 = tiger.next_request().expect("tiger request should advance");
+                run_now(Eat::act(&(), request)).expect("eat should succeed")
             }
-            1 => run_now(Sleep::act(&(), request)).expect("sleep should succeed"),
-            2 => run_now(Hunt::act(&(), request)).expect("hunt should succeed"),
+            1 => {
+                let request: i32 = tiger.next_request().expect("tiger request should advance");
+                run_now(Sleep::act(&(), request)).expect("sleep should succeed")
+            }
+            2 => {
+                let request: () = tiger.next_request().expect("tiger request should advance");
+                run_now(Hunt::act(&(), request)).expect("hunt should succeed")
+            }
             _ => unreachable!(),
         };
         let emitted: i32 = tiger
             .complete(Ok::<i32, ()>(completion))
             .expect("tiger completion should advance");
         tiger_emitted.push(emitted);
-        if step % 3 == 2 {
-            tiger_stripes += 1;
-        }
     }
-    assert_eq!(tiger_emitted, vec![9, 19, 37, 75, 151, 301]);
+    assert_eq!(tiger_emitted, vec![9, 19, 20, 41, 83, 84, 169]);
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
-    assert_eq!(tiger_state.core.energy, 301);
+    assert_eq!(tiger_state.core.energy, 169);
     assert_eq!(tiger_state.core.age, 4);
-    assert_eq!(tiger_state.stripes, 100);
+    assert_eq!(tiger_state.stripes, 98);
 }
 
 #[test]
@@ -419,11 +424,11 @@ fn executor_advances_with_executable_requests_and_dynamic_action_order() {
 
     let emitted = run_now(tiger.advance_to_end_with(0i32))
         .expect("tiger flow should execute through dynamic requests");
-    assert_eq!(emitted.len(), 6);
+    assert_eq!(emitted.len(), 7);
     assert!(tiger.is_complete());
 
     let tiger_state = tiger.into_state();
-    assert_eq!(tiger_state.core.energy, 301);
+    assert_eq!(tiger_state.core.energy, 169);
     assert_eq!(tiger_state.core.age, 4);
-    assert_eq!(tiger_state.stripes, 100);
+    assert_eq!(tiger_state.stripes, 98);
 }
