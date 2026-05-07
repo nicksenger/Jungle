@@ -273,7 +273,13 @@ animal!(
     RunnerInstinct
 );
 
+#[derive(Creatures)]
+struct RunnerCreatures(RunnerCreature);
+
 struct RunnerZoo;
+impl Ecosystem for RunnerZoo {
+    type Creatures = RunnerCreatures;
+}
 
 #[test]
 fn composite_actions() {
@@ -720,5 +726,105 @@ async fn jungle_runner_spawns_and_completes_creature_flows() {
     );
     assert_eq!(input_calls.load(Ordering::Relaxed), 4);
     assert_eq!(success_calls.load(Ordering::Relaxed), 4);
+    assert_eq!(failure_calls.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn jungle_worker_polls_and_completes_start_flow_work() {
+    use jungle_sdk::client::MockClient;
+    use jungle_sdk::core::JungleWorker;
+    use jungle_sdk::types::Work;
+    use std::time::Duration;
+
+    let input_calls = Arc::new(AtomicUsize::new(0));
+    let success_calls = Arc::new(AtomicUsize::new(0));
+    let failure_calls = Arc::new(AtomicUsize::new(0));
+    let poll_calls = Arc::new(AtomicUsize::new(0));
+    let seed = postcard::to_allocvec(&RunnerState(0)).expect("runner seed should serialize");
+    let flow_id = Uuid::from_u128(101);
+
+    let client = MockClient::builder()
+        .on_poll_work({
+            let poll_calls = Arc::clone(&poll_calls);
+            let seed = seed.clone();
+            move || {
+                let poll_calls = Arc::clone(&poll_calls);
+                let seed = seed.clone();
+                async move {
+                    let idx = poll_calls.fetch_add(1, Ordering::Relaxed);
+                    if idx == 0 {
+                        Ok(Some(Work::StartFlow {
+                            flow_id,
+                            ordinal: 16,
+                            seed,
+                        }))
+                    } else {
+                        Ok(None)
+                    }
+                }
+            }
+        })
+        .on_action_input({
+            let input_calls = Arc::clone(&input_calls);
+            move |_, _| {
+                let input_calls = Arc::clone(&input_calls);
+                async move {
+                    input_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
+        .on_action_success_output({
+            let success_calls = Arc::clone(&success_calls);
+            move |_, _| {
+                let success_calls = Arc::clone(&success_calls);
+                async move {
+                    success_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
+        .on_action_failure_output({
+            let failure_calls = Arc::clone(&failure_calls);
+            move |_, _| {
+                let failure_calls = Arc::clone(&failure_calls);
+                async move {
+                    failure_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
+        .build();
+
+    let worker = JungleWorker::new(RunnerZoo, client);
+    let worker_future = worker.spawn();
+    tokio::pin!(worker_future);
+
+    tokio::select! {
+        result = &mut worker_future => {
+            panic!("worker should keep polling, got: {result:?}");
+        }
+        timed = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if success_calls.load(Ordering::Relaxed) == 2 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }) => {
+            if timed.is_err() {
+                panic!(
+                    "worker flow should complete: polls={}, inputs={}, successes={}, failures={}",
+                    poll_calls.load(Ordering::Relaxed),
+                    input_calls.load(Ordering::Relaxed),
+                    success_calls.load(Ordering::Relaxed),
+                    failure_calls.load(Ordering::Relaxed),
+                );
+            }
+        }
+    }
+
+    assert_eq!(input_calls.load(Ordering::Relaxed), 2);
+    assert_eq!(success_calls.load(Ordering::Relaxed), 2);
     assert_eq!(failure_calls.load(Ordering::Relaxed), 0);
 }

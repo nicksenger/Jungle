@@ -11,3 +11,4 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 futures = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+postcard = { workspace = true, features = ["alloc"] }

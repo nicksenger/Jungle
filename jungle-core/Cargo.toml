@@ -11,4 +11,4 @@ serde = { workspace = true }
 uuid = { workspace = true }
 futures = { workspace = true }
 postcard = { workspace = true }
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["rt", "time"] }
