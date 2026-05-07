@@ -1,7 +1,6 @@
-use futures::{channel::mpsc, StreamExt};
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionSet, ClientIn, Creature, CreatureActionSet, CreatureSet,
+    Action, ActionCompletion, ActionSet, Creature, CreatureActionSet, CreatureSet,
     CreatureStates, Ecosystem, Identity, Impulse, Lens, LoopCondition, Task, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -9,6 +8,8 @@ use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 use jungle_sdk::{Actions, Creatures, Flow, Optic};
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use uuid::Uuid;
 
 action!(Eat, U0, dependency = SharedState);
@@ -647,29 +648,51 @@ async fn jungle_executor_exposes_state_during_progression() {
 
 #[tokio::test]
 async fn jungle_runner_spawns_and_completes_creature_flows() {
+    use jungle_sdk::client::MockClient;
     use jungle_sdk::core::JungleRunner;
 
     let runner = JungleRunner::new(RunnerZoo);
-    let (tx, mut rx) = mpsc::channel::<(ClientIn, futures::channel::oneshot::Sender<()>)>(32);
-    let resolver = tokio::spawn(async move {
-        while let Some((message, done)) = rx.next().await {
-            match message {
-                ClientIn::ActionInput { .. } | ClientIn::ActionOutput { .. } => {
-                    let _ = done.send(());
+    let input_calls = Arc::new(AtomicUsize::new(0));
+    let success_calls = Arc::new(AtomicUsize::new(0));
+    let failure_calls = Arc::new(AtomicUsize::new(0));
+    let client = MockClient::builder()
+        .on_action_input({
+            let input_calls = Arc::clone(&input_calls);
+            move |_, _| {
+                let input_calls = Arc::clone(&input_calls);
+                async move {
+                    input_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
                 }
             }
-        }
-    });
+        })
+        .on_action_success_output({
+            let success_calls = Arc::clone(&success_calls);
+            move |_, _| {
+                let success_calls = Arc::clone(&success_calls);
+                async move {
+                    success_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
+        .on_action_failure_output({
+            let failure_calls = Arc::clone(&failure_calls);
+            move |_, _| {
+                let failure_calls = Arc::clone(&failure_calls);
+                async move {
+                    failure_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
+        .build();
 
     let (first, second, third) = tokio::join!(
-        runner.spawn::<RunnerCreature>(RunnerState(0), Uuid::from_u128(1), tx.clone()),
-        runner.spawn::<RunnerCreature>(RunnerState(3), Uuid::from_u128(2), tx.clone()),
-        runner.spawn::<RunnerCreature>(RunnerState(2), Uuid::from_u128(3), tx.clone()),
+        runner.spawn::<RunnerCreature, _>(RunnerState(0), Uuid::from_u128(1), &client),
+        runner.spawn::<RunnerCreature, _>(RunnerState(3), Uuid::from_u128(2), &client),
+        runner.spawn::<RunnerCreature, _>(RunnerState(2), Uuid::from_u128(3), &client),
     );
-    drop(tx);
-    resolver
-        .await
-        .expect("runner transport resolver should complete");
 
     assert_eq!(
         first.expect("first runner flow should complete"),
@@ -683,4 +706,7 @@ async fn jungle_runner_spawns_and_completes_creature_flows() {
         third.expect("third runner flow should complete"),
         RunnerState(4)
     );
+    assert_eq!(input_calls.load(Ordering::Relaxed), 4);
+    assert_eq!(success_calls.load(Ordering::Relaxed), 4);
+    assert_eq!(failure_calls.load(Ordering::Relaxed), 0);
 }

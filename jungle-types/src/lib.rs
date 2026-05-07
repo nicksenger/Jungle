@@ -21,7 +21,7 @@ pub use meta::{
     CreatureStates, CreatureStatesCompatible, CreatureActionDependencies,
     CreatureActionDependenciesCompatible, StripActionHeaders, StripCreatureHeaders,
 };
-pub use transport::{ClientIn, ClientOut};
+pub use transport::RunnerOut;
 use std::marker::PhantomData;
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;

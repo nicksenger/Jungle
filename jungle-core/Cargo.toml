@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+jungle-client = { path = "../jungle-client" }
 jungle-types = { path = "../jungle-types" }
 typosaurus = { workspace = true }
 serde = { workspace = true }
-futures = { workspace = true }
 uuid = { workspace = true }
