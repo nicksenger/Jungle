@@ -182,6 +182,34 @@ impl Action for RunnerStepOneAction {
     }
 }
 
+#[derive(Clone, Copy)]
+struct RunnerStepTwoDependency {
+    gain: i32,
+}
+
+impl From<&RunnerZoo> for RunnerStepTwoDependency {
+    fn from(_value: &RunnerZoo) -> Self {
+        Self { gain: 1 }
+    }
+}
+
+struct RunnerStepTwoAction;
+impl jungle_sdk::types::ActionMember for RunnerStepTwoAction {}
+impl Action for RunnerStepTwoAction {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
+    type Dependency = RunnerStepTwoDependency;
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        dependency: &Self::Dependency,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(dependency.gain))
+    }
+}
+
 struct RunnerStepOne;
 impl Task<RunnerCreature> for RunnerStepOne {
     type Action = RunnerStepOneAction;
@@ -196,6 +224,20 @@ impl Task<RunnerCreature> for RunnerStepOne {
     }
 }
 
+struct RunnerStepTwo;
+impl Task<RunnerCreature> for RunnerStepTwo {
+    type Action = RunnerStepTwoAction;
+    type Aspect = Identity;
+    type In = ();
+    type Out = ();
+
+    fn prepare(_state: &RunnerState, _input: Self::In) -> Self::In {}
+
+    fn process(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.0 += output.expect("runner step two should succeed");
+    }
+}
+
 struct RunnerKeepGoing;
 impl LoopCondition<RunnerState> for RunnerKeepGoing {
     fn should_continue(state: &RunnerState) -> bool {
@@ -203,7 +245,21 @@ impl LoopCondition<RunnerState> for RunnerKeepGoing {
     }
 }
 
-type RunnerInstinct = While<RunnerKeepGoing, Impulse<RunnerCreature, RunnerStepOne>>;
+struct RunnerUseStepOne;
+impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
+    fn choose((state, _): &(RunnerState, ())) -> bool {
+        state.0 % 2 == 0
+    }
+}
+
+type RunnerInstinct = While<
+    RunnerKeepGoing,
+    jungle_sdk::types::Conditional<
+        RunnerUseStepOne,
+        Impulse<RunnerCreature, RunnerStepOne>,
+        Impulse<RunnerCreature, RunnerStepTwo>,
+    >,
+>;
 
 animal!(
     RunnerCreature,
@@ -604,7 +660,7 @@ async fn jungle_runner_spawns_and_completes_creature_flows() {
     );
     assert_eq!(
         second.expect("second runner flow should complete"),
-        RunnerState(5)
+        RunnerState(4)
     );
     assert_eq!(
         third.expect("third runner flow should complete"),
