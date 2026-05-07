@@ -3,6 +3,7 @@ use jungle_sdk::types::{
     Action, ActionCompletion, ActionTask, Aspect, Condition, Conditional, Either, Executor,
     Identity, Lens, LoopCondition, Running, Task, Waiting, While,
 };
+use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::{Instinct, Optic};
 use std::future::ready;
@@ -149,7 +150,7 @@ impl Task<Tiger, Eat> for TigerEat {
 
 struct TigerSleep;
 impl Task<Tiger, Sleep> for TigerSleep {
-    type Aspect = Lens<TigerState, jungle_sdk::typosaurus::list![U1, U0]>;
+    type Aspect = Lens<TigerState, list![U1, U0]>;
     type In = i32;
     type Out = i32;
 
