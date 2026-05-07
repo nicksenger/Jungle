@@ -15,6 +15,7 @@ mod tests {
     use jungle_sdk::typosaurus::list;
     use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
     use jungle_sdk::{Actions, Creatures, Flow};
+    use std::marker::PhantomData;
 
     macro_rules! action {
         (
@@ -176,13 +177,14 @@ mod tests {
         };
     }
 
-    struct UnitOkStep;
-    impl<T, A> Task<T, A> for UnitOkStep
+    struct UnitOkStep<A>(PhantomData<fn() -> A>);
+    impl<T, A> Task<T> for UnitOkStep<A>
     where
         T: Creature,
         A: Action<In = ()>,
         A: Action<Out = (), Err = ()>,
     {
+        type Action = A;
         type Aspect = Identity;
         type In = ();
         type Out = ();
@@ -198,11 +200,11 @@ mod tests {
         ($name:ident, $animal:ty) => {
             #[derive(Flow)]
             struct $name(
-                ActionTask<$animal, Eat, UnitOkStep>,
-                ActionTask<$animal, Sleep, UnitOkStep>,
-                ActionTask<$animal, Forage, UnitOkStep>,
-                ActionTask<$animal, Drink, UnitOkStep>,
-                ActionTask<$animal, Flee, UnitOkStep>,
+                ActionTask<$animal, UnitOkStep<Eat>>,
+                ActionTask<$animal, UnitOkStep<Sleep>>,
+                ActionTask<$animal, UnitOkStep<Forage>>,
+                ActionTask<$animal, UnitOkStep<Drink>>,
+                ActionTask<$animal, UnitOkStep<Flee>>,
             );
         };
     }
@@ -211,11 +213,11 @@ mod tests {
         ($name:ident, $animal:ty) => {
             #[derive(Flow)]
             struct $name(
-                ActionTask<$animal, Eat, UnitOkStep>,
-                ActionTask<$animal, Sleep, UnitOkStep>,
-                ActionTask<$animal, Forage, UnitOkStep>,
-                ActionTask<$animal, Drink, UnitOkStep>,
-                ActionTask<$animal, Hunt, UnitOkStep>,
+                ActionTask<$animal, UnitOkStep<Eat>>,
+                ActionTask<$animal, UnitOkStep<Sleep>>,
+                ActionTask<$animal, UnitOkStep<Forage>>,
+                ActionTask<$animal, UnitOkStep<Drink>>,
+                ActionTask<$animal, UnitOkStep<Hunt>>,
             );
         };
     }
@@ -290,20 +292,20 @@ mod tests {
 
         #[derive(Flow)]
         struct StatefulGorillaInstinct(
-            ActionTask<StatefulGorilla, Eat, UnitOkStep>,
-            ActionTask<StatefulGorilla, Sleep, UnitOkStep>,
-            ActionTask<StatefulGorilla, Forage, UnitOkStep>,
-            ActionTask<StatefulGorilla, Drink, UnitOkStep>,
-            ActionTask<StatefulGorilla, Flee, UnitOkStep>,
+            ActionTask<StatefulGorilla, UnitOkStep<Eat>>,
+            ActionTask<StatefulGorilla, UnitOkStep<Sleep>>,
+            ActionTask<StatefulGorilla, UnitOkStep<Forage>>,
+            ActionTask<StatefulGorilla, UnitOkStep<Drink>>,
+            ActionTask<StatefulGorilla, UnitOkStep<Flee>>,
         );
 
         #[derive(Flow)]
         struct StatefulTigerInstinct(
-            ActionTask<StatefulTiger, Eat, UnitOkStep>,
-            ActionTask<StatefulTiger, Sleep, UnitOkStep>,
-            ActionTask<StatefulTiger, Forage, UnitOkStep>,
-            ActionTask<StatefulTiger, Drink, UnitOkStep>,
-            ActionTask<StatefulTiger, Hunt, UnitOkStep>,
+            ActionTask<StatefulTiger, UnitOkStep<Eat>>,
+            ActionTask<StatefulTiger, UnitOkStep<Sleep>>,
+            ActionTask<StatefulTiger, UnitOkStep<Forage>>,
+            ActionTask<StatefulTiger, UnitOkStep<Drink>>,
+            ActionTask<StatefulTiger, UnitOkStep<Hunt>>,
         );
 
         animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);

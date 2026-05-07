@@ -15,7 +15,8 @@ action!(
 animal!(GatherCreature, U0, instinct = GatherInstinct);
 
 struct Gather;
-impl Task<GatherCreature, GatherAction> for Gather {
+impl Task<GatherCreature> for Gather {
+    type Action = GatherAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -30,16 +31,16 @@ impl Task<GatherCreature, GatherAction> for Gather {
 }
 
 #[derive(Flow)]
-struct GatherInstinct(ActionTask<GatherCreature, GatherAction, Gather>);
+struct GatherInstinct(ActionTask<GatherCreature, Gather>);
 
 #[test]
 fn action_step_adapts_action() {
     let (dependency, request) =
-        <ActionTask<GatherCreature, GatherAction, Gather> as Running>::run(((), 3));
+        <ActionTask<GatherCreature, Gather> as Running>::run(((), 3));
     assert_eq!(request.into_input(), 7);
 
     let (next_dependency, emitted) =
-        <ActionTask<GatherCreature, GatherAction, Gather> as Waiting>::accept((dependency, Ok(9)));
+        <ActionTask<GatherCreature, Gather> as Waiting>::accept((dependency, Ok(9)));
     assert_eq!(emitted, 9);
     assert_eq!(next_dependency, ());
 }

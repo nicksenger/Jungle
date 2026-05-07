@@ -44,7 +44,8 @@ impl Action for FinishAction {
 }
 
 struct Seed;
-impl Task<ProgressCreature, SeedAction> for Seed {
+impl Task<ProgressCreature> for Seed {
+    type Action = SeedAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -61,7 +62,8 @@ impl Task<ProgressCreature, SeedAction> for Seed {
 }
 
 struct Finish;
-impl Task<ProgressCreature, FinishAction> for Finish {
+impl Task<ProgressCreature> for Finish {
+    type Action = FinishAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -79,8 +81,8 @@ impl Task<ProgressCreature, FinishAction> for Finish {
 
 #[derive(Instinct)]
 struct ProgressInstinct(
-    ActionTask<ProgressCreature, SeedAction, Seed>,
-    ActionTask<ProgressCreature, FinishAction, Finish>,
+    ActionTask<ProgressCreature, Seed>,
+    ActionTask<ProgressCreature, Finish>,
 );
 
 animal!(ProgressCreature, U0, i32, ProgressInstinct);
@@ -88,8 +90,8 @@ animal!(ProgressCreature, U0, i32, ProgressInstinct);
 #[derive(Creatures)]
 struct ProgressCreatures(ProgressCreature);
 
-type SeedStep = ActionTask<ProgressCreature, SeedAction, Seed>;
-type FinishStep = ActionTask<ProgressCreature, FinishAction, Finish>;
+type SeedStep = ActionTask<ProgressCreature, Seed>;
+type FinishStep = ActionTask<ProgressCreature, Finish>;
 
 struct StepHarness;
 impl StepHarness {
@@ -114,12 +116,12 @@ trait StepExecutor:
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<A, Step> StepExecutor for ActionTask<ProgressCreature, A, Step>
+impl<Step> StepExecutor for ActionTask<ProgressCreature, Step>
 where
-    A: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
-    Step: Task<ProgressCreature, A, Aspect = Identity, In = i32, Out = i32>,
+    Step: Task<ProgressCreature, Aspect = Identity, In = i32, Out = i32>,
+    Step::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
-    type Action = A;
+    type Action = Step::Action;
 }
 
 #[test]

@@ -18,7 +18,8 @@ action!(
 animal!(Looper, U0, state = i32, instinct = LoopInstinct);
 
 struct Tick;
-impl Task<Looper, TickAction> for Tick {
+impl Task<Looper> for Tick {
+    type Action = TickAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -34,7 +35,7 @@ impl Task<Looper, TickAction> for Tick {
     }
 }
 
-type TickFlow = ActionTask<Looper, TickAction, Tick>;
+type TickFlow = ActionTask<Looper, Tick>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {

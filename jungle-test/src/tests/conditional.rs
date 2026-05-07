@@ -35,7 +35,8 @@ animal!(
 );
 
 struct Left;
-impl Task<ConditionalCreature, LeftAction> for Left {
+impl Task<ConditionalCreature> for Left {
+    type Action = LeftAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -52,7 +53,8 @@ impl Task<ConditionalCreature, LeftAction> for Left {
 }
 
 struct Right;
-impl Task<ConditionalCreature, RightAction> for Right {
+impl Task<ConditionalCreature> for Right {
+    type Action = RightAction;
     type Aspect = Identity;
     type In = i32;
     type Out = bool;
@@ -68,8 +70,8 @@ impl Task<ConditionalCreature, RightAction> for Right {
     }
 }
 
-type LeftFlow = ActionTask<ConditionalCreature, LeftAction, Left>;
-type RightFlow = ActionTask<ConditionalCreature, RightAction, Right>;
+type LeftFlow = ActionTask<ConditionalCreature, Left>;
+type RightFlow = ActionTask<ConditionalCreature, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {

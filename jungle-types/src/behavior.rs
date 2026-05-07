@@ -216,38 +216,37 @@ where
 
 /// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
 /// of creature state.
-pub trait Task<T: Creature, A: Action> {
+pub trait Task<T: Creature> {
+    type Action: Action;
     type Aspect: Aspect<T::State>;
     type In;
     type Out;
 
     fn prepare(
-        view: &<<Self as Task<T, A>>::Aspect as Aspect<T::State>>::View,
+        view: &<<Self as Task<T>>::Aspect as Aspect<T::State>>::View,
         input: Self::In,
-    ) -> A::In;
+    ) -> <Self::Action as Action>::In;
 
     fn process(
-        view: &mut <<Self as Task<T, A>>::Aspect as Aspect<T::State>>::View,
-        output: ActionCompletion<A>,
+        view: &mut <<Self as Task<T>>::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<Self::Action>,
     ) -> Self::Out;
 }
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Running`]/[`Waiting`] temporal protocol.
-pub struct ActionTask<T, A, Step>
+pub struct ActionTask<T, Step>
 where
     T: Creature,
-    A: Action,
-    Step: Task<T, A>,
+    Step: Task<T>,
 {
-    marker: PhantomData<fn() -> (T, A, Step)>,
+    marker: PhantomData<fn() -> (T, Step)>,
 }
 
-impl<T, A, Step> ActionTask<T, A, Step>
+impl<T, Step> ActionTask<T, Step>
 where
     T: Creature,
-    A: Action,
-    Step: Task<T, A>,
+    Step: Task<T>,
 {
     pub fn new() -> Self {
         Self {
@@ -257,45 +256,43 @@ where
 }
 
 #[primitive(property = crate::JungleRunning)]
-impl<T, A, Step> Running for ActionTask<T, A, Step>
+impl<T, Step> Running for ActionTask<T, Step>
 where
     T: Creature,
-    A: Action,
-    Step: Task<T, A>,
+    Step: Task<T>,
 {
-    type In = (T::State, <Step as Task<T, A>>::In);
-    type Out = (T::State, ActionRequest<A>);
+    type In = (T::State, <Step as Task<T>>::In);
+    type Out = (T::State, ActionRequest<<Step as Task<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<Step as Task<T, A>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let action_input = <Step as Task<T, A>>::prepare(view, input);
-        (state, ActionRequest::<A>::new(action_input))
+        let view = <<Step as Task<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let action_input = <Step as Task<T>>::prepare(view, input);
+        (state, ActionRequest::<<Step as Task<T>>::Action>::new(action_input))
     }
 }
 
 #[primitive(property = crate::JungleWaiting)]
-impl<T, A, Step> Waiting for ActionTask<T, A, Step>
+impl<T, Step> Waiting for ActionTask<T, Step>
 where
     T: Creature,
-    A: Action,
-    Step: Task<T, A>,
+    Step: Task<T>,
 {
-    type In = (T::State, ActionCompletion<A>);
-    type Out = (T::State, <Step as Task<T, A>>::Out);
+    type In = (T::State, ActionCompletion<<Step as Task<T>>::Action>);
+    type Out = (T::State, <Step as Task<T>>::Out);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<Step as Task<T, A>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let emitted = <Step as Task<T, A>>::process(view, output);
+        let view = <<Step as Task<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let emitted = <Step as Task<T>>::process(view, output);
         (state, emitted)
     }
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, A, Step> FlowActions for ActionTask<T, A, Step>
+impl<T, Step> FlowActions for ActionTask<T, Step>
 where
     T: Creature,
-    A: Action + ActionMember,
-    Step: Task<T, A>,
+    <Step as Task<T>>::Action: ActionMember,
+    Step: Task<T>,
 {
-    type List = Node<<A as Action>::Id, A>;
+    type List = Node<<<Step as Task<T>>::Action as Action>::Id, <Step as Task<T>>::Action>;
 }

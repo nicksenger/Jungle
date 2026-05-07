@@ -35,13 +35,14 @@ struct TigerState {
     core: CoreState,
 }
 
-struct CoreEnergyStep<Focus>(PhantomData<fn() -> Focus>);
+struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
-impl<T, Focus> Task<T, Sleep> for CoreEnergyStep<Focus>
+impl<T, Focus> Task<T> for CoreEnergyStep<Sleep, Focus>
 where
     T: jungle_types::Creature,
     Focus: Aspect<T::State, View = CoreState>,
 {
+    type Action = Sleep;
     type Aspect = Focus;
     type In = i32;
     type Out = i32;
@@ -57,11 +58,12 @@ where
     }
 }
 
-impl<T, Focus> Task<T, Eat> for CoreEnergyStep<Focus>
+impl<T, Focus> Task<T> for CoreEnergyStep<Eat, Focus>
 where
     T: jungle_types::Creature,
     Focus: Aspect<T::State, View = CoreState>,
 {
+    type Action = Eat;
     type Aspect = Focus;
     type In = i32;
     type Out = i32;
@@ -77,14 +79,15 @@ where
     }
 }
 
-struct AddI32<T, Focus, A>(PhantomData<fn() -> (T, Focus, A)>);
+struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Task<T, A> for AddI32<T, Focus, A>
+impl<T, Focus, A> Task<T> for AddI32<Focus, A>
 where
     T: jungle_types::Creature,
     Focus: Aspect<T::State, View = i32>,
     A: Action<In = (), Out = i32>,
 {
+    type Action = A;
     type Aspect = Focus;
     type In = i32;
     type Out = i32;
@@ -102,7 +105,8 @@ where
 }
 
 struct GorillaEat;
-impl Task<Gorilla, Eat> for GorillaEat {
+impl Task<Gorilla> for GorillaEat {
+    type Action = Eat;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -120,7 +124,8 @@ impl Task<Gorilla, Eat> for GorillaEat {
 }
 
 struct GorillaSleep;
-impl Task<Gorilla, Sleep> for GorillaSleep {
+impl Task<Gorilla> for GorillaSleep {
+    type Action = Sleep;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -138,7 +143,8 @@ impl Task<Gorilla, Sleep> for GorillaSleep {
 }
 
 struct GorillaForage;
-impl Task<Gorilla, Forage> for GorillaForage {
+impl Task<Gorilla> for GorillaForage {
+    type Action = Forage;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -156,7 +162,8 @@ impl Task<Gorilla, Forage> for GorillaForage {
 }
 
 struct TigerEat;
-impl Task<Tiger, Eat> for TigerEat {
+impl Task<Tiger> for TigerEat {
+    type Action = Eat;
     type Aspect = Lens<TigerState, U1>;
     type In = i32;
     type Out = i32;
@@ -173,7 +180,8 @@ impl Task<Tiger, Eat> for TigerEat {
 }
 
 struct TigerSleep;
-impl Task<Tiger, Sleep> for TigerSleep {
+impl Task<Tiger> for TigerSleep {
+    type Action = Sleep;
     type Aspect = Lens<TigerState, list![U1, U0]>;
     type In = i32;
     type Out = i32;
@@ -191,9 +199,9 @@ impl Task<Tiger, Sleep> for TigerSleep {
 
 #[derive(Instinct)]
 struct GorillaLoopSequence(
-    ActionTask<Gorilla, Eat, GorillaEat>,
-    ActionTask<Gorilla, Sleep, GorillaSleep>,
-    ActionTask<Gorilla, Forage, GorillaForage>,
+    ActionTask<Gorilla, GorillaEat>,
+    ActionTask<Gorilla, GorillaSleep>,
+    ActionTask<Gorilla, GorillaForage>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -217,11 +225,11 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 struct TigerLoopSequence(
     Conditional<
         TigerStripesAreEven,
-        ActionTask<Tiger, Eat, TigerEat>,
-        ActionTask<Tiger, Sleep, TigerSleep>,
+        ActionTask<Tiger, TigerEat>,
+        ActionTask<Tiger, TigerSleep>,
     >,
-    ActionTask<Tiger, Sleep, TigerSleep>,
-    ActionTask<Tiger, Hunt, AddI32<Tiger, Lens<TigerState, list![U1, U0]>, Hunt>>,
+    ActionTask<Tiger, TigerSleep>,
+    ActionTask<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
@@ -277,14 +285,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
     };
     let (gorilla_state, gorilla_request) = <ActionTask<
         Gorilla,
-        Sleep,
-        CoreEnergyStep<Lens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
     let (gorilla_state, gorilla_emitted) = <ActionTask<
         Gorilla,
-        Sleep,
-        CoreEnergyStep<Lens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
     > as Waiting>::accept((gorilla_state, Ok(20)));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
@@ -297,14 +303,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
     };
     let (tiger_state, tiger_request) = <ActionTask<
         Tiger,
-        Sleep,
-        CoreEnergyStep<Lens<TigerState, U1>>,
+        CoreEnergyStep<Sleep, Lens<TigerState, U1>>,
     > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
     let (tiger_state, tiger_emitted) = <ActionTask<
         Tiger,
-        Sleep,
-        CoreEnergyStep<Lens<TigerState, U1>>,
+        CoreEnergyStep<Sleep, Lens<TigerState, U1>>,
     > as Waiting>::accept((tiger_state, Ok(15)));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
@@ -384,8 +388,8 @@ fn executor_runs_aspected_steps() {
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     let even = <Conditional<
         TigerStripesAreEven,
-        ActionTask<Tiger, Eat, TigerEat>,
-        ActionTask<Tiger, Sleep, TigerSleep>,
+        ActionTask<Tiger, TigerEat>,
+        ActionTask<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 8,
@@ -400,8 +404,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 
     let odd = <Conditional<
         TigerStripesAreEven,
-        ActionTask<Tiger, Eat, TigerEat>,
-        ActionTask<Tiger, Sleep, TigerSleep>,
+        ActionTask<Tiger, TigerEat>,
+        ActionTask<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 9,

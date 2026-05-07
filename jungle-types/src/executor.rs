@@ -122,17 +122,17 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
-impl<T, A, Step> ErasedFlow<T::State> for TypedErasedStep<ActionTask<T, A, Step>>
+impl<T, Step> ErasedFlow<T::State> for TypedErasedStep<ActionTask<T, Step>>
 where
     T: Creature,
-    A: Action<Dependency = ()>,
-    A::Dependency: 'static,
-    A::In: 'static,
-    A::Out: 'static,
-    A::Err: Serialize + 'static,
-    A::Out: DeserializeOwned,
-    A::Err: DeserializeOwned,
-    Step: Task<T, A>,
+    Step: Task<T>,
+    <Step as Task<T>>::Action: Action<Dependency = ()>,
+    <<Step as Task<T>>::Action as Action>::Dependency: 'static,
+    <<Step as Task<T>>::Action as Action>::In: 'static,
+    <<Step as Task<T>>::Action as Action>::Out: 'static,
+    <<Step as Task<T>>::Action as Action>::Err: Serialize + 'static,
+    <<Step as Task<T>>::Action as Action>::Out: DeserializeOwned,
+    <<Step as Task<T>>::Action as Action>::Err: DeserializeOwned,
     Step::In: DeserializeOwned,
     Step::Out: Serialize,
 {
@@ -150,7 +150,7 @@ where
 
         let typed_input = postcard::from_bytes::<Step::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <ActionTask<T, A, Step> as Running>::run((state, typed_input));
+        let (state, request) = <ActionTask<T, Step> as Running>::run((state, typed_input));
         let request = postcard::to_allocvec(&request.into_input())
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         self.waiting_completion = true;
@@ -171,13 +171,13 @@ where
 
         let typed_input = postcard::from_bytes::<Step::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <ActionTask<T, A, Step> as Running>::run((state, typed_input));
+        let (state, request) = <ActionTask<T, Step> as Running>::run((state, typed_input));
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <A as Action>::act(&(), action_input).await;
+                let completion = <<Step as Task<T>>::Action as Action>::act(&(), action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -198,15 +198,14 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<A> = match completion {
-            Ok(output) => Ok(postcard::from_bytes::<A::Out>(&output)
+        let typed_completion: ActionCompletion<<Step as Task<T>>::Action> = match completion {
+            Ok(output) => Ok(postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Out>(&output)
                 .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
-            Err(error) => Err(postcard::from_bytes::<A::Err>(&error)
+            Err(error) => Err(postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Err>(&error)
                 .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, emitted) =
-            <ActionTask<T, A, Step> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <ActionTask<T, Step> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -545,21 +544,21 @@ pub trait BuildFlow<Input> {
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<T, A, Step> BuildFlow<DynFlow<T::State>> for ActionTask<T, A, Step>
+impl<T, Step> BuildFlow<DynFlow<T::State>> for ActionTask<T, Step>
 where
     T: Creature + 'static,
-    A: Action<Dependency = ()> + 'static,
-    A::Err: Serialize,
-    A::Out: DeserializeOwned,
-    A::Err: DeserializeOwned,
-    Step: Task<T, A> + 'static,
+    Step: Task<T> + 'static,
+    <Step as Task<T>>::Action: Action<Dependency = ()> + 'static,
+    <<Step as Task<T>>::Action as Action>::Err: Serialize,
+    <<Step as Task<T>>::Action as Action>::Out: DeserializeOwned,
+    <<Step as Task<T>>::Action as Action>::Err: DeserializeOwned,
     Step::In: DeserializeOwned,
     Step::Out: Serialize,
 {
     type Output = DynFlow<T::State>;
 
     fn push_steps(mut steps: DynFlow<T::State>) -> Self::Output {
-        steps.push(Box::new(TypedErasedStep::<ActionTask<T, A, Step>>::new()));
+        steps.push(Box::new(TypedErasedStep::<ActionTask<T, Step>>::new()));
         steps
     }
 }
