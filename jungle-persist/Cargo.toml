@@ -3,4 +3,11 @@ name = "jungle-persist"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["redb"]
+redb = ["dep:redb"]
+postgres = ["dep:sqlx"]
+
 [dependencies]
+redb = { version = "4.1", optional = true }
+sqlx = { version = "0.8", optional = true }

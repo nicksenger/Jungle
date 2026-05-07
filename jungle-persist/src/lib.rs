@@ -1,4 +1,2 @@
-/// jungle-persist
-pub fn hello() -> &'static str {
-    concat!("Hello from ", env!("CARGO_PKG_NAME"), "!")
-}
+/// Storage backend contract for persistence implementations.
+pub trait Store {}
