@@ -209,6 +209,10 @@ name = "jungle-cli"
 version = "0.1.0"
 
 [[package]]
+name = "jungle-client"
+version = "0.1.0"
+
+[[package]]
 name = "jungle-core"
 version = "0.1.0"
 dependencies = [
