@@ -131,9 +131,9 @@ where
     }
 }
 
-struct GorillaForage;
-impl Task<Gorilla> for GorillaForage {
-    type Action = Forage;
+struct GorillaSleepManual;
+impl Task<Gorilla> for GorillaSleepManual {
+    type Action = Sleep;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
@@ -142,25 +142,25 @@ impl Task<Gorilla> for GorillaForage {
         state.core.energy + input
     }
 
-    fn process(state: &mut GorillaState, output: ActionCompletion<Forage>) -> Self::Out {
-        let value = output.expect("forage should succeed");
+    fn process(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
+        let value = output.expect("sleep should succeed");
         state.core.energy = value;
-        state.bananas += 1;
+        state.core.age += 1;
         value
     }
 }
 
-type GorillaSleep = AddI32<Lens<GorillaState, list![U0, U1]>, Sleep>;
-type GorillaEat = SubI32<Lens<GorillaState, U1>, Eat>;
+type GorillaEat = AddI32<Lens<GorillaState, list![U0, U0]>, Eat>;
+type GorillaForageStep = AddI32<Lens<GorillaState, list![U0, U0]>, Forage>;
 
-type TigerEat = CoreEnergyStep<Eat, Lens<TigerState, U1>>;
+type TigerEat = AddI32<Lens<TigerState, list![U1, U0]>, Eat>;
 type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
 
 #[derive(Instinct)]
 struct GorillaLoopSequence(
     Impulse<Gorilla, GorillaEat>,
-    Impulse<Gorilla, GorillaSleep>,
-    Impulse<Gorilla, GorillaForage>,
+    Impulse<Gorilla, GorillaSleepManual>,
+    Impulse<Gorilla, GorillaForageStep>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -275,12 +275,12 @@ fn executor_runs_aspected_steps() {
             .expect("gorilla completion should advance");
         gorilla_emitted.push(emitted);
     }
-    assert_eq!(gorilla_emitted, vec![1, 99, 103, -102, -2, 100, -202, -203]);
+    assert_eq!(gorilla_emitted, vec![6, 13, 25, 51, 103, 205, 411, 823]);
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
     assert_eq!(gorilla_state.core.energy, 823);
     assert_eq!(gorilla_state.core.age, 100);
-    assert_eq!(gorilla_state.bananas, 1);
+    assert_eq!(gorilla_state.bananas, 2);
 
     let mut tiger = Executor::<Tiger>::new(TigerState {
         stripes: 98,
@@ -333,7 +333,7 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         0,
     ));
     match even {
-        Either::Left((_state, request)) => assert_eq!(request.into_input(), 5),
+        Either::Left((_state, request)) => assert_eq!(request.into_input(), 0),
         Either::Right(_) => panic!("expected eat branch"),
     }
 
