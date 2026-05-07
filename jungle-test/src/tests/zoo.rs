@@ -145,6 +145,75 @@ impl Ecosystem for Zoo {
     type Creatures = AllCreatures;
 }
 
+#[derive(Clone, Copy)]
+struct RunnerDependency {
+    gain: i32,
+}
+
+impl From<&RunnerZoo> for RunnerDependency {
+    fn from(_value: &RunnerZoo) -> Self {
+        Self { gain: 2 }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RunnerState(i32);
+
+impl From<&RunnerZoo> for RunnerState {
+    fn from(_value: &RunnerZoo) -> Self {
+        Self(0)
+    }
+}
+
+struct RunnerStepOneAction;
+impl jungle_sdk::types::ActionMember for RunnerStepOneAction {}
+impl Action for RunnerStepOneAction {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
+    type Dependency = RunnerDependency;
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        dependency: &Self::Dependency,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(dependency.gain))
+    }
+}
+
+struct RunnerStepOne;
+impl Task<RunnerCreature> for RunnerStepOne {
+    type Action = RunnerStepOneAction;
+    type Aspect = Identity;
+    type In = ();
+    type Out = ();
+
+    fn prepare(_state: &RunnerState, _input: Self::In) -> Self::In {}
+
+    fn process(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.0 += output.expect("runner step one should succeed");
+    }
+}
+
+struct RunnerKeepGoing;
+impl LoopCondition<RunnerState> for RunnerKeepGoing {
+    fn should_continue(state: &RunnerState) -> bool {
+        state.0 < 4
+    }
+}
+
+type RunnerInstinct = While<RunnerKeepGoing, Impulse<RunnerCreature, RunnerStepOne>>;
+
+animal!(
+    RunnerCreature,
+    jungle_sdk::typosaurus::num::consts::U16,
+    RunnerState,
+    RunnerInstinct
+);
+
+struct RunnerZoo;
+
 #[test]
 fn composite_actions() {
     type BasicList = list![Eat, Sleep, Forage, Drink];
@@ -516,4 +585,22 @@ async fn jungle_executor_exposes_state_during_progression() {
     let gorilla_state = gorilla.into_state();
     assert_eq!(gorilla_state.core.rounds, 4);
     assert_eq!(gorilla_state.bananas, 12);
+}
+
+#[tokio::test]
+async fn jungle_runner_spawns_and_completes_creature_flows() {
+    use jungle_sdk::core::JungleRunner;
+
+    let runner = JungleRunner::new(RunnerZoo);
+    let first = runner
+        .spawn::<RunnerCreature>(RunnerState(0))
+        .await
+        .expect("runner flow should complete");
+    assert_eq!(first, RunnerState(4));
+
+    let second = runner
+        .spawn::<RunnerCreature>(RunnerState(3))
+        .await
+        .expect("runner flow should complete");
+    assert_eq!(second, RunnerState(5));
 }
