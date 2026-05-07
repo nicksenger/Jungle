@@ -8,7 +8,6 @@ use jungle_types::{
 };
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 use typosaurus::collections::list;
@@ -16,29 +15,31 @@ use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
 use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
-pub struct JungleWorker<T, C> {
-    client: Arc<C>,
+pub struct JungleWorker<T> {
+    client: Box<dyn JungleClient>,
     runner: JungleRunner<T>,
 }
 
-impl<T, C> JungleWorker<T, C>
+impl<T> JungleWorker<T>
 where
     T: Ecosystem + 'static,
     T::Creatures: Creatures,
     <T::Creatures as Creatures>::List: FlattenNodes,
     SPFlatten<<T::Creatures as Creatures>::List>: StripCreatureHeaders,
     CreatureSet<T::Creatures>: SpawnByOrdinal<T>,
-    C: JungleClient + Send + Sync + 'static,
 {
-    pub fn new(jungle: T, client: C) -> Self {
+    pub fn new<C>(jungle: T, client: C) -> Self
+    where
+        C: JungleClient + 'static,
+    {
         Self {
-            client: Arc::new(client),
+            client: Box::new(client),
             runner: JungleRunner::new(jungle),
         }
     }
 
-    pub fn client(&self) -> &Arc<C> {
-        &self.client
+    pub fn client(&self) -> &dyn JungleClient {
+        self.client.as_ref()
     }
 
     pub fn runner(&self) -> &JungleRunner<T> {
@@ -47,7 +48,7 @@ where
 
     pub async fn spawn(&self) -> Result<(), ExecutorError> {
         let (tx, mut rx): (RunnerChannelTx, _) = mpsc::channel(64);
-        let client_for_transport = Arc::clone(&self.client);
+        let client_for_transport = self.client.clone();
         tokio::spawn(async move {
             while let Some((message, done)) = rx.next().await {
                 let result = match message {

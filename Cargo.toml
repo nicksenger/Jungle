@@ -22,3 +22,4 @@ typosaurus = { path = "../typosaurus" }
 futures = "0.3"
 uuid = "1"
 async-trait = "0.1"
+dyn-clone = "1"
