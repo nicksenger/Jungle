@@ -213,17 +213,15 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     }
 }
 
-type TigerEatStep = ActionTask<Tiger, Eat, TigerEat>;
-type TigerSleepStep = ActionTask<Tiger, Sleep, TigerSleep>;
-type TigerEnergyLens = Lens<TigerState, list![U1, U0]>;
-type TigerHuntMapper = AddI32<Tiger, TigerEnergyLens, Hunt>;
-type TigerHuntStep = ActionTask<Tiger, Hunt, TigerHuntMapper>;
-
 #[derive(Instinct)]
 struct TigerLoopSequence(
-    Conditional<TigerStripesAreEven, TigerEatStep, TigerSleepStep>,
-    TigerSleepStep,
-    TigerHuntStep,
+    Conditional<
+        TigerStripesAreEven,
+        ActionTask<Tiger, Eat, TigerEat>,
+        ActionTask<Tiger, Sleep, TigerSleep>,
+    >,
+    ActionTask<Tiger, Sleep, TigerSleep>,
+    ActionTask<Tiger, Hunt, AddI32<Tiger, Lens<TigerState, list![U1, U0]>, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
