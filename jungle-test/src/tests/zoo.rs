@@ -592,15 +592,22 @@ async fn jungle_runner_spawns_and_completes_creature_flows() {
     use jungle_sdk::core::JungleRunner;
 
     let runner = JungleRunner::new(RunnerZoo);
-    let first = runner
-        .spawn::<RunnerCreature>(RunnerState(0))
-        .await
-        .expect("runner flow should complete");
-    assert_eq!(first, RunnerState(4));
+    let (first, second, third) = tokio::join!(
+        runner.spawn::<RunnerCreature>(RunnerState(0)),
+        runner.spawn::<RunnerCreature>(RunnerState(3)),
+        runner.spawn::<RunnerCreature>(RunnerState(2)),
+    );
 
-    let second = runner
-        .spawn::<RunnerCreature>(RunnerState(3))
-        .await
-        .expect("runner flow should complete");
-    assert_eq!(second, RunnerState(5));
+    assert_eq!(
+        first.expect("first runner flow should complete"),
+        RunnerState(4)
+    );
+    assert_eq!(
+        second.expect("second runner flow should complete"),
+        RunnerState(5)
+    );
+    assert_eq!(
+        third.expect("third runner flow should complete"),
+        RunnerState(4)
+    );
 }
