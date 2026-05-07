@@ -2,12 +2,12 @@ use super::run_now;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionSet, Creature, CreatureActionSet, CreatureSet, CreatureStates,
-    Ecosystem, Identity, Impulse, Task,
+    Ecosystem, Identity, Impulse, Lens, LoopCondition, Task, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-use jungle_sdk::{Actions, Creatures, Flow};
+use jungle_sdk::{Actions, Creatures, Flow, Optic};
 use std::marker::PhantomData;
 
 action!(Eat, U0, dependency = SharedState);
@@ -55,32 +55,6 @@ where
     }
 }
 
-macro_rules! prey_instinct {
-    ($name:ident, $animal:ty) => {
-        #[derive(Flow)]
-        struct $name(
-            Impulse<$animal, UnitOkStep<Eat>>,
-            Impulse<$animal, UnitOkStep<Sleep>>,
-            Impulse<$animal, UnitOkStep<Forage>>,
-            Impulse<$animal, UnitOkStep<Drink>>,
-            Impulse<$animal, UnitOkStep<Flee>>,
-        );
-    };
-}
-
-macro_rules! predator_instinct {
-    ($name:ident, $animal:ty) => {
-        #[derive(Flow)]
-        struct $name(
-            Impulse<$animal, UnitOkStep<Eat>>,
-            Impulse<$animal, UnitOkStep<Sleep>>,
-            Impulse<$animal, UnitOkStep<Forage>>,
-            Impulse<$animal, UnitOkStep<Drink>>,
-            Impulse<$animal, UnitOkStep<Hunt>>,
-        );
-    };
-}
-
 animal!(Gorilla, U0, GorillaInstinct);
 animal!(Chimpanzee, U1, ChimpanzeeInstinct);
 animal!(Tiger, U2, TigerInstinct);
@@ -89,13 +63,68 @@ animal!(Anaconda, U4, AnacondaInstinct);
 animal!(Hippo, U5, HippoInstinct);
 animal!(Elephant, U6, ElephantInstinct);
 
-prey_instinct!(GorillaInstinct, Gorilla);
-prey_instinct!(ChimpanzeeInstinct, Chimpanzee);
-predator_instinct!(TigerInstinct, Tiger);
-predator_instinct!(JaguarInstinct, Jaguar);
-predator_instinct!(AnacondaInstinct, Anaconda);
-prey_instinct!(HippoInstinct, Hippo);
-prey_instinct!(ElephantInstinct, Elephant);
+#[derive(Flow)]
+struct GorillaInstinct(
+    Impulse<Gorilla, UnitOkStep<Eat>>,
+    Impulse<Gorilla, UnitOkStep<Sleep>>,
+    Impulse<Gorilla, UnitOkStep<Forage>>,
+    Impulse<Gorilla, UnitOkStep<Drink>>,
+    Impulse<Gorilla, UnitOkStep<Flee>>,
+);
+
+#[derive(Flow)]
+struct ChimpanzeeInstinct(
+    Impulse<Chimpanzee, UnitOkStep<Eat>>,
+    Impulse<Chimpanzee, UnitOkStep<Sleep>>,
+    Impulse<Chimpanzee, UnitOkStep<Forage>>,
+    Impulse<Chimpanzee, UnitOkStep<Drink>>,
+    Impulse<Chimpanzee, UnitOkStep<Flee>>,
+);
+
+#[derive(Flow)]
+struct TigerInstinct(
+    Impulse<Tiger, UnitOkStep<Eat>>,
+    Impulse<Tiger, UnitOkStep<Sleep>>,
+    Impulse<Tiger, UnitOkStep<Forage>>,
+    Impulse<Tiger, UnitOkStep<Drink>>,
+    Impulse<Tiger, UnitOkStep<Hunt>>,
+);
+
+#[derive(Flow)]
+struct JaguarInstinct(
+    Impulse<Jaguar, UnitOkStep<Eat>>,
+    Impulse<Jaguar, UnitOkStep<Sleep>>,
+    Impulse<Jaguar, UnitOkStep<Forage>>,
+    Impulse<Jaguar, UnitOkStep<Drink>>,
+    Impulse<Jaguar, UnitOkStep<Hunt>>,
+);
+
+#[derive(Flow)]
+struct AnacondaInstinct(
+    Impulse<Anaconda, UnitOkStep<Eat>>,
+    Impulse<Anaconda, UnitOkStep<Sleep>>,
+    Impulse<Anaconda, UnitOkStep<Forage>>,
+    Impulse<Anaconda, UnitOkStep<Drink>>,
+    Impulse<Anaconda, UnitOkStep<Hunt>>,
+);
+
+#[derive(Flow)]
+struct HippoInstinct(
+    Impulse<Hippo, UnitOkStep<Eat>>,
+    Impulse<Hippo, UnitOkStep<Sleep>>,
+    Impulse<Hippo, UnitOkStep<Forage>>,
+    Impulse<Hippo, UnitOkStep<Drink>>,
+    Impulse<Hippo, UnitOkStep<Flee>>,
+);
+
+#[derive(Flow)]
+struct ElephantInstinct(
+    Impulse<Elephant, UnitOkStep<Eat>>,
+    Impulse<Elephant, UnitOkStep<Sleep>>,
+    Impulse<Elephant, UnitOkStep<Forage>>,
+    Impulse<Elephant, UnitOkStep<Drink>>,
+    Impulse<Elephant, UnitOkStep<Flee>>,
+);
 
 #[derive(Creatures)]
 struct Apes(Gorilla, Chimpanzee);
@@ -183,62 +212,274 @@ fn jungle_impl() {
     let _jungle_fut = zoo.manifest();
 }
 
+#[derive(Optic, Clone, Debug, PartialEq, Eq)]
+struct CoreState {
+    energy: i32,
+    rounds: i32,
+}
+
+#[derive(Optic, Clone, Debug, PartialEq, Eq)]
+struct ExecutorApeState {
+    core: CoreState,
+    bananas: i32,
+    mood: i32,
+}
+
+#[derive(Optic, Clone, Debug, PartialEq, Eq)]
+struct ExecutorCatState {
+    core: CoreState,
+    stripes: i32,
+}
+
+#[derive(Clone, Copy)]
+struct EatDependency {
+    base_gain: i32,
+}
+
+#[derive(Clone, Copy)]
+struct HuntDependency {
+    gain: i32,
+}
+
+#[derive(Clone, Copy)]
+struct RoundDependency {
+    tick: i32,
+}
+
+impl From<&Zoo> for EatDependency {
+    fn from(_value: &Zoo) -> Self {
+        Self { base_gain: 3 }
+    }
+}
+
+impl From<&Zoo> for HuntDependency {
+    fn from(_value: &Zoo) -> Self {
+        Self { gain: 4 }
+    }
+}
+
+impl From<&Zoo> for RoundDependency {
+    fn from(_value: &Zoo) -> Self {
+        Self { tick: 1 }
+    }
+}
+
+struct EatEnergy;
+impl jungle_sdk::types::ActionMember for EatEnergy {}
+impl Action for EatEnergy {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
+    type Dependency = EatDependency;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        dependency: &Self::Dependency,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(dependency.base_gain))
+    }
+}
+
+struct HuntEnergy;
+impl jungle_sdk::types::ActionMember for HuntEnergy {}
+impl Action for HuntEnergy {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
+    type Dependency = HuntDependency;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        dependency: &Self::Dependency,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(dependency.gain))
+    }
+}
+
+struct RoundAdvance;
+impl jungle_sdk::types::ActionMember for RoundAdvance {}
+impl Action for RoundAdvance {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
+    type Dependency = RoundDependency;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        dependency: &Self::Dependency,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(dependency.tick))
+    }
+}
+
+struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+impl<T, Focus, A> Task<T> for AddI32<Focus, A>
+where
+    T: Creature,
+    Focus: jungle_sdk::types::Aspect<T::State, View = i32>,
+    A: Action<In = i32, Out = i32, Err = ()>,
+{
+    type Action = A;
+    type Aspect = Focus;
+    type In = i32;
+    type Out = i32;
+
+    fn prepare(value: &i32, _input: Self::In) -> Self::In {
+        *value
+    }
+
+    fn process(value: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Out {
+        let delta = output.expect("add i32 step should succeed");
+        *value += delta;
+        *value
+    }
+}
+
+type ApeRoundTask = AddI32<Lens<ExecutorApeState, list![U0, U1]>, RoundAdvance>;
+type TigerHuntTask = AddI32<Lens<ExecutorCatState, list![U0, U0]>, HuntEnergy>;
+type TigerEatTask = AddI32<Lens<ExecutorCatState, list![U0, U0]>, EatEnergy>;
+
+struct ApeKeepRunning;
+impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
+    fn should_continue(state: &ExecutorApeState) -> bool {
+        state.core.rounds < 4
+    }
+}
+
+struct TigerKeepRunning;
+impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
+    fn should_continue(state: &ExecutorCatState) -> bool {
+        state.core.energy < 15
+    }
+}
+
+struct TigerChooseHunt;
+impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
+    fn choose((state, _): &(ExecutorCatState, i32)) -> bool {
+        state.stripes % 2 == 0
+    }
+}
+
+type WorkflowGorillaInstinct = While<ApeKeepRunning, Impulse<WorkflowGorilla, ApeRoundTask>>;
+type WorkflowTigerInstinct = While<
+    TigerKeepRunning,
+    jungle_sdk::types::Conditional<
+        TigerChooseHunt,
+        Impulse<WorkflowTiger, TigerHuntTask>,
+        Impulse<WorkflowTiger, TigerEatTask>,
+    >,
+>;
+
+animal!(
+    WorkflowGorilla,
+    jungle_sdk::typosaurus::num::consts::U11,
+    ExecutorApeState,
+    WorkflowGorillaInstinct
+);
+animal!(
+    WorkflowTiger,
+    jungle_sdk::typosaurus::num::consts::U12,
+    ExecutorCatState,
+    WorkflowTigerInstinct
+);
+
 #[test]
 fn jungle_executor_runs_actions_with_ecosystem_dependency() {
-    use jungle_sdk::Instinct;
     use jungle_sdk::core::JungleExecutor;
-    use jungle_sdk::typosaurus::num::consts::U7;
-
-    struct TestAction;
-    impl jungle_sdk::types::ActionMember for TestAction {}
-
-    impl jungle_sdk::types::Action for TestAction {
-        type Id = jungle_sdk::types::Id<U7>;
-        type Dependency = SharedState;
-        type In = ();
-        type Out = ();
-        type Err = ();
-
-        fn act(
-            _dependency: &Self::Dependency,
-            _input: Self::In,
-        ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-            std::future::ready(Ok(()))
-        }
-    }
-
-    struct TestStep;
-    impl Task<TestCreature> for TestStep {
-        type Action = TestAction;
-        type Aspect = Identity;
-        type In = ();
-        type Out = ();
-
-        fn prepare(_state: &SharedState, _input: Self::In) -> <Self::Action as Action>::In {}
-
-        fn process(_state: &mut SharedState, output: ActionCompletion<Self::Action>) -> Self::Out {
-            output.expect("test action should succeed");
-        }
-    }
-
-    #[derive(Instinct)]
-    struct TestInstinct(Impulse<TestCreature, TestStep>);
-
-    animal!(TestCreature, U7, SharedState, TestInstinct);
 
     let zoo = Zoo;
-    let mut executor = JungleExecutor::<Zoo, TestCreature>::new(&zoo, SharedState);
-    let request = executor
-        .next_executable_request(())
-        .expect("zoo request should build");
-    let request_input: () = request
-        .deserialize_request()
-        .expect("request should deserialize");
-    assert_eq!(request_input, ());
+    let mut gorilla = JungleExecutor::<Zoo, WorkflowGorilla>::new(
+        &zoo,
+        ExecutorApeState {
+            core: CoreState {
+                energy: 5,
+                rounds: 0,
+            },
+            bananas: 4,
+            mood: 2,
+        },
+    );
+    let mut gorilla_requests = Vec::new();
+    while !gorilla.is_complete() {
+        let request = gorilla
+            .next_executable_request(1i32)
+            .expect("gorilla request should build");
+        let request_input: i32 = request
+            .deserialize_request()
+            .expect("gorilla request should deserialize");
+        gorilla_requests.push(request_input);
+        let completion = run_now(request.run()).expect("gorilla action should execute");
+        let _emitted = gorilla
+            .complete_serialized(completion)
+            .expect("gorilla completion should process");
+    }
+    assert_eq!(gorilla_requests, vec![0, 1, 2, 3]);
+    let gorilla_state = gorilla.into_state();
+    assert_eq!(gorilla_state.core.energy, 5);
+    assert_eq!(gorilla_state.core.rounds, 4);
+    assert_eq!(gorilla_state.bananas, 4);
+    assert_eq!(gorilla_state.mood, 2);
 
-    let completion = run_now(request.run()).expect("zoo action should execute");
-    let _emitted = executor
-        .complete_serialized(completion)
-        .expect("completion should process");
-    assert!(executor.is_complete());
+    let mut tiger = JungleExecutor::<Zoo, WorkflowTiger>::new(
+        &zoo,
+        ExecutorCatState {
+            core: CoreState {
+                energy: 6,
+                rounds: 0,
+            },
+            stripes: 8,
+        },
+    );
+    let mut tiger_requests = Vec::new();
+    while !tiger.is_complete() {
+        let request = tiger
+            .next_executable_request(1i32)
+            .expect("tiger request should build");
+        let request_input: i32 = request
+            .deserialize_request()
+            .expect("tiger request should deserialize");
+        tiger_requests.push(request_input);
+        let completion = run_now(request.run()).expect("tiger action should execute");
+        let _emitted = tiger
+            .complete_serialized(completion)
+            .expect("tiger completion should process");
+    }
+    assert_eq!(tiger_requests, vec![6, 10, 14]);
+    let tiger_state = tiger.into_state();
+    assert_eq!(tiger_state.core.energy, 18);
+    assert_eq!(tiger_state.core.rounds, 0);
+    assert_eq!(tiger_state.stripes, 8);
+
+    let mut tiger_odd = JungleExecutor::<Zoo, WorkflowTiger>::new(
+        &zoo,
+        ExecutorCatState {
+            core: CoreState {
+                energy: 6,
+                rounds: 0,
+            },
+            stripes: 7,
+        },
+    );
+    let mut tiger_odd_requests = Vec::new();
+    while !tiger_odd.is_complete() {
+        let request = tiger_odd
+            .next_executable_request(1i32)
+            .expect("tiger odd request should build");
+        let request_input: i32 = request
+            .deserialize_request()
+            .expect("tiger odd request should deserialize");
+        tiger_odd_requests.push(request_input);
+        let completion = run_now(request.run()).expect("tiger odd action should execute");
+        let _emitted = tiger_odd
+            .complete_serialized(completion)
+            .expect("tiger odd completion should process");
+    }
+    assert_eq!(tiger_odd_requests, vec![6, 9, 12]);
+    let tiger_odd_state = tiger_odd.into_state();
+    assert_eq!(tiger_odd_state.core.energy, 15);
+    assert_eq!(tiger_odd_state.core.rounds, 0);
+    assert_eq!(tiger_odd_state.stripes, 7);
 }
