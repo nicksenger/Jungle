@@ -1,3 +1,4 @@
+use super::run_now;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Action, ActionCompletion, Impulse, Aspect, Condition, Conditional, Either, Executor,
@@ -7,10 +8,7 @@ use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::{Instinct, Optic};
 use std::future::ready;
-use std::future::Future;
 use std::marker::PhantomData;
-use std::pin::pin;
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 action!(Sleep, U0, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
 action!(Eat, U1, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
@@ -229,30 +227,6 @@ animal!(
     instinct = GorillaInstinct
 );
 animal!(Tiger, U2, state = TigerState, instinct = TigerInstinct);
-
-fn run_now<F: Future>(future: F) -> F::Output {
-    fn raw_waker() -> RawWaker {
-        fn clone(_: *const ()) -> RawWaker {
-            raw_waker()
-        }
-        fn wake(_: *const ()) {}
-        fn wake_by_ref(_: *const ()) {}
-        fn drop(_: *const ()) {}
-        RawWaker::new(
-            std::ptr::null(),
-            &RawWakerVTable::new(clone, wake, wake_by_ref, drop),
-        )
-    }
-
-    // These test actions resolve immediately (`ready(...)`), so a single poll is enough.
-    let waker = unsafe { Waker::from_raw(raw_waker()) };
-    let mut cx = Context::from_waker(&waker);
-    let mut future = pin!(future);
-    match Future::poll(future.as_mut(), &mut cx) {
-        Poll::Ready(output) => output,
-        Poll::Pending => panic!("test action future must resolve immediately"),
-    }
-}
 
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {

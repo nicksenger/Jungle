@@ -1,3 +1,4 @@
+use super::run_now;
 use jungle_sdk::types::{
     ActionCompletion, Impulse, Condition, Conditional, Either, Executor, Identity,
     ManualExecutor, Running, Task, Waiting,
@@ -5,9 +6,6 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Instinct;
 use std::future::ready;
-use std::future::Future;
-use std::pin::pin;
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 action!(
     LeftAction,
@@ -84,29 +82,6 @@ type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, R
 
 #[derive(Instinct)]
 struct ConditionalInstinct(ConditionalFlow);
-
-fn run_now<F: Future>(future: F) -> F::Output {
-    fn raw_waker() -> RawWaker {
-        fn clone(_: *const ()) -> RawWaker {
-            raw_waker()
-        }
-        fn wake(_: *const ()) {}
-        fn wake_by_ref(_: *const ()) {}
-        fn drop(_: *const ()) {}
-        RawWaker::new(
-            std::ptr::null(),
-            &RawWakerVTable::new(clone, wake, wake_by_ref, drop),
-        )
-    }
-
-    let waker = unsafe { Waker::from_raw(raw_waker()) };
-    let mut cx = Context::from_waker(&waker);
-    let mut future = pin!(future);
-    match Future::poll(future.as_mut(), &mut cx) {
-        Poll::Ready(output) => output,
-        Poll::Pending => panic!("test action future must resolve immediately"),
-    }
-}
 
 #[test]
 fn conditional_run_selects_branch_from_predicate() {
