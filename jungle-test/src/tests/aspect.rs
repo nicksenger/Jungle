@@ -30,8 +30,8 @@ struct GorillaState {
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq)]
 struct TigerState {
-    core: CoreState,
     stripes: u8,
+    core: CoreState,
 }
 
 struct CoreEnergyStep<Focus>(PhantomData<fn() -> Focus>);
@@ -132,7 +132,7 @@ impl Task<Gorilla, Forage> for GorillaForage {
 
 struct TigerEat;
 impl Task<Tiger, Eat> for TigerEat {
-    type Aspect = Lens<TigerState, U0>;
+    type Aspect = Lens<TigerState, U1>;
     type In = i32;
     type Out = i32;
 
@@ -149,7 +149,7 @@ impl Task<Tiger, Eat> for TigerEat {
 
 struct TigerSleep;
 impl Task<Tiger, Sleep> for TigerSleep {
-    type Aspect = Lens<TigerState, U0>;
+    type Aspect = Lens<TigerState, U1>;
     type In = i32;
     type Out = i32;
 
@@ -285,19 +285,19 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
     assert_eq!(gorilla_state.bananas, 3);
 
     let tiger_state = TigerState {
-        core: CoreState { energy: 6, age: 12 },
         stripes: 9,
+        core: CoreState { energy: 6, age: 12 },
     };
     let (tiger_state, tiger_request) = <ActionTask<
         Tiger,
         Sleep,
-        CoreEnergyStep<Lens<TigerState, U0>>,
+        CoreEnergyStep<Lens<TigerState, U1>>,
     > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
     let (tiger_state, tiger_emitted) = <ActionTask<
         Tiger,
         Sleep,
-        CoreEnergyStep<Lens<TigerState, U0>>,
+        CoreEnergyStep<Lens<TigerState, U1>>,
     > as Waiting>::accept((tiger_state, Ok(15)));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
@@ -337,8 +337,8 @@ fn executor_runs_aspected_steps() {
     assert_eq!(gorilla_state.bananas, 1);
 
     let mut tiger = Executor::<Tiger>::new(TigerState {
-        core: CoreState { energy: 8, age: 4 },
         stripes: 98,
+        core: CoreState { energy: 8, age: 4 },
     });
     assert!(!tiger.is_complete());
 
@@ -382,8 +382,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         ActionTask<Tiger, Sleep, TigerSleep>,
     > as Running>::run((
         TigerState {
-            core: CoreState { energy: 5, age: 1 },
             stripes: 8,
+            core: CoreState { energy: 5, age: 1 },
         },
         0,
     ));
@@ -398,8 +398,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         ActionTask<Tiger, Sleep, TigerSleep>,
     > as Running>::run((
         TigerState {
-            core: CoreState { energy: 5, age: 1 },
             stripes: 9,
+            core: CoreState { energy: 5, age: 1 },
         },
         0,
     ));
@@ -412,8 +412,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 #[test]
 fn executor_advances_with_executable_requests_and_dynamic_action_order() {
     let mut tiger = Executor::<Tiger>::new(TigerState {
-        core: CoreState { energy: 8, age: 4 },
         stripes: 98,
+        core: CoreState { energy: 8, age: 4 },
     });
 
     let emitted = run_now(tiger.advance_to_end_with(0i32))
