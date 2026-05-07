@@ -16,7 +16,7 @@ action!(Eat, U1, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input
 action!(Forage, U2, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
 action!(Hunt, U3, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Optic, Clone, Debug, PartialEq, Eq)]
 struct CoreState {
     energy: i32,
     age: i32,
