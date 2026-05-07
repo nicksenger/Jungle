@@ -781,6 +781,7 @@ where
 {
 }
 
+#[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, T, Step> BuildFlowWithContext<(*const Context, DynFlow<T::State>)> for Impulse<T, Step>
 where
     Context: 'static,
@@ -956,6 +957,7 @@ where
     }
 }
 
+#[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, State, In, P, L, R> BuildFlowWithContext<(*const Context, DynFlow<State>)>
     for Conditional<P, L, R>
 where
@@ -1117,6 +1119,7 @@ impl<State> ErasedFlow<State> for WhileContextErasedFlow<State> {
     }
 }
 
+#[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, State, C, F> BuildFlowWithContext<(*const Context, DynFlow<State>)> for While<C, F>
 where
     Context: 'static,
