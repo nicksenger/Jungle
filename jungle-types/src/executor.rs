@@ -101,6 +101,10 @@ pub enum ExecutorError {
     EmitSerialize(String),
     #[error("emit deserialization failed: {0}")]
     EmitDeserialize(String),
+    #[error("client transport channel closed")]
+    ClientTransportClosed,
+    #[error("client transport acknowledgement dropped")]
+    ClientTransportAckDropped,
     #[error("not enough completions to advance to end")]
     NotEnoughCompletions,
 }

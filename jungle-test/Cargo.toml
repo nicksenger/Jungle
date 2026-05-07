@@ -8,4 +8,5 @@ jungle-sdk = { path = "../jungle-sdk" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+futures = { workspace = true }
 uuid = { workspace = true }

@@ -248,6 +248,7 @@ name = "jungle-client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
  "jungle-types",
  "uuid",
 ]
@@ -256,6 +257,7 @@ dependencies = [
 name = "jungle-core"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "jungle-client",
  "jungle-types",
  "serde",
@@ -301,6 +303,7 @@ version = "0.1.0"
 name = "jungle-test"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "jungle-sdk",
  "tokio",
  "uuid",

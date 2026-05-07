@@ -9,3 +9,4 @@ jungle-types = { path = "../jungle-types" }
 typosaurus = { workspace = true }
 serde = { workspace = true }
 uuid = { workspace = true }
+futures = { workspace = true }

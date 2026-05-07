@@ -7,3 +7,4 @@ edition = "2021"
 jungle-types = { path = "../jungle-types" }
 uuid = { workspace = true }
 async-trait = { workspace = true }
+futures = { workspace = true }

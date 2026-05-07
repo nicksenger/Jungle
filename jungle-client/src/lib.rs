@@ -1,7 +1,9 @@
 //! Client contracts for the Jungle workspace.
 
 use async_trait::async_trait;
-use jungle_types::ExecutorError;
+use futures::channel::{mpsc, oneshot};
+use futures::StreamExt;
+use jungle_types::{ExecutorError, RunnerOut};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -21,6 +23,11 @@ pub trait JungleClient: Send + Sync {
     async fn action_failure_output(&self, id: Uuid, err: Vec<u8>) -> Result<(), ExecutorError>;
 }
 
+pub type RunnerChannelTx =
+    mpsc::Sender<(RunnerOut, oneshot::Sender<Result<(), ExecutorError>>)>;
+pub type RunnerChannelRx =
+    mpsc::Receiver<(RunnerOut, oneshot::Sender<Result<(), ExecutorError>>)>;
+
 pub struct MockClient {
     on_action_input: Handler,
     on_action_success_output: Handler,
@@ -30,6 +37,21 @@ pub struct MockClient {
 impl MockClient {
     pub fn builder() -> MockClientBuilder {
         MockClientBuilder::default()
+    }
+
+    pub async fn serve_runner_channel(&self, mut rx: RunnerChannelRx) {
+        while let Some((message, done)) = rx.next().await {
+            let result = match message {
+                RunnerOut::ActionInput { data, uuid } => self.action_input(uuid, data).await,
+                RunnerOut::ActionSuccessOutput { data, uuid } => {
+                    self.action_success_output(uuid, data).await
+                }
+                RunnerOut::ActionFailureOutput { data, uuid } => {
+                    self.action_failure_output(uuid, data).await
+                }
+            };
+            let _ = done.send(result);
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionSet, Creature, CreatureActionSet, CreatureSet,
@@ -648,7 +649,7 @@ async fn jungle_executor_exposes_state_during_progression() {
 
 #[tokio::test]
 async fn jungle_runner_spawns_and_completes_creature_flows() {
-    use jungle_sdk::client::MockClient;
+    use jungle_sdk::client::{MockClient, RunnerChannelTx};
     use jungle_sdk::core::JungleRunner;
 
     let runner = JungleRunner::new(RunnerZoo);
@@ -687,12 +688,20 @@ async fn jungle_runner_spawns_and_completes_creature_flows() {
             }
         })
         .build();
+    let (tx, rx): (RunnerChannelTx, _) = mpsc::channel(32);
+    let resolver = tokio::spawn(async move {
+        client.serve_runner_channel(rx).await;
+    });
 
     let (first, second, third) = tokio::join!(
-        runner.spawn::<RunnerCreature, _>(RunnerState(0), Uuid::from_u128(1), &client),
-        runner.spawn::<RunnerCreature, _>(RunnerState(3), Uuid::from_u128(2), &client),
-        runner.spawn::<RunnerCreature, _>(RunnerState(2), Uuid::from_u128(3), &client),
+        runner.spawn::<RunnerCreature>(RunnerState(0), Uuid::from_u128(1), tx.clone()),
+        runner.spawn::<RunnerCreature>(RunnerState(3), Uuid::from_u128(2), tx.clone()),
+        runner.spawn::<RunnerCreature>(RunnerState(2), Uuid::from_u128(3), tx.clone()),
     );
+    drop(tx);
+    resolver
+        .await
+        .expect("runner transport resolver should complete");
 
     assert_eq!(
         first.expect("first runner flow should complete"),
