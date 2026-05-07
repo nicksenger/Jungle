@@ -213,6 +213,7 @@ name = "jungle-core"
 version = "0.1.0"
 dependencies = [
  "jungle-types",
+ "serde",
  "typosaurus",
 ]
 

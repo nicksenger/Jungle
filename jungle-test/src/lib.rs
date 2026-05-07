@@ -324,6 +324,96 @@ mod tests {
         let _jungle_fut = zoo.manifest();
     }
 
+    #[test]
+    fn jungle_executor_runs_actions_with_ecosystem_dependency() {
+        use jungle_sdk::core::JungleExecutor;
+        use jungle_sdk::types::{Impulse, Task};
+        use jungle_sdk::Instinct;
+        use jungle_sdk::typosaurus::num::consts::U7;
+        use std::future::Future;
+        use std::pin::pin;
+        use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+        fn run_now<F: Future>(future: F) -> F::Output {
+            fn raw_waker() -> RawWaker {
+                fn clone(_: *const ()) -> RawWaker {
+                    raw_waker()
+                }
+                fn wake(_: *const ()) {}
+                fn wake_by_ref(_: *const ()) {}
+                fn drop(_: *const ()) {}
+                RawWaker::new(
+                    std::ptr::null(),
+                    &RawWakerVTable::new(clone, wake, wake_by_ref, drop),
+                )
+            }
+
+            let waker = unsafe { Waker::from_raw(raw_waker()) };
+            let mut cx = Context::from_waker(&waker);
+            let mut future = pin!(future);
+            match Future::poll(future.as_mut(), &mut cx) {
+                Poll::Ready(output) => output,
+                Poll::Pending => panic!("test action future must resolve immediately"),
+            }
+        }
+
+        struct TestAction;
+        impl jungle_sdk::types::ActionMember for TestAction {}
+
+        impl jungle_sdk::types::Action for TestAction {
+            type Id = jungle_sdk::types::Id<U7>;
+            type Dependency = SharedState;
+            type In = ();
+            type Out = ();
+            type Err = ();
+
+            fn act(
+                _dependency: &Self::Dependency,
+                _input: Self::In,
+            ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                std::future::ready(Ok(()))
+            }
+        }
+
+        struct TestStep;
+        impl Task<TestCreature> for TestStep {
+            type Action = TestAction;
+            type Aspect = Identity;
+            type In = ();
+            type Out = ();
+
+            fn prepare(_state: &SharedState, _input: Self::In) -> <Self::Action as Action>::In {}
+
+            fn process(
+                _state: &mut SharedState,
+                output: ActionCompletion<Self::Action>,
+            ) -> Self::Out {
+                output.expect("test action should succeed");
+            }
+        }
+
+        #[derive(Instinct)]
+        struct TestInstinct(Impulse<TestCreature, TestStep>);
+
+        animal!(TestCreature, U7, SharedState, TestInstinct);
+
+        let zoo = Zoo;
+        let mut executor = JungleExecutor::<Zoo, TestCreature>::new(&zoo, SharedState);
+        let request = executor
+            .next_executable_request(())
+            .expect("zoo request should build");
+        let request_input: () = request
+            .deserialize_request()
+            .expect("request should deserialize");
+        assert_eq!(request_input, ());
+
+        let completion = run_now(request.run()).expect("zoo action should execute");
+        let _emitted = executor
+            .complete_serialized(completion)
+            .expect("completion should process");
+        assert!(executor.is_complete());
+    }
+
     mod action_step;
     mod aspect;
     mod conditional;
