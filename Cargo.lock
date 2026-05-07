@@ -175,10 +175,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "inception-macros"
+name = "inception-derive-gen"
 version = "0.1.0"
 dependencies = [
  "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "inception-macros"
+version = "0.1.0"
+dependencies = [
+ "inception-derive-gen",
  "proc-macro2",
  "quote",
  "syn",
@@ -210,7 +220,7 @@ dependencies = [
 name = "jungle-macros"
 version = "0.1.0"
 dependencies = [
- "proc-macro-crate",
+ "inception-derive-gen",
  "proc-macro2",
  "quote",
  "syn",

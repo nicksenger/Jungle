@@ -2,8 +2,6 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, parse_quote, DeriveInput, Path};
 
-mod inception_derive;
-
 #[proc_macro]
 pub fn noop(input: TokenStream) -> TokenStream {
     input
@@ -14,7 +12,7 @@ fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStrea
     input
         .attrs
         .push(parse_quote!(#[inception(properties = [#(#properties),*])]));
-    inception_derive::State::gen(quote!(#input).into())
+    inception_derive_gen::State::gen(quote!(#input)).into()
 }
 
 #[proc_macro_derive(Instinct)]
