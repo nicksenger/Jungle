@@ -414,7 +414,6 @@ mod tests {
         assert!(executor.is_complete());
     }
 
-    mod action_step;
     mod aspect;
     mod conditional;
     mod progression;
