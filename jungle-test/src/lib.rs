@@ -20,6 +20,40 @@ mod tests {
         (
             $name:ident,
             $id:ty,
+            dependency = $dependency_ty:ty
+        ) => {
+            struct $name;
+            impl jungle_sdk::types::ActionMember for $name {}
+
+            impl jungle_sdk::types::Action for $name {
+                type Id = jungle_sdk::types::Id<$id>;
+                type Dependency = $dependency_ty;
+                type In = ();
+                type Out = ();
+                type Err = ();
+
+                fn act(
+                    _dependency: &Self::Dependency,
+                    _input: Self::In,
+                ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                    std::future::ready(Ok(()))
+                }
+            }
+
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
+            impl jungle_sdk::types::Actions for $name {
+                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
+            }
+
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            impl jungle_sdk::types::Identified for $name {
+                type Id = $id;
+            }
+        };
+
+        (
+            $name:ident,
+            $id:ty,
             in = $in:ty,
             out = $out:ty,
             err = $err:ty,
@@ -75,12 +109,12 @@ mod tests {
         };
     }
 
-    action!(Eat, U0);
-    action!(Sleep, U1);
-    action!(Forage, U2);
-    action!(Drink, U3);
-    action!(Hunt, U4);
-    action!(Flee, U5);
+    action!(Eat, U0, dependency = SharedState);
+    action!(Sleep, U1, dependency = SharedState);
+    action!(Forage, U2, dependency = SharedState);
+    action!(Drink, U3, dependency = SharedState);
+    action!(Hunt, U4, dependency = SharedState);
+    action!(Flee, U5, dependency = SharedState);
 
     #[derive(Actions)]
     struct BasicNeeds(Eat, Sleep, Forage, Drink);
@@ -284,38 +318,7 @@ mod tests {
 
     #[test]
     fn jungle_impl() {
-        struct ManifestAction;
-        impl jungle_sdk::types::ActionMember for ManifestAction {}
-
-        impl jungle_sdk::types::Action for ManifestAction {
-            type Id = jungle_sdk::types::Id<U0>;
-            type Dependency = SharedState;
-            type In = ();
-            type Out = ();
-            type Err = ();
-
-            fn act(
-                _dependency: &Self::Dependency,
-                _input: Self::In,
-            ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-                std::future::ready(Ok(()))
-            }
-        }
-
-        #[derive(Flow)]
-        struct ManifestInstinct(ActionTask<ManifestCreature, ManifestAction, UnitOkStep>);
-
-        animal!(ManifestCreature, U0, ManifestInstinct);
-
-        #[derive(Creatures)]
-        struct ManifestCreatures(ManifestCreature);
-
-        struct ManifestZoo;
-        impl Ecosystem for ManifestZoo {
-            type Creatures = ManifestCreatures;
-        }
-
-        let zoo = ManifestZoo;
+        let zoo = Zoo;
         let _jungle_fut = zoo.manifest();
     }
 
