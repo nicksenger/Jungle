@@ -85,14 +85,16 @@ impl<T, Focus, A> Task<T> for AddI32<Focus, A>
 where
     T: jungle_types::Creature,
     Focus: Aspect<T::State, View = i32>,
-    A: Action<In = (), Out = i32>,
+    A: Action<Out = i32>,
 {
     type Action = A;
     type Aspect = Focus;
-    type In = i32;
+    type In = A::In;
     type Out = i32;
 
-    fn prepare(_value: &i32, _input: Self::In) {}
+    fn prepare(_value: &i32, input: Self::In) -> A::In {
+        input
+    }
 
     fn process(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
         let delta = match output {
@@ -104,41 +106,30 @@ where
     }
 }
 
-struct GorillaEat;
-impl Task<Gorilla> for GorillaEat {
-    type Action = Eat;
-    type Aspect = Identity;
-    type In = i32;
+struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+
+impl<T, Focus, A> Task<T> for SubI32<Focus, A>
+where
+    T: jungle_types::Creature,
+    Focus: Aspect<T::State, View = i32>,
+    A: Action<Out = i32>,
+{
+    type Action = A;
+    type Aspect = Focus;
+    type In = A::In;
     type Out = i32;
 
-    fn prepare(state: &GorillaState, input: Self::In) -> i32 {
-        state.core.energy + input
+    fn prepare(_value: &i32, input: Self::In) -> A::In {
+        input
     }
 
-    fn process(state: &mut GorillaState, output: ActionCompletion<Eat>) -> Self::Out {
-        let value = output.expect("eat should succeed");
-        state.core.energy = value;
-        state.bananas -= 1;
-        value
-    }
-}
-
-struct GorillaSleep;
-impl Task<Gorilla> for GorillaSleep {
-    type Action = Sleep;
-    type Aspect = Identity;
-    type In = i32;
-    type Out = i32;
-
-    fn prepare(state: &GorillaState, input: Self::In) -> i32 {
-        state.core.energy + input
-    }
-
-    fn process(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
-        let value = output.expect("sleep should succeed");
-        state.core.energy = value;
-        state.core.age += 1;
-        value
+    fn process(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
+        let delta = match output {
+            Ok(delta) => delta,
+            Err(_) => panic!("action should succeed"),
+        };
+        *value -= delta;
+        *value
     }
 }
 
@@ -161,38 +152,27 @@ impl Task<Gorilla> for GorillaForage {
     }
 }
 
-struct TigerEat;
-impl Task<Tiger> for TigerEat {
-    type Action = Eat;
-    type Aspect = Lens<TigerState, U1>;
-    type In = i32;
-    type Out = i32;
+type GorillaSleep = AddI32<Lens<GorillaState, list![U0, U1]>, Sleep>;
+type GorillaEat = SubI32<Lens<GorillaState, U1>, Eat>;
 
-    fn prepare(core: &CoreState, input: Self::In) -> i32 {
-        core.energy + input
-    }
+type TigerEat = CoreEnergyStep<Eat, Lens<TigerState, U1>>;
+type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
 
-    fn process(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
-        let value = output.expect("eat should succeed");
-        core.energy = value;
-        value
-    }
-}
-
-struct TigerSleep;
-impl Task<Tiger> for TigerSleep {
+struct GorillaSleepManual;
+impl Task<Gorilla> for GorillaSleepManual {
     type Action = Sleep;
-    type Aspect = Lens<TigerState, list![U1, U0]>;
+    type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
-    fn prepare(energy: &i32, input: Self::In) -> i32 {
-        *energy + input
+    fn prepare(state: &GorillaState, input: Self::In) -> i32 {
+        state.core.energy + input
     }
 
-    fn process(energy: &mut i32, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn process(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
-        *energy = value;
+        state.core.energy = value;
+        state.core.age += 1;
         value
     }
 }
