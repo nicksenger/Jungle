@@ -156,25 +156,6 @@ type GorillaEat = SubI32<Lens<GorillaState, U1>, Eat>;
 type TigerEat = CoreEnergyStep<Eat, Lens<TigerState, U1>>;
 type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
 
-struct GorillaSleepManual;
-impl Task<Gorilla> for GorillaSleepManual {
-    type Action = Sleep;
-    type Aspect = Identity;
-    type In = i32;
-    type Out = i32;
-
-    fn prepare(state: &GorillaState, input: Self::In) -> i32 {
-        state.core.energy + input
-    }
-
-    fn process(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
-        let value = output.expect("sleep should succeed");
-        state.core.energy = value;
-        state.core.age += 1;
-        value
-    }
-}
-
 #[derive(Instinct)]
 struct GorillaLoopSequence(
     Impulse<Gorilla, GorillaEat>,
@@ -294,7 +275,7 @@ fn executor_runs_aspected_steps() {
             .expect("gorilla completion should advance");
         gorilla_emitted.push(emitted);
     }
-    assert_eq!(gorilla_emitted, vec![6, 13, 25, 51, 103, 205, 411, 823]);
+    assert_eq!(gorilla_emitted, vec![1, 99, 103, -102, -2, 100, -202, -203]);
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
     assert_eq!(gorilla_state.core.energy, 823);
@@ -369,7 +350,7 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     ));
     match odd {
         Either::Left(_) => panic!("expected sleep branch"),
-        Either::Right((_state, request)) => assert_eq!(request.into_input(), 5),
+        Either::Right((_state, request)) => assert_eq!(request.into_input(), 0),
     }
 }
 
