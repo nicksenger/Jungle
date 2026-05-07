@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    ActionCompletion, ActionTask, Executor, Identity, LoopCondition, ManualExecutor, Running,
+    ActionCompletion, Impulse, Executor, Identity, LoopCondition, ManualExecutor, Running,
     Task, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
@@ -35,7 +35,7 @@ impl Task<Looper> for Tick {
     }
 }
 
-type TickFlow = ActionTask<Looper, Tick>;
+type TickFlow = Impulse<Looper, Tick>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {

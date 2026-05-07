@@ -8,7 +8,7 @@ mod tests {
 
     use jungle_sdk::core::Jungle as _;
     use jungle_sdk::types::{
-        Action, ActionCompletion, ActionSet, ActionTask, Creature, CreatureActionSet, CreatureSet,
+        Action, ActionCompletion, ActionSet, Impulse, Creature, CreatureActionSet, CreatureSet,
         CreatureStates, Ecosystem, Identity, Task,
     };
     use jungle_sdk::typosaurus::assert_type_eq;
@@ -200,11 +200,11 @@ mod tests {
         ($name:ident, $animal:ty) => {
             #[derive(Flow)]
             struct $name(
-                ActionTask<$animal, UnitOkStep<Eat>>,
-                ActionTask<$animal, UnitOkStep<Sleep>>,
-                ActionTask<$animal, UnitOkStep<Forage>>,
-                ActionTask<$animal, UnitOkStep<Drink>>,
-                ActionTask<$animal, UnitOkStep<Flee>>,
+                Impulse<$animal, UnitOkStep<Eat>>,
+                Impulse<$animal, UnitOkStep<Sleep>>,
+                Impulse<$animal, UnitOkStep<Forage>>,
+                Impulse<$animal, UnitOkStep<Drink>>,
+                Impulse<$animal, UnitOkStep<Flee>>,
             );
         };
     }
@@ -213,11 +213,11 @@ mod tests {
         ($name:ident, $animal:ty) => {
             #[derive(Flow)]
             struct $name(
-                ActionTask<$animal, UnitOkStep<Eat>>,
-                ActionTask<$animal, UnitOkStep<Sleep>>,
-                ActionTask<$animal, UnitOkStep<Forage>>,
-                ActionTask<$animal, UnitOkStep<Drink>>,
-                ActionTask<$animal, UnitOkStep<Hunt>>,
+                Impulse<$animal, UnitOkStep<Eat>>,
+                Impulse<$animal, UnitOkStep<Sleep>>,
+                Impulse<$animal, UnitOkStep<Forage>>,
+                Impulse<$animal, UnitOkStep<Drink>>,
+                Impulse<$animal, UnitOkStep<Hunt>>,
             );
         };
     }
@@ -292,20 +292,20 @@ mod tests {
 
         #[derive(Flow)]
         struct StatefulGorillaInstinct(
-            ActionTask<StatefulGorilla, UnitOkStep<Eat>>,
-            ActionTask<StatefulGorilla, UnitOkStep<Sleep>>,
-            ActionTask<StatefulGorilla, UnitOkStep<Forage>>,
-            ActionTask<StatefulGorilla, UnitOkStep<Drink>>,
-            ActionTask<StatefulGorilla, UnitOkStep<Flee>>,
+            Impulse<StatefulGorilla, UnitOkStep<Eat>>,
+            Impulse<StatefulGorilla, UnitOkStep<Sleep>>,
+            Impulse<StatefulGorilla, UnitOkStep<Forage>>,
+            Impulse<StatefulGorilla, UnitOkStep<Drink>>,
+            Impulse<StatefulGorilla, UnitOkStep<Flee>>,
         );
 
         #[derive(Flow)]
         struct StatefulTigerInstinct(
-            ActionTask<StatefulTiger, UnitOkStep<Eat>>,
-            ActionTask<StatefulTiger, UnitOkStep<Sleep>>,
-            ActionTask<StatefulTiger, UnitOkStep<Forage>>,
-            ActionTask<StatefulTiger, UnitOkStep<Drink>>,
-            ActionTask<StatefulTiger, UnitOkStep<Hunt>>,
+            Impulse<StatefulTiger, UnitOkStep<Eat>>,
+            Impulse<StatefulTiger, UnitOkStep<Sleep>>,
+            Impulse<StatefulTiger, UnitOkStep<Forage>>,
+            Impulse<StatefulTiger, UnitOkStep<Drink>>,
+            Impulse<StatefulTiger, UnitOkStep<Hunt>>,
         );
 
         animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);

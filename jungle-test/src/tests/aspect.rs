@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionTask, Aspect, Condition, Conditional, Either, Executor,
+    Action, ActionCompletion, Impulse, Aspect, Condition, Conditional, Either, Executor,
     Identity, Lens, LoopCondition, Running, Task, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
@@ -199,9 +199,9 @@ impl Task<Tiger> for TigerSleep {
 
 #[derive(Instinct)]
 struct GorillaLoopSequence(
-    ActionTask<Gorilla, GorillaEat>,
-    ActionTask<Gorilla, GorillaSleep>,
-    ActionTask<Gorilla, GorillaForage>,
+    Impulse<Gorilla, GorillaEat>,
+    Impulse<Gorilla, GorillaSleep>,
+    Impulse<Gorilla, GorillaForage>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -225,11 +225,11 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 struct TigerLoopSequence(
     Conditional<
         TigerStripesAreEven,
-        ActionTask<Tiger, TigerEat>,
-        ActionTask<Tiger, TigerSleep>,
+        Impulse<Tiger, TigerEat>,
+        Impulse<Tiger, TigerSleep>,
     >,
-    ActionTask<Tiger, TigerSleep>,
-    ActionTask<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
+    Impulse<Tiger, TigerSleep>,
+    Impulse<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
@@ -283,12 +283,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) = <ActionTask<
+    let (gorilla_state, gorilla_request) = <Impulse<
         Gorilla,
         CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
-    let (gorilla_state, gorilla_emitted) = <ActionTask<
+    let (gorilla_state, gorilla_emitted) = <Impulse<
         Gorilla,
         CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
     > as Waiting>::accept((gorilla_state, Ok(20)));
@@ -301,12 +301,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         stripes: 9,
         core: CoreState { energy: 6, age: 12 },
     };
-    let (tiger_state, tiger_request) = <ActionTask<
+    let (tiger_state, tiger_request) = <Impulse<
         Tiger,
         CoreEnergyStep<Sleep, Lens<TigerState, U1>>,
     > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) = <ActionTask<
+    let (tiger_state, tiger_emitted) = <Impulse<
         Tiger,
         CoreEnergyStep<Sleep, Lens<TigerState, U1>>,
     > as Waiting>::accept((tiger_state, Ok(15)));
@@ -388,8 +388,8 @@ fn executor_runs_aspected_steps() {
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     let even = <Conditional<
         TigerStripesAreEven,
-        ActionTask<Tiger, TigerEat>,
-        ActionTask<Tiger, TigerSleep>,
+        Impulse<Tiger, TigerEat>,
+        Impulse<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 8,
@@ -404,8 +404,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 
     let odd = <Conditional<
         TigerStripesAreEven,
-        ActionTask<Tiger, TigerEat>,
-        ActionTask<Tiger, TigerSleep>,
+        Impulse<Tiger, TigerEat>,
+        Impulse<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 9,

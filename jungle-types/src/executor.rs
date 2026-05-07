@@ -1,5 +1,5 @@
 use crate::{
-    Action, ActionCompletion, ActionTask, Condition, Conditional, Creature, Task,
+    Action, ActionCompletion, Impulse, Condition, Conditional, Creature, Task,
     LoopCondition, Running, While,
 };
 use inception::*;
@@ -122,7 +122,7 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
-impl<T, Step> ErasedFlow<T::State> for TypedErasedStep<ActionTask<T, Step>>
+impl<T, Step> ErasedFlow<T::State> for TypedErasedStep<Impulse<T, Step>>
 where
     T: Creature,
     Step: Task<T>,
@@ -150,7 +150,7 @@ where
 
         let typed_input = postcard::from_bytes::<Step::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <ActionTask<T, Step> as Running>::run((state, typed_input));
+        let (state, request) = <Impulse<T, Step> as Running>::run((state, typed_input));
         let request = postcard::to_allocvec(&request.into_input())
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         self.waiting_completion = true;
@@ -171,7 +171,7 @@ where
 
         let typed_input = postcard::from_bytes::<Step::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <ActionTask<T, Step> as Running>::run((state, typed_input));
+        let (state, request) = <Impulse<T, Step> as Running>::run((state, typed_input));
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
@@ -205,7 +205,7 @@ where
                 .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, emitted) = <ActionTask<T, Step> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <Impulse<T, Step> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -544,7 +544,7 @@ pub trait BuildFlow<Input> {
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<T, Step> BuildFlow<DynFlow<T::State>> for ActionTask<T, Step>
+impl<T, Step> BuildFlow<DynFlow<T::State>> for Impulse<T, Step>
 where
     T: Creature + 'static,
     Step: Task<T> + 'static,
@@ -558,7 +558,7 @@ where
     type Output = DynFlow<T::State>;
 
     fn push_steps(mut steps: DynFlow<T::State>) -> Self::Output {
-        steps.push(Box::new(TypedErasedStep::<ActionTask<T, Step>>::new()));
+        steps.push(Box::new(TypedErasedStep::<Impulse<T, Step>>::new()));
         steps
     }
 }

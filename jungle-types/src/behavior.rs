@@ -235,7 +235,7 @@ pub trait Task<T: Creature> {
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Running`]/[`Waiting`] temporal protocol.
-pub struct ActionTask<T, Step>
+pub struct Impulse<T, Step>
 where
     T: Creature,
     Step: Task<T>,
@@ -243,7 +243,7 @@ where
     marker: PhantomData<fn() -> (T, Step)>,
 }
 
-impl<T, Step> ActionTask<T, Step>
+impl<T, Step> Impulse<T, Step>
 where
     T: Creature,
     Step: Task<T>,
@@ -256,7 +256,7 @@ where
 }
 
 #[primitive(property = crate::JungleRunning)]
-impl<T, Step> Running for ActionTask<T, Step>
+impl<T, Step> Running for Impulse<T, Step>
 where
     T: Creature,
     Step: Task<T>,
@@ -272,7 +272,7 @@ where
 }
 
 #[primitive(property = crate::JungleWaiting)]
-impl<T, Step> Waiting for ActionTask<T, Step>
+impl<T, Step> Waiting for Impulse<T, Step>
 where
     T: Creature,
     Step: Task<T>,
@@ -288,7 +288,7 @@ where
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, Step> FlowActions for ActionTask<T, Step>
+impl<T, Step> FlowActions for Impulse<T, Step>
 where
     T: Creature,
     <Step as Task<T>>::Action: ActionMember,

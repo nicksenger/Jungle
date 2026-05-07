@@ -1,4 +1,4 @@
-use jungle_sdk::types::{ActionCompletion, ActionTask, Identity, Running, Task, Waiting};
+use jungle_sdk::types::{ActionCompletion, Impulse, Identity, Running, Task, Waiting};
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Flow;
 use std::future::ready;
@@ -31,16 +31,16 @@ impl Task<GatherCreature> for Gather {
 }
 
 #[derive(Flow)]
-struct GatherInstinct(ActionTask<GatherCreature, Gather>);
+struct GatherInstinct(Impulse<GatherCreature, Gather>);
 
 #[test]
 fn action_step_adapts_action() {
     let (dependency, request) =
-        <ActionTask<GatherCreature, Gather> as Running>::run(((), 3));
+        <Impulse<GatherCreature, Gather> as Running>::run(((), 3));
     assert_eq!(request.into_input(), 7);
 
     let (next_dependency, emitted) =
-        <ActionTask<GatherCreature, Gather> as Waiting>::accept((dependency, Ok(9)));
+        <Impulse<GatherCreature, Gather> as Waiting>::accept((dependency, Ok(9)));
     assert_eq!(emitted, 9);
     assert_eq!(next_dependency, ());
 }

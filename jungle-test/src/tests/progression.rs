@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, ActionTask, CreatureActionSet, Executor, Id,
+    Action, ActionCompletion, ActionRequest, Impulse, CreatureActionSet, Executor, Id,
     Identity, ManualExecutor, Running, Task, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -81,8 +81,8 @@ impl Task<ProgressCreature> for Finish {
 
 #[derive(Instinct)]
 struct ProgressInstinct(
-    ActionTask<ProgressCreature, Seed>,
-    ActionTask<ProgressCreature, Finish>,
+    Impulse<ProgressCreature, Seed>,
+    Impulse<ProgressCreature, Finish>,
 );
 
 animal!(ProgressCreature, U0, i32, ProgressInstinct);
@@ -90,8 +90,8 @@ animal!(ProgressCreature, U0, i32, ProgressInstinct);
 #[derive(Creatures)]
 struct ProgressCreatures(ProgressCreature);
 
-type SeedStep = ActionTask<ProgressCreature, Seed>;
-type FinishStep = ActionTask<ProgressCreature, Finish>;
+type SeedStep = Impulse<ProgressCreature, Seed>;
+type FinishStep = Impulse<ProgressCreature, Finish>;
 
 struct StepHarness;
 impl StepHarness {
@@ -116,7 +116,7 @@ trait StepExecutor:
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<Step> StepExecutor for ActionTask<ProgressCreature, Step>
+impl<Step> StepExecutor for Impulse<ProgressCreature, Step>
 where
     Step: Task<ProgressCreature, Aspect = Identity, In = i32, Out = i32>,
     Step::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,

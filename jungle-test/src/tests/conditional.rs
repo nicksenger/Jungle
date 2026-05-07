@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    ActionCompletion, ActionTask, Condition, Conditional, Either, Executor, Identity,
+    ActionCompletion, Impulse, Condition, Conditional, Either, Executor, Identity,
     ManualExecutor, Running, Task, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
@@ -70,8 +70,8 @@ impl Task<ConditionalCreature> for Right {
     }
 }
 
-type LeftFlow = ActionTask<ConditionalCreature, Left>;
-type RightFlow = ActionTask<ConditionalCreature, Right>;
+type LeftFlow = Impulse<ConditionalCreature, Left>;
+type RightFlow = Impulse<ConditionalCreature, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
