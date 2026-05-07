@@ -19,3 +19,5 @@ serde = { version = "1", features = ["derive"] }
 postcard = "1.1"
 inception = { path = "../inception/inception" }
 typosaurus = { path = "../typosaurus" }
+futures = "0.3"
+uuid = "1"

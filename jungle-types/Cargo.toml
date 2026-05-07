@@ -8,5 +8,6 @@ serde = { workspace = true }
 postcard = { workspace = true, features = ["alloc"] }
 inception = { workspace = true }
 typosaurus = { workspace = true }
-futures = "0.3"
+futures = { workspace = true }
+uuid = { workspace = true }
 thiserror = "2"

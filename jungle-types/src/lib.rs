@@ -3,6 +3,7 @@ mod error;
 mod executor;
 mod instinct;
 mod meta;
+mod transport;
 pub use behavior::{
     Action, ActionCompletion, ActionRequest, Impulse, Aspect, Task, Identity, Lens,
 };
@@ -20,6 +21,7 @@ pub use meta::{
     CreatureStates, CreatureStatesCompatible, CreatureActionDependencies,
     CreatureActionDependenciesCompatible, StripActionHeaders, StripCreatureHeaders,
 };
+pub use transport::{ClientIn, ClientOut};
 use std::marker::PhantomData;
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;

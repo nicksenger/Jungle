@@ -1,13 +1,15 @@
+use futures::{channel::mpsc, StreamExt};
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionSet, Creature, CreatureActionSet, CreatureSet, CreatureStates,
-    Ecosystem, Identity, Impulse, Lens, LoopCondition, Task, While,
+    Action, ActionCompletion, ActionSet, ClientIn, Creature, CreatureActionSet, CreatureSet,
+    CreatureStates, Ecosystem, Identity, Impulse, Lens, LoopCondition, Task, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 use jungle_sdk::{Actions, Creatures, Flow, Optic};
 use std::marker::PhantomData;
+use uuid::Uuid;
 
 action!(Eat, U0, dependency = SharedState);
 action!(Sleep, U1, dependency = SharedState);
@@ -648,11 +650,26 @@ async fn jungle_runner_spawns_and_completes_creature_flows() {
     use jungle_sdk::core::JungleRunner;
 
     let runner = JungleRunner::new(RunnerZoo);
+    let (tx, mut rx) = mpsc::channel::<(ClientIn, futures::channel::oneshot::Sender<()>)>(32);
+    let resolver = tokio::spawn(async move {
+        while let Some((message, done)) = rx.next().await {
+            match message {
+                ClientIn::ActionInput { .. } | ClientIn::ActionOutput { .. } => {
+                    let _ = done.send(());
+                }
+            }
+        }
+    });
+
     let (first, second, third) = tokio::join!(
-        runner.spawn::<RunnerCreature>(RunnerState(0)),
-        runner.spawn::<RunnerCreature>(RunnerState(3)),
-        runner.spawn::<RunnerCreature>(RunnerState(2)),
+        runner.spawn::<RunnerCreature>(RunnerState(0), Uuid::from_u128(1), tx.clone()),
+        runner.spawn::<RunnerCreature>(RunnerState(3), Uuid::from_u128(2), tx.clone()),
+        runner.spawn::<RunnerCreature>(RunnerState(2), Uuid::from_u128(3), tx.clone()),
     );
+    drop(tx);
+    resolver
+        .await
+        .expect("runner transport resolver should complete");
 
     assert_eq!(
         first.expect("first runner flow should complete"),
