@@ -7,7 +7,7 @@ use typosaurus::collections::{
 use typosaurus::num::Unsigned;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Actions, Creature, Creatures, FlowActions, Instinct};
+use super::{Action, Actions, Creature, Creatures, FlowActions, Instinct};
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
@@ -118,6 +118,22 @@ pub type CreatureStates<T> = <(CreatureSet<T>, WithCreatureState) as Map<
     WithCreatureState,
 >>::Out;
 
+pub struct WithActionDependency;
+impl<T> Mapper<T> for WithActionDependency
+where
+    T: Action,
+{
+    type Out = <T as Action>::Dependency;
+}
+
+pub type CreatureActionMembers<T> =
+    <SPFlatten<<CreatureSet<T> as CollectCreatureInstinctActions>::Out> as StripActionHeaders>::Out;
+
+pub type CreatureActionDependencies<T> = <(CreatureActionMembers<T>, WithActionDependency) as Map<
+    <CreatureActionMembers<T> as Container>::Content,
+    WithActionDependency,
+>>::Out;
+
 pub trait CreatureStatesCompatible<From>: Creatures {}
 impl<T, From> CreatureStatesCompatible<From> for T
 where
@@ -128,6 +144,22 @@ where
     (CreatureSet<T>, WithCreatureState):
         Map<<CreatureSet<T> as Container>::Content, WithCreatureState>,
     CreatureStates<T>: AllFrom<From>,
+{
+}
+
+pub trait CreatureActionDependenciesCompatible<From>: Creatures {}
+impl<T, From> CreatureActionDependenciesCompatible<From> for T
+where
+    T: Creatures,
+    <T as Creatures>::List: FlattenNodes,
+    SPFlatten<<T as Creatures>::List>: StripCreatureHeaders,
+    CreatureSet<T>: CollectCreatureInstinctActions,
+    <CreatureSet<T> as CollectCreatureInstinctActions>::Out: FlattenNodes,
+    SPFlatten<<CreatureSet<T> as CollectCreatureInstinctActions>::Out>: StripActionHeaders,
+    CreatureActionMembers<T>: Container,
+    (CreatureActionMembers<T>, WithActionDependency):
+        Map<<CreatureActionMembers<T> as Container>::Content, WithActionDependency>,
+    CreatureActionDependencies<T>: AllFrom<From>,
 {
 }
 

@@ -284,8 +284,39 @@ mod tests {
 
     #[test]
     fn jungle_impl() {
-        let zoo = Zoo;
-        let jungle_fut = zoo.manifest();
+        struct ManifestAction;
+        impl jungle_sdk::types::ActionMember for ManifestAction {}
+
+        impl jungle_sdk::types::Action for ManifestAction {
+            type Id = jungle_sdk::types::Id<U0>;
+            type Dependency = SharedState;
+            type In = ();
+            type Out = ();
+            type Err = ();
+
+            fn act(
+                _dependency: &Self::Dependency,
+                _input: Self::In,
+            ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                std::future::ready(Ok(()))
+            }
+        }
+
+        #[derive(Flow)]
+        struct ManifestInstinct(ActionTask<ManifestCreature, ManifestAction, UnitOkStep>);
+
+        animal!(ManifestCreature, U0, ManifestInstinct);
+
+        #[derive(Creatures)]
+        struct ManifestCreatures(ManifestCreature);
+
+        struct ManifestZoo;
+        impl Ecosystem for ManifestZoo {
+            type Creatures = ManifestCreatures;
+        }
+
+        let zoo = ManifestZoo;
+        let _jungle_fut = zoo.manifest();
     }
 
     mod action_step;

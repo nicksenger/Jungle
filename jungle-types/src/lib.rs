@@ -16,7 +16,8 @@ pub use instinct::Instinct;
 pub use meta::Id;
 pub use meta::{
     ActionMember, ActionSet, AllFrom, CreatureActionSet, CreatureMember, CreatureSet,
-    CreatureStates, CreatureStatesCompatible, StripActionHeaders, StripCreatureHeaders,
+    CreatureStates, CreatureStatesCompatible, CreatureActionDependencies,
+    CreatureActionDependenciesCompatible, StripActionHeaders, StripCreatureHeaders,
 };
 use std::marker::PhantomData;
 use typosaurus::collections::list::{self, List as TList};
