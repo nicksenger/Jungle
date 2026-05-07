@@ -150,7 +150,7 @@ impl Task<Gorilla> for GorillaSleepManual {
 }
 
 type GorillaEat = AddI32<Lens<GorillaState, list![U0, U0]>, Eat>;
-type GorillaForageStep = AddI32<Lens<GorillaState, list![U0, U0]>, Forage>;
+type GorillaForageStep = SubI32<Lens<GorillaState, list![U0, U0]>, Forage>;
 
 type TigerEat = AddI32<Lens<TigerState, list![U1, U0]>, Eat>;
 type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
@@ -274,10 +274,10 @@ async fn executor_runs_aspected_steps() {
             .expect("gorilla completion should advance");
         gorilla_emitted.push(emitted);
     }
-    assert_eq!(gorilla_emitted, vec![6, 13, 25, 51, 103, 205, 411, 823]);
+    assert_eq!(gorilla_emitted, vec![6, 13, 1, 3, 7, 1, 3, 7]);
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
-    assert_eq!(gorilla_state.core.energy, 823);
+    assert_eq!(gorilla_state.core.energy, 7);
     assert_eq!(gorilla_state.core.age, 100);
     assert_eq!(gorilla_state.bananas, 2);
 
