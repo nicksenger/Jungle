@@ -971,6 +971,7 @@ dependencies = [
  "jungle-client",
  "jungle-core",
  "jungle-macros",
+ "jungle-server",
  "jungle-types",
  "typosaurus",
 ]

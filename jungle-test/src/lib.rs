@@ -142,6 +142,7 @@ mod tests {
     }
 
     mod aspect;
+    mod connection;
     mod conditional;
     mod progression;
     mod while_loop;

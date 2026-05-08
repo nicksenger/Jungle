@@ -3,10 +3,15 @@ name = "jungle-sdk"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+server = ["dep:jungle-server"]
+
 [dependencies]
 inception = { workspace = true }
 jungle-client = { path = "../jungle-client" }
 jungle-core = { path = "../jungle-core" }
 jungle-macros = { path = "../jungle-macros" }
+jungle-server = { path = "../jungle-server", optional = true }
 jungle-types = { path = "../jungle-types" }
 typosaurus = { workspace = true }
