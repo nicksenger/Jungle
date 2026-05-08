@@ -17,17 +17,8 @@ const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
 #[async_trait]
-pub trait RequestBackend: DynClone + Send + Sync + 'static {
-    async fn handle_backend_request(&self, request: &[u8]) -> Result<Vec<u8>>;
-}
-
-#[async_trait]
 pub trait Backend: Send + Sync + 'static {
-    async fn handle_request(
-        &self,
-        backend: Box<dyn RequestBackend>,
-        stream: (quinn::SendStream, quinn::RecvStream),
-    ) -> Result<()> {
+    async fn handle_request(&self, stream: (quinn::SendStream, quinn::RecvStream)) -> Result<()> {
         let (mut send, mut recv) = stream;
         let req = recv
             .read_to_end(64 * 1024)
@@ -35,8 +26,7 @@ pub trait Backend: Send + Sync + 'static {
             .map_err(ServerError::ReadRequest)?;
         info!(request_len = req.len(), "received request");
 
-        let resp = backend.handle_backend_request(&req).await?;
-        send.write_all(&resp)
+        send.write_all(&[])
             .await
             .map_err(ServerError::WriteResponse)?;
         send.finish().map_err(ServerError::FinishResponse)?;
@@ -44,11 +34,7 @@ pub trait Backend: Send + Sync + 'static {
         Ok(())
     }
 
-    async fn handle_connection(
-        self: Arc<Self>,
-        backend: Box<dyn RequestBackend>,
-        conn: quinn::Incoming,
-    ) -> Result<()> {
+    async fn handle_connection(self: Self, conn: quinn::Incoming) -> Result<()> {
         let connection = conn.await?;
         let span = info_span!(
             "connection",
@@ -94,7 +80,7 @@ pub trait Backend: Send + Sync + 'static {
     }
 }
 
-dyn_clone::clone_trait_object!(RequestBackend);
+dyn_clone::clone_trait_object!(Backend);
 
 #[derive(Clone)]
 pub struct ServerBuilder {
@@ -105,7 +91,6 @@ pub struct ServerBuilder {
     listen: SocketAddr,
     block: Option<SocketAddr>,
     connection_limit: Option<usize>,
-    backend: Box<dyn RequestBackend>,
     server: Arc<dyn Backend>,
 }
 
@@ -164,19 +149,6 @@ impl ServerBuilder {
 
     pub fn connection_limit(mut self, limit: usize) -> Self {
         self.connection_limit = Some(limit);
-        self
-    }
-
-    pub fn backend<B>(mut self, backend: B) -> Self
-    where
-        B: RequestBackend,
-    {
-        self.backend = Box::new(backend);
-        self
-    }
-
-    pub fn with_backend(mut self, backend: Box<dyn RequestBackend>) -> Self {
-        self.backend = backend;
         self
     }
 
