@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::{Result, Store};
+use crate::{JungleStore, Result};
 use jungle_types::{RunnerOut, Work};
 use uuid::Uuid;
 
@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub struct PgStore;
 
 #[async_trait]
-impl Store for PgStore {
+impl JungleStore for PgStore {
     async fn migrate(&self) -> Result<()> {
         Ok(())
     }

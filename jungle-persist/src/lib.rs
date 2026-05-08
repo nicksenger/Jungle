@@ -20,7 +20,7 @@ pub enum PersistenceError {
 
 /// Storage backend contract for persistence implementations.
 #[async_trait]
-pub trait Store: DynClone + Send + Sync {
+pub trait JungleStore: DynClone + Send + Sync {
     async fn migrate(&self) -> Result<()>;
     async fn claim_work(&self) -> Result<Option<Work>>;
     async fn append_history(&self, history: RunnerOut) -> Result<()>;
@@ -28,4 +28,4 @@ pub trait Store: DynClone + Send + Sync {
     async fn details(&self, flow_id: Uuid) -> Result<()>;
 }
 
-dyn_clone::clone_trait_object!(Store);
+dyn_clone::clone_trait_object!(JungleStore);

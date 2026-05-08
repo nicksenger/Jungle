@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use jungle_types::{RunnerOut, Work};
 use uuid::Uuid;
 
-use crate::{Result, Store};
+use crate::{JungleStore, Result};
 
 type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<Work>> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
@@ -32,7 +32,7 @@ impl Default for MockStore {
 }
 
 #[async_trait]
-impl Store for MockStore {
+impl JungleStore for MockStore {
     async fn migrate(&self) -> Result<()> {
         Ok(())
     }
