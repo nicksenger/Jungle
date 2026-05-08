@@ -6,10 +6,17 @@ use thiserror::Error;
 use tracing::{error, info, info_span};
 use tracing_futures::Instrument as _;
 
+pub mod mock;
+pub use mock::MockServer;
+
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
-#[derive(Debug, Clone)]
+pub trait Backend: Send + Sync + 'static {
+    fn handle_request(&self, request: &[u8]) -> Result<Vec<u8>>;
+}
+
+#[derive(Clone)]
 pub struct ServerBuilder {
     keylog: bool,
     key: Option<PathBuf>,
@@ -18,6 +25,7 @@ pub struct ServerBuilder {
     listen: SocketAddr,
     block: Option<SocketAddr>,
     connection_limit: Option<usize>,
+    backend: Arc<dyn Backend>,
 }
 
 impl Default for ServerBuilder {
@@ -32,6 +40,7 @@ impl Default for ServerBuilder {
                 .expect("default listen address must be valid"),
             block: None,
             connection_limit: None,
+            backend: Arc::new(MockServer::default()),
         }
     }
 }
@@ -73,6 +82,14 @@ impl ServerBuilder {
 
     pub fn connection_limit(mut self, limit: usize) -> Self {
         self.connection_limit = Some(limit);
+        self
+    }
+
+    pub fn backend<B>(mut self, backend: B) -> Self
+    where
+        B: Backend,
+    {
+        self.backend = Arc::new(backend);
         self
     }
 
@@ -120,7 +137,8 @@ impl ServerBuilder {
                 let _ = conn.retry();
             } else {
                 info!("accepting connection");
-                let fut = handle_connection(conn);
+                let backend = self.backend.clone();
+                let fut = handle_connection(backend, conn);
                 tokio::spawn(async move {
                     if let Err(e) = fut.await {
                         error!("connection failed: {reason}", reason = e.to_string())
@@ -229,6 +247,8 @@ pub enum ServerError {
     WriteResponse(#[source] quinn::WriteError),
     #[error("stream finish failed: {0}")]
     FinishResponse(#[source] quinn::ClosedStream),
+    #[error("backend request handling failed: {0}")]
+    Backend(String),
 }
 
 pub type Result<T> = std::result::Result<T, ServerError>;
@@ -241,7 +261,7 @@ pub fn init_tracing() -> std::result::Result<(), tracing::subscriber::SetGlobalD
     )
 }
 
-async fn handle_connection(conn: quinn::Incoming) -> Result<()> {
+async fn handle_connection(backend: Arc<dyn Backend>, conn: quinn::Incoming) -> Result<()> {
     let connection = conn.await?;
     let span = info_span!(
         "connection",
@@ -269,7 +289,8 @@ async fn handle_connection(conn: quinn::Incoming) -> Result<()> {
                 }
                 Ok(s) => s,
             };
-            let fut = handle_request(stream);
+            let backend = backend.clone();
+            let fut = handle_request(backend, stream);
             tokio::spawn(
                 async move {
                     if let Err(e) = fut.await {
@@ -286,6 +307,7 @@ async fn handle_connection(conn: quinn::Incoming) -> Result<()> {
 }
 
 async fn handle_request(
+    backend: Arc<dyn Backend>,
     (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
 ) -> Result<()> {
     let req = recv
@@ -294,9 +316,8 @@ async fn handle_request(
         .map_err(ServerError::ReadRequest)?;
     info!(request_len = req.len(), "received request");
 
-    // Stub handler: protocol/certificate setup is complete; app protocol is intentionally pending.
-    let resp = b"jungle-server stub response\n";
-    send.write_all(resp)
+    let resp = backend.handle_request(&req)?;
+    send.write_all(&resp)
         .await
         .map_err(ServerError::WriteResponse)?;
     send.finish().map_err(ServerError::FinishResponse)?;
