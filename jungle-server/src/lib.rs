@@ -24,7 +24,7 @@ pub type WireTx =
 pub type WireRx = Pin<Box<dyn Stream<Item = WireIn> + Send + 'static>>;
 
 #[async_trait]
-pub trait Backend: DynClone + Send + Sync + 'static {
+pub trait JungleServer: DynClone + Send + Sync + 'static {
     async fn handle_request(&self, stream: (WireTx, WireRx)) -> Result<()>;
 
     async fn handle_connection(&self, conn: quinn::Incoming) -> Result<()> {
@@ -125,7 +125,7 @@ fn quinn_recv_to_wire_rx(recv: quinn::RecvStream) -> impl Stream<Item = WireIn> 
     })
 }
 
-dyn_clone::clone_trait_object!(Backend);
+dyn_clone::clone_trait_object!(JungleServer);
 
 #[derive(Clone)]
 pub struct ServerBuilder {
@@ -136,7 +136,7 @@ pub struct ServerBuilder {
     listen: SocketAddr,
     block: Option<SocketAddr>,
     connection_limit: Option<usize>,
-    backend: Box<dyn Backend>,
+    backend: Box<dyn JungleServer>,
 }
 
 impl Default for ServerBuilder {
@@ -198,7 +198,7 @@ impl ServerBuilder {
 
     pub fn backend<S>(mut self, backend: S) -> Self
     where
-        S: Backend,
+        S: JungleServer,
     {
         self.backend = Box::new(backend);
         self
