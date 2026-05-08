@@ -3,9 +3,11 @@
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DbVersion {
+pub enum SchemaVersion {
     V0,
 }
+
+pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion::V0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Flow {
