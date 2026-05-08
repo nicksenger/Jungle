@@ -1,12 +1,19 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
-use jungle_types::WireOut;
+use jungle_types::{BackendError, WireIn, WireOut};
+use std::{future::Future, pin::Pin, sync::Arc};
 use tracing::info;
 
 use crate::{JungleServer, Result, WireRx, WireTx};
 
+type RequestHandlerFuture =
+    Pin<Box<dyn Future<Output = std::result::Result<WireOut, BackendError>> + Send + 'static>>;
+type RequestHandler = Arc<dyn Fn(Option<WireIn>) -> RequestHandlerFuture + Send + Sync + 'static>;
+
 #[derive(Clone)]
-pub struct MockServer {}
+pub struct MockServer {
+    on_request: RequestHandler,
+}
 
 impl Default for MockServer {
     fn default() -> Self {
@@ -26,12 +33,8 @@ impl JungleServer for MockServer {
         let request = rx.next().await;
         info!(has_request = request.is_some(), "received request");
 
-        let response = if request.is_some() {
-            WireOut::Ack
-        } else {
-            WireOut::NoWorkAvailable
-        };
-        tx.send(Ok(response)).await?;
+        let response = (self.on_request)(request).await;
+        tx.send(response).await?;
         tx.close().await?;
         info!("complete");
         Ok(())
@@ -39,10 +42,33 @@ impl JungleServer for MockServer {
 }
 
 #[derive(Default)]
-pub struct MockServerBuilder {}
+pub struct MockServerBuilder {
+    on_request: Option<RequestHandler>,
+}
 
 impl MockServerBuilder {
+    pub fn on_request<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Option<WireIn>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = std::result::Result<WireOut, BackendError>> + Send + 'static,
+    {
+        self.on_request = Some(Arc::new(move |request| Box::pin(f(request))));
+        self
+    }
+
     pub fn build(self) -> MockServer {
-        MockServer {}
+        let default_handler: RequestHandler = Arc::new(|request| {
+            Box::pin(async move {
+                if request.is_some() {
+                    Ok(WireOut::Ack)
+                } else {
+                    Ok(WireOut::NoWorkAvailable)
+                }
+            })
+        });
+
+        MockServer {
+            on_request: self.on_request.unwrap_or(default_handler),
+        }
     }
 }
