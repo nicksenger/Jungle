@@ -6,6 +6,8 @@ edition = "2021"
 [features]
 default = []
 server = ["dep:jungle-server"]
+pg = ["server", "jungle-server/postgres"]
+redb = ["server", "jungle-server/redb"]
 
 [dependencies]
 inception = { workspace = true }

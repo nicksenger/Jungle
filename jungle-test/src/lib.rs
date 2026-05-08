@@ -142,8 +142,9 @@ mod tests {
     }
 
     mod aspect;
-    mod connection;
     mod conditional;
+    mod connection;
+    mod migration;
     mod progression;
     mod while_loop;
     mod zoo;

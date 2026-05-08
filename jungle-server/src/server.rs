@@ -65,6 +65,7 @@ impl ServerBuilder {
         {
             if let Some(builder) = self.postgres {
                 let store = builder.build().await?;
+                store.migrate().await?;
                 return Ok(Server::from_store(Arc::new(store)));
             }
 
@@ -75,6 +76,7 @@ impl ServerBuilder {
 
             info!("both `postgres` and `redb` features are enabled; defaulting to postgres");
             let store = jungle_persist::pg::PgStore::builder().build().await?;
+            store.migrate().await?;
             return Ok(Server::from_store(Arc::new(store)));
         }
 
@@ -85,6 +87,7 @@ impl ServerBuilder {
                 .unwrap_or_else(jungle_persist::pg::PgStore::builder)
                 .build()
                 .await?;
+            store.migrate().await?;
             return Ok(Server::from_store(Arc::new(store)));
         }
 

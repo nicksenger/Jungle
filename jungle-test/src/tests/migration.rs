@@ -1,0 +1,89 @@
+use jungle_sdk::server::ServerBuilder;
+use sqlx::PgPool;
+use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+use std::time::Duration;
+use testcontainers::runners::AsyncRunner;
+use testcontainers_modules::postgres::Postgres;
+
+#[tokio::test]
+async fn postgres_server_startup_runs_migrations() {
+    let postgres = Postgres::default()
+        .start()
+        .await
+        .expect("postgres testcontainer should start");
+    let pg_port = postgres
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("postgres mapped port should be available");
+    let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+
+    let listen_addr = reserve_local_addr();
+    let server_task = tokio::spawn({
+        let connection_string = connection_string.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .postgres_connection_string(connection_string)
+                .run()
+                .await
+        }
+    });
+
+    let mut migrated = false;
+    let mut last_error = String::new();
+    for _ in 0..80 {
+        match migration_state(&connection_string).await {
+            Ok((schema_version, flows_exists, events_exists)) => {
+                assert_eq!(schema_version, Some(0));
+                assert!(flows_exists);
+                assert!(events_exists);
+                migrated = true;
+                break;
+            }
+            Err(err) => {
+                last_error = err.to_string();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
+
+    server_task.abort();
+    let _ = server_task.await;
+
+    assert!(
+        migrated,
+        "postgres migration did not complete before timeout: {last_error}"
+    );
+}
+
+async fn migration_state(
+    connection_string: &str,
+) -> Result<(Option<i32>, bool, bool), sqlx::Error> {
+    let pool = PgPool::connect(connection_string).await?;
+
+    let schema_version =
+        sqlx::query_scalar::<_, i32>("SELECT version FROM jungle_schema_metadata WHERE id = 1")
+            .fetch_optional(&pool)
+            .await?;
+    let flows_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'flows')",
+    )
+    .fetch_one(&pool)
+    .await?;
+    let events_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'events')",
+    )
+    .fetch_one(&pool)
+    .await?;
+
+    pool.close().await;
+    Ok((schema_version, flows_exists, events_exists))
+}
+
+fn reserve_local_addr() -> SocketAddr {
+    let socket = UdpSocket::bind((Ipv6Addr::LOCALHOST, 0))
+        .expect("should bind temporary udp socket for test port reservation");
+    socket
+        .local_addr()
+        .expect("temporary udp socket should expose local address")
+}
