@@ -24,6 +24,9 @@ pub enum PersistenceError {
     #[cfg(feature = "postgres")]
     #[error("postgres connection failed: {0}")]
     PostgresConnect(#[source] sqlx::Error),
+    #[cfg(feature = "postgres")]
+    #[error("postgres query failed: {0}")]
+    PostgresQuery(#[source] sqlx::Error),
     #[cfg(feature = "redb")]
     #[error("redb database path is required")]
     MissingRedbPath,
