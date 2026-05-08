@@ -13,12 +13,9 @@ const WORK_ITEMS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("wo
 
 impl RedbStore {
     pub(super) async fn migrate_v0(&self) -> Result<()> {
-        let tx = self
-            .db
-            .begin_write()
-            .map_err(|err| {
-                crate::PersistenceError::Message(format!("redb migration begin failed: {err}"))
-            })?;
+        let tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("redb migration begin failed: {err}"))
+        })?;
 
         {
             let mut metadata = tx.open_table(SCHEMA_METADATA_TABLE).map_err(|err| {
@@ -28,7 +25,9 @@ impl RedbStore {
             let version = metadata
                 .get(1)
                 .map_err(|err| {
-                    crate::PersistenceError::Message(format!("redb read schema version failed: {err}"))
+                    crate::PersistenceError::Message(format!(
+                        "redb read schema version failed: {err}"
+                    ))
                 })?
                 .map(|version| version.value());
 
@@ -59,10 +58,9 @@ impl RedbStore {
             crate::PersistenceError::Message(format!("redb open work_items table failed: {err}"))
         })?;
 
-        tx.commit()
-            .map_err(|err| {
-                crate::PersistenceError::Message(format!("redb migration commit failed: {err}"))
-            })?;
+        tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!("redb migration commit failed: {err}"))
+        })?;
 
         Ok(())
     }

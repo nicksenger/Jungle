@@ -4,8 +4,8 @@ use jungle_types::{RunnerOut, Work};
 use thiserror::Error;
 use uuid::Uuid;
 
-pub mod models;
 pub mod mock;
+pub mod models;
 #[cfg(feature = "postgres")]
 pub mod pg;
 #[cfg(feature = "redb")]

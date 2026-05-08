@@ -108,7 +108,7 @@ async fn redb_server_startup_runs_migrations() {
 
     let (schema_version, flows_exists, events_exists, work_items_exists) =
         redb_migration_state(&db_path)
-        .unwrap_or_else(|err| panic!("failed to read redb file state after startup: {err}"));
+            .unwrap_or_else(|err| panic!("failed to read redb file state after startup: {err}"));
     assert_eq!(schema_version, Some(0));
     assert!(flows_exists);
     assert!(events_exists);
@@ -123,8 +123,14 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
         .expect("workspace root should be parent of jungle-test");
     assert!(
         workspace_root.join("Cargo.toml").is_file()
-            && workspace_root.join("jungle-persist").join("Cargo.toml").is_file()
-            && workspace_root.join("jungle-test").join("Cargo.toml").is_file(),
+            && workspace_root
+                .join("jungle-persist")
+                .join("Cargo.toml")
+                .is_file()
+            && workspace_root
+                .join("jungle-test")
+                .join("Cargo.toml")
+                .is_file(),
         "workspace root layout was not detected"
     );
 
@@ -137,21 +143,30 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
         .await
         .expect("postgres mapped port should be available");
     let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+    ensure_sqlx_prepare_schema(&connection_string)
+        .await
+        .expect("sqlx prepare schema should initialize");
+
+    let source_sqlx_dir = workspace_root.join("target").join("sqlx");
+    if source_sqlx_dir.exists() {
+        fs::remove_dir_all(&source_sqlx_dir)
+            .expect("existing target/sqlx directory should be removable");
+    }
+    fs::create_dir_all(&source_sqlx_dir).expect("target/sqlx directory should be creatable");
 
     let status = Command::new("cargo")
         .current_dir(&workspace_root)
         .env("SQLX_OFFLINE", "false")
+        .env("SQLX_OFFLINE_DIR", &source_sqlx_dir)
         .env("DATABASE_URL", &connection_string)
         .args(["check", "-p", "jungle-persist", "--features", "postgres"])
         .status()
         .expect("cargo check should execute");
     assert!(status.success(), "cargo check failed with status: {status}");
 
-    let source_sqlx_dir = workspace_root.join("target").join("sqlx");
     assert!(
         source_sqlx_dir.is_dir(),
-        "expected sqlx output at target/sqlx after cargo check; \
-         sqlx only emits offline cache entries for compile-time macros like query!/query_as!"
+        "expected sqlx output at target/sqlx after cargo check with SQLX_OFFLINE_DIR"
     );
 
     let target_sqlx_dir = workspace_root.join("jungle-persist").join(".sqlx");
@@ -221,7 +236,12 @@ fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool, bool
     let events_exists = read_txn.open_table(REDB_EVENTS_TABLE).is_ok();
     let work_items_exists = read_txn.open_table(REDB_WORK_ITEMS_TABLE).is_ok();
 
-    Ok((schema_version, flows_exists, events_exists, work_items_exists))
+    Ok((
+        schema_version,
+        flows_exists,
+        events_exists,
+        work_items_exists,
+    ))
 }
 
 fn reserve_local_addr() -> SocketAddr {
@@ -247,5 +267,63 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn ensure_sqlx_prepare_schema(connection_string: &str) -> Result<(), sqlx::Error> {
+    let pool = PgPool::connect(connection_string).await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS jungle_schema_metadata (
+            id SMALLINT PRIMARY KEY,
+            version INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS flows (
+            id UUID PRIMARY KEY,
+            ordinal INTEGER NOT NULL,
+            seed BYTEA NOT NULL
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS events (
+            flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+            sequence_id BIGINT NOT NULL,
+            kind SMALLINT NOT NULL,
+            data BYTEA NOT NULL,
+            PRIMARY KEY (flow_id, sequence_id)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS work_items (
+            id UUID PRIMARY KEY,
+            flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+            kind SMALLINT NOT NULL,
+            status SMALLINT NOT NULL,
+            expiry TIMESTAMPTZ NOT NULL
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await?;
+
+    pool.close().await;
     Ok(())
 }

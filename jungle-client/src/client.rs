@@ -123,7 +123,9 @@ impl ClientBuilder {
         if self.rebind {
             let socket =
                 UdpSocket::bind((Ipv6Addr::UNSPECIFIED, 0)).map_err(ClientError::RebindSocket)?;
-            endpoint.rebind(socket).map_err(ClientError::RebindEndpoint)?;
+            endpoint
+                .rebind(socket)
+                .map_err(ClientError::RebindEndpoint)?;
         }
 
         Ok(Client { endpoint, conn })
@@ -145,8 +147,8 @@ impl Client {
         let (mut tx, mut rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
 
         let payload = postcard::to_allocvec(&input).map_err(ClientError::EncodeWireIn)?;
-        let frame_len =
-            u32::try_from(payload.len()).map_err(|_| ClientError::WireFrameTooLarge(payload.len()))?;
+        let frame_len = u32::try_from(payload.len())
+            .map_err(|_| ClientError::WireFrameTooLarge(payload.len()))?;
         tx.write_all(&frame_len.to_be_bytes())
             .await
             .map_err(ClientError::WriteWireFrame)?;
@@ -155,7 +157,10 @@ impl Client {
             .map_err(ClientError::WriteWireFrame)?;
         tx.finish().map_err(ClientError::FinishWireIn)?;
 
-        let response = rx.read_to_end(usize::MAX).await.map_err(ClientError::ReadWireOut)?;
+        let response = rx
+            .read_to_end(usize::MAX)
+            .await
+            .map_err(ClientError::ReadWireOut)?;
         if response.len() < 4 {
             return Err(ClientError::InvalidWireFrameLength(response.len()));
         }
@@ -219,9 +224,11 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_input".to_string(),
-            )),
+            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for action_input".to_string(),
+                ))
+            }
         }
     }
 
@@ -236,9 +243,11 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_success_output".to_string(),
-            )),
+            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for action_success_output".to_string(),
+                ))
+            }
         }
     }
 
@@ -253,9 +262,11 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_failure_output".to_string(),
-            )),
+            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for action_failure_output".to_string(),
+                ))
+            }
         }
     }
 }
@@ -298,7 +309,9 @@ pub enum ClientError {
     ReadWireOut(#[source] quinn::ReadToEndError),
     #[error("invalid wire frame length buffer: {0}")]
     InvalidWireFrameLength(usize),
-    #[error("mismatched wire frame payload length, expected {expected} bytes but received {actual}")]
+    #[error(
+        "mismatched wire frame payload length, expected {expected} bytes but received {actual}"
+    )]
     MismatchedWireFrameLength { expected: usize, actual: usize },
     #[error("failed to decode wire output: {0}")]
     DecodeWireOut(#[source] postcard::Error),

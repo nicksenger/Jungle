@@ -1,8 +1,8 @@
 pub mod migrations;
 
-use async_trait::async_trait;
 use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
+use async_trait::async_trait;
 use jungle_types::{RunnerOut, Work};
 use std::path::PathBuf;
 use std::sync::Arc;

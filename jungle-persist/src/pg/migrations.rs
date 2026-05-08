@@ -24,12 +24,11 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        let version_row = sqlx::query_scalar::<_, i32>(
-            "SELECT version FROM jungle_schema_metadata WHERE id = 1",
-        )
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(crate::PersistenceError::PostgresQuery)?;
+        let version_row =
+            sqlx::query_scalar::<_, i32>("SELECT version FROM jungle_schema_metadata WHERE id = 1")
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(crate::PersistenceError::PostgresQuery)?;
 
         if let Some(version) = version_row {
             if version != 0 {

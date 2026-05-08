@@ -17,4 +17,4 @@ thiserror = "2"
 tracing = "0.1"
 chrono = "0.4"
 redb = { version = "4.1", optional = true }
-sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls"] }
+sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls", "uuid"] }

@@ -19,8 +19,9 @@ pub use server::Server;
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
-pub type WireTx =
-    Pin<Box<dyn Sink<std::result::Result<WireOut, BackendError>, Error = ServerError> + Send + 'static>>;
+pub type WireTx = Pin<
+    Box<dyn Sink<std::result::Result<WireOut, BackendError>, Error = ServerError> + Send + 'static>,
+>;
 pub type WireRx = Pin<Box<dyn Stream<Item = WireIn> + Send + 'static>>;
 
 #[async_trait]
@@ -81,19 +82,22 @@ pub trait JungleServer: DynClone + Send + Sync + 'static {
 fn quinn_send_to_wire_tx(
     send: quinn::SendStream,
 ) -> impl Sink<std::result::Result<WireOut, BackendError>, Error = ServerError> {
-    futures::sink::unfold(send, |mut send, message: std::result::Result<WireOut, BackendError>| async move {
-        let payload = postcard::to_allocvec(&message).map_err(ServerError::EncodeWireOut)?;
-        let frame_len =
-            u32::try_from(payload.len()).map_err(|_| ServerError::WireFrameTooLarge(payload.len()))?;
+    futures::sink::unfold(
+        send,
+        |mut send, message: std::result::Result<WireOut, BackendError>| async move {
+            let payload = postcard::to_allocvec(&message).map_err(ServerError::EncodeWireOut)?;
+            let frame_len = u32::try_from(payload.len())
+                .map_err(|_| ServerError::WireFrameTooLarge(payload.len()))?;
 
-        send.write_all(&frame_len.to_be_bytes())
-            .await
-            .map_err(ServerError::WriteWireFrame)?;
-        send.write_all(&payload)
-            .await
-            .map_err(ServerError::WriteWireFrame)?;
-        Ok(send)
-    })
+            send.write_all(&frame_len.to_be_bytes())
+                .await
+                .map_err(ServerError::WriteWireFrame)?;
+            send.write_all(&payload)
+                .await
+                .map_err(ServerError::WriteWireFrame)?;
+            Ok(send)
+        },
+    )
 }
 
 fn quinn_recv_to_wire_rx(recv: quinn::RecvStream) -> impl Stream<Item = WireIn> {
@@ -102,21 +106,30 @@ fn quinn_recv_to_wire_rx(recv: quinn::RecvStream) -> impl Stream<Item = WireIn> 
             Ok(len) => len,
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return None,
             Err(e) => {
-                error!("failed to read wire frame length: {reason}", reason = e.to_string());
+                error!(
+                    "failed to read wire frame length: {reason}",
+                    reason = e.to_string()
+                );
                 return None;
             }
         };
 
         let mut payload = vec![0_u8; frame_len as usize];
         if let Err(e) = recv.read_exact(&mut payload).await {
-            error!("failed to read wire frame payload: {reason}", reason = e.to_string());
+            error!(
+                "failed to read wire frame payload: {reason}",
+                reason = e.to_string()
+            );
             return None;
         }
 
         let message = match postcard::from_bytes(&payload) {
             Ok(message) => message,
             Err(e) => {
-                error!("failed to decode wire input message: {reason}", reason = e.to_string());
+                error!(
+                    "failed to decode wire input message: {reason}",
+                    reason = e.to_string()
+                );
                 return None;
             }
         };
@@ -288,8 +301,8 @@ impl ServerBuilder {
         let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
         transport_config.max_concurrent_uni_streams(0_u8.into());
 
-        let endpoint = quinn::Endpoint::server(server_config, listen)
-            .map_err(ServerError::BindEndpoint)?;
+        let endpoint =
+            quinn::Endpoint::server(server_config, listen).map_err(ServerError::BindEndpoint)?;
         eprintln!(
             "listening on {}",
             endpoint.local_addr().map_err(ServerError::LocalAddr)?
