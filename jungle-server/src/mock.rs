@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tracing::{error, info, info_span};
 
-use crate::{Result, ServerError};
+use crate::{Backend, Result, ServerError};
 
 #[derive(Clone)]
 pub struct MockServer {}
@@ -21,8 +22,11 @@ impl MockServer {
 
 #[async_trait]
 impl Backend for MockServer {
-    async fn handle_request(&self, stream: (quinn::SendStream, quinn::RecvStream)) -> Result<()> {
-        let (mut send, mut recv) = stream;
+    async fn handle_request(
+        &self,
+        (send, recv): (quinn::SendStream, quinn::RecvStream),
+    ) -> Result<()> {
+        let (mut send, mut recv) = (send, recv);
         let req = recv
             .read_to_end(64 * 1024)
             .await
@@ -34,51 +38,6 @@ impl Backend for MockServer {
             .map_err(ServerError::WriteResponse)?;
         send.finish().map_err(ServerError::FinishResponse)?;
         info!("complete");
-        Ok(())
-    }
-
-    async fn handle_connection(self: Arc<Self>, conn: quinn::Incoming) -> Result<()> {
-        let connection = conn.await?;
-        let span = info_span!(
-            "connection",
-            remote = %connection.remote_address(),
-            protocol = %connection
-                .handshake_data()
-                .unwrap()
-                .downcast::<quinn::crypto::rustls::HandshakeData>().unwrap()
-                .protocol
-                .map_or_else(|| "<none>".into(), |x| String::from_utf8_lossy(&x).into_owned())
-        );
-        async {
-            info!("established");
-
-            // Each stream initiated by the client constitutes a new request.
-            loop {
-                let stream = connection.accept_bi().await;
-                let stream = match stream {
-                    Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                        info!("connection closed");
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        return Err(ServerError::Connection(e));
-                    }
-                    Ok(s) => s,
-                };
-                let backend = dyn_clone::clone_box(&*backend);
-                let handler = Arc::clone(&self);
-                tokio::spawn(
-                    async move {
-                        if let Err(e) = handler.handle_request(backend, stream).await {
-                            error!("failed: {reason}", reason = e.to_string());
-                        }
-                    }
-                    .instrument(info_span!("request")),
-                );
-            }
-        }
-        .instrument(span)
-        .await?;
         Ok(())
     }
 }

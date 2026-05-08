@@ -19,8 +19,7 @@ impl Backend for Server {
             .map_err(ServerError::ReadRequest)?;
         info!(request_len = req.len(), "received request");
 
-        let resp = backend.handle_backend_request(&req).await?;
-        send.write_all(&resp)
+        send.write_all(&[])
             .await
             .map_err(ServerError::WriteResponse)?;
         send.finish().map_err(ServerError::FinishResponse)?;

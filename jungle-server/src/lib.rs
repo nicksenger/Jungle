@@ -18,23 +18,9 @@ const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
 #[async_trait]
 pub trait Backend: Send + Sync + 'static {
-    async fn handle_request(&self, stream: (quinn::SendStream, quinn::RecvStream)) -> Result<()> {
-        let (mut send, mut recv) = stream;
-        let req = recv
-            .read_to_end(64 * 1024)
-            .await
-            .map_err(ServerError::ReadRequest)?;
-        info!(request_len = req.len(), "received request");
+    async fn handle_request(&self, stream: (quinn::SendStream, quinn::RecvStream)) -> Result<()>;
 
-        send.write_all(&[])
-            .await
-            .map_err(ServerError::WriteResponse)?;
-        send.finish().map_err(ServerError::FinishResponse)?;
-        info!("complete");
-        Ok(())
-    }
-
-    async fn handle_connection(self: Self, conn: quinn::Incoming) -> Result<()> {
+    async fn handle_connection(&self, conn: quinn::Incoming) -> Result<()> {
         let connection = conn.await?;
         let span = info_span!(
             "connection",
@@ -46,6 +32,8 @@ pub trait Backend: Send + Sync + 'static {
                 .protocol
                 .map_or_else(|| "<none>".into(), |x| String::from_utf8_lossy(&x).into_owned())
         );
+        let backend = self.clone();
+
         async {
             info!("established");
 
@@ -62,11 +50,11 @@ pub trait Backend: Send + Sync + 'static {
                     }
                     Ok(s) => s,
                 };
-                let backend = dyn_clone::clone_box(&*backend);
-                let handler = Arc::clone(&self);
+
+                let b = backend.clone();
                 tokio::spawn(
                     async move {
-                        if let Err(e) = handler.handle_request(backend, stream).await {
+                        if let Err(e) = b.handle_request(stream).await {
                             error!("failed: {reason}", reason = e.to_string());
                         }
                     }
@@ -91,7 +79,7 @@ pub struct ServerBuilder {
     listen: SocketAddr,
     block: Option<SocketAddr>,
     connection_limit: Option<usize>,
-    server: Arc<dyn Backend>,
+    backend: Box<dyn Backend>,
 }
 
 impl Default for ServerBuilder {
@@ -107,7 +95,6 @@ impl Default for ServerBuilder {
             block: None,
             connection_limit: None,
             backend: Box::new(MockServer::default()),
-            server: Arc::new(Server),
         }
     }
 }
@@ -152,19 +139,12 @@ impl ServerBuilder {
         self
     }
 
-    pub fn server<S>(mut self, server: S) -> Self
+    pub fn backend<S>(mut self, backend: S) -> Self
     where
         S: Backend,
     {
-        self.server = Arc::new(server);
+        self.backend = Box::new(backend);
         self
-    }
-
-    pub fn handler<S>(self, server: S) -> Self
-    where
-        S: Backend,
-    {
-        self.server(server)
     }
 
     pub async fn run(self) -> Result<()> {
