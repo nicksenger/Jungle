@@ -17,7 +17,7 @@ const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
 #[async_trait]
-pub trait Backend: Send + Sync + 'static {
+pub trait Backend: DynClone + Send + Sync + 'static {
     async fn handle_request(&self, stream: (quinn::SendStream, quinn::RecvStream)) -> Result<()>;
 
     async fn handle_connection(&self, conn: quinn::Incoming) -> Result<()> {
@@ -32,7 +32,7 @@ pub trait Backend: Send + Sync + 'static {
                 .protocol
                 .map_or_else(|| "<none>".into(), |x| String::from_utf8_lossy(&x).into_owned())
         );
-        let backend = self.clone();
+        let backend = dyn_clone::clone_box(self);
 
         async {
             info!("established");
@@ -51,7 +51,7 @@ pub trait Backend: Send + Sync + 'static {
                     Ok(s) => s,
                 };
 
-                let b = backend.clone();
+                let b = dyn_clone::clone_box(&*backend);
                 tokio::spawn(
                     async move {
                         if let Err(e) = b.handle_request(stream).await {
@@ -192,10 +192,8 @@ impl ServerBuilder {
             } else {
                 info!("accepting connection");
                 let backend = dyn_clone::clone_box(&*self.backend);
-                let server = Arc::clone(&self.server);
-                let fut = Arc::clone(&server).handle_connection(backend, conn);
                 tokio::spawn(async move {
-                    if let Err(e) = fut.await {
+                    if let Err(e) = backend.handle_connection(conn).await {
                         error!("connection failed: {reason}", reason = e.to_string())
                     }
                 });
