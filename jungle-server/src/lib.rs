@@ -17,17 +17,15 @@ const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
 #[async_trait]
-pub trait Backend: DynClone + Send + Sync + 'static {
-    async fn handle_backend_request(&self, request: &[u8]) -> Result<Vec<u8>> {
-        let _ = request;
-        Err(ServerError::Backend(
-            "backend request handling is not implemented".to_owned(),
-        ))
-    }
+pub trait RequestBackend: DynClone + Send + Sync + 'static {
+    async fn handle_backend_request(&self, request: &[u8]) -> Result<Vec<u8>>;
+}
 
+#[async_trait]
+pub trait Backend: Send + Sync + 'static {
     async fn handle_request(
         &self,
-        backend: Box<dyn Backend>,
+        backend: Box<dyn RequestBackend>,
         stream: (quinn::SendStream, quinn::RecvStream),
     ) -> Result<()> {
         let (mut send, mut recv) = stream;
@@ -48,7 +46,7 @@ pub trait Backend: DynClone + Send + Sync + 'static {
 
     async fn handle_connection(
         self: Arc<Self>,
-        backend: Box<dyn Backend>,
+        backend: Box<dyn RequestBackend>,
         conn: quinn::Incoming,
     ) -> Result<()> {
         let connection = conn.await?;
@@ -96,7 +94,7 @@ pub trait Backend: DynClone + Send + Sync + 'static {
     }
 }
 
-dyn_clone::clone_trait_object!(Backend);
+dyn_clone::clone_trait_object!(RequestBackend);
 
 #[derive(Clone)]
 pub struct ServerBuilder {
@@ -107,7 +105,7 @@ pub struct ServerBuilder {
     listen: SocketAddr,
     block: Option<SocketAddr>,
     connection_limit: Option<usize>,
-    backend: Box<dyn Backend>,
+    backend: Box<dyn RequestBackend>,
     server: Arc<dyn Backend>,
 }
 
@@ -171,13 +169,13 @@ impl ServerBuilder {
 
     pub fn backend<B>(mut self, backend: B) -> Self
     where
-        B: Backend,
+        B: RequestBackend,
     {
         self.backend = Box::new(backend);
         self
     }
 
-    pub fn with_backend(mut self, backend: Box<dyn Backend>) -> Self {
+    pub fn with_backend(mut self, backend: Box<dyn RequestBackend>) -> Self {
         self.backend = backend;
         self
     }

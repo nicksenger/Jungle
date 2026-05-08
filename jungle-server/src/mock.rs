@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::{Backend, Result, ServerError};
+use crate::{RequestBackend, Result, ServerError};
 
 type RequestCallback = Arc<dyn Fn(Vec<u8>) -> Result<Vec<u8>> + Send + Sync + 'static>;
 
@@ -24,7 +24,7 @@ impl MockServer {
 }
 
 #[async_trait]
-impl Backend for MockServer {
+impl RequestBackend for MockServer {
     async fn handle_backend_request(&self, request: &[u8]) -> Result<Vec<u8>> {
         (self.on_request)(request.to_vec())
     }

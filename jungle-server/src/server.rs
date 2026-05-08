@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::{Backend, Result, ServerError};
+use crate::{Backend, RequestBackend, Result, ServerError};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Server;
@@ -10,7 +10,7 @@ pub struct Server;
 impl Backend for Server {
     async fn handle_request(
         &self,
-        backend: Box<dyn Backend>,
+        backend: Box<dyn RequestBackend>,
         (send, recv): (quinn::SendStream, quinn::RecvStream),
     ) -> Result<()> {
         let (mut send, mut recv) = (send, recv);
