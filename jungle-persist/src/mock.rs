@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use jungle_types::{RunnerOut, Work};
 use uuid::Uuid;
 
@@ -30,20 +31,25 @@ impl Default for MockStore {
     }
 }
 
+#[async_trait]
 impl Store for MockStore {
-    fn claim_work(&self) -> Result<Option<Work>> {
+    async fn migrate(&self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn claim_work(&self) -> Result<Option<Work>> {
         (self.on_claim_work)()
     }
 
-    fn append_history(&self, history: RunnerOut) -> Result<()> {
+    async fn append_history(&self, history: RunnerOut) -> Result<()> {
         (self.on_append_history)(history)
     }
 
-    fn poll_timers(&self) -> Result<Option<()>> {
+    async fn poll_timers(&self) -> Result<Option<()>> {
         (self.on_poll_timers)()
     }
 
-    fn details(&self, flow_id: Uuid) -> Result<()> {
+    async fn details(&self, flow_id: Uuid) -> Result<()> {
         (self.on_details)(flow_id)
     }
 }

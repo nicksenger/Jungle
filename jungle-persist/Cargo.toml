@@ -11,6 +11,8 @@ postgres = ["dep:sqlx"]
 [dependencies]
 jungle-types = { path = "../jungle-types" }
 uuid = { workspace = true }
+async-trait = { workspace = true }
+dyn-clone = { workspace = true }
 thiserror = "2"
 redb = { version = "4.1", optional = true }
 sqlx = { version = "0.8", optional = true }

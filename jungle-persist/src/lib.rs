@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+use dyn_clone::DynClone;
 use jungle_types::{RunnerOut, Work};
 use thiserror::Error;
 use uuid::Uuid;
@@ -16,9 +18,13 @@ pub enum PersistenceError {
 }
 
 /// Storage backend contract for persistence implementations.
-pub trait Store {
-    fn claim_work(&self) -> Result<Option<Work>>;
-    fn append_history(&self, history: RunnerOut) -> Result<()>;
-    fn poll_timers(&self) -> Result<Option<()>>;
-    fn details(&self, flow_id: Uuid) -> Result<()>;
+#[async_trait]
+pub trait Store: DynClone + Send + Sync {
+    async fn migrate(&self) -> Result<()>;
+    async fn claim_work(&self) -> Result<Option<Work>>;
+    async fn append_history(&self, history: RunnerOut) -> Result<()>;
+    async fn poll_timers(&self) -> Result<Option<()>>;
+    async fn details(&self, flow_id: Uuid) -> Result<()>;
 }
+
+dyn_clone::clone_trait_object!(Store);
