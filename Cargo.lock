@@ -919,9 +919,14 @@ name = "jungle-client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "directories-next",
  "dyn-clone",
  "futures",
  "jungle-types",
+ "quinn",
+ "rustls",
+ "thiserror 1.0.69",
+ "tracing",
  "uuid",
 ]
 
