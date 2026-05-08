@@ -43,11 +43,18 @@ async fn postgres_server_startup_runs_migrations() {
     let mut last_error = String::new();
     for _ in 0..80 {
         match migration_state(&connection_string).await {
-            Ok((schema_version, flows_exists, events_exists, work_items_exists)) => {
+            Ok((
+                schema_version,
+                flows_exists,
+                events_exists,
+                work_items_exists,
+                work_items_status_exists,
+            )) => {
                 assert_eq!(schema_version, Some(0));
                 assert!(flows_exists);
                 assert!(events_exists);
                 assert!(work_items_exists);
+                assert!(work_items_status_exists);
                 migrated = true;
                 break;
             }
@@ -160,7 +167,7 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
 
 async fn migration_state(
     connection_string: &str,
-) -> Result<(Option<i32>, bool, bool, bool), sqlx::Error> {
+) -> Result<(Option<i32>, bool, bool, bool, bool), sqlx::Error> {
     let pool = PgPool::connect(connection_string).await?;
 
     let schema_version =
@@ -182,9 +189,20 @@ async fn migration_state(
     )
     .fetch_one(&pool)
     .await?;
+    let work_items_status_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'work_items' AND column_name = 'status')",
+    )
+    .fetch_one(&pool)
+    .await?;
 
     pool.close().await;
-    Ok((schema_version, flows_exists, events_exists, work_items_exists))
+    Ok((
+        schema_version,
+        flows_exists,
+        events_exists,
+        work_items_exists,
+        work_items_status_exists,
+    ))
 }
 
 fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool, bool), String> {

@@ -30,6 +30,7 @@ pub struct WorkItem {
     pub id: Uuid,
     pub flow_id: Uuid,
     pub kind: WorkItemKind,
+    pub status: WorkItemStatus,
     pub expiry: DateTime<Utc>,
 }
 
@@ -43,4 +44,10 @@ pub enum EventKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkItemKind {
     StartFlow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkItemStatus {
+    Available,
+    Claimed,
 }

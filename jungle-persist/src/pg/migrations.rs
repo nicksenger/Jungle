@@ -75,8 +75,19 @@ impl PgStore {
                 id UUID PRIMARY KEY,
                 flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
                 kind SMALLINT NOT NULL,
+                status SMALLINT NOT NULL,
                 expiry TIMESTAMPTZ NOT NULL
             )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            ALTER TABLE work_items
+            ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0
             "#,
         )
         .execute(&mut *tx)
