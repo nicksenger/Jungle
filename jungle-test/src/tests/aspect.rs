@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Impulse, Aspect, Condition, Conditional, Either, Executor,
-    Identity, Lens, LoopCondition, Running, Task, Waiting, While,
+    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, Impulse,
+    Lens, LoopCondition, Running, Task, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
@@ -181,11 +181,7 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 
 #[derive(Instinct)]
 struct TigerLoopSequence(
-    Conditional<
-        TigerStripesAreEven,
-        Impulse<Tiger, TigerEat>,
-        Impulse<Tiger, TigerSleep>,
-    >,
+    Conditional<TigerStripesAreEven, Impulse<Tiger, TigerEat>, Impulse<Tiger, TigerSleep>>,
     Impulse<Tiger, TigerSleep>,
     Impulse<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
 );
@@ -235,15 +231,17 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         stripes: 9,
         core: CoreState { energy: 6, age: 12 },
     };
-    let (tiger_state, tiger_request) = <Impulse<
-        Tiger,
-        CoreEnergyStep<Sleep, Lens<TigerState, U1>>,
-    > as Running>::run((tiger_state, 4));
+    let (tiger_state, tiger_request) =
+        <Impulse<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Running>::run((
+            tiger_state,
+            4,
+        ));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) = <Impulse<
-        Tiger,
-        CoreEnergyStep<Sleep, Lens<TigerState, U1>>,
-    > as Waiting>::accept((tiger_state, Ok(15)));
+    let (tiger_state, tiger_emitted) =
+        <Impulse<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Waiting>::accept((
+            tiger_state,
+            Ok(15),
+        ));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
     assert_eq!(tiger_state.core.age, 12);
@@ -265,8 +263,12 @@ async fn executor_runs_aspected_steps() {
             .expect("gorilla request should advance");
         let completion: i32 = match step % 3 {
             0 => Eat::act(&(), request).await.expect("eat should succeed"),
-            1 => Sleep::act(&(), request).await.expect("sleep should succeed"),
-            2 => Forage::act(&(), request).await.expect("forage should succeed"),
+            1 => Sleep::act(&(), request)
+                .await
+                .expect("sleep should succeed"),
+            2 => Forage::act(&(), request)
+                .await
+                .expect("forage should succeed"),
             _ => unreachable!(),
         };
         let emitted: i32 = gorilla
@@ -297,7 +299,9 @@ async fn executor_runs_aspected_steps() {
             }
             1 => {
                 let request: i32 = tiger.next_request().expect("tiger request should advance");
-                Sleep::act(&(), request).await.expect("sleep should succeed")
+                Sleep::act(&(), request)
+                    .await
+                    .expect("sleep should succeed")
             }
             2 => {
                 let request: () = tiger.next_request().expect("tiger request should advance");

@@ -73,14 +73,15 @@ where
                     ordinal,
                     seed,
                 }) => {
-                    let launched = <CreatureSet<T::Creatures> as SpawnByOrdinal<T>>::spawn_by_ordinal(
-                        ordinal,
-                        seed,
-                        flow_id,
-                        &self.runner,
-                        tx.clone(),
-                    )
-                    .await?;
+                    let launched =
+                        <CreatureSet<T::Creatures> as SpawnByOrdinal<T>>::spawn_by_ordinal(
+                            ordinal,
+                            seed,
+                            flow_id,
+                            &self.runner,
+                            tx.clone(),
+                        )
+                        .await?;
                     if !launched {
                         return Err(ExecutorError::InputDeserialize(format!(
                             "unknown creature ordinal: {ordinal}"
@@ -121,7 +122,8 @@ where
     Head: Creature<Id = jungle_types::Id<Ordinal>> + Send + Sync + 'static,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
-    Head::Instinct: BuildFlowWithContext<(*const T, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
+    Head::Instinct:
+        BuildFlowWithContext<(*const T, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
     Ordinal: Unsigned,
     Tail: SpawnByOrdinal<T>,
     T: 'static,

@@ -5,7 +5,7 @@ mod instinct;
 mod meta;
 mod transport;
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, Impulse, Aspect, Task, Identity, Lens,
+    Action, ActionCompletion, ActionRequest, Aspect, Identity, Impulse, Lens, Task,
 };
 pub use error::Error;
 pub use executor::{
@@ -14,17 +14,17 @@ pub use executor::{
     ManualExecutor, TypedErasedStep,
 };
 use inception::*;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 pub use instinct::Instinct;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AllFrom, CreatureActionSet, CreatureMember, CreatureSet,
-    CreatureStates, CreatureStatesCompatible, CreatureActionDependencies,
-    CreatureActionDependenciesCompatible, StripActionHeaders, StripCreatureHeaders,
+    ActionMember, ActionSet, AllFrom, CreatureActionDependencies,
+    CreatureActionDependenciesCompatible, CreatureActionSet, CreatureMember, CreatureSet,
+    CreatureStates, CreatureStatesCompatible, StripActionHeaders, StripCreatureHeaders,
 };
-pub use transport::{RunnerOut, Work};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::marker::PhantomData;
+pub use transport::{RunnerOut, Work};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;

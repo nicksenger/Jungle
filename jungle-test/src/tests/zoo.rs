@@ -1,8 +1,8 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionSet, Creature, CreatureActionSet, CreatureSet,
-    CreatureStates, Ecosystem, Identity, Impulse, Lens, LoopCondition, Task, While,
+    Action, ActionCompletion, ActionSet, Creature, CreatureActionSet, CreatureSet, CreatureStates,
+    Ecosystem, Identity, Impulse, Lens, LoopCondition, Task, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -609,7 +609,10 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
             .deserialize_request()
             .expect("tiger odd request should deserialize");
         tiger_odd_requests.push(request_input);
-        let completion = request.run().await.expect("tiger odd action should execute");
+        let completion = request
+            .run()
+            .await
+            .expect("tiger odd action should execute");
         let _emitted = tiger_odd
             .complete_serialized(completion)
             .expect("tiger odd completion should process");

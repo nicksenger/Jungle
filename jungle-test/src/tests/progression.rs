@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, Impulse, CreatureActionSet, Executor, Id,
-    Identity, ManualExecutor, Running, Task, Waiting,
+    Action, ActionCompletion, ActionRequest, CreatureActionSet, Executor, Id, Identity, Impulse,
+    ManualExecutor, Running, Task, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;

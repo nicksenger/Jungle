@@ -1,5 +1,7 @@
 use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc};
 
+use async_trait::async_trait;
+use dyn_clone::DynClone;
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use thiserror::Error;
@@ -7,13 +9,76 @@ use tracing::{error, info, info_span};
 use tracing_futures::Instrument as _;
 
 pub mod mock;
+pub mod server;
 pub use mock::MockServer;
+pub use server::Server;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
-pub trait Backend: Send + Sync + 'static {
-    fn handle_request(&self, request: &[u8]) -> Result<Vec<u8>>;
+#[async_trait]
+pub trait Backend: DynClone + Send + Sync + 'static {
+    async fn handle_request(&self, request: &[u8]) -> Result<Vec<u8>>;
+}
+
+dyn_clone::clone_trait_object!(Backend);
+
+#[async_trait]
+pub trait RequestHandler: Send + Sync + 'static {
+    async fn handle_request(
+        &self,
+        backend: Box<dyn Backend>,
+        stream: (quinn::SendStream, quinn::RecvStream),
+    ) -> Result<()>;
+
+    async fn handle_connection(
+        self: Arc<Self>,
+        backend: Box<dyn Backend>,
+        conn: quinn::Incoming,
+    ) -> Result<()> {
+        let connection = conn.await?;
+        let span = info_span!(
+            "connection",
+            remote = %connection.remote_address(),
+            protocol = %connection
+                .handshake_data()
+                .unwrap()
+                .downcast::<quinn::crypto::rustls::HandshakeData>().unwrap()
+                .protocol
+                .map_or_else(|| "<none>".into(), |x| String::from_utf8_lossy(&x).into_owned())
+        );
+        async {
+            info!("established");
+
+            // Each stream initiated by the client constitutes a new request.
+            loop {
+                let stream = connection.accept_bi().await;
+                let stream = match stream {
+                    Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
+                        info!("connection closed");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        return Err(ServerError::Connection(e));
+                    }
+                    Ok(s) => s,
+                };
+                let backend = dyn_clone::clone_box(&*backend);
+                let handler = Arc::clone(&self);
+                tokio::spawn(
+                    async move {
+                        if let Err(e) = handler.handle_request(backend, stream).await {
+                            error!("failed: {reason}", reason = e.to_string());
+                        }
+                    }
+                    .instrument(info_span!("request")),
+                );
+            }
+        }
+        .instrument(span)
+        .await?;
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -25,7 +90,8 @@ pub struct ServerBuilder {
     listen: SocketAddr,
     block: Option<SocketAddr>,
     connection_limit: Option<usize>,
-    backend: Arc<dyn Backend>,
+    backend: Box<dyn Backend>,
+    handler: Arc<dyn RequestHandler>,
 }
 
 impl Default for ServerBuilder {
@@ -40,7 +106,8 @@ impl Default for ServerBuilder {
                 .expect("default listen address must be valid"),
             block: None,
             connection_limit: None,
-            backend: Arc::new(MockServer::default()),
+            backend: Box::new(MockServer::default()),
+            handler: Arc::new(Server),
         }
     }
 }
@@ -89,7 +156,20 @@ impl ServerBuilder {
     where
         B: Backend,
     {
-        self.backend = Arc::new(backend);
+        self.backend = Box::new(backend);
+        self
+    }
+
+    pub fn with_backend(mut self, backend: Box<dyn Backend>) -> Self {
+        self.backend = backend;
+        self
+    }
+
+    pub fn handler<H>(mut self, handler: H) -> Self
+    where
+        H: RequestHandler,
+    {
+        self.handler = Arc::new(handler);
         self
     }
 
@@ -137,8 +217,9 @@ impl ServerBuilder {
                 let _ = conn.retry();
             } else {
                 info!("accepting connection");
-                let backend = self.backend.clone();
-                let fut = handle_connection(backend, conn);
+                let backend = dyn_clone::clone_box(&*self.backend);
+                let handler = Arc::clone(&self.handler);
+                let fut = Arc::clone(&handler).handle_connection(backend, conn);
                 tokio::spawn(async move {
                     if let Err(e) = fut.await {
                         error!("connection failed: {reason}", reason = e.to_string())
@@ -259,68 +340,4 @@ pub fn init_tracing() -> std::result::Result<(), tracing::subscriber::SetGlobalD
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .finish(),
     )
-}
-
-async fn handle_connection(backend: Arc<dyn Backend>, conn: quinn::Incoming) -> Result<()> {
-    let connection = conn.await?;
-    let span = info_span!(
-        "connection",
-        remote = %connection.remote_address(),
-        protocol = %connection
-            .handshake_data()
-            .unwrap()
-            .downcast::<quinn::crypto::rustls::HandshakeData>().unwrap()
-            .protocol
-            .map_or_else(|| "<none>".into(), |x| String::from_utf8_lossy(&x).into_owned())
-    );
-    async {
-        info!("established");
-
-        // Each stream initiated by the client constitutes a new request.
-        loop {
-            let stream = connection.accept_bi().await;
-            let stream = match stream {
-                Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    info!("connection closed");
-                    return Ok(());
-                }
-                Err(e) => {
-                    return Err(ServerError::Connection(e));
-                }
-                Ok(s) => s,
-            };
-            let backend = backend.clone();
-            let fut = handle_request(backend, stream);
-            tokio::spawn(
-                async move {
-                    if let Err(e) = fut.await {
-                        error!("failed: {reason}", reason = e.to_string());
-                    }
-                }
-                .instrument(info_span!("request")),
-            );
-        }
-    }
-    .instrument(span)
-    .await?;
-    Ok(())
-}
-
-async fn handle_request(
-    backend: Arc<dyn Backend>,
-    (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
-) -> Result<()> {
-    let req = recv
-        .read_to_end(64 * 1024)
-        .await
-        .map_err(ServerError::ReadRequest)?;
-    info!(request_len = req.len(), "received request");
-
-    let resp = backend.handle_request(&req)?;
-    send.write_all(&resp)
-        .await
-        .map_err(ServerError::WriteResponse)?;
-    send.finish().map_err(ServerError::FinishResponse)?;
-    info!("complete");
-    Ok(())
 }

@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    ActionCompletion, Impulse, Condition, Conditional, Either, Executor, Identity,
-    ManualExecutor, Running, Task, Waiting,
+    ActionCompletion, Condition, Conditional, Either, Executor, Identity, Impulse, ManualExecutor,
+    Running, Task, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Instinct;

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
 use crate::{Backend, Result, ServerError};
 
 type RequestHandler = Arc<dyn Fn(Vec<u8>) -> Result<Vec<u8>> + Send + Sync + 'static>;
@@ -21,8 +23,9 @@ impl MockServer {
     }
 }
 
+#[async_trait]
 impl Backend for MockServer {
-    fn handle_request(&self, request: &[u8]) -> Result<Vec<u8>> {
+    async fn handle_request(&self, request: &[u8]) -> Result<Vec<u8>> {
         (self.on_request)(request.to_vec())
     }
 }

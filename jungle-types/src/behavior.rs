@@ -184,7 +184,8 @@ where
     <() as LensPath<State, Head>>::View: 'static,
     (): LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>,
 {
-    type View = <() as LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>>::View;
+    type View =
+        <() as LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>>::View;
 
     fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
         let head = <() as LensPath<State, Head>>::view(state);
@@ -267,7 +268,10 @@ where
     fn run((mut state, input): Self::In) -> Self::Out {
         let view = <<Step as Task<T>>::Aspect as Aspect<T::State>>::view(&mut state);
         let action_input = <Step as Task<T>>::prepare(view, input);
-        (state, ActionRequest::<<Step as Task<T>>::Action>::new(action_input))
+        (
+            state,
+            ActionRequest::<<Step as Task<T>>::Action>::new(action_input),
+        )
     }
 }
 

@@ -978,8 +978,10 @@ dependencies = [
 name = "jungle-server"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "clap",
  "directories-next",
+ "dyn-clone",
  "quinn",
  "rcgen",
  "rustls",
