@@ -4,6 +4,7 @@ use jungle_types::{RunnerOut, Work};
 use thiserror::Error;
 use uuid::Uuid;
 
+pub mod models;
 pub mod mock;
 pub mod pg;
 pub mod redb;
