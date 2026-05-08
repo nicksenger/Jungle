@@ -1,5 +1,11 @@
 use uuid::Uuid;
 
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum BackendError {
+    #[error("{0}")]
+    Message(String),
+}
+
 /// Transport messages sent from runners to external clients.
 pub enum RunnerOut {
     ActionInput { data: Vec<u8>, uuid: Uuid },

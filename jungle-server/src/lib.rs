@@ -3,7 +3,7 @@ use std::{fs, io, net::SocketAddr, path::PathBuf, pin::Pin, sync::Arc};
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::{Sink, Stream};
-use jungle_types::{WireIn, WireOut};
+use jungle_types::{BackendError, WireIn, WireOut};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use thiserror::Error;
@@ -20,7 +20,7 @@ const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
 pub type WireTx =
-    Pin<Box<dyn Sink<std::result::Result<WireOut, ServerError>, Error = ServerError> + Send + 'static>>;
+    Pin<Box<dyn Sink<std::result::Result<WireOut, BackendError>, Error = ServerError> + Send + 'static>>;
 pub type WireRx = Pin<Box<dyn Stream<Item = WireIn> + Send + 'static>>;
 
 #[async_trait]
@@ -80,9 +80,9 @@ pub trait Backend: DynClone + Send + Sync + 'static {
 
 fn quinn_send_to_wire_tx(
     send: quinn::SendStream,
-) -> impl Sink<std::result::Result<WireOut, ServerError>, Error = ServerError> {
-    futures::sink::unfold(send, |mut send, message: std::result::Result<WireOut, ServerError>| async move {
-        let message = message?;
+) -> impl Sink<std::result::Result<WireOut, BackendError>, Error = ServerError> {
+    futures::sink::unfold(send, |mut send, message: std::result::Result<WireOut, BackendError>| async move {
+        let message = message.map_err(ServerError::Backend)?;
         let payload = postcard::to_allocvec(&message).map_err(ServerError::EncodeWireOut)?;
         let frame_len =
             u32::try_from(payload.len()).map_err(|_| ServerError::WireFrameTooLarge(payload.len()))?;
@@ -365,7 +365,7 @@ pub enum ServerError {
     #[error("wire frame write failed: {0}")]
     WriteWireFrame(#[source] quinn::WriteError),
     #[error("backend request handling failed: {0}")]
-    Backend(String),
+    Backend(#[source] BackendError),
 }
 
 pub type Result<T> = std::result::Result<T, ServerError>;
