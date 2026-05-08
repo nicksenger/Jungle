@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use tracing::{error, info, info_span};
+use tracing::info;
 
 use crate::{Backend, Result, ServerError};
 
