@@ -19,7 +19,8 @@ pub use server::Server;
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
-pub type WireTx = Pin<Box<dyn Sink<WireOut, Error = ServerError> + Send + 'static>>;
+pub type WireTx =
+    Pin<Box<dyn Sink<std::result::Result<WireOut, ServerError>, Error = ServerError> + Send + 'static>>;
 pub type WireRx = Pin<Box<dyn Stream<Item = WireIn> + Send + 'static>>;
 
 #[async_trait]
@@ -77,8 +78,11 @@ pub trait Backend: DynClone + Send + Sync + 'static {
     }
 }
 
-fn quinn_send_to_wire_tx(send: quinn::SendStream) -> impl Sink<WireOut, Error = ServerError> {
-    futures::sink::unfold(send, |mut send, message: WireOut| async move {
+fn quinn_send_to_wire_tx(
+    send: quinn::SendStream,
+) -> impl Sink<std::result::Result<WireOut, ServerError>, Error = ServerError> {
+    futures::sink::unfold(send, |mut send, message: std::result::Result<WireOut, ServerError>| async move {
+        let message = message?;
         let payload = postcard::to_allocvec(&message).map_err(ServerError::EncodeWireOut)?;
         let frame_len =
             u32::try_from(payload.len()).map_err(|_| ServerError::WireFrameTooLarge(payload.len()))?;

@@ -31,7 +31,7 @@ impl Backend for MockServer {
         } else {
             WireOut::NoWorkAvailable
         };
-        tx.send(response).await?;
+        tx.send(Ok(response)).await?;
         tx.close().await?;
         info!("complete");
         Ok(())
