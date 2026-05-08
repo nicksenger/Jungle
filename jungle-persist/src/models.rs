@@ -1,5 +1,6 @@
 //! Persistence-layer data models.
 
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,9 +25,22 @@ pub struct Event {
     pub data: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkItem {
+    pub id: Uuid,
+    pub flow_id: Uuid,
+    pub kind: WorkItemKind,
+    pub expiry: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventKind {
     ActionInput,
     ActionSuccessOutput,
     ActionFailureOutput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkItemKind {
+    StartFlow,
 }

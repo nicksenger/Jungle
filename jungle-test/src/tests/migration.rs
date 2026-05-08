@@ -13,6 +13,7 @@ const REDB_SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
     TableDefinition::new("jungle_schema_metadata");
 const REDB_FLOWS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("flows");
 const REDB_EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
+const REDB_WORK_ITEMS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 
 #[tokio::test]
 async fn postgres_server_startup_runs_migrations() {
@@ -42,10 +43,11 @@ async fn postgres_server_startup_runs_migrations() {
     let mut last_error = String::new();
     for _ in 0..80 {
         match migration_state(&connection_string).await {
-            Ok((schema_version, flows_exists, events_exists)) => {
+            Ok((schema_version, flows_exists, events_exists, work_items_exists)) => {
                 assert_eq!(schema_version, Some(0));
                 assert!(flows_exists);
                 assert!(events_exists);
+                assert!(work_items_exists);
                 migrated = true;
                 break;
             }
@@ -97,11 +99,13 @@ async fn redb_server_startup_runs_migrations() {
 
     assert!(initialized, "redb file was not created before timeout");
 
-    let (schema_version, flows_exists, events_exists) = redb_migration_state(&db_path)
+    let (schema_version, flows_exists, events_exists, work_items_exists) =
+        redb_migration_state(&db_path)
         .unwrap_or_else(|err| panic!("failed to read redb file state after startup: {err}"));
     assert_eq!(schema_version, Some(0));
     assert!(flows_exists);
     assert!(events_exists);
+    assert!(work_items_exists);
 }
 
 #[tokio::test]
@@ -156,7 +160,7 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
 
 async fn migration_state(
     connection_string: &str,
-) -> Result<(Option<i32>, bool, bool), sqlx::Error> {
+) -> Result<(Option<i32>, bool, bool, bool), sqlx::Error> {
     let pool = PgPool::connect(connection_string).await?;
 
     let schema_version =
@@ -173,12 +177,17 @@ async fn migration_state(
     )
     .fetch_one(&pool)
     .await?;
+    let work_items_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'work_items')",
+    )
+    .fetch_one(&pool)
+    .await?;
 
     pool.close().await;
-    Ok((schema_version, flows_exists, events_exists))
+    Ok((schema_version, flows_exists, events_exists, work_items_exists))
 }
 
-fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool), String> {
+fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool, bool), String> {
     let db = Database::open(db_path).map_err(|err| err.to_string())?;
     let read_txn = db.begin_read().map_err(|err| err.to_string())?;
 
@@ -192,8 +201,9 @@ fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool), Str
 
     let flows_exists = read_txn.open_table(REDB_FLOWS_TABLE).is_ok();
     let events_exists = read_txn.open_table(REDB_EVENTS_TABLE).is_ok();
+    let work_items_exists = read_txn.open_table(REDB_WORK_ITEMS_TABLE).is_ok();
 
-    Ok((schema_version, flows_exists, events_exists))
+    Ok((schema_version, flows_exists, events_exists, work_items_exists))
 }
 
 fn reserve_local_addr() -> SocketAddr {

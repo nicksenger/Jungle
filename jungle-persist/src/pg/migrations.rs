@@ -39,35 +39,51 @@ impl PgStore {
                     "postgres schema version mismatch"
                 );
             }
-        } else {
-            sqlx::query(
-                r#"
-                CREATE TABLE IF NOT EXISTS flows (
-                    id UUID PRIMARY KEY,
-                    ordinal INTEGER NOT NULL,
-                    seed BYTEA NOT NULL
-                )
-                "#,
-            )
-            .execute(&mut *tx)
-            .await
-            .map_err(crate::PersistenceError::PostgresQuery)?;
+        }
 
-            sqlx::query(
-                r#"
-                CREATE TABLE IF NOT EXISTS events (
-                    flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
-                    sequence_id BIGINT NOT NULL,
-                    kind SMALLINT NOT NULL,
-                    data BYTEA NOT NULL,
-                    PRIMARY KEY (flow_id, sequence_id)
-                )
-                "#,
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS flows (
+                id UUID PRIMARY KEY,
+                ordinal INTEGER NOT NULL,
+                seed BYTEA NOT NULL
             )
-            .execute(&mut *tx)
-            .await
-            .map_err(crate::PersistenceError::PostgresQuery)?;
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS events (
+                flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+                sequence_id BIGINT NOT NULL,
+                kind SMALLINT NOT NULL,
+                data BYTEA NOT NULL,
+                PRIMARY KEY (flow_id, sequence_id)
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS work_items (
+                id UUID PRIMARY KEY,
+                flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+                kind SMALLINT NOT NULL,
+                expiry TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        if version_row.is_none() {
             sqlx::query("INSERT INTO jungle_schema_metadata (id, version) VALUES (1, 0)")
                 .execute(&mut *tx)
                 .await
