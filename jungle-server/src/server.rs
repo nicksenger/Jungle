@@ -1,16 +1,110 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
+#[cfg(any(feature = "postgres", feature = "redb"))]
+use jungle_persist::JungleStore;
 use jungle_types::WireOut;
+#[cfg(any(feature = "postgres", feature = "redb"))]
+use std::sync::Arc;
 use tracing::info;
 
 use crate::{JungleServer, Result, WireRx, WireTx};
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Server;
+#[derive(Clone)]
+pub struct Server {
+    #[cfg(any(feature = "postgres", feature = "redb"))]
+    store: Arc<dyn JungleStore>,
+}
+
+impl Server {
+    #[cfg(any(feature = "postgres", feature = "redb"))]
+    pub fn builder() -> ServerBuilder {
+        ServerBuilder::default()
+    }
+
+    #[cfg(any(feature = "postgres", feature = "redb"))]
+    pub fn from_store(store: Arc<dyn JungleStore>) -> Self {
+        Self { store }
+    }
+}
+
+#[cfg(any(feature = "postgres", feature = "redb"))]
+#[derive(Default, Clone)]
+pub struct ServerBuilder {
+    #[cfg(feature = "postgres")]
+    postgres: Option<jungle_persist::pg::PgStoreBuilder>,
+    #[cfg(feature = "redb")]
+    redb: Option<jungle_persist::redb::RedbStoreBuilder>,
+}
+
+#[cfg(any(feature = "postgres", feature = "redb"))]
+impl ServerBuilder {
+    #[cfg(feature = "postgres")]
+    pub fn postgres(mut self, builder: jungle_persist::pg::PgStoreBuilder) -> Self {
+        self.postgres = Some(builder);
+        self
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres_connection_string(self, value: impl Into<String>) -> Self {
+        self.postgres(jungle_persist::pg::PgStore::builder().connection_string(value))
+    }
+
+    #[cfg(feature = "redb")]
+    pub fn redb(mut self, builder: jungle_persist::redb::RedbStoreBuilder) -> Self {
+        self.redb = Some(builder);
+        self
+    }
+
+    #[cfg(feature = "redb")]
+    pub fn redb_path(self, value: impl Into<std::path::PathBuf>) -> Self {
+        self.redb(jungle_persist::redb::RedbStore::builder().path(value))
+    }
+
+    pub async fn build(self) -> jungle_persist::Result<Server> {
+        #[cfg(all(feature = "postgres", feature = "redb"))]
+        {
+            if let Some(builder) = self.postgres {
+                let store = builder.build().await?;
+                return Ok(Server::from_store(Arc::new(store)));
+            }
+
+            if let Some(builder) = self.redb {
+                let store = builder.build()?;
+                return Ok(Server::from_store(Arc::new(store)));
+            }
+
+            info!("both `postgres` and `redb` features are enabled; defaulting to postgres");
+            let store = jungle_persist::pg::PgStore::builder().build().await?;
+            return Ok(Server::from_store(Arc::new(store)));
+        }
+
+        #[cfg(all(feature = "postgres", not(feature = "redb")))]
+        {
+            let store = self
+                .postgres
+                .unwrap_or_else(jungle_persist::pg::PgStore::builder)
+                .build()
+                .await?;
+            return Ok(Server::from_store(Arc::new(store)));
+        }
+
+        #[cfg(all(feature = "redb", not(feature = "postgres")))]
+        {
+            let store = self
+                .redb
+                .unwrap_or_else(jungle_persist::redb::RedbStore::builder)
+                .build()?;
+            return Ok(Server::from_store(Arc::new(store)));
+        }
+    }
+}
 
 #[async_trait]
 impl JungleServer for Server {
     async fn handle_request(&self, (mut tx, mut rx): (WireTx, WireRx)) -> Result<()> {
+        #[cfg(any(feature = "postgres", feature = "redb"))]
+        let _ = &self.store;
+
         let request = rx.next().await;
         info!(has_request = request.is_some(), "received request");
 

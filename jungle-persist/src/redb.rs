@@ -1,30 +1,63 @@
 use async_trait::async_trait;
 use crate::{JungleStore, Result};
 use jungle_types::{RunnerOut, Work};
+use std::path::PathBuf;
+use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct RedbStore;
+#[derive(Debug, Clone)]
+pub struct RedbStore {
+    db: Arc<redb::Database>,
+}
+
+impl RedbStore {
+    pub fn builder() -> RedbStoreBuilder {
+        RedbStoreBuilder::default()
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RedbStoreBuilder {
+    path: Option<PathBuf>,
+}
+
+impl RedbStoreBuilder {
+    pub fn path(mut self, value: impl Into<PathBuf>) -> Self {
+        self.path = Some(value.into());
+        self
+    }
+
+    pub fn build(self) -> Result<RedbStore> {
+        let path = self.path.ok_or(crate::PersistenceError::MissingRedbPath)?;
+        let db = redb::Database::create(path).map_err(crate::PersistenceError::RedbOpen)?;
+        Ok(RedbStore { db: Arc::new(db) })
+    }
+}
 
 #[async_trait]
 impl JungleStore for RedbStore {
     async fn migrate(&self) -> Result<()> {
-        Ok(())
+        let _ = &self.db;
+        todo!()
     }
 
     async fn claim_work(&self) -> Result<Option<Work>> {
-        Ok(None)
+        let _ = &self.db;
+        todo!()
     }
 
     async fn append_history(&self, _history: RunnerOut) -> Result<()> {
-        Ok(())
+        let _ = &self.db;
+        todo!()
     }
 
     async fn poll_timers(&self) -> Result<Option<()>> {
-        Ok(None)
+        let _ = &self.db;
+        todo!()
     }
 
     async fn details(&self, _flow_id: Uuid) -> Result<()> {
-        Ok(())
+        let _ = &self.db;
+        todo!()
     }
 }

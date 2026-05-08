@@ -3,7 +3,13 @@ name = "jungle-server"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+postgres = ["jungle-persist/postgres"]
+redb = ["jungle-persist/redb"]
+
 [dependencies]
+jungle-persist = { path = "../jungle-persist", default-features = false }
 jungle-types = { path = "../jungle-types" }
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }

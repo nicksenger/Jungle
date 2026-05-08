@@ -1,4 +1,4 @@
-use std::{fs, io, net::SocketAddr, path::PathBuf, pin::Pin, sync::Arc};
+use std::{any::TypeId, fs, io, net::SocketAddr, path::PathBuf, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use dyn_clone::DynClone;
@@ -136,7 +136,10 @@ pub struct ServerBuilder {
     listen: SocketAddr,
     block: Option<SocketAddr>,
     connection_limit: Option<usize>,
-    backend: Box<dyn JungleServer>,
+    backend: Option<Box<dyn JungleServer>>,
+    backend_is_mock: bool,
+    #[cfg(any(feature = "postgres", feature = "redb"))]
+    db: server::ServerBuilder,
 }
 
 impl Default for ServerBuilder {
@@ -151,7 +154,10 @@ impl Default for ServerBuilder {
                 .expect("default listen address must be valid"),
             block: None,
             connection_limit: None,
-            backend: Box::new(MockServer::default()),
+            backend: None,
+            backend_is_mock: false,
+            #[cfg(any(feature = "postgres", feature = "redb"))]
+            db: server::Server::builder(),
         }
     }
 }
@@ -200,12 +206,68 @@ impl ServerBuilder {
     where
         S: JungleServer,
     {
-        self.backend = Box::new(backend);
+        self.backend_is_mock = TypeId::of::<S>() == TypeId::of::<MockServer>();
+        self.backend = Some(Box::new(backend));
+        self
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres(mut self, builder: jungle_persist::pg::PgStoreBuilder) -> Self {
+        self.db = self.db.postgres(builder);
+        self
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres_connection_string(mut self, value: impl Into<String>) -> Self {
+        self.db = self.db.postgres_connection_string(value);
+        self
+    }
+
+    #[cfg(feature = "redb")]
+    pub fn redb(mut self, builder: jungle_persist::redb::RedbStoreBuilder) -> Self {
+        self.db = self.db.redb(builder);
+        self
+    }
+
+    #[cfg(feature = "redb")]
+    pub fn redb_path(mut self, value: impl Into<PathBuf>) -> Self {
+        self.db = self.db.redb_path(value);
         self
     }
 
     pub async fn run(self) -> Result<()> {
-        let (certs, key) = match (&self.key, &self.cert) {
+        let Self {
+            keylog,
+            key,
+            cert,
+            stateless_retry,
+            listen,
+            block,
+            connection_limit,
+            backend,
+            backend_is_mock,
+            #[cfg(any(feature = "postgres", feature = "redb"))]
+            db,
+        } = self;
+
+        jungle_persist::ensure_store_backend_available_or_mock(backend_is_mock);
+
+        let backend: Box<dyn JungleServer> = if let Some(backend) = backend {
+            backend
+        } else {
+            #[cfg(any(feature = "postgres", feature = "redb"))]
+            {
+                Box::new(db.build().await.map_err(ServerError::Store)?)
+            }
+            #[cfg(not(any(feature = "postgres", feature = "redb")))]
+            {
+                panic!(
+                    "no persistence backend compiled; enable `postgres` or `redb` feature, or provide MockServer explicitly"
+                );
+            }
+        };
+
+        let (certs, key) = match (&key, &cert) {
             (Some(key_path), Some(cert_path)) => load_user_cert_chain_and_key(key_path, cert_path)?,
             (None, None) => load_or_generate_self_signed_cert()?,
             _ => return Err(ServerError::MissingKeyOrCertPair),
@@ -216,7 +278,7 @@ impl ServerBuilder {
             .with_single_cert(certs, key)
             .map_err(ServerError::RustlsCertConfig)?;
         server_crypto.alpn_protocols = ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
-        if self.keylog {
+        if keylog {
             server_crypto.key_log = Arc::new(rustls::KeyLogFile::new());
         }
 
@@ -226,7 +288,7 @@ impl ServerBuilder {
         let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
         transport_config.max_concurrent_uni_streams(0_u8.into());
 
-        let endpoint = quinn::Endpoint::server(server_config, self.listen)
+        let endpoint = quinn::Endpoint::server(server_config, listen)
             .map_err(ServerError::BindEndpoint)?;
         eprintln!(
             "listening on {}",
@@ -234,21 +296,18 @@ impl ServerBuilder {
         );
 
         while let Some(conn) = endpoint.accept().await {
-            if self
-                .connection_limit
-                .is_some_and(|n| endpoint.open_connections() >= n)
-            {
+            if connection_limit.is_some_and(|n| endpoint.open_connections() >= n) {
                 info!("refusing due to open connection limit");
                 conn.refuse();
-            } else if Some(conn.remote_address()) == self.block {
+            } else if Some(conn.remote_address()) == block {
                 info!("refusing blocked client IP address");
                 conn.refuse();
-            } else if self.stateless_retry && !conn.remote_address_validated() {
+            } else if stateless_retry && !conn.remote_address_validated() {
                 info!("requiring connection to validate its address");
                 let _ = conn.retry();
             } else {
                 info!("accepting connection");
-                let backend = dyn_clone::clone_box(&*self.backend);
+                let backend = dyn_clone::clone_box(&*backend);
                 tokio::spawn(async move {
                     if let Err(e) = backend.handle_connection(conn).await {
                         error!("connection failed: {reason}", reason = e.to_string())
@@ -365,6 +424,9 @@ pub enum ServerError {
     WriteWireFrame(#[source] quinn::WriteError),
     #[error("backend request handling failed: {0}")]
     Backend(#[source] BackendError),
+    #[cfg(any(feature = "postgres", feature = "redb"))]
+    #[error("store initialization failed: {0}")]
+    Store(#[source] jungle_persist::PersistenceError),
 }
 
 pub type Result<T> = std::result::Result<T, ServerError>;

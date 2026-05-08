@@ -26,6 +26,14 @@ struct Opt {
     /// Maximum number of concurrent connections to allow
     #[clap(long = "connection-limit")]
     connection_limit: Option<usize>,
+    /// PostgreSQL connection string
+    #[cfg(feature = "postgres")]
+    #[clap(long = "postgres-connection-string")]
+    postgres_connection_string: Option<String>,
+    /// redb file path
+    #[cfg(feature = "redb")]
+    #[clap(long = "redb-path")]
+    redb_path: Option<PathBuf>,
 }
 
 impl From<Opt> for jungle_server::ServerBuilder {
@@ -46,6 +54,14 @@ impl From<Opt> for jungle_server::ServerBuilder {
         }
         if let Some(connection_limit) = opt.connection_limit {
             builder = builder.connection_limit(connection_limit);
+        }
+        #[cfg(feature = "postgres")]
+        if let Some(connection_string) = opt.postgres_connection_string {
+            builder = builder.postgres_connection_string(connection_string);
+        }
+        #[cfg(feature = "redb")]
+        if let Some(path) = opt.redb_path {
+            builder = builder.redb_path(path);
         }
 
         builder

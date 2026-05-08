@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["redb"]
+default = []
 redb = ["dep:redb"]
 postgres = ["dep:sqlx"]
 
@@ -15,4 +15,4 @@ async-trait = { workspace = true }
 dyn-clone = { workspace = true }
 thiserror = "2"
 redb = { version = "4.1", optional = true }
-sqlx = { version = "0.8", optional = true }
+sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls"] }
