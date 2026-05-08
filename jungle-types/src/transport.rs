@@ -19,10 +19,12 @@ pub enum Work {
 /// Wire-level messages sent from external clients to runners.
 pub enum WireIn {
     PollWork,
+    Event,
 }
 
 /// Wire-level messages sent from runners to external clients.
 pub enum WireOut {
     NoWorkAvailable,
     PendingWork,
+    Ack,
 }
