@@ -15,3 +15,14 @@ pub enum Work {
         seed: Vec<u8>,
     },
 }
+
+/// Wire-level messages sent from external clients to runners.
+pub enum WireIn {
+    PollWork,
+}
+
+/// Wire-level messages sent from runners to external clients.
+pub enum WireOut {
+    NoWorkAvailable,
+    PendingWork,
+}
