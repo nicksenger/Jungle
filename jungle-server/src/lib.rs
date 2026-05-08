@@ -82,7 +82,6 @@ fn quinn_send_to_wire_tx(
     send: quinn::SendStream,
 ) -> impl Sink<std::result::Result<WireOut, BackendError>, Error = ServerError> {
     futures::sink::unfold(send, |mut send, message: std::result::Result<WireOut, BackendError>| async move {
-        let message = message.map_err(ServerError::Backend)?;
         let payload = postcard::to_allocvec(&message).map_err(ServerError::EncodeWireOut)?;
         let frame_len =
             u32::try_from(payload.len()).map_err(|_| ServerError::WireFrameTooLarge(payload.len()))?;

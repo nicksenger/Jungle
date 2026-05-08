@@ -1,6 +1,6 @@
 use crate::{
-    Action, ActionCompletion, Condition, Conditional, Creature, Impulse, LoopCondition, Running,
-    Task, While,
+    Action, ActionCompletion, BackendError, Condition, Conditional, Creature, Impulse,
+    LoopCondition, Running, Task, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -105,6 +105,10 @@ pub enum ExecutorError {
     ClientTransportClosed,
     #[error("client transport acknowledgement dropped")]
     ClientTransportAckDropped,
+    #[error("client transport failed: {0}")]
+    ClientTransport(String),
+    #[error("backend error: {0}")]
+    Backend(#[source] BackendError),
     #[error("not enough completions to advance to end")]
     NotEnoughCompletions,
 }

@@ -1,3 +1,6 @@
+use crate::JungleClient;
+use async_trait::async_trait;
+use jungle_types::{BackendError, ExecutorError, RunnerOut, WireIn, WireOut, Work};
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::fs;
@@ -7,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
+use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 
@@ -18,7 +22,6 @@ pub struct ClientBuilder {
     bind: SocketAddr,
     remote: Option<SocketAddr>,
     server_name: Option<String>,
-    request: Vec<u8>,
 }
 
 impl Default for ClientBuilder {
@@ -30,7 +33,6 @@ impl Default for ClientBuilder {
             bind: SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
             remote: None,
             server_name: None,
-            request: b"jungle-client request\n".to_vec(),
         }
     }
 }
@@ -70,12 +72,7 @@ impl ClientBuilder {
         self
     }
 
-    pub fn request(mut self, request: impl Into<Vec<u8>>) -> Self {
-        self.request = request.into();
-        self
-    }
-
-    pub fn build(self) -> ClientResult<Client> {
+    pub async fn build(self) -> ClientResult<Client> {
         let remote = self.remote.ok_or(ClientError::MissingRemote)?;
         let server_name = self.server_name.ok_or(ClientError::MissingServerName)?;
 
@@ -118,58 +115,148 @@ impl ClientBuilder {
         let mut endpoint = quinn::Endpoint::client(self.bind).map_err(ClientError::BindEndpoint)?;
         endpoint.set_default_client_config(client_config);
 
-        Ok(Client {
-            endpoint,
-            remote,
-            server_name,
-            request: self.request,
-            rebind: self.rebind,
-        })
-    }
-
-    pub async fn run(self) -> ClientResult<Vec<u8>> {
-        self.build()?.run().await
-    }
-}
-
-pub struct Client {
-    endpoint: quinn::Endpoint,
-    remote: SocketAddr,
-    server_name: String,
-    request: Vec<u8>,
-    rebind: bool,
-}
-
-impl Client {
-    pub async fn run(self) -> ClientResult<Vec<u8>> {
-        let connecting = self
-            .endpoint
-            .connect(self.remote, &self.server_name)
+        let connecting = endpoint
+            .connect(remote, &server_name)
             .map_err(ClientError::Connect)?;
         let conn = connecting.await.map_err(ClientError::Connection)?;
-        let (mut send, mut recv) = conn.open_bi().await.map_err(ClientError::OpenStream)?;
 
         if self.rebind {
             let socket =
                 UdpSocket::bind((Ipv6Addr::UNSPECIFIED, 0)).map_err(ClientError::RebindSocket)?;
-            self.endpoint
-                .rebind(socket)
-                .map_err(ClientError::RebindEndpoint)?;
+            endpoint.rebind(socket).map_err(ClientError::RebindEndpoint)?;
         }
 
-        send.write_all(&self.request)
-            .await
-            .map_err(ClientError::WriteRequest)?;
-        send.finish().map_err(ClientError::FinishRequest)?;
+        Ok(Client { endpoint, conn })
+    }
+}
 
-        let response = recv
-            .read_to_end(usize::MAX)
-            .await
-            .map_err(ClientError::ReadResponse)?;
+#[derive(Clone)]
+pub struct Client {
+    endpoint: quinn::Endpoint,
+    conn: quinn::Connection,
+}
 
-        conn.close(0u32.into(), b"done");
-        self.endpoint.wait_idle().await;
-        Ok(response)
+impl Client {
+    pub fn builder() -> ClientBuilder {
+        ClientBuilder::default()
+    }
+
+    async fn send_wire_message(&self, input: WireIn) -> ClientResult<WireOut> {
+        let (mut tx, mut rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
+
+        let payload = postcard::to_allocvec(&input).map_err(ClientError::EncodeWireIn)?;
+        let frame_len =
+            u32::try_from(payload.len()).map_err(|_| ClientError::WireFrameTooLarge(payload.len()))?;
+        tx.write_all(&frame_len.to_be_bytes())
+            .await
+            .map_err(ClientError::WriteWireFrame)?;
+        tx.write_all(&payload)
+            .await
+            .map_err(ClientError::WriteWireFrame)?;
+        tx.finish().map_err(ClientError::FinishWireIn)?;
+
+        let response = rx.read_to_end(usize::MAX).await.map_err(ClientError::ReadWireOut)?;
+        if response.len() < 4 {
+            return Err(ClientError::InvalidWireFrameLength(response.len()));
+        }
+
+        let mut frame_len = [0_u8; 4];
+        frame_len.copy_from_slice(&response[..4]);
+        let expected = u32::from_be_bytes(frame_len) as usize;
+        let payload = &response[4..];
+        if payload.len() != expected {
+            return Err(ClientError::MismatchedWireFrameLength {
+                expected,
+                actual: payload.len(),
+            });
+        }
+
+        let response: Result<WireOut, BackendError> =
+            postcard::from_bytes(payload).map_err(ClientError::DecodeWireOut)?;
+        response.map_err(ClientError::Backend)
+    }
+
+    fn transport_error(err: ClientError) -> ExecutorError {
+        match err {
+            ClientError::Backend(err) => ExecutorError::Backend(err),
+            other => ExecutorError::ClientTransport(other.to_string()),
+        }
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.conn.close(0u32.into(), b"done");
+        self.endpoint.close(0u32.into(), b"done");
+    }
+}
+
+#[async_trait]
+impl JungleClient for Client {
+    async fn poll_work(&self) -> Result<Option<Work>, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::PollWork)
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::NoWorkAvailable => Ok(None),
+            WireOut::PendingWork(work) => Ok(Some(work)),
+            WireOut::Ack => Err(ExecutorError::ClientTransport(
+                "unexpected Ack response for poll_work".to_string(),
+            )),
+        }
+    }
+
+    async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionInput {
+                data: input,
+                uuid: id,
+            }))
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_input".to_string(),
+            )),
+        }
+    }
+
+    async fn action_success_output(&self, id: Uuid, output: Vec<u8>) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
+                data: output,
+                uuid: id,
+            }))
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_success_output".to_string(),
+            )),
+        }
+    }
+
+    async fn action_failure_output(&self, id: Uuid, err: Vec<u8>) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
+                data: err,
+                uuid: id,
+            }))
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_failure_output".to_string(),
+            )),
+        }
     }
 }
 
@@ -199,12 +286,24 @@ pub enum ClientError {
     RebindSocket(#[source] io::Error),
     #[error("failed to rebind endpoint: {0}")]
     RebindEndpoint(#[source] io::Error),
-    #[error("failed to send request: {0}")]
-    WriteRequest(#[source] quinn::WriteError),
-    #[error("failed to finish request stream: {0}")]
-    FinishRequest(#[source] quinn::ClosedStream),
-    #[error("failed to read response: {0}")]
-    ReadResponse(#[source] quinn::ReadToEndError),
+    #[error("failed to encode wire input: {0}")]
+    EncodeWireIn(#[source] postcard::Error),
+    #[error("wire frame payload exceeds u32 length: {0}")]
+    WireFrameTooLarge(usize),
+    #[error("failed to write wire frame: {0}")]
+    WriteWireFrame(#[source] quinn::WriteError),
+    #[error("failed to finish wire input stream: {0}")]
+    FinishWireIn(#[source] quinn::ClosedStream),
+    #[error("failed to read wire output: {0}")]
+    ReadWireOut(#[source] quinn::ReadToEndError),
+    #[error("invalid wire frame length buffer: {0}")]
+    InvalidWireFrameLength(usize),
+    #[error("mismatched wire frame payload length, expected {expected} bytes but received {actual}")]
+    MismatchedWireFrameLength { expected: usize, actual: usize },
+    #[error("failed to decode wire output: {0}")]
+    DecodeWireOut(#[source] postcard::Error),
+    #[error("backend error: {0}")]
+    Backend(#[source] BackendError),
 }
 
 pub type ClientResult<T> = std::result::Result<T, ClientError>;
