@@ -7,12 +7,14 @@ use uuid::Uuid;
 use crate::{JungleStore, Result};
 
 type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<Work>> + Send + Sync + 'static>;
+type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
 type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'static>;
 type DetailsHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct MockStore {
+    on_create_flow: CreateFlowHandler,
     on_claim_work: ClaimWorkHandler,
     on_append_history: AppendHistoryHandler,
     on_poll_timers: PollTimersHandler,
@@ -37,6 +39,10 @@ impl JungleStore for MockStore {
         Ok(())
     }
 
+    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+        (self.on_create_flow)(ordinal, seed)
+    }
+
     async fn claim_work(&self) -> Result<Option<Work>> {
         (self.on_claim_work)()
     }
@@ -56,6 +62,7 @@ impl JungleStore for MockStore {
 
 #[derive(Default)]
 pub struct MockStoreBuilder {
+    on_create_flow: Option<CreateFlowHandler>,
     on_claim_work: Option<ClaimWorkHandler>,
     on_append_history: Option<AppendHistoryHandler>,
     on_poll_timers: Option<PollTimersHandler>,
@@ -63,6 +70,14 @@ pub struct MockStoreBuilder {
 }
 
 impl MockStoreBuilder {
+    pub fn on_create_flow<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static,
+    {
+        self.on_create_flow = Some(Arc::new(f));
+        self
+    }
+
     pub fn on_claim_work<F>(mut self, f: F) -> Self
     where
         F: Fn() -> Result<Option<Work>> + Send + Sync + 'static,
@@ -96,12 +111,16 @@ impl MockStoreBuilder {
     }
 
     pub fn build(self) -> MockStore {
+        let default_create_flow: CreateFlowHandler = Arc::new(|_, _| Ok(Uuid::new_v4()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));
         let default_append_history: AppendHistoryHandler = Arc::new(|_| Ok(()));
         let default_poll_timers: PollTimersHandler = Arc::new(|| Ok(None));
         let default_details: DetailsHandler = Arc::new(|_| Ok(()));
 
         MockStore {
+            on_create_flow: self
+                .on_create_flow
+                .unwrap_or_else(|| default_create_flow.clone()),
             on_claim_work: self
                 .on_claim_work
                 .unwrap_or_else(|| default_claim_work.clone()),

@@ -14,6 +14,7 @@ pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
+    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError>;
     async fn poll_work(&self) -> Result<Option<Work>, ExecutorError>;
     async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError>;
     async fn action_success_output(&self, id: Uuid, output: Vec<u8>) -> Result<(), ExecutorError>;

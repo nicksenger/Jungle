@@ -27,6 +27,7 @@ pub enum Work {
 /// Wire-level messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireIn {
+    CreateFlow { ordinal: u32, seed: Vec<u8> },
     PollWork,
     HistoryEvent(RunnerOut),
 }
@@ -34,6 +35,7 @@ pub enum WireIn {
 /// Wire-level messages sent from runners to external clients.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireOut {
+    FlowCreated(Uuid),
     NoWorkAvailable,
     PendingWork(Work),
     Ack,

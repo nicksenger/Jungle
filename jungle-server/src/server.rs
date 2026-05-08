@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use jungle_persist::JungleStore;
-use jungle_types::WireOut;
+use jungle_types::{BackendError, WireIn, WireOut};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::sync::Arc;
 use tracing::info;
@@ -107,16 +107,56 @@ impl ServerBuilder {
 #[async_trait]
 impl JungleServer for Server {
     async fn handle_request(&self, (mut tx, mut rx): (WireTx, WireRx)) -> Result<()> {
-        #[cfg(any(feature = "postgres", feature = "redb"))]
-        let _ = &self.store;
-
         let request = rx.next().await;
         info!(has_request = request.is_some(), "received request");
 
-        let response = if request.is_some() {
-            WireOut::Ack
-        } else {
-            WireOut::NoWorkAvailable
+        let response = match request {
+            Some(WireIn::CreateFlow { ordinal, seed }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let flow_id = self.store.create_flow(ordinal, seed).await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
+                    WireOut::FlowCreated(flow_id)
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (ordinal, seed);
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "create_flow is unavailable without a persistence backend".to_string(),
+                    )));
+                }
+            }
+            Some(WireIn::PollWork) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    match self.store.claim_work().await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })? {
+                        Some(work) => WireOut::PendingWork(work),
+                        None => WireOut::NoWorkAvailable,
+                    }
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    WireOut::NoWorkAvailable
+                }
+            }
+            Some(WireIn::HistoryEvent(history)) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    self.store.append_history(history).await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
+                    WireOut::Ack
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = history;
+                    WireOut::Ack
+                }
+            }
+            None => WireOut::NoWorkAvailable,
         };
         tx.send(Ok(response)).await?;
         tx.close().await?;

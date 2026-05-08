@@ -59,6 +59,61 @@ impl JungleStore for RedbStore {
         }
     }
 
+    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+        let flow_id = Uuid::new_v4();
+        let work_item_id = Uuid::new_v4();
+        let expiry = Utc::now();
+
+        let write_tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("redb create_flow begin failed: {err}"))
+        })?;
+
+        {
+            let mut flows = write_tx.open_table(FLOWS_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb create_flow open flows table failed: {err}"
+                ))
+            })?;
+            let flow_value = encode_flow(ordinal, &seed);
+            flows
+                .insert(&flow_id.as_bytes()[..], flow_value.as_slice())
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb create_flow insert flow failed: {err}"
+                    ))
+                })?;
+        }
+
+        {
+            let mut work_items = write_tx.open_table(WORK_ITEMS_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb create_flow open work_items table failed: {err}"
+                ))
+            })?;
+
+            let work_item_value = encode_work_item(
+                flow_id,
+                WorkItemKind::StartFlow,
+                WorkItemStatus::Available,
+                expiry,
+            );
+
+            work_items
+                .insert(&work_item_id.as_bytes()[..], work_item_value.as_slice())
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb create_flow insert work item failed: {err}"
+                    ))
+                })?;
+        }
+
+        write_tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!("redb create_flow commit failed: {err}"))
+        })?;
+
+        Ok(flow_id)
+    }
+
     async fn claim_work(&self) -> Result<Option<Work>> {
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
@@ -96,7 +151,8 @@ impl JungleStore for RedbStore {
                 let replace = selected
                     .as_ref()
                     .map(|(selected_id, _, _, selected_expiry)| {
-                        expiry < *selected_expiry || (expiry == *selected_expiry && id < *selected_id)
+                        expiry < *selected_expiry
+                            || (expiry == *selected_expiry && id < *selected_id)
                     })
                     .unwrap_or(true);
 
@@ -105,7 +161,8 @@ impl JungleStore for RedbStore {
                 }
             }
 
-            if let Some((selected_id, selected_flow_id, selected_kind, selected_expiry)) = selected {
+            if let Some((selected_id, selected_flow_id, selected_kind, selected_expiry)) = selected
+            {
                 let claimed = encode_work_item(
                     selected_flow_id,
                     selected_kind,
@@ -204,7 +261,8 @@ impl JungleStore for RedbStore {
                 let (entry_flow_id, sequence_id) =
                     decode_event_key(key.value(), "redb append_history decode event key")?;
                 if entry_flow_id == flow_id {
-                    max_sequence = Some(max_sequence.map_or(sequence_id, |max| max.max(sequence_id)));
+                    max_sequence =
+                        Some(max_sequence.map_or(sequence_id, |max| max.max(sequence_id)));
                 }
             }
 
@@ -334,6 +392,13 @@ fn decode_flow(raw: &[u8], context: &str) -> Result<FlowRow> {
     let ordinal = u32::from_be_bytes(ordinal_bytes);
     let seed = raw[4..].to_vec();
     Ok(FlowRow { ordinal, seed })
+}
+
+fn encode_flow(ordinal: u32, seed: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(4 + seed.len());
+    out.extend_from_slice(&ordinal.to_be_bytes());
+    out.extend_from_slice(seed);
+    out
 }
 
 fn encode_event_key(flow_id: Uuid, sequence_id: u64) -> [u8; 24] {

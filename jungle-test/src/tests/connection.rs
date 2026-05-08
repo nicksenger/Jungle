@@ -37,13 +37,28 @@ async fn client_exchanges_messages_with_mock_server() {
                         let idx = request_count.fetch_add(1, Ordering::SeqCst);
                         match idx {
                             0 => match msg {
-                                WireIn::PollWork => Ok(WireOut::PendingWork(expected_work)),
+                                WireIn::CreateFlow { ordinal, seed } => {
+                                    if ordinal == 7 && seed == vec![1, 2, 3] {
+                                        Ok(WireOut::FlowCreated(flow_id))
+                                    } else {
+                                        Err(BackendError::Message(
+                                            "unexpected create_flow payload".to_string(),
+                                        ))
+                                    }
+                                }
                                 other => Err(BackendError::Message(format!(
-                                    "expected poll_work first, got {:?}",
+                                    "expected create_flow first, got {:?}",
                                     other
                                 ))),
                             },
-                            1 | 2 | 3 => match msg {
+                            1 => match msg {
+                                WireIn::PollWork => Ok(WireOut::PendingWork(expected_work)),
+                                other => Err(BackendError::Message(format!(
+                                    "expected poll_work second, got {:?}",
+                                    other
+                                ))),
+                            },
+                            2 | 3 | 4 => match msg {
                                 WireIn::HistoryEvent(_) => Ok(WireOut::Ack),
                                 other => Err(BackendError::Message(format!(
                                     "expected history event, got {:?}",
@@ -73,6 +88,12 @@ async fn client_exchanges_messages_with_mock_server() {
 
     let client = connect_client_with_retry(listen_addr).await;
 
+    let created_flow = client
+        .create_flow(7, vec![1, 2, 3])
+        .await
+        .expect("create_flow should succeed");
+    assert_eq!(created_flow, flow_id);
+
     let work = client.poll_work().await.expect("poll_work should succeed");
     match work {
         Some(Work::StartFlow {
@@ -101,25 +122,32 @@ async fn client_exchanges_messages_with_mock_server() {
         .expect("action_failure_output should ack");
 
     let requests = captured_requests.lock().unwrap().clone();
-    assert_eq!(requests.len(), 4);
+    assert_eq!(requests.len(), 5);
 
-    assert!(matches!(requests[0], WireIn::PollWork));
     assert!(matches!(
-        requests[1],
+        requests[0],
+        WireIn::CreateFlow {
+            ordinal,
+            ref seed,
+        } if ordinal == 7 && seed == &vec![1, 2, 3]
+    ));
+    assert!(matches!(requests[1], WireIn::PollWork));
+    assert!(matches!(
+        requests[2],
         WireIn::HistoryEvent(RunnerOut::ActionInput {
             uuid,
             ref data,
         }) if uuid == action_id && data == &vec![4, 5]
     ));
     assert!(matches!(
-        requests[2],
+        requests[3],
         WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
             uuid,
             ref data,
         }) if uuid == action_id && data == &vec![6]
     ));
     assert!(matches!(
-        requests[3],
+        requests[4],
         WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
             uuid,
             ref data,

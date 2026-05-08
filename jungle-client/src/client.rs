@@ -198,6 +198,22 @@ impl Drop for Client {
 
 #[async_trait]
 impl JungleClient for Client {
+    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::CreateFlow { ordinal, seed })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::FlowCreated(flow_id) => Ok(flow_id),
+            WireOut::NoWorkAvailable | WireOut::PendingWork(_) | WireOut::Ack => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-flow-created response for create_flow".to_string(),
+                ))
+            }
+        }
+    }
+
     async fn poll_work(&self) -> Result<Option<Work>, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::PollWork)
@@ -207,8 +223,8 @@ impl JungleClient for Client {
         match response {
             WireOut::NoWorkAvailable => Ok(None),
             WireOut::PendingWork(work) => Ok(Some(work)),
-            WireOut::Ack => Err(ExecutorError::ClientTransport(
-                "unexpected Ack response for poll_work".to_string(),
+            WireOut::FlowCreated(_) | WireOut::Ack => Err(ExecutorError::ClientTransport(
+                "unexpected response for poll_work".to_string(),
             )),
         }
     }
@@ -224,7 +240,7 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
+            WireOut::FlowCreated(_) | WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
                 Err(ExecutorError::ClientTransport(
                     "unexpected non-ack response for action_input".to_string(),
                 ))
@@ -243,7 +259,7 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
+            WireOut::FlowCreated(_) | WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
                 Err(ExecutorError::ClientTransport(
                     "unexpected non-ack response for action_success_output".to_string(),
                 ))
@@ -262,7 +278,7 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
+            WireOut::FlowCreated(_) | WireOut::NoWorkAvailable | WireOut::PendingWork(_) => {
                 Err(ExecutorError::ClientTransport(
                     "unexpected non-ack response for action_failure_output".to_string(),
                 ))

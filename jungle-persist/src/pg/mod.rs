@@ -65,6 +65,55 @@ impl JungleStore for PgStore {
         }
     }
 
+    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+        let flow_id = Uuid::new_v4();
+        let work_item_id = Uuid::new_v4();
+        let ordinal = i32::try_from(ordinal).map_err(|_| {
+            crate::PersistenceError::Message(format!(
+                "flow ordinal exceeds i32 range for postgres: {ordinal}"
+            ))
+        })?;
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO flows (id, ordinal, seed)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(flow_id)
+        .bind(ordinal)
+        .bind(seed)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO work_items (id, flow_id, kind, status, expiry)
+            VALUES ($1, $2, $3, $4, NOW())
+            "#,
+        )
+        .bind(work_item_id)
+        .bind(flow_id)
+        .bind(0_i16)
+        .bind(0_i16)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        tx.commit()
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(flow_id)
+    }
+
     async fn claim_work(&self) -> Result<Option<Work>> {
         #[derive(Debug)]
         struct ClaimedWorkRow {

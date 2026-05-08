@@ -39,6 +39,7 @@ pub enum PersistenceError {
 #[async_trait]
 pub trait JungleStore: DynClone + Send + Sync {
     async fn migrate(&self) -> Result<()>;
+    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid>;
     async fn claim_work(&self) -> Result<Option<Work>>;
     async fn append_history(&self, history: RunnerOut) -> Result<()>;
     async fn poll_timers(&self) -> Result<Option<()>>;
