@@ -18,18 +18,33 @@ const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
 #[async_trait]
 pub trait Backend: DynClone + Send + Sync + 'static {
-    async fn handle_request(&self, request: &[u8]) -> Result<Vec<u8>>;
-}
+    async fn handle_backend_request(&self, request: &[u8]) -> Result<Vec<u8>> {
+        let _ = request;
+        Err(ServerError::Backend(
+            "backend request handling is not implemented".to_owned(),
+        ))
+    }
 
-dyn_clone::clone_trait_object!(Backend);
-
-#[async_trait]
-pub trait RequestHandler: Send + Sync + 'static {
     async fn handle_request(
         &self,
         backend: Box<dyn Backend>,
         stream: (quinn::SendStream, quinn::RecvStream),
-    ) -> Result<()>;
+    ) -> Result<()> {
+        let (mut send, mut recv) = stream;
+        let req = recv
+            .read_to_end(64 * 1024)
+            .await
+            .map_err(ServerError::ReadRequest)?;
+        info!(request_len = req.len(), "received request");
+
+        let resp = backend.handle_backend_request(&req).await?;
+        send.write_all(&resp)
+            .await
+            .map_err(ServerError::WriteResponse)?;
+        send.finish().map_err(ServerError::FinishResponse)?;
+        info!("complete");
+        Ok(())
+    }
 
     async fn handle_connection(
         self: Arc<Self>,
@@ -81,6 +96,8 @@ pub trait RequestHandler: Send + Sync + 'static {
     }
 }
 
+dyn_clone::clone_trait_object!(Backend);
+
 #[derive(Clone)]
 pub struct ServerBuilder {
     keylog: bool,
@@ -91,7 +108,7 @@ pub struct ServerBuilder {
     block: Option<SocketAddr>,
     connection_limit: Option<usize>,
     backend: Box<dyn Backend>,
-    handler: Arc<dyn RequestHandler>,
+    server: Arc<dyn Backend>,
 }
 
 impl Default for ServerBuilder {
@@ -107,7 +124,7 @@ impl Default for ServerBuilder {
             block: None,
             connection_limit: None,
             backend: Box::new(MockServer::default()),
-            handler: Arc::new(Server),
+            server: Arc::new(Server),
         }
     }
 }
@@ -165,12 +182,19 @@ impl ServerBuilder {
         self
     }
 
-    pub fn handler<H>(mut self, handler: H) -> Self
+    pub fn server<S>(mut self, server: S) -> Self
     where
-        H: RequestHandler,
+        S: Backend,
     {
-        self.handler = Arc::new(handler);
+        self.server = Arc::new(server);
         self
+    }
+
+    pub fn handler<S>(self, server: S) -> Self
+    where
+        S: Backend,
+    {
+        self.server(server)
     }
 
     pub async fn run(self) -> Result<()> {
@@ -218,8 +242,8 @@ impl ServerBuilder {
             } else {
                 info!("accepting connection");
                 let backend = dyn_clone::clone_box(&*self.backend);
-                let handler = Arc::clone(&self.handler);
-                let fut = Arc::clone(&handler).handle_connection(backend, conn);
+                let server = Arc::clone(&self.server);
+                let fut = Arc::clone(&server).handle_connection(backend, conn);
                 tokio::spawn(async move {
                     if let Err(e) = fut.await {
                         error!("connection failed: {reason}", reason = e.to_string())

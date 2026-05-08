@@ -4,11 +4,11 @@ use async_trait::async_trait;
 
 use crate::{Backend, Result, ServerError};
 
-type RequestHandler = Arc<dyn Fn(Vec<u8>) -> Result<Vec<u8>> + Send + Sync + 'static>;
+type RequestCallback = Arc<dyn Fn(Vec<u8>) -> Result<Vec<u8>> + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct MockServer {
-    on_request: RequestHandler,
+    on_request: RequestCallback,
 }
 
 impl Default for MockServer {
@@ -25,14 +25,14 @@ impl MockServer {
 
 #[async_trait]
 impl Backend for MockServer {
-    async fn handle_request(&self, request: &[u8]) -> Result<Vec<u8>> {
+    async fn handle_backend_request(&self, request: &[u8]) -> Result<Vec<u8>> {
         (self.on_request)(request.to_vec())
     }
 }
 
 #[derive(Default)]
 pub struct MockServerBuilder {
-    on_request: Option<RequestHandler>,
+    on_request: Option<RequestCallback>,
 }
 
 impl MockServerBuilder {
@@ -45,7 +45,7 @@ impl MockServerBuilder {
     }
 
     pub fn build(self) -> MockServer {
-        let default_handler: RequestHandler =
+        let default_handler: RequestCallback =
             Arc::new(|_| Ok(b"jungle-server stub response\n".to_vec()));
         MockServer {
             on_request: self.on_request.unwrap_or(default_handler),
