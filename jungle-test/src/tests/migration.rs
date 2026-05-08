@@ -1,9 +1,16 @@
 use jungle_sdk::server::ServerBuilder;
+use redb::{Database, ReadableDatabase, TableDefinition};
 use sqlx::PgPool;
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+use std::path::Path;
 use std::time::Duration;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
+
+const REDB_SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
+    TableDefinition::new("jungle_schema_metadata");
+const REDB_FLOWS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("flows");
+const REDB_EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 
 #[tokio::test]
 async fn postgres_server_startup_runs_migrations() {
@@ -56,6 +63,45 @@ async fn postgres_server_startup_runs_migrations() {
     );
 }
 
+#[tokio::test]
+async fn redb_server_startup_runs_migrations() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+
+    let listen_addr = reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let mut initialized = false;
+    for _ in 0..80 {
+        if db_path.exists() {
+            initialized = true;
+            break;
+        }
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    server_task.abort();
+    let _ = server_task.await;
+
+    assert!(initialized, "redb file was not created before timeout");
+
+    let (schema_version, flows_exists, events_exists) = redb_migration_state(&db_path)
+        .unwrap_or_else(|err| panic!("failed to read redb file state after startup: {err}"));
+    assert_eq!(schema_version, Some(0));
+    assert!(flows_exists);
+    assert!(events_exists);
+}
+
 async fn migration_state(
     connection_string: &str,
 ) -> Result<(Option<i32>, bool, bool), sqlx::Error> {
@@ -77,6 +123,24 @@ async fn migration_state(
     .await?;
 
     pool.close().await;
+    Ok((schema_version, flows_exists, events_exists))
+}
+
+fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool), String> {
+    let db = Database::open(db_path).map_err(|err| err.to_string())?;
+    let read_txn = db.begin_read().map_err(|err| err.to_string())?;
+
+    let metadata = read_txn
+        .open_table(REDB_SCHEMA_METADATA_TABLE)
+        .map_err(|err| err.to_string())?;
+    let schema_version = metadata
+        .get(1)
+        .map_err(|err| err.to_string())?
+        .map(|v| v.value());
+
+    let flows_exists = read_txn.open_table(REDB_FLOWS_TABLE).is_ok();
+    let events_exists = read_txn.open_table(REDB_EVENTS_TABLE).is_ok();
+
     Ok((schema_version, flows_exists, events_exists))
 }
 

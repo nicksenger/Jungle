@@ -1,6 +1,7 @@
 pub mod migrations;
 
 use async_trait::async_trait;
+use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use jungle_types::{RunnerOut, Work};
 use std::path::PathBuf;
@@ -39,8 +40,9 @@ impl RedbStoreBuilder {
 #[async_trait]
 impl JungleStore for RedbStore {
     async fn migrate(&self) -> Result<()> {
-        let _ = &self.db;
-        todo!()
+        match SCHEMA_VERSION {
+            SchemaVersion::V0 => self.migrate_v0().await,
+        }
     }
 
     async fn claim_work(&self) -> Result<Option<Work>> {

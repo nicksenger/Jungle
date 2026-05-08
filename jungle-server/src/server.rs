@@ -71,6 +71,7 @@ impl ServerBuilder {
 
             if let Some(builder) = self.redb {
                 let store = builder.build()?;
+                store.migrate().await?;
                 return Ok(Server::from_store(Arc::new(store)));
             }
 
@@ -97,6 +98,7 @@ impl ServerBuilder {
                 .redb
                 .unwrap_or_else(jungle_persist::redb::RedbStore::builder)
                 .build()?;
+            store.migrate().await?;
             return Ok(Server::from_store(Arc::new(store)));
         }
     }

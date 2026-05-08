@@ -12,6 +12,8 @@ futures = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 postcard = { workspace = true, features = ["alloc"] }
+redb = "4.1"
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
+tempfile = "3"
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }
