@@ -1,3 +1,5 @@
+pub mod migrations;
+
 use async_trait::async_trait;
 use crate::{JungleStore, Result};
 use jungle_types::{RunnerOut, Work};
