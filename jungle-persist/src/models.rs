@@ -2,6 +2,11 @@
 
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DbVersion {
+    V0,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Flow {
     pub id: Uuid,
