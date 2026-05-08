@@ -17,12 +17,14 @@ pub enum Work {
 }
 
 /// Wire-level messages sent from external clients to runners.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireIn {
     PollWork,
     Event,
 }
 
 /// Wire-level messages sent from runners to external clients.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireOut {
     NoWorkAvailable,
     PendingWork,

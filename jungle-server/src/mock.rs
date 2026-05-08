@@ -1,7 +1,9 @@
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
+use jungle_types::WireOut;
 use tracing::info;
 
-use crate::{Backend, Result, ServerError};
+use crate::{Backend, Result, WireRx, WireTx};
 
 #[derive(Clone)]
 pub struct MockServer {}
@@ -20,21 +22,17 @@ impl MockServer {
 
 #[async_trait]
 impl Backend for MockServer {
-    async fn handle_request(
-        &self,
-        (send, recv): (quinn::SendStream, quinn::RecvStream),
-    ) -> Result<()> {
-        let (mut send, mut recv) = (send, recv);
-        let req = recv
-            .read_to_end(64 * 1024)
-            .await
-            .map_err(ServerError::ReadRequest)?;
-        info!(request_len = req.len(), "received request");
+    async fn handle_request(&self, (mut tx, mut rx): (WireTx, WireRx)) -> Result<()> {
+        let request = rx.next().await;
+        info!(has_request = request.is_some(), "received request");
 
-        send.write_all(&[])
-            .await
-            .map_err(ServerError::WriteResponse)?;
-        send.finish().map_err(ServerError::FinishResponse)?;
+        let response = if request.is_some() {
+            WireOut::Ack
+        } else {
+            WireOut::NoWorkAvailable
+        };
+        tx.send(response).await?;
+        tx.close().await?;
         info!("complete");
         Ok(())
     }

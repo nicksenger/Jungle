@@ -1,10 +1,13 @@
-use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fs, io, net::SocketAddr, path::PathBuf, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use dyn_clone::DynClone;
+use futures::{Sink, Stream};
+use jungle_types::{WireIn, WireOut};
 use quinn::crypto::rustls::QuicServerConfig;
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use thiserror::Error;
+use tokio::io::AsyncReadExt;
 use tracing::{error, info, info_span};
 use tracing_futures::Instrument as _;
 
@@ -16,9 +19,12 @@ pub use server::Server;
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 const DEFAULT_LISTEN_ADDR: &str = "[::1]:4433";
 
+pub type WireTx = Pin<Box<dyn Sink<WireOut, Error = ServerError> + Send + 'static>>;
+pub type WireRx = Pin<Box<dyn Stream<Item = WireIn> + Send + 'static>>;
+
 #[async_trait]
 pub trait Backend: DynClone + Send + Sync + 'static {
-    async fn handle_request(&self, stream: (quinn::SendStream, quinn::RecvStream)) -> Result<()>;
+    async fn handle_request(&self, stream: (WireTx, WireRx)) -> Result<()>;
 
     async fn handle_connection(&self, conn: quinn::Incoming) -> Result<()> {
         let connection = conn.await?;
@@ -51,10 +57,13 @@ pub trait Backend: DynClone + Send + Sync + 'static {
                     Ok(s) => s,
                 };
 
+                let (send, recv) = stream;
+                let tx: WireTx = Box::pin(quinn_send_to_wire_tx(send));
+                let rx: WireRx = Box::pin(quinn_recv_to_wire_rx(recv));
                 let b = dyn_clone::clone_box(&*backend);
                 tokio::spawn(
                     async move {
-                        if let Err(e) = b.handle_request(stream).await {
+                        if let Err(e) = b.handle_request((tx, rx)).await {
                             error!("failed: {reason}", reason = e.to_string());
                         }
                     }
@@ -66,6 +75,51 @@ pub trait Backend: DynClone + Send + Sync + 'static {
         .await?;
         Ok(())
     }
+}
+
+fn quinn_send_to_wire_tx(send: quinn::SendStream) -> impl Sink<WireOut, Error = ServerError> {
+    futures::sink::unfold(send, |mut send, message: WireOut| async move {
+        let payload = postcard::to_allocvec(&message).map_err(ServerError::EncodeWireOut)?;
+        let frame_len =
+            u32::try_from(payload.len()).map_err(|_| ServerError::WireFrameTooLarge(payload.len()))?;
+
+        send.write_all(&frame_len.to_be_bytes())
+            .await
+            .map_err(ServerError::WriteWireFrame)?;
+        send.write_all(&payload)
+            .await
+            .map_err(ServerError::WriteWireFrame)?;
+        Ok(send)
+    })
+}
+
+fn quinn_recv_to_wire_rx(recv: quinn::RecvStream) -> impl Stream<Item = WireIn> {
+    futures::stream::unfold(recv, |mut recv| async move {
+        let frame_len = match recv.read_u32().await {
+            Ok(len) => len,
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return None,
+            Err(e) => {
+                error!("failed to read wire frame length: {reason}", reason = e.to_string());
+                return None;
+            }
+        };
+
+        let mut payload = vec![0_u8; frame_len as usize];
+        if let Err(e) = recv.read_exact(&mut payload).await {
+            error!("failed to read wire frame payload: {reason}", reason = e.to_string());
+            return None;
+        }
+
+        let message = match postcard::from_bytes(&payload) {
+            Ok(message) => message,
+            Err(e) => {
+                error!("failed to decode wire input message: {reason}", reason = e.to_string());
+                return None;
+            }
+        };
+
+        Some((message, recv))
+    })
 }
 
 dyn_clone::clone_trait_object!(Backend);
@@ -300,6 +354,12 @@ pub enum ServerError {
     WriteResponse(#[source] quinn::WriteError),
     #[error("stream finish failed: {0}")]
     FinishResponse(#[source] quinn::ClosedStream),
+    #[error("wire output encoding failed: {0}")]
+    EncodeWireOut(#[source] postcard::Error),
+    #[error("wire frame payload exceeds u32 length: {0}")]
+    WireFrameTooLarge(usize),
+    #[error("wire frame write failed: {0}")]
+    WriteWireFrame(#[source] quinn::WriteError),
     #[error("backend request handling failed: {0}")]
     Backend(String),
 }
