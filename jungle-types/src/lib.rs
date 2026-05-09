@@ -140,6 +140,96 @@ pub trait FlowActions {
     type List;
 }
 
+/// Leaf-level hook used by [`TraverseFlow`] on `Impulse` nodes.
+pub trait TraverseImpulse<Step, Input> {
+    type Output;
+    fn traverse(input: Input) -> Self::Output;
+}
+
+/// Leaf-level hook used by [`ReplaceFlow`] on `Impulse` nodes.
+pub trait ReplaceImpulse<Step, Input> {
+    type Output;
+    fn replace(input: Input) -> Self::Output;
+}
+
+/// Traverses a flow structure, threading an accumulator through its nodes.
+#[inception(property = JungleTraverseFlow, signature(input = Input, output = Output))]
+pub trait TraverseFlow<Input> {
+    type Output;
+
+    fn traverse(input: Input) -> Self::Output;
+
+    fn nothing(input: Input) -> Input {
+        input
+    }
+
+    fn merge<H, R>(
+        _l: H,
+        _r: R,
+        input: Input,
+    ) -> <R as TraverseFlow<<H as TraverseFlow<Input>>::Output>>::Output
+    where
+        H: TraverseFlow<Input>,
+        R: TraverseFlow<<H as TraverseFlow<Input>>::Output>,
+    {
+        let _ = (_l, _r);
+        let input = <H as TraverseFlow<_>>::traverse(input);
+        <R as TraverseFlow<_>>::traverse(input)
+    }
+
+    fn merge_variant_field<H, R>(_l: H, _r: R, input: Input) -> Input {
+        let _ = (_l, _r);
+        let _ = core::marker::PhantomData::<(H, R)>;
+        input
+    }
+
+    fn join<F>(_fields: F, input: Input) -> <F as TraverseFlow<Input>>::Output
+    where
+        F: TraverseFlow<Input>,
+    {
+        <F as TraverseFlow<_>>::traverse(input)
+    }
+}
+
+/// Traverses a flow structure and applies replacement semantics at `Impulse` nodes.
+#[inception(property = JungleReplaceFlow, signature(input = Input, output = Output))]
+pub trait ReplaceFlow<Input> {
+    type Output;
+
+    fn replace(input: Input) -> Self::Output;
+
+    fn nothing(input: Input) -> Input {
+        input
+    }
+
+    fn merge<H, R>(
+        _l: H,
+        _r: R,
+        input: Input,
+    ) -> <R as ReplaceFlow<<H as ReplaceFlow<Input>>::Output>>::Output
+    where
+        H: ReplaceFlow<Input>,
+        R: ReplaceFlow<<H as ReplaceFlow<Input>>::Output>,
+    {
+        let _ = (_l, _r);
+        let input = <H as ReplaceFlow<_>>::replace(input);
+        <R as ReplaceFlow<_>>::replace(input)
+    }
+
+    fn merge_variant_field<H, R>(_l: H, _r: R, input: Input) -> Input {
+        let _ = (_l, _r);
+        let _ = core::marker::PhantomData::<(H, R)>;
+        input
+    }
+
+    fn join<F>(_fields: F, input: Input) -> <F as ReplaceFlow<Input>>::Output
+    where
+        F: ReplaceFlow<Input>,
+    {
+        <F as ReplaceFlow<_>>::replace(input)
+    }
+}
+
 /// Output produced by a yielding phase.
 pub struct Yielded<Y, A> {
     pub output: Y,
@@ -327,6 +417,34 @@ where
     type List = TList<(L::List, R::List)>;
 }
 
+#[primitive(property = JungleTraverseFlow)]
+impl<P, L, R, Input> TraverseFlow<Input> for Conditional<P, L, R>
+where
+    L: TraverseFlow<Input>,
+    R: TraverseFlow<<L as TraverseFlow<Input>>::Output>,
+{
+    type Output = <R as TraverseFlow<<L as TraverseFlow<Input>>::Output>>::Output;
+
+    fn traverse(input: Input) -> Self::Output {
+        let input = <L as TraverseFlow<_>>::traverse(input);
+        <R as TraverseFlow<_>>::traverse(input)
+    }
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<P, L, R, Input> ReplaceFlow<Input> for Conditional<P, L, R>
+where
+    L: ReplaceFlow<Input>,
+    R: ReplaceFlow<<L as ReplaceFlow<Input>>::Output>,
+{
+    type Output = <R as ReplaceFlow<<L as ReplaceFlow<Input>>::Output>>::Output;
+
+    fn replace(input: Input) -> Self::Output {
+        let input = <L as ReplaceFlow<_>>::replace(input);
+        <R as ReplaceFlow<_>>::replace(input)
+    }
+}
+
 #[primitive(property = JungleRunning)]
 impl<C, F> Running for While<C, F>
 where
@@ -366,6 +484,30 @@ where
     F: FlowActions,
 {
     type List = F::List;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<C, F, Input> TraverseFlow<Input> for While<C, F>
+where
+    F: TraverseFlow<Input>,
+{
+    type Output = <F as TraverseFlow<Input>>::Output;
+
+    fn traverse(input: Input) -> Self::Output {
+        <F as TraverseFlow<_>>::traverse(input)
+    }
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<C, F, Input> ReplaceFlow<Input> for While<C, F>
+where
+    F: ReplaceFlow<Input>,
+{
+    type Output = <F as ReplaceFlow<Input>>::Output;
+
+    fn replace(input: Input) -> Self::Output {
+        <F as ReplaceFlow<_>>::replace(input)
+    }
 }
 
 /// An organism that hosts symbionts.

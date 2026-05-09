@@ -157,6 +157,7 @@ mod tests {
     mod integration;
     mod migration;
     mod progression;
+    mod traverse_replace;
     mod while_loop;
     mod zoo;
 }

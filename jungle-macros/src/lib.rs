@@ -22,13 +22,22 @@ pub fn derive_journey(input: TokenStream) -> TokenStream {
         &[
             parse_quote!(jungle_types::JungleFlow),
             parse_quote!(jungle_types::JungleDynFlow),
+            parse_quote!(jungle_types::JungleTraverseFlow),
+            parse_quote!(jungle_types::JungleReplaceFlow),
         ],
     )
 }
 
 #[proc_macro_derive(Flow)]
 pub fn derive_flow(input: TokenStream) -> TokenStream {
-    derive_with_properties(input, &[parse_quote!(jungle_types::JungleFlow)])
+    derive_with_properties(
+        input,
+        &[
+            parse_quote!(jungle_types::JungleFlow),
+            parse_quote!(jungle_types::JungleTraverseFlow),
+            parse_quote!(jungle_types::JungleReplaceFlow),
+        ],
+    )
 }
 
 #[proc_macro_derive(Animae)]
@@ -86,13 +95,23 @@ pub fn journey(attr: TokenStream, input: TokenStream) -> TokenStream {
         &[
             parse_quote!(jungle_types::JungleFlow),
             parse_quote!(jungle_types::JungleDynFlow),
+            parse_quote!(jungle_types::JungleTraverseFlow),
+            parse_quote!(jungle_types::JungleReplaceFlow),
         ],
     )
 }
 
 #[proc_macro_attribute]
 pub fn flow(attr: TokenStream, input: TokenStream) -> TokenStream {
-    expand_with_properties(attr, input, &[parse_quote!(jungle_types::JungleFlow)])
+    expand_with_properties(
+        attr,
+        input,
+        &[
+            parse_quote!(jungle_types::JungleFlow),
+            parse_quote!(jungle_types::JungleTraverseFlow),
+            parse_quote!(jungle_types::JungleReplaceFlow),
+        ],
+    )
 }
 
 #[proc_macro_attribute]
