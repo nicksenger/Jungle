@@ -116,7 +116,7 @@ mod tests {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
-                type Instinct = $instinct;
+                type Journey = $instinct;
             }
         };
 
@@ -136,7 +136,7 @@ mod tests {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
-                type Instinct = $instinct;
+                type Journey = $instinct;
             }
 
             #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimae)]

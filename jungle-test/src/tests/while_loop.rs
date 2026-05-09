@@ -3,7 +3,7 @@ use jungle_sdk::types::{
     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
-use jungle_sdk::Instinct;
+use jungle_sdk::Journey;
 use std::future::ready;
 
 action!(
@@ -15,7 +15,7 @@ action!(
     act = |_dependency, input| ready(Ok(input + 1))
 );
 
-animal!(Looper, U0, state = i32, instinct = LoopInstinct);
+animal!(Looper, U0, state = i32, instinct = LoopJourney);
 
 struct Tick;
 impl Task<Looper> for Tick {
@@ -46,8 +46,8 @@ impl LoopCondition<i32> for LessThanThree {
 
 type WhileTickFlow = While<LessThanThree, TickFlow>;
 
-#[derive(Instinct)]
-struct LoopInstinct(WhileTickFlow);
+#[derive(Journey)]
+struct LoopJourney(WhileTickFlow);
 
 #[test]
 fn while_running_checks_state_before_iteration() {

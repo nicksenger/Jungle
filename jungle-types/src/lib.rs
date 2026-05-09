@@ -14,7 +14,7 @@ pub use executor::{
     ManualExecutor, TypedErasedStep,
 };
 use inception::*;
-pub use instinct::Instinct;
+pub use instinct::Journey;
 pub use meta::Id;
 pub use meta::{
     ActionMember, ActionSet, AllFrom, AnimaActionDependencies,
@@ -90,7 +90,7 @@ pub trait Anima {
     type Seed: Serialize + DeserializeOwned + Into<Self::State>;
 
     /// The fundamental behavior of this Anima.
-    type Instinct;
+    type Journey;
 }
 
 #[inception(property = Ident, types)]

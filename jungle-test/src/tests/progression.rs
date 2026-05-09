@@ -6,7 +6,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::{Animae, Instinct};
+use jungle_sdk::{Animae, Journey};
 use std::future::ready;
 
 struct SeedAction;
@@ -79,13 +79,13 @@ impl Task<ProgressAnima> for Finish {
     }
 }
 
-#[derive(Instinct)]
-struct ProgressInstinct(
+#[derive(Journey)]
+struct ProgressJourney(
     Impulse<ProgressAnima, Seed>,
     Impulse<ProgressAnima, Finish>,
 );
 
-animal!(ProgressAnima, U0, i32, ProgressInstinct);
+animal!(ProgressAnima, U0, i32, ProgressJourney);
 
 #[derive(Animae)]
 struct ProgressAnimae(ProgressAnima);

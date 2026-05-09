@@ -3,7 +3,7 @@ use jungle_sdk::types::{
     Running, Task, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::Instinct;
+use jungle_sdk::Journey;
 use std::future::ready;
 
 action!(
@@ -28,7 +28,7 @@ animal!(
     ConditionalAnima,
     U0,
     state = i32,
-    instinct = ConditionalInstinct
+    instinct = ConditionalJourney
 );
 
 struct Left;
@@ -79,8 +79,8 @@ impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
 
 type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, RightFlow>;
 
-#[derive(Instinct)]
-struct ConditionalInstinct(ConditionalFlow);
+#[derive(Journey)]
+struct ConditionalJourney(ConditionalFlow);
 
 #[test]
 fn conditional_run_selects_branch_from_predicate() {

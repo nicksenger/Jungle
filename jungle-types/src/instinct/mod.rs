@@ -1,6 +1,6 @@
 use crate::FlowActions;
 
 /// The innate executable workflow of a `Anima`.
-pub trait Instinct: FlowActions {}
+pub trait Journey: FlowActions {}
 
-impl<T> Instinct for T where T: FlowActions {}
+impl<T> Journey for T where T: FlowActions {}

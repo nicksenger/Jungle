@@ -1206,7 +1206,7 @@ where
 pub struct ContextExecutor<'a, Context, A>
 where
     A: Anima,
-    A::Instinct:
+    A::Journey:
         BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     _context: core::marker::PhantomData<&'a Context>,
@@ -1220,7 +1220,7 @@ impl<'a, Context, A> ContextExecutor<'a, Context, A>
 where
     Context: 'static,
     A: Anima,
-    A::Instinct:
+    A::Journey:
         BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
@@ -1253,7 +1253,7 @@ where
         let mut executor = Self {
             _context: core::marker::PhantomData,
             state: Some(state),
-            steps: <A::Instinct as BuildFlowWithContext<(*const Context, DynFlow<A::State>)>>::push_steps((
+            steps: <A::Journey as BuildFlowWithContext<(*const Context, DynFlow<A::State>)>>::push_steps((
                 context as *const Context,
                 Vec::new(),
             )),
@@ -1428,7 +1428,7 @@ where
 pub struct ManualExecutor<A>
 where
     A: Anima,
-    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
     steps: DynFlow<A::State>,
@@ -1438,7 +1438,7 @@ where
 impl<A> ManualExecutor<A>
 where
     A: Anima,
-    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -1469,7 +1469,7 @@ where
     pub fn new(state: A::State) -> Self {
         let mut executor = Self {
             state: Some(state),
-            steps: <A::Instinct as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
+            steps: <A::Journey as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
             cursor: 0,
         };
         executor
@@ -1679,7 +1679,7 @@ where
 pub struct Executor<A>
 where
     A: Anima,
-    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     manual: ManualExecutor<A>,
     last_emitted: Option<Serialized>,
@@ -1688,7 +1688,7 @@ where
 impl<A> Executor<A>
 where
     A: Anima,
-    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     pub fn new(state: A::State) -> Self {
         Self {

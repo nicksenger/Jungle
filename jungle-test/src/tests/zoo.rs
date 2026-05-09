@@ -59,16 +59,16 @@ where
     }
 }
 
-animal!(Gorilla, U0, GorillaInstinct);
-animal!(Chimpanzee, U1, ChimpanzeeInstinct);
-animal!(Tiger, U2, TigerInstinct);
-animal!(Jaguar, U3, JaguarInstinct);
-animal!(Anaconda, U4, AnacondaInstinct);
-animal!(Hippo, U5, HippoInstinct);
-animal!(Elephant, U6, ElephantInstinct);
+animal!(Gorilla, U0, GorillaJourney);
+animal!(Chimpanzee, U1, ChimpanzeeJourney);
+animal!(Tiger, U2, TigerJourney);
+animal!(Jaguar, U3, JaguarJourney);
+animal!(Anaconda, U4, AnacondaJourney);
+animal!(Hippo, U5, HippoJourney);
+animal!(Elephant, U6, ElephantJourney);
 
 #[derive(Flow)]
-struct GorillaInstinct(
+struct GorillaJourney(
     Impulse<Gorilla, UnitOkStep<Eat>>,
     Impulse<Gorilla, UnitOkStep<Sleep>>,
     Impulse<Gorilla, UnitOkStep<Forage>>,
@@ -77,7 +77,7 @@ struct GorillaInstinct(
 );
 
 #[derive(Flow)]
-struct ChimpanzeeInstinct(
+struct ChimpanzeeJourney(
     Impulse<Chimpanzee, UnitOkStep<Eat>>,
     Impulse<Chimpanzee, UnitOkStep<Sleep>>,
     Impulse<Chimpanzee, UnitOkStep<Forage>>,
@@ -86,7 +86,7 @@ struct ChimpanzeeInstinct(
 );
 
 #[derive(Flow)]
-struct TigerInstinct(
+struct TigerJourney(
     Impulse<Tiger, UnitOkStep<Eat>>,
     Impulse<Tiger, UnitOkStep<Sleep>>,
     Impulse<Tiger, UnitOkStep<Forage>>,
@@ -95,7 +95,7 @@ struct TigerInstinct(
 );
 
 #[derive(Flow)]
-struct JaguarInstinct(
+struct JaguarJourney(
     Impulse<Jaguar, UnitOkStep<Eat>>,
     Impulse<Jaguar, UnitOkStep<Sleep>>,
     Impulse<Jaguar, UnitOkStep<Forage>>,
@@ -104,7 +104,7 @@ struct JaguarInstinct(
 );
 
 #[derive(Flow)]
-struct AnacondaInstinct(
+struct AnacondaJourney(
     Impulse<Anaconda, UnitOkStep<Eat>>,
     Impulse<Anaconda, UnitOkStep<Sleep>>,
     Impulse<Anaconda, UnitOkStep<Forage>>,
@@ -113,7 +113,7 @@ struct AnacondaInstinct(
 );
 
 #[derive(Flow)]
-struct HippoInstinct(
+struct HippoJourney(
     Impulse<Hippo, UnitOkStep<Eat>>,
     Impulse<Hippo, UnitOkStep<Sleep>>,
     Impulse<Hippo, UnitOkStep<Forage>>,
@@ -122,7 +122,7 @@ struct HippoInstinct(
 );
 
 #[derive(Flow)]
-struct ElephantInstinct(
+struct ElephantJourney(
     Impulse<Elephant, UnitOkStep<Eat>>,
     Impulse<Elephant, UnitOkStep<Sleep>>,
     Impulse<Elephant, UnitOkStep<Forage>>,
@@ -257,7 +257,7 @@ impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
     }
 }
 
-type RunnerInstinct = While<
+type RunnerJourney = While<
     RunnerKeepGoing,
     jungle_sdk::types::Conditional<
         RunnerUseStepOne,
@@ -270,7 +270,7 @@ animal!(
     RunnerAnima,
     jungle_sdk::typosaurus::num::consts::U16,
     RunnerState,
-    RunnerInstinct
+    RunnerJourney
 );
 
 #[derive(Animae)]
@@ -316,7 +316,7 @@ fn animal_state_set() {
     struct CatState;
 
     #[derive(Flow)]
-    struct StatefulGorillaInstinct(
+    struct StatefulGorillaJourney(
         Impulse<StatefulGorilla, UnitOkStep<Eat>>,
         Impulse<StatefulGorilla, UnitOkStep<Sleep>>,
         Impulse<StatefulGorilla, UnitOkStep<Forage>>,
@@ -325,7 +325,7 @@ fn animal_state_set() {
     );
 
     #[derive(Flow)]
-    struct StatefulTigerInstinct(
+    struct StatefulTigerJourney(
         Impulse<StatefulTiger, UnitOkStep<Eat>>,
         Impulse<StatefulTiger, UnitOkStep<Sleep>>,
         Impulse<StatefulTiger, UnitOkStep<Forage>>,
@@ -333,8 +333,8 @@ fn animal_state_set() {
         Impulse<StatefulTiger, UnitOkStep<Hunt>>,
     );
 
-    animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);
-    animal!(StatefulTiger, U1, CatState, StatefulTigerInstinct);
+    animal!(StatefulGorilla, U0, ApeState, StatefulGorillaJourney);
+    animal!(StatefulTiger, U1, CatState, StatefulTigerJourney);
 
     #[derive(Animae)]
     struct StatefulAnimae(StatefulGorilla, StatefulTiger);
@@ -500,8 +500,8 @@ impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
     }
 }
 
-type WorkflowGorillaInstinct = While<ApeKeepRunning, Impulse<WorkflowGorilla, ApeRoundTask>>;
-type WorkflowTigerInstinct = While<
+type WorkflowGorillaJourney = While<ApeKeepRunning, Impulse<WorkflowGorilla, ApeRoundTask>>;
+type WorkflowTigerJourney = While<
     TigerKeepRunning,
     jungle_sdk::types::Conditional<
         TigerChooseHunt,
@@ -514,13 +514,13 @@ animal!(
     WorkflowGorilla,
     jungle_sdk::typosaurus::num::consts::U11,
     ExecutorApeState,
-    WorkflowGorillaInstinct
+    WorkflowGorillaJourney
 );
 animal!(
     WorkflowTiger,
     jungle_sdk::typosaurus::num::consts::U12,
     ExecutorCatState,
-    WorkflowTigerInstinct
+    WorkflowTigerJourney
 );
 
 #[tokio::test]

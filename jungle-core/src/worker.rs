@@ -123,7 +123,7 @@ where
     Head: Anima<Id = jungle_types::Id<Ordinal>> + Send + Sync + 'static,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
-    Head::Instinct:
+    Head::Journey:
         BuildFlowWithContext<(*const T, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
     Ordinal: Unsigned,
     Tail: SpawnByOrdinal<T>,

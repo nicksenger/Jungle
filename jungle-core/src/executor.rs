@@ -10,7 +10,7 @@ pub struct JungleExecutor<'a, T, A>
 where
     T: Jungle + 'static,
     A: Anima,
-    A::Instinct: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     inner: ContextExecutor<'a, T, A>,
 }
@@ -19,7 +19,7 @@ impl<'a, T, A> JungleExecutor<'a, T, A>
 where
     T: Jungle + 'static,
     A: Anima,
-    A::Instinct: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     pub fn new(jungle: &'a T, state: A::State) -> Self {
         Self {

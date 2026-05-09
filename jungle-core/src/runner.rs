@@ -32,7 +32,7 @@ where
     ) -> Result<A::State, ExecutorError>
     where
         A: Anima,
-        A::Instinct:
+        A::Journey:
             BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         let mut executor = ContextExecutor::<T, A>::new(&self.jungle, state);

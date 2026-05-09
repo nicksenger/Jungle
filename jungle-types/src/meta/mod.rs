@@ -7,7 +7,7 @@ use typosaurus::collections::{
 use typosaurus::num::Unsigned;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Action, Actions, Anima, Animae, FlowActions, Instinct};
+use super::{Action, Actions, Anima, Animae, FlowActions, Journey};
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
@@ -118,7 +118,7 @@ where
 }
 
 pub type AnimaActionMembers<T> =
-    <SPFlatten<<AnimaSet<T> as CollectAnimaInstinctActions>::Out> as StripActionHeaders>::Out;
+    <SPFlatten<<AnimaSet<T> as CollectAnimaJourneyActions>::Out> as StripActionHeaders>::Out;
 
 pub type AnimaActionDependencies<T> =
     <(AnimaActionMembers<T>, WithActionDependency) as Map<
@@ -145,9 +145,9 @@ where
     T: Animae,
     <T as Animae>::List: FlattenNodes,
     SPFlatten<<T as Animae>::List>: StripAnimaHeaders,
-    AnimaSet<T>: CollectAnimaInstinctActions,
-    <AnimaSet<T> as CollectAnimaInstinctActions>::Out: FlattenNodes,
-    SPFlatten<<AnimaSet<T> as CollectAnimaInstinctActions>::Out>: StripActionHeaders,
+    AnimaSet<T>: CollectAnimaJourneyActions,
+    <AnimaSet<T> as CollectAnimaJourneyActions>::Out: FlattenNodes,
+    SPFlatten<<AnimaSet<T> as CollectAnimaJourneyActions>::Out>: StripActionHeaders,
     AnimaActionMembers<T>: Container,
     (AnimaActionMembers<T>, WithActionDependency):
         Map<<AnimaActionMembers<T> as Container>::Content, WithActionDependency>,
@@ -155,27 +155,27 @@ where
 {
 }
 
-pub trait CollectAnimaInstinctActions {
+pub trait CollectAnimaJourneyActions {
     type Out;
 }
-impl CollectAnimaInstinctActions for list::Empty {
+impl CollectAnimaJourneyActions for list::Empty {
     type Out = list::Empty;
 }
-impl<Head, Tail, TailOut> CollectAnimaInstinctActions for list::List<(Head, Tail)>
+impl<Head, Tail, TailOut> CollectAnimaJourneyActions for list::List<(Head, Tail)>
 where
     Head: Anima,
-    <Head as Anima>::Instinct: Instinct,
-    <Head as Anima>::Instinct: FlowActions,
-    <<Head as Anima>::Instinct as FlowActions>::List: FlattenNodes,
-    SPFlatten<<<Head as Anima>::Instinct as FlowActions>::List>: KeepActionNodes,
-    Tail: CollectAnimaInstinctActions<Out = TailOut>,
+    <Head as Anima>::Journey: Journey,
+    <Head as Anima>::Journey: FlowActions,
+    <<Head as Anima>::Journey as FlowActions>::List: FlattenNodes,
+    SPFlatten<<<Head as Anima>::Journey as FlowActions>::List>: KeepActionNodes,
+    Tail: CollectAnimaJourneyActions<Out = TailOut>,
 {
     type Out = list::List<(
-        <SPFlatten<<<Head as Anima>::Instinct as FlowActions>::List> as KeepActionNodes>::Out,
+        <SPFlatten<<<Head as Anima>::Journey as FlowActions>::List> as KeepActionNodes>::Out,
         TailOut,
     )>;
 }
 
 pub type AnimaActionSet<T> = <SPDedupNodes<
-    SPFlatten<<AnimaSet<T> as CollectAnimaInstinctActions>::Out>,
+    SPFlatten<<AnimaSet<T> as CollectAnimaJourneyActions>::Out>,
 > as StripActionHeaders>::Out;

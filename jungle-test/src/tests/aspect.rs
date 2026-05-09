@@ -5,7 +5,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
-use jungle_sdk::{Instinct, Optic};
+use jungle_sdk::{Journey, Optic};
 use std::future::ready;
 use std::marker::PhantomData;
 
@@ -155,7 +155,7 @@ type GorillaForageStep = SubI32<Lens<GorillaState, list![U0, U0]>, Forage>;
 type TigerEat = AddI32<Lens<TigerState, list![U1, U0]>, Eat>;
 type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
 
-#[derive(Instinct)]
+#[derive(Journey)]
 struct GorillaLoopSequence(
     Impulse<Gorilla, GorillaEat>,
     Impulse<Gorilla, GorillaSleepManual>,
@@ -169,8 +169,8 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     }
 }
 
-#[derive(Instinct)]
-struct GorillaInstinct(While<GorillaUnderAgeHundred, GorillaLoopSequence>);
+#[derive(Journey)]
+struct GorillaJourney(While<GorillaUnderAgeHundred, GorillaLoopSequence>);
 
 struct TigerStripesAreEven;
 impl Condition<(TigerState, i32)> for TigerStripesAreEven {
@@ -179,7 +179,7 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     }
 }
 
-#[derive(Instinct)]
+#[derive(Journey)]
 struct TigerLoopSequence(
     Conditional<TigerStripesAreEven, Impulse<Tiger, TigerEat>, Impulse<Tiger, TigerSleep>>,
     Impulse<Tiger, TigerSleep>,
@@ -193,16 +193,16 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     }
 }
 
-#[derive(Instinct)]
-struct TigerInstinct(While<TigerUnderHundredStripes, TigerLoopSequence>);
+#[derive(Journey)]
+struct TigerJourney(While<TigerUnderHundredStripes, TigerLoopSequence>);
 
 animal!(
     Gorilla,
     U1,
     state = GorillaState,
-    instinct = GorillaInstinct
+    instinct = GorillaJourney
 );
-animal!(Tiger, U2, state = TigerState, instinct = TigerInstinct);
+animal!(Tiger, U2, state = TigerState, instinct = TigerJourney);
 
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {

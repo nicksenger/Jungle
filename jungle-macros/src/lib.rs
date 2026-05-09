@@ -15,7 +15,7 @@ fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStrea
     inception_derive_gen::State::gen(quote!(#input)).into()
 }
 
-#[proc_macro_derive(Instinct)]
+#[proc_macro_derive(Journey)]
 pub fn derive_instinct(input: TokenStream) -> TokenStream {
     derive_with_properties(
         input,

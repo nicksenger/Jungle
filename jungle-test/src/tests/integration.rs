@@ -112,7 +112,7 @@ impl Condition<(IntegrationState, ())> for UseFirstStep {
     }
 }
 
-type IntegrationInstinct = While<
+type IntegrationJourney = While<
     KeepRunning,
     jungle_sdk::types::Conditional<
         UseFirstStep,
@@ -125,7 +125,7 @@ animal!(
     IntegrationAnima,
     jungle_sdk::typosaurus::num::consts::U0,
     IntegrationState,
-    IntegrationInstinct
+    IntegrationJourney
 );
 
 #[derive(Animae)]
