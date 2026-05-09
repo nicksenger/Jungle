@@ -236,18 +236,18 @@ pub trait Reflex<T: Anima> {
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Running`]/[`Waiting`] protocol.
-pub struct Impulse<T, Step>
+pub struct Impulse<T, R>
 where
     T: Anima,
-    Step: Reflex<T>,
+    R: Reflex<T>,
 {
-    marker: PhantomData<fn() -> (T, Step)>,
+    marker: PhantomData<fn() -> (T, R)>,
 }
 
-impl<T, Step> Impulse<T, Step>
+impl<T, R> Impulse<T, R>
 where
     T: Anima,
-    Step: Reflex<T>,
+    R: Reflex<T>,
 {
     pub fn new() -> Self {
         Self {

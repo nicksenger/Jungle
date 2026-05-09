@@ -1,6 +1,6 @@
 use crate::{
-    Action, ActionCompletion, BackendError, Condition, Conditional, Anima, Impulse,
-    LoopCondition, Running, Reflex, While,
+    Action, ActionCompletion, Anima, BackendError, Condition, Conditional, Impulse, LoopCondition,
+    Reflex, Running, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -189,8 +189,7 @@ where
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
-                let completion =
-                    <<R as Reflex<T>>::Action as Action>::act(&(), action_input).await;
+                let completion = <<R as Reflex<T>>::Action as Action>::act(&(), action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -222,8 +221,7 @@ where
             ),
         };
 
-        let (state, emitted) =
-            <Impulse<T, R> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <Impulse<T, R> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -240,14 +238,14 @@ where
     }
 }
 
-pub struct ContextualTypedErasedStep<Context, Step> {
+pub struct ContextualTypedErasedStep<Context, R> {
     context: *const Context,
     complete: bool,
     waiting_completion: bool,
-    marker: core::marker::PhantomData<fn() -> Step>,
+    marker: core::marker::PhantomData<fn() -> R>,
 }
 
-impl<Context, Step> ContextualTypedErasedStep<Context, Step> {
+impl<Context, R> ContextualTypedErasedStep<Context, R> {
     pub fn new(context: *const Context) -> Self {
         Self {
             context,
@@ -349,8 +347,7 @@ where
             ),
         };
 
-        let (state, emitted) =
-            <Impulse<T, R> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <Impulse<T, R> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -817,10 +814,9 @@ where
     type Output = DynFlow<T::State>;
 
     fn push_steps((context, mut steps): (*const Context, DynFlow<T::State>)) -> Self::Output {
-        steps.push(Box::new(ContextualTypedErasedStep::<
-            Context,
-            Impulse<T, R>,
-        >::new(context)));
+        steps.push(Box::new(
+            ContextualTypedErasedStep::<Context, Impulse<T, R>>::new(context),
+        ));
         steps
     }
 }
