@@ -235,7 +235,7 @@ pub trait Reflex<T: Anima> {
 }
 
 /// A primitive workflow step that adapts an [`Action`] to the
-/// [`Running`]/[`Waiting`] temporal protocol.
+/// [`Running`]/[`Waiting`] protocol.
 pub struct Impulse<T, Step>
 where
     T: Anima,
