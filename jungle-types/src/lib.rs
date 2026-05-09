@@ -161,6 +161,12 @@ pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 /// Directional helper that rewrites `Impulse<Anima, Right>` to `Impulse<Anima, Left>`.
 pub struct SwapRL<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
+/// Directional helper alias for node replacement from `Left` to `Right`.
+pub type SwapNodeLR<Left, Right> = SwapLR<Left, Right>;
+
+/// Directional helper alias for node replacement from `Right` to `Left`.
+pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
+
 impl<A, Left, Right> ReplaceStep<Impulse<A, Left>> for SwapLR<Left, Right>
 where
     A: Anima,
@@ -288,7 +294,7 @@ pub type Traversed<Flow, Traversal> =
 pub type Replaced<Flow, Replacer> =
     <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
 pub type ReplacedNodes<Flow, Replacer> =
-    <<Flow as ReplaceFlow>::Output as ReplaceNodesWith<Replacer>>::Output;
+    <Replacer as ReplaceNode<<Flow as ReplaceFlow>::Output>>::Output;
 
 /// Output produced by a yielding phase.
 pub struct Yielded<Y, A> {
