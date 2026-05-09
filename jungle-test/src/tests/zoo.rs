@@ -59,13 +59,13 @@ where
     }
 }
 
-animal!(Gorilla, U0, GorillaJourney);
-animal!(Chimpanzee, U1, ChimpanzeeJourney);
-animal!(Tiger, U2, TigerJourney);
-animal!(Jaguar, U3, JaguarJourney);
-animal!(Anaconda, U4, AnacondaJourney);
-animal!(Hippo, U5, HippoJourney);
-animal!(Elephant, U6, ElephantJourney);
+anima!(Gorilla, U0, GorillaJourney);
+anima!(Chimpanzee, U1, ChimpanzeeJourney);
+anima!(Tiger, U2, TigerJourney);
+anima!(Jaguar, U3, JaguarJourney);
+anima!(Anaconda, U4, AnacondaJourney);
+anima!(Hippo, U5, HippoJourney);
+anima!(Elephant, U6, ElephantJourney);
 
 #[derive(Flow)]
 struct GorillaJourney(
@@ -266,7 +266,7 @@ type RunnerJourney = While<
     >,
 >;
 
-animal!(
+anima!(
     RunnerAnima,
     jungle_sdk::typosaurus::num::consts::U16,
     RunnerState,
@@ -291,7 +291,7 @@ fn composite_actions() {
 }
 
 #[test]
-fn composite_animals() {
+fn composite_animae() {
     type ApeList = list![Gorilla, Chimpanzee];
     assert_type_eq!(AnimaSet<Apes>, ApeList);
 
@@ -300,7 +300,7 @@ fn composite_animals() {
 }
 
 #[test]
-fn animal_action_set() {
+fn anima_action_set() {
     type ApeAnimaActions = list![Eat, Sleep, Forage, Drink, Flee];
     assert_type_eq!(AnimaActionSet<Apes>, ApeAnimaActions);
 
@@ -309,7 +309,7 @@ fn animal_action_set() {
 }
 
 #[test]
-fn animal_state_set() {
+fn anima_state_set() {
     #[derive(serde::Serialize, serde::Deserialize)]
     struct ApeState;
     #[derive(serde::Serialize, serde::Deserialize)]
@@ -333,8 +333,8 @@ fn animal_state_set() {
         Impulse<StatefulTiger, UnitOkStep<Hunt>>,
     );
 
-    animal!(StatefulGorilla, U0, ApeState, StatefulGorillaJourney);
-    animal!(StatefulTiger, U1, CatState, StatefulTigerJourney);
+    anima!(StatefulGorilla, U0, ApeState, StatefulGorillaJourney);
+    anima!(StatefulTiger, U1, CatState, StatefulTigerJourney);
 
     #[derive(Animae)]
     struct StatefulAnimae(StatefulGorilla, StatefulTiger);
@@ -510,13 +510,13 @@ type WorkflowTigerJourney = While<
     >,
 >;
 
-animal!(
+anima!(
     WorkflowGorilla,
     jungle_sdk::typosaurus::num::consts::U11,
     ExecutorApeState,
     WorkflowGorillaJourney
 );
-animal!(
+anima!(
     WorkflowTiger,
     jungle_sdk::typosaurus::num::consts::U12,
     ExecutorCatState,

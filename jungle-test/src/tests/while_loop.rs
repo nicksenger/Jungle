@@ -15,7 +15,7 @@ action!(
     act = |_dependency, input| ready(Ok(input + 1))
 );
 
-animal!(Looper, U0, state = i32, instinct = LoopJourney);
+anima!(Looper, U0, state = i32, journey = LoopJourney);
 
 struct Tick;
 impl Task<Looper> for Tick {

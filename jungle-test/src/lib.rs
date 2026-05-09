@@ -108,27 +108,27 @@ mod tests {
         };
     }
 
-    macro_rules! animal {
-        ($name:ident, $id:ty, state = $state:ty, instinct = $instinct:ty) => {
+    macro_rules! anima {
+        ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty) => {
             struct $name;
 
             impl jungle_sdk::types::Anima for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
-                type Journey = $instinct;
+                type Journey = $journey;
             }
         };
 
-        ($name:ident, $id:ty, instinct = $instinct:ty) => {
-            animal!($name, $id, state = (), instinct = $instinct);
+        ($name:ident, $id:ty, journey = $journey:ty) => {
+            anima!($name, $id, state = (), journey = $journey);
         };
 
-        ($name:ident, $id:ty, $instinct:ty) => {
-            animal!($name, $id, SharedState, $instinct);
+        ($name:ident, $id:ty, $journey:ty) => {
+            anima!($name, $id, SharedState, $journey);
         };
 
-        ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
+        ($name:ident, $id:ty, $state:ty, $journey:ty) => {
             struct $name;
             impl jungle_sdk::types::AnimaMember for $name {}
 
@@ -136,7 +136,7 @@ mod tests {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
-                type Journey = $instinct;
+                type Journey = $journey;
             }
 
             #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimae)]

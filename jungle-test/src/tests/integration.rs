@@ -121,7 +121,7 @@ type IntegrationJourney = While<
     >,
 >;
 
-animal!(
+anima!(
     IntegrationAnima,
     jungle_sdk::typosaurus::num::consts::U0,
     IntegrationState,

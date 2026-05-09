@@ -24,11 +24,11 @@ action!(
     act = |_dependency, input| ready(Ok(input + 2))
 );
 
-animal!(
+anima!(
     ConditionalAnima,
     U0,
     state = i32,
-    instinct = ConditionalJourney
+    journey = ConditionalJourney
 );
 
 struct Left;

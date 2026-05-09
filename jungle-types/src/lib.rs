@@ -1,7 +1,7 @@
 mod behavior;
 mod error;
 mod executor;
-mod instinct;
+mod journey;
 mod meta;
 mod transport;
 pub use behavior::{
@@ -14,7 +14,7 @@ pub use executor::{
     ManualExecutor, TypedErasedStep,
 };
 use inception::*;
-pub use instinct::Journey;
+pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
     ActionMember, ActionSet, AllFrom, AnimaActionDependencies,

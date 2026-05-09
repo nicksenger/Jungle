@@ -16,7 +16,7 @@ fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStrea
 }
 
 #[proc_macro_derive(Journey)]
-pub fn derive_instinct(input: TokenStream) -> TokenStream {
+pub fn derive_journey(input: TokenStream) -> TokenStream {
     derive_with_properties(
         input,
         &[
@@ -79,7 +79,7 @@ fn expand_with_properties(
 }
 
 #[proc_macro_attribute]
-pub fn instinct(attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn journey(attr: TokenStream, input: TokenStream) -> TokenStream {
     expand_with_properties(
         attr,
         input,
@@ -96,7 +96,7 @@ pub fn flow(attr: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn animals(attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn animae(attr: TokenStream, input: TokenStream) -> TokenStream {
     expand_with_properties(
         attr,
         input,

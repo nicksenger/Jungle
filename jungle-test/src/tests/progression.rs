@@ -85,7 +85,7 @@ struct ProgressJourney(
     Impulse<ProgressAnima, Finish>,
 );
 
-animal!(ProgressAnima, U0, i32, ProgressJourney);
+anima!(ProgressAnima, U0, i32, ProgressJourney);
 
 #[derive(Animae)]
 struct ProgressAnimae(ProgressAnima);
@@ -125,14 +125,14 @@ where
 }
 
 #[test]
-fn workflow_action_set_is_extracted_from_instinct_composite() {
+fn workflow_action_set_is_extracted_from_journey_composite() {
     type Expected = list![SeedAction, FinishAction];
     type Extracted = AnimaActionSet<ProgressAnimae>;
     assert_type_eq!(Extracted, Expected);
 }
 
 #[test]
-fn executor_progresses_simple_instinct_steps() {
+fn executor_progresses_simple_journey_steps() {
     let (state_after_seed, emitted_seed) = StepHarness::progress::<SeedStep>(0, 5, Ok(8));
     assert_eq!(state_after_seed, 8);
     assert_eq!(emitted_seed, 8);

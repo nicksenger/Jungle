@@ -196,16 +196,16 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
 #[derive(Journey)]
 struct TigerJourney(While<TigerUnderHundredStripes, TigerLoopSequence>);
 
-animal!(
+anima!(
     Gorilla,
     U1,
     state = GorillaState,
-    instinct = GorillaJourney
+    journey = GorillaJourney
 );
-animal!(Tiger, U2, state = TigerState, instinct = TigerJourney);
+anima!(Tiger, U2, state = TigerState, journey = TigerJourney);
 
 #[test]
-fn aspect_step_reuses_focused_mapper_across_animals() {
+fn aspect_step_reuses_focused_mapper_across_animae() {
     let gorilla_state = GorillaState {
         core: CoreState {
             energy: 10,
