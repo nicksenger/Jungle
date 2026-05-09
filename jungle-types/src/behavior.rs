@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 
 use crate::{
-    ActionMember, Anima, FlowActions, ReplaceFlow, ReplaceStep, ReplaceWith, Running, TraverseFlow,
-    TraverseStep, TraverseWith, Waiting,
+    ActionMember, Anima, FlowActions, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
+    ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
 };
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
 use typosaurus::collections::list;
@@ -338,4 +338,13 @@ where
     Replacer: ReplaceStep<Impulse<T, S>>,
 {
     type Output = <Replacer as ReplaceStep<Impulse<T, S>>>::Output;
+}
+
+impl<T, S, Replacer> ReplaceNodesWith<Replacer> for Impulse<T, S>
+where
+    T: Anima,
+    S: Step<T>,
+    Replacer: ReplaceNode<Impulse<T, S>>,
+{
+    type Output = <Replacer as ReplaceNode<Impulse<T, S>>>::Output;
 }

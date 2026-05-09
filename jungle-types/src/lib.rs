@@ -150,6 +150,11 @@ pub trait ReplaceStep<Step> {
     type Output;
 }
 
+/// Node-level hook used by [`ReplaceNodesWith`] for section/subtree replacement.
+pub trait ReplaceNode<Node> {
+    type Output;
+}
+
 /// Directional helper that rewrites `Impulse<Anima, Left>` to `Impulse<Anima, Right>`.
 pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
@@ -172,6 +177,14 @@ where
     Right: Step<A>,
 {
     type Output = Impulse<A, Left>;
+}
+
+impl<Left, Right> ReplaceNode<Left> for SwapLR<Left, Right> {
+    type Output = Right;
+}
+
+impl<Left, Right> ReplaceNode<Right> for SwapRL<Left, Right> {
+    type Output = Left;
 }
 
 /// Inception property that normalizes/walks a flow's type structure.
@@ -220,11 +233,20 @@ pub trait ReplaceWith<Replacer> {
     type Output;
 }
 
+/// Applies a node-level replacer across a normalized flow type.
+pub trait ReplaceNodesWith<Replacer> {
+    type Output;
+}
+
 impl<Traversal> TraverseWith<Traversal> for list::Empty {
     type Output = list::Empty;
 }
 
 impl<Replacer> ReplaceWith<Replacer> for list::Empty {
+    type Output = list::Empty;
+}
+
+impl<Replacer> ReplaceNodesWith<Replacer> for list::Empty {
     type Output = list::Empty;
 }
 
@@ -250,10 +272,23 @@ where
     )>;
 }
 
+impl<Head, Tail, Replacer> ReplaceNodesWith<Replacer> for TList<(Head, Tail)>
+where
+    Head: ReplaceNodesWith<Replacer>,
+    Tail: ReplaceNodesWith<Replacer>,
+{
+    type Output = TList<(
+        <Head as ReplaceNodesWith<Replacer>>::Output,
+        <Tail as ReplaceNodesWith<Replacer>>::Output,
+    )>;
+}
+
 pub type Traversed<Flow, Traversal> =
     <<Flow as TraverseFlow>::Output as TraverseWith<Traversal>>::Output;
 pub type Replaced<Flow, Replacer> =
     <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
+pub type ReplacedNodes<Flow, Replacer> =
+    <<Flow as ReplaceFlow>::Output as ReplaceNodesWith<Replacer>>::Output;
 
 /// Output produced by a yielding phase.
 pub struct Yielded<Y, A> {
@@ -481,6 +516,27 @@ where
         Conditional<P, <L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
 }
 
+impl<P, L, R, Replacer> ReplaceNodesWith<Replacer> for Conditional<P, L, R>
+where
+    L: ReplaceNodesWith<Replacer>,
+    R: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<
+        Conditional<
+            P,
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+        >,
+    >,
+{
+    type Output = <Replacer as ReplaceNode<
+        Conditional<
+            P,
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+        >,
+    >>::Output;
+}
+
 #[primitive(property = JungleRunning)]
 impl<C, F> Running for While<C, F>
 where
@@ -550,6 +606,14 @@ where
     F: ReplaceWith<Replacer>,
 {
     type Output = While<C, <F as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<C, F, Replacer> ReplaceNodesWith<Replacer> for While<C, F>
+where
+    F: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>,
+{
+    type Output = <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
 }
 
 /// An organism that hosts symbionts.
