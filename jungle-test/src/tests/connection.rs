@@ -107,15 +107,15 @@ async fn client_exchanges_messages_with_mock_server() {
     let client = connect_client_with_retry(listen_addr).await;
 
     let created_flow = client
-        .create_flow(7, vec![1, 2, 3])
+        .start_journey(7, vec![1, 2, 3])
         .await
-        .expect("create_flow should succeed");
+        .expect("start_journey should succeed");
     assert_eq!(created_flow, flow_id);
 
     let status = client
-        .flow_status(flow_id)
+        .journey_details(flow_id)
         .await
-        .expect("flow_status should succeed");
+        .expect("journey_details should succeed");
     assert_eq!(status, FlowStatus::Created);
 
     let work = client.poll_work().await.expect("poll_work should succeed");
@@ -145,9 +145,9 @@ async fn client_exchanges_messages_with_mock_server() {
         .await
         .expect("action_failure_output should ack");
     client
-        .flow_complete(flow_id)
+        .complete_journey(flow_id)
         .await
-        .expect("flow_complete should ack");
+        .expect("complete_journey should ack");
 
     let requests = captured_requests.lock().unwrap().clone();
     assert_eq!(requests.len(), 7);
@@ -207,14 +207,14 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let flow_id = client
-        .create_flow(7, vec![1, 2, 3])
+        .start_journey(7, vec![1, 2, 3])
         .await
-        .expect("create_flow should succeed");
+        .expect("start_journey should succeed");
 
     let created = client
-        .flow_status(flow_id)
+        .journey_details(flow_id)
         .await
-        .expect("flow_status created should succeed");
+        .expect("journey_details created should succeed");
     assert_eq!(created, FlowStatus::Created);
 
     client
@@ -222,19 +222,19 @@ async fn flow_status_moves_created_to_alive_to_completed() {
         .await
         .expect("action_input should succeed");
     let alive = client
-        .flow_status(flow_id)
+        .journey_details(flow_id)
         .await
-        .expect("flow_status alive should succeed");
+        .expect("journey_details alive should succeed");
     assert_eq!(alive, FlowStatus::Alive);
 
     client
-        .flow_complete(flow_id)
+        .complete_journey(flow_id)
         .await
-        .expect("flow_complete should succeed");
+        .expect("complete_journey should succeed");
     let completed = client
-        .flow_status(flow_id)
+        .journey_details(flow_id)
         .await
-        .expect("flow_status completed should succeed");
+        .expect("journey_details completed should succeed");
     assert_eq!(completed, FlowStatus::Completed);
 
     server_task.abort();

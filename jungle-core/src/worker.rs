@@ -87,7 +87,7 @@ where
                             "unknown anima ordinal: {ordinal}"
                         )));
                     }
-                    self.client.flow_complete(flow_id).await?;
+                    self.client.complete_journey(flow_id).await?;
                 }
                 None => {}
             }

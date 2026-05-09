@@ -63,15 +63,15 @@ impl Default for MockClient {
 
 #[async_trait]
 impl JungleClient for MockClient {
-    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
+    async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
         (self.on_create_flow)(ordinal, seed).await
     }
 
-    async fn flow_status(&self, id: Uuid) -> Result<FlowStatus, ExecutorError> {
+    async fn journey_details(&self, id: Uuid) -> Result<FlowStatus, ExecutorError> {
         (self.on_flow_status)(id).await
     }
 
-    async fn flow_complete(&self, id: Uuid) -> Result<(), ExecutorError> {
+    async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
         (self.on_flow_complete)(id).await
     }
 

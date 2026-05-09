@@ -198,7 +198,7 @@ impl Drop for Client {
 
 #[async_trait]
 impl JungleClient for Client {
-    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
+    async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::CreateFlow { ordinal, seed })
             .await
@@ -210,12 +210,12 @@ impl JungleClient for Client {
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
-                "unexpected non-flow-created response for create_flow".to_string(),
+                "unexpected non-flow-created response for start_journey".to_string(),
             )),
         }
     }
 
-    async fn flow_status(&self, id: Uuid) -> Result<FlowStatus, ExecutorError> {
+    async fn journey_details(&self, id: Uuid) -> Result<FlowStatus, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::FlowStatus(id))
             .await
@@ -227,12 +227,12 @@ impl JungleClient for Client {
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
-                "unexpected non-flow-status response for flow_status".to_string(),
+                "unexpected non-flow-status response for journey_details".to_string(),
             )),
         }
     }
 
-    async fn flow_complete(&self, id: Uuid) -> Result<(), ExecutorError> {
+    async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::FlowComplete(id))
             .await
@@ -244,7 +244,7 @@ impl JungleClient for Client {
             | WireOut::FlowStatus(_)
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for flow_complete".to_string(),
+                "unexpected non-ack response for complete_journey".to_string(),
             )),
         }
     }

@@ -161,9 +161,9 @@ async fn redb_client_worker_flow_runs_to_completion() {
     let seed = postcard::to_allocvec(&IntegrationState(0)).expect("seed should serialize");
     let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let flow_id = client
-        .create_flow(ordinal, seed)
+        .start_journey(ordinal, seed)
         .await
-        .expect("create_flow should succeed");
+        .expect("start_journey should succeed");
 
     tokio::select! {
         result = &mut worker_future => {
@@ -172,9 +172,9 @@ async fn redb_client_worker_flow_runs_to_completion() {
         completion = tokio::time::timeout(Duration::from_secs(8), async {
             loop {
                 let status = client
-                    .flow_status(flow_id)
+                    .journey_details(flow_id)
                     .await
-                    .expect("flow_status should succeed while waiting for completion");
+                    .expect("journey_details should succeed while waiting for completion");
                 if status == FlowStatus::Completed {
                     break;
                 }
@@ -183,9 +183,9 @@ async fn redb_client_worker_flow_runs_to_completion() {
         }) => {
             if completion.is_err() {
                 let status = client
-                    .flow_status(flow_id)
+                    .journey_details(flow_id)
                     .await
-                    .expect("final flow_status should still be queryable");
+                    .expect("final journey_details should still be queryable");
                 panic!("flow did not complete before timeout, last status: {status:?}");
             }
         }
