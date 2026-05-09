@@ -63,7 +63,7 @@ async fn client_exchanges_messages_with_mock_server() {
                                 ))),
                             },
                             2 => match msg {
-                                WireIn::PollStep => Ok(WireOut::PendingWork(expected_work)),
+                                WireIn::PollStep => Ok(WireOut::PendingStep(expected_work)),
                                 other => Err(BackendError::Message(format!(
                                     "expected poll_work third, got {:?}",
                                     other

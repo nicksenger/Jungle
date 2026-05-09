@@ -163,7 +163,7 @@ impl JungleServer for Server {
                     match self.store.claim_work().await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })? {
-                        Some(work) => WireOut::PendingWork(work),
+                        Some(work) => WireOut::PendingStep(work),
                         None => WireOut::NoAvailableSteps,
                     }
                 }

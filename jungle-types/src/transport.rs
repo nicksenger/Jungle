@@ -49,6 +49,6 @@ pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyStatus(JourneyStatus),
     NoAvailableSteps,
-    PendingWork(Step),
+    PendingStep(Step),
     Ack,
 }

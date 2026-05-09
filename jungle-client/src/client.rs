@@ -208,7 +208,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(journey_id) => Ok(journey_id),
             WireOut::JourneyStatus(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingWork(_)
+            | WireOut::PendingStep(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-created response for start_journey".to_string(),
             )),
@@ -225,7 +225,7 @@ impl JungleClient for Client {
             WireOut::JourneyStatus(status) => Ok(status),
             WireOut::JourneyCreated(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingWork(_)
+            | WireOut::PendingStep(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-status response for journey_details".to_string(),
             )),
@@ -243,7 +243,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
             )),
         }
@@ -257,7 +257,7 @@ impl JungleClient for Client {
 
         match response {
             WireOut::NoAvailableSteps => Ok(None),
-            WireOut::PendingWork(work) => Ok(Some(work)),
+            WireOut::PendingStep(work) => Ok(Some(work)),
             WireOut::JourneyCreated(_) | WireOut::JourneyStatus(_) | WireOut::Ack => Err(
                 ExecutorError::ClientTransport("unexpected response for poll_work".to_string()),
             ),
@@ -278,7 +278,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_input".to_string(),
             )),
         }
@@ -298,7 +298,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_success_output".to_string(),
             )),
         }
@@ -318,7 +318,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_failure_output".to_string(),
             )),
         }
