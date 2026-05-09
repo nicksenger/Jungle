@@ -642,3 +642,4 @@ pub trait Evoke {
         input: impl futures::Stream<Item = Self::In>,
     ) -> impl futures::Stream<Item = Self::Out>;
 }
+
