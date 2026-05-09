@@ -1,16 +1,28 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Ecosystem, JourneyStatus, Identity, Impulse, LoopCondition,
-    Reflex, While,
+    Action, ActionCompletion, Condition, Ecosystem, JourneyStatus, Lens, Identity, Impulse,
+    LoopCondition, Reflex, While,
 };
+use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::Unsigned;
-use jungle_sdk::{Animae, JungleClient};
+use jungle_sdk::{Animae, JungleClient, Optic};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct IntegrationState(i32);
+#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct SubFlowState {
+    value: i32,
+    updates: i32,
+}
+
+#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct IntegrationState {
+    total: i32,
+    focused: SubFlowState,
+    before_steps: u8,
+    after_steps: u8,
+}
 
 #[derive(Clone, Copy)]
 struct AddOneDependency {
@@ -70,8 +82,8 @@ impl Action for AddTwoAction {
     }
 }
 
-struct AddOneStep;
-impl Reflex<IntegrationAnima> for AddOneStep {
+struct AddOneBeforeFullStateStep;
+impl Reflex<IntegrationAnima> for AddOneBeforeFullStateStep {
     type Action = AddOneAction;
     type Aspect = Identity;
     type In = ();
@@ -80,12 +92,13 @@ impl Reflex<IntegrationAnima> for AddOneStep {
     fn prepare(_state: &IntegrationState, _input: Self::In) -> Self::In {}
 
     fn process(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        state.0 += output.expect("first integration action should succeed");
+        state.total += output.expect("first pre-focused full-state action should succeed");
+        state.before_steps += 1;
     }
 }
 
-struct AddTwoStep;
-impl Reflex<IntegrationAnima> for AddTwoStep {
+struct AddTwoBeforeFullStateStep;
+impl Reflex<IntegrationAnima> for AddTwoBeforeFullStateStep {
     type Action = AddTwoAction;
     type Aspect = Identity;
     type In = ();
@@ -94,31 +107,140 @@ impl Reflex<IntegrationAnima> for AddTwoStep {
     fn prepare(_state: &IntegrationState, _input: Self::In) -> Self::In {}
 
     fn process(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        state.0 += output.expect("second integration action should succeed");
+        state.total += output.expect("second pre-focused full-state action should succeed");
+        state.before_steps += 1;
+    }
+}
+
+struct AddOneFocusedStep;
+impl Reflex<IntegrationAnima> for AddOneFocusedStep {
+    type Action = AddOneAction;
+    type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type In = ();
+    type Out = ();
+
+    fn prepare(_state: &SubFlowState, _input: Self::In) -> Self::In {}
+
+    fn process(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.value += output.expect("first focused integration action should succeed");
+        state.updates += 1;
+    }
+}
+
+struct AddTwoFocusedStep;
+impl Reflex<IntegrationAnima> for AddTwoFocusedStep {
+    type Action = AddTwoAction;
+    type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type In = ();
+    type Out = ();
+
+    fn prepare(_state: &SubFlowState, _input: Self::In) -> Self::In {}
+
+    fn process(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.value += output.expect("second focused integration action should succeed");
+        state.updates += 1;
+    }
+}
+
+struct AddOneAfterFullStateStep;
+impl Reflex<IntegrationAnima> for AddOneAfterFullStateStep {
+    type Action = AddOneAction;
+    type Aspect = Identity;
+    type In = ();
+    type Out = ();
+
+    fn prepare(_state: &IntegrationState, _input: Self::In) -> Self::In {}
+
+    fn process(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.total += output.expect("first post-focused full-state action should succeed");
+        state.after_steps += 1;
+    }
+}
+
+struct AddTwoAfterFullStateStep;
+impl Reflex<IntegrationAnima> for AddTwoAfterFullStateStep {
+    type Action = AddTwoAction;
+    type Aspect = Identity;
+    type In = ();
+    type Out = ();
+
+    fn prepare(_state: &IntegrationState, _input: Self::In) -> Self::In {}
+
+    fn process(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.total += output.expect("second post-focused full-state action should succeed");
+        state.after_steps += 1;
     }
 }
 
 struct KeepRunning;
 impl LoopCondition<IntegrationState> for KeepRunning {
     fn should_continue(state: &IntegrationState) -> bool {
-        state.0 < 3
+        state.after_steps < 2
     }
 }
 
-struct UseFirstStep;
-impl Condition<(IntegrationState, ())> for UseFirstStep {
+struct IsBeforeFocusedSubFlow;
+impl Condition<(IntegrationState, ())> for IsBeforeFocusedSubFlow {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
-        state.0 % 2 == 0
+        state.before_steps < 2
     }
 }
+
+struct UseFirstBeforeFullStateTask;
+impl Condition<(IntegrationState, ())> for UseFirstBeforeFullStateTask {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.before_steps == 0
+    }
+}
+
+type BeforeFlow = jungle_sdk::types::Conditional<
+    UseFirstBeforeFullStateTask,
+    Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+    Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+>;
+
+struct IsInFocusedSubFlow;
+impl Condition<(IntegrationState, ())> for IsInFocusedSubFlow {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.focused.updates < 2
+    }
+}
+
+struct UseFirstFocusedTask;
+impl Condition<(IntegrationState, ())> for UseFirstFocusedTask {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.focused.updates == 0
+    }
+}
+
+type FocusedFlow = jungle_sdk::types::Conditional<
+    UseFirstFocusedTask,
+    Impulse<IntegrationAnima, AddOneFocusedStep>,
+    Impulse<IntegrationAnima, AddTwoFocusedStep>,
+>;
+
+struct UseFirstAfterFullStateTask;
+impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.after_steps == 0
+    }
+}
+
+type AfterFlow = jungle_sdk::types::Conditional<
+    UseFirstAfterFullStateTask,
+    Impulse<IntegrationAnima, AddOneAfterFullStateStep>,
+    Impulse<IntegrationAnima, AddTwoAfterFullStateStep>,
+>;
+
+type IntegrationLoopFlow = jungle_sdk::types::Conditional<
+    IsBeforeFocusedSubFlow,
+    BeforeFlow,
+    jungle_sdk::types::Conditional<IsInFocusedSubFlow, FocusedFlow, AfterFlow>,
+>;
 
 type IntegrationJourney = While<
     KeepRunning,
-    jungle_sdk::types::Conditional<
-        UseFirstStep,
-        Impulse<IntegrationAnima, AddOneStep>,
-        Impulse<IntegrationAnima, AddTwoStep>,
-    >,
+    IntegrationLoopFlow,
 >;
 
 anima!(
@@ -158,7 +280,16 @@ async fn redb_client_worker_flow_runs_to_completion() {
     let worker_future = worker.spawn();
     tokio::pin!(worker_future);
 
-    let seed = postcard::to_allocvec(&IntegrationState(0)).expect("seed should serialize");
+    let seed = postcard::to_allocvec(&IntegrationState {
+        total: 0,
+        focused: SubFlowState {
+            value: 0,
+            updates: 0,
+        },
+        before_steps: 0,
+        after_steps: 0,
+    })
+    .expect("seed should serialize");
     let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
         .start_journey(ordinal, seed)
