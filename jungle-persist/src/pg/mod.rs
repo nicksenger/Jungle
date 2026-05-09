@@ -82,12 +82,13 @@ impl JungleStore for PgStore {
 
         sqlx::query(
             r#"
-            INSERT INTO flows (id, ordinal, seed)
-            VALUES ($1, $2, $3)
+            INSERT INTO flows (id, ordinal, status, seed)
+            VALUES ($1, $2, $3, $4)
             "#,
         )
         .bind(flow_id)
         .bind(ordinal)
+        .bind(0_i16)
         .bind(seed)
         .execute(&mut *tx)
         .await

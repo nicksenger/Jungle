@@ -46,12 +46,14 @@ async fn postgres_server_startup_runs_migrations() {
             Ok((
                 schema_version,
                 flows_exists,
+                flows_status_exists,
                 events_exists,
                 work_items_exists,
                 work_items_status_exists,
             )) => {
                 assert_eq!(schema_version, Some(0));
                 assert!(flows_exists);
+                assert!(flows_status_exists);
                 assert!(events_exists);
                 assert!(work_items_exists);
                 assert!(work_items_status_exists);
@@ -182,7 +184,7 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
 
 async fn migration_state(
     connection_string: &str,
-) -> Result<(Option<i32>, bool, bool, bool, bool), sqlx::Error> {
+) -> Result<(Option<i32>, bool, bool, bool, bool, bool), sqlx::Error> {
     let pool = PgPool::connect(connection_string).await?;
 
     let schema_version =
@@ -191,6 +193,11 @@ async fn migration_state(
             .await?;
     let flows_exists = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'flows')",
+    )
+    .fetch_one(&pool)
+    .await?;
+    let flows_status_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'flows' AND column_name = 'status')",
     )
     .fetch_one(&pool)
     .await?;
@@ -214,6 +221,7 @@ async fn migration_state(
     Ok((
         schema_version,
         flows_exists,
+        flows_status_exists,
         events_exists,
         work_items_exists,
         work_items_status_exists,
@@ -289,6 +297,7 @@ async fn ensure_sqlx_prepare_schema(connection_string: &str) -> Result<(), sqlx:
         CREATE TABLE IF NOT EXISTS flows (
             id UUID PRIMARY KEY,
             ordinal INTEGER NOT NULL,
+            status SMALLINT NOT NULL,
             seed BYTEA NOT NULL
         )
         "#,

@@ -1,6 +1,6 @@
 pub mod migrations;
 
-use crate::models::{SchemaVersion, WorkItemKind, WorkItemStatus, SCHEMA_VERSION};
+use crate::models::{FlowStatus, SchemaVersion, WorkItemKind, WorkItemStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -17,6 +17,11 @@ const WORK_ITEMS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("wo
 const WORK_ITEM_KIND_START_FLOW: u8 = 0;
 const WORK_ITEM_STATUS_AVAILABLE: u8 = 0;
 const WORK_ITEM_STATUS_CLAIMED: u8 = 1;
+const FLOW_STATUS_CREATED: u8 = 0;
+const FLOW_STATUS_ALIVE: u8 = 1;
+const FLOW_STATUS_STOPPED: u8 = 2;
+const FLOW_STATUS_COMPLETED: u8 = 3;
+const FLOW_STATUS_DEAD: u8 = 4;
 
 const EVENT_KIND_ACTION_INPUT: u8 = 0;
 const EVENT_KIND_ACTION_SUCCESS_OUTPUT: u8 = 1;
@@ -74,7 +79,7 @@ impl JungleStore for RedbStore {
                     "redb create_flow open flows table failed: {err}"
                 ))
             })?;
-            let flow_value = encode_flow(ordinal, &seed);
+            let flow_value = encode_flow(ordinal, FlowStatus::Created, &seed);
             flows
                 .insert(&flow_id.as_bytes()[..], flow_value.as_slice())
                 .map_err(|err| {
@@ -299,6 +304,7 @@ impl JungleStore for RedbStore {
 #[derive(Debug)]
 struct FlowRow {
     ordinal: u32,
+    _status: FlowStatus,
     seed: Vec<u8>,
 }
 
@@ -380,9 +386,9 @@ fn decode_work_item(
 }
 
 fn decode_flow(raw: &[u8], context: &str) -> Result<FlowRow> {
-    if raw.len() < 4 {
+    if raw.len() < 5 {
         return Err(crate::PersistenceError::Message(format!(
-            "{context}: expected at least 4 bytes, got {}",
+            "{context}: expected at least 5 bytes, got {}",
             raw.len()
         )));
     }
@@ -390,15 +396,44 @@ fn decode_flow(raw: &[u8], context: &str) -> Result<FlowRow> {
     let mut ordinal_bytes = [0_u8; 4];
     ordinal_bytes.copy_from_slice(&raw[..4]);
     let ordinal = u32::from_be_bytes(ordinal_bytes);
-    let seed = raw[4..].to_vec();
-    Ok(FlowRow { ordinal, seed })
+    let status = decode_flow_status(raw[4], context)?;
+    let seed = raw[5..].to_vec();
+    Ok(FlowRow {
+        ordinal,
+        _status: status,
+        seed,
+    })
 }
 
-fn encode_flow(ordinal: u32, seed: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(4 + seed.len());
+fn encode_flow(ordinal: u32, status: FlowStatus, seed: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(5 + seed.len());
     out.extend_from_slice(&ordinal.to_be_bytes());
+    out.push(encode_flow_status(status));
     out.extend_from_slice(seed);
     out
+}
+
+fn encode_flow_status(status: FlowStatus) -> u8 {
+    match status {
+        FlowStatus::Created => FLOW_STATUS_CREATED,
+        FlowStatus::Alive => FLOW_STATUS_ALIVE,
+        FlowStatus::Stopped => FLOW_STATUS_STOPPED,
+        FlowStatus::Completed => FLOW_STATUS_COMPLETED,
+        FlowStatus::Dead => FLOW_STATUS_DEAD,
+    }
+}
+
+fn decode_flow_status(raw: u8, context: &str) -> Result<FlowStatus> {
+    match raw {
+        FLOW_STATUS_CREATED => Ok(FlowStatus::Created),
+        FLOW_STATUS_ALIVE => Ok(FlowStatus::Alive),
+        FLOW_STATUS_STOPPED => Ok(FlowStatus::Stopped),
+        FLOW_STATUS_COMPLETED => Ok(FlowStatus::Completed),
+        FLOW_STATUS_DEAD => Ok(FlowStatus::Dead),
+        other => Err(crate::PersistenceError::Message(format!(
+            "{context}: unknown flow status {other}"
+        ))),
+    }
 }
 
 fn encode_event_key(flow_id: Uuid, sequence_id: u64) -> [u8; 24] {

@@ -45,8 +45,19 @@ impl PgStore {
             CREATE TABLE IF NOT EXISTS flows (
                 id UUID PRIMARY KEY,
                 ordinal INTEGER NOT NULL,
+                status SMALLINT NOT NULL,
                 seed BYTEA NOT NULL
             )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            ALTER TABLE flows
+            ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0
             "#,
         )
         .execute(&mut *tx)

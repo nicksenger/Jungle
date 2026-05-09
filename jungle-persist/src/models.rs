@@ -14,6 +14,7 @@ pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion::V0;
 pub struct Flow {
     pub id: Uuid,
     pub ordinal: u32,
+    pub status: FlowStatus,
     pub seed: Vec<u8>,
 }
 
@@ -50,4 +51,13 @@ pub enum WorkItemKind {
 pub enum WorkItemStatus {
     Available,
     Claimed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlowStatus {
+    Created,
+    Alive,
+    Stopped,
+    Completed,
+    Dead,
 }
