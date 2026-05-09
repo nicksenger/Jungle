@@ -130,13 +130,13 @@ fn traverse_and_replace_are_type_level_transformations() {
     >;
     assert_type_eq!(Traversed, ExpectedTraversed);
 
-    type Replaced = jungle_sdk::types::Replaced<SourceFlow, ReplaceMapper>;
+    type Replace = jungle_sdk::types::Replace<SourceFlow, ReplaceMapper>;
     type ExpectedReplaced = Conditional<
         KeepLooping,
         Impulse<TraverseAnima, StepC>,
         While<KeepLooping, Impulse<TraverseAnima, StepD>>,
     >;
-    assert_type_eq!(Replaced, ExpectedReplaced);
+    assert_type_eq!(Replace, ExpectedReplaced);
 }
 
 impl jungle_sdk::types::Anima for TraverseAnima {

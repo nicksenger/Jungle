@@ -291,9 +291,9 @@ where
 
 pub type Traversed<Flow, Traversal> =
     <<Flow as TraverseFlow>::Output as TraverseWith<Traversal>>::Output;
-pub type Replaced<Flow, Replacer> =
+pub type Replace<Flow, Replacer> =
     <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
-pub type ReplacedNodes<Flow, Replacer> =
+pub type ReplaceNodes<Flow, Replacer> =
     <Replacer as ReplaceNode<<Flow as ReplaceFlow>::Output>>::Output;
 
 /// Output produced by a yielding phase.

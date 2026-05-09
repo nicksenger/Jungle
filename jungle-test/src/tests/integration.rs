@@ -419,7 +419,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
 
 #[test]
 fn replaced_alias_rewrites_integration_flow_steps() {
-    type Actual = jungle_sdk::types::Replaced<
+    type Actual = jungle_sdk::types::Replace<
         MultiMatchBeforeFlow,
         jungle_sdk::types::SwapLR<AddOneBeforeFullStateStep, AddTwoBeforeFullStateStep>,
     >;
@@ -437,7 +437,7 @@ fn replaced_alias_rewrites_integration_flow_steps() {
 
 #[test]
 fn replaced_nodes_alias_replaces_loop_branch_section() {
-    type Actual = jungle_sdk::types::ReplacedNodes<
+    type Actual = jungle_sdk::types::ReplaceNodes<
         LoopBranchFlow,
         jungle_sdk::types::SwapNodeLR<LoopBranchFlow, Impulse<IntegrationAnima, AddOneAfterFullStateStep>>,
     >;
