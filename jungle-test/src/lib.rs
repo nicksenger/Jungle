@@ -144,6 +144,7 @@ mod tests {
     mod aspect;
     mod conditional;
     mod connection;
+    mod integration;
     mod migration;
     mod progression;
     mod while_loop;
