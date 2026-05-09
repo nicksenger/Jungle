@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Ecosystem, JourneyStatus, Lens, Identity, Impulse,
+    Action, ActionCompletion, Condition, Conditional, Ecosystem, JourneyStatus, Lens, Identity, Impulse,
     LoopCondition, Reflex, While,
 };
 use jungle_sdk::typosaurus::list;
@@ -193,7 +193,7 @@ impl Condition<(IntegrationState, ())> for UseFirstBeforeFullStateTask {
     }
 }
 
-type BeforeFlow = jungle_sdk::types::Conditional<
+type BeforeFlow = Conditional<
     UseFirstBeforeFullStateTask,
     Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
     Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
@@ -213,7 +213,7 @@ impl Condition<(IntegrationState, ())> for UseFirstFocusedTask {
     }
 }
 
-type FocusedFlow = jungle_sdk::types::Conditional<
+type FocusedFlow = Conditional<
     UseFirstFocusedTask,
     Impulse<IntegrationAnima, AddOneFocusedStep>,
     Impulse<IntegrationAnima, AddTwoFocusedStep>,
@@ -226,16 +226,16 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
     }
 }
 
-type AfterFlow = jungle_sdk::types::Conditional<
+type AfterFlow = Conditional<
     UseFirstAfterFullStateTask,
     Impulse<IntegrationAnima, AddOneAfterFullStateStep>,
     Impulse<IntegrationAnima, AddTwoAfterFullStateStep>,
 >;
 
-type IntegrationLoopFlow = jungle_sdk::types::Conditional<
+type IntegrationLoopFlow = Conditional<
     IsBeforeFocusedSubFlow,
     BeforeFlow,
-    jungle_sdk::types::Conditional<IsInFocusedSubFlow, FocusedFlow, AfterFlow>,
+    Conditional<IsInFocusedSubFlow, FocusedFlow, AfterFlow>,
 >;
 
 type IntegrationJourney = While<
