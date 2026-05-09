@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, Impulse,
-    Lens, LoopCondition, Running, Task, Waiting, While,
+    Lens, LoopCondition, Running, Reflex, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
@@ -34,7 +34,7 @@ struct TigerState {
 
 struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
-impl<T, Focus> Task<T> for CoreEnergyStep<Sleep, Focus>
+impl<T, Focus> Reflex<T> for CoreEnergyStep<Sleep, Focus>
 where
     T: jungle_types::Anima,
     Focus: Aspect<T::State, View = CoreState>,
@@ -55,7 +55,7 @@ where
     }
 }
 
-impl<T, Focus> Task<T> for CoreEnergyStep<Eat, Focus>
+impl<T, Focus> Reflex<T> for CoreEnergyStep<Eat, Focus>
 where
     T: jungle_types::Anima,
     Focus: Aspect<T::State, View = CoreState>,
@@ -78,7 +78,7 @@ where
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Task<T> for AddI32<Focus, A>
+impl<T, Focus, A> Reflex<T> for AddI32<Focus, A>
 where
     T: jungle_types::Anima,
     Focus: Aspect<T::State, View = i32>,
@@ -105,7 +105,7 @@ where
 
 struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Task<T> for SubI32<Focus, A>
+impl<T, Focus, A> Reflex<T> for SubI32<Focus, A>
 where
     T: jungle_types::Anima,
     Focus: Aspect<T::State, View = i32>,
@@ -131,7 +131,7 @@ where
 }
 
 struct GorillaSleepManual;
-impl Task<Gorilla> for GorillaSleepManual {
+impl Reflex<Gorilla> for GorillaSleepManual {
     type Action = Sleep;
     type Aspect = Identity;
     type In = i32;

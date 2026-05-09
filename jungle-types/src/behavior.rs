@@ -217,19 +217,19 @@ where
 
 /// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
 /// of anima state.
-pub trait Task<T: Anima> {
+pub trait Reflex<T: Anima> {
     type Action: Action;
     type Aspect: Aspect<T::State>;
     type In;
     type Out;
 
     fn prepare(
-        view: &<<Self as Task<T>>::Aspect as Aspect<T::State>>::View,
+        view: &<<Self as Reflex<T>>::Aspect as Aspect<T::State>>::View,
         input: Self::In,
     ) -> <Self::Action as Action>::In;
 
     fn process(
-        view: &mut <<Self as Task<T>>::Aspect as Aspect<T::State>>::View,
+        view: &mut <<Self as Reflex<T>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Out;
 }
@@ -239,7 +239,7 @@ pub trait Task<T: Anima> {
 pub struct Impulse<T, Step>
 where
     T: Anima,
-    Step: Task<T>,
+    Step: Reflex<T>,
 {
     marker: PhantomData<fn() -> (T, Step)>,
 }
@@ -247,7 +247,7 @@ where
 impl<T, Step> Impulse<T, Step>
 where
     T: Anima,
-    Step: Task<T>,
+    Step: Reflex<T>,
 {
     pub fn new() -> Self {
         Self {
@@ -260,17 +260,17 @@ where
 impl<T, Step> Running for Impulse<T, Step>
 where
     T: Anima,
-    Step: Task<T>,
+    Step: Reflex<T>,
 {
-    type In = (T::State, <Step as Task<T>>::In);
-    type Out = (T::State, ActionRequest<<Step as Task<T>>::Action>);
+    type In = (T::State, <Step as Reflex<T>>::In);
+    type Out = (T::State, ActionRequest<<Step as Reflex<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<Step as Task<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let action_input = <Step as Task<T>>::prepare(view, input);
+        let view = <<Step as Reflex<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let action_input = <Step as Reflex<T>>::prepare(view, input);
         (
             state,
-            ActionRequest::<<Step as Task<T>>::Action>::new(action_input),
+            ActionRequest::<<Step as Reflex<T>>::Action>::new(action_input),
         )
     }
 }
@@ -279,14 +279,14 @@ where
 impl<T, Step> Waiting for Impulse<T, Step>
 where
     T: Anima,
-    Step: Task<T>,
+    Step: Reflex<T>,
 {
-    type In = (T::State, ActionCompletion<<Step as Task<T>>::Action>);
-    type Out = (T::State, <Step as Task<T>>::Out);
+    type In = (T::State, ActionCompletion<<Step as Reflex<T>>::Action>);
+    type Out = (T::State, <Step as Reflex<T>>::Out);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<Step as Task<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let emitted = <Step as Task<T>>::process(view, output);
+        let view = <<Step as Reflex<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let emitted = <Step as Reflex<T>>::process(view, output);
         (state, emitted)
     }
 }
@@ -295,8 +295,8 @@ where
 impl<T, Step> FlowActions for Impulse<T, Step>
 where
     T: Anima,
-    <Step as Task<T>>::Action: ActionMember,
-    Step: Task<T>,
+    <Step as Reflex<T>>::Action: ActionMember,
+    Step: Reflex<T>,
 {
-    type List = Node<<<Step as Task<T>>::Action as Action>::Id, <Step as Task<T>>::Action>;
+    type List = Node<<<Step as Reflex<T>>::Action as Action>::Id, <Step as Reflex<T>>::Action>;
 }

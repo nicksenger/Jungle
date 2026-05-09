@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
     ActionCompletion, Condition, Conditional, Either, Executor, Identity, Impulse, ManualExecutor,
-    Running, Task, Waiting,
+    Running, Reflex, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Journey;
@@ -32,7 +32,7 @@ anima!(
 );
 
 struct Left;
-impl Task<ConditionalAnima> for Left {
+impl Reflex<ConditionalAnima> for Left {
     type Action = LeftAction;
     type Aspect = Identity;
     type In = i32;
@@ -50,7 +50,7 @@ impl Task<ConditionalAnima> for Left {
 }
 
 struct Right;
-impl Task<ConditionalAnima> for Right {
+impl Reflex<ConditionalAnima> for Right {
     type Action = RightAction;
     type Aspect = Identity;
     type In = i32;

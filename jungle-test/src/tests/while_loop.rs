@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    ActionCompletion, Executor, Identity, Impulse, LoopCondition, ManualExecutor, Running, Task,
+    ActionCompletion, Executor, Identity, Impulse, LoopCondition, ManualExecutor, Running, Reflex,
     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
@@ -18,7 +18,7 @@ action!(
 anima!(Looper, U0, state = i32, journey = LoopJourney);
 
 struct Tick;
-impl Task<Looper> for Tick {
+impl Reflex<Looper> for Tick {
     type Action = TickAction;
     type Aspect = Identity;
     type In = i32;

@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Action, ActionCompletion, Condition, Ecosystem, JourneyStatus, Identity, Impulse, LoopCondition,
-    Task, While,
+    Reflex, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animae, JungleClient};
@@ -71,7 +71,7 @@ impl Action for AddTwoAction {
 }
 
 struct AddOneStep;
-impl Task<IntegrationAnima> for AddOneStep {
+impl Reflex<IntegrationAnima> for AddOneStep {
     type Action = AddOneAction;
     type Aspect = Identity;
     type In = ();
@@ -85,7 +85,7 @@ impl Task<IntegrationAnima> for AddOneStep {
 }
 
 struct AddTwoStep;
-impl Task<IntegrationAnima> for AddTwoStep {
+impl Reflex<IntegrationAnima> for AddTwoStep {
     type Action = AddTwoAction;
     type Aspect = Identity;
     type In = ();

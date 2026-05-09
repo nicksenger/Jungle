@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionRequest, AnimaActionSet, Executor, Id, Identity, Impulse,
-    ManualExecutor, Running, Task, Waiting,
+    ManualExecutor, Running, Reflex, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -44,7 +44,7 @@ impl Action for FinishAction {
 }
 
 struct Seed;
-impl Task<ProgressAnima> for Seed {
+impl Reflex<ProgressAnima> for Seed {
     type Action = SeedAction;
     type Aspect = Identity;
     type In = i32;
@@ -62,7 +62,7 @@ impl Task<ProgressAnima> for Seed {
 }
 
 struct Finish;
-impl Task<ProgressAnima> for Finish {
+impl Reflex<ProgressAnima> for Finish {
     type Action = FinishAction;
     type Aspect = Identity;
     type In = i32;
@@ -118,7 +118,7 @@ trait StepExecutor:
 
 impl<Step> StepExecutor for Impulse<ProgressAnima, Step>
 where
-    Step: Task<ProgressAnima, Aspect = Identity, In = i32, Out = i32>,
+    Step: Reflex<ProgressAnima, Aspect = Identity, In = i32, Out = i32>,
     Step::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
     type Action = Step::Action;

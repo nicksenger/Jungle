@@ -5,7 +5,7 @@ mod journey;
 mod meta;
 mod transport;
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, Aspect, Identity, Impulse, Lens, Task,
+    Action, ActionCompletion, ActionRequest, Aspect, Identity, Impulse, Lens, Reflex,
 };
 pub use error::Error;
 pub use executor::{

@@ -1,6 +1,6 @@
 use crate::{
     Action, ActionCompletion, BackendError, Condition, Conditional, Anima, Impulse,
-    LoopCondition, Running, Task, While,
+    LoopCondition, Running, Reflex, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -137,14 +137,14 @@ impl<Step> TypedErasedStep<Step> {
 impl<T, Step> ErasedFlow<T::State> for TypedErasedStep<Impulse<T, Step>>
 where
     T: Anima,
-    Step: Task<T>,
-    <Step as Task<T>>::Action: Action<Dependency = ()>,
-    <<Step as Task<T>>::Action as Action>::Dependency: 'static,
-    <<Step as Task<T>>::Action as Action>::In: 'static,
-    <<Step as Task<T>>::Action as Action>::Out: 'static,
-    <<Step as Task<T>>::Action as Action>::Err: Serialize + 'static,
-    <<Step as Task<T>>::Action as Action>::Out: DeserializeOwned,
-    <<Step as Task<T>>::Action as Action>::Err: DeserializeOwned,
+    Step: Reflex<T>,
+    <Step as Reflex<T>>::Action: Action<Dependency = ()>,
+    <<Step as Reflex<T>>::Action as Action>::Dependency: 'static,
+    <<Step as Reflex<T>>::Action as Action>::In: 'static,
+    <<Step as Reflex<T>>::Action as Action>::Out: 'static,
+    <<Step as Reflex<T>>::Action as Action>::Err: Serialize + 'static,
+    <<Step as Reflex<T>>::Action as Action>::Out: DeserializeOwned,
+    <<Step as Reflex<T>>::Action as Action>::Err: DeserializeOwned,
     Step::In: DeserializeOwned,
     Step::Out: Serialize,
 {
@@ -190,7 +190,7 @@ where
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<Step as Task<T>>::Action as Action>::act(&(), action_input).await;
+                    <<Step as Reflex<T>>::Action as Action>::act(&(), action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -211,13 +211,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<Step as Task<T>>::Action> = match completion {
+        let typed_completion: ActionCompletion<<Step as Reflex<T>>::Action> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Out>(&output)
+                postcard::from_bytes::<<<Step as Reflex<T>>::Action as Action>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Err>(&error)
+                postcard::from_bytes::<<<Step as Reflex<T>>::Action as Action>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -261,15 +261,15 @@ impl<Context, Step> ContextualTypedErasedStep<Context, Step> {
 impl<Context, T, Step> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Impulse<T, Step>>
 where
     T: Anima,
-    Step: Task<T>,
-    <Step as Task<T>>::Action: Action,
-    for<'ctx> &'ctx Context: Into<<<Step as Task<T>>::Action as Action>::Dependency>,
-    <<Step as Task<T>>::Action as Action>::Dependency: 'static,
-    <<Step as Task<T>>::Action as Action>::In: 'static,
-    <<Step as Task<T>>::Action as Action>::Out: 'static,
-    <<Step as Task<T>>::Action as Action>::Err: Serialize + 'static,
-    <<Step as Task<T>>::Action as Action>::Out: DeserializeOwned,
-    <<Step as Task<T>>::Action as Action>::Err: DeserializeOwned,
+    Step: Reflex<T>,
+    <Step as Reflex<T>>::Action: Action,
+    for<'ctx> &'ctx Context: Into<<<Step as Reflex<T>>::Action as Action>::Dependency>,
+    <<Step as Reflex<T>>::Action as Action>::Dependency: 'static,
+    <<Step as Reflex<T>>::Action as Action>::In: 'static,
+    <<Step as Reflex<T>>::Action as Action>::Out: 'static,
+    <<Step as Reflex<T>>::Action as Action>::Err: Serialize + 'static,
+    <<Step as Reflex<T>>::Action as Action>::Out: DeserializeOwned,
+    <<Step as Reflex<T>>::Action as Action>::Err: DeserializeOwned,
     Step::In: DeserializeOwned,
     Step::Out: Serialize,
 {
@@ -313,11 +313,11 @@ where
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         let context = unsafe { &*self.context };
-        let dependency: <<Step as Task<T>>::Action as Action>::Dependency = context.into();
+        let dependency: <<Step as Reflex<T>>::Action as Action>::Dependency = context.into();
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<Step as Task<T>>::Action as Action>::act(&dependency, action_input).await;
+                    <<Step as Reflex<T>>::Action as Action>::act(&dependency, action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -338,13 +338,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<Step as Task<T>>::Action> = match completion {
+        let typed_completion: ActionCompletion<<Step as Reflex<T>>::Action> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Out>(&output)
+                postcard::from_bytes::<<<Step as Reflex<T>>::Action as Action>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Err>(&error)
+                postcard::from_bytes::<<<Step as Reflex<T>>::Action as Action>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -692,11 +692,11 @@ pub trait BuildFlow<Input> {
 impl<T, Step> BuildFlow<DynFlow<T::State>> for Impulse<T, Step>
 where
     T: Anima + 'static,
-    Step: Task<T> + 'static,
-    <Step as Task<T>>::Action: Action<Dependency = ()> + 'static,
-    <<Step as Task<T>>::Action as Action>::Err: Serialize,
-    <<Step as Task<T>>::Action as Action>::Out: DeserializeOwned,
-    <<Step as Task<T>>::Action as Action>::Err: DeserializeOwned,
+    Step: Reflex<T> + 'static,
+    <Step as Reflex<T>>::Action: Action<Dependency = ()> + 'static,
+    <<Step as Reflex<T>>::Action as Action>::Err: Serialize,
+    <<Step as Reflex<T>>::Action as Action>::Out: DeserializeOwned,
+    <<Step as Reflex<T>>::Action as Action>::Err: DeserializeOwned,
     Step::In: DeserializeOwned,
     Step::Out: Serialize,
 {
@@ -806,7 +806,7 @@ impl<Context, T, Step> BuildFlowWithContext<(*const Context, DynFlow<T::State>)>
 where
     Context: 'static,
     T: Anima + 'static,
-    Step: Task<T> + 'static,
+    Step: Reflex<T> + 'static,
     Step::Action: Action + 'static,
     for<'ctx> &'ctx Context: Into<<Step::Action as Action>::Dependency>,
     <Step::Action as Action>::Err: Serialize,
