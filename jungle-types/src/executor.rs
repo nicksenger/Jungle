@@ -134,19 +134,19 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
-impl<T, R> ErasedFlow<T::State> for TypedErasedStep<Impulse<T, R>>
+impl<T, S> ErasedFlow<T::State> for TypedErasedStep<Impulse<T, S>>
 where
     T: Anima,
-    R: Step<T>,
-    <R as Step<T>>::Action: Action<Dependency = ()>,
-    <<R as Step<T>>::Action as Action>::Dependency: 'static,
-    <<R as Step<T>>::Action as Action>::In: 'static,
-    <<R as Step<T>>::Action as Action>::Out: 'static,
-    <<R as Step<T>>::Action as Action>::Err: Serialize + 'static,
-    <<R as Step<T>>::Action as Action>::Out: DeserializeOwned,
-    <<R as Step<T>>::Action as Action>::Err: DeserializeOwned,
-    R::In: DeserializeOwned,
-    R::Out: Serialize,
+    S: Step<T>,
+    <S as Step<T>>::Action: Action<Dependency = ()>,
+    <<S as Step<T>>::Action as Action>::Dependency: 'static,
+    <<S as Step<T>>::Action as Action>::In: 'static,
+    <<S as Step<T>>::Action as Action>::Out: 'static,
+    <<S as Step<T>>::Action as Action>::Err: Serialize + 'static,
+    <<S as Step<T>>::Action as Action>::Out: DeserializeOwned,
+    <<S as Step<T>>::Action as Action>::Err: DeserializeOwned,
+    S::In: DeserializeOwned,
+    S::Out: Serialize,
 {
     fn request(
         &mut self,
@@ -160,9 +160,9 @@ where
             return Err(ExecutorError::AwaitingCompletion);
         }
 
-        let typed_input = postcard::from_bytes::<R::In>(&input)
+        let typed_input = postcard::from_bytes::<S::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Impulse<T, R> as Running>::run((state, typed_input));
+        let (state, request) = <Impulse<T, S> as Running>::run((state, typed_input));
         let request = postcard::to_allocvec(&request.into_input())
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         self.waiting_completion = true;
@@ -181,15 +181,15 @@ where
             return Err(ExecutorError::AwaitingCompletion);
         }
 
-        let typed_input = postcard::from_bytes::<R::In>(&input)
+        let typed_input = postcard::from_bytes::<S::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Impulse<T, R> as Running>::run((state, typed_input));
+        let (state, request) = <Impulse<T, S> as Running>::run((state, typed_input));
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<R as Step<T>>::Action as Action>::act(&(), action_input).await;
+                let completion = <<S as Step<T>>::Action as Action>::act(&(), action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -210,18 +210,18 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<R as Step<T>>::Action> = match completion {
+        let typed_completion: ActionCompletion<<S as Step<T>>::Action> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<R as Step<T>>::Action as Action>::Out>(&output)
+                postcard::from_bytes::<<<S as Step<T>>::Action as Action>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<R as Step<T>>::Action as Action>::Err>(&error)
+                postcard::from_bytes::<<<S as Step<T>>::Action as Action>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
 
-        let (state, emitted) = <Impulse<T, R> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <Impulse<T, S> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -256,20 +256,20 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
     }
 }
 
-impl<Context, T, R> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Impulse<T, R>>
+impl<Context, T, S> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Impulse<T, S>>
 where
     T: Anima,
-    R: Step<T>,
-    <R as Step<T>>::Action: Action,
-    for<'ctx> &'ctx Context: Into<<<R as Step<T>>::Action as Action>::Dependency>,
-    <<R as Step<T>>::Action as Action>::Dependency: 'static,
-    <<R as Step<T>>::Action as Action>::In: 'static,
-    <<R as Step<T>>::Action as Action>::Out: 'static,
-    <<R as Step<T>>::Action as Action>::Err: Serialize + 'static,
-    <<R as Step<T>>::Action as Action>::Out: DeserializeOwned,
-    <<R as Step<T>>::Action as Action>::Err: DeserializeOwned,
-    R::In: DeserializeOwned,
-    R::Out: Serialize,
+    S: Step<T>,
+    <S as Step<T>>::Action: Action,
+    for<'ctx> &'ctx Context: Into<<<S as Step<T>>::Action as Action>::Dependency>,
+    <<S as Step<T>>::Action as Action>::Dependency: 'static,
+    <<S as Step<T>>::Action as Action>::In: 'static,
+    <<S as Step<T>>::Action as Action>::Out: 'static,
+    <<S as Step<T>>::Action as Action>::Err: Serialize + 'static,
+    <<S as Step<T>>::Action as Action>::Out: DeserializeOwned,
+    <<S as Step<T>>::Action as Action>::Err: DeserializeOwned,
+    S::In: DeserializeOwned,
+    S::Out: Serialize,
 {
     fn request(
         &mut self,
@@ -283,9 +283,9 @@ where
             return Err(ExecutorError::AwaitingCompletion);
         }
 
-        let typed_input = postcard::from_bytes::<R::In>(&input)
+        let typed_input = postcard::from_bytes::<S::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Impulse<T, R> as Running>::run((state, typed_input));
+        let (state, request) = <Impulse<T, S> as Running>::run((state, typed_input));
         let request = postcard::to_allocvec(&request.into_input())
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         self.waiting_completion = true;
@@ -304,18 +304,18 @@ where
             return Err(ExecutorError::AwaitingCompletion);
         }
 
-        let typed_input = postcard::from_bytes::<R::In>(&input)
+        let typed_input = postcard::from_bytes::<S::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Impulse<T, R> as Running>::run((state, typed_input));
+        let (state, request) = <Impulse<T, S> as Running>::run((state, typed_input));
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         let context = unsafe { &*self.context };
-        let dependency: <<R as Step<T>>::Action as Action>::Dependency = context.into();
+        let dependency: <<S as Step<T>>::Action as Action>::Dependency = context.into();
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<R as Step<T>>::Action as Action>::act(&dependency, action_input).await;
+                    <<S as Step<T>>::Action as Action>::act(&dependency, action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -336,18 +336,18 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<R as Step<T>>::Action> = match completion {
+        let typed_completion: ActionCompletion<<S as Step<T>>::Action> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<R as Step<T>>::Action as Action>::Out>(&output)
+                postcard::from_bytes::<<<S as Step<T>>::Action as Action>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<R as Step<T>>::Action as Action>::Err>(&error)
+                postcard::from_bytes::<<<S as Step<T>>::Action as Action>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
 
-        let (state, emitted) = <Impulse<T, R> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <Impulse<T, S> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -686,21 +686,21 @@ pub trait BuildFlow<Input> {
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<T, R> BuildFlow<DynFlow<T::State>> for Impulse<T, R>
+impl<T, S> BuildFlow<DynFlow<T::State>> for Impulse<T, S>
 where
     T: Anima + 'static,
-    R: Step<T> + 'static,
-    <R as Step<T>>::Action: Action<Dependency = ()> + 'static,
-    <<R as Step<T>>::Action as Action>::Err: Serialize,
-    <<R as Step<T>>::Action as Action>::Out: DeserializeOwned,
-    <<R as Step<T>>::Action as Action>::Err: DeserializeOwned,
-    R::In: DeserializeOwned,
-    R::Out: Serialize,
+    S: Step<T> + 'static,
+    <S as Step<T>>::Action: Action<Dependency = ()> + 'static,
+    <<S as Step<T>>::Action as Action>::Err: Serialize,
+    <<S as Step<T>>::Action as Action>::Out: DeserializeOwned,
+    <<S as Step<T>>::Action as Action>::Err: DeserializeOwned,
+    S::In: DeserializeOwned,
+    S::Out: Serialize,
 {
     type Output = DynFlow<T::State>;
 
     fn push_steps(mut steps: DynFlow<T::State>) -> Self::Output {
-        steps.push(Box::new(TypedErasedStep::<Impulse<T, R>>::new()));
+        steps.push(Box::new(TypedErasedStep::<Impulse<T, S>>::new()));
         steps
     }
 }
@@ -798,24 +798,24 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, T, R> BuildFlowWithContext<(*const Context, DynFlow<T::State>)> for Impulse<T, R>
+impl<Context, T, S> BuildFlowWithContext<(*const Context, DynFlow<T::State>)> for Impulse<T, S>
 where
     Context: 'static,
     T: Anima + 'static,
-    R: Step<T> + 'static,
-    R::Action: Action + 'static,
-    for<'ctx> &'ctx Context: Into<<R::Action as Action>::Dependency>,
-    <R::Action as Action>::Err: Serialize,
-    <R::Action as Action>::Out: DeserializeOwned,
-    <R::Action as Action>::Err: DeserializeOwned,
-    R::In: DeserializeOwned,
-    R::Out: Serialize,
+    S: Step<T> + 'static,
+    S::Action: Action + 'static,
+    for<'ctx> &'ctx Context: Into<<S::Action as Action>::Dependency>,
+    <S::Action as Action>::Err: Serialize,
+    <S::Action as Action>::Out: DeserializeOwned,
+    <S::Action as Action>::Err: DeserializeOwned,
+    S::In: DeserializeOwned,
+    S::Out: Serialize,
 {
     type Output = DynFlow<T::State>;
 
     fn push_steps((context, mut steps): (*const Context, DynFlow<T::State>)) -> Self::Output {
         steps.push(Box::new(
-            ContextualTypedErasedStep::<Context, Impulse<T, R>>::new(context),
+            ContextualTypedErasedStep::<Context, Impulse<T, S>>::new(context),
         ));
         steps
     }

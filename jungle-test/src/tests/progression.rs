@@ -116,9 +116,9 @@ trait StepExecutor:
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<Step> StepExecutor for Impulse<ProgressAnima, Step>
+impl<S> StepExecutor for Impulse<ProgressAnima, S>
 where
-    Step: Step<ProgressAnima, Aspect = Identity, In = i32, Out = i32>,
+    S: Step<ProgressAnima, Aspect = Identity, In = i32, Out = i32>,
     Step::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
     type Action = Step::Action;
