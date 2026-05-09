@@ -89,6 +89,99 @@ impl Action for AddTwoAction {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct FocusedPayloadIn {
+    base: i32,
+    apply_bonus: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct FocusedPayloadOut {
+    delta: i32,
+    note: String,
+}
+
+#[derive(Clone, Copy)]
+struct FocusedPayloadDependency {
+    bonus: i32,
+}
+
+impl From<&IntegrationZoo> for FocusedPayloadDependency {
+    fn from(_value: &IntegrationZoo) -> Self {
+        Self { bonus: 3 }
+    }
+}
+
+struct FocusedPayloadAction;
+impl jungle_sdk::types::ActionMember for FocusedPayloadAction {}
+
+impl Action for FocusedPayloadAction {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U3>;
+    type Dependency = FocusedPayloadDependency;
+    type In = FocusedPayloadIn;
+    type Out = FocusedPayloadOut;
+    type Err = ();
+
+    fn act(
+        dependency: &Self::Dependency,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let delta = if input.apply_bonus {
+            input.base + dependency.bonus
+        } else {
+            input.base - 1
+        };
+        let note = if input.apply_bonus {
+            String::from("bonus")
+        } else {
+            String::from("fallback")
+        };
+        std::future::ready(Ok(FocusedPayloadOut { delta, note }))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum DeepOutcome {
+    Increase(i32),
+    Decrease(i32),
+}
+
+#[derive(Clone, Copy)]
+struct DeepOutcomeDependency {
+    magnitude: i32,
+}
+
+impl From<&IntegrationZoo> for DeepOutcomeDependency {
+    fn from(_value: &IntegrationZoo) -> Self {
+        Self { magnitude: 2 }
+    }
+}
+
+struct DeepOutcomeAction;
+impl jungle_sdk::types::ActionMember for DeepOutcomeAction {}
+
+impl Action for DeepOutcomeAction {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U4>;
+    type Dependency = DeepOutcomeDependency;
+    type In = (bool, u8);
+    type Out = DeepOutcome;
+    type Err = ();
+
+    fn act(
+        dependency: &Self::Dependency,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let (increase, weight) = input;
+        let magnitude = dependency.magnitude * i32::from(weight);
+        let outcome = if increase {
+            DeepOutcome::Increase(magnitude)
+        } else {
+            DeepOutcome::Decrease(magnitude)
+        };
+        std::future::ready(Ok(outcome))
+    }
+}
+
 struct AddOneBeforeFullStateStep;
 impl Reflex<IntegrationAnima> for AddOneBeforeFullStateStep {
     type Action = AddOneAction;
@@ -136,15 +229,24 @@ impl Reflex<IntegrationAnima> for AddOneFocusedStep {
 
 struct AddTwoFocusedStep;
 impl Reflex<IntegrationAnima> for AddTwoFocusedStep {
-    type Action = AddTwoAction;
+    type Action = FocusedPayloadAction;
     type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type In = ();
     type Out = ();
 
-    fn prepare(_state: &SubFlowState, _input: Self::In) -> Self::In {}
+    fn prepare(state: &SubFlowState, _input: Self::In) -> <Self::Action as Action>::In {
+        FocusedPayloadIn {
+            base: state.value,
+            apply_bonus: state.value % 2 == 0,
+        }
+    }
 
     fn process(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        state.value += output.expect("second focused integration action should succeed");
+        let payload = output.expect("second focused integration action should succeed");
+        state.value += payload.delta;
+        if payload.note == "bonus" {
+            state.value += 1;
+        }
         state.updates += 1;
     }
 }
@@ -172,7 +274,7 @@ impl Reflex<IntegrationAnima> for AddOneDeepFocusedStep {
 
 struct AddTwoDeepFocusedStep;
 impl Reflex<IntegrationAnima> for AddTwoDeepFocusedStep {
-    type Action = AddTwoAction;
+    type Action = DeepOutcomeAction;
     type Aspect = Lens<
         IntegrationState,
         list![
@@ -183,10 +285,15 @@ impl Reflex<IntegrationAnima> for AddTwoDeepFocusedStep {
     type In = ();
     type Out = ();
 
-    fn prepare(_state: &DeepFocusState, _input: Self::In) -> Self::In {}
+    fn prepare(state: &DeepFocusState, _input: Self::In) -> <Self::Action as Action>::In {
+        (state.value % 2 == 0, 1)
+    }
 
     fn process(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        state.value += output.expect("second deep-focused integration action should succeed");
+        match output.expect("second deep-focused integration action should succeed") {
+            DeepOutcome::Increase(delta) => state.value += delta,
+            DeepOutcome::Decrease(delta) => state.value -= delta,
+        }
         state.updates += 1;
     }
 }
