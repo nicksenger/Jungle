@@ -622,24 +622,20 @@ where
     type Output = <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
 }
 
-/// An organism that hosts symbionts.
-pub trait Host {
-    /// Organisms that live in close association with this Host.
-    type Symbionts;
+/// A read-only view over an [`Animal`]'s current state.
+pub trait Observe: Animal {
+    /// The rendered appearance exposed by an observation.
+    type Appearance;
+
+    /// Observe the animal state and derive its outward appearance.
+    fn observe(state: &Self::State) -> Self::Appearance;
 }
 
-/// A trait that transforms a stream of inputs into a stream of outputs.
-pub trait Evoke {
-    /// The input type accepted by this evoke.
-    type In;
+/// A write path that perturbs an [`Animal`]'s state with an external stimulus.
+pub trait Perturb: Animal {
+    /// Input that drives a state transition.
+    type Stimulus;
 
-    /// The output type produced by this evoke.
-    type Out;
-
-    /// Process a stream of inputs, yielding a stream of outputs.
-    fn evoke(
-        self,
-        input: impl futures::Stream<Item = Self::In>,
-    ) -> impl futures::Stream<Item = Self::Out>;
+    /// Apply a stimulus to the current state.
+    fn perturb(state: &mut Self::State, stimulus: Self::Stimulus);
 }
-
