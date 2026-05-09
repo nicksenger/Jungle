@@ -111,49 +111,49 @@ impl JungleServer for Server {
         info!(has_request = request.is_some(), "received request");
 
         let response = match request {
-            Some(WireIn::CreateFlow { ordinal, seed }) => {
+            Some(WireIn::CreateJourney { ordinal, seed }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let flow_id = self.store.create_flow(ordinal, seed).await.map_err(|err| {
+                    let journey_id = self.store.create_journey(ordinal, seed).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
-                    WireOut::FlowCreated(flow_id)
+                    WireOut::JourneyCreated(journey_id)
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
                     let _ = (ordinal, seed);
                     return Err(crate::ServerError::Backend(BackendError::Message(
-                        "create_flow is unavailable without a persistence backend".to_string(),
+                        "create_journey is unavailable without a persistence backend".to_string(),
                     )));
                 }
             }
-            Some(WireIn::FlowStatus(flow_id)) => {
+            Some(WireIn::JourneyStatus(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let status = self.store.flow_status(flow_id).await.map_err(|err| {
+                    let status = self.store.journey_status(journey_id).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
-                    WireOut::FlowStatus(status)
+                    WireOut::JourneyStatus(status)
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
-                    let _ = flow_id;
+                    let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
-                        "flow_status is unavailable without a persistence backend".to_string(),
+                        "journey_status is unavailable without a persistence backend".to_string(),
                     )));
                 }
             }
-            Some(WireIn::FlowComplete(flow_id)) => {
+            Some(WireIn::JourneyComplete(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    self.store.flow_complete(flow_id).await.map_err(|err| {
+                    self.store.journey_complete(journey_id).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
                     WireOut::Ack
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
-                    let _ = flow_id;
+                    let _ = journey_id;
                     WireOut::Ack
                 }
             }
@@ -175,13 +175,13 @@ impl JungleServer for Server {
             Some(WireIn::HistoryEvent(history)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let flow_id = match &history {
+                    let journey_id = match &history {
                         jungle_types::RunnerOut::ActionInput { uuid, .. }
                         | jungle_types::RunnerOut::ActionSuccessOutput { uuid, .. }
                         | jungle_types::RunnerOut::ActionFailureOutput { uuid, .. } => *uuid,
                     };
                     self.store
-                        .flow_alive_if_created(flow_id)
+                        .journey_alive_if_created(journey_id)
                         .await
                         .map_err(|err| {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))

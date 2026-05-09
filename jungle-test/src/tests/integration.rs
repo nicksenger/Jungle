@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Ecosystem, FlowStatus, Identity, Impulse, LoopCondition,
+    Action, ActionCompletion, Condition, Ecosystem, JourneyStatus, Identity, Impulse, LoopCondition,
     Task, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
@@ -160,7 +160,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
 
     let seed = postcard::to_allocvec(&IntegrationState(0)).expect("seed should serialize");
     let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
-    let flow_id = client
+    let journey_id = client
         .start_journey(ordinal, seed)
         .await
         .expect("start_journey should succeed");
@@ -172,10 +172,10 @@ async fn redb_client_worker_flow_runs_to_completion() {
         completion = tokio::time::timeout(Duration::from_secs(8), async {
             loop {
                 let status = client
-                    .journey_details(flow_id)
+                    .journey_details(journey_id)
                     .await
                     .expect("journey_details should succeed while waiting for completion");
-                if status == FlowStatus::Completed {
+                if status == JourneyStatus::Completed {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(25)).await;
@@ -183,7 +183,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
         }) => {
             if completion.is_err() {
                 let status = client
-                    .journey_details(flow_id)
+                    .journey_details(journey_id)
                     .await
                     .expect("final journey_details should still be queryable");
                 panic!("flow did not complete before timeout, last status: {status:?}");

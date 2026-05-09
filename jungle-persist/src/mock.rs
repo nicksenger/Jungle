@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use jungle_types::{FlowStatus, RunnerOut, Work};
+use jungle_types::{JourneyStatus, RunnerOut, Work};
 use uuid::Uuid;
 
 use crate::{JungleStore, Result};
 
 type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<Work>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
-type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<FlowStatus> + Send + Sync + 'static>;
+type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
@@ -45,20 +45,20 @@ impl JungleStore for MockStore {
         Ok(())
     }
 
-    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+    async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
         (self.on_create_flow)(ordinal, seed)
     }
 
-    async fn flow_status(&self, flow_id: Uuid) -> Result<FlowStatus> {
-        (self.on_flow_status)(flow_id)
+    async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {
+        (self.on_flow_status)(journey_id)
     }
 
-    async fn flow_complete(&self, flow_id: Uuid) -> Result<()> {
-        (self.on_flow_complete)(flow_id)
+    async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
+        (self.on_flow_complete)(journey_id)
     }
 
-    async fn flow_alive_if_created(&self, flow_id: Uuid) -> Result<()> {
-        (self.on_flow_alive_if_created)(flow_id)
+    async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()> {
+        (self.on_flow_alive_if_created)(journey_id)
     }
 
     async fn claim_work(&self) -> Result<Option<Work>> {
@@ -73,8 +73,8 @@ impl JungleStore for MockStore {
         (self.on_poll_timers)()
     }
 
-    async fn details(&self, flow_id: Uuid) -> Result<()> {
-        (self.on_details)(flow_id)
+    async fn details(&self, journey_id: Uuid) -> Result<()> {
+        (self.on_details)(journey_id)
     }
 }
 
@@ -109,7 +109,7 @@ impl MockStoreBuilder {
 
     pub fn on_flow_status<F>(mut self, f: F) -> Self
     where
-        F: Fn(Uuid) -> Result<FlowStatus> + Send + Sync + 'static,
+        F: Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static,
     {
         self.on_flow_status = Some(Arc::new(f));
         self
@@ -157,7 +157,7 @@ impl MockStoreBuilder {
 
     pub fn build(self) -> MockStore {
         let default_create_flow: CreateFlowHandler = Arc::new(|_, _| Ok(Uuid::new_v4()));
-        let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(FlowStatus::Alive));
+        let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(JourneyStatus::Alive));
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));

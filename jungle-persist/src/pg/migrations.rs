@@ -42,7 +42,21 @@ impl PgStore {
 
         sqlx::query(
             r#"
-            CREATE TABLE IF NOT EXISTS flows (
+            DO $$
+            BEGIN
+                IF to_regclass('public.flows') IS NOT NULL AND to_regclass('public.journeys') IS NULL THEN
+                    ALTER TABLE flows RENAME TO journeys;
+                END IF;
+            END $$;
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS journeys (
                 id UUID PRIMARY KEY,
                 ordinal INTEGER NOT NULL,
                 status SMALLINT NOT NULL,
@@ -56,7 +70,7 @@ impl PgStore {
 
         sqlx::query(
             r#"
-            ALTER TABLE flows
+            ALTER TABLE journeys
             ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0
             "#,
         )
@@ -67,12 +81,51 @@ impl PgStore {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS events (
-                flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+                journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
                 sequence_id BIGINT NOT NULL,
                 kind SMALLINT NOT NULL,
                 data BYTEA NOT NULL,
-                PRIMARY KEY (flow_id, sequence_id)
+                PRIMARY KEY (journey_id, sequence_id)
             )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'events' AND column_name = 'flow_id'
+                ) AND NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'events' AND column_name = 'journey_id'
+                ) THEN
+                    ALTER TABLE events RENAME COLUMN flow_id TO journey_id;
+                END IF;
+            END $$;
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            DO $$
+            BEGIN
+                IF to_regclass('public.events_pkey') IS NOT NULL THEN
+                    ALTER INDEX events_pkey RENAME TO events_journey_id_sequence_id_pkey;
+                END IF;
+            EXCEPTION
+                WHEN duplicate_table THEN
+                    NULL;
+            END $$;
             "#,
         )
         .execute(&mut *tx)
@@ -83,11 +136,33 @@ impl PgStore {
             r#"
             CREATE TABLE IF NOT EXISTS work_items (
                 id UUID PRIMARY KEY,
-                flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+                journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
                 kind SMALLINT NOT NULL,
                 status SMALLINT NOT NULL,
                 expiry TIMESTAMPTZ NOT NULL
             )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'work_items' AND column_name = 'flow_id'
+                ) AND NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'work_items' AND column_name = 'journey_id'
+                ) THEN
+                    ALTER TABLE work_items RENAME COLUMN flow_id TO journey_id;
+                END IF;
+            END $$;
             "#,
         )
         .execute(&mut *tx)

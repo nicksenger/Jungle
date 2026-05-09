@@ -745,7 +745,7 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
     let flow_complete_calls = Arc::new(AtomicUsize::new(0));
     let poll_calls = Arc::new(AtomicUsize::new(0));
     let seed = postcard::to_allocvec(&RunnerState(0)).expect("runner seed should serialize");
-    let flow_id = Uuid::from_u128(101);
+    let journey_id = Uuid::from_u128(101);
 
     let client = MockClient::builder()
         .on_poll_work({
@@ -757,8 +757,8 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                 async move {
                     let idx = poll_calls.fetch_add(1, Ordering::Relaxed);
                     if idx == 0 {
-                        Ok(Some(Work::StartFlow {
-                            flow_id,
+                        Ok(Some(Work::StartJourney {
+                            journey_id,
                             ordinal: 16,
                             seed,
                         }))

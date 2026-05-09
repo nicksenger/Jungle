@@ -1,6 +1,6 @@
 use crate::JungleClient;
 use async_trait::async_trait;
-use jungle_types::{BackendError, ExecutorError, FlowStatus, RunnerOut, WireIn, WireOut, Work};
+use jungle_types::{BackendError, ExecutorError, JourneyStatus, RunnerOut, WireIn, WireOut, Work};
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::fs;
@@ -200,48 +200,48 @@ impl Drop for Client {
 impl JungleClient for Client {
     async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::CreateFlow { ordinal, seed })
+            .send_wire_message(WireIn::CreateJourney { ordinal, seed })
             .await
             .map_err(Self::transport_error)?;
 
         match response {
-            WireOut::FlowCreated(flow_id) => Ok(flow_id),
-            WireOut::FlowStatus(_)
+            WireOut::JourneyCreated(journey_id) => Ok(journey_id),
+            WireOut::JourneyStatus(_)
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
-                "unexpected non-flow-created response for start_journey".to_string(),
+                "unexpected non-journey-created response for start_journey".to_string(),
             )),
         }
     }
 
-    async fn journey_details(&self, id: Uuid) -> Result<FlowStatus, ExecutorError> {
+    async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::FlowStatus(id))
+            .send_wire_message(WireIn::JourneyStatus(id))
             .await
             .map_err(Self::transport_error)?;
 
         match response {
-            WireOut::FlowStatus(status) => Ok(status),
-            WireOut::FlowCreated(_)
+            WireOut::JourneyStatus(status) => Ok(status),
+            WireOut::JourneyCreated(_)
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
-                "unexpected non-flow-status response for journey_details".to_string(),
+                "unexpected non-journey-status response for journey_details".to_string(),
             )),
         }
     }
 
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::FlowComplete(id))
+            .send_wire_message(WireIn::JourneyComplete(id))
             .await
             .map_err(Self::transport_error)?;
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::FlowCreated(_)
-            | WireOut::FlowStatus(_)
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
@@ -258,7 +258,7 @@ impl JungleClient for Client {
         match response {
             WireOut::NoWorkAvailable => Ok(None),
             WireOut::PendingWork(work) => Ok(Some(work)),
-            WireOut::FlowCreated(_) | WireOut::FlowStatus(_) | WireOut::Ack => Err(
+            WireOut::JourneyCreated(_) | WireOut::JourneyStatus(_) | WireOut::Ack => Err(
                 ExecutorError::ClientTransport("unexpected response for poll_work".to_string()),
             ),
         }
@@ -275,8 +275,8 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::FlowCreated(_)
-            | WireOut::FlowStatus(_)
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_input".to_string(),
@@ -295,8 +295,8 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::FlowCreated(_)
-            | WireOut::FlowStatus(_)
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_success_output".to_string(),
@@ -315,8 +315,8 @@ impl JungleClient for Client {
 
         match response {
             WireOut::Ack => Ok(()),
-            WireOut::FlowCreated(_)
-            | WireOut::FlowStatus(_)
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
             | WireOut::NoWorkAvailable
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_failure_output".to_string(),

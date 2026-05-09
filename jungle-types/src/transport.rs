@@ -15,7 +15,7 @@ pub enum RunnerOut {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum FlowStatus {
+pub enum JourneyStatus {
     Created,
     Alive,
     Stopped,
@@ -26,8 +26,8 @@ pub enum FlowStatus {
 /// Work messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Work {
-    StartFlow {
-        flow_id: Uuid,
+    StartJourney {
+        journey_id: Uuid,
         ordinal: u32,
         seed: Vec<u8>,
     },
@@ -36,9 +36,9 @@ pub enum Work {
 /// Wire-level messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireIn {
-    CreateFlow { ordinal: u32, seed: Vec<u8> },
-    FlowStatus(Uuid),
-    FlowComplete(Uuid),
+    CreateJourney { ordinal: u32, seed: Vec<u8> },
+    JourneyStatus(Uuid),
+    JourneyComplete(Uuid),
     PollWork,
     HistoryEvent(RunnerOut),
 }
@@ -46,8 +46,8 @@ pub enum WireIn {
 /// Wire-level messages sent from runners to external clients.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireOut {
-    FlowCreated(Uuid),
-    FlowStatus(FlowStatus),
+    JourneyCreated(Uuid),
+    JourneyStatus(JourneyStatus),
     NoWorkAvailable,
     PendingWork(Work),
     Ack,

@@ -1,7 +1,7 @@
 use crate::{JungleClient, RunnerChannelRx};
 use async_trait::async_trait;
 use futures::StreamExt;
-use jungle_types::{ExecutorError, FlowStatus, RunnerOut, Work};
+use jungle_types::{ExecutorError, JourneyStatus, RunnerOut, Work};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ type CreateFlowHandlerFuture =
 type CreateFlowHandler =
     Arc<dyn Fn(u32, Vec<u8>) -> CreateFlowHandlerFuture + Send + Sync + 'static>;
 type FlowStatusHandlerFuture =
-    Pin<Box<dyn Future<Output = Result<FlowStatus, ExecutorError>> + Send + 'static>>;
+    Pin<Box<dyn Future<Output = Result<JourneyStatus, ExecutorError>> + Send + 'static>>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> FlowStatusHandlerFuture + Send + Sync + 'static>;
 type FlowCompleteHandlerFuture =
     Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
@@ -67,7 +67,7 @@ impl JungleClient for MockClient {
         (self.on_create_flow)(ordinal, seed).await
     }
 
-    async fn journey_details(&self, id: Uuid) -> Result<FlowStatus, ExecutorError> {
+    async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError> {
         (self.on_flow_status)(id).await
     }
 
@@ -125,7 +125,7 @@ impl MockClientBuilder {
     pub fn on_flow_status<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<FlowStatus, ExecutorError>> + Send + 'static,
+        Fut: Future<Output = Result<JourneyStatus, ExecutorError>> + Send + 'static,
     {
         self.on_flow_status = Some(Arc::new(move |id| Box::pin(f(id))));
         self
@@ -172,7 +172,7 @@ impl MockClientBuilder {
         let default_create_flow_handler: CreateFlowHandler =
             Arc::new(|_, _| Box::pin(async { Ok(Uuid::new_v4()) }));
         let default_flow_status_handler: FlowStatusHandler =
-            Arc::new(|_| Box::pin(async { Ok(FlowStatus::Alive) }));
+            Arc::new(|_| Box::pin(async { Ok(JourneyStatus::Alive) }));
         let default_flow_complete_handler: FlowCompleteHandler =
             Arc::new(|_| Box::pin(async { Ok(()) }));
         let default_poll_work_handler: PollWorkHandler = Arc::new(|| Box::pin(async { Ok(None) }));

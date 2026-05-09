@@ -27,7 +27,7 @@ where
     pub async fn spawn<A>(
         &self,
         state: A::State,
-        flow_id: Uuid,
+        journey_id: Uuid,
         mut tx: RunnerChannelTx,
     ) -> Result<A::State, ExecutorError>
     where
@@ -42,7 +42,7 @@ where
             tx.send((
                 RunnerOut::ActionInput {
                     data: request.request_bytes().to_vec(),
-                    uuid: flow_id,
+                    uuid: journey_id,
                 },
                 done_tx,
             ))
@@ -58,7 +58,7 @@ where
                     .send((
                         RunnerOut::ActionSuccessOutput {
                             data: output.clone(),
-                            uuid: flow_id,
+                            uuid: journey_id,
                         },
                         done_tx,
                     ))
@@ -68,7 +68,7 @@ where
                     .send((
                         RunnerOut::ActionFailureOutput {
                             data: error.clone(),
-                            uuid: flow_id,
+                            uuid: journey_id,
                         },
                         done_tx,
                     ))

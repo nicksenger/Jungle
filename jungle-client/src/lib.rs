@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
-use jungle_types::{ExecutorError, FlowStatus, RunnerOut, Work};
+use jungle_types::{ExecutorError, JourneyStatus, RunnerOut, Work};
 use uuid::Uuid;
 
 pub mod client;
@@ -15,7 +15,7 @@ pub use mock::{MockClient, MockClientBuilder};
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
     async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError>;
-    async fn journey_details(&self, id: Uuid) -> Result<FlowStatus, ExecutorError>;
+    async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError>;
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError>;
     async fn poll_work(&self) -> Result<Option<Work>, ExecutorError>;
     async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError>;

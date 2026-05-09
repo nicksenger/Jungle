@@ -11,16 +11,16 @@ pub enum SchemaVersion {
 pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion::V0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Flow {
+pub struct Journey {
     pub id: Uuid,
     pub ordinal: u32,
-    pub status: FlowStatus,
+    pub status: JourneyStatus,
     pub seed: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
-    pub flow_id: Uuid,
+    pub journey_id: Uuid,
     pub sequence_id: u64,
     pub kind: EventKind,
     pub data: Vec<u8>,
@@ -29,7 +29,7 @@ pub struct Event {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkItem {
     pub id: Uuid,
-    pub flow_id: Uuid,
+    pub journey_id: Uuid,
     pub kind: WorkItemKind,
     pub status: WorkItemStatus,
     pub expiry: DateTime<Utc>,
@@ -44,7 +44,7 @@ pub enum EventKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkItemKind {
-    StartFlow,
+    StartJourney,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +54,7 @@ pub enum WorkItemStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FlowStatus {
+pub enum JourneyStatus {
     Created,
     Alive,
     Stopped,

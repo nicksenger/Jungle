@@ -10,7 +10,7 @@ use testcontainers_modules::postgres::Postgres;
 
 const REDB_SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
     TableDefinition::new("jungle_schema_metadata");
-const REDB_FLOWS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("flows");
+const REDB_JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const REDB_EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const REDB_WORK_ITEMS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 
@@ -44,15 +44,15 @@ async fn postgres_server_startup_runs_migrations() {
         match migration_state(&connection_string).await {
             Ok((
                 schema_version,
-                flows_exists,
-                flows_status_exists,
+                journeys_exists,
+                journeys_status_exists,
                 events_exists,
                 work_items_exists,
                 work_items_status_exists,
             )) => {
                 assert_eq!(schema_version, Some(0));
-                assert!(flows_exists);
-                assert!(flows_status_exists);
+                assert!(journeys_exists);
+                assert!(journeys_status_exists);
                 assert!(events_exists);
                 assert!(work_items_exists);
                 assert!(work_items_status_exists);
@@ -107,11 +107,11 @@ async fn redb_server_startup_runs_migrations() {
 
     assert!(initialized, "redb file was not created before timeout");
 
-    let (schema_version, flows_exists, events_exists, work_items_exists) =
+    let (schema_version, journeys_exists, events_exists, work_items_exists) =
         redb_migration_state(&db_path)
             .unwrap_or_else(|err| panic!("failed to read redb file state after startup: {err}"));
     assert_eq!(schema_version, Some(0));
-    assert!(flows_exists);
+    assert!(journeys_exists);
     assert!(events_exists);
     assert!(work_items_exists);
 }
@@ -190,13 +190,13 @@ async fn migration_state(
         sqlx::query_scalar::<_, i32>("SELECT version FROM jungle_schema_metadata WHERE id = 1")
             .fetch_optional(&pool)
             .await?;
-    let flows_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'flows')",
+    let journeys_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'journeys')",
     )
     .fetch_one(&pool)
     .await?;
-    let flows_status_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'flows' AND column_name = 'status')",
+    let journeys_status_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'journeys' AND column_name = 'status')",
     )
     .fetch_one(&pool)
     .await?;
@@ -219,8 +219,8 @@ async fn migration_state(
     pool.close().await;
     Ok((
         schema_version,
-        flows_exists,
-        flows_status_exists,
+        journeys_exists,
+        journeys_status_exists,
         events_exists,
         work_items_exists,
         work_items_status_exists,
@@ -239,13 +239,13 @@ fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool, bool
         .map_err(|err| err.to_string())?
         .map(|v| v.value());
 
-    let flows_exists = read_txn.open_table(REDB_FLOWS_TABLE).is_ok();
+    let journeys_exists = read_txn.open_table(REDB_JOURNEYS_TABLE).is_ok();
     let events_exists = read_txn.open_table(REDB_EVENTS_TABLE).is_ok();
     let work_items_exists = read_txn.open_table(REDB_WORK_ITEMS_TABLE).is_ok();
 
     Ok((
         schema_version,
-        flows_exists,
+        journeys_exists,
         events_exists,
         work_items_exists,
     ))
@@ -285,7 +285,7 @@ async fn ensure_sqlx_prepare_schema(connection_string: &str) -> Result<(), sqlx:
 
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS flows (
+        CREATE TABLE IF NOT EXISTS journeys (
             id UUID PRIMARY KEY,
             ordinal INTEGER NOT NULL,
             status SMALLINT NOT NULL,
@@ -299,11 +299,11 @@ async fn ensure_sqlx_prepare_schema(connection_string: &str) -> Result<(), sqlx:
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS events (
-            flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+            journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
             sequence_id BIGINT NOT NULL,
             kind SMALLINT NOT NULL,
             data BYTEA NOT NULL,
-            PRIMARY KEY (flow_id, sequence_id)
+            PRIMARY KEY (journey_id, sequence_id)
         )
         "#,
     )
@@ -314,7 +314,7 @@ async fn ensure_sqlx_prepare_schema(connection_string: &str) -> Result<(), sqlx:
         r#"
         CREATE TABLE IF NOT EXISTS work_items (
             id UUID PRIMARY KEY,
-            flow_id UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+            journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
             kind SMALLINT NOT NULL,
             status SMALLINT NOT NULL,
             expiry TIMESTAMPTZ NOT NULL

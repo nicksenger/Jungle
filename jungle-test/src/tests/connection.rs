@@ -1,6 +1,6 @@
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
-    BackendError, FlowStatus, JungleClient, MockServer, RunnerOut, WireIn, WireOut, Work,
+    BackendError, JourneyStatus, JungleClient, MockServer, RunnerOut, WireIn, WireOut, Work,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -10,10 +10,10 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn client_exchanges_messages_with_mock_server() {
-    let flow_id = Uuid::from_u128(0x11111111111111111111111111111111);
+    let journey_id = Uuid::from_u128(0x11111111111111111111111111111111);
     let action_id = Uuid::from_u128(0x22222222222222222222222222222222);
-    let expected_work = Work::StartFlow {
-        flow_id,
+    let expected_work = Work::StartJourney {
+        journey_id,
         ordinal: 7,
         seed: vec![1, 2, 3],
     };
@@ -39,26 +39,26 @@ async fn client_exchanges_messages_with_mock_server() {
                         let idx = request_count.fetch_add(1, Ordering::SeqCst);
                         match idx {
                             0 => match msg {
-                                WireIn::CreateFlow { ordinal, seed } => {
+                                WireIn::CreateJourney { ordinal, seed } => {
                                     if ordinal == 7 && seed == vec![1, 2, 3] {
-                                        Ok(WireOut::FlowCreated(flow_id))
+                                        Ok(WireOut::JourneyCreated(journey_id))
                                     } else {
                                         Err(BackendError::Message(
-                                            "unexpected create_flow payload".to_string(),
+                                            "unexpected create_journey payload".to_string(),
                                         ))
                                     }
                                 }
                                 other => Err(BackendError::Message(format!(
-                                    "expected create_flow first, got {:?}",
+                                    "expected create_journey first, got {:?}",
                                     other
                                 ))),
                             },
                             1 => match msg {
-                                WireIn::FlowStatus(id) if id == flow_id => {
-                                    Ok(WireOut::FlowStatus(FlowStatus::Created))
+                                WireIn::JourneyStatus(id) if id == journey_id => {
+                                    Ok(WireOut::JourneyStatus(JourneyStatus::Created))
                                 }
                                 other => Err(BackendError::Message(format!(
-                                    "expected flow_status second, got {:?}",
+                                    "expected journey_status second, got {:?}",
                                     other
                                 ))),
                             },
@@ -77,9 +77,9 @@ async fn client_exchanges_messages_with_mock_server() {
                                 ))),
                             },
                             6 => match msg {
-                                WireIn::FlowComplete(id) if id == flow_id => Ok(WireOut::Ack),
+                                WireIn::JourneyComplete(id) if id == journey_id => Ok(WireOut::Ack),
                                 other => Err(BackendError::Message(format!(
-                                    "expected flow_complete last, got {:?}",
+                                    "expected journey_complete last, got {:?}",
                                     other
                                 ))),
                             },
@@ -110,22 +110,22 @@ async fn client_exchanges_messages_with_mock_server() {
         .start_journey(7, vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
-    assert_eq!(created_flow, flow_id);
+    assert_eq!(created_flow, journey_id);
 
     let status = client
-        .journey_details(flow_id)
+        .journey_details(journey_id)
         .await
         .expect("journey_details should succeed");
-    assert_eq!(status, FlowStatus::Created);
+    assert_eq!(status, JourneyStatus::Created);
 
     let work = client.poll_work().await.expect("poll_work should succeed");
     match work {
-        Some(Work::StartFlow {
-            flow_id: returned_flow,
+        Some(Work::StartJourney {
+            journey_id: returned_flow,
             ordinal,
             seed,
         }) => {
-            assert_eq!(returned_flow, flow_id);
+            assert_eq!(returned_flow, journey_id);
             assert_eq!(ordinal, 7);
             assert_eq!(seed, vec![1, 2, 3]);
         }
@@ -145,7 +145,7 @@ async fn client_exchanges_messages_with_mock_server() {
         .await
         .expect("action_failure_output should ack");
     client
-        .complete_journey(flow_id)
+        .complete_journey(journey_id)
         .await
         .expect("complete_journey should ack");
 
@@ -154,12 +154,12 @@ async fn client_exchanges_messages_with_mock_server() {
 
     assert!(matches!(
         requests[0],
-        WireIn::CreateFlow {
+        WireIn::CreateJourney {
             ordinal,
             ref seed,
         } if ordinal == 7 && seed == &vec![1, 2, 3]
     ));
-    assert!(matches!(requests[1], WireIn::FlowStatus(id) if id == flow_id));
+    assert!(matches!(requests[1], WireIn::JourneyStatus(id) if id == journey_id));
     assert!(matches!(requests[2], WireIn::PollWork));
     assert!(matches!(
         requests[3],
@@ -182,7 +182,7 @@ async fn client_exchanges_messages_with_mock_server() {
             ref data,
         }) if uuid == action_id && data == &vec![7, 8]
     ));
-    assert!(matches!(requests[6], WireIn::FlowComplete(id) if id == flow_id));
+    assert!(matches!(requests[6], WireIn::JourneyComplete(id) if id == journey_id));
 
     server_task.abort();
     let _ = server_task.await;
@@ -206,36 +206,36 @@ async fn flow_status_moves_created_to_alive_to_completed() {
     });
 
     let client = connect_client_with_retry(listen_addr).await;
-    let flow_id = client
+    let journey_id = client
         .start_journey(7, vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
     let created = client
-        .journey_details(flow_id)
+        .journey_details(journey_id)
         .await
         .expect("journey_details created should succeed");
-    assert_eq!(created, FlowStatus::Created);
+    assert_eq!(created, JourneyStatus::Created);
 
     client
-        .action_input(flow_id, vec![9, 9, 9])
+        .action_input(journey_id, vec![9, 9, 9])
         .await
         .expect("action_input should succeed");
     let alive = client
-        .journey_details(flow_id)
+        .journey_details(journey_id)
         .await
         .expect("journey_details alive should succeed");
-    assert_eq!(alive, FlowStatus::Alive);
+    assert_eq!(alive, JourneyStatus::Alive);
 
     client
-        .complete_journey(flow_id)
+        .complete_journey(journey_id)
         .await
         .expect("complete_journey should succeed");
     let completed = client
-        .journey_details(flow_id)
+        .journey_details(journey_id)
         .await
         .expect("journey_details completed should succeed");
-    assert_eq!(completed, FlowStatus::Completed);
+    assert_eq!(completed, JourneyStatus::Completed);
 
     server_task.abort();
     let _ = server_task.await;

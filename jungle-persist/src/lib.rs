@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
-use jungle_types::{FlowStatus, RunnerOut, Work};
+use jungle_types::{JourneyStatus, RunnerOut, Work};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -39,14 +39,14 @@ pub enum PersistenceError {
 #[async_trait]
 pub trait JungleStore: DynClone + Send + Sync {
     async fn migrate(&self) -> Result<()>;
-    async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid>;
-    async fn flow_status(&self, flow_id: Uuid) -> Result<FlowStatus>;
-    async fn flow_complete(&self, flow_id: Uuid) -> Result<()>;
-    async fn flow_alive_if_created(&self, flow_id: Uuid) -> Result<()>;
+    async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid>;
+    async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus>;
+    async fn journey_complete(&self, journey_id: Uuid) -> Result<()>;
+    async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()>;
     async fn claim_work(&self) -> Result<Option<Work>>;
     async fn append_history(&self, history: RunnerOut) -> Result<()>;
     async fn poll_timers(&self) -> Result<Option<()>>;
-    async fn details(&self, flow_id: Uuid) -> Result<()>;
+    async fn details(&self, journey_id: Uuid) -> Result<()>;
 }
 
 dyn_clone::clone_trait_object!(JungleStore);

@@ -68,8 +68,8 @@ where
 
         loop {
             match self.client.poll_work().await? {
-                Some(Work::StartFlow {
-                    flow_id,
+                Some(Work::StartJourney {
+                    journey_id,
                     ordinal,
                     seed,
                 }) => {
@@ -77,7 +77,7 @@ where
                         <AnimaSet<T::Animae> as SpawnByOrdinal<T>>::spawn_by_ordinal(
                             ordinal,
                             seed,
-                            flow_id,
+                            journey_id,
                             &self.runner,
                             tx.clone(),
                         )
@@ -87,7 +87,7 @@ where
                             "unknown anima ordinal: {ordinal}"
                         )));
                     }
-                    self.client.complete_journey(flow_id).await?;
+                    self.client.complete_journey(journey_id).await?;
                 }
                 None => {}
             }
@@ -100,7 +100,7 @@ pub trait SpawnByOrdinal<T>: Send + Sync {
     fn spawn_by_ordinal<'a>(
         ordinal: u32,
         seed: Vec<u8>,
-        flow_id: Uuid,
+        journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<bool, ExecutorError>> + 'a>>;
@@ -110,7 +110,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
     fn spawn_by_ordinal<'a>(
         _ordinal: u32,
         _seed: Vec<u8>,
-        _flow_id: Uuid,
+        _journey_id: Uuid,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<bool, ExecutorError>> + 'a>> {
@@ -132,7 +132,7 @@ where
     fn spawn_by_ordinal<'a>(
         ordinal: u32,
         seed: Vec<u8>,
-        flow_id: Uuid,
+        journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<bool, ExecutorError>> + 'a>> {
@@ -141,11 +141,11 @@ where
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
                 let state: Head::State = seed.into();
-                let _ = runner.spawn::<Head>(state, flow_id, tx).await?;
+                let _ = runner.spawn::<Head>(state, journey_id, tx).await?;
                 return Ok(true);
             }
 
-            Tail::spawn_by_ordinal(ordinal, seed, flow_id, runner, tx).await
+            Tail::spawn_by_ordinal(ordinal, seed, journey_id, runner, tx).await
         })
     }
 }

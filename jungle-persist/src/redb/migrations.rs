@@ -7,7 +7,7 @@ use tracing::warn;
 
 const SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
     TableDefinition::new("jungle_schema_metadata");
-const FLOWS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("flows");
+const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const WORK_ITEMS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 
@@ -48,8 +48,8 @@ impl RedbStore {
             }
         }
 
-        tx.open_table(FLOWS_TABLE).map_err(|err| {
-            crate::PersistenceError::Message(format!("redb open flows table failed: {err}"))
+        tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!("redb open journeys table failed: {err}"))
         })?;
         tx.open_table(EVENTS_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!("redb open events table failed: {err}"))
