@@ -247,10 +247,10 @@ where
     marker: PhantomData<fn() -> (T, S)>,
 }
 
-impl<T, R> Impulse<T, R>
+impl<T, S> Impulse<T, S>
 where
     T: Anima,
-    R: Step<T>,
+    S: Step<T>,
 {
     pub fn new() -> Self {
         Self {
@@ -260,82 +260,82 @@ where
 }
 
 #[primitive(property = crate::JungleRunning)]
-impl<T, R> Running for Impulse<T, R>
+impl<T, S> Running for Impulse<T, S>
 where
     T: Anima,
-    R: Step<T>,
+    S: Step<T>,
 {
-    type In = (T::State, <R as Step<T>>::In);
-    type Out = (T::State, ActionRequest<<R as Step<T>>::Action>);
+    type In = (T::State, <S as Step<T>>::In);
+    type Out = (T::State, ActionRequest<<S as Step<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<R as Step<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let action_input = <R as Step<T>>::prepare(view, input);
+        let view = <<S as Step<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let action_input = <S as Step<T>>::prepare(view, input);
         (
             state,
-            ActionRequest::<<R as Step<T>>::Action>::new(action_input),
+            ActionRequest::<<S as Step<T>>::Action>::new(action_input),
         )
     }
 }
 
 #[primitive(property = crate::JungleWaiting)]
-impl<T, R> Waiting for Impulse<T, R>
+impl<T, S> Waiting for Impulse<T, S>
 where
     T: Anima,
-    R: Step<T>,
+    S: Step<T>,
 {
-    type In = (T::State, ActionCompletion<<R as Step<T>>::Action>);
-    type Out = (T::State, <R as Step<T>>::Out);
+    type In = (T::State, ActionCompletion<<S as Step<T>>::Action>);
+    type Out = (T::State, <S as Step<T>>::Out);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<R as Step<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let emitted = <R as Step<T>>::process(view, output);
+        let view = <<S as Step<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let emitted = <S as Step<T>>::process(view, output);
         (state, emitted)
     }
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, R> FlowActions for Impulse<T, R>
+impl<T, S> FlowActions for Impulse<T, S>
 where
     T: Anima,
-    <R as Step<T>>::Action: ActionMember,
-    R: Step<T>,
+    <S as Step<T>>::Action: ActionMember,
+    S: Step<T>,
 {
-    type List = Node<<<R as Step<T>>::Action as Action>::Id, <R as Step<T>>::Action>;
+    type List = Node<<<S as Step<T>>::Action as Action>::Id, <S as Step<T>>::Action>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
-impl<T, R> TraverseFlow for Impulse<T, R>
+impl<T, S> TraverseFlow for Impulse<T, S>
 where
     T: Anima,
-    R: Step<T>,
+    S: Step<T>,
 {
-    type Output = Impulse<T, R>;
+    type Output = Impulse<T, S>;
 }
 
 #[primitive(property = crate::JungleReplaceFlow)]
-impl<T, R> ReplaceFlow for Impulse<T, R>
+impl<T, S> ReplaceFlow for Impulse<T, S>
 where
     T: Anima,
-    R: Step<T>,
+    S: Step<T>,
 {
-    type Output = Impulse<T, R>;
+    type Output = Impulse<T, S>;
 }
 
-impl<T, R, Traversal> TraverseWith<Traversal> for Impulse<T, R>
+impl<T, S, Traversal> TraverseWith<Traversal> for Impulse<T, S>
 where
     T: Anima,
-    R: Step<T>,
-    Traversal: TraverseStep<Impulse<T, R>>,
+    S: Step<T>,
+    Traversal: TraverseStep<Impulse<T, S>>,
 {
-    type Output = <Traversal as TraverseStep<Impulse<T, R>>>::Output;
+    type Output = <Traversal as TraverseStep<Impulse<T, S>>>::Output;
 }
 
-impl<T, R, Replacer> ReplaceWith<Replacer> for Impulse<T, R>
+impl<T, S, Replacer> ReplaceWith<Replacer> for Impulse<T, S>
 where
     T: Anima,
-    R: Step<T>,
-    Replacer: ReplaceStep<Impulse<T, R>>,
+    S: Step<T>,
+    Replacer: ReplaceStep<Impulse<T, S>>,
 {
-    type Output = <Replacer as ReplaceStep<Impulse<T, R>>>::Output;
+    type Output = <Replacer as ReplaceStep<Impulse<T, S>>>::Output;
 }
