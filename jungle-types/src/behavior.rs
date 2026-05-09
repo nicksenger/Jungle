@@ -257,46 +257,46 @@ where
 }
 
 #[primitive(property = crate::JungleRunning)]
-impl<T, Step> Running for Impulse<T, Step>
+impl<T, R> Running for Impulse<T, R>
 where
     T: Anima,
-    Step: Reflex<T>,
+    R: Reflex<T>,
 {
-    type In = (T::State, <Step as Reflex<T>>::In);
-    type Out = (T::State, ActionRequest<<Step as Reflex<T>>::Action>);
+    type In = (T::State, <R as Reflex<T>>::In);
+    type Out = (T::State, ActionRequest<<R as Reflex<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<Step as Reflex<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let action_input = <Step as Reflex<T>>::prepare(view, input);
+        let view = <<R as Reflex<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let action_input = <R as Reflex<T>>::prepare(view, input);
         (
             state,
-            ActionRequest::<<Step as Reflex<T>>::Action>::new(action_input),
+            ActionRequest::<<R as Reflex<T>>::Action>::new(action_input),
         )
     }
 }
 
 #[primitive(property = crate::JungleWaiting)]
-impl<T, Step> Waiting for Impulse<T, Step>
+impl<T, R> Waiting for Impulse<T, R>
 where
     T: Anima,
-    Step: Reflex<T>,
+    R: Reflex<T>,
 {
-    type In = (T::State, ActionCompletion<<Step as Reflex<T>>::Action>);
-    type Out = (T::State, <Step as Reflex<T>>::Out);
+    type In = (T::State, ActionCompletion<<R as Reflex<T>>::Action>);
+    type Out = (T::State, <R as Reflex<T>>::Out);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<Step as Reflex<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let emitted = <Step as Reflex<T>>::process(view, output);
+        let view = <<R as Reflex<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let emitted = <R as Reflex<T>>::process(view, output);
         (state, emitted)
     }
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, Step> FlowActions for Impulse<T, Step>
+impl<T, R> FlowActions for Impulse<T, R>
 where
     T: Anima,
-    <Step as Reflex<T>>::Action: ActionMember,
-    Step: Reflex<T>,
+    <R as Reflex<T>>::Action: ActionMember,
+    R: Reflex<T>,
 {
-    type List = Node<<<Step as Reflex<T>>::Action as Action>::Id, <Step as Reflex<T>>::Action>;
+    type List = Node<<<R as Reflex<T>>::Action as Action>::Id, <R as Reflex<T>>::Action>;
 }
