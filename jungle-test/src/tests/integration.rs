@@ -5,7 +5,7 @@ use jungle_sdk::types::{
     Task, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
-use jungle_sdk::{Creatures, JungleClient};
+use jungle_sdk::{Animas, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -71,7 +71,7 @@ impl Action for AddTwoAction {
 }
 
 struct AddOneStep;
-impl Task<IntegrationCreature> for AddOneStep {
+impl Task<IntegrationAnima> for AddOneStep {
     type Action = AddOneAction;
     type Aspect = Identity;
     type In = ();
@@ -85,7 +85,7 @@ impl Task<IntegrationCreature> for AddOneStep {
 }
 
 struct AddTwoStep;
-impl Task<IntegrationCreature> for AddTwoStep {
+impl Task<IntegrationAnima> for AddTwoStep {
     type Action = AddTwoAction;
     type Aspect = Identity;
     type In = ();
@@ -116,24 +116,24 @@ type IntegrationInstinct = While<
     KeepRunning,
     jungle_sdk::types::Conditional<
         UseFirstStep,
-        Impulse<IntegrationCreature, AddOneStep>,
-        Impulse<IntegrationCreature, AddTwoStep>,
+        Impulse<IntegrationAnima, AddOneStep>,
+        Impulse<IntegrationAnima, AddTwoStep>,
     >,
 >;
 
 animal!(
-    IntegrationCreature,
+    IntegrationAnima,
     jungle_sdk::typosaurus::num::consts::U0,
     IntegrationState,
     IntegrationInstinct
 );
 
-#[derive(Creatures)]
-struct IntegrationCreatures(IntegrationCreature);
+#[derive(Animas)]
+struct IntegrationAnimas(IntegrationAnima);
 
 struct IntegrationZoo;
 impl Ecosystem for IntegrationZoo {
-    type Creatures = IntegrationCreatures;
+    type Animas = IntegrationAnimas;
 }
 
 #[tokio::test]

@@ -112,7 +112,7 @@ mod tests {
         ($name:ident, $id:ty, state = $state:ty, instinct = $instinct:ty) => {
             struct $name;
 
-            impl jungle_sdk::types::Creature for $name {
+            impl jungle_sdk::types::Anima for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
@@ -130,17 +130,17 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
             struct $name;
-            impl jungle_sdk::types::CreatureMember for $name {}
+            impl jungle_sdk::types::AnimaMember for $name {}
 
-            impl jungle_sdk::types::Creature for $name {
+            impl jungle_sdk::types::Anima for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
                 type Instinct = $instinct;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleCreatures)]
-            impl jungle_sdk::types::Creatures for $name {
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimas)]
+            impl jungle_sdk::types::Animas for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 

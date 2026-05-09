@@ -1,5 +1,5 @@
 use crate::{
-    Action, ActionCompletion, BackendError, Condition, Conditional, Creature, Impulse,
+    Action, ActionCompletion, BackendError, Condition, Conditional, Anima, Impulse,
     LoopCondition, Running, Task, While,
 };
 use inception::*;
@@ -136,7 +136,7 @@ impl<Step> TypedErasedStep<Step> {
 
 impl<T, Step> ErasedFlow<T::State> for TypedErasedStep<Impulse<T, Step>>
 where
-    T: Creature,
+    T: Anima,
     Step: Task<T>,
     <Step as Task<T>>::Action: Action<Dependency = ()>,
     <<Step as Task<T>>::Action as Action>::Dependency: 'static,
@@ -260,7 +260,7 @@ impl<Context, Step> ContextualTypedErasedStep<Context, Step> {
 
 impl<Context, T, Step> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Impulse<T, Step>>
 where
-    T: Creature,
+    T: Anima,
     Step: Task<T>,
     <Step as Task<T>>::Action: Action,
     for<'ctx> &'ctx Context: Into<<<Step as Task<T>>::Action as Action>::Dependency>,
@@ -691,7 +691,7 @@ pub trait BuildFlow<Input> {
 #[inception::primitive(property = crate::JungleDynFlow)]
 impl<T, Step> BuildFlow<DynFlow<T::State>> for Impulse<T, Step>
 where
-    T: Creature + 'static,
+    T: Anima + 'static,
     Step: Task<T> + 'static,
     <Step as Task<T>>::Action: Action<Dependency = ()> + 'static,
     <<Step as Task<T>>::Action as Action>::Err: Serialize,
@@ -805,7 +805,7 @@ impl<Context, T, Step> BuildFlowWithContext<(*const Context, DynFlow<T::State>)>
     for Impulse<T, Step>
 where
     Context: 'static,
-    T: Creature + 'static,
+    T: Anima + 'static,
     Step: Task<T> + 'static,
     Step::Action: Action + 'static,
     for<'ctx> &'ctx Context: Into<<Step::Action as Action>::Dependency>,
@@ -1205,7 +1205,7 @@ where
 
 pub struct ContextExecutor<'a, Context, A>
 where
-    A: Creature,
+    A: Anima,
     A::Instinct:
         BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
@@ -1219,7 +1219,7 @@ where
 impl<'a, Context, A> ContextExecutor<'a, Context, A>
 where
     Context: 'static,
-    A: Creature,
+    A: Anima,
     A::Instinct:
         BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
@@ -1427,7 +1427,7 @@ where
 
 pub struct ManualExecutor<A>
 where
-    A: Creature,
+    A: Anima,
     A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
@@ -1437,7 +1437,7 @@ where
 
 impl<A> ManualExecutor<A>
 where
-    A: Creature,
+    A: Anima,
     A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
@@ -1678,7 +1678,7 @@ where
 
 pub struct Executor<A>
 where
-    A: Creature,
+    A: Anima,
     A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     manual: ManualExecutor<A>,
@@ -1687,7 +1687,7 @@ where
 
 impl<A> Executor<A>
 where
-    A: Creature,
+    A: Anima,
     A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     pub fn new(state: A::State) -> Self {

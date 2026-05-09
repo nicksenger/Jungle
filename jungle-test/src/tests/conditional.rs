@@ -25,14 +25,14 @@ action!(
 );
 
 animal!(
-    ConditionalCreature,
+    ConditionalAnima,
     U0,
     state = i32,
     instinct = ConditionalInstinct
 );
 
 struct Left;
-impl Task<ConditionalCreature> for Left {
+impl Task<ConditionalAnima> for Left {
     type Action = LeftAction;
     type Aspect = Identity;
     type In = i32;
@@ -50,7 +50,7 @@ impl Task<ConditionalCreature> for Left {
 }
 
 struct Right;
-impl Task<ConditionalCreature> for Right {
+impl Task<ConditionalAnima> for Right {
     type Action = RightAction;
     type Aspect = Identity;
     type In = i32;
@@ -67,8 +67,8 @@ impl Task<ConditionalCreature> for Right {
     }
 }
 
-type LeftFlow = Impulse<ConditionalCreature, Left>;
-type RightFlow = Impulse<ConditionalCreature, Right>;
+type LeftFlow = Impulse<ConditionalAnima, Left>;
+type RightFlow = Impulse<ConditionalAnima, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
@@ -120,13 +120,13 @@ fn conditional_waiting_accept_returns_either_branch_output() {
 
 #[test]
 fn executor_dynamically_selects_conditional_branch() {
-    let mut left = ManualExecutor::<ConditionalCreature>::new(5);
+    let mut left = ManualExecutor::<ConditionalAnima>::new(5);
     let left_emitted: i32 = left.next_typed(3, Ok::<i32, ()>(9)).expect("left branch");
     assert_eq!(left_emitted, 9);
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
-    let mut right = ManualExecutor::<ConditionalCreature>::new(-2);
+    let mut right = ManualExecutor::<ConditionalAnima>::new(-2);
     let right_emitted: bool = right.next_typed(3, Ok::<i32, ()>(6)).expect("right branch");
     assert_eq!(right_emitted, true);
     assert!(right.is_complete());
@@ -135,7 +135,7 @@ fn executor_dynamically_selects_conditional_branch() {
 
 #[test]
 fn executor_requests_and_completes_conditional_branch() {
-    let mut left = Executor::<ConditionalCreature>::new(5);
+    let mut left = Executor::<ConditionalAnima>::new(5);
     let left_request: i32 = left.next_request().expect("left request");
     assert_eq!(left_request, 5);
     let left_emitted: i32 = left.complete(Ok::<i32, ()>(9)).expect("left completion");
@@ -143,7 +143,7 @@ fn executor_requests_and_completes_conditional_branch() {
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
-    let mut right = Executor::<ConditionalCreature>::new(-2);
+    let mut right = Executor::<ConditionalAnima>::new(-2);
     let right_request: i32 = right.next_request().expect("right request");
     assert_eq!(right_request, -2);
     let right_emitted: bool = right.complete(Ok::<i32, ()>(6)).expect("right completion");
@@ -154,7 +154,7 @@ fn executor_requests_and_completes_conditional_branch() {
 
 #[tokio::test]
 async fn executor_executable_request_runs_without_static_action_dispatch() {
-    let mut left = Executor::<ConditionalCreature>::new(5);
+    let mut left = Executor::<ConditionalAnima>::new(5);
     let request = left
         .next_executable_request(0i32)
         .expect("left executable request");
@@ -169,7 +169,7 @@ async fn executor_executable_request_runs_without_static_action_dispatch() {
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 6);
 
-    let mut right = Executor::<ConditionalCreature>::new(-2);
+    let mut right = Executor::<ConditionalAnima>::new(-2);
     let request = right
         .next_executable_request(0i32)
         .expect("right executable request");

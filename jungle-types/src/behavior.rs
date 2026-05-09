@@ -4,7 +4,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::Sub;
 
-use crate::{ActionMember, Creature, FlowActions, Running, Waiting};
+use crate::{ActionMember, Anima, FlowActions, Running, Waiting};
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
 use typosaurus::collections::list;
 use typosaurus::collections::sp::Node;
@@ -216,8 +216,8 @@ where
 }
 
 /// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
-/// of creature state.
-pub trait Task<T: Creature> {
+/// of anima state.
+pub trait Task<T: Anima> {
     type Action: Action;
     type Aspect: Aspect<T::State>;
     type In;
@@ -238,7 +238,7 @@ pub trait Task<T: Creature> {
 /// [`Running`]/[`Waiting`] temporal protocol.
 pub struct Impulse<T, Step>
 where
-    T: Creature,
+    T: Anima,
     Step: Task<T>,
 {
     marker: PhantomData<fn() -> (T, Step)>,
@@ -246,7 +246,7 @@ where
 
 impl<T, Step> Impulse<T, Step>
 where
-    T: Creature,
+    T: Anima,
     Step: Task<T>,
 {
     pub fn new() -> Self {
@@ -259,7 +259,7 @@ where
 #[primitive(property = crate::JungleRunning)]
 impl<T, Step> Running for Impulse<T, Step>
 where
-    T: Creature,
+    T: Anima,
     Step: Task<T>,
 {
     type In = (T::State, <Step as Task<T>>::In);
@@ -278,7 +278,7 @@ where
 #[primitive(property = crate::JungleWaiting)]
 impl<T, Step> Waiting for Impulse<T, Step>
 where
-    T: Creature,
+    T: Anima,
     Step: Task<T>,
 {
     type In = (T::State, ActionCompletion<<Step as Task<T>>::Action>);
@@ -294,7 +294,7 @@ where
 #[primitive(property = crate::JungleFlow)]
 impl<T, Step> FlowActions for Impulse<T, Step>
 where
-    T: Creature,
+    T: Anima,
     <Step as Task<T>>::Action: ActionMember,
     Step: Task<T>,
 {

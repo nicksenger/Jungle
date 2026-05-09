@@ -1,1 +1,1 @@
-pub use jungle_types::{Creature, Ecosystem};
+pub use jungle_types::{Anima, Ecosystem};

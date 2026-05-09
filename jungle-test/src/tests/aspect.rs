@@ -36,7 +36,7 @@ struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
 impl<T, Focus> Task<T> for CoreEnergyStep<Sleep, Focus>
 where
-    T: jungle_types::Creature,
+    T: jungle_types::Anima,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Sleep;
@@ -57,7 +57,7 @@ where
 
 impl<T, Focus> Task<T> for CoreEnergyStep<Eat, Focus>
 where
-    T: jungle_types::Creature,
+    T: jungle_types::Anima,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Eat;
@@ -80,7 +80,7 @@ struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
 impl<T, Focus, A> Task<T> for AddI32<Focus, A>
 where
-    T: jungle_types::Creature,
+    T: jungle_types::Anima,
     Focus: Aspect<T::State, View = i32>,
     A: Action<Out = i32>,
 {
@@ -107,7 +107,7 @@ struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
 impl<T, Focus, A> Task<T> for SubI32<Focus, A>
 where
-    T: jungle_types::Creature,
+    T: jungle_types::Anima,
     Focus: Aspect<T::State, View = i32>,
     A: Action<Out = i32>,
 {

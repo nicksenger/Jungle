@@ -1,12 +1,12 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, CreatureActionSet, Executor, Id, Identity, Impulse,
+    Action, ActionCompletion, ActionRequest, AnimaActionSet, Executor, Id, Identity, Impulse,
     ManualExecutor, Running, Task, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::{Creatures, Instinct};
+use jungle_sdk::{Animas, Instinct};
 use std::future::ready;
 
 struct SeedAction;
@@ -44,7 +44,7 @@ impl Action for FinishAction {
 }
 
 struct Seed;
-impl Task<ProgressCreature> for Seed {
+impl Task<ProgressAnima> for Seed {
     type Action = SeedAction;
     type Aspect = Identity;
     type In = i32;
@@ -62,7 +62,7 @@ impl Task<ProgressCreature> for Seed {
 }
 
 struct Finish;
-impl Task<ProgressCreature> for Finish {
+impl Task<ProgressAnima> for Finish {
     type Action = FinishAction;
     type Aspect = Identity;
     type In = i32;
@@ -81,17 +81,17 @@ impl Task<ProgressCreature> for Finish {
 
 #[derive(Instinct)]
 struct ProgressInstinct(
-    Impulse<ProgressCreature, Seed>,
-    Impulse<ProgressCreature, Finish>,
+    Impulse<ProgressAnima, Seed>,
+    Impulse<ProgressAnima, Finish>,
 );
 
-animal!(ProgressCreature, U0, i32, ProgressInstinct);
+animal!(ProgressAnima, U0, i32, ProgressInstinct);
 
-#[derive(Creatures)]
-struct ProgressCreatures(ProgressCreature);
+#[derive(Animas)]
+struct ProgressAnimas(ProgressAnima);
 
-type SeedStep = Impulse<ProgressCreature, Seed>;
-type FinishStep = Impulse<ProgressCreature, Finish>;
+type SeedStep = Impulse<ProgressAnima, Seed>;
+type FinishStep = Impulse<ProgressAnima, Finish>;
 
 struct StepHarness;
 impl StepHarness {
@@ -116,9 +116,9 @@ trait StepExecutor:
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<Step> StepExecutor for Impulse<ProgressCreature, Step>
+impl<Step> StepExecutor for Impulse<ProgressAnima, Step>
 where
-    Step: Task<ProgressCreature, Aspect = Identity, In = i32, Out = i32>,
+    Step: Task<ProgressAnima, Aspect = Identity, In = i32, Out = i32>,
     Step::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
     type Action = Step::Action;
@@ -127,7 +127,7 @@ where
 #[test]
 fn workflow_action_set_is_extracted_from_instinct_composite() {
     type Expected = list![SeedAction, FinishAction];
-    type Extracted = CreatureActionSet<ProgressCreatures>;
+    type Extracted = AnimaActionSet<ProgressAnimas>;
     assert_type_eq!(Extracted, Expected);
 }
 
@@ -145,7 +145,7 @@ fn executor_progresses_simple_instinct_steps() {
 
 #[test]
 fn executor_next_advances_with_serialized_completions() {
-    let mut executor = ManualExecutor::<ProgressCreature>::new(0);
+    let mut executor = ManualExecutor::<ProgressAnima>::new(0);
 
     let emitted_seed: i32 = executor.next_typed(5, Ok::<i32, ()>(8)).expect("seed step");
     assert_eq!(emitted_seed, 8);
@@ -160,7 +160,7 @@ fn executor_next_advances_with_serialized_completions() {
 
 #[test]
 fn executor_advance_to_end_runs_remaining_flow() {
-    let mut executor = ManualExecutor::<ProgressCreature>::new(0);
+    let mut executor = ManualExecutor::<ProgressAnima>::new(0);
     let emitted: Vec<i32> = executor
         .advance_to_end_typed(vec![(5, Ok::<i32, ()>(8)), (4, Ok::<i32, ()>(36))])
         .expect("flow should advance");
@@ -172,7 +172,7 @@ fn executor_advance_to_end_runs_remaining_flow() {
 
 #[test]
 fn executor_threads_previous_emitted_output_into_next_input() {
-    let mut executor = Executor::<ProgressCreature>::new(0);
+    let mut executor = Executor::<ProgressAnima>::new(0);
 
     let request_seed: i32 = executor.next_request().expect("seed request");
     assert_eq!(request_seed, 1);
