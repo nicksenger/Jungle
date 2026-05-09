@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 
 use crate::{
-    ActionMember, Anima, FlowActions, ReplaceFlow, ReplaceStep, Running, TraverseFlow,
-    TraverseStep, Waiting,
+    ActionMember, Anima, FlowActions, ReplaceFlow, ReplaceStep, ReplaceWith, Running, TraverseFlow,
+    TraverseStep, TraverseWith, Waiting,
 };
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
 use typosaurus::collections::list;
@@ -305,7 +305,24 @@ where
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
-impl<T, R, Traversal> TraverseFlow<Traversal> for Impulse<T, R>
+impl<T, R> TraverseFlow for Impulse<T, R>
+where
+    T: Anima,
+    R: Reflex<T>,
+{
+    type Output = Impulse<T, R>;
+}
+
+#[primitive(property = crate::JungleReplaceFlow)]
+impl<T, R> ReplaceFlow for Impulse<T, R>
+where
+    T: Anima,
+    R: Reflex<T>,
+{
+    type Output = Impulse<T, R>;
+}
+
+impl<T, R, Traversal> TraverseWith<Traversal> for Impulse<T, R>
 where
     T: Anima,
     R: Reflex<T>,
@@ -314,8 +331,7 @@ where
     type Output = <Traversal as TraverseStep<Impulse<T, R>>>::Output;
 }
 
-#[primitive(property = crate::JungleReplaceFlow)]
-impl<T, R, Replacer> ReplaceFlow<Replacer> for Impulse<T, R>
+impl<T, R, Replacer> ReplaceWith<Replacer> for Impulse<T, R>
 where
     T: Anima,
     R: Reflex<T>,

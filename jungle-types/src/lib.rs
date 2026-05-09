@@ -140,54 +140,96 @@ pub trait FlowActions {
     type List;
 }
 
-/// Leaf-level hook used by [`TraverseFlow`] on `Impulse` nodes.
+/// Leaf-level hook used by [`TraverseWith`] at `Impulse` nodes.
 pub trait TraverseStep<Step> {
     type Output;
 }
 
-/// Leaf-level hook used by [`ReplaceFlow`] on `Impulse` nodes.
+/// Leaf-level hook used by [`ReplaceWith`] at `Impulse` nodes.
 pub trait ReplaceStep<Step> {
     type Output;
 }
 
-/// Type-level traversal over flow structure.
+/// Inception property that normalizes/walks a flow's type structure.
 #[inception(property = JungleTraverseFlow, types)]
-pub trait TraverseFlow<Traversal> {
+pub trait TraverseFlow {
     #[induce(
         base = list::Empty,
         merge = TList<(
-            <Head as TraverseFlow<Traversal>>::Output,
-            <Tail as TraverseFlow<Traversal>>::Output
+            <Head as TraverseFlow>::Output,
+            <Tail as TraverseFlow>::Output
         )>,
         merge_variant = TList<(
-            <Head as TraverseFlow<Traversal>>::Output,
-            <Tail as TraverseFlow<Traversal>>::Output
+            <Head as TraverseFlow>::Output,
+            <Tail as TraverseFlow>::Output
         )>,
-        join = <Fields as TraverseFlow<Traversal>>::Output
+        join = <Fields as TraverseFlow>::Output
     )]
     type Output;
 }
 
-/// Type-level replacement over flow structure.
+/// Inception property that normalizes/walks a flow's type structure.
 #[inception(property = JungleReplaceFlow, types)]
-pub trait ReplaceFlow<Replacer> {
+pub trait ReplaceFlow {
     #[induce(
         base = list::Empty,
         merge = TList<(
-            <Head as ReplaceFlow<Replacer>>::Output,
-            <Tail as ReplaceFlow<Replacer>>::Output
+            <Head as ReplaceFlow>::Output,
+            <Tail as ReplaceFlow>::Output
         )>,
         merge_variant = TList<(
-            <Head as ReplaceFlow<Replacer>>::Output,
-            <Tail as ReplaceFlow<Replacer>>::Output
+            <Head as ReplaceFlow>::Output,
+            <Tail as ReplaceFlow>::Output
         )>,
-        join = <Fields as ReplaceFlow<Replacer>>::Output
+        join = <Fields as ReplaceFlow>::Output
     )]
     type Output;
 }
 
-pub type Traversed<Flow, Traversal> = <Flow as TraverseFlow<Traversal>>::Output;
-pub type Replaced<Flow, Replacer> = <Flow as ReplaceFlow<Replacer>>::Output;
+/// Applies a traversal operator across a normalized flow type.
+pub trait TraverseWith<Traversal> {
+    type Output;
+}
+
+/// Applies a replacement operator across a normalized flow type.
+pub trait ReplaceWith<Replacer> {
+    type Output;
+}
+
+impl<Traversal> TraverseWith<Traversal> for list::Empty {
+    type Output = list::Empty;
+}
+
+impl<Replacer> ReplaceWith<Replacer> for list::Empty {
+    type Output = list::Empty;
+}
+
+impl<Head, Tail, Traversal> TraverseWith<Traversal> for TList<(Head, Tail)>
+where
+    Head: TraverseWith<Traversal>,
+    Tail: TraverseWith<Traversal>,
+{
+    type Output = TList<(
+        <Head as TraverseWith<Traversal>>::Output,
+        <Tail as TraverseWith<Traversal>>::Output,
+    )>;
+}
+
+impl<Head, Tail, Replacer> ReplaceWith<Replacer> for TList<(Head, Tail)>
+where
+    Head: ReplaceWith<Replacer>,
+    Tail: ReplaceWith<Replacer>,
+{
+    type Output = TList<(
+        <Head as ReplaceWith<Replacer>>::Output,
+        <Tail as ReplaceWith<Replacer>>::Output,
+    )>;
+}
+
+pub type Traversed<Flow, Traversal> =
+    <<Flow as TraverseFlow>::Output as TraverseWith<Traversal>>::Output;
+pub type Replaced<Flow, Replacer> =
+    <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
 
 /// Output produced by a yielding phase.
 pub struct Yielded<Y, A> {
@@ -377,21 +419,39 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
-impl<P, L, R, Traversal> TraverseFlow<Traversal> for Conditional<P, L, R>
+impl<P, L, R> TraverseFlow for Conditional<P, L, R>
 where
-    L: TraverseFlow<Traversal>,
-    R: TraverseFlow<Traversal>,
+    L: TraverseFlow,
+    R: TraverseFlow,
 {
-    type Output = Conditional<P, <L as TraverseFlow<Traversal>>::Output, <R as TraverseFlow<Traversal>>::Output>;
+    type Output = Conditional<P, <L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+}
+
+impl<P, L, R, Traversal> TraverseWith<Traversal> for Conditional<P, L, R>
+where
+    L: TraverseWith<Traversal>,
+    R: TraverseWith<Traversal>,
+{
+    type Output =
+        Conditional<P, <L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output>;
 }
 
 #[primitive(property = JungleReplaceFlow)]
-impl<P, L, R, Replacer> ReplaceFlow<Replacer> for Conditional<P, L, R>
+impl<P, L, R> ReplaceFlow for Conditional<P, L, R>
 where
-    L: ReplaceFlow<Replacer>,
-    R: ReplaceFlow<Replacer>,
+    L: ReplaceFlow,
+    R: ReplaceFlow,
 {
-    type Output = Conditional<P, <L as ReplaceFlow<Replacer>>::Output, <R as ReplaceFlow<Replacer>>::Output>;
+    type Output = Conditional<P, <L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+}
+
+impl<P, L, R, Replacer> ReplaceWith<Replacer> for Conditional<P, L, R>
+where
+    L: ReplaceWith<Replacer>,
+    R: ReplaceWith<Replacer>,
+{
+    type Output =
+        Conditional<P, <L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
 }
 
 #[primitive(property = JungleRunning)]
@@ -436,19 +496,33 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
-impl<C, F, Traversal> TraverseFlow<Traversal> for While<C, F>
+impl<C, F> TraverseFlow for While<C, F>
 where
-    F: TraverseFlow<Traversal>,
+    F: TraverseFlow,
 {
-    type Output = While<C, <F as TraverseFlow<Traversal>>::Output>;
+    type Output = While<C, <F as TraverseFlow>::Output>;
+}
+
+impl<C, F, Traversal> TraverseWith<Traversal> for While<C, F>
+where
+    F: TraverseWith<Traversal>,
+{
+    type Output = While<C, <F as TraverseWith<Traversal>>::Output>;
 }
 
 #[primitive(property = JungleReplaceFlow)]
-impl<C, F, Replacer> ReplaceFlow<Replacer> for While<C, F>
+impl<C, F> ReplaceFlow for While<C, F>
 where
-    F: ReplaceFlow<Replacer>,
+    F: ReplaceFlow,
 {
-    type Output = While<C, <F as ReplaceFlow<Replacer>>::Output>;
+    type Output = While<C, <F as ReplaceFlow>::Output>;
+}
+
+impl<C, F, Replacer> ReplaceWith<Replacer> for While<C, F>
+where
+    F: ReplaceWith<Replacer>,
+{
+    type Output = While<C, <F as ReplaceWith<Replacer>>::Output>;
 }
 
 /// An organism that hosts symbionts.
