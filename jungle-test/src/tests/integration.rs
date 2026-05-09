@@ -288,6 +288,54 @@ type MultiMatchBeforeFlow = Conditional<
     >,
 >;
 
+type LoopBranchFlow = While<
+    KeepRunning,
+    Conditional<
+        UseFirstBeforeFullStateTask,
+        Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+        Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+    >,
+>;
+
+struct ReplaceLoopBranchWithPostStep;
+impl jungle_sdk::types::ReplaceNode<Impulse<IntegrationAnima, AddOneBeforeFullStateStep>>
+    for ReplaceLoopBranchWithPostStep
+{
+    type Output = Impulse<IntegrationAnima, AddOneBeforeFullStateStep>;
+}
+impl jungle_sdk::types::ReplaceNode<Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>>
+    for ReplaceLoopBranchWithPostStep
+{
+    type Output = Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>;
+}
+impl jungle_sdk::types::ReplaceNode<
+    Conditional<
+        UseFirstBeforeFullStateTask,
+        Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+        Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+    >,
+> for ReplaceLoopBranchWithPostStep
+{
+    type Output = Conditional<
+        UseFirstBeforeFullStateTask,
+        Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+        Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+    >;
+}
+impl jungle_sdk::types::ReplaceNode<
+    While<
+        KeepRunning,
+        Conditional<
+            UseFirstBeforeFullStateTask,
+            Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+            Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+        >,
+    >,
+> for ReplaceLoopBranchWithPostStep
+{
+    type Output = Impulse<IntegrationAnima, AddOneAfterFullStateStep>;
+}
+
 type IntegrationJourney = While<
     KeepRunning,
     Conditional<
@@ -423,6 +471,13 @@ fn replaced_alias_rewrites_integration_flow_steps() {
             Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
         >,
     >;
+    assert_type_eq!(Actual, Expected);
+}
+
+#[test]
+fn replaced_nodes_alias_replaces_loop_branch_section() {
+    type Actual = jungle_sdk::types::ReplacedNodes<LoopBranchFlow, ReplaceLoopBranchWithPostStep>;
+    type Expected = Impulse<IntegrationAnima, AddOneAfterFullStateStep>;
     assert_type_eq!(Actual, Expected);
 }
 
