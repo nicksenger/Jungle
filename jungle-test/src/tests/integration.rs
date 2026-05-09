@@ -5,7 +5,7 @@ use jungle_sdk::types::{
     Task, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
-use jungle_sdk::{Animas, JungleClient};
+use jungle_sdk::{Animae, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -128,12 +128,12 @@ animal!(
     IntegrationInstinct
 );
 
-#[derive(Animas)]
-struct IntegrationAnimas(IntegrationAnima);
+#[derive(Animae)]
+struct IntegrationAnimae(IntegrationAnima);
 
 struct IntegrationZoo;
 impl Ecosystem for IntegrationZoo {
-    type Animas = IntegrationAnimas;
+    type Animae = IntegrationAnimae;
 }
 
 #[tokio::test]

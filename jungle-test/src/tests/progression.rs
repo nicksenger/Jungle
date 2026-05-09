@@ -6,7 +6,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::{Animas, Instinct};
+use jungle_sdk::{Animae, Instinct};
 use std::future::ready;
 
 struct SeedAction;
@@ -87,8 +87,8 @@ struct ProgressInstinct(
 
 animal!(ProgressAnima, U0, i32, ProgressInstinct);
 
-#[derive(Animas)]
-struct ProgressAnimas(ProgressAnima);
+#[derive(Animae)]
+struct ProgressAnimae(ProgressAnima);
 
 type SeedStep = Impulse<ProgressAnima, Seed>;
 type FinishStep = Impulse<ProgressAnima, Finish>;
@@ -127,7 +127,7 @@ where
 #[test]
 fn workflow_action_set_is_extracted_from_instinct_composite() {
     type Expected = list![SeedAction, FinishAction];
-    type Extracted = AnimaActionSet<ProgressAnimas>;
+    type Extracted = AnimaActionSet<ProgressAnimae>;
     assert_type_eq!(Extracted, Expected);
 }
 

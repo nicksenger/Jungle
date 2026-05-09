@@ -139,8 +139,8 @@ mod tests {
                 type Instinct = $instinct;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimas)]
-            impl jungle_sdk::types::Animas for $name {
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimae)]
+            impl jungle_sdk::types::Animae for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 

@@ -7,7 +7,7 @@ use typosaurus::collections::{
 use typosaurus::num::Unsigned;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Action, Actions, Anima, Animas, FlowActions, Instinct};
+use super::{Action, Actions, Anima, Animae, FlowActions, Instinct};
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
@@ -94,7 +94,7 @@ where
 }
 
 pub type ActionSet<T> = <SPFlatten<<T as Actions>::List> as StripActionHeaders>::Out;
-pub type AnimaSet<T> = <SPFlatten<<T as Animas>::List> as StripAnimaHeaders>::Out;
+pub type AnimaSet<T> = <SPFlatten<<T as Animae>::List> as StripAnimaHeaders>::Out;
 
 pub struct WithAnimaState;
 impl<T> Mapper<T> for WithAnimaState
@@ -126,12 +126,12 @@ pub type AnimaActionDependencies<T> =
         WithActionDependency,
     >>::Out;
 
-pub trait AnimaStatesCompatible<From>: Animas {}
+pub trait AnimaStatesCompatible<From>: Animae {}
 impl<T, From> AnimaStatesCompatible<From> for T
 where
-    T: Animas,
-    <T as Animas>::List: FlattenNodes,
-    SPFlatten<<T as Animas>::List>: StripAnimaHeaders,
+    T: Animae,
+    <T as Animae>::List: FlattenNodes,
+    SPFlatten<<T as Animae>::List>: StripAnimaHeaders,
     AnimaSet<T>: Container,
     (AnimaSet<T>, WithAnimaState):
         Map<<AnimaSet<T> as Container>::Content, WithAnimaState>,
@@ -139,12 +139,12 @@ where
 {
 }
 
-pub trait AnimaActionDependenciesCompatible<From>: Animas {}
+pub trait AnimaActionDependenciesCompatible<From>: Animae {}
 impl<T, From> AnimaActionDependenciesCompatible<From> for T
 where
-    T: Animas,
-    <T as Animas>::List: FlattenNodes,
-    SPFlatten<<T as Animas>::List>: StripAnimaHeaders,
+    T: Animae,
+    <T as Animae>::List: FlattenNodes,
+    SPFlatten<<T as Animae>::List>: StripAnimaHeaders,
     AnimaSet<T>: CollectAnimaInstinctActions,
     <AnimaSet<T> as CollectAnimaInstinctActions>::Out: FlattenNodes,
     SPFlatten<<AnimaSet<T> as CollectAnimaInstinctActions>::Out>: StripActionHeaders,

@@ -3,7 +3,7 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelTx};
 use jungle_types::{
-    BuildFlowWithContext, Anima, AnimaSet, Animas, DynFlow, Ecosystem, ExecutorError,
+    BuildFlowWithContext, Anima, AnimaSet, Animae, DynFlow, Ecosystem, ExecutorError,
     RunnerOut, StripAnimaHeaders, Work,
 };
 use std::future::Future;
@@ -23,10 +23,10 @@ pub struct JungleWorker<T> {
 impl<T> JungleWorker<T>
 where
     T: Ecosystem + 'static,
-    T::Animas: Animas,
-    <T::Animas as Animas>::List: FlattenNodes,
-    SPFlatten<<T::Animas as Animas>::List>: StripAnimaHeaders,
-    AnimaSet<T::Animas>: SpawnByOrdinal<T>,
+    T::Animae: Animae,
+    <T::Animae as Animae>::List: FlattenNodes,
+    SPFlatten<<T::Animae as Animae>::List>: StripAnimaHeaders,
+    AnimaSet<T::Animae>: SpawnByOrdinal<T>,
 {
     pub fn new<C>(jungle: T, client: C) -> Self
     where
@@ -74,7 +74,7 @@ where
                     seed,
                 }) => {
                     let launched =
-                        <AnimaSet<T::Animas> as SpawnByOrdinal<T>>::spawn_by_ordinal(
+                        <AnimaSet<T::Animae> as SpawnByOrdinal<T>>::spawn_by_ordinal(
                             ordinal,
                             seed,
                             flow_id,

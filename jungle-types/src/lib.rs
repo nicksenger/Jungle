@@ -73,9 +73,9 @@ pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
 /// A flow combinator that repeatedly executes `F` while `C` is true.
 pub struct While<C, F>(PhantomData<fn() -> (C, F)>);
 
-/// A collection of `Animas` which act together as a system.
+/// A collection of `Animae` which act together as a system.
 pub trait Ecosystem {
-    type Animas;
+    type Animae;
 }
 
 /// A living anima within the Jungle ecosystem.
@@ -105,13 +105,13 @@ pub trait Identified {
 }
 
 /// Any collection of [`Anima`]s with a flat type-level list of members.
-#[inception(property = JungleAnimas, types)]
-pub trait Animas {
+#[inception(property = JungleAnimae, types)]
+pub trait Animae {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as Animas>::List, <Tail as Animas>::List)>,
-        merge_variant = TList<(<Head as Animas>::List, <Tail as Animas>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Animas>::List)> where { Self: Identified }
+        merge = TList<(<Head as Animae>::List, <Tail as Animae>::List)>,
+        merge_variant = TList<(<Head as Animae>::List, <Tail as Animae>::List)>,
+        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Animae>::List)> where { Self: Identified }
     )]
     type List;
 }

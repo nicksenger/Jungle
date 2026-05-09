@@ -7,7 +7,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-use jungle_sdk::{Actions, Animas, Flow, Optic};
+use jungle_sdk::{Actions, Animae, Flow, Optic};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -130,24 +130,24 @@ struct ElephantInstinct(
     Impulse<Elephant, UnitOkStep<Flee>>,
 );
 
-#[derive(Animas)]
+#[derive(Animae)]
 struct Apes(Gorilla, Chimpanzee);
 
-#[derive(Animas)]
+#[derive(Animae)]
 struct Cats(Tiger, Jaguar);
 
-#[derive(Animas)]
+#[derive(Animae)]
 struct Predators(Cats, Anaconda);
 
-#[derive(Animas)]
-struct AllAnimas(Cats, Apes, Anaconda, Hippo, Elephant);
+#[derive(Animae)]
+struct AllAnimae(Cats, Apes, Anaconda, Hippo, Elephant);
 
 #[derive(Actions)]
 struct AllActions(Predator, Prey);
 
 struct Zoo;
 impl Ecosystem for Zoo {
-    type Animas = AllAnimas;
+    type Animae = AllAnimae;
 }
 
 #[derive(Clone, Copy)]
@@ -273,12 +273,12 @@ animal!(
     RunnerInstinct
 );
 
-#[derive(Animas)]
-struct RunnerAnimas(RunnerAnima);
+#[derive(Animae)]
+struct RunnerAnimae(RunnerAnima);
 
 struct RunnerZoo;
 impl Ecosystem for RunnerZoo {
-    type Animas = RunnerAnimas;
+    type Animae = RunnerAnimae;
 }
 
 #[test]
@@ -305,7 +305,7 @@ fn animal_action_set() {
     assert_type_eq!(AnimaActionSet<Apes>, ApeAnimaActions);
 
     type AllAnimaActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
-    assert_type_eq!(AnimaActionSet<AllAnimas>, AllAnimaActions);
+    assert_type_eq!(AnimaActionSet<AllAnimae>, AllAnimaActions);
 }
 
 #[test]
@@ -336,11 +336,11 @@ fn animal_state_set() {
     animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);
     animal!(StatefulTiger, U1, CatState, StatefulTigerInstinct);
 
-    #[derive(Animas)]
-    struct StatefulAnimas(StatefulGorilla, StatefulTiger);
+    #[derive(Animae)]
+    struct StatefulAnimae(StatefulGorilla, StatefulTiger);
 
     type StatefulAnimaStates = list![ApeState, CatState];
-    assert_type_eq!(AnimaStates<StatefulAnimas>, StatefulAnimaStates);
+    assert_type_eq!(AnimaStates<StatefulAnimae>, StatefulAnimaStates);
 }
 
 #[test]
