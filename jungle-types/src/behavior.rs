@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 
 use crate::{
-    ActionMember, Anima, FlowActions, ReplaceFlow, ReplaceImpulse, Running, TraverseFlow,
-    TraverseImpulse, Waiting,
+    ActionMember, Anima, FlowActions, ReplaceFlow, ReplaceStep, Running, TraverseFlow,
+    TraverseStep, Waiting,
 };
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
 use typosaurus::collections::list;
@@ -305,31 +305,21 @@ where
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
-impl<T, R, Mapper, Input> TraverseFlow<(Mapper, Input)> for Impulse<T, R>
+impl<T, R, Traversal> TraverseFlow<Traversal> for Impulse<T, R>
 where
     T: Anima,
     R: Reflex<T>,
-    Mapper: TraverseImpulse<Impulse<T, R>, Input>,
+    Traversal: TraverseStep<Impulse<T, R>>,
 {
-    type Output = (Mapper, <Mapper as TraverseImpulse<Impulse<T, R>, Input>>::Output);
-
-    fn traverse((mapper, input): (Mapper, Input)) -> Self::Output {
-        let output = <Mapper as TraverseImpulse<Impulse<T, R>, Input>>::traverse(input);
-        (mapper, output)
-    }
+    type Output = <Traversal as TraverseStep<Impulse<T, R>>>::Output;
 }
 
 #[primitive(property = crate::JungleReplaceFlow)]
-impl<T, R, Mapper, Input> ReplaceFlow<(Mapper, Input)> for Impulse<T, R>
+impl<T, R, Replacer> ReplaceFlow<Replacer> for Impulse<T, R>
 where
     T: Anima,
     R: Reflex<T>,
-    Mapper: ReplaceImpulse<Impulse<T, R>, Input>,
+    Replacer: ReplaceStep<Impulse<T, R>>,
 {
-    type Output = (Mapper, <Mapper as ReplaceImpulse<Impulse<T, R>, Input>>::Output);
-
-    fn replace((mapper, input): (Mapper, Input)) -> Self::Output {
-        let output = <Mapper as ReplaceImpulse<Impulse<T, R>, Input>>::replace(input);
-        (mapper, output)
-    }
+    type Output = <Replacer as ReplaceStep<Impulse<T, R>>>::Output;
 }

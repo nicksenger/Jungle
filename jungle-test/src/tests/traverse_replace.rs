@@ -1,9 +1,6 @@
-use jungle_sdk::types::{
-    ActionCompletion, Condition, Conditional, Identity, Impulse, LoopCondition, Reflex, ReplaceFlow,
-    ReplaceImpulse, TraverseFlow, TraverseImpulse, While,
-};
+use jungle_sdk::types::{ActionCompletion, Conditional, Identity, Impulse, LoopCondition, Reflex, ReplaceStep, TraverseStep, While};
+use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::{U20, U21, U22, U23, U24};
-use jungle_sdk::Journey;
 
 action!(
     TraverseAAction,
@@ -96,13 +93,6 @@ impl Reflex<TraverseAnima> for StepD {
     }
 }
 
-struct UseLeftBranch;
-impl Condition<(i32, ())> for UseLeftBranch {
-    fn choose((state, _): &(i32, ())) -> bool {
-        *state >= 0
-    }
-}
-
 struct KeepLooping;
 impl LoopCondition<i32> for KeepLooping {
     fn should_continue(state: &i32) -> bool {
@@ -110,56 +100,48 @@ impl LoopCondition<i32> for KeepLooping {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
-struct TraverseFlowShape(
+type SourceFlow = Conditional<
+    KeepLooping,
     Impulse<TraverseAnima, StepA>,
-    Conditional<
-        UseLeftBranch,
-        Impulse<TraverseAnima, StepB>,
-        Impulse<TraverseAnima, StepC>,
-    >,
-    While<KeepLooping, Impulse<TraverseAnima, StepD>>,
-);
+    While<KeepLooping, Impulse<TraverseAnima, StepB>>,
+>;
 
-#[derive(Journey)]
-struct TraverseJourney(TraverseFlowShape);
+struct Seen<T>(core::marker::PhantomData<T>);
+struct TraverseMapper;
+impl<Step> TraverseStep<Step> for TraverseMapper {
+    type Output = Seen<Step>;
+}
+
+struct ReplaceMapper;
+impl ReplaceStep<Impulse<TraverseAnima, StepA>> for ReplaceMapper {
+    type Output = Impulse<TraverseAnima, StepC>;
+}
+impl ReplaceStep<Impulse<TraverseAnima, StepB>> for ReplaceMapper {
+    type Output = Impulse<TraverseAnima, StepD>;
+}
+
+#[test]
+fn traverse_and_replace_are_type_level_transformations() {
+    type Traversed = jungle_sdk::types::Traversed<SourceFlow, TraverseMapper>;
+    type ExpectedTraversed = Conditional<
+        KeepLooping,
+        Seen<Impulse<TraverseAnima, StepA>>,
+        While<KeepLooping, Seen<Impulse<TraverseAnima, StepB>>>,
+    >;
+    assert_type_eq!(Traversed, ExpectedTraversed);
+
+    type Replaced = jungle_sdk::types::Replaced<SourceFlow, ReplaceMapper>;
+    type ExpectedReplaced = Conditional<
+        KeepLooping,
+        Impulse<TraverseAnima, StepC>,
+        While<KeepLooping, Impulse<TraverseAnima, StepD>>,
+    >;
+    assert_type_eq!(Replaced, ExpectedReplaced);
+}
 
 impl jungle_sdk::types::Anima for TraverseAnima {
     type Id = jungle_sdk::types::Id<U24>;
     type State = i32;
     type Seed = i32;
-    type Journey = TraverseJourney;
-}
-
-#[derive(Clone, Copy)]
-struct TraverseCounter;
-
-impl<Step> TraverseImpulse<Step, usize> for TraverseCounter {
-    type Output = usize;
-
-    fn traverse(input: usize) -> Self::Output {
-        input + 1
-    }
-}
-
-#[derive(Clone, Copy)]
-struct ReplaceCounter;
-
-impl<Step> ReplaceImpulse<Step, usize> for ReplaceCounter {
-    type Output = usize;
-
-    fn replace(input: usize) -> Self::Output {
-        input + 1
-    }
-}
-
-#[test]
-fn traverse_and_replace_visit_each_impulse_leaf() {
-    let (_, traversed) =
-        <TraverseJourney as TraverseFlow<(TraverseCounter, usize)>>::traverse((TraverseCounter, 0));
-    let (_, replaced) =
-        <TraverseJourney as ReplaceFlow<(ReplaceCounter, usize)>>::replace((ReplaceCounter, 0));
-
-    assert_eq!(traversed, 4);
-    assert_eq!(replaced, 4);
+    type Journey = SourceFlow;
 }
