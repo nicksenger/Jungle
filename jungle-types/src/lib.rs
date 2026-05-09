@@ -151,12 +151,12 @@ pub trait ReplaceStep<Step> {
 }
 
 /// Directional helper that rewrites `Impulse<Anima, Left>` to `Impulse<Anima, Right>`.
-pub struct LeftToRight<Left, Right>(PhantomData<fn() -> (Left, Right)>);
+pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
 /// Directional helper that rewrites `Impulse<Anima, Right>` to `Impulse<Anima, Left>`.
-pub struct RightToLeft<Left, Right>(PhantomData<fn() -> (Left, Right)>);
+pub struct SwapRL<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
-impl<A, Left, Right> ReplaceStep<Impulse<A, Left>> for LeftToRight<Left, Right>
+impl<A, Left, Right> ReplaceStep<Impulse<A, Left>> for SwapLR<Left, Right>
 where
     A: Anima,
     Left: Reflex<A>,
@@ -165,7 +165,7 @@ where
     type Output = Impulse<A, Right>;
 }
 
-impl<A, Left, Right> ReplaceStep<Impulse<A, Right>> for RightToLeft<Left, Right>
+impl<A, Left, Right> ReplaceStep<Impulse<A, Right>> for SwapRL<Left, Right>
 where
     A: Anima,
     Left: Reflex<A>,

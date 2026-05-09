@@ -412,7 +412,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
 fn replaced_alias_rewrites_integration_flow_steps() {
     type Actual = jungle_sdk::types::Replaced<
         MultiMatchBeforeFlow,
-        jungle_sdk::types::LeftToRight<AddOneBeforeFullStateStep, AddTwoBeforeFullStateStep>,
+        jungle_sdk::types::SwapLR<AddOneBeforeFullStateStep, AddTwoBeforeFullStateStep>,
     >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
