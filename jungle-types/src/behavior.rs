@@ -220,37 +220,37 @@ where
 
 /// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
 /// of anima state.
-pub trait Reflex<T: Anima> {
+pub trait Step<T: Anima> {
     type Action: Action;
     type Aspect: Aspect<T::State>;
     type In;
     type Out;
 
     fn prepare(
-        view: &<<Self as Reflex<T>>::Aspect as Aspect<T::State>>::View,
+        view: &<<Self as Step<T>>::Aspect as Aspect<T::State>>::View,
         input: Self::In,
     ) -> <Self::Action as Action>::In;
 
     fn process(
-        view: &mut <<Self as Reflex<T>>::Aspect as Aspect<T::State>>::View,
+        view: &mut <<Self as Step<T>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Out;
 }
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Running`]/[`Waiting`] protocol.
-pub struct Impulse<T, R>
+pub struct Impulse<T, S>
 where
     T: Anima,
-    R: Reflex<T>,
+    S: Step<T>,
 {
-    marker: PhantomData<fn() -> (T, R)>,
+    marker: PhantomData<fn() -> (T, S)>,
 }
 
 impl<T, R> Impulse<T, R>
 where
     T: Anima,
-    R: Reflex<T>,
+    R: Step<T>,
 {
     pub fn new() -> Self {
         Self {
@@ -263,17 +263,17 @@ where
 impl<T, R> Running for Impulse<T, R>
 where
     T: Anima,
-    R: Reflex<T>,
+    R: Step<T>,
 {
-    type In = (T::State, <R as Reflex<T>>::In);
-    type Out = (T::State, ActionRequest<<R as Reflex<T>>::Action>);
+    type In = (T::State, <R as Step<T>>::In);
+    type Out = (T::State, ActionRequest<<R as Step<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<R as Reflex<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let action_input = <R as Reflex<T>>::prepare(view, input);
+        let view = <<R as Step<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let action_input = <R as Step<T>>::prepare(view, input);
         (
             state,
-            ActionRequest::<<R as Reflex<T>>::Action>::new(action_input),
+            ActionRequest::<<R as Step<T>>::Action>::new(action_input),
         )
     }
 }
@@ -282,14 +282,14 @@ where
 impl<T, R> Waiting for Impulse<T, R>
 where
     T: Anima,
-    R: Reflex<T>,
+    R: Step<T>,
 {
-    type In = (T::State, ActionCompletion<<R as Reflex<T>>::Action>);
-    type Out = (T::State, <R as Reflex<T>>::Out);
+    type In = (T::State, ActionCompletion<<R as Step<T>>::Action>);
+    type Out = (T::State, <R as Step<T>>::Out);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<R as Reflex<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let emitted = <R as Reflex<T>>::process(view, output);
+        let view = <<R as Step<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let emitted = <R as Step<T>>::process(view, output);
         (state, emitted)
     }
 }
@@ -298,17 +298,17 @@ where
 impl<T, R> FlowActions for Impulse<T, R>
 where
     T: Anima,
-    <R as Reflex<T>>::Action: ActionMember,
-    R: Reflex<T>,
+    <R as Step<T>>::Action: ActionMember,
+    R: Step<T>,
 {
-    type List = Node<<<R as Reflex<T>>::Action as Action>::Id, <R as Reflex<T>>::Action>;
+    type List = Node<<<R as Step<T>>::Action as Action>::Id, <R as Step<T>>::Action>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
 impl<T, R> TraverseFlow for Impulse<T, R>
 where
     T: Anima,
-    R: Reflex<T>,
+    R: Step<T>,
 {
     type Output = Impulse<T, R>;
 }
@@ -317,7 +317,7 @@ where
 impl<T, R> ReplaceFlow for Impulse<T, R>
 where
     T: Anima,
-    R: Reflex<T>,
+    R: Step<T>,
 {
     type Output = Impulse<T, R>;
 }
@@ -325,7 +325,7 @@ where
 impl<T, R, Traversal> TraverseWith<Traversal> for Impulse<T, R>
 where
     T: Anima,
-    R: Reflex<T>,
+    R: Step<T>,
     Traversal: TraverseStep<Impulse<T, R>>,
 {
     type Output = <Traversal as TraverseStep<Impulse<T, R>>>::Output;
@@ -334,7 +334,7 @@ where
 impl<T, R, Replacer> ReplaceWith<Replacer> for Impulse<T, R>
 where
     T: Anima,
-    R: Reflex<T>,
+    R: Step<T>,
     Replacer: ReplaceStep<Impulse<T, R>>,
 {
     type Output = <Replacer as ReplaceStep<Impulse<T, R>>>::Output;

@@ -1,4 +1,4 @@
-use jungle_sdk::types::{ActionCompletion, Conditional, Identity, Impulse, LoopCondition, Reflex, ReplaceStep, TraverseStep, While};
+use jungle_sdk::types::{ActionCompletion, Conditional, Identity, Impulse, LoopCondition, Step, ReplaceStep, TraverseStep, While};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::{U20, U21, U22, U23, U24};
 
@@ -38,7 +38,7 @@ action!(
 struct TraverseAnima;
 
 struct StepA;
-impl Reflex<TraverseAnima> for StepA {
+impl Step<TraverseAnima> for StepA {
     type Action = TraverseAAction;
     type Aspect = Identity;
     type In = ();
@@ -52,7 +52,7 @@ impl Reflex<TraverseAnima> for StepA {
 }
 
 struct StepB;
-impl Reflex<TraverseAnima> for StepB {
+impl Step<TraverseAnima> for StepB {
     type Action = TraverseBAction;
     type Aspect = Identity;
     type In = ();
@@ -66,7 +66,7 @@ impl Reflex<TraverseAnima> for StepB {
 }
 
 struct StepC;
-impl Reflex<TraverseAnima> for StepC {
+impl Step<TraverseAnima> for StepC {
     type Action = TraverseCAction;
     type Aspect = Identity;
     type In = ();
@@ -80,7 +80,7 @@ impl Reflex<TraverseAnima> for StepC {
 }
 
 struct StepD;
-impl Reflex<TraverseAnima> for StepD {
+impl Step<TraverseAnima> for StepD {
     type Action = TraverseDAction;
     type Aspect = Identity;
     type In = ();

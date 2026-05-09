@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Action, ActionCompletion, Condition, Conditional, Ecosystem, JourneyStatus, Lens, Identity, Impulse,
-    LoopCondition, Reflex, While,
+    LoopCondition, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -91,7 +91,7 @@ impl Action for AddTwoAction {
 }
 
 struct AddOneBeforeFullStateStep;
-impl Reflex<IntegrationAnima> for AddOneBeforeFullStateStep {
+impl Step<IntegrationAnima> for AddOneBeforeFullStateStep {
     type Action = AddOneAction;
     type Aspect = Identity;
     type In = ();
@@ -106,7 +106,7 @@ impl Reflex<IntegrationAnima> for AddOneBeforeFullStateStep {
 }
 
 struct AddTwoBeforeFullStateStep;
-impl Reflex<IntegrationAnima> for AddTwoBeforeFullStateStep {
+impl Step<IntegrationAnima> for AddTwoBeforeFullStateStep {
     type Action = AddTwoAction;
     type Aspect = Identity;
     type In = ();
@@ -121,7 +121,7 @@ impl Reflex<IntegrationAnima> for AddTwoBeforeFullStateStep {
 }
 
 struct AddOneFocusedStep;
-impl Reflex<IntegrationAnima> for AddOneFocusedStep {
+impl Step<IntegrationAnima> for AddOneFocusedStep {
     type Action = AddOneAction;
     type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type In = ();
@@ -136,7 +136,7 @@ impl Reflex<IntegrationAnima> for AddOneFocusedStep {
 }
 
 struct AddTwoFocusedStep;
-impl Reflex<IntegrationAnima> for AddTwoFocusedStep {
+impl Step<IntegrationAnima> for AddTwoFocusedStep {
     type Action = AddTwoAction;
     type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type In = ();
@@ -151,7 +151,7 @@ impl Reflex<IntegrationAnima> for AddTwoFocusedStep {
 }
 
 struct AddOneDeepFocusedStep;
-impl Reflex<IntegrationAnima> for AddOneDeepFocusedStep {
+impl Step<IntegrationAnima> for AddOneDeepFocusedStep {
     type Action = AddOneAction;
     type Aspect = Lens<
         IntegrationState,
@@ -172,7 +172,7 @@ impl Reflex<IntegrationAnima> for AddOneDeepFocusedStep {
 }
 
 struct AddTwoDeepFocusedStep;
-impl Reflex<IntegrationAnima> for AddTwoDeepFocusedStep {
+impl Step<IntegrationAnima> for AddTwoDeepFocusedStep {
     type Action = AddTwoAction;
     type Aspect = Lens<
         IntegrationState,
@@ -193,7 +193,7 @@ impl Reflex<IntegrationAnima> for AddTwoDeepFocusedStep {
 }
 
 struct AddOneAfterFullStateStep;
-impl Reflex<IntegrationAnima> for AddOneAfterFullStateStep {
+impl Step<IntegrationAnima> for AddOneAfterFullStateStep {
     type Action = AddOneAction;
     type Aspect = Identity;
     type In = ();
@@ -208,7 +208,7 @@ impl Reflex<IntegrationAnima> for AddOneAfterFullStateStep {
 }
 
 struct AddTwoAfterFullStateStep;
-impl Reflex<IntegrationAnima> for AddTwoAfterFullStateStep {
+impl Step<IntegrationAnima> for AddTwoAfterFullStateStep {
     type Action = AddTwoAction;
     type Aspect = Identity;
     type In = ();

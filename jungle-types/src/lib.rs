@@ -5,7 +5,7 @@ mod journey;
 mod meta;
 mod transport;
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, Aspect, Identity, Impulse, Lens, Reflex,
+    Action, ActionCompletion, ActionRequest, Aspect, Identity, Impulse, Lens, Step,
 };
 pub use error::Error;
 pub use executor::{
@@ -17,14 +17,14 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AllFrom, AnimaActionDependencies,
-    AnimaActionDependenciesCompatible, AnimaActionSet, AnimaMember, AnimaSet,
-    AnimaStates, AnimaStatesCompatible, StripActionHeaders, StripAnimaHeaders,
+    ActionMember, ActionSet, AllFrom, AnimaActionDependencies, AnimaActionDependenciesCompatible,
+    AnimaActionSet, AnimaMember, AnimaSet, AnimaStates, AnimaStatesCompatible, StripActionHeaders,
+    StripAnimaHeaders,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-pub use transport::{BackendError, JourneyStatus, RunnerOut, WireIn, WireOut, Step};
+pub use transport::{BackendError, JourneyStatus, RunnerOut, Step, WireIn, WireOut};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
@@ -159,8 +159,8 @@ pub struct SwapRL<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 impl<A, Left, Right> ReplaceStep<Impulse<A, Left>> for SwapLR<Left, Right>
 where
     A: Anima,
-    Left: Reflex<A>,
-    Right: Reflex<A>,
+    Left: Step<A>,
+    Right: Step<A>,
 {
     type Output = Impulse<A, Right>;
 }
@@ -168,8 +168,8 @@ where
 impl<A, Left, Right> ReplaceStep<Impulse<A, Right>> for SwapRL<Left, Right>
 where
     A: Anima,
-    Left: Reflex<A>,
-    Right: Reflex<A>,
+    Left: Step<A>,
+    Right: Step<A>,
 {
     type Output = Impulse<A, Left>;
 }
@@ -456,8 +456,11 @@ where
     L: TraverseWith<Traversal>,
     R: TraverseWith<Traversal>,
 {
-    type Output =
-        Conditional<P, <L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output>;
+    type Output = Conditional<
+        P,
+        <L as TraverseWith<Traversal>>::Output,
+        <R as TraverseWith<Traversal>>::Output,
+    >;
 }
 
 #[primitive(property = JungleReplaceFlow)]
