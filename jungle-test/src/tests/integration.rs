@@ -278,23 +278,15 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
     }
 }
 
-type BeforeBranchFlow = Conditional<
+type MultiMatchBeforeFlow = Conditional<
     UseFirstBeforeFullStateTask,
     Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
-    Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+    Conditional<
+        UseFirstBeforeFullStateTask,
+        Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+        Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+    >,
 >;
-
-struct SwapBeforeBranchSteps;
-impl jungle_sdk::types::ReplaceStep<Impulse<IntegrationAnima, AddOneBeforeFullStateStep>>
-    for SwapBeforeBranchSteps
-{
-    type Output = Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>;
-}
-impl jungle_sdk::types::ReplaceStep<Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>>
-    for SwapBeforeBranchSteps
-{
-    type Output = Impulse<IntegrationAnima, AddOneBeforeFullStateStep>;
-}
 
 type IntegrationJourney = While<
     KeepRunning,
@@ -418,11 +410,18 @@ async fn redb_client_worker_flow_runs_to_completion() {
 
 #[test]
 fn replaced_alias_rewrites_integration_flow_steps() {
-    type Actual = jungle_sdk::types::Replaced<BeforeBranchFlow, SwapBeforeBranchSteps>;
+    type Actual = jungle_sdk::types::Replaced<
+        MultiMatchBeforeFlow,
+        jungle_sdk::types::LeftToRight<AddOneBeforeFullStateStep, AddTwoBeforeFullStateStep>,
+    >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
         Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
-        Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+        Conditional<
+            UseFirstBeforeFullStateTask,
+            Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+            Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+        >,
     >;
     assert_type_eq!(Actual, Expected);
 }

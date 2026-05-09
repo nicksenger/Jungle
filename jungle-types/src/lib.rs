@@ -150,6 +150,30 @@ pub trait ReplaceStep<Step> {
     type Output;
 }
 
+/// Directional helper that rewrites `Impulse<Anima, Left>` to `Impulse<Anima, Right>`.
+pub struct LeftToRight<Left, Right>(PhantomData<fn() -> (Left, Right)>);
+
+/// Directional helper that rewrites `Impulse<Anima, Right>` to `Impulse<Anima, Left>`.
+pub struct RightToLeft<Left, Right>(PhantomData<fn() -> (Left, Right)>);
+
+impl<A, Left, Right> ReplaceStep<Impulse<A, Left>> for LeftToRight<Left, Right>
+where
+    A: Anima,
+    Left: Reflex<A>,
+    Right: Reflex<A>,
+{
+    type Output = Impulse<A, Right>;
+}
+
+impl<A, Left, Right> ReplaceStep<Impulse<A, Right>> for RightToLeft<Left, Right>
+where
+    A: Anima,
+    Left: Reflex<A>,
+    Right: Reflex<A>,
+{
+    type Output = Impulse<A, Left>;
+}
+
 /// Inception property that normalizes/walks a flow's type structure.
 #[inception(property = JungleTraverseFlow, types)]
 pub trait TraverseFlow {
