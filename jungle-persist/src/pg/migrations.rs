@@ -42,20 +42,6 @@ impl PgStore {
 
         sqlx::query(
             r#"
-            DO $$
-            BEGIN
-                IF to_regclass('public.flows') IS NOT NULL AND to_regclass('public.journeys') IS NULL THEN
-                    ALTER TABLE flows RENAME TO journeys;
-                END IF;
-            END $$;
-            "#,
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(crate::PersistenceError::PostgresQuery)?;
-
-        sqlx::query(
-            r#"
             CREATE TABLE IF NOT EXISTS journeys (
                 id UUID PRIMARY KEY,
                 ordinal INTEGER NOT NULL,
@@ -95,45 +81,6 @@ impl PgStore {
 
         sqlx::query(
             r#"
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'events' AND column_name = 'flow_id'
-                ) AND NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'events' AND column_name = 'journey_id'
-                ) THEN
-                    ALTER TABLE events RENAME COLUMN flow_id TO journey_id;
-                END IF;
-            END $$;
-            "#,
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(crate::PersistenceError::PostgresQuery)?;
-
-        sqlx::query(
-            r#"
-            DO $$
-            BEGIN
-                IF to_regclass('public.events_pkey') IS NOT NULL THEN
-                    ALTER INDEX events_pkey RENAME TO events_journey_id_sequence_id_pkey;
-                END IF;
-            EXCEPTION
-                WHEN duplicate_table THEN
-                    NULL;
-            END $$;
-            "#,
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(crate::PersistenceError::PostgresQuery)?;
-
-        sqlx::query(
-            r#"
             CREATE TABLE IF NOT EXISTS work_items (
                 id UUID PRIMARY KEY,
                 journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
@@ -141,28 +88,6 @@ impl PgStore {
                 status SMALLINT NOT NULL,
                 expiry TIMESTAMPTZ NOT NULL
             )
-            "#,
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(crate::PersistenceError::PostgresQuery)?;
-
-        sqlx::query(
-            r#"
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'work_items' AND column_name = 'flow_id'
-                ) AND NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'work_items' AND column_name = 'journey_id'
-                ) THEN
-                    ALTER TABLE work_items RENAME COLUMN flow_id TO journey_id;
-                END IF;
-            END $$;
             "#,
         )
         .execute(&mut *tx)
