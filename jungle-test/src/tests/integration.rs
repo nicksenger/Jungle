@@ -193,12 +193,6 @@ impl Condition<(IntegrationState, ())> for UseFirstBeforeFullStateTask {
     }
 }
 
-type BeforeFlow = Conditional<
-    UseFirstBeforeFullStateTask,
-    Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
-    Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
->;
-
 struct IsInFocusedSubFlow;
 impl Condition<(IntegrationState, ())> for IsInFocusedSubFlow {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
@@ -213,12 +207,6 @@ impl Condition<(IntegrationState, ())> for UseFirstFocusedTask {
     }
 }
 
-type FocusedFlow = Conditional<
-    UseFirstFocusedTask,
-    Impulse<IntegrationAnima, AddOneFocusedStep>,
-    Impulse<IntegrationAnima, AddTwoFocusedStep>,
->;
-
 struct UseFirstAfterFullStateTask;
 impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
@@ -226,21 +214,29 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
     }
 }
 
-type AfterFlow = Conditional<
-    UseFirstAfterFullStateTask,
-    Impulse<IntegrationAnima, AddOneAfterFullStateStep>,
-    Impulse<IntegrationAnima, AddTwoAfterFullStateStep>,
->;
-
-type IntegrationLoopFlow = Conditional<
-    IsBeforeFocusedSubFlow,
-    BeforeFlow,
-    Conditional<IsInFocusedSubFlow, FocusedFlow, AfterFlow>,
->;
-
 type IntegrationJourney = While<
     KeepRunning,
-    IntegrationLoopFlow,
+    Conditional<
+        IsBeforeFocusedSubFlow,
+        Conditional<
+            UseFirstBeforeFullStateTask,
+            Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+            Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+        >,
+        Conditional<
+            IsInFocusedSubFlow,
+            Conditional<
+                UseFirstFocusedTask,
+                Impulse<IntegrationAnima, AddOneFocusedStep>,
+                Impulse<IntegrationAnima, AddTwoFocusedStep>,
+            >,
+            Conditional<
+                UseFirstAfterFullStateTask,
+                Impulse<IntegrationAnima, AddOneAfterFullStateStep>,
+                Impulse<IntegrationAnima, AddTwoAfterFullStateStep>,
+            >,
+        >,
+    >,
 >;
 
 anima!(
