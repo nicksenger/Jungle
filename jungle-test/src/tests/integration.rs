@@ -12,6 +12,13 @@ use std::time::Duration;
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct SubFlowState {
+    nested: DeepFocusState,
+    value: i32,
+    updates: i32,
+}
+
+#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct DeepFocusState {
     value: i32,
     updates: i32,
 }
@@ -142,6 +149,48 @@ impl Reflex<IntegrationAnima> for AddTwoFocusedStep {
     }
 }
 
+struct AddOneDeepFocusedStep;
+impl Reflex<IntegrationAnima> for AddOneDeepFocusedStep {
+    type Action = AddOneAction;
+    type Aspect = Lens<
+        IntegrationState,
+        list![
+            jungle_sdk::typosaurus::num::consts::U1,
+            jungle_sdk::typosaurus::num::consts::U0
+        ],
+    >;
+    type In = ();
+    type Out = ();
+
+    fn prepare(_state: &DeepFocusState, _input: Self::In) -> Self::In {}
+
+    fn process(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.value += output.expect("first deep-focused integration action should succeed");
+        state.updates += 1;
+    }
+}
+
+struct AddTwoDeepFocusedStep;
+impl Reflex<IntegrationAnima> for AddTwoDeepFocusedStep {
+    type Action = AddTwoAction;
+    type Aspect = Lens<
+        IntegrationState,
+        list![
+            jungle_sdk::typosaurus::num::consts::U1,
+            jungle_sdk::typosaurus::num::consts::U0
+        ],
+    >;
+    type In = ();
+    type Out = ();
+
+    fn prepare(_state: &DeepFocusState, _input: Self::In) -> Self::In {}
+
+    fn process(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.value += output.expect("second deep-focused integration action should succeed");
+        state.updates += 1;
+    }
+}
+
 struct AddOneAfterFullStateStep;
 impl Reflex<IntegrationAnima> for AddOneAfterFullStateStep {
     type Action = AddOneAction;
@@ -207,6 +256,20 @@ impl Condition<(IntegrationState, ())> for UseFirstFocusedTask {
     }
 }
 
+struct IsInDeepFocusedSubFlow;
+impl Condition<(IntegrationState, ())> for IsInDeepFocusedSubFlow {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.focused.nested.updates < 2
+    }
+}
+
+struct UseFirstDeepFocusedTask;
+impl Condition<(IntegrationState, ())> for UseFirstDeepFocusedTask {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.focused.nested.updates == 0
+    }
+}
+
 struct UseFirstAfterFullStateTask;
 impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
@@ -231,9 +294,17 @@ type IntegrationJourney = While<
                 Impulse<IntegrationAnima, AddTwoFocusedStep>,
             >,
             Conditional<
-                UseFirstAfterFullStateTask,
-                Impulse<IntegrationAnima, AddOneAfterFullStateStep>,
-                Impulse<IntegrationAnima, AddTwoAfterFullStateStep>,
+                IsInDeepFocusedSubFlow,
+                Conditional<
+                    UseFirstDeepFocusedTask,
+                    Impulse<IntegrationAnima, AddOneDeepFocusedStep>,
+                    Impulse<IntegrationAnima, AddTwoDeepFocusedStep>,
+                >,
+                Conditional<
+                    UseFirstAfterFullStateTask,
+                    Impulse<IntegrationAnima, AddOneAfterFullStateStep>,
+                    Impulse<IntegrationAnima, AddTwoAfterFullStateStep>,
+                >,
             >,
         >,
     >,
@@ -279,6 +350,10 @@ async fn redb_client_worker_flow_runs_to_completion() {
     let seed = postcard::to_allocvec(&IntegrationState {
         total: 0,
         focused: SubFlowState {
+            nested: DeepFocusState {
+                value: 0,
+                updates: 0,
+            },
             value: 0,
             updates: 0,
         },
