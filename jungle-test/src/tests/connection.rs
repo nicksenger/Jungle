@@ -1,6 +1,7 @@
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
-    BackendError, JourneyStatus, JungleClient, MockServer, RunnerOut, WireIn, WireOut, Step,
+    BackendError, JourneyStatus, JungleClient, MockServer, RunnerOut, RunnerStep, WireIn,
+    WireOut,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -12,7 +13,7 @@ use uuid::Uuid;
 async fn client_exchanges_messages_with_mock_server() {
     let journey_id = Uuid::from_u128(0x11111111111111111111111111111111);
     let action_id = Uuid::from_u128(0x22222222222222222222222222222222);
-    let expected_work = Step::StartJourney {
+    let expected_work = RunnerStep::StartJourney {
         journey_id,
         ordinal: 7,
         seed: vec![1, 2, 3],
@@ -120,7 +121,7 @@ async fn client_exchanges_messages_with_mock_server() {
 
     let work = client.poll_work().await.expect("poll_work should succeed");
     match work {
-        Some(Step::StartJourney {
+        Some(RunnerStep::StartJourney {
             journey_id: returned_flow,
             ordinal,
             seed,

@@ -4,7 +4,7 @@ use crate::models::{SchemaVersion, StepKind, StepStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use jungle_types::{JourneyStatus, RunnerOut, Step};
+use jungle_types::{JourneyStatus, RunnerOut, RunnerStep};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -206,7 +206,7 @@ impl JungleStore for RedbStore {
         self.update_journey_status(journey_id, JourneyStatus::Alive, Some(JourneyStatus::Created))
     }
 
-    async fn claim_work(&self) -> Result<Option<Step>> {
+    async fn claim_work(&self) -> Result<Option<RunnerStep>> {
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
         })?;
@@ -306,7 +306,7 @@ impl JungleStore for RedbStore {
         })?;
 
         let work = match selected_kind {
-            StepKind::StartJourney => Step::StartJourney {
+            StepKind::StartJourney => RunnerStep::StartJourney {
                 journey_id: selected_journey_id,
                 ordinal: flow.ordinal,
                 seed: flow.seed,

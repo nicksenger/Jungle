@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
-use jungle_types::{JourneyStatus, RunnerOut, Step};
+use jungle_types::{JourneyStatus, RunnerOut, RunnerStep};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -43,7 +43,7 @@ pub trait JungleStore: DynClone + Send + Sync {
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus>;
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()>;
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()>;
-    async fn claim_work(&self) -> Result<Option<Step>>;
+    async fn claim_work(&self) -> Result<Option<RunnerStep>>;
     async fn append_history(&self, history: RunnerOut) -> Result<()>;
     async fn poll_timers(&self) -> Result<Option<()>>;
     async fn details(&self, journey_id: Uuid) -> Result<()>;

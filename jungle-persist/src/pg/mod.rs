@@ -4,7 +4,7 @@ use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
-use jungle_types::{RunnerOut, Step};
+use jungle_types::{RunnerOut, RunnerStep};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
@@ -173,7 +173,7 @@ impl JungleStore for PgStore {
         Ok(())
     }
 
-    async fn claim_work(&self) -> Result<Option<Step>> {
+    async fn claim_work(&self) -> Result<Option<RunnerStep>> {
         #[derive(Debug, sqlx::FromRow)]
         struct ClaimedWorkRow {
             journey_id: Uuid,
@@ -222,7 +222,7 @@ impl JungleStore for PgStore {
                         row.ordinal
                     ))
                 })?;
-                Step::StartJourney {
+                RunnerStep::StartJourney {
                     journey_id: row.journey_id,
                     ordinal,
                     seed: row.seed,
