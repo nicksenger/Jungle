@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-jungle-sdk = { path = "../jungle-sdk" }
+jungle-sdk = { path = "../jungle-sdk", features = ["server", "pg", "redb"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -12,3 +12,8 @@ futures = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 postcard = { workspace = true, features = ["alloc"] }
+redb = "4.1"
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
+tempfile = "3"
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }

@@ -5,6 +5,16 @@ extern crate jungle_sdk as jungle_types;
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+
+    fn reserve_local_addr() -> SocketAddr {
+        let socket = UdpSocket::bind((Ipv6Addr::LOCALHOST, 0))
+            .expect("should bind temporary udp socket for test port reservation");
+        socket
+            .local_addr()
+            .expect("temporary udp socket should expose local address")
+    }
+
     macro_rules! action {
         (
             $name:ident,
@@ -99,38 +109,38 @@ mod tests {
     }
 
     macro_rules! animal {
-        ($name:ident, $id:ty, state = $state:ty, instinct = $instinct:ty) => {
+        ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty) => {
             struct $name;
 
-            impl jungle_sdk::types::Creature for $name {
+            impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
-                type Instinct = $instinct;
+                type Journey = $journey;
             }
         };
 
-        ($name:ident, $id:ty, instinct = $instinct:ty) => {
-            animal!($name, $id, state = (), instinct = $instinct);
+        ($name:ident, $id:ty, journey = $journey:ty) => {
+            animal!($name, $id, state = (), journey = $journey);
         };
 
-        ($name:ident, $id:ty, $instinct:ty) => {
-            animal!($name, $id, SharedState, $instinct);
+        ($name:ident, $id:ty, $journey:ty) => {
+            animal!($name, $id, SharedState, $journey);
         };
 
-        ($name:ident, $id:ty, $state:ty, $instinct:ty) => {
+        ($name:ident, $id:ty, $state:ty, $journey:ty) => {
             struct $name;
-            impl jungle_sdk::types::CreatureMember for $name {}
+            impl jungle_sdk::types::AnimalMember for $name {}
 
-            impl jungle_sdk::types::Creature for $name {
+            impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
-                type Instinct = $instinct;
+                type Journey = $journey;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleCreatures)]
-            impl jungle_sdk::types::Creatures for $name {
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            impl jungle_sdk::types::Animals for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
@@ -143,7 +153,11 @@ mod tests {
 
     mod aspect;
     mod conditional;
+    mod connection;
+    mod integration;
+    mod migration;
     mod progression;
+    mod traverse_replace;
     mod while_loop;
     mod zoo;
 }

@@ -9,3 +9,9 @@ uuid = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 dyn-clone = { workspace = true }
+directories-next = "2"
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+thiserror = "1"
+tracing = "0.1"
+postcard = { workspace = true, features = ["alloc"] }

@@ -1,11 +1,11 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Impulse, Aspect, Condition, Conditional, Either, Executor,
-    Identity, Lens, LoopCondition, Running, Task, Waiting, While,
+    Act, Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity,
+    Lens, LoopCondition, Running, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
-use jungle_sdk::{Instinct, Optic};
+use jungle_sdk::{Journey, Optic};
 use std::future::ready;
 use std::marker::PhantomData;
 
@@ -34,9 +34,9 @@ struct TigerState {
 
 struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
-impl<T, Focus> Task<T> for CoreEnergyStep<Sleep, Focus>
+impl<T, Focus> Act<T> for CoreEnergyStep<Sleep, Focus>
 where
-    T: jungle_types::Creature,
+    T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Sleep;
@@ -44,20 +44,20 @@ where
     type In = i32;
     type Out = i32;
 
-    fn prepare(core: &CoreState, input: Self::In) -> i32 {
+    fn emit(core: &CoreState, input: Self::In) -> i32 {
         core.energy + input
     }
 
-    fn process(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
         core.energy = value;
         value
     }
 }
 
-impl<T, Focus> Task<T> for CoreEnergyStep<Eat, Focus>
+impl<T, Focus> Act<T> for CoreEnergyStep<Eat, Focus>
 where
-    T: jungle_types::Creature,
+    T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Eat;
@@ -65,11 +65,11 @@ where
     type In = i32;
     type Out = i32;
 
-    fn prepare(core: &CoreState, input: Self::In) -> i32 {
+    fn emit(core: &CoreState, input: Self::In) -> i32 {
         core.energy + input
     }
 
-    fn process(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
@@ -78,9 +78,9 @@ where
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Task<T> for AddI32<Focus, A>
+impl<T, Focus, A> Act<T> for AddI32<Focus, A>
 where
-    T: jungle_types::Creature,
+    T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
     A: Action<Out = i32>,
 {
@@ -89,11 +89,11 @@ where
     type In = A::In;
     type Out = i32;
 
-    fn prepare(_value: &i32, input: Self::In) -> A::In {
+    fn emit(_value: &i32, input: Self::In) -> A::In {
         input
     }
 
-    fn process(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -105,9 +105,9 @@ where
 
 struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Task<T> for SubI32<Focus, A>
+impl<T, Focus, A> Act<T> for SubI32<Focus, A>
 where
-    T: jungle_types::Creature,
+    T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
     A: Action<Out = i32>,
 {
@@ -116,11 +116,11 @@ where
     type In = A::In;
     type Out = i32;
 
-    fn prepare(_value: &i32, input: Self::In) -> A::In {
+    fn emit(_value: &i32, input: Self::In) -> A::In {
         input
     }
 
-    fn process(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -131,17 +131,17 @@ where
 }
 
 struct GorillaSleepManual;
-impl Task<Gorilla> for GorillaSleepManual {
+impl Act<Gorilla> for GorillaSleepManual {
     type Action = Sleep;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
-    fn prepare(state: &GorillaState, input: Self::In) -> i32 {
+    fn emit(state: &GorillaState, input: Self::In) -> i32 {
         state.core.energy + input
     }
 
-    fn process(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
         state.core.energy = value;
         state.core.age += 1;
@@ -155,11 +155,11 @@ type GorillaForageStep = SubI32<Lens<GorillaState, list![U0, U0]>, Forage>;
 type TigerEat = AddI32<Lens<TigerState, list![U1, U0]>, Eat>;
 type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
 
-#[derive(Instinct)]
+#[derive(Journey)]
 struct GorillaLoopSequence(
-    Impulse<Gorilla, GorillaEat>,
-    Impulse<Gorilla, GorillaSleepManual>,
-    Impulse<Gorilla, GorillaForageStep>,
+    Step<Gorilla, GorillaEat>,
+    Step<Gorilla, GorillaSleepManual>,
+    Step<Gorilla, GorillaForageStep>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -169,8 +169,8 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     }
 }
 
-#[derive(Instinct)]
-struct GorillaInstinct(While<GorillaUnderAgeHundred, GorillaLoopSequence>);
+#[derive(Journey)]
+struct GorillaJourney(While<GorillaUnderAgeHundred, GorillaLoopSequence>);
 
 struct TigerStripesAreEven;
 impl Condition<(TigerState, i32)> for TigerStripesAreEven {
@@ -179,15 +179,11 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     }
 }
 
-#[derive(Instinct)]
+#[derive(Journey)]
 struct TigerLoopSequence(
-    Conditional<
-        TigerStripesAreEven,
-        Impulse<Tiger, TigerEat>,
-        Impulse<Tiger, TigerSleep>,
-    >,
-    Impulse<Tiger, TigerSleep>,
-    Impulse<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
+    Conditional<TigerStripesAreEven, Step<Tiger, TigerEat>, Step<Tiger, TigerSleep>>,
+    Step<Tiger, TigerSleep>,
+    Step<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
@@ -197,16 +193,16 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     }
 }
 
-#[derive(Instinct)]
-struct TigerInstinct(While<TigerUnderHundredStripes, TigerLoopSequence>);
+#[derive(Journey)]
+struct TigerJourney(While<TigerUnderHundredStripes, TigerLoopSequence>);
 
 animal!(
     Gorilla,
     U1,
     state = GorillaState,
-    instinct = GorillaInstinct
+    journey = GorillaJourney
 );
-animal!(Tiger, U2, state = TigerState, instinct = TigerInstinct);
+animal!(Tiger, U2, state = TigerState, journey = TigerJourney);
 
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {
@@ -217,12 +213,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) = <Impulse<
+    let (gorilla_state, gorilla_request) = <Step<
         Gorilla,
         CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
-    let (gorilla_state, gorilla_emitted) = <Impulse<
+    let (gorilla_state, gorilla_emitted) = <Step<
         Gorilla,
         CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
     > as Waiting>::accept((gorilla_state, Ok(20)));
@@ -235,15 +231,17 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         stripes: 9,
         core: CoreState { energy: 6, age: 12 },
     };
-    let (tiger_state, tiger_request) = <Impulse<
-        Tiger,
-        CoreEnergyStep<Sleep, Lens<TigerState, U1>>,
-    > as Running>::run((tiger_state, 4));
+    let (tiger_state, tiger_request) =
+        <Step<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Running>::run((
+            tiger_state,
+            4,
+        ));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) = <Impulse<
-        Tiger,
-        CoreEnergyStep<Sleep, Lens<TigerState, U1>>,
-    > as Waiting>::accept((tiger_state, Ok(15)));
+    let (tiger_state, tiger_emitted) =
+        <Step<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Waiting>::accept((
+            tiger_state,
+            Ok(15),
+        ));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
     assert_eq!(tiger_state.core.age, 12);
@@ -265,8 +263,12 @@ async fn executor_runs_aspected_steps() {
             .expect("gorilla request should advance");
         let completion: i32 = match step % 3 {
             0 => Eat::act(&(), request).await.expect("eat should succeed"),
-            1 => Sleep::act(&(), request).await.expect("sleep should succeed"),
-            2 => Forage::act(&(), request).await.expect("forage should succeed"),
+            1 => Sleep::act(&(), request)
+                .await
+                .expect("sleep should succeed"),
+            2 => Forage::act(&(), request)
+                .await
+                .expect("forage should succeed"),
             _ => unreachable!(),
         };
         let emitted: i32 = gorilla
@@ -297,7 +299,9 @@ async fn executor_runs_aspected_steps() {
             }
             1 => {
                 let request: i32 = tiger.next_request().expect("tiger request should advance");
-                Sleep::act(&(), request).await.expect("sleep should succeed")
+                Sleep::act(&(), request)
+                    .await
+                    .expect("sleep should succeed")
             }
             2 => {
                 let request: () = tiger.next_request().expect("tiger request should advance");
@@ -322,8 +326,8 @@ async fn executor_runs_aspected_steps() {
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     let even = <Conditional<
         TigerStripesAreEven,
-        Impulse<Tiger, TigerEat>,
-        Impulse<Tiger, TigerSleep>,
+        Step<Tiger, TigerEat>,
+        Step<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 8,
@@ -338,8 +342,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 
     let odd = <Conditional<
         TigerStripesAreEven,
-        Impulse<Tiger, TigerEat>,
-        Impulse<Tiger, TigerSleep>,
+        Step<Tiger, TigerEat>,
+        Step<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 9,

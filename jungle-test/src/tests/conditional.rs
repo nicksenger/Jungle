@@ -1,9 +1,9 @@
 use jungle_sdk::types::{
-    ActionCompletion, Impulse, Condition, Conditional, Either, Executor, Identity,
-    ManualExecutor, Running, Task, Waiting,
+    Act, ActionCompletion, Condition, Conditional, Either, Executor, Identity, ManualExecutor,
+    Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::Instinct;
+use jungle_sdk::Journey;
 use std::future::ready;
 
 action!(
@@ -25,24 +25,24 @@ action!(
 );
 
 animal!(
-    ConditionalCreature,
+    ConditionalAnimal,
     U0,
     state = i32,
-    instinct = ConditionalInstinct
+    journey = ConditionalJourney
 );
 
 struct Left;
-impl Task<ConditionalCreature> for Left {
+impl Act<ConditionalAnimal> for Left {
     type Action = LeftAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
-    fn prepare(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::In) -> i32 {
         *state + input
     }
 
-    fn process(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::Out {
         let value = output.expect("left action should succeed");
         *state = value;
         value
@@ -50,25 +50,25 @@ impl Task<ConditionalCreature> for Left {
 }
 
 struct Right;
-impl Task<ConditionalCreature> for Right {
+impl Act<ConditionalAnimal> for Right {
     type Action = RightAction;
     type Aspect = Identity;
     type In = i32;
     type Out = bool;
 
-    fn prepare(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::In) -> i32 {
         *state - input
     }
 
-    fn process(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::Out {
         let value = output.expect("right action should succeed");
         *state = value;
         value % 2 == 0
     }
 }
 
-type LeftFlow = Impulse<ConditionalCreature, Left>;
-type RightFlow = Impulse<ConditionalCreature, Right>;
+type LeftFlow = Step<ConditionalAnimal, Left>;
+type RightFlow = Step<ConditionalAnimal, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
@@ -79,8 +79,8 @@ impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
 
 type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, RightFlow>;
 
-#[derive(Instinct)]
-struct ConditionalInstinct(ConditionalFlow);
+#[derive(Journey)]
+struct ConditionalJourney(ConditionalFlow);
 
 #[test]
 fn conditional_run_selects_branch_from_predicate() {
@@ -120,13 +120,13 @@ fn conditional_waiting_accept_returns_either_branch_output() {
 
 #[test]
 fn executor_dynamically_selects_conditional_branch() {
-    let mut left = ManualExecutor::<ConditionalCreature>::new(5);
+    let mut left = ManualExecutor::<ConditionalAnimal>::new(5);
     let left_emitted: i32 = left.next_typed(3, Ok::<i32, ()>(9)).expect("left branch");
     assert_eq!(left_emitted, 9);
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
-    let mut right = ManualExecutor::<ConditionalCreature>::new(-2);
+    let mut right = ManualExecutor::<ConditionalAnimal>::new(-2);
     let right_emitted: bool = right.next_typed(3, Ok::<i32, ()>(6)).expect("right branch");
     assert_eq!(right_emitted, true);
     assert!(right.is_complete());
@@ -135,7 +135,7 @@ fn executor_dynamically_selects_conditional_branch() {
 
 #[test]
 fn executor_requests_and_completes_conditional_branch() {
-    let mut left = Executor::<ConditionalCreature>::new(5);
+    let mut left = Executor::<ConditionalAnimal>::new(5);
     let left_request: i32 = left.next_request().expect("left request");
     assert_eq!(left_request, 5);
     let left_emitted: i32 = left.complete(Ok::<i32, ()>(9)).expect("left completion");
@@ -143,7 +143,7 @@ fn executor_requests_and_completes_conditional_branch() {
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
-    let mut right = Executor::<ConditionalCreature>::new(-2);
+    let mut right = Executor::<ConditionalAnimal>::new(-2);
     let right_request: i32 = right.next_request().expect("right request");
     assert_eq!(right_request, -2);
     let right_emitted: bool = right.complete(Ok::<i32, ()>(6)).expect("right completion");
@@ -154,7 +154,7 @@ fn executor_requests_and_completes_conditional_branch() {
 
 #[tokio::test]
 async fn executor_executable_request_runs_without_static_action_dispatch() {
-    let mut left = Executor::<ConditionalCreature>::new(5);
+    let mut left = Executor::<ConditionalAnimal>::new(5);
     let request = left
         .next_executable_request(0i32)
         .expect("left executable request");
@@ -169,7 +169,7 @@ async fn executor_executable_request_runs_without_static_action_dispatch() {
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 6);
 
-    let mut right = Executor::<ConditionalCreature>::new(-2);
+    let mut right = Executor::<ConditionalAnimal>::new(-2);
     let request = right
         .next_executable_request(0i32)
         .expect("right executable request");

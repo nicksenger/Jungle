@@ -1,13 +1,13 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionSet, Creature, CreatureActionSet, CreatureSet,
-    CreatureStates, Ecosystem, Identity, Impulse, Lens, LoopCondition, Task, While,
+    Act, Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
+    Ecosystem, Identity, Lens, LoopCondition, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-use jungle_sdk::{Actions, Creatures, Flow, Optic};
+use jungle_sdk::{Actions, Animals, Flow, Optic};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -41,9 +41,9 @@ impl<T> From<&T> for SharedState {
 }
 
 struct UnitOkStep<A>(PhantomData<fn() -> A>);
-impl<T, A> Task<T> for UnitOkStep<A>
+impl<T, A> Act<T> for UnitOkStep<A>
 where
-    T: Creature,
+    T: Animal,
     A: Action<In = ()>,
     A: Action<Out = (), Err = ()>,
 {
@@ -52,102 +52,102 @@ where
     type In = ();
     type Out = ();
 
-    fn prepare(_state: &T::State, _input: Self::In) -> A::In {}
+    fn emit(_state: &T::State, _input: Self::In) -> A::In {}
 
-    fn process(_state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
+    fn absorb(_state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
         output.expect("workflow action should succeed");
     }
 }
 
-animal!(Gorilla, U0, GorillaInstinct);
-animal!(Chimpanzee, U1, ChimpanzeeInstinct);
-animal!(Tiger, U2, TigerInstinct);
-animal!(Jaguar, U3, JaguarInstinct);
-animal!(Anaconda, U4, AnacondaInstinct);
-animal!(Hippo, U5, HippoInstinct);
-animal!(Elephant, U6, ElephantInstinct);
+animal!(Gorilla, U0, GorillaJourney);
+animal!(Chimpanzee, U1, ChimpanzeeJourney);
+animal!(Tiger, U2, TigerJourney);
+animal!(Jaguar, U3, JaguarJourney);
+animal!(Anaconda, U4, AnacondaJourney);
+animal!(Hippo, U5, HippoJourney);
+animal!(Elephant, U6, ElephantJourney);
 
 #[derive(Flow)]
-struct GorillaInstinct(
-    Impulse<Gorilla, UnitOkStep<Eat>>,
-    Impulse<Gorilla, UnitOkStep<Sleep>>,
-    Impulse<Gorilla, UnitOkStep<Forage>>,
-    Impulse<Gorilla, UnitOkStep<Drink>>,
-    Impulse<Gorilla, UnitOkStep<Flee>>,
+struct GorillaJourney(
+    Step<Gorilla, UnitOkStep<Eat>>,
+    Step<Gorilla, UnitOkStep<Sleep>>,
+    Step<Gorilla, UnitOkStep<Forage>>,
+    Step<Gorilla, UnitOkStep<Drink>>,
+    Step<Gorilla, UnitOkStep<Flee>>,
 );
 
 #[derive(Flow)]
-struct ChimpanzeeInstinct(
-    Impulse<Chimpanzee, UnitOkStep<Eat>>,
-    Impulse<Chimpanzee, UnitOkStep<Sleep>>,
-    Impulse<Chimpanzee, UnitOkStep<Forage>>,
-    Impulse<Chimpanzee, UnitOkStep<Drink>>,
-    Impulse<Chimpanzee, UnitOkStep<Flee>>,
+struct ChimpanzeeJourney(
+    Step<Chimpanzee, UnitOkStep<Eat>>,
+    Step<Chimpanzee, UnitOkStep<Sleep>>,
+    Step<Chimpanzee, UnitOkStep<Forage>>,
+    Step<Chimpanzee, UnitOkStep<Drink>>,
+    Step<Chimpanzee, UnitOkStep<Flee>>,
 );
 
 #[derive(Flow)]
-struct TigerInstinct(
-    Impulse<Tiger, UnitOkStep<Eat>>,
-    Impulse<Tiger, UnitOkStep<Sleep>>,
-    Impulse<Tiger, UnitOkStep<Forage>>,
-    Impulse<Tiger, UnitOkStep<Drink>>,
-    Impulse<Tiger, UnitOkStep<Hunt>>,
+struct TigerJourney(
+    Step<Tiger, UnitOkStep<Eat>>,
+    Step<Tiger, UnitOkStep<Sleep>>,
+    Step<Tiger, UnitOkStep<Forage>>,
+    Step<Tiger, UnitOkStep<Drink>>,
+    Step<Tiger, UnitOkStep<Hunt>>,
 );
 
 #[derive(Flow)]
-struct JaguarInstinct(
-    Impulse<Jaguar, UnitOkStep<Eat>>,
-    Impulse<Jaguar, UnitOkStep<Sleep>>,
-    Impulse<Jaguar, UnitOkStep<Forage>>,
-    Impulse<Jaguar, UnitOkStep<Drink>>,
-    Impulse<Jaguar, UnitOkStep<Hunt>>,
+struct JaguarJourney(
+    Step<Jaguar, UnitOkStep<Eat>>,
+    Step<Jaguar, UnitOkStep<Sleep>>,
+    Step<Jaguar, UnitOkStep<Forage>>,
+    Step<Jaguar, UnitOkStep<Drink>>,
+    Step<Jaguar, UnitOkStep<Hunt>>,
 );
 
 #[derive(Flow)]
-struct AnacondaInstinct(
-    Impulse<Anaconda, UnitOkStep<Eat>>,
-    Impulse<Anaconda, UnitOkStep<Sleep>>,
-    Impulse<Anaconda, UnitOkStep<Forage>>,
-    Impulse<Anaconda, UnitOkStep<Drink>>,
-    Impulse<Anaconda, UnitOkStep<Hunt>>,
+struct AnacondaJourney(
+    Step<Anaconda, UnitOkStep<Eat>>,
+    Step<Anaconda, UnitOkStep<Sleep>>,
+    Step<Anaconda, UnitOkStep<Forage>>,
+    Step<Anaconda, UnitOkStep<Drink>>,
+    Step<Anaconda, UnitOkStep<Hunt>>,
 );
 
 #[derive(Flow)]
-struct HippoInstinct(
-    Impulse<Hippo, UnitOkStep<Eat>>,
-    Impulse<Hippo, UnitOkStep<Sleep>>,
-    Impulse<Hippo, UnitOkStep<Forage>>,
-    Impulse<Hippo, UnitOkStep<Drink>>,
-    Impulse<Hippo, UnitOkStep<Flee>>,
+struct HippoJourney(
+    Step<Hippo, UnitOkStep<Eat>>,
+    Step<Hippo, UnitOkStep<Sleep>>,
+    Step<Hippo, UnitOkStep<Forage>>,
+    Step<Hippo, UnitOkStep<Drink>>,
+    Step<Hippo, UnitOkStep<Flee>>,
 );
 
 #[derive(Flow)]
-struct ElephantInstinct(
-    Impulse<Elephant, UnitOkStep<Eat>>,
-    Impulse<Elephant, UnitOkStep<Sleep>>,
-    Impulse<Elephant, UnitOkStep<Forage>>,
-    Impulse<Elephant, UnitOkStep<Drink>>,
-    Impulse<Elephant, UnitOkStep<Flee>>,
+struct ElephantJourney(
+    Step<Elephant, UnitOkStep<Eat>>,
+    Step<Elephant, UnitOkStep<Sleep>>,
+    Step<Elephant, UnitOkStep<Forage>>,
+    Step<Elephant, UnitOkStep<Drink>>,
+    Step<Elephant, UnitOkStep<Flee>>,
 );
 
-#[derive(Creatures)]
+#[derive(Animals)]
 struct Apes(Gorilla, Chimpanzee);
 
-#[derive(Creatures)]
+#[derive(Animals)]
 struct Cats(Tiger, Jaguar);
 
-#[derive(Creatures)]
+#[derive(Animals)]
 struct Predators(Cats, Anaconda);
 
-#[derive(Creatures)]
-struct AllCreatures(Cats, Apes, Anaconda, Hippo, Elephant);
+#[derive(Animals)]
+struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
 
 #[derive(Actions)]
 struct AllActions(Predator, Prey);
 
 struct Zoo;
 impl Ecosystem for Zoo {
-    type Creatures = AllCreatures;
+    type Animals = AllAnimals;
 }
 
 #[derive(Clone, Copy)]
@@ -216,29 +216,29 @@ impl Action for RunnerStepTwoAction {
 }
 
 struct RunnerStepOne;
-impl Task<RunnerCreature> for RunnerStepOne {
+impl Act<RunnerAnimal> for RunnerStepOne {
     type Action = RunnerStepOneAction;
     type Aspect = Identity;
     type In = ();
     type Out = ();
 
-    fn prepare(_state: &RunnerState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &RunnerState, _input: Self::In) -> Self::In {}
 
-    fn process(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Out {
         state.0 += output.expect("runner step one should succeed");
     }
 }
 
 struct RunnerStepTwo;
-impl Task<RunnerCreature> for RunnerStepTwo {
+impl Act<RunnerAnimal> for RunnerStepTwo {
     type Action = RunnerStepTwoAction;
     type Aspect = Identity;
     type In = ();
     type Out = ();
 
-    fn prepare(_state: &RunnerState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &RunnerState, _input: Self::In) -> Self::In {}
 
-    fn process(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Out {
         state.0 += output.expect("runner step two should succeed");
     }
 }
@@ -257,28 +257,28 @@ impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
     }
 }
 
-type RunnerInstinct = While<
+type RunnerJourney = While<
     RunnerKeepGoing,
     jungle_sdk::types::Conditional<
         RunnerUseStepOne,
-        Impulse<RunnerCreature, RunnerStepOne>,
-        Impulse<RunnerCreature, RunnerStepTwo>,
+        Step<RunnerAnimal, RunnerStepOne>,
+        Step<RunnerAnimal, RunnerStepTwo>,
     >,
 >;
 
 animal!(
-    RunnerCreature,
+    RunnerAnimal,
     jungle_sdk::typosaurus::num::consts::U16,
     RunnerState,
-    RunnerInstinct
+    RunnerJourney
 );
 
-#[derive(Creatures)]
-struct RunnerCreatures(RunnerCreature);
+#[derive(Animals)]
+struct RunnerAnimals(RunnerAnimal);
 
 struct RunnerZoo;
 impl Ecosystem for RunnerZoo {
-    type Creatures = RunnerCreatures;
+    type Animals = RunnerAnimals;
 }
 
 #[test]
@@ -293,19 +293,19 @@ fn composite_actions() {
 #[test]
 fn composite_animals() {
     type ApeList = list![Gorilla, Chimpanzee];
-    assert_type_eq!(CreatureSet<Apes>, ApeList);
+    assert_type_eq!(AnimalSet<Apes>, ApeList);
 
     type PredatorList = list![Tiger, Jaguar, Anaconda];
-    assert_type_eq!(CreatureSet<Predators>, PredatorList);
+    assert_type_eq!(AnimalSet<Predators>, PredatorList);
 }
 
 #[test]
 fn animal_action_set() {
-    type ApeCreatureActions = list![Eat, Sleep, Forage, Drink, Flee];
-    assert_type_eq!(CreatureActionSet<Apes>, ApeCreatureActions);
+    type ApeAnimalActions = list![Eat, Sleep, Forage, Drink, Flee];
+    assert_type_eq!(AnimalActionSet<Apes>, ApeAnimalActions);
 
-    type AllCreatureActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
-    assert_type_eq!(CreatureActionSet<AllCreatures>, AllCreatureActions);
+    type AllAnimalActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
+    assert_type_eq!(AnimalActionSet<AllAnimals>, AllAnimalActions);
 }
 
 #[test]
@@ -316,31 +316,31 @@ fn animal_state_set() {
     struct CatState;
 
     #[derive(Flow)]
-    struct StatefulGorillaInstinct(
-        Impulse<StatefulGorilla, UnitOkStep<Eat>>,
-        Impulse<StatefulGorilla, UnitOkStep<Sleep>>,
-        Impulse<StatefulGorilla, UnitOkStep<Forage>>,
-        Impulse<StatefulGorilla, UnitOkStep<Drink>>,
-        Impulse<StatefulGorilla, UnitOkStep<Flee>>,
+    struct StatefulGorillaJourney(
+        Step<StatefulGorilla, UnitOkStep<Eat>>,
+        Step<StatefulGorilla, UnitOkStep<Sleep>>,
+        Step<StatefulGorilla, UnitOkStep<Forage>>,
+        Step<StatefulGorilla, UnitOkStep<Drink>>,
+        Step<StatefulGorilla, UnitOkStep<Flee>>,
     );
 
     #[derive(Flow)]
-    struct StatefulTigerInstinct(
-        Impulse<StatefulTiger, UnitOkStep<Eat>>,
-        Impulse<StatefulTiger, UnitOkStep<Sleep>>,
-        Impulse<StatefulTiger, UnitOkStep<Forage>>,
-        Impulse<StatefulTiger, UnitOkStep<Drink>>,
-        Impulse<StatefulTiger, UnitOkStep<Hunt>>,
+    struct StatefulTigerJourney(
+        Step<StatefulTiger, UnitOkStep<Eat>>,
+        Step<StatefulTiger, UnitOkStep<Sleep>>,
+        Step<StatefulTiger, UnitOkStep<Forage>>,
+        Step<StatefulTiger, UnitOkStep<Drink>>,
+        Step<StatefulTiger, UnitOkStep<Hunt>>,
     );
 
-    animal!(StatefulGorilla, U0, ApeState, StatefulGorillaInstinct);
-    animal!(StatefulTiger, U1, CatState, StatefulTigerInstinct);
+    animal!(StatefulGorilla, U0, ApeState, StatefulGorillaJourney);
+    animal!(StatefulTiger, U1, CatState, StatefulTigerJourney);
 
-    #[derive(Creatures)]
-    struct StatefulCreatures(StatefulGorilla, StatefulTiger);
+    #[derive(Animals)]
+    struct StatefulAnimals(StatefulGorilla, StatefulTiger);
 
-    type StatefulCreatureStates = list![ApeState, CatState];
-    assert_type_eq!(CreatureStates<StatefulCreatures>, StatefulCreatureStates);
+    type StatefulAnimalStates = list![ApeState, CatState];
+    assert_type_eq!(AnimalStates<StatefulAnimals>, StatefulAnimalStates);
 }
 
 #[test]
@@ -453,9 +453,9 @@ impl Action for RoundAdvance {
 }
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
-impl<T, Focus, A> Task<T> for AddI32<Focus, A>
+impl<T, Focus, A> Act<T> for AddI32<Focus, A>
 where
-    T: Creature,
+    T: Animal,
     Focus: jungle_sdk::types::Aspect<T::State, View = i32>,
     A: Action<In = i32, Out = i32, Err = ()>,
 {
@@ -464,11 +464,11 @@ where
     type In = i32;
     type Out = i32;
 
-    fn prepare(value: &i32, _input: Self::In) -> Self::In {
+    fn emit(value: &i32, _input: Self::In) -> Self::In {
         *value
     }
 
-    fn process(value: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(value: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Out {
         let delta = output.expect("add i32 step should succeed");
         *value += delta;
         *value
@@ -500,13 +500,13 @@ impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
     }
 }
 
-type WorkflowGorillaInstinct = While<ApeKeepRunning, Impulse<WorkflowGorilla, ApeRoundTask>>;
-type WorkflowTigerInstinct = While<
+type WorkflowGorillaJourney = While<ApeKeepRunning, Step<WorkflowGorilla, ApeRoundTask>>;
+type WorkflowTigerJourney = While<
     TigerKeepRunning,
     jungle_sdk::types::Conditional<
         TigerChooseHunt,
-        Impulse<WorkflowTiger, TigerHuntTask>,
-        Impulse<WorkflowTiger, TigerEatTask>,
+        Step<WorkflowTiger, TigerHuntTask>,
+        Step<WorkflowTiger, TigerEatTask>,
     >,
 >;
 
@@ -514,13 +514,13 @@ animal!(
     WorkflowGorilla,
     jungle_sdk::typosaurus::num::consts::U11,
     ExecutorApeState,
-    WorkflowGorillaInstinct
+    WorkflowGorillaJourney
 );
 animal!(
     WorkflowTiger,
     jungle_sdk::typosaurus::num::consts::U12,
     ExecutorCatState,
-    WorkflowTigerInstinct
+    WorkflowTigerJourney
 );
 
 #[tokio::test]
@@ -609,7 +609,10 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
             .deserialize_request()
             .expect("tiger odd request should deserialize");
         tiger_odd_requests.push(request_input);
-        let completion = request.run().await.expect("tiger odd action should execute");
+        let completion = request
+            .run()
+            .await
+            .expect("tiger odd action should execute");
         let _emitted = tiger_odd
             .complete_serialized(completion)
             .expect("tiger odd completion should process");
@@ -657,7 +660,7 @@ async fn jungle_executor_exposes_state_during_progression() {
 }
 
 #[tokio::test]
-async fn jungle_runner_spawns_and_completes_creature_flows() {
+async fn jungle_runner_spawns_and_completes_animal_flows() {
     use jungle_sdk::client::{MockClient, RunnerChannelTx};
     use jungle_sdk::core::JungleRunner;
 
@@ -703,9 +706,9 @@ async fn jungle_runner_spawns_and_completes_creature_flows() {
     });
 
     let (first, second, third) = tokio::join!(
-        runner.spawn::<RunnerCreature>(RunnerState(0), Uuid::from_u128(1), tx.clone()),
-        runner.spawn::<RunnerCreature>(RunnerState(3), Uuid::from_u128(2), tx.clone()),
-        runner.spawn::<RunnerCreature>(RunnerState(2), Uuid::from_u128(3), tx.clone()),
+        runner.spawn::<RunnerAnimal>(RunnerState(0), Uuid::from_u128(1), tx.clone()),
+        runner.spawn::<RunnerAnimal>(RunnerState(3), Uuid::from_u128(2), tx.clone()),
+        runner.spawn::<RunnerAnimal>(RunnerState(2), Uuid::from_u128(3), tx.clone()),
     );
     drop(tx);
     resolver
@@ -733,15 +736,16 @@ async fn jungle_runner_spawns_and_completes_creature_flows() {
 async fn jungle_worker_polls_and_completes_start_flow_work() {
     use jungle_sdk::client::MockClient;
     use jungle_sdk::core::JungleWorker;
-    use jungle_sdk::types::Work;
+    use jungle_sdk::types::RunnerStep;
     use std::time::Duration;
 
     let input_calls = Arc::new(AtomicUsize::new(0));
     let success_calls = Arc::new(AtomicUsize::new(0));
     let failure_calls = Arc::new(AtomicUsize::new(0));
+    let flow_complete_calls = Arc::new(AtomicUsize::new(0));
     let poll_calls = Arc::new(AtomicUsize::new(0));
     let seed = postcard::to_allocvec(&RunnerState(0)).expect("runner seed should serialize");
-    let flow_id = Uuid::from_u128(101);
+    let journey_id = Uuid::from_u128(101);
 
     let client = MockClient::builder()
         .on_poll_work({
@@ -753,8 +757,8 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                 async move {
                     let idx = poll_calls.fetch_add(1, Ordering::Relaxed);
                     if idx == 0 {
-                        Ok(Some(Work::StartFlow {
-                            flow_id,
+                        Ok(Some(RunnerStep::StartJourney {
+                            journey_id,
                             ordinal: 16,
                             seed,
                         }))
@@ -794,6 +798,16 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                 }
             }
         })
+        .on_flow_complete({
+            let flow_complete_calls = Arc::clone(&flow_complete_calls);
+            move |_| {
+                let flow_complete_calls = Arc::clone(&flow_complete_calls);
+                async move {
+                    flow_complete_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
         .build();
 
     let worker = JungleWorker::new(RunnerZoo, client);
@@ -827,4 +841,5 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
     assert_eq!(input_calls.load(Ordering::Relaxed), 2);
     assert_eq!(success_calls.load(Ordering::Relaxed), 2);
     assert_eq!(failure_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(flow_complete_calls.load(Ordering::Relaxed), 1);
 }

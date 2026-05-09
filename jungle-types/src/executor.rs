@@ -1,6 +1,6 @@
 use crate::{
-    Action, ActionCompletion, Impulse, Condition, Conditional, Creature, Task,
-    LoopCondition, Running, While,
+    Act, Action, ActionCompletion, Animal, BackendError, Condition, Conditional, LoopCondition,
+    Running, Step, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -105,6 +105,10 @@ pub enum ExecutorError {
     ClientTransportClosed,
     #[error("client transport acknowledgement dropped")]
     ClientTransportAckDropped,
+    #[error("client transport failed: {0}")]
+    ClientTransport(String),
+    #[error("backend error: {0}")]
+    Backend(#[source] BackendError),
     #[error("not enough completions to advance to end")]
     NotEnoughCompletions,
 }
@@ -130,19 +134,19 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
-impl<T, Step> ErasedFlow<T::State> for TypedErasedStep<Impulse<T, Step>>
+impl<T, A> ErasedFlow<T::State> for TypedErasedStep<Step<T, A>>
 where
-    T: Creature,
-    Step: Task<T>,
-    <Step as Task<T>>::Action: Action<Dependency = ()>,
-    <<Step as Task<T>>::Action as Action>::Dependency: 'static,
-    <<Step as Task<T>>::Action as Action>::In: 'static,
-    <<Step as Task<T>>::Action as Action>::Out: 'static,
-    <<Step as Task<T>>::Action as Action>::Err: Serialize + 'static,
-    <<Step as Task<T>>::Action as Action>::Out: DeserializeOwned,
-    <<Step as Task<T>>::Action as Action>::Err: DeserializeOwned,
-    Step::In: DeserializeOwned,
-    Step::Out: Serialize,
+    T: Animal,
+    A: Act<T>,
+    <A as Act<T>>::Action: Action<Dependency = ()>,
+    <<A as Act<T>>::Action as Action>::Dependency: 'static,
+    <<A as Act<T>>::Action as Action>::In: 'static,
+    <<A as Act<T>>::Action as Action>::Out: 'static,
+    <<A as Act<T>>::Action as Action>::Err: Serialize + 'static,
+    <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
+    <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
+    A::In: DeserializeOwned,
+    A::Out: Serialize,
 {
     fn request(
         &mut self,
@@ -156,9 +160,9 @@ where
             return Err(ExecutorError::AwaitingCompletion);
         }
 
-        let typed_input = postcard::from_bytes::<Step::In>(&input)
+        let typed_input = postcard::from_bytes::<A::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Impulse<T, Step> as Running>::run((state, typed_input));
+        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
         let request = postcard::to_allocvec(&request.into_input())
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         self.waiting_completion = true;
@@ -177,15 +181,15 @@ where
             return Err(ExecutorError::AwaitingCompletion);
         }
 
-        let typed_input = postcard::from_bytes::<Step::In>(&input)
+        let typed_input = postcard::from_bytes::<A::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Impulse<T, Step> as Running>::run((state, typed_input));
+        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<Step as Task<T>>::Action as Action>::act(&(), action_input).await;
+                let completion = <<A as Act<T>>::Action as Action>::act(&(), action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -206,14 +210,18 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<Step as Task<T>>::Action> = match completion {
-            Ok(output) => Ok(postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Out>(&output)
-                .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
-            Err(error) => Err(postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Err>(&error)
-                .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
+        let typed_completion: ActionCompletion<<A as Act<T>>::Action> = match completion {
+            Ok(output) => Ok(
+                postcard::from_bytes::<<<A as Act<T>>::Action as Action>::Out>(&output)
+                    .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
+            ),
+            Err(error) => Err(
+                postcard::from_bytes::<<<A as Act<T>>::Action as Action>::Err>(&error)
+                    .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
+            ),
         };
 
-        let (state, emitted) = <Impulse<T, Step> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <Step<T, A> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -230,14 +238,14 @@ where
     }
 }
 
-pub struct ContextualTypedErasedStep<Context, Step> {
+pub struct ContextualTypedErasedStep<Context, R> {
     context: *const Context,
     complete: bool,
     waiting_completion: bool,
-    marker: core::marker::PhantomData<fn() -> Step>,
+    marker: core::marker::PhantomData<fn() -> R>,
 }
 
-impl<Context, Step> ContextualTypedErasedStep<Context, Step> {
+impl<Context, R> ContextualTypedErasedStep<Context, R> {
     pub fn new(context: *const Context) -> Self {
         Self {
             context,
@@ -248,20 +256,20 @@ impl<Context, Step> ContextualTypedErasedStep<Context, Step> {
     }
 }
 
-impl<Context, T, Step> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Impulse<T, Step>>
+impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Step<T, A>>
 where
-    T: Creature,
-    Step: Task<T>,
-    <Step as Task<T>>::Action: Action,
-    for<'ctx> &'ctx Context: Into<<<Step as Task<T>>::Action as Action>::Dependency>,
-    <<Step as Task<T>>::Action as Action>::Dependency: 'static,
-    <<Step as Task<T>>::Action as Action>::In: 'static,
-    <<Step as Task<T>>::Action as Action>::Out: 'static,
-    <<Step as Task<T>>::Action as Action>::Err: Serialize + 'static,
-    <<Step as Task<T>>::Action as Action>::Out: DeserializeOwned,
-    <<Step as Task<T>>::Action as Action>::Err: DeserializeOwned,
-    Step::In: DeserializeOwned,
-    Step::Out: Serialize,
+    T: Animal,
+    A: Act<T>,
+    <A as Act<T>>::Action: Action,
+    for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Action as Action>::Dependency>,
+    <<A as Act<T>>::Action as Action>::Dependency: 'static,
+    <<A as Act<T>>::Action as Action>::In: 'static,
+    <<A as Act<T>>::Action as Action>::Out: 'static,
+    <<A as Act<T>>::Action as Action>::Err: Serialize + 'static,
+    <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
+    <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
+    A::In: DeserializeOwned,
+    A::Out: Serialize,
 {
     fn request(
         &mut self,
@@ -275,9 +283,9 @@ where
             return Err(ExecutorError::AwaitingCompletion);
         }
 
-        let typed_input = postcard::from_bytes::<Step::In>(&input)
+        let typed_input = postcard::from_bytes::<A::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Impulse<T, Step> as Running>::run((state, typed_input));
+        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
         let request = postcard::to_allocvec(&request.into_input())
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         self.waiting_completion = true;
@@ -296,18 +304,18 @@ where
             return Err(ExecutorError::AwaitingCompletion);
         }
 
-        let typed_input = postcard::from_bytes::<Step::In>(&input)
+        let typed_input = postcard::from_bytes::<A::In>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-        let (state, request) = <Impulse<T, Step> as Running>::run((state, typed_input));
+        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
         let context = unsafe { &*self.context };
-        let dependency: <<Step as Task<T>>::Action as Action>::Dependency = context.into();
+        let dependency: <<A as Act<T>>::Action as Action>::Dependency = context.into();
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<Step as Task<T>>::Action as Action>::act(&dependency, action_input).await;
+                    <<A as Act<T>>::Action as Action>::act(&dependency, action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -328,18 +336,18 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<Step as Task<T>>::Action> = match completion {
-            Ok(output) => Ok(postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Out>(
-                &output,
-            )
-            .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
-            Err(error) => Err(postcard::from_bytes::<<<Step as Task<T>>::Action as Action>::Err>(
-                &error,
-            )
-            .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
+        let typed_completion: ActionCompletion<<A as Act<T>>::Action> = match completion {
+            Ok(output) => Ok(
+                postcard::from_bytes::<<<A as Act<T>>::Action as Action>::Out>(&output)
+                    .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
+            ),
+            Err(error) => Err(
+                postcard::from_bytes::<<<A as Act<T>>::Action as Action>::Err>(&error)
+                    .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
+            ),
         };
 
-        let (state, emitted) = <Impulse<T, Step> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <Step<T, A> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -678,21 +686,21 @@ pub trait BuildFlow<Input> {
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<T, Step> BuildFlow<DynFlow<T::State>> for Impulse<T, Step>
+impl<T, A> BuildFlow<DynFlow<T::State>> for Step<T, A>
 where
-    T: Creature + 'static,
-    Step: Task<T> + 'static,
-    <Step as Task<T>>::Action: Action<Dependency = ()> + 'static,
-    <<Step as Task<T>>::Action as Action>::Err: Serialize,
-    <<Step as Task<T>>::Action as Action>::Out: DeserializeOwned,
-    <<Step as Task<T>>::Action as Action>::Err: DeserializeOwned,
-    Step::In: DeserializeOwned,
-    Step::Out: Serialize,
+    T: Animal + 'static,
+    A: Act<T> + 'static,
+    <A as Act<T>>::Action: Action<Dependency = ()> + 'static,
+    <<A as Act<T>>::Action as Action>::Err: Serialize,
+    <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
+    <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
+    A::In: DeserializeOwned,
+    A::Out: Serialize,
 {
     type Output = DynFlow<T::State>;
 
     fn push_steps(mut steps: DynFlow<T::State>) -> Self::Output {
-        steps.push(Box::new(TypedErasedStep::<Impulse<T, Step>>::new()));
+        steps.push(Box::new(TypedErasedStep::<Step<T, A>>::new()));
         steps
     }
 }
@@ -790,24 +798,24 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, T, Step> BuildFlowWithContext<(*const Context, DynFlow<T::State>)> for Impulse<T, Step>
+impl<Context, T, A> BuildFlowWithContext<(*const Context, DynFlow<T::State>)> for Step<T, A>
 where
     Context: 'static,
-    T: Creature + 'static,
-    Step: Task<T> + 'static,
-    Step::Action: Action + 'static,
-    for<'ctx> &'ctx Context: Into<<Step::Action as Action>::Dependency>,
-    <Step::Action as Action>::Err: Serialize,
-    <Step::Action as Action>::Out: DeserializeOwned,
-    <Step::Action as Action>::Err: DeserializeOwned,
-    Step::In: DeserializeOwned,
-    Step::Out: Serialize,
+    T: Animal + 'static,
+    A: Act<T> + 'static,
+    <A as Act<T>>::Action: Action + 'static,
+    for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Action as Action>::Dependency>,
+    <<A as Act<T>>::Action as Action>::Err: Serialize,
+    <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
+    <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
+    A::In: DeserializeOwned,
+    A::Out: Serialize,
 {
     type Output = DynFlow<T::State>;
 
     fn push_steps((context, mut steps): (*const Context, DynFlow<T::State>)) -> Self::Output {
         steps.push(Box::new(
-            ContextualTypedErasedStep::<Context, Impulse<T, Step>>::new(context),
+            ContextualTypedErasedStep::<Context, Step<T, A>>::new(context),
         ));
         steps
     }
@@ -1192,8 +1200,9 @@ where
 
 pub struct ContextExecutor<'a, Context, A>
 where
-    A: Creature,
-    A::Instinct: BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A: Animal,
+    A::Journey:
+        BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     _context: core::marker::PhantomData<&'a Context>,
     state: Option<A::State>,
@@ -1205,8 +1214,9 @@ where
 impl<'a, Context, A> ContextExecutor<'a, Context, A>
 where
     Context: 'static,
-    A: Creature,
-    A::Instinct: BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A: Animal,
+    A::Journey:
+        BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -1238,7 +1248,7 @@ where
         let mut executor = Self {
             _context: core::marker::PhantomData,
             state: Some(state),
-            steps: <A::Instinct as BuildFlowWithContext<(*const Context, DynFlow<A::State>)>>::push_steps((
+            steps: <A::Journey as BuildFlowWithContext<(*const Context, DynFlow<A::State>)>>::push_steps((
                 context as *const Context,
                 Vec::new(),
             )),
@@ -1412,8 +1422,8 @@ where
 
 pub struct ManualExecutor<A>
 where
-    A: Creature,
-    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: Animal,
+    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
     steps: DynFlow<A::State>,
@@ -1422,8 +1432,8 @@ where
 
 impl<A> ManualExecutor<A>
 where
-    A: Creature,
-    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: Animal,
+    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -1454,7 +1464,7 @@ where
     pub fn new(state: A::State) -> Self {
         let mut executor = Self {
             state: Some(state),
-            steps: <A::Instinct as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
+            steps: <A::Journey as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
             cursor: 0,
         };
         executor
@@ -1663,8 +1673,8 @@ where
 
 pub struct Executor<A>
 where
-    A: Creature,
-    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: Animal,
+    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     manual: ManualExecutor<A>,
     last_emitted: Option<Serialized>,
@@ -1672,8 +1682,8 @@ where
 
 impl<A> Executor<A>
 where
-    A: Creature,
-    A::Instinct: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: Animal,
+    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     pub fn new(state: A::State) -> Self {
         Self {

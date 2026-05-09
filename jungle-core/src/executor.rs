@@ -1,6 +1,6 @@
 use crate::Jungle;
 use jungle_types::{
-    BuildFlowWithContext, ContextExecutor, Creature, DynFlow, ExecutableActionRequest,
+    BuildFlowWithContext, ContextExecutor, Animal, DynFlow, ExecutableActionRequest,
     ExecutorError,
 };
 use serde::de::DeserializeOwned;
@@ -9,8 +9,8 @@ use serde::Serialize;
 pub struct JungleExecutor<'a, T, A>
 where
     T: Jungle + 'static,
-    A: Creature,
-    A::Instinct: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A: Animal,
+    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     inner: ContextExecutor<'a, T, A>,
 }
@@ -18,8 +18,8 @@ where
 impl<'a, T, A> JungleExecutor<'a, T, A>
 where
     T: Jungle + 'static,
-    A: Creature,
-    A::Instinct: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A: Animal,
+    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     pub fn new(jungle: &'a T, state: A::State) -> Self {
         Self {

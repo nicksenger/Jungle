@@ -15,29 +15,38 @@ fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStrea
     inception_derive_gen::State::gen(quote!(#input)).into()
 }
 
-#[proc_macro_derive(Instinct)]
-pub fn derive_instinct(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Journey)]
+pub fn derive_journey(input: TokenStream) -> TokenStream {
     derive_with_properties(
         input,
         &[
             parse_quote!(jungle_types::JungleFlow),
             parse_quote!(jungle_types::JungleDynFlow),
+            parse_quote!(jungle_types::JungleTraverseFlow),
+            parse_quote!(jungle_types::JungleReplaceFlow),
         ],
     )
 }
 
 #[proc_macro_derive(Flow)]
 pub fn derive_flow(input: TokenStream) -> TokenStream {
-    derive_with_properties(input, &[parse_quote!(jungle_types::JungleFlow)])
+    derive_with_properties(
+        input,
+        &[
+            parse_quote!(jungle_types::JungleFlow),
+            parse_quote!(jungle_types::JungleTraverseFlow),
+            parse_quote!(jungle_types::JungleReplaceFlow),
+        ],
+    )
 }
 
-#[proc_macro_derive(Creatures)]
-pub fn derive_creatures(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Animals)]
+pub fn derive_animals(input: TokenStream) -> TokenStream {
     derive_with_properties(
         input,
         &[
             parse_quote!(jungle_types::Ident),
-            parse_quote!(jungle_types::JungleCreatures),
+            parse_quote!(jungle_types::JungleAnimals),
         ],
     )
 }
@@ -79,20 +88,30 @@ fn expand_with_properties(
 }
 
 #[proc_macro_attribute]
-pub fn instinct(attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn journey(attr: TokenStream, input: TokenStream) -> TokenStream {
     expand_with_properties(
         attr,
         input,
         &[
             parse_quote!(jungle_types::JungleFlow),
             parse_quote!(jungle_types::JungleDynFlow),
+            parse_quote!(jungle_types::JungleTraverseFlow),
+            parse_quote!(jungle_types::JungleReplaceFlow),
         ],
     )
 }
 
 #[proc_macro_attribute]
 pub fn flow(attr: TokenStream, input: TokenStream) -> TokenStream {
-    expand_with_properties(attr, input, &[parse_quote!(jungle_types::JungleFlow)])
+    expand_with_properties(
+        attr,
+        input,
+        &[
+            parse_quote!(jungle_types::JungleFlow),
+            parse_quote!(jungle_types::JungleTraverseFlow),
+            parse_quote!(jungle_types::JungleReplaceFlow),
+        ],
+    )
 }
 
 #[proc_macro_attribute]
@@ -102,7 +121,7 @@ pub fn animals(attr: TokenStream, input: TokenStream) -> TokenStream {
         input,
         &[
             parse_quote!(jungle_types::Ident),
-            parse_quote!(jungle_types::JungleCreatures),
+            parse_quote!(jungle_types::JungleAnimals),
         ],
     )
 }

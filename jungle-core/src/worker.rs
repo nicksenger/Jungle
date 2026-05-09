@@ -3,8 +3,8 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelTx};
 use jungle_types::{
-    BuildFlowWithContext, Creature, CreatureSet, Creatures, DynFlow, Ecosystem, ExecutorError,
-    RunnerOut, StripCreatureHeaders, Work,
+    BuildFlowWithContext, Animal, AnimalSet, Animals, DynFlow, Ecosystem, ExecutorError,
+    RunnerOut, RunnerStep, StripAnimalHeaders,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -23,10 +23,10 @@ pub struct JungleWorker<T> {
 impl<T> JungleWorker<T>
 where
     T: Ecosystem + 'static,
-    T::Creatures: Creatures,
-    <T::Creatures as Creatures>::List: FlattenNodes,
-    SPFlatten<<T::Creatures as Creatures>::List>: StripCreatureHeaders,
-    CreatureSet<T::Creatures>: SpawnByOrdinal<T>,
+    T::Animals: Animals,
+    <T::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<T::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<T::Animals>: SpawnByOrdinal<T>,
 {
     pub fn new<C>(jungle: T, client: C) -> Self
     where
@@ -68,24 +68,26 @@ where
 
         loop {
             match self.client.poll_work().await? {
-                Some(Work::StartFlow {
-                    flow_id,
+                Some(RunnerStep::StartJourney {
+                    journey_id,
                     ordinal,
                     seed,
                 }) => {
-                    let launched = <CreatureSet<T::Creatures> as SpawnByOrdinal<T>>::spawn_by_ordinal(
-                        ordinal,
-                        seed,
-                        flow_id,
-                        &self.runner,
-                        tx.clone(),
-                    )
-                    .await?;
+                    let launched =
+                        <AnimalSet<T::Animals> as SpawnByOrdinal<T>>::spawn_by_ordinal(
+                            ordinal,
+                            seed,
+                            journey_id,
+                            &self.runner,
+                            tx.clone(),
+                        )
+                        .await?;
                     if !launched {
                         return Err(ExecutorError::InputDeserialize(format!(
-                            "unknown creature ordinal: {ordinal}"
+                            "unknown animal ordinal: {ordinal}"
                         )));
                     }
+                    self.client.complete_journey(journey_id).await?;
                 }
                 None => {}
             }
@@ -98,7 +100,7 @@ pub trait SpawnByOrdinal<T>: Send + Sync {
     fn spawn_by_ordinal<'a>(
         ordinal: u32,
         seed: Vec<u8>,
-        flow_id: Uuid,
+        journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<bool, ExecutorError>> + 'a>>;
@@ -108,7 +110,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
     fn spawn_by_ordinal<'a>(
         _ordinal: u32,
         _seed: Vec<u8>,
-        _flow_id: Uuid,
+        _journey_id: Uuid,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<bool, ExecutorError>> + 'a>> {
@@ -118,10 +120,11 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
 
 impl<T, Head, Tail, Ordinal> SpawnByOrdinal<T> for list::List<(Head, Tail)>
 where
-    Head: Creature<Id = jungle_types::Id<Ordinal>> + Send + Sync + 'static,
+    Head: Animal<Id = jungle_types::Id<Ordinal>> + Send + Sync + 'static,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
-    Head::Instinct: BuildFlowWithContext<(*const T, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
+    Head::Journey:
+        BuildFlowWithContext<(*const T, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
     Ordinal: Unsigned,
     Tail: SpawnByOrdinal<T>,
     T: 'static,
@@ -129,7 +132,7 @@ where
     fn spawn_by_ordinal<'a>(
         ordinal: u32,
         seed: Vec<u8>,
-        flow_id: Uuid,
+        journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<bool, ExecutorError>> + 'a>> {
@@ -138,11 +141,11 @@ where
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
                 let state: Head::State = seed.into();
-                let _ = runner.spawn::<Head>(state, flow_id, tx).await?;
+                let _ = runner.spawn::<Head>(state, journey_id, tx).await?;
                 return Ok(true);
             }
 
-            Tail::spawn_by_ordinal(ordinal, seed, flow_id, runner, tx).await
+            Tail::spawn_by_ordinal(ordinal, seed, journey_id, runner, tx).await
         })
     }
 }

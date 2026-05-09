@@ -1,9 +1,9 @@
 use jungle_sdk::types::{
-    ActionCompletion, Impulse, Executor, Identity, LoopCondition, ManualExecutor, Running,
-    Task, Waiting, While,
+    Act, ActionCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, Step,
+    Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
-use jungle_sdk::Instinct;
+use jungle_sdk::Journey;
 use std::future::ready;
 
 action!(
@@ -15,27 +15,27 @@ action!(
     act = |_dependency, input| ready(Ok(input + 1))
 );
 
-animal!(Looper, U0, state = i32, instinct = LoopInstinct);
+animal!(Looper, U0, state = i32, journey = LoopJourney);
 
 struct Tick;
-impl Task<Looper> for Tick {
+impl Act<Looper> for Tick {
     type Action = TickAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
-    fn prepare(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::In) -> i32 {
         *state + input
     }
 
-    fn process(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Out {
         let value = output.expect("tick action should succeed");
         *state = value;
         value
     }
 }
 
-type TickFlow = Impulse<Looper, Tick>;
+type TickFlow = Step<Looper, Tick>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {
@@ -46,8 +46,8 @@ impl LoopCondition<i32> for LessThanThree {
 
 type WhileTickFlow = While<LessThanThree, TickFlow>;
 
-#[derive(Instinct)]
-struct LoopInstinct(WhileTickFlow);
+#[derive(Journey)]
+struct LoopJourney(WhileTickFlow);
 
 #[test]
 fn while_running_checks_state_before_iteration() {

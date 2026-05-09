@@ -1,11 +1,11 @@
 mod behavior;
 mod error;
 mod executor;
-mod instinct;
+mod journey;
 mod meta;
 mod transport;
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, Impulse, Aspect, Task, Identity, Lens,
+    Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step,
 };
 pub use error::Error;
 pub use executor::{
@@ -14,17 +14,17 @@ pub use executor::{
     ManualExecutor, TypedErasedStep,
 };
 use inception::*;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-pub use instinct::Instinct;
+pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AllFrom, CreatureActionSet, CreatureMember, CreatureSet,
-    CreatureStates, CreatureStatesCompatible, CreatureActionDependencies,
-    CreatureActionDependenciesCompatible, StripActionHeaders, StripCreatureHeaders,
+    ActionMember, ActionSet, AllFrom, AnimalActionDependencies, AnimalActionDependenciesCompatible,
+    AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, StripActionHeaders,
+    StripAnimalHeaders,
 };
-pub use transport::{RunnerOut, Work};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::marker::PhantomData;
+pub use transport::{BackendError, JourneyStatus, RunnerOut, Step as RunnerStep, WireIn, WireOut};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
@@ -73,24 +73,24 @@ pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
 /// A flow combinator that repeatedly executes `F` while `C` is true.
 pub struct While<C, F>(PhantomData<fn() -> (C, F)>);
 
-/// A collection of `Creatures` which act together as a system.
+/// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
-    type Creatures;
+    type Animals;
 }
 
-/// A living creature within the Jungle ecosystem.
-pub trait Creature {
-    /// A type-level identifier for this Creature.
+/// A living animal within the Jungle ecosystem.
+pub trait Animal {
+    /// A type-level identifier for this Animal.
     type Id;
 
-    /// The state of this `Creature` at any given time.
+    /// The state of this `Animal` at any given time.
     type State;
 
-    /// Serializable seed used to initialize this creature's state.
+    /// Serializable seed used to initialize this animal's state.
     type Seed: Serialize + DeserializeOwned + Into<Self::State>;
 
-    /// The fundamental behavior of this Creature.
-    type Instinct;
+    /// The fundamental behavior of this Animal.
+    type Journey;
 }
 
 #[inception(property = Ident, types)]
@@ -104,14 +104,14 @@ pub trait Identified {
     type Id;
 }
 
-/// Any collection of [`Creature`]s with a flat type-level list of members.
-#[inception(property = JungleCreatures, types)]
-pub trait Creatures {
+/// Any collection of [`Animal`]s with a flat type-level list of members.
+#[inception(property = JungleAnimals, types)]
+pub trait Animals {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as Creatures>::List, <Tail as Creatures>::List)>,
-        merge_variant = TList<(<Head as Creatures>::List, <Tail as Creatures>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Creatures>::List)> where { Self: Identified }
+        merge = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
+        merge_variant = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
+        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Animals>::List)> where { Self: Identified }
     )]
     type List;
 }
@@ -139,6 +139,162 @@ pub trait FlowActions {
     )]
     type List;
 }
+
+/// Leaf-level hook used by [`TraverseWith`] at `Step` nodes.
+pub trait TraverseStep<Step> {
+    type Output;
+}
+
+/// Leaf-level hook used by [`ReplaceWith`] at `Step` nodes.
+pub trait ReplaceStep<Step> {
+    type Output;
+}
+
+/// Node-level hook used by [`ReplaceNodesWith`] for section/subtree replacement.
+pub trait ReplaceNode<Node> {
+    type Output;
+}
+
+/// Directional helper that rewrites `Step<Animal, Left>` to `Step<Animal, Right>`.
+pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
+
+/// Directional helper that rewrites `Step<Animal, Right>` to `Step<Animal, Left>`.
+pub struct SwapRL<Left, Right>(PhantomData<fn() -> (Left, Right)>);
+
+/// Directional helper alias for node replacement from `Left` to `Right`.
+pub type SwapNodeLR<Left, Right> = SwapLR<Left, Right>;
+
+/// Directional helper alias for node replacement from `Right` to `Left`.
+pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
+
+impl<A, Left, Right> ReplaceStep<Step<A, Left>> for SwapLR<Left, Right>
+where
+    A: Animal,
+    Left: Act<A>,
+    Right: Act<A>,
+{
+    type Output = Step<A, Right>;
+}
+
+impl<A, Left, Right> ReplaceStep<Step<A, Right>> for SwapRL<Left, Right>
+where
+    A: Animal,
+    Left: Act<A>,
+    Right: Act<A>,
+{
+    type Output = Step<A, Left>;
+}
+
+impl<Left, Right> ReplaceNode<Left> for SwapLR<Left, Right> {
+    type Output = Right;
+}
+
+impl<Left, Right> ReplaceNode<Right> for SwapRL<Left, Right> {
+    type Output = Left;
+}
+
+/// Inception property that normalizes/walks a flow's type structure.
+#[inception(property = JungleTraverseFlow, types)]
+pub trait TraverseFlow {
+    #[induce(
+        base = list::Empty,
+        merge = TList<(
+            <Head as TraverseFlow>::Output,
+            <Tail as TraverseFlow>::Output
+        )>,
+        merge_variant = TList<(
+            <Head as TraverseFlow>::Output,
+            <Tail as TraverseFlow>::Output
+        )>,
+        join = <Fields as TraverseFlow>::Output
+    )]
+    type Output;
+}
+
+/// Inception property that normalizes/walks a flow's type structure.
+#[inception(property = JungleReplaceFlow, types)]
+pub trait ReplaceFlow {
+    #[induce(
+        base = list::Empty,
+        merge = TList<(
+            <Head as ReplaceFlow>::Output,
+            <Tail as ReplaceFlow>::Output
+        )>,
+        merge_variant = TList<(
+            <Head as ReplaceFlow>::Output,
+            <Tail as ReplaceFlow>::Output
+        )>,
+        join = <Fields as ReplaceFlow>::Output
+    )]
+    type Output;
+}
+
+/// Applies a traversal operator across a normalized flow type.
+pub trait TraverseWith<Traversal> {
+    type Output;
+}
+
+/// Applies a replacement operator across a normalized flow type.
+pub trait ReplaceWith<Replacer> {
+    type Output;
+}
+
+/// Applies a node-level replacer across a normalized flow type.
+pub trait ReplaceNodesWith<Replacer> {
+    type Output;
+}
+
+impl<Traversal> TraverseWith<Traversal> for list::Empty {
+    type Output = list::Empty;
+}
+
+impl<Replacer> ReplaceWith<Replacer> for list::Empty {
+    type Output = list::Empty;
+}
+
+impl<Replacer> ReplaceNodesWith<Replacer> for list::Empty {
+    type Output = list::Empty;
+}
+
+impl<Head, Tail, Traversal> TraverseWith<Traversal> for TList<(Head, Tail)>
+where
+    Head: TraverseWith<Traversal>,
+    Tail: TraverseWith<Traversal>,
+{
+    type Output = TList<(
+        <Head as TraverseWith<Traversal>>::Output,
+        <Tail as TraverseWith<Traversal>>::Output,
+    )>;
+}
+
+impl<Head, Tail, Replacer> ReplaceWith<Replacer> for TList<(Head, Tail)>
+where
+    Head: ReplaceWith<Replacer>,
+    Tail: ReplaceWith<Replacer>,
+{
+    type Output = TList<(
+        <Head as ReplaceWith<Replacer>>::Output,
+        <Tail as ReplaceWith<Replacer>>::Output,
+    )>;
+}
+
+impl<Head, Tail, Replacer> ReplaceNodesWith<Replacer> for TList<(Head, Tail)>
+where
+    Head: ReplaceNodesWith<Replacer>,
+    Tail: ReplaceNodesWith<Replacer>,
+{
+    type Output = TList<(
+        <Head as ReplaceNodesWith<Replacer>>::Output,
+        <Tail as ReplaceNodesWith<Replacer>>::Output,
+    )>;
+}
+
+pub type Traversed<Flow, Traversal> =
+    <<Flow as TraverseFlow>::Output as TraverseWith<Traversal>>::Output;
+pub type Replace<Flow, Replacer> =
+    <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
+pub type ReplaceNodes<Flow, Replacer> =
+    <Replacer as ReplaceNode<<Flow as ReplaceFlow>::Output>>::Output;
 
 /// Output produced by a yielding phase.
 pub struct Yielded<Y, A> {
@@ -327,6 +483,66 @@ where
     type List = TList<(L::List, R::List)>;
 }
 
+#[primitive(property = JungleTraverseFlow)]
+impl<P, L, R> TraverseFlow for Conditional<P, L, R>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Conditional<P, <L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+}
+
+impl<P, L, R, Traversal> TraverseWith<Traversal> for Conditional<P, L, R>
+where
+    L: TraverseWith<Traversal>,
+    R: TraverseWith<Traversal>,
+{
+    type Output = Conditional<
+        P,
+        <L as TraverseWith<Traversal>>::Output,
+        <R as TraverseWith<Traversal>>::Output,
+    >;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<P, L, R> ReplaceFlow for Conditional<P, L, R>
+where
+    L: ReplaceFlow,
+    R: ReplaceFlow,
+{
+    type Output = Conditional<P, <L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+}
+
+impl<P, L, R, Replacer> ReplaceWith<Replacer> for Conditional<P, L, R>
+where
+    L: ReplaceWith<Replacer>,
+    R: ReplaceWith<Replacer>,
+{
+    type Output =
+        Conditional<P, <L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<P, L, R, Replacer> ReplaceNodesWith<Replacer> for Conditional<P, L, R>
+where
+    L: ReplaceNodesWith<Replacer>,
+    R: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<
+        Conditional<
+            P,
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+        >,
+    >,
+{
+    type Output = <Replacer as ReplaceNode<
+        Conditional<
+            P,
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+        >,
+    >>::Output;
+}
+
 #[primitive(property = JungleRunning)]
 impl<C, F> Running for While<C, F>
 where
@@ -366,6 +582,44 @@ where
     F: FlowActions,
 {
     type List = F::List;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<C, F> TraverseFlow for While<C, F>
+where
+    F: TraverseFlow,
+{
+    type Output = While<C, <F as TraverseFlow>::Output>;
+}
+
+impl<C, F, Traversal> TraverseWith<Traversal> for While<C, F>
+where
+    F: TraverseWith<Traversal>,
+{
+    type Output = While<C, <F as TraverseWith<Traversal>>::Output>;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<C, F> ReplaceFlow for While<C, F>
+where
+    F: ReplaceFlow,
+{
+    type Output = While<C, <F as ReplaceFlow>::Output>;
+}
+
+impl<C, F, Replacer> ReplaceWith<Replacer> for While<C, F>
+where
+    F: ReplaceWith<Replacer>,
+{
+    type Output = While<C, <F as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<C, F, Replacer> ReplaceNodesWith<Replacer> for While<C, F>
+where
+    F: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>,
+{
+    type Output = <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
 }
 
 /// An organism that hosts symbionts.

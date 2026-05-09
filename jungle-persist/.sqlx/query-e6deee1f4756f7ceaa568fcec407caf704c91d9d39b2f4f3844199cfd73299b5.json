@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH candidate AS (\n                SELECT id\n                FROM work_items\n                WHERE status = $1\n                ORDER BY expiry, id\n                FOR UPDATE SKIP LOCKED\n                LIMIT 1\n            ),\n            claimed AS (\n                UPDATE work_items wi\n                SET status = $2\n                FROM candidate c\n                WHERE wi.id = c.id\n                RETURNING wi.flow_id, wi.kind\n            )\n            SELECT c.flow_id, c.kind, f.ordinal, f.seed\n            FROM claimed c\n            INNER JOIN flows f ON f.id = c.flow_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "flow_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 2,
+        "name": "ordinal",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "seed",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int2",
+        "Int2"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e6deee1f4756f7ceaa568fcec407caf704c91d9d39b2f4f3844199cfd73299b5"
+}

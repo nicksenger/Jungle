@@ -1,7 +1,9 @@
 use futures::channel::oneshot;
 use futures::SinkExt;
 use jungle_client::RunnerChannelTx;
-use jungle_types::{BuildFlowWithContext, ContextExecutor, Creature, DynFlow, ExecutorError, RunnerOut};
+use jungle_types::{
+    BuildFlowWithContext, ContextExecutor, Animal, DynFlow, ExecutorError, RunnerOut,
+};
 use uuid::Uuid;
 
 pub struct JungleRunner<T> {
@@ -25,12 +27,12 @@ where
     pub async fn spawn<A>(
         &self,
         state: A::State,
-        flow_id: Uuid,
+        journey_id: Uuid,
         mut tx: RunnerChannelTx,
     ) -> Result<A::State, ExecutorError>
     where
-        A: Creature,
-        A::Instinct:
+        A: Animal,
+        A::Journey:
             BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         let mut executor = ContextExecutor::<T, A>::new(&self.jungle, state);
@@ -40,7 +42,7 @@ where
             tx.send((
                 RunnerOut::ActionInput {
                     data: request.request_bytes().to_vec(),
-                    uuid: flow_id,
+                    uuid: journey_id,
                 },
                 done_tx,
             ))
@@ -52,28 +54,26 @@ where
             let completion = request.run().await?;
             let (done_tx, done_rx) = oneshot::channel();
             match &completion {
-                Ok(output) => {
-                    tx.send((
+                Ok(output) => tx
+                    .send((
                         RunnerOut::ActionSuccessOutput {
                             data: output.clone(),
-                            uuid: flow_id,
+                            uuid: journey_id,
                         },
                         done_tx,
                     ))
                     .await
-                    .map_err(|_| ExecutorError::ClientTransportClosed)?
-                }
-                Err(error) => {
-                    tx.send((
+                    .map_err(|_| ExecutorError::ClientTransportClosed)?,
+                Err(error) => tx
+                    .send((
                         RunnerOut::ActionFailureOutput {
                             data: error.clone(),
-                            uuid: flow_id,
+                            uuid: journey_id,
                         },
                         done_tx,
                     ))
                     .await
-                    .map_err(|_| ExecutorError::ClientTransportClosed)?
-                }
+                    .map_err(|_| ExecutorError::ClientTransportClosed)?,
             }
             done_rx
                 .await
