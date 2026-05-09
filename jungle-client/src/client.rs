@@ -1,6 +1,6 @@
 use crate::JungleClient;
 use async_trait::async_trait;
-use jungle_types::{BackendError, ExecutorError, JourneyStatus, RunnerOut, WireIn, WireOut, Work};
+use jungle_types::{BackendError, ExecutorError, JourneyStatus, RunnerOut, WireIn, WireOut, Step};
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::fs;
@@ -207,7 +207,7 @@ impl JungleClient for Client {
         match response {
             WireOut::JourneyCreated(journey_id) => Ok(journey_id),
             WireOut::JourneyStatus(_)
-            | WireOut::NoWorkAvailable
+            | WireOut::NoAvailableSteps
             | WireOut::PendingWork(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-created response for start_journey".to_string(),
@@ -224,7 +224,7 @@ impl JungleClient for Client {
         match response {
             WireOut::JourneyStatus(status) => Ok(status),
             WireOut::JourneyCreated(_)
-            | WireOut::NoWorkAvailable
+            | WireOut::NoAvailableSteps
             | WireOut::PendingWork(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-status response for journey_details".to_string(),
@@ -242,21 +242,21 @@ impl JungleClient for Client {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
-            | WireOut::NoWorkAvailable
+            | WireOut::NoAvailableSteps
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
             )),
         }
     }
 
-    async fn poll_work(&self) -> Result<Option<Work>, ExecutorError> {
+    async fn poll_work(&self) -> Result<Option<Step>, ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::PollWork)
+            .send_wire_message(WireIn::PollStep)
             .await
             .map_err(Self::transport_error)?;
 
         match response {
-            WireOut::NoWorkAvailable => Ok(None),
+            WireOut::NoAvailableSteps => Ok(None),
             WireOut::PendingWork(work) => Ok(Some(work)),
             WireOut::JourneyCreated(_) | WireOut::JourneyStatus(_) | WireOut::Ack => Err(
                 ExecutorError::ClientTransport("unexpected response for poll_work".to_string()),
@@ -277,7 +277,7 @@ impl JungleClient for Client {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
-            | WireOut::NoWorkAvailable
+            | WireOut::NoAvailableSteps
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_input".to_string(),
             )),
@@ -297,7 +297,7 @@ impl JungleClient for Client {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
-            | WireOut::NoWorkAvailable
+            | WireOut::NoAvailableSteps
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_success_output".to_string(),
             )),
@@ -317,7 +317,7 @@ impl JungleClient for Client {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
-            | WireOut::NoWorkAvailable
+            | WireOut::NoAvailableSteps
             | WireOut::PendingWork(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_failure_output".to_string(),
             )),

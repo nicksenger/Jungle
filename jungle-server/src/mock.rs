@@ -62,7 +62,7 @@ impl MockServerBuilder {
                 if request.is_some() {
                     Ok(WireOut::Ack)
                 } else {
-                    Ok(WireOut::NoWorkAvailable)
+                    Ok(WireOut::NoAvailableSteps)
                 }
             })
         });

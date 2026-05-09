@@ -1,10 +1,10 @@
 pub mod migrations;
 
-use crate::models::{SchemaVersion, WorkItemKind, WorkItemStatus, SCHEMA_VERSION};
+use crate::models::{SchemaVersion, StepKind, StepStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use jungle_types::{JourneyStatus, RunnerOut, Work};
+use jungle_types::{JourneyStatus, RunnerOut, Step};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,11 +12,11 @@ use uuid::Uuid;
 
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
-const WORK_ITEMS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
+const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 
-const WORK_ITEM_KIND_START_JOURNEY: u8 = 0;
-const WORK_ITEM_STATUS_AVAILABLE: u8 = 0;
-const WORK_ITEM_STATUS_CLAIMED: u8 = 1;
+const STEP_KIND_START_JOURNEY: u8 = 0;
+const STEP_STATUS_AVAILABLE: u8 = 0;
+const STEP_STATUS_CLAIMED: u8 = 1;
 const JOURNEY_STATUS_CREATED: u8 = 0;
 const JOURNEY_STATUS_ALIVE: u8 = 1;
 const JOURNEY_STATUS_STOPPED: u8 = 2;
@@ -143,7 +143,7 @@ impl JungleStore for RedbStore {
         }
 
         {
-            let mut work_items = write_tx.open_table(WORK_ITEMS_TABLE).map_err(|err| {
+            let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "redb create_journey open work_items table failed: {err}"
                 ))
@@ -151,8 +151,8 @@ impl JungleStore for RedbStore {
 
             let work_item_value = encode_work_item(
                 journey_id,
-                WorkItemKind::StartJourney,
-                WorkItemStatus::Available,
+                StepKind::StartJourney,
+                StepStatus::Available,
                 expiry,
             );
 
@@ -206,15 +206,15 @@ impl JungleStore for RedbStore {
         self.update_journey_status(journey_id, JourneyStatus::Alive, Some(JourneyStatus::Created))
     }
 
-    async fn claim_work(&self) -> Result<Option<Work>> {
+    async fn claim_work(&self) -> Result<Option<Step>> {
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
         })?;
 
-        let mut selected: Option<(Uuid, Uuid, WorkItemKind, DateTime<Utc>)> = None;
+        let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
 
         {
-            let mut work_items = write_tx.open_table(WORK_ITEMS_TABLE).map_err(|err| {
+            let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "redb claim_work open work_items table failed: {err}"
                 ))
@@ -236,7 +236,7 @@ impl JungleStore for RedbStore {
                 let (journey_id, kind, status, expiry) =
                     decode_work_item(value.value(), "redb claim_work decode work_item value")?;
 
-                if status != WorkItemStatus::Available {
+                if status != StepStatus::Available {
                     continue;
                 }
 
@@ -258,7 +258,7 @@ impl JungleStore for RedbStore {
                 let claimed = encode_work_item(
                     selected_journey_id,
                     selected_kind,
-                    WorkItemStatus::Claimed,
+                    StepStatus::Claimed,
                     selected_expiry,
                 );
                 let work_item_id_key = &selected_id.as_bytes()[..];
@@ -306,7 +306,7 @@ impl JungleStore for RedbStore {
         })?;
 
         let work = match selected_kind {
-            WorkItemKind::StartJourney => Work::StartJourney {
+            StepKind::StartJourney => Step::StartJourney {
                 journey_id: selected_journey_id,
                 ordinal: flow.ordinal,
                 seed: flow.seed,
@@ -410,16 +410,16 @@ fn decode_uuid(raw: &[u8], context: &str) -> Result<Uuid> {
 
 fn encode_work_item(
     journey_id: Uuid,
-    kind: WorkItemKind,
-    status: WorkItemStatus,
+    kind: StepKind,
+    status: StepStatus,
     expiry: DateTime<Utc>,
 ) -> Vec<u8> {
     let kind = match kind {
-        WorkItemKind::StartJourney => WORK_ITEM_KIND_START_JOURNEY,
+        StepKind::StartJourney => STEP_KIND_START_JOURNEY,
     };
     let status = match status {
-        WorkItemStatus::Available => WORK_ITEM_STATUS_AVAILABLE,
-        WorkItemStatus::Claimed => WORK_ITEM_STATUS_CLAIMED,
+        StepStatus::Available => STEP_STATUS_AVAILABLE,
+        StepStatus::Claimed => STEP_STATUS_CLAIMED,
     };
 
     let mut out = Vec::with_capacity(26);
@@ -433,7 +433,7 @@ fn encode_work_item(
 fn decode_work_item(
     raw: &[u8],
     context: &str,
-) -> Result<(Uuid, WorkItemKind, WorkItemStatus, DateTime<Utc>)> {
+) -> Result<(Uuid, StepKind, StepStatus, DateTime<Utc>)> {
     if raw.len() < 26 {
         return Err(crate::PersistenceError::Message(format!(
             "{context}: expected at least 26 bytes, got {}",
@@ -443,7 +443,7 @@ fn decode_work_item(
 
     let journey_id = decode_uuid(&raw[..16], context)?;
     let kind = match raw[16] {
-        WORK_ITEM_KIND_START_JOURNEY => WorkItemKind::StartJourney,
+        STEP_KIND_START_JOURNEY => StepKind::StartJourney,
         other => {
             return Err(crate::PersistenceError::Message(format!(
                 "{context}: unknown work item kind {other}"
@@ -451,8 +451,8 @@ fn decode_work_item(
         }
     };
     let status = match raw[17] {
-        WORK_ITEM_STATUS_AVAILABLE => WorkItemStatus::Available,
-        WORK_ITEM_STATUS_CLAIMED => WorkItemStatus::Claimed,
+        STEP_STATUS_AVAILABLE => StepStatus::Available,
+        STEP_STATUS_CLAIMED => StepStatus::Claimed,
         other => {
             return Err(crate::PersistenceError::Message(format!(
                 "{context}: unknown work item status {other}"

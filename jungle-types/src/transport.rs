@@ -23,9 +23,9 @@ pub enum JourneyStatus {
     Dead,
 }
 
-/// Work messages sent from external clients to runners.
+/// Step messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum Work {
+pub enum Step {
     StartJourney {
         journey_id: Uuid,
         ordinal: u32,
@@ -39,7 +39,7 @@ pub enum WireIn {
     CreateJourney { ordinal: u32, seed: Vec<u8> },
     JourneyStatus(Uuid),
     JourneyComplete(Uuid),
-    PollWork,
+    PollStep,
     HistoryEvent(RunnerOut),
 }
 
@@ -48,7 +48,7 @@ pub enum WireIn {
 pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyStatus(JourneyStatus),
-    NoWorkAvailable,
-    PendingWork(Work),
+    NoAvailableSteps,
+    PendingWork(Step),
     Ack,
 }

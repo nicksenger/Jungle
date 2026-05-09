@@ -1,6 +1,6 @@
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
-    BackendError, JourneyStatus, JungleClient, MockServer, RunnerOut, WireIn, WireOut, Work,
+    BackendError, JourneyStatus, JungleClient, MockServer, RunnerOut, WireIn, WireOut, Step,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -12,7 +12,7 @@ use uuid::Uuid;
 async fn client_exchanges_messages_with_mock_server() {
     let journey_id = Uuid::from_u128(0x11111111111111111111111111111111);
     let action_id = Uuid::from_u128(0x22222222222222222222222222222222);
-    let expected_work = Work::StartJourney {
+    let expected_work = Step::StartJourney {
         journey_id,
         ordinal: 7,
         seed: vec![1, 2, 3],
@@ -63,7 +63,7 @@ async fn client_exchanges_messages_with_mock_server() {
                                 ))),
                             },
                             2 => match msg {
-                                WireIn::PollWork => Ok(WireOut::PendingWork(expected_work)),
+                                WireIn::PollStep => Ok(WireOut::PendingWork(expected_work)),
                                 other => Err(BackendError::Message(format!(
                                     "expected poll_work third, got {:?}",
                                     other
@@ -120,7 +120,7 @@ async fn client_exchanges_messages_with_mock_server() {
 
     let work = client.poll_work().await.expect("poll_work should succeed");
     match work {
-        Some(Work::StartJourney {
+        Some(Step::StartJourney {
             journey_id: returned_flow,
             ordinal,
             seed,
@@ -160,7 +160,7 @@ async fn client_exchanges_messages_with_mock_server() {
         } if ordinal == 7 && seed == &vec![1, 2, 3]
     ));
     assert!(matches!(requests[1], WireIn::JourneyStatus(id) if id == journey_id));
-    assert!(matches!(requests[2], WireIn::PollWork));
+    assert!(matches!(requests[2], WireIn::PollStep));
     assert!(matches!(
         requests[3],
         WireIn::HistoryEvent(RunnerOut::ActionInput {

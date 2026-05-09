@@ -1,7 +1,7 @@
 use crate::{JungleClient, RunnerChannelRx};
 use async_trait::async_trait;
 use futures::StreamExt;
-use jungle_types::{ExecutorError, JourneyStatus, RunnerOut, Work};
+use jungle_types::{ExecutorError, JourneyStatus, RunnerOut, Step};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -9,9 +9,9 @@ use uuid::Uuid;
 
 type HandlerFuture = Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
 type Handler = Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
-type PollWorkHandlerFuture =
-    Pin<Box<dyn Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static>>;
-type PollWorkHandler = Arc<dyn Fn() -> PollWorkHandlerFuture + Send + Sync + 'static>;
+type PollStepHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<Option<Step>, ExecutorError>> + Send + 'static>>;
+type PollStepHandler = Arc<dyn Fn() -> PollStepHandlerFuture + Send + Sync + 'static>;
 type CreateFlowHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Uuid, ExecutorError>> + Send + 'static>>;
 type CreateFlowHandler =
@@ -28,7 +28,7 @@ pub struct MockClient {
     on_create_flow: CreateFlowHandler,
     on_flow_status: FlowStatusHandler,
     on_flow_complete: FlowCompleteHandler,
-    on_poll_work: PollWorkHandler,
+    on_poll_work: PollStepHandler,
     on_action_input: Handler,
     on_action_success_output: Handler,
     on_action_failure_output: Handler,
@@ -75,7 +75,7 @@ impl JungleClient for MockClient {
         (self.on_flow_complete)(id).await
     }
 
-    async fn poll_work(&self) -> Result<Option<Work>, ExecutorError> {
+    async fn poll_work(&self) -> Result<Option<Step>, ExecutorError> {
         (self.on_poll_work)().await
     }
 
@@ -97,7 +97,7 @@ pub struct MockClientBuilder {
     on_create_flow: Option<CreateFlowHandler>,
     on_flow_status: Option<FlowStatusHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
-    on_poll_work: Option<PollWorkHandler>,
+    on_poll_work: Option<PollStepHandler>,
     on_action_input: Option<Handler>,
     on_action_success_output: Option<Handler>,
     on_action_failure_output: Option<Handler>,
@@ -116,7 +116,7 @@ impl MockClientBuilder {
     pub fn on_poll_work<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static,
+        Fut: Future<Output = Result<Option<Step>, ExecutorError>> + Send + 'static,
     {
         self.on_poll_work = Some(Arc::new(move || Box::pin(f())));
         self
@@ -175,7 +175,7 @@ impl MockClientBuilder {
             Arc::new(|_| Box::pin(async { Ok(JourneyStatus::Alive) }));
         let default_flow_complete_handler: FlowCompleteHandler =
             Arc::new(|_| Box::pin(async { Ok(()) }));
-        let default_poll_work_handler: PollWorkHandler = Arc::new(|| Box::pin(async { Ok(None) }));
+        let default_poll_work_handler: PollStepHandler = Arc::new(|| Box::pin(async { Ok(None) }));
         MockClient {
             on_create_flow: self
                 .on_create_flow

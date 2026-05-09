@@ -157,19 +157,19 @@ impl JungleServer for Server {
                     WireOut::Ack
                 }
             }
-            Some(WireIn::PollWork) => {
+            Some(WireIn::PollStep) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     match self.store.claim_work().await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })? {
                         Some(work) => WireOut::PendingWork(work),
-                        None => WireOut::NoWorkAvailable,
+                        None => WireOut::NoAvailableSteps,
                     }
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
-                    WireOut::NoWorkAvailable
+                    WireOut::NoAvailableSteps
                 }
             }
             Some(WireIn::HistoryEvent(history)) => {
@@ -197,7 +197,7 @@ impl JungleServer for Server {
                     WireOut::Ack
                 }
             }
-            None => WireOut::NoWorkAvailable,
+            None => WireOut::NoAvailableSteps,
         };
         tx.send(Ok(response)).await?;
         tx.close().await?;

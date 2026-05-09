@@ -12,7 +12,7 @@ const REDB_SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
     TableDefinition::new("jungle_schema_metadata");
 const REDB_JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const REDB_EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
-const REDB_WORK_ITEMS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
+const REDB_STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 
 #[tokio::test]
 async fn postgres_server_startup_runs_migrations() {
@@ -241,7 +241,7 @@ fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool, bool
 
     let journeys_exists = read_txn.open_table(REDB_JOURNEYS_TABLE).is_ok();
     let events_exists = read_txn.open_table(REDB_EVENTS_TABLE).is_ok();
-    let work_items_exists = read_txn.open_table(REDB_WORK_ITEMS_TABLE).is_ok();
+    let work_items_exists = read_txn.open_table(REDB_STEPS_TABLE).is_ok();
 
     Ok((
         schema_version,

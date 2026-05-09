@@ -9,7 +9,7 @@ const SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
     TableDefinition::new("jungle_schema_metadata");
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
-const WORK_ITEMS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
+const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 
 impl RedbStore {
     pub(super) async fn migrate_v0(&self) -> Result<()> {
@@ -54,7 +54,7 @@ impl RedbStore {
         tx.open_table(EVENTS_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!("redb open events table failed: {err}"))
         })?;
-        tx.open_table(WORK_ITEMS_TABLE).map_err(|err| {
+        tx.open_table(STEPS_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!("redb open work_items table failed: {err}"))
         })?;
 

@@ -4,7 +4,7 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelTx};
 use jungle_types::{
     BuildFlowWithContext, Anima, AnimaSet, Animae, DynFlow, Ecosystem, ExecutorError,
-    RunnerOut, StripAnimaHeaders, Work,
+    RunnerOut, StripAnimaHeaders, Step,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -68,7 +68,7 @@ where
 
         loop {
             match self.client.poll_work().await? {
-                Some(Work::StartJourney {
+                Some(Step::StartJourney {
                     journey_id,
                     ordinal,
                     seed,

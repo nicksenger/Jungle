@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use jungle_types::{JourneyStatus, RunnerOut, Work};
+use jungle_types::{JourneyStatus, RunnerOut, Step};
 use uuid::Uuid;
 
 use crate::{JungleStore, Result};
 
-type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<Work>> + Send + Sync + 'static>;
+type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<Step>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
@@ -61,7 +61,7 @@ impl JungleStore for MockStore {
         (self.on_flow_alive_if_created)(journey_id)
     }
 
-    async fn claim_work(&self) -> Result<Option<Work>> {
+    async fn claim_work(&self) -> Result<Option<Step>> {
         (self.on_claim_work)()
     }
 
@@ -101,7 +101,7 @@ impl MockStoreBuilder {
 
     pub fn on_claim_work<F>(mut self, f: F) -> Self
     where
-        F: Fn() -> Result<Option<Work>> + Send + Sync + 'static,
+        F: Fn() -> Result<Option<Step>> + Send + Sync + 'static,
     {
         self.on_claim_work = Some(Arc::new(f));
         self

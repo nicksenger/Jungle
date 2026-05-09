@@ -27,11 +27,11 @@ pub struct Event {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkItem {
+pub struct Step {
     pub id: Uuid,
     pub journey_id: Uuid,
-    pub kind: WorkItemKind,
-    pub status: WorkItemStatus,
+    pub kind: StepKind,
+    pub status: StepStatus,
     pub expiry: DateTime<Utc>,
 }
 
@@ -43,12 +43,12 @@ pub enum EventKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkItemKind {
+pub enum StepKind {
     StartJourney,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkItemStatus {
+pub enum StepStatus {
     Available,
     Claimed,
 }
