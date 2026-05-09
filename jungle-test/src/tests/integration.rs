@@ -4,6 +4,7 @@ use jungle_sdk::types::{
     Action, ActionCompletion, Condition, Conditional, Ecosystem, JourneyStatus, Lens, Identity, Impulse,
     LoopCondition, Reflex, While,
 };
+use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animae, JungleClient, Optic};
@@ -277,6 +278,24 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
     }
 }
 
+type BeforeBranchFlow = Conditional<
+    UseFirstBeforeFullStateTask,
+    Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+    Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+>;
+
+struct SwapBeforeBranchSteps;
+impl jungle_sdk::types::ReplaceStep<Impulse<IntegrationAnima, AddOneBeforeFullStateStep>>
+    for SwapBeforeBranchSteps
+{
+    type Output = Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>;
+}
+impl jungle_sdk::types::ReplaceStep<Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>>
+    for SwapBeforeBranchSteps
+{
+    type Output = Impulse<IntegrationAnima, AddOneBeforeFullStateStep>;
+}
+
 type IntegrationJourney = While<
     KeepRunning,
     Conditional<
@@ -395,6 +414,17 @@ async fn redb_client_worker_flow_runs_to_completion() {
 
     server_task.abort();
     let _ = server_task.await;
+}
+
+#[test]
+fn replaced_alias_rewrites_integration_flow_steps() {
+    type Actual = jungle_sdk::types::Replaced<BeforeBranchFlow, SwapBeforeBranchSteps>;
+    type Expected = Conditional<
+        UseFirstBeforeFullStateTask,
+        Impulse<IntegrationAnima, AddTwoBeforeFullStateStep>,
+        Impulse<IntegrationAnima, AddOneBeforeFullStateStep>,
+    >;
+    assert_type_eq!(Actual, Expected);
 }
 
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
