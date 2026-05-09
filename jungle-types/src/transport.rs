@@ -14,6 +14,15 @@ pub enum RunnerOut {
     ActionFailureOutput { data: Vec<u8>, uuid: Uuid },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum FlowStatus {
+    Created,
+    Alive,
+    Stopped,
+    Completed,
+    Dead,
+}
+
 /// Work messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Work {
@@ -28,6 +37,8 @@ pub enum Work {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireIn {
     CreateFlow { ordinal: u32, seed: Vec<u8> },
+    FlowStatus(Uuid),
+    FlowComplete(Uuid),
     PollWork,
     HistoryEvent(RunnerOut),
 }
@@ -36,6 +47,7 @@ pub enum WireIn {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireOut {
     FlowCreated(Uuid),
+    FlowStatus(FlowStatus),
     NoWorkAvailable,
     PendingWork(Work),
     Ack,

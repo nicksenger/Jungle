@@ -127,6 +127,36 @@ impl JungleServer for Server {
                     )));
                 }
             }
+            Some(WireIn::FlowStatus(flow_id)) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let status = self.store.flow_status(flow_id).await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
+                    WireOut::FlowStatus(status)
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = flow_id;
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "flow_status is unavailable without a persistence backend".to_string(),
+                    )));
+                }
+            }
+            Some(WireIn::FlowComplete(flow_id)) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    self.store.flow_complete(flow_id).await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
+                    WireOut::Ack
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = flow_id;
+                    WireOut::Ack
+                }
+            }
             Some(WireIn::PollWork) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
@@ -145,6 +175,17 @@ impl JungleServer for Server {
             Some(WireIn::HistoryEvent(history)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
+                    let flow_id = match &history {
+                        jungle_types::RunnerOut::ActionInput { uuid, .. }
+                        | jungle_types::RunnerOut::ActionSuccessOutput { uuid, .. }
+                        | jungle_types::RunnerOut::ActionFailureOutput { uuid, .. } => *uuid,
+                    };
+                    self.store
+                        .flow_alive_if_created(flow_id)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
                     self.store.append_history(history).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;

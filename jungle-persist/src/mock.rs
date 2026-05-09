@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use jungle_types::{RunnerOut, Work};
+use jungle_types::{FlowStatus, RunnerOut, Work};
 use uuid::Uuid;
 
 use crate::{JungleStore, Result};
 
 type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<Work>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
+type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<FlowStatus> + Send + Sync + 'static>;
+type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
+type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
 type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'static>;
 type DetailsHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
@@ -15,6 +18,9 @@ type DetailsHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 #[derive(Clone)]
 pub struct MockStore {
     on_create_flow: CreateFlowHandler,
+    on_flow_status: FlowStatusHandler,
+    on_flow_complete: FlowCompleteHandler,
+    on_flow_alive_if_created: FlowAliveIfCreatedHandler,
     on_claim_work: ClaimWorkHandler,
     on_append_history: AppendHistoryHandler,
     on_poll_timers: PollTimersHandler,
@@ -43,6 +49,18 @@ impl JungleStore for MockStore {
         (self.on_create_flow)(ordinal, seed)
     }
 
+    async fn flow_status(&self, flow_id: Uuid) -> Result<FlowStatus> {
+        (self.on_flow_status)(flow_id)
+    }
+
+    async fn flow_complete(&self, flow_id: Uuid) -> Result<()> {
+        (self.on_flow_complete)(flow_id)
+    }
+
+    async fn flow_alive_if_created(&self, flow_id: Uuid) -> Result<()> {
+        (self.on_flow_alive_if_created)(flow_id)
+    }
+
     async fn claim_work(&self) -> Result<Option<Work>> {
         (self.on_claim_work)()
     }
@@ -63,6 +81,9 @@ impl JungleStore for MockStore {
 #[derive(Default)]
 pub struct MockStoreBuilder {
     on_create_flow: Option<CreateFlowHandler>,
+    on_flow_status: Option<FlowStatusHandler>,
+    on_flow_complete: Option<FlowCompleteHandler>,
+    on_flow_alive_if_created: Option<FlowAliveIfCreatedHandler>,
     on_claim_work: Option<ClaimWorkHandler>,
     on_append_history: Option<AppendHistoryHandler>,
     on_poll_timers: Option<PollTimersHandler>,
@@ -83,6 +104,30 @@ impl MockStoreBuilder {
         F: Fn() -> Result<Option<Work>> + Send + Sync + 'static,
     {
         self.on_claim_work = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_flow_status<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<FlowStatus> + Send + Sync + 'static,
+    {
+        self.on_flow_status = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_flow_complete<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_flow_complete = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_flow_alive_if_created<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_flow_alive_if_created = Some(Arc::new(f));
         self
     }
 
@@ -112,6 +157,9 @@ impl MockStoreBuilder {
 
     pub fn build(self) -> MockStore {
         let default_create_flow: CreateFlowHandler = Arc::new(|_, _| Ok(Uuid::new_v4()));
+        let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(FlowStatus::Alive));
+        let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
+        let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));
         let default_append_history: AppendHistoryHandler = Arc::new(|_| Ok(()));
         let default_poll_timers: PollTimersHandler = Arc::new(|| Ok(None));
@@ -121,6 +169,15 @@ impl MockStoreBuilder {
             on_create_flow: self
                 .on_create_flow
                 .unwrap_or_else(|| default_create_flow.clone()),
+            on_flow_status: self
+                .on_flow_status
+                .unwrap_or_else(|| default_flow_status.clone()),
+            on_flow_complete: self
+                .on_flow_complete
+                .unwrap_or_else(|| default_flow_complete.clone()),
+            on_flow_alive_if_created: self
+                .on_flow_alive_if_created
+                .unwrap_or_else(|| default_flow_alive_if_created.clone()),
             on_claim_work: self
                 .on_claim_work
                 .unwrap_or_else(|| default_claim_work.clone()),

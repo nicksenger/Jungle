@@ -742,6 +742,7 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
     let input_calls = Arc::new(AtomicUsize::new(0));
     let success_calls = Arc::new(AtomicUsize::new(0));
     let failure_calls = Arc::new(AtomicUsize::new(0));
+    let flow_complete_calls = Arc::new(AtomicUsize::new(0));
     let poll_calls = Arc::new(AtomicUsize::new(0));
     let seed = postcard::to_allocvec(&RunnerState(0)).expect("runner seed should serialize");
     let flow_id = Uuid::from_u128(101);
@@ -797,6 +798,16 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                 }
             }
         })
+        .on_flow_complete({
+            let flow_complete_calls = Arc::clone(&flow_complete_calls);
+            move |_| {
+                let flow_complete_calls = Arc::clone(&flow_complete_calls);
+                async move {
+                    flow_complete_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
         .build();
 
     let worker = JungleWorker::new(RunnerZoo, client);
@@ -830,4 +841,5 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
     assert_eq!(input_calls.load(Ordering::Relaxed), 2);
     assert_eq!(success_calls.load(Ordering::Relaxed), 2);
     assert_eq!(failure_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(flow_complete_calls.load(Ordering::Relaxed), 1);
 }

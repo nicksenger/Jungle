@@ -3,6 +3,7 @@ pub mod migrations;
 use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
+use jungle_types::FlowStatus;
 use jungle_types::{RunnerOut, Work};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
@@ -115,6 +116,63 @@ impl JungleStore for PgStore {
         Ok(flow_id)
     }
 
+    async fn flow_status(&self, flow_id: Uuid) -> Result<FlowStatus> {
+        let status = sqlx::query_scalar::<_, i16>(
+            r#"
+            SELECT status
+            FROM flows
+            WHERE id = $1
+            "#,
+        )
+        .bind(flow_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?
+        .ok_or_else(|| crate::PersistenceError::Message(format!("flow not found: {flow_id}")))?;
+
+        decode_flow_status(status)
+    }
+
+    async fn flow_complete(&self, flow_id: Uuid) -> Result<()> {
+        let result = sqlx::query(
+            r#"
+            UPDATE flows
+            SET status = $2
+            WHERE id = $1
+            "#,
+        )
+        .bind(flow_id)
+        .bind(encode_flow_status(FlowStatus::Completed))
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+        if result.rows_affected() == 0 {
+            return Err(crate::PersistenceError::Message(format!(
+                "flow not found: {flow_id}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    async fn flow_alive_if_created(&self, flow_id: Uuid) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE flows
+            SET status = $2
+            WHERE id = $1 AND status = $3
+            "#,
+        )
+        .bind(flow_id)
+        .bind(encode_flow_status(FlowStatus::Alive))
+        .bind(encode_flow_status(FlowStatus::Created))
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(())
+    }
+
     async fn claim_work(&self) -> Result<Option<Work>> {
         #[derive(Debug)]
         struct ClaimedWorkRow {
@@ -218,5 +276,28 @@ impl JungleStore for PgStore {
     async fn details(&self, _flow_id: Uuid) -> Result<()> {
         let _ = &self.pool;
         todo!()
+    }
+}
+
+fn encode_flow_status(status: FlowStatus) -> i16 {
+    match status {
+        FlowStatus::Created => 0,
+        FlowStatus::Alive => 1,
+        FlowStatus::Stopped => 2,
+        FlowStatus::Completed => 3,
+        FlowStatus::Dead => 4,
+    }
+}
+
+fn decode_flow_status(status: i16) -> Result<FlowStatus> {
+    match status {
+        0 => Ok(FlowStatus::Created),
+        1 => Ok(FlowStatus::Alive),
+        2 => Ok(FlowStatus::Stopped),
+        3 => Ok(FlowStatus::Completed),
+        4 => Ok(FlowStatus::Dead),
+        other => Err(crate::PersistenceError::Message(format!(
+            "unsupported flow status in postgres: {other}"
+        ))),
     }
 }

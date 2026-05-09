@@ -1,5 +1,7 @@
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::{BackendError, JungleClient, MockServer, RunnerOut, WireIn, WireOut, Work};
+use jungle_sdk::{
+    BackendError, FlowStatus, JungleClient, MockServer, RunnerOut, WireIn, WireOut, Work,
+};
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -52,16 +54,32 @@ async fn client_exchanges_messages_with_mock_server() {
                                 ))),
                             },
                             1 => match msg {
-                                WireIn::PollWork => Ok(WireOut::PendingWork(expected_work)),
+                                WireIn::FlowStatus(id) if id == flow_id => {
+                                    Ok(WireOut::FlowStatus(FlowStatus::Created))
+                                }
                                 other => Err(BackendError::Message(format!(
-                                    "expected poll_work second, got {:?}",
+                                    "expected flow_status second, got {:?}",
                                     other
                                 ))),
                             },
-                            2 | 3 | 4 => match msg {
+                            2 => match msg {
+                                WireIn::PollWork => Ok(WireOut::PendingWork(expected_work)),
+                                other => Err(BackendError::Message(format!(
+                                    "expected poll_work third, got {:?}",
+                                    other
+                                ))),
+                            },
+                            3 | 4 | 5 => match msg {
                                 WireIn::HistoryEvent(_) => Ok(WireOut::Ack),
                                 other => Err(BackendError::Message(format!(
                                     "expected history event, got {:?}",
+                                    other
+                                ))),
+                            },
+                            6 => match msg {
+                                WireIn::FlowComplete(id) if id == flow_id => Ok(WireOut::Ack),
+                                other => Err(BackendError::Message(format!(
+                                    "expected flow_complete last, got {:?}",
                                     other
                                 ))),
                             },
@@ -94,6 +112,12 @@ async fn client_exchanges_messages_with_mock_server() {
         .expect("create_flow should succeed");
     assert_eq!(created_flow, flow_id);
 
+    let status = client
+        .flow_status(flow_id)
+        .await
+        .expect("flow_status should succeed");
+    assert_eq!(status, FlowStatus::Created);
+
     let work = client.poll_work().await.expect("poll_work should succeed");
     match work {
         Some(Work::StartFlow {
@@ -120,9 +144,13 @@ async fn client_exchanges_messages_with_mock_server() {
         .action_failure_output(action_id, vec![7, 8])
         .await
         .expect("action_failure_output should ack");
+    client
+        .flow_complete(flow_id)
+        .await
+        .expect("flow_complete should ack");
 
     let requests = captured_requests.lock().unwrap().clone();
-    assert_eq!(requests.len(), 5);
+    assert_eq!(requests.len(), 7);
 
     assert!(matches!(
         requests[0],
@@ -131,28 +159,83 @@ async fn client_exchanges_messages_with_mock_server() {
             ref seed,
         } if ordinal == 7 && seed == &vec![1, 2, 3]
     ));
-    assert!(matches!(requests[1], WireIn::PollWork));
+    assert!(matches!(requests[1], WireIn::FlowStatus(id) if id == flow_id));
+    assert!(matches!(requests[2], WireIn::PollWork));
     assert!(matches!(
-        requests[2],
+        requests[3],
         WireIn::HistoryEvent(RunnerOut::ActionInput {
             uuid,
             ref data,
         }) if uuid == action_id && data == &vec![4, 5]
     ));
     assert!(matches!(
-        requests[3],
+        requests[4],
         WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
             uuid,
             ref data,
         }) if uuid == action_id && data == &vec![6]
     ));
     assert!(matches!(
-        requests[4],
+        requests[5],
         WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
             uuid,
             ref data,
         }) if uuid == action_id && data == &vec![7, 8]
     ));
+    assert!(matches!(requests[6], WireIn::FlowComplete(id) if id == flow_id));
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn flow_status_moves_created_to_alive_to_completed() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+
+    let listen_addr = reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let flow_id = client
+        .create_flow(7, vec![1, 2, 3])
+        .await
+        .expect("create_flow should succeed");
+
+    let created = client
+        .flow_status(flow_id)
+        .await
+        .expect("flow_status created should succeed");
+    assert_eq!(created, FlowStatus::Created);
+
+    client
+        .action_input(flow_id, vec![9, 9, 9])
+        .await
+        .expect("action_input should succeed");
+    let alive = client
+        .flow_status(flow_id)
+        .await
+        .expect("flow_status alive should succeed");
+    assert_eq!(alive, FlowStatus::Alive);
+
+    client
+        .flow_complete(flow_id)
+        .await
+        .expect("flow_complete should succeed");
+    let completed = client
+        .flow_status(flow_id)
+        .await
+        .expect("flow_status completed should succeed");
+    assert_eq!(completed, FlowStatus::Completed);
 
     server_task.abort();
     let _ = server_task.await;

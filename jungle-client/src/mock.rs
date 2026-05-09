@@ -1,7 +1,7 @@
 use crate::{JungleClient, RunnerChannelRx};
 use async_trait::async_trait;
 use futures::StreamExt;
-use jungle_types::{ExecutorError, RunnerOut, Work};
+use jungle_types::{ExecutorError, FlowStatus, RunnerOut, Work};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -16,10 +16,18 @@ type CreateFlowHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Uuid, ExecutorError>> + Send + 'static>>;
 type CreateFlowHandler =
     Arc<dyn Fn(u32, Vec<u8>) -> CreateFlowHandlerFuture + Send + Sync + 'static>;
+type FlowStatusHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<FlowStatus, ExecutorError>> + Send + 'static>>;
+type FlowStatusHandler = Arc<dyn Fn(Uuid) -> FlowStatusHandlerFuture + Send + Sync + 'static>;
+type FlowCompleteHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
+type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> FlowCompleteHandlerFuture + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct MockClient {
     on_create_flow: CreateFlowHandler,
+    on_flow_status: FlowStatusHandler,
+    on_flow_complete: FlowCompleteHandler,
     on_poll_work: PollWorkHandler,
     on_action_input: Handler,
     on_action_success_output: Handler,
@@ -59,6 +67,14 @@ impl JungleClient for MockClient {
         (self.on_create_flow)(ordinal, seed).await
     }
 
+    async fn flow_status(&self, id: Uuid) -> Result<FlowStatus, ExecutorError> {
+        (self.on_flow_status)(id).await
+    }
+
+    async fn flow_complete(&self, id: Uuid) -> Result<(), ExecutorError> {
+        (self.on_flow_complete)(id).await
+    }
+
     async fn poll_work(&self) -> Result<Option<Work>, ExecutorError> {
         (self.on_poll_work)().await
     }
@@ -79,6 +95,8 @@ impl JungleClient for MockClient {
 #[derive(Default)]
 pub struct MockClientBuilder {
     on_create_flow: Option<CreateFlowHandler>,
+    on_flow_status: Option<FlowStatusHandler>,
+    on_flow_complete: Option<FlowCompleteHandler>,
     on_poll_work: Option<PollWorkHandler>,
     on_action_input: Option<Handler>,
     on_action_success_output: Option<Handler>,
@@ -101,6 +119,24 @@ impl MockClientBuilder {
         Fut: Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static,
     {
         self.on_poll_work = Some(Arc::new(move || Box::pin(f())));
+        self
+    }
+
+    pub fn on_flow_status<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<FlowStatus, ExecutorError>> + Send + 'static,
+    {
+        self.on_flow_status = Some(Arc::new(move |id| Box::pin(f(id))));
+        self
+    }
+
+    pub fn on_flow_complete<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
+    {
+        self.on_flow_complete = Some(Arc::new(move |id| Box::pin(f(id))));
         self
     }
 
@@ -135,11 +171,21 @@ impl MockClientBuilder {
         let default_handler: Handler = Arc::new(|_, _| Box::pin(async { Ok(()) }));
         let default_create_flow_handler: CreateFlowHandler =
             Arc::new(|_, _| Box::pin(async { Ok(Uuid::new_v4()) }));
+        let default_flow_status_handler: FlowStatusHandler =
+            Arc::new(|_| Box::pin(async { Ok(FlowStatus::Alive) }));
+        let default_flow_complete_handler: FlowCompleteHandler =
+            Arc::new(|_| Box::pin(async { Ok(()) }));
         let default_poll_work_handler: PollWorkHandler = Arc::new(|| Box::pin(async { Ok(None) }));
         MockClient {
             on_create_flow: self
                 .on_create_flow
                 .unwrap_or_else(|| default_create_flow_handler.clone()),
+            on_flow_status: self
+                .on_flow_status
+                .unwrap_or_else(|| default_flow_status_handler.clone()),
+            on_flow_complete: self
+                .on_flow_complete
+                .unwrap_or_else(|| default_flow_complete_handler.clone()),
             on_poll_work: self
                 .on_poll_work
                 .unwrap_or_else(|| default_poll_work_handler.clone()),

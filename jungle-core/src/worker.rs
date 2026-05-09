@@ -87,6 +87,7 @@ where
                             "unknown creature ordinal: {ordinal}"
                         )));
                     }
+                    self.client.flow_complete(flow_id).await?;
                 }
                 None => {}
             }

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
-use jungle_types::{RunnerOut, Work};
+use jungle_types::{FlowStatus, RunnerOut, Work};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -40,6 +40,9 @@ pub enum PersistenceError {
 pub trait JungleStore: DynClone + Send + Sync {
     async fn migrate(&self) -> Result<()>;
     async fn create_flow(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid>;
+    async fn flow_status(&self, flow_id: Uuid) -> Result<FlowStatus>;
+    async fn flow_complete(&self, flow_id: Uuid) -> Result<()>;
+    async fn flow_alive_if_created(&self, flow_id: Uuid) -> Result<()>;
     async fn claim_work(&self) -> Result<Option<Work>>;
     async fn append_history(&self, history: RunnerOut) -> Result<()>;
     async fn poll_timers(&self) -> Result<Option<()>>;

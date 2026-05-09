@@ -24,7 +24,7 @@ pub use meta::{
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-pub use transport::{BackendError, RunnerOut, WireIn, WireOut, Work};
+pub use transport::{BackendError, FlowStatus, RunnerOut, WireIn, WireOut, Work};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;

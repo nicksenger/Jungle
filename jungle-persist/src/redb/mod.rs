@@ -1,11 +1,11 @@
 pub mod migrations;
 
-use crate::models::{FlowStatus, SchemaVersion, WorkItemKind, WorkItemStatus, SCHEMA_VERSION};
+use crate::models::{SchemaVersion, WorkItemKind, WorkItemStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use jungle_types::{RunnerOut, Work};
-use redb::{ReadableTable, TableDefinition};
+use jungle_types::{FlowStatus, RunnerOut, Work};
+use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -35,6 +35,59 @@ pub struct RedbStore {
 impl RedbStore {
     pub fn builder() -> RedbStoreBuilder {
         RedbStoreBuilder::default()
+    }
+
+    fn update_flow_status(
+        &self,
+        flow_id: Uuid,
+        new_status: FlowStatus,
+        expected_current: Option<FlowStatus>,
+    ) -> Result<()> {
+        let write_tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("redb update_flow_status begin failed: {err}"))
+        })?;
+
+        {
+            let mut flows = write_tx.open_table(FLOWS_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb update_flow_status open flows table failed: {err}"
+                ))
+            })?;
+            let key = &flow_id.as_bytes()[..];
+            let existing_raw = {
+                let Some(existing) = flows.get(key).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb update_flow_status read flow failed: {err}"
+                    ))
+                })?
+                else {
+                    return Err(crate::PersistenceError::Message(format!(
+                        "flow not found: {flow_id}"
+                    )));
+                };
+                existing.value().to_vec()
+            };
+
+            let flow = decode_flow(
+                existing_raw.as_slice(),
+                "redb update_flow_status decode flow value",
+            )?;
+            if expected_current.is_none_or(|expected| flow.status == expected) {
+                let updated_value = encode_flow(flow.ordinal, new_status, &flow.seed);
+                flows.insert(key, updated_value.as_slice()).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb update_flow_status write flow failed: {err}"
+                    ))
+                })?;
+            }
+        }
+
+        write_tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb update_flow_status commit failed: {err}"
+            ))
+        })?;
+        Ok(())
     }
 }
 
@@ -117,6 +170,40 @@ impl JungleStore for RedbStore {
         })?;
 
         Ok(flow_id)
+    }
+
+    async fn flow_status(&self, flow_id: Uuid) -> Result<FlowStatus> {
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!("redb flow_status begin read failed: {err}"))
+        })?;
+
+        let flows = read_tx.open_table(FLOWS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb flow_status open flows table failed: {err}"
+            ))
+        })?;
+
+        let flow_value = flows
+            .get(&flow_id.as_bytes()[..])
+            .map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb flow_status read flow failed: {err}"
+                ))
+            })?
+            .ok_or_else(|| {
+                crate::PersistenceError::Message(format!("flow not found: {flow_id}"))
+            })?;
+
+        let flow = decode_flow(flow_value.value(), "redb flow_status decode flow value")?;
+        Ok(flow.status)
+    }
+
+    async fn flow_complete(&self, flow_id: Uuid) -> Result<()> {
+        self.update_flow_status(flow_id, FlowStatus::Completed, None)
+    }
+
+    async fn flow_alive_if_created(&self, flow_id: Uuid) -> Result<()> {
+        self.update_flow_status(flow_id, FlowStatus::Alive, Some(FlowStatus::Created))
     }
 
     async fn claim_work(&self) -> Result<Option<Work>> {
@@ -304,7 +391,7 @@ impl JungleStore for RedbStore {
 #[derive(Debug)]
 struct FlowRow {
     ordinal: u32,
-    _status: FlowStatus,
+    status: FlowStatus,
     seed: Vec<u8>,
 }
 
@@ -400,7 +487,7 @@ fn decode_flow(raw: &[u8], context: &str) -> Result<FlowRow> {
     let seed = raw[5..].to_vec();
     Ok(FlowRow {
         ordinal,
-        _status: status,
+        status,
         seed,
     })
 }
