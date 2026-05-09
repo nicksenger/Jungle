@@ -108,11 +108,11 @@ mod tests {
         };
     }
 
-    macro_rules! anima {
+    macro_rules! animal {
         ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty) => {
             struct $name;
 
-            impl jungle_sdk::types::Anima for $name {
+            impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
@@ -121,26 +121,26 @@ mod tests {
         };
 
         ($name:ident, $id:ty, journey = $journey:ty) => {
-            anima!($name, $id, state = (), journey = $journey);
+            animal!($name, $id, state = (), journey = $journey);
         };
 
         ($name:ident, $id:ty, $journey:ty) => {
-            anima!($name, $id, SharedState, $journey);
+            animal!($name, $id, SharedState, $journey);
         };
 
         ($name:ident, $id:ty, $state:ty, $journey:ty) => {
             struct $name;
-            impl jungle_sdk::types::AnimaMember for $name {}
+            impl jungle_sdk::types::AnimalMember for $name {}
 
-            impl jungle_sdk::types::Anima for $name {
+            impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimae)]
-            impl jungle_sdk::types::Animae for $name {
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            impl jungle_sdk::types::Animals for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 

@@ -40,13 +40,13 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     )
 }
 
-#[proc_macro_derive(Animae)]
-pub fn derive_animae(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Animals)]
+pub fn derive_animals(input: TokenStream) -> TokenStream {
     derive_with_properties(
         input,
         &[
             parse_quote!(jungle_types::Ident),
-            parse_quote!(jungle_types::JungleAnimae),
+            parse_quote!(jungle_types::JungleAnimals),
         ],
     )
 }
@@ -115,13 +115,13 @@ pub fn flow(attr: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn animae(attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn animals(attr: TokenStream, input: TokenStream) -> TokenStream {
     expand_with_properties(
         attr,
         input,
         &[
             parse_quote!(jungle_types::Ident),
-            parse_quote!(jungle_types::JungleAnimae),
+            parse_quote!(jungle_types::JungleAnimals),
         ],
     )
 }

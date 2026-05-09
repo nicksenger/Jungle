@@ -2,7 +2,7 @@ use futures::channel::oneshot;
 use futures::SinkExt;
 use jungle_client::RunnerChannelTx;
 use jungle_types::{
-    BuildFlowWithContext, ContextExecutor, Anima, DynFlow, ExecutorError, RunnerOut,
+    BuildFlowWithContext, ContextExecutor, Animal, DynFlow, ExecutorError, RunnerOut,
 };
 use uuid::Uuid;
 
@@ -31,7 +31,7 @@ where
         mut tx: RunnerChannelTx,
     ) -> Result<A::State, ExecutorError>
     where
-        A: Anima,
+        A: Animal,
         A::Journey:
             BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {

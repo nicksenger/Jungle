@@ -3,8 +3,8 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelTx};
 use jungle_types::{
-    BuildFlowWithContext, Anima, AnimaSet, Animae, DynFlow, Ecosystem, ExecutorError,
-    RunnerOut, RunnerStep, StripAnimaHeaders,
+    BuildFlowWithContext, Animal, AnimalSet, Animals, DynFlow, Ecosystem, ExecutorError,
+    RunnerOut, RunnerStep, StripAnimalHeaders,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -23,10 +23,10 @@ pub struct JungleWorker<T> {
 impl<T> JungleWorker<T>
 where
     T: Ecosystem + 'static,
-    T::Animae: Animae,
-    <T::Animae as Animae>::List: FlattenNodes,
-    SPFlatten<<T::Animae as Animae>::List>: StripAnimaHeaders,
-    AnimaSet<T::Animae>: SpawnByOrdinal<T>,
+    T::Animals: Animals,
+    <T::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<T::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<T::Animals>: SpawnByOrdinal<T>,
 {
     pub fn new<C>(jungle: T, client: C) -> Self
     where
@@ -74,7 +74,7 @@ where
                     seed,
                 }) => {
                     let launched =
-                        <AnimaSet<T::Animae> as SpawnByOrdinal<T>>::spawn_by_ordinal(
+                        <AnimalSet<T::Animals> as SpawnByOrdinal<T>>::spawn_by_ordinal(
                             ordinal,
                             seed,
                             journey_id,
@@ -84,7 +84,7 @@ where
                         .await?;
                     if !launched {
                         return Err(ExecutorError::InputDeserialize(format!(
-                            "unknown anima ordinal: {ordinal}"
+                            "unknown animal ordinal: {ordinal}"
                         )));
                     }
                     self.client.complete_journey(journey_id).await?;
@@ -120,7 +120,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
 
 impl<T, Head, Tail, Ordinal> SpawnByOrdinal<T> for list::List<(Head, Tail)>
 where
-    Head: Anima<Id = jungle_types::Id<Ordinal>> + Send + Sync + 'static,
+    Head: Animal<Id = jungle_types::Id<Ordinal>> + Send + Sync + 'static,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
     Head::Journey:

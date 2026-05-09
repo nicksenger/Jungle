@@ -8,7 +8,7 @@ pub use jungle_client as client;
 pub use jungle_client::{Client, JungleClient, MockClient};
 pub use jungle_core as core;
 pub use jungle_macros::{
-    actions, animae, flow, journey, Actions, Animae, Flow, Journey, Optic,
+    actions, animals, flow, journey, Actions, Animals, Flow, Journey, Optic,
 };
 #[cfg(feature = "server")]
 pub use jungle_server as server;

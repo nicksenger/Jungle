@@ -1,12 +1,12 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, AnimaActionSet, Executor, Id, Identity, Impulse,
+    Act, Action, ActionCompletion, ActionRequest, AnimalActionSet, Executor, Id, Identity,
     ManualExecutor, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::{Animae, Journey};
+use jungle_sdk::{Animals, Journey};
 use std::future::ready;
 
 struct SeedAction;
@@ -44,17 +44,17 @@ impl Action for FinishAction {
 }
 
 struct Seed;
-impl Step<ProgressAnima> for Seed {
+impl Act<ProgressAnimal> for Seed {
     type Action = SeedAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
-    fn prepare(_state: &i32, input: Self::In) -> i32 {
+    fn emit(_state: &i32, input: Self::In) -> i32 {
         input + 1
     }
 
-    fn process(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Out {
         let value = output.expect("seed action should succeed");
         *state = value;
         value
@@ -62,17 +62,17 @@ impl Step<ProgressAnima> for Seed {
 }
 
 struct Finish;
-impl Step<ProgressAnima> for Finish {
+impl Act<ProgressAnimal> for Finish {
     type Action = FinishAction;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
-    fn prepare(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::In) -> i32 {
         *state + input
     }
 
-    fn process(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Out {
         let value = output.expect("finish action should succeed");
         *state = value;
         value
@@ -81,17 +81,17 @@ impl Step<ProgressAnima> for Finish {
 
 #[derive(Journey)]
 struct ProgressJourney(
-    Impulse<ProgressAnima, Seed>,
-    Impulse<ProgressAnima, Finish>,
+    Step<ProgressAnimal, Seed>,
+    Step<ProgressAnimal, Finish>,
 );
 
-anima!(ProgressAnima, U0, i32, ProgressJourney);
+animal!(ProgressAnimal, U0, i32, ProgressJourney);
 
-#[derive(Animae)]
-struct ProgressAnimae(ProgressAnima);
+#[derive(Animals)]
+struct ProgressAnimals(ProgressAnimal);
 
-type SeedStep = Impulse<ProgressAnima, Seed>;
-type FinishStep = Impulse<ProgressAnima, Finish>;
+type SeedStep = Step<ProgressAnimal, Seed>;
+type FinishStep = Step<ProgressAnimal, Finish>;
 
 struct StepHarness;
 impl StepHarness {
@@ -116,18 +116,18 @@ trait StepExecutor:
     type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
-impl<S> StepExecutor for Impulse<ProgressAnima, S>
+impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
-    S: Step<ProgressAnima, Aspect = Identity, In = i32, Out = i32>,
-    <S as Step<ProgressAnima>>::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
+    A: Act<ProgressAnimal, Aspect = Identity, In = i32, Out = i32>,
+    <A as Act<ProgressAnimal>>::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
-    type Action = <S as Step<ProgressAnima>>::Action;
+    type Action = <A as Act<ProgressAnimal>>::Action;
 }
 
 #[test]
 fn workflow_action_set_is_extracted_from_journey_composite() {
     type Expected = list![SeedAction, FinishAction];
-    type Extracted = AnimaActionSet<ProgressAnimae>;
+    type Extracted = AnimalActionSet<ProgressAnimals>;
     assert_type_eq!(Extracted, Expected);
 }
 
@@ -145,7 +145,7 @@ fn executor_progresses_simple_journey_steps() {
 
 #[test]
 fn executor_next_advances_with_serialized_completions() {
-    let mut executor = ManualExecutor::<ProgressAnima>::new(0);
+    let mut executor = ManualExecutor::<ProgressAnimal>::new(0);
 
     let emitted_seed: i32 = executor.next_typed(5, Ok::<i32, ()>(8)).expect("seed step");
     assert_eq!(emitted_seed, 8);
@@ -160,7 +160,7 @@ fn executor_next_advances_with_serialized_completions() {
 
 #[test]
 fn executor_advance_to_end_runs_remaining_flow() {
-    let mut executor = ManualExecutor::<ProgressAnima>::new(0);
+    let mut executor = ManualExecutor::<ProgressAnimal>::new(0);
     let emitted: Vec<i32> = executor
         .advance_to_end_typed(vec![(5, Ok::<i32, ()>(8)), (4, Ok::<i32, ()>(36))])
         .expect("flow should advance");
@@ -172,7 +172,7 @@ fn executor_advance_to_end_runs_remaining_flow() {
 
 #[test]
 fn executor_threads_previous_emitted_output_into_next_input() {
-    let mut executor = Executor::<ProgressAnima>::new(0);
+    let mut executor = Executor::<ProgressAnimal>::new(0);
 
     let request_seed: i32 = executor.next_request().expect("seed request");
     assert_eq!(request_seed, 1);

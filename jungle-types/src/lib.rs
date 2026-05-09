@@ -5,7 +5,7 @@ mod journey;
 mod meta;
 mod transport;
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, Aspect, Identity, Impulse, Lens, Step,
+    Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step,
 };
 pub use error::Error;
 pub use executor::{
@@ -17,9 +17,9 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AllFrom, AnimaActionDependencies, AnimaActionDependenciesCompatible,
-    AnimaActionSet, AnimaMember, AnimaSet, AnimaStates, AnimaStatesCompatible, StripActionHeaders,
-    StripAnimaHeaders,
+    ActionMember, ActionSet, AllFrom, AnimalActionDependencies, AnimalActionDependenciesCompatible,
+    AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, StripActionHeaders,
+    StripAnimalHeaders,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -73,23 +73,23 @@ pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
 /// A flow combinator that repeatedly executes `F` while `C` is true.
 pub struct While<C, F>(PhantomData<fn() -> (C, F)>);
 
-/// A collection of `Animae` which act together as a system.
+/// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
-    type Animae;
+    type Animals;
 }
 
-/// A living anima within the Jungle ecosystem.
-pub trait Anima {
-    /// A type-level identifier for this Anima.
+/// A living animal within the Jungle ecosystem.
+pub trait Animal {
+    /// A type-level identifier for this Animal.
     type Id;
 
-    /// The state of this `Anima` at any given time.
+    /// The state of this `Animal` at any given time.
     type State;
 
-    /// Serializable seed used to initialize this anima's state.
+    /// Serializable seed used to initialize this animal's state.
     type Seed: Serialize + DeserializeOwned + Into<Self::State>;
 
-    /// The fundamental behavior of this Anima.
+    /// The fundamental behavior of this Animal.
     type Journey;
 }
 
@@ -104,14 +104,14 @@ pub trait Identified {
     type Id;
 }
 
-/// Any collection of [`Anima`]s with a flat type-level list of members.
-#[inception(property = JungleAnimae, types)]
-pub trait Animae {
+/// Any collection of [`Animal`]s with a flat type-level list of members.
+#[inception(property = JungleAnimals, types)]
+pub trait Animals {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as Animae>::List, <Tail as Animae>::List)>,
-        merge_variant = TList<(<Head as Animae>::List, <Tail as Animae>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Animae>::List)> where { Self: Identified }
+        merge = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
+        merge_variant = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
+        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Animals>::List)> where { Self: Identified }
     )]
     type List;
 }
@@ -140,12 +140,12 @@ pub trait FlowActions {
     type List;
 }
 
-/// Leaf-level hook used by [`TraverseWith`] at `Impulse` nodes.
+/// Leaf-level hook used by [`TraverseWith`] at `Step` nodes.
 pub trait TraverseStep<Step> {
     type Output;
 }
 
-/// Leaf-level hook used by [`ReplaceWith`] at `Impulse` nodes.
+/// Leaf-level hook used by [`ReplaceWith`] at `Step` nodes.
 pub trait ReplaceStep<Step> {
     type Output;
 }
@@ -155,10 +155,10 @@ pub trait ReplaceNode<Node> {
     type Output;
 }
 
-/// Directional helper that rewrites `Impulse<Anima, Left>` to `Impulse<Anima, Right>`.
+/// Directional helper that rewrites `Step<Animal, Left>` to `Step<Animal, Right>`.
 pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
-/// Directional helper that rewrites `Impulse<Anima, Right>` to `Impulse<Anima, Left>`.
+/// Directional helper that rewrites `Step<Animal, Right>` to `Step<Animal, Left>`.
 pub struct SwapRL<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
 /// Directional helper alias for node replacement from `Left` to `Right`.
@@ -167,22 +167,22 @@ pub type SwapNodeLR<Left, Right> = SwapLR<Left, Right>;
 /// Directional helper alias for node replacement from `Right` to `Left`.
 pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 
-impl<A, Left, Right> ReplaceStep<Impulse<A, Left>> for SwapLR<Left, Right>
+impl<A, Left, Right> ReplaceStep<Step<A, Left>> for SwapLR<Left, Right>
 where
-    A: Anima,
-    Left: Step<A>,
-    Right: Step<A>,
+    A: Animal,
+    Left: Act<A>,
+    Right: Act<A>,
 {
-    type Output = Impulse<A, Right>;
+    type Output = Step<A, Right>;
 }
 
-impl<A, Left, Right> ReplaceStep<Impulse<A, Right>> for SwapRL<Left, Right>
+impl<A, Left, Right> ReplaceStep<Step<A, Right>> for SwapRL<Left, Right>
 where
-    A: Anima,
-    Left: Step<A>,
-    Right: Step<A>,
+    A: Animal,
+    Left: Act<A>,
+    Right: Act<A>,
 {
-    type Output = Impulse<A, Left>;
+    type Output = Step<A, Left>;
 }
 
 impl<Left, Right> ReplaceNode<Left> for SwapLR<Left, Right> {

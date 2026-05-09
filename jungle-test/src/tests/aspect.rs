@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, Impulse,
+    Act, Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity,
     Lens, LoopCondition, Running, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
@@ -34,9 +34,9 @@ struct TigerState {
 
 struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
-impl<T, Focus> Step<T> for CoreEnergyStep<Sleep, Focus>
+impl<T, Focus> Act<T> for CoreEnergyStep<Sleep, Focus>
 where
-    T: jungle_types::Anima,
+    T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Sleep;
@@ -44,20 +44,20 @@ where
     type In = i32;
     type Out = i32;
 
-    fn prepare(core: &CoreState, input: Self::In) -> i32 {
+    fn emit(core: &CoreState, input: Self::In) -> i32 {
         core.energy + input
     }
 
-    fn process(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
         core.energy = value;
         value
     }
 }
 
-impl<T, Focus> Step<T> for CoreEnergyStep<Eat, Focus>
+impl<T, Focus> Act<T> for CoreEnergyStep<Eat, Focus>
 where
-    T: jungle_types::Anima,
+    T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Eat;
@@ -65,11 +65,11 @@ where
     type In = i32;
     type Out = i32;
 
-    fn prepare(core: &CoreState, input: Self::In) -> i32 {
+    fn emit(core: &CoreState, input: Self::In) -> i32 {
         core.energy + input
     }
 
-    fn process(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
@@ -78,9 +78,9 @@ where
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Step<T> for AddI32<Focus, A>
+impl<T, Focus, A> Act<T> for AddI32<Focus, A>
 where
-    T: jungle_types::Anima,
+    T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
     A: Action<Out = i32>,
 {
@@ -89,11 +89,11 @@ where
     type In = A::In;
     type Out = i32;
 
-    fn prepare(_value: &i32, input: Self::In) -> A::In {
+    fn emit(_value: &i32, input: Self::In) -> A::In {
         input
     }
 
-    fn process(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -105,9 +105,9 @@ where
 
 struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Step<T> for SubI32<Focus, A>
+impl<T, Focus, A> Act<T> for SubI32<Focus, A>
 where
-    T: jungle_types::Anima,
+    T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
     A: Action<Out = i32>,
 {
@@ -116,11 +116,11 @@ where
     type In = A::In;
     type Out = i32;
 
-    fn prepare(_value: &i32, input: Self::In) -> A::In {
+    fn emit(_value: &i32, input: Self::In) -> A::In {
         input
     }
 
-    fn process(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -131,17 +131,17 @@ where
 }
 
 struct GorillaSleepManual;
-impl Step<Gorilla> for GorillaSleepManual {
+impl Act<Gorilla> for GorillaSleepManual {
     type Action = Sleep;
     type Aspect = Identity;
     type In = i32;
     type Out = i32;
 
-    fn prepare(state: &GorillaState, input: Self::In) -> i32 {
+    fn emit(state: &GorillaState, input: Self::In) -> i32 {
         state.core.energy + input
     }
 
-    fn process(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
         let value = output.expect("sleep should succeed");
         state.core.energy = value;
         state.core.age += 1;
@@ -157,9 +157,9 @@ type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
 
 #[derive(Journey)]
 struct GorillaLoopSequence(
-    Impulse<Gorilla, GorillaEat>,
-    Impulse<Gorilla, GorillaSleepManual>,
-    Impulse<Gorilla, GorillaForageStep>,
+    Step<Gorilla, GorillaEat>,
+    Step<Gorilla, GorillaSleepManual>,
+    Step<Gorilla, GorillaForageStep>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -181,9 +181,9 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 
 #[derive(Journey)]
 struct TigerLoopSequence(
-    Conditional<TigerStripesAreEven, Impulse<Tiger, TigerEat>, Impulse<Tiger, TigerSleep>>,
-    Impulse<Tiger, TigerSleep>,
-    Impulse<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
+    Conditional<TigerStripesAreEven, Step<Tiger, TigerEat>, Step<Tiger, TigerSleep>>,
+    Step<Tiger, TigerSleep>,
+    Step<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
@@ -196,16 +196,16 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
 #[derive(Journey)]
 struct TigerJourney(While<TigerUnderHundredStripes, TigerLoopSequence>);
 
-anima!(
+animal!(
     Gorilla,
     U1,
     state = GorillaState,
     journey = GorillaJourney
 );
-anima!(Tiger, U2, state = TigerState, journey = TigerJourney);
+animal!(Tiger, U2, state = TigerState, journey = TigerJourney);
 
 #[test]
-fn aspect_step_reuses_focused_mapper_across_animae() {
+fn aspect_step_reuses_focused_mapper_across_animals() {
     let gorilla_state = GorillaState {
         core: CoreState {
             energy: 10,
@@ -213,12 +213,12 @@ fn aspect_step_reuses_focused_mapper_across_animae() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) = <Impulse<
+    let (gorilla_state, gorilla_request) = <Step<
         Gorilla,
         CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
-    let (gorilla_state, gorilla_emitted) = <Impulse<
+    let (gorilla_state, gorilla_emitted) = <Step<
         Gorilla,
         CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
     > as Waiting>::accept((gorilla_state, Ok(20)));
@@ -232,13 +232,13 @@ fn aspect_step_reuses_focused_mapper_across_animae() {
         core: CoreState { energy: 6, age: 12 },
     };
     let (tiger_state, tiger_request) =
-        <Impulse<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Running>::run((
+        <Step<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Running>::run((
             tiger_state,
             4,
         ));
     assert_eq!(tiger_request.into_input(), 10);
     let (tiger_state, tiger_emitted) =
-        <Impulse<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Waiting>::accept((
+        <Step<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Waiting>::accept((
             tiger_state,
             Ok(15),
         ));
@@ -326,8 +326,8 @@ async fn executor_runs_aspected_steps() {
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     let even = <Conditional<
         TigerStripesAreEven,
-        Impulse<Tiger, TigerEat>,
-        Impulse<Tiger, TigerSleep>,
+        Step<Tiger, TigerEat>,
+        Step<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 8,
@@ -342,8 +342,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 
     let odd = <Conditional<
         TigerStripesAreEven,
-        Impulse<Tiger, TigerEat>,
-        Impulse<Tiger, TigerSleep>,
+        Step<Tiger, TigerEat>,
+        Step<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 9,

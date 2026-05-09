@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 
 use crate::{
-    ActionMember, Anima, FlowActions, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
+    ActionMember, Animal, FlowActions, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
     ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
 };
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
@@ -219,38 +219,38 @@ where
 }
 
 /// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
-/// of anima state.
-pub trait Step<T: Anima> {
+/// of animal state.
+pub trait Act<T: Animal> {
     type Action: Action;
     type Aspect: Aspect<T::State>;
     type In;
     type Out;
 
-    fn prepare(
-        view: &<<Self as Step<T>>::Aspect as Aspect<T::State>>::View,
+    fn emit(
+        view: &<<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
         input: Self::In,
     ) -> <Self::Action as Action>::In;
 
-    fn process(
-        view: &mut <<Self as Step<T>>::Aspect as Aspect<T::State>>::View,
+    fn absorb(
+        view: &mut <<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Out;
 }
 
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Running`]/[`Waiting`] protocol.
-pub struct Impulse<T, S>
+pub struct Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
+    T: Animal,
+    A: Act<T>,
 {
-    marker: PhantomData<fn() -> (T, S)>,
+    marker: PhantomData<fn() -> (T, A)>,
 }
 
-impl<T, S> Impulse<T, S>
+impl<T, A> Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
+    T: Animal,
+    A: Act<T>,
 {
     pub fn new() -> Self {
         Self {
@@ -260,91 +260,91 @@ where
 }
 
 #[primitive(property = crate::JungleRunning)]
-impl<T, S> Running for Impulse<T, S>
+impl<T, A> Running for Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
+    T: Animal,
+    A: Act<T>,
 {
-    type In = (T::State, <S as Step<T>>::In);
-    type Out = (T::State, ActionRequest<<S as Step<T>>::Action>);
+    type In = (T::State, <A as Act<T>>::In);
+    type Out = (T::State, ActionRequest<<A as Act<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<S as Step<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let action_input = <S as Step<T>>::prepare(view, input);
+        let view = <<A as Act<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let action_input = <A as Act<T>>::emit(view, input);
         (
             state,
-            ActionRequest::<<S as Step<T>>::Action>::new(action_input),
+            ActionRequest::<<A as Act<T>>::Action>::new(action_input),
         )
     }
 }
 
 #[primitive(property = crate::JungleWaiting)]
-impl<T, S> Waiting for Impulse<T, S>
+impl<T, A> Waiting for Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
+    T: Animal,
+    A: Act<T>,
 {
-    type In = (T::State, ActionCompletion<<S as Step<T>>::Action>);
-    type Out = (T::State, <S as Step<T>>::Out);
+    type In = (T::State, ActionCompletion<<A as Act<T>>::Action>);
+    type Out = (T::State, <A as Act<T>>::Out);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<S as Step<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let emitted = <S as Step<T>>::process(view, output);
+        let view = <<A as Act<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let emitted = <A as Act<T>>::absorb(view, output);
         (state, emitted)
     }
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, S> FlowActions for Impulse<T, S>
+impl<T, A> FlowActions for Step<T, A>
 where
-    T: Anima,
-    <S as Step<T>>::Action: ActionMember,
-    S: Step<T>,
+    T: Animal,
+    <A as Act<T>>::Action: ActionMember,
+    A: Act<T>,
 {
-    type List = Node<<<S as Step<T>>::Action as Action>::Id, <S as Step<T>>::Action>;
+    type List = Node<<<A as Act<T>>::Action as Action>::Id, <A as Act<T>>::Action>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
-impl<T, S> TraverseFlow for Impulse<T, S>
+impl<T, A> TraverseFlow for Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
+    T: Animal,
+    A: Act<T>,
 {
-    type Output = Impulse<T, S>;
+    type Output = Step<T, A>;
 }
 
 #[primitive(property = crate::JungleReplaceFlow)]
-impl<T, S> ReplaceFlow for Impulse<T, S>
+impl<T, A> ReplaceFlow for Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
+    T: Animal,
+    A: Act<T>,
 {
-    type Output = Impulse<T, S>;
+    type Output = Step<T, A>;
 }
 
-impl<T, S, Traversal> TraverseWith<Traversal> for Impulse<T, S>
+impl<T, A, Traversal> TraverseWith<Traversal> for Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
-    Traversal: TraverseStep<Impulse<T, S>>,
+    T: Animal,
+    A: Act<T>,
+    Traversal: TraverseStep<Step<T, A>>,
 {
-    type Output = <Traversal as TraverseStep<Impulse<T, S>>>::Output;
+    type Output = <Traversal as TraverseStep<Step<T, A>>>::Output;
 }
 
-impl<T, S, Replacer> ReplaceWith<Replacer> for Impulse<T, S>
+impl<T, A, Replacer> ReplaceWith<Replacer> for Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
-    Replacer: ReplaceStep<Impulse<T, S>>,
+    T: Animal,
+    A: Act<T>,
+    Replacer: ReplaceStep<Step<T, A>>,
 {
-    type Output = <Replacer as ReplaceStep<Impulse<T, S>>>::Output;
+    type Output = <Replacer as ReplaceStep<Step<T, A>>>::Output;
 }
 
-impl<T, S, Replacer> ReplaceNodesWith<Replacer> for Impulse<T, S>
+impl<T, A, Replacer> ReplaceNodesWith<Replacer> for Step<T, A>
 where
-    T: Anima,
-    S: Step<T>,
-    Replacer: ReplaceNode<Impulse<T, S>>,
+    T: Animal,
+    A: Act<T>,
+    Replacer: ReplaceNode<Step<T, A>>,
 {
-    type Output = <Replacer as ReplaceNode<Impulse<T, S>>>::Output;
+    type Output = <Replacer as ReplaceNode<Step<T, A>>>::Output;
 }
