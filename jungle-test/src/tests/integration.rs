@@ -6,7 +6,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Creatures, JungleClient};
-use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -140,7 +140,7 @@ impl Ecosystem for IntegrationZoo {
 async fn redb_client_worker_flow_runs_to_completion() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
-    let listen_addr = reserve_local_addr();
+    let listen_addr = super::reserve_local_addr();
 
     let server_task = tokio::spawn({
         let db_path = db_path.clone();
@@ -213,12 +213,4 @@ async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     }
 
     unreachable!("retry loop always returns or panics")
-}
-
-fn reserve_local_addr() -> SocketAddr {
-    let socket = UdpSocket::bind((Ipv6Addr::LOCALHOST, 0))
-        .expect("should bind temporary udp socket for test port reservation");
-    socket
-        .local_addr()
-        .expect("temporary udp socket should expose local address")
 }

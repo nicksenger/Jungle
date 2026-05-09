@@ -5,6 +5,16 @@ extern crate jungle_sdk as jungle_types;
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+
+    fn reserve_local_addr() -> SocketAddr {
+        let socket = UdpSocket::bind((Ipv6Addr::LOCALHOST, 0))
+            .expect("should bind temporary udp socket for test port reservation");
+        socket
+            .local_addr()
+            .expect("temporary udp socket should expose local address")
+    }
+
     macro_rules! action {
         (
             $name:ident,

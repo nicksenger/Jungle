@@ -2,7 +2,7 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
     BackendError, FlowStatus, JungleClient, MockServer, RunnerOut, WireIn, WireOut, Work,
 };
-use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -95,7 +95,7 @@ async fn client_exchanges_messages_with_mock_server() {
         })
         .build();
 
-    let listen_addr = reserve_local_addr();
+    let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn(async move {
         ServerBuilder::new()
             .listen(listen_addr)
@@ -193,7 +193,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
 
-    let listen_addr = reserve_local_addr();
+    let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
         let db_path = db_path.clone();
         async move {
@@ -259,12 +259,4 @@ async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     }
 
     unreachable!("retry loop always returns or panics")
-}
-
-fn reserve_local_addr() -> SocketAddr {
-    let socket = UdpSocket::bind((Ipv6Addr::LOCALHOST, 0))
-        .expect("should bind temporary udp socket for test port reservation");
-    socket
-        .local_addr()
-        .expect("temporary udp socket should expose local address")
 }

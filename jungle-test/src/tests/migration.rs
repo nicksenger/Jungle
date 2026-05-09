@@ -2,7 +2,6 @@ use jungle_sdk::server::ServerBuilder;
 use redb::{Database, ReadableDatabase, TableDefinition};
 use sqlx::PgPool;
 use std::fs;
-use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
@@ -27,7 +26,7 @@ async fn postgres_server_startup_runs_migrations() {
         .expect("postgres mapped port should be available");
     let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
 
-    let listen_addr = reserve_local_addr();
+    let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
         let connection_string = connection_string.clone();
         async move {
@@ -81,7 +80,7 @@ async fn redb_server_startup_runs_migrations() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
 
-    let listen_addr = reserve_local_addr();
+    let listen_addr = super::reserve_local_addr();
     let server_task = tokio::spawn({
         let db_path = db_path.clone();
         async move {
@@ -250,14 +249,6 @@ fn redb_migration_state(db_path: &Path) -> Result<(Option<u32>, bool, bool, bool
         events_exists,
         work_items_exists,
     ))
-}
-
-fn reserve_local_addr() -> SocketAddr {
-    let socket = UdpSocket::bind((Ipv6Addr::LOCALHOST, 0))
-        .expect("should bind temporary udp socket for test port reservation");
-    socket
-        .local_addr()
-        .expect("temporary udp socket should expose local address")
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
