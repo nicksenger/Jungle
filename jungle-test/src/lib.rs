@@ -290,6 +290,7 @@ mod tests {
     mod integration;
     mod migration;
     mod progression;
+    mod select_join;
     mod sleep;
     mod traverse_replace;
     mod while_loop;

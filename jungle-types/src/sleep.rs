@@ -31,11 +31,12 @@ impl Action for Sleep {
 
     fn act(
         _dependency: &SleepDependency,
-        _input: Self::In,
+        input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Err(SleepError {
-            message: "Sleep action must be intercepted by JungleWorker runtime".to_string(),
-        }))
+        async move {
+            std::thread::sleep(input);
+            Ok(())
+        }
     }
 }
 

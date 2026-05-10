@@ -31,6 +31,7 @@ use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
 
 /// A tagged union over two possible outputs.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Either<L, R> {
     Left(L),
     Right(R),
@@ -73,6 +74,12 @@ pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
 
 /// A flow combinator that repeatedly executes `F` while `C` is true.
 pub struct While<C, F>(PhantomData<fn() -> (C, F)>);
+
+/// A flow combinator that runs two activities and resolves to whichever completes first.
+pub struct Select<L, R>(PhantomData<fn() -> (L, R)>);
+
+/// A flow combinator that runs two activities and resolves when both complete.
+pub struct Join<L, R>(PhantomData<fn() -> (L, R)>);
 
 /// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
@@ -705,6 +712,188 @@ where
 {
     type Output =
         <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
+}
+
+#[primitive(property = JungleRunning)]
+impl<L, R> Running for Select<L, R>
+where
+    L: Running,
+    R: Running<In = L::In>,
+{
+    type In = L::In;
+    type Out = Either<L::Out, R::Out>;
+
+    fn run(input: Self::In) -> Self::Out {
+        let _ = input;
+        panic!("Select::run is executed by dynamic flow runtime");
+    }
+}
+
+#[primitive(property = JungleWaiting)]
+impl<L, R> Waiting for Select<L, R>
+where
+    L: Waiting,
+    R: Waiting,
+{
+    type In = Either<L::In, R::In>;
+    type Out = Either<L::Out, R::Out>;
+
+    fn accept(input: Self::In) -> Self::Out {
+        match input {
+            Either::Left(input) => Either::Left(<L as Waiting>::accept(input)),
+            Either::Right(input) => Either::Right(<R as Waiting>::accept(input)),
+        }
+    }
+}
+
+#[primitive(property = JungleFlow)]
+impl<L, R> FlowActions for Select<L, R>
+where
+    L: FlowActions,
+    R: FlowActions,
+{
+    type List = TList<(L::List, R::List)>;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<L, R> TraverseFlow for Select<L, R>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Select<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+}
+
+impl<L, R, Traversal> TraverseWith<Traversal> for Select<L, R>
+where
+    L: TraverseWith<Traversal>,
+    R: TraverseWith<Traversal>,
+{
+    type Output =
+        Select<<L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output>;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<L, R> ReplaceFlow for Select<L, R>
+where
+    L: ReplaceFlow,
+    R: ReplaceFlow,
+{
+    type Output = Select<<L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+}
+
+impl<L, R, Replacer> ReplaceWith<Replacer> for Select<L, R>
+where
+    L: ReplaceWith<Replacer>,
+    R: ReplaceWith<Replacer>,
+{
+    type Output =
+        Select<<L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<L, R, Replacer> ReplaceNodesWith<Replacer> for Select<L, R>
+where
+    L: ReplaceNodesWith<Replacer>,
+    R: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<
+        Select<
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+        >,
+    >,
+{
+    type Output = <Replacer as ReplaceNode<
+        Select<
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+        >,
+    >>::Output;
+}
+
+#[primitive(property = JungleRunning)]
+impl<L, R> Running for Join<L, R>
+where
+    L: Running,
+    R: Running<In = L::In>,
+{
+    type In = L::In;
+    type Out = (L::Out, R::Out);
+
+    fn run(input: Self::In) -> Self::Out {
+        let _ = input;
+        panic!("Join::run is executed by dynamic flow runtime");
+    }
+}
+
+#[primitive(property = JungleWaiting)]
+impl<L, R> Waiting for Join<L, R>
+where
+    L: Waiting,
+    R: Waiting,
+{
+    type In = (L::In, R::In);
+    type Out = (L::Out, R::Out);
+
+    fn accept((left, right): Self::In) -> Self::Out {
+        (<L as Waiting>::accept(left), <R as Waiting>::accept(right))
+    }
+}
+
+#[primitive(property = JungleFlow)]
+impl<L, R> FlowActions for Join<L, R>
+where
+    L: FlowActions,
+    R: FlowActions,
+{
+    type List = TList<(L::List, R::List)>;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<L, R> TraverseFlow for Join<L, R>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Join<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+}
+
+impl<L, R, Traversal> TraverseWith<Traversal> for Join<L, R>
+where
+    L: TraverseWith<Traversal>,
+    R: TraverseWith<Traversal>,
+{
+    type Output =
+        Join<<L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output>;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<L, R> ReplaceFlow for Join<L, R>
+where
+    L: ReplaceFlow,
+    R: ReplaceFlow,
+{
+    type Output = Join<<L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+}
+
+impl<L, R, Replacer> ReplaceWith<Replacer> for Join<L, R>
+where
+    L: ReplaceWith<Replacer>,
+    R: ReplaceWith<Replacer>,
+{
+    type Output = Join<<L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<L, R, Replacer> ReplaceNodesWith<Replacer> for Join<L, R>
+where
+    L: ReplaceNodesWith<Replacer>,
+    R: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<
+        Join<<L as ReplaceNodesWith<Replacer>>::Output, <R as ReplaceNodesWith<Replacer>>::Output>,
+    >,
+{
+    type Output = <Replacer as ReplaceNode<
+        Join<<L as ReplaceNodesWith<Replacer>>::Output, <R as ReplaceNodesWith<Replacer>>::Output>,
+    >>::Output;
 }
 
 /// A read-only view over an [`Animal`]'s current state.
