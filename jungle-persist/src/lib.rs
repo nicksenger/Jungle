@@ -54,7 +54,6 @@ pub trait JungleStore: DynClone + Send + Sync {
     async fn claim_work(&self) -> Result<Option<RunnerStep>>;
     async fn append_history(&self, history: RunnerOut) -> Result<()>;
     async fn poll_timers(&self) -> Result<Option<()>>;
-    async fn details(&self, journey_id: Uuid) -> Result<()>;
 }
 
 dyn_clone::clone_trait_object!(JungleStore);

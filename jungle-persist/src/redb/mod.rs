@@ -622,11 +622,6 @@ impl JungleStore for RedbStore {
         let _ = &self.db;
         todo!()
     }
-
-    async fn details(&self, _journey_id: Uuid) -> Result<()> {
-        let _ = &self.db;
-        todo!()
-    }
 }
 
 #[derive(Debug)]

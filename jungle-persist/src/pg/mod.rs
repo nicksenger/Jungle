@@ -425,11 +425,6 @@ impl JungleStore for PgStore {
         let _ = &self.pool;
         todo!()
     }
-
-    async fn details(&self, _journey_id: Uuid) -> Result<()> {
-        let _ = &self.pool;
-        todo!()
-    }
 }
 
 fn encode_journey_status(status: JourneyStatus) -> i16 {
