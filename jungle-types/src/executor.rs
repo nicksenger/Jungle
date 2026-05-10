@@ -583,7 +583,155 @@ impl<State> SelectErasedFlow<State> {
     }
 }
 
+struct SelectContextErasedFlow<State> {
+    left: DynFlow<State>,
+    right: DynFlow<State>,
+    waiting_completion: bool,
+    complete: bool,
+}
+
+impl<State> SelectContextErasedFlow<State> {
+    fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
+        Self {
+            left,
+            right,
+            waiting_completion: false,
+            complete: false,
+        }
+    }
+}
+
 impl<State> ErasedFlow<State> for SelectErasedFlow<State>
+where
+    State: Clone + 'static,
+{
+    fn request(
+        &mut self,
+        _state: State,
+        _input: Serialized,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        Err(ExecutorError::ClientTransport(
+            "Select requires executable request mode".to_string(),
+        ))
+    }
+
+    fn complete(
+        &mut self,
+        state: State,
+        completion: SerializedCompletion,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+        if !self.waiting_completion {
+            return Err(ExecutorError::NoPendingRequest);
+        }
+
+        let envelope: SelectCompletionEnvelope = match completion {
+            Ok(bytes) => postcard::from_bytes(&bytes)
+                .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
+            Err(bytes) => {
+                return Err(ExecutorError::ErrorDeserialize(format!(
+                    "select completion envelope failed: {}",
+                    String::from_utf8_lossy(&bytes)
+                )))
+            }
+        };
+
+        let emitted = match envelope {
+            SelectCompletionEnvelope::Left(left_completion) => {
+                let (left_state, left_emitted) = self
+                    .left
+                    .get_mut(0)
+                    .ok_or(ExecutorError::Complete)?
+                    .complete(state, left_completion)?;
+                let mut serialized = Vec::with_capacity(1 + left_emitted.len());
+                serialized.push(0);
+                serialized.extend_from_slice(&left_emitted);
+                (left_state, serialized)
+            }
+            SelectCompletionEnvelope::Right(right_completion) => {
+                let (right_state, right_emitted) = self
+                    .right
+                    .get_mut(0)
+                    .ok_or(ExecutorError::Complete)?
+                    .complete(state, right_completion)?;
+                let mut serialized = Vec::with_capacity(1 + right_emitted.len());
+                serialized.push(1);
+                serialized.extend_from_slice(&right_emitted);
+                (right_state, serialized)
+            }
+        };
+
+        self.waiting_completion = false;
+        self.complete = true;
+        Ok(emitted)
+    }
+
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+        if self.waiting_completion {
+            return Err(ExecutorError::AwaitingCompletion);
+        }
+
+        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
+        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
+
+        let payload = SelectRequestEnvelope {
+            left: left_req.request_bytes().to_vec(),
+            right: right_req.request_bytes().to_vec(),
+        };
+        let request = postcard::to_allocvec(&payload)
+            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+
+        let runner: ActionRunner = Box::new(move || {
+            Box::pin(async move {
+                let left = left_req.run();
+                let right = right_req.run();
+                let selected = futures::future::select(
+                    Box::pin(left) as Pin<Box<_>>,
+                    Box::pin(right) as Pin<Box<_>>,
+                )
+                .await;
+                let envelope = match selected {
+                    futures::future::Either::Left((left_completion, _)) => {
+                        SelectCompletionEnvelope::Left(left_completion?)
+                    }
+                    futures::future::Either::Right((right_completion, _)) => {
+                        SelectCompletionEnvelope::Right(right_completion?)
+                    }
+                };
+                let bytes = postcard::to_allocvec(&envelope)
+                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
+                Ok(Ok(bytes))
+            })
+        });
+
+        self.waiting_completion = true;
+        Ok((
+            state,
+            ExecutableActionRequest::new("jungle_types::Select", request, runner),
+        ))
+    }
+
+    fn is_waiting_completion(&self) -> bool {
+        self.waiting_completion
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+}
+
+impl<State> ErasedFlow<State> for SelectContextErasedFlow<State>
 where
     State: Clone + 'static,
 {
@@ -743,7 +891,129 @@ impl<State> JoinErasedFlow<State> {
     }
 }
 
+struct JoinContextErasedFlow<State> {
+    left: DynFlow<State>,
+    right: DynFlow<State>,
+    waiting_completion: bool,
+    complete: bool,
+}
+
+impl<State> JoinContextErasedFlow<State> {
+    fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
+        Self {
+            left,
+            right,
+            waiting_completion: false,
+            complete: false,
+        }
+    }
+}
+
 impl<State> ErasedFlow<State> for JoinErasedFlow<State>
+where
+    State: Clone + 'static,
+{
+    fn request(
+        &mut self,
+        _state: State,
+        _input: Serialized,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        Err(ExecutorError::ClientTransport(
+            "Join requires executable request mode".to_string(),
+        ))
+    }
+
+    fn complete(
+        &mut self,
+        state: State,
+        completion: SerializedCompletion,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+        if !self.waiting_completion {
+            return Err(ExecutorError::NoPendingRequest);
+        }
+
+        let envelope: JoinCompletionEnvelope = match completion {
+            Ok(bytes) => postcard::from_bytes(&bytes)
+                .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
+            Err(bytes) => {
+                return Err(ExecutorError::ErrorDeserialize(format!(
+                    "join completion envelope failed: {}",
+                    String::from_utf8_lossy(&bytes)
+                )))
+            }
+        };
+
+        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let (left_state, left_emitted) = left_node.complete(state, envelope.left)?;
+        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let (right_state, right_emitted) = right_node.complete(left_state, envelope.right)?;
+        let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+        emitted.extend_from_slice(&left_emitted);
+        emitted.extend_from_slice(&right_emitted);
+
+        self.waiting_completion = false;
+        self.complete = true;
+        Ok((right_state, emitted))
+    }
+
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+        if self.waiting_completion {
+            return Err(ExecutorError::AwaitingCompletion);
+        }
+
+        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
+        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
+
+        let payload = JoinRequestEnvelope {
+            left: left_req.request_bytes().to_vec(),
+            right: right_req.request_bytes().to_vec(),
+        };
+        let request = postcard::to_allocvec(&payload)
+            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+
+        let runner: ActionRunner = Box::new(move || {
+            Box::pin(async move {
+                let (left_completion, right_completion) =
+                    futures::join!(left_req.run(), right_req.run());
+                let envelope = JoinCompletionEnvelope {
+                    left: left_completion?,
+                    right: right_completion?,
+                };
+                let bytes = postcard::to_allocvec(&envelope)
+                    .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
+                Ok(Ok(bytes))
+            })
+        });
+
+        self.waiting_completion = true;
+        Ok((
+            state,
+            ExecutableActionRequest::new("jungle_types::Join", request, runner),
+        ))
+    }
+
+    fn is_waiting_completion(&self) -> bool {
+        self.waiting_completion
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+}
+
+impl<State> ErasedFlow<State> for JoinContextErasedFlow<State>
 where
     State: Clone + 'static,
 {
@@ -1534,7 +1804,7 @@ where
             context,
             Vec::new(),
         ));
-        steps.push(Box::new(SelectErasedFlow::<State>::new(left, right)));
+        steps.push(Box::new(SelectContextErasedFlow::<State>::new(left, right)));
         steps
     }
 }
@@ -1561,7 +1831,7 @@ where
             context,
             Vec::new(),
         ));
-        steps.push(Box::new(JoinErasedFlow::<State>::new(left, right)));
+        steps.push(Box::new(JoinContextErasedFlow::<State>::new(left, right)));
         steps
     }
 }

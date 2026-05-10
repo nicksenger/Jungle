@@ -183,14 +183,16 @@ impl Act<TimeoutAnimal> for TimeoutSleep {
     type Action = Sleep;
     type Aspect = Identity;
     type In = ();
-    type Out = ();
+    type Out = i32;
 
     fn emit(state: &SelectJoinState, _input: Self::In) -> Duration {
         Duration::from_millis(state.fast_ms)
     }
 
-    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Out {
         output.expect("timeout sleep should succeed");
+        state.winner = -1;
+        -1
     }
 }
 
@@ -205,36 +207,14 @@ impl Act<TimeoutAnimal> for TimeoutSlow {
         (state.slow_ms, 9)
     }
 
-    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        output.expect("timeout slow should succeed")
-    }
-}
-
-struct CaptureTimeoutWinner;
-impl Act<TimeoutAnimal> for CaptureTimeoutWinner {
-    type Action = ContextTimedValueAction;
-    type Aspect = Identity;
-    type In = Either<(), i32>;
-    type Out = ();
-
-    fn emit(_state: &SelectJoinState, input: Self::In) -> (u64, i32) {
-        let winner = match input {
-            Either::Left(()) => -1,
-            Either::Right(value) => value,
-        };
-        (0, winner)
-    }
-
     fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        state.winner = output.expect("timeout winner capture should succeed");
+        let value = output.expect("timeout slow should succeed");
+        state.winner = value;
+        value
     }
 }
 
-#[derive(Journey)]
-struct TimeoutJourney(
-    Select<Step<TimeoutAnimal, TimeoutSleep>, Step<TimeoutAnimal, TimeoutSlow>>,
-    Step<TimeoutAnimal, CaptureTimeoutWinner>,
-);
+type TimeoutJourney = Select<Step<TimeoutAnimal, TimeoutSleep>, Step<TimeoutAnimal, TimeoutSlow>>;
 
 animal!(
     TimeoutAnimal,
