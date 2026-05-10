@@ -1,7 +1,7 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
+    Pulse, Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
     Ecosystem, Identity, Lens, LoopCondition, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -41,7 +41,7 @@ impl<T> From<&T> for SharedState {
 }
 
 struct UnitOkStep<A>(PhantomData<fn() -> A>);
-impl<T, A> Act<T> for UnitOkStep<A>
+impl<T, A> Pulse<T> for UnitOkStep<A>
 where
     T: Animal,
     A: Action<In = ()>,
@@ -49,12 +49,12 @@ where
 {
     type Action = A;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &T::State, _input: Self::In) -> A::In {}
+    fn emit(_state: &T::State, _input: Self::CarryIn) -> A::In {}
 
-    fn absorb(_state: &mut T::State, output: ActionCompletion<A>) -> Self::Out {
+    fn absorb(_state: &mut T::State, output: ActionCompletion<A>) -> Self::CarryOut {
         output.expect("workflow action should succeed");
     }
 }
@@ -216,35 +216,37 @@ impl Action for RunnerStepTwoAction {
 }
 
 struct RunnerStepOne;
-impl Act<RunnerAnimal> for RunnerStepOne {
+impl Pulse<RunnerAnimal> for RunnerStepOne {
     type Action = RunnerStepOneAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &RunnerState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &RunnerState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.0 += output.expect("runner step one should succeed");
     }
 }
 
 struct RunnerStepTwo;
-impl Act<RunnerAnimal> for RunnerStepTwo {
+impl Pulse<RunnerAnimal> for RunnerStepTwo {
     type Action = RunnerStepTwoAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &RunnerState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &RunnerState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.0 += output.expect("runner step two should succeed");
     }
 }
 
 struct RunnerKeepGoing;
 impl LoopCondition<RunnerState> for RunnerKeepGoing {
+    type CarryIn = ();
+
     fn should_continue(state: &RunnerState) -> bool {
         state.0 < 4
     }
@@ -453,7 +455,7 @@ impl Action for RoundAdvance {
 }
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
-impl<T, Focus, A> Act<T> for AddI32<Focus, A>
+impl<T, Focus, A> Pulse<T> for AddI32<Focus, A>
 where
     T: Animal,
     Focus: jungle_sdk::types::Aspect<T::State, View = i32>,
@@ -461,14 +463,14 @@ where
 {
     type Action = A;
     type Aspect = Focus;
-    type In = i32;
-    type Out = i32;
+    type CarryIn = i32;
+    type CarryOut = i32;
 
-    fn emit(value: &i32, _input: Self::In) -> Self::In {
+    fn emit(value: &i32, _input: Self::CarryIn) -> Self::CarryIn {
         *value
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(value: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         let delta = output.expect("add i32 step should succeed");
         *value += delta;
         *value
@@ -481,6 +483,8 @@ type TigerEatTask = AddI32<Lens<ExecutorCatState, list![U0, U0]>, EatEnergy>;
 
 struct ApeKeepRunning;
 impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
+    type CarryIn = i32;
+
     fn should_continue(state: &ExecutorApeState) -> bool {
         state.core.rounds < 4
     }
@@ -488,6 +492,8 @@ impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
 
 struct TigerKeepRunning;
 impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
+    type CarryIn = i32;
+
     fn should_continue(state: &ExecutorCatState) -> bool {
         state.core.energy < 15
     }
@@ -539,10 +545,12 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
         },
     );
     let mut gorilla_requests = Vec::new();
-    while !gorilla.is_complete() {
-        let request = gorilla
-            .next_executable_request(1i32)
-            .expect("gorilla request should build");
+    loop {
+        let request = match gorilla.next_executable_request(1i32) {
+            Ok(request) => request,
+            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(err) => panic!("gorilla request should build: {err}"),
+        };
         let request_input: i32 = request
             .deserialize_request()
             .expect("gorilla request should deserialize");
@@ -570,10 +578,12 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
         },
     );
     let mut tiger_requests = Vec::new();
-    while !tiger.is_complete() {
-        let request = tiger
-            .next_executable_request(1i32)
-            .expect("tiger request should build");
+    loop {
+        let request = match tiger.next_executable_request(1i32) {
+            Ok(request) => request,
+            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(err) => panic!("tiger request should build: {err}"),
+        };
         let request_input: i32 = request
             .deserialize_request()
             .expect("tiger request should deserialize");
@@ -600,10 +610,12 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
         },
     );
     let mut tiger_odd_requests = Vec::new();
-    while !tiger_odd.is_complete() {
-        let request = tiger_odd
-            .next_executable_request(1i32)
-            .expect("tiger odd request should build");
+    loop {
+        let request = match tiger_odd.next_executable_request(1i32) {
+            Ok(request) => request,
+            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(err) => panic!("tiger odd request should build: {err}"),
+        };
         let request_input: i32 = request
             .deserialize_request()
             .expect("tiger odd request should deserialize");
@@ -639,11 +651,13 @@ async fn jungle_executor_exposes_state_during_progression() {
         },
     );
 
-    while !gorilla.is_complete() {
+    loop {
         let rounds_before = gorilla.state().core.rounds;
-        let request = gorilla
-            .next_executable_request(1i32)
-            .expect("gorilla request should build");
+        let request = match gorilla.next_executable_request(1i32) {
+            Ok(request) => request,
+            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(err) => panic!("gorilla request should build: {err}"),
+        };
         let completion = request.run().await.expect("gorilla action should execute");
         let _emitted = gorilla
             .complete_serialized(completion)

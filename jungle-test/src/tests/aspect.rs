@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity,
+    Pulse, Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity,
     Lens, LoopCondition, Running, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
@@ -34,42 +34,42 @@ struct TigerState {
 
 struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
-impl<T, Focus> Act<T> for CoreEnergyStep<Sleep, Focus>
+impl<T, Focus> Pulse<T> for CoreEnergyStep<Sleep, Focus>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Sleep;
     type Aspect = Focus;
-    type In = i32;
-    type Out = i32;
+    type CarryIn = i32;
+    type CarryOut = i32;
 
-    fn emit(core: &CoreState, input: Self::In) -> i32 {
+    fn emit(core: &CoreState, input: Self::CarryIn) -> i32 {
         core.energy + input
     }
 
-    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::CarryOut {
         let value = output.expect("sleep should succeed");
         core.energy = value;
         value
     }
 }
 
-impl<T, Focus> Act<T> for CoreEnergyStep<Eat, Focus>
+impl<T, Focus> Pulse<T> for CoreEnergyStep<Eat, Focus>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Eat;
     type Aspect = Focus;
-    type In = i32;
-    type Out = i32;
+    type CarryIn = i32;
+    type CarryOut = i32;
 
-    fn emit(core: &CoreState, input: Self::In) -> i32 {
+    fn emit(core: &CoreState, input: Self::CarryIn) -> i32 {
         core.energy + input
     }
 
-    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Out {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::CarryOut {
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
@@ -78,7 +78,7 @@ where
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Act<T> for AddI32<Focus, A>
+impl<T, Focus, A> Pulse<T> for AddI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
@@ -86,14 +86,14 @@ where
 {
     type Action = A;
     type Aspect = Focus;
-    type In = A::In;
-    type Out = i32;
+    type CarryIn = A::In;
+    type CarryOut = i32;
 
-    fn emit(_value: &i32, input: Self::In) -> A::In {
+    fn emit(_value: &i32, input: Self::CarryIn) -> A::In {
         input
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::CarryOut {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -105,7 +105,7 @@ where
 
 struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Act<T> for SubI32<Focus, A>
+impl<T, Focus, A> Pulse<T> for SubI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
@@ -113,14 +113,14 @@ where
 {
     type Action = A;
     type Aspect = Focus;
-    type In = A::In;
-    type Out = i32;
+    type CarryIn = A::In;
+    type CarryOut = i32;
 
-    fn emit(_value: &i32, input: Self::In) -> A::In {
+    fn emit(_value: &i32, input: Self::CarryIn) -> A::In {
         input
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Out {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::CarryOut {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -131,17 +131,17 @@ where
 }
 
 struct GorillaSleepManual;
-impl Act<Gorilla> for GorillaSleepManual {
+impl Pulse<Gorilla> for GorillaSleepManual {
     type Action = Sleep;
     type Aspect = Identity;
-    type In = i32;
-    type Out = i32;
+    type CarryIn = i32;
+    type CarryOut = i32;
 
-    fn emit(state: &GorillaState, input: Self::In) -> i32 {
+    fn emit(state: &GorillaState, input: Self::CarryIn) -> i32 {
         state.core.energy + input
     }
 
-    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Out {
+    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::CarryOut {
         let value = output.expect("sleep should succeed");
         state.core.energy = value;
         state.core.age += 1;
@@ -164,6 +164,8 @@ struct GorillaLoopSequence(
 
 struct GorillaUnderAgeHundred;
 impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
+    type CarryIn = i32;
+
     fn should_continue(state: &GorillaState) -> bool {
         state.core.age < 100
     }
@@ -188,6 +190,8 @@ struct TigerLoopSequence(
 
 struct TigerUnderHundredStripes;
 impl LoopCondition<TigerState> for TigerUnderHundredStripes {
+    type CarryIn = i32;
+
     fn should_continue(state: &TigerState) -> bool {
         state.core.energy < 100
     }
@@ -272,6 +276,8 @@ async fn executor_runs_aspected_steps() {
         gorilla_emitted.push(emitted);
     }
     assert_eq!(gorilla_emitted, vec![6, 13, 1, 3, 7, 1, 3, 7]);
+    assert!(!gorilla.is_complete());
+    assert!(gorilla.next_request::<i32>().is_err());
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
     assert_eq!(gorilla_state.core.energy, 7);
@@ -285,21 +291,33 @@ async fn executor_runs_aspected_steps() {
     assert!(!tiger.is_complete());
 
     let mut tiger_emitted: Vec<i32> = Vec::new();
-    while !tiger.is_complete() {
+    loop {
         let step = tiger_emitted.len() % 3;
         let completion: i32 = match step % 3 {
             0 => {
-                let request: i32 = tiger.next_request().expect("tiger request should advance");
+                let request: i32 = match tiger.next_request() {
+                    Ok(request) => request,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
+                    Err(err) => panic!("tiger request should advance: {err}"),
+                };
                 Eat::act(&(), request).await.expect("eat should succeed")
             }
             1 => {
-                let request: i32 = tiger.next_request().expect("tiger request should advance");
+                let request: i32 = match tiger.next_request() {
+                    Ok(request) => request,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
+                    Err(err) => panic!("tiger request should advance: {err}"),
+                };
                 Sleep::act(&(), request)
                     .await
                     .expect("sleep should succeed")
             }
             2 => {
-                let request: () = tiger.next_request().expect("tiger request should advance");
+                let request: () = match tiger.next_request() {
+                    Ok(request) => request,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
+                    Err(err) => panic!("tiger request should advance: {err}"),
+                };
                 Hunt::act(&(), request).await.expect("hunt should succeed")
             }
             _ => unreachable!(),
@@ -359,10 +377,19 @@ async fn executor_advances_with_executable_requests_and_dynamic_action_order() {
         core: CoreState { energy: 8, age: 4 },
     });
 
-    let emitted = tiger
-        .advance_to_end_with(0i32)
-        .await
-        .expect("tiger flow should execute through dynamic requests");
+    let mut emitted = Vec::new();
+    loop {
+        let request = match tiger.next_executable_request(0i32) {
+            Ok(request) => request,
+            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(err) => panic!("tiger flow should execute through dynamic requests: {err}"),
+        };
+        let completion = request.run().await.expect("tiger action should execute");
+        let emitted_step = tiger
+            .complete_serialized(completion)
+            .expect("tiger completion should process");
+        emitted.push(emitted_step);
+    }
     assert_eq!(emitted.len(), 7);
     assert!(tiger.is_complete());
 

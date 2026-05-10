@@ -109,7 +109,11 @@ where
     {
         while !executor.is_complete() {
             process_perturbations(executor, journey_id, tx).await?;
-            let request = executor.next_executable_request(())?;
+            let request = match executor.next_executable_request(()) {
+                Ok(request) => request,
+                Err(ExecutorError::Complete) => break,
+                Err(err) => return Err(err),
+            };
             send_history(
                 tx,
                 RunnerOut::ActionInput {

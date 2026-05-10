@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    Pulse, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
@@ -45,47 +45,47 @@ impl Action for AddAction {
 }
 
 struct AddBeforeSleep;
-impl Act<SleepAnimal> for AddBeforeSleep {
+impl Pulse<SleepAnimal> for AddBeforeSleep {
     type Action = AddAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &SleepState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &SleepState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.counter += output.expect("add before sleep should succeed");
         state.phase += 1;
     }
 }
 
 struct SleepForStateWake;
-impl Act<SleepAnimal> for SleepForStateWake {
+impl Pulse<SleepAnimal> for SleepForStateWake {
     type Action = Sleep;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(state: &SleepState, _input: Self::In) -> Duration {
+    fn emit(state: &SleepState, _input: Self::CarryIn) -> Duration {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("sleep should resume successfully");
         state.phase += 1;
     }
 }
 
 struct AddAfterSleep;
-impl Act<SleepAnimal> for AddAfterSleep {
+impl Pulse<SleepAnimal> for AddAfterSleep {
     type Action = AddAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &SleepState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &SleepState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.counter += output.expect("add after sleep should succeed");
         state.phase += 1;
     }
@@ -93,6 +93,8 @@ impl Act<SleepAnimal> for AddAfterSleep {
 
 struct SleepNotComplete;
 impl LoopCondition<SleepState> for SleepNotComplete {
+    type CarryIn = ();
+
     fn should_continue(state: &SleepState) -> bool {
         state.phase < 3
     }

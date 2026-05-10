@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, ActionRequest, AnimalActionSet, Executor, Id, Identity,
+    Pulse, Action, ActionCompletion, ActionRequest, AnimalActionSet, Executor, Id, Identity,
     ManualExecutor, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -44,17 +44,17 @@ impl Action for FinishAction {
 }
 
 struct Seed;
-impl Act<ProgressAnimal> for Seed {
+impl Pulse<ProgressAnimal> for Seed {
     type Action = SeedAction;
     type Aspect = Identity;
-    type In = i32;
-    type Out = i32;
+    type CarryIn = i32;
+    type CarryOut = i32;
 
-    fn emit(_state: &i32, input: Self::In) -> i32 {
+    fn emit(_state: &i32, input: Self::CarryIn) -> i32 {
         input + 1
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::CarryOut {
         let value = output.expect("seed action should succeed");
         *state = value;
         value
@@ -62,17 +62,17 @@ impl Act<ProgressAnimal> for Seed {
 }
 
 struct Finish;
-impl Act<ProgressAnimal> for Finish {
+impl Pulse<ProgressAnimal> for Finish {
     type Action = FinishAction;
     type Aspect = Identity;
-    type In = i32;
-    type Out = i32;
+    type CarryIn = i32;
+    type CarryOut = i32;
 
-    fn emit(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::CarryOut {
         let value = output.expect("finish action should succeed");
         *state = value;
         value
@@ -115,10 +115,10 @@ trait StepExecutor:
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
-    A: Act<ProgressAnimal, Aspect = Identity, In = i32, Out = i32>,
-    <A as Act<ProgressAnimal>>::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
+    A: Pulse<ProgressAnimal, Aspect = Identity, CarryIn = i32, CarryOut = i32>,
+    <A as Pulse<ProgressAnimal>>::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
-    type Action = <A as Act<ProgressAnimal>>::Action;
+    type Action = <A as Pulse<ProgressAnimal>>::Action;
 }
 
 #[test]

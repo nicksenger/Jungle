@@ -5,12 +5,12 @@ mod journey;
 mod meta;
 mod sleep;
 mod transport;
-pub use behavior::{Absorb, Adapt, Emit};
+pub use behavior::{Absorb, Fuse, Emit};
 pub use behavior::{
     AbsorbFn, AbsorbMapper, EmitFn, EmitMapper, FocusedStep, IdentityStep, PassthroughEmit,
     UnitEmit,
 };
-pub use behavior::{Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
+pub use behavior::{Pulse, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
 pub use executor::{
@@ -43,27 +43,47 @@ pub enum Either<L, R> {
     Right(R),
 }
 
-/// Predicate used by [`Conditional`] to choose a branch.
+/// Input adapter used by [`Conditional`] to pick a branch and forward carry input.
+pub trait ConditionInput {
+    fn choose_left(&self) -> bool;
+}
+
+impl<In> ConditionInput for (bool, In) {
+    fn choose_left(&self) -> bool {
+        self.0
+    }
+}
+
+impl<In> ConditionInput for (Vec<bool>, In) {
+    fn choose_left(&self) -> bool {
+        self.0.last().copied().unwrap_or(false)
+    }
+}
+
+/// Input adapter used by [`While`] to decide loop continuation and forward carry input.
+pub trait LoopInput {
+    type CarryIn;
+
+    fn into_loop(self) -> (bool, Self::CarryIn);
+}
+
+impl<In> LoopInput for (bool, In) {
+    type CarryIn = In;
+
+    fn into_loop(self) -> (bool, Self::CarryIn) {
+        self
+    }
+}
+
+/// Legacy predicate hook for [`Conditional`], retained as a marker for type-level flow shape.
 pub trait Condition<In> {
     fn choose(input: &In) -> bool;
 }
 
-/// Extracts state from flow inputs shaped as `(State, Input)`.
-pub trait StatefulInput {
-    type State;
-    fn state_ref(&self) -> &Self::State;
-}
-
-impl<State, In> StatefulInput for (State, In) {
-    type State = State;
-
-    fn state_ref(&self) -> &Self::State {
-        &self.0
-    }
-}
-
-/// Predicate used by [`While`] to decide whether another iteration runs.
+/// Legacy predicate hook for [`While`], retained as a marker for type-level flow shape.
 pub trait LoopCondition<State> {
+    type CarryIn;
+
     fn should_continue(state: &State) -> bool;
 }
 
@@ -268,8 +288,8 @@ pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 impl<A, Left, Right> ReplaceStep<Step<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
-    Left: Act<A>,
-    Right: Act<A>,
+    Left: Pulse<A>,
+    Right: Pulse<A>,
 {
     type Output = Step<A, Right>;
 }
@@ -277,8 +297,8 @@ where
 impl<A, Left, Right> ReplaceStep<Step<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
-    Left: Act<A>,
-    Right: Act<A>,
+    Left: Pulse<A>,
+    Right: Pulse<A>,
 {
     type Output = Step<A, Left>;
 }
@@ -644,15 +664,13 @@ where
 impl<C, F> Running for While<C, F>
 where
     F: Running,
-    F::In: StatefulInput,
-    C: LoopCondition<<F::In as StatefulInput>::State>,
 {
-    type In = F::In;
+    type In = (bool, F::In);
     type Out = Option<F::Out>;
 
     fn run(input: Self::In) -> Self::Out {
-        if <C as LoopCondition<<F::In as StatefulInput>::State>>::should_continue(input.state_ref())
-        {
+        let (should_continue, input) = input;
+        if should_continue {
             Some(<F as Running>::run(input))
         } else {
             None

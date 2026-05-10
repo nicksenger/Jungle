@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    Pulse, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     Lens, LoopCondition, Observe, Perturb, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -93,67 +93,67 @@ impl Action for AddTwoAction {
 }
 
 struct AddOneBeforeFullStateStep;
-impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
+impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
     type Action = AddOneAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &IntegrationState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &IntegrationState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.total += output.expect("first pre-focused full-state action should succeed");
         state.before_steps += 1;
     }
 }
 
 struct AddTwoBeforeFullStateStep;
-impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
+impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
     type Action = AddTwoAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &IntegrationState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &IntegrationState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.total += output.expect("second pre-focused full-state action should succeed");
         state.before_steps += 1;
     }
 }
 
 struct AddOneFocusedStep;
-impl Act<IntegrationAnimal> for AddOneFocusedStep {
+impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
     type Action = AddOneAction;
     type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &SubFlowState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &SubFlowState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.value += output.expect("first focused integration action should succeed");
         state.updates += 1;
     }
 }
 
 struct AddTwoFocusedStep;
-impl Act<IntegrationAnimal> for AddTwoFocusedStep {
+impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
     type Action = AddTwoAction;
     type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &SubFlowState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &SubFlowState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.value += output.expect("second focused integration action should succeed");
         state.updates += 1;
     }
 }
 
 struct AddOneDeepFocusedStep;
-impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
+impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
     type Action = AddOneAction;
     type Aspect = Lens<
         IntegrationState,
@@ -162,19 +162,19 @@ impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
             jungle_sdk::typosaurus::num::consts::U0
         ],
     >;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &DeepFocusState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &DeepFocusState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.value += output.expect("first deep-focused integration action should succeed");
         state.updates += 1;
     }
 }
 
 struct AddTwoDeepFocusedStep;
-impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
+impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type Action = AddTwoAction;
     type Aspect = Lens<
         IntegrationState,
@@ -183,42 +183,42 @@ impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
             jungle_sdk::typosaurus::num::consts::U0
         ],
     >;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &DeepFocusState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &DeepFocusState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.value += output.expect("second deep-focused integration action should succeed");
         state.updates += 1;
     }
 }
 
 struct AddOneAfterFullStateStep;
-impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
+impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
     type Action = AddOneAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &IntegrationState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &IntegrationState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.total += output.expect("first post-focused full-state action should succeed");
         state.after_steps += 1;
     }
 }
 
 struct AddTwoAfterFullStateStep;
-impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
+impl Pulse<IntegrationAnimal> for AddTwoAfterFullStateStep {
     type Action = AddTwoAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &IntegrationState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &IntegrationState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         state.total += output.expect("second post-focused full-state action should succeed");
         state.after_steps += 1;
     }
@@ -226,6 +226,8 @@ impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
 
 struct KeepRunning;
 impl LoopCondition<IntegrationState> for KeepRunning {
+    type CarryIn = ();
+
     fn should_continue(state: &IntegrationState) -> bool {
         state.after_steps < 2
     }

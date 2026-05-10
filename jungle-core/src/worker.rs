@@ -448,7 +448,11 @@ where
             break;
         }
 
-        let request = executor.next_executable_request(())?;
+        let request = match executor.next_executable_request(()) {
+            Ok(request) => request,
+            Err(ExecutorError::Complete) => break,
+            Err(err) => return Err(err),
+        };
         let expected_input = request.request_bytes();
         let action_type = request.action_type();
 

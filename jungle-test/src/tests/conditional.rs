@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    Act, ActionCompletion, Condition, Conditional, Either, Executor, Identity, ManualExecutor,
+    Pulse, ActionCompletion, Conditional, Either, Executor, Identity, ManualExecutor,
     Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
@@ -32,17 +32,18 @@ animal!(
 );
 
 struct Left;
-impl Act<ConditionalAnimal> for Left {
+#[jungle_sdk::detect]
+impl Pulse<ConditionalAnimal> for Left {
     type Action = LeftAction;
     type Aspect = Identity;
-    type In = i32;
-    type Out = i32;
+    type CarryIn = i32;
+    type CarryOut = i32;
 
-    fn emit(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::CarryOut {
         let value = output.expect("left action should succeed");
         *state = value;
         value
@@ -50,17 +51,17 @@ impl Act<ConditionalAnimal> for Left {
 }
 
 struct Right;
-impl Act<ConditionalAnimal> for Right {
+impl Pulse<ConditionalAnimal> for Right {
     type Action = RightAction;
     type Aspect = Identity;
-    type In = i32;
-    type Out = bool;
+    type CarryIn = i32;
+    type CarryOut = bool;
 
-    fn emit(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
         *state - input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::CarryOut {
         let value = output.expect("right action should succeed");
         *state = value;
         value % 2 == 0
@@ -71,7 +72,7 @@ type LeftFlow = Step<ConditionalAnimal, Left>;
 type RightFlow = Step<ConditionalAnimal, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
-impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
+impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
     fn choose((state, _): &(i32, i32)) -> bool {
         *state >= 0
     }
@@ -121,13 +122,17 @@ fn conditional_waiting_accept_returns_either_branch_output() {
 #[test]
 fn executor_dynamically_selects_conditional_branch() {
     let mut left = ManualExecutor::<ConditionalAnimal>::new(5);
-    let left_emitted: i32 = left.next_typed(3, Ok::<i32, ()>(9)).expect("left branch");
+    let left_emitted: i32 = left
+        .next_typed((true, 3), Ok::<i32, ()>(9))
+        .expect("left branch");
     assert_eq!(left_emitted, 9);
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
     let mut right = ManualExecutor::<ConditionalAnimal>::new(-2);
-    let right_emitted: bool = right.next_typed(3, Ok::<i32, ()>(6)).expect("right branch");
+    let right_emitted: bool = right
+        .next_typed((false, 3), Ok::<i32, ()>(6))
+        .expect("right branch");
     assert_eq!(right_emitted, true);
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 6);
@@ -156,7 +161,7 @@ fn executor_requests_and_completes_conditional_branch() {
 async fn executor_executable_request_runs_without_static_action_dispatch() {
     let mut left = Executor::<ConditionalAnimal>::new(5);
     let request = left
-        .next_executable_request(0i32)
+        .next_executable_request((true, 0i32))
         .expect("left executable request");
     let input: i32 = request
         .deserialize_request()
@@ -171,7 +176,7 @@ async fn executor_executable_request_runs_without_static_action_dispatch() {
 
     let mut right = Executor::<ConditionalAnimal>::new(-2);
     let request = right
-        .next_executable_request(0i32)
+        .next_executable_request((false, 0i32))
         .expect("right executable request");
     let input: i32 = request
         .deserialize_request()
