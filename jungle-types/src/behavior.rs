@@ -237,34 +237,6 @@ pub trait Act<T: Animal> {
     ) -> Self::Out;
 }
 
-/// Opt-in marker for deriving [`Act`] from [`Emit`] + [`Absorb`].
-pub trait AutoAct {}
-
-impl<T, S> Act<T> for S
-where
-    T: Animal,
-    S: AutoAct + Emit<T> + Absorb<T, Action = <S as Emit<T>>::Action, Aspect = <S as Emit<T>>::Aspect>,
-{
-    type Action = <S as Emit<T>>::Action;
-    type Aspect = <S as Emit<T>>::Aspect;
-    type In = <S as Emit<T>>::CarryIn;
-    type Out = <S as Absorb<T>>::CarryOut;
-
-    fn emit(
-        view: &<<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
-        input: Self::In,
-    ) -> <Self::Action as Action>::In {
-        <S as Emit<T>>::emit(view, input)
-    }
-
-    fn absorb(
-        view: &mut <<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Out {
-        <S as Absorb<T>>::absorb(view, output)
-    }
-}
-
 /// Forward half of [`Act`], responsible for producing an action request input.
 pub trait Emit<T: Animal> {
     type CarryIn;
@@ -392,40 +364,29 @@ where
 
 /// Combines independent [`Emit`] and [`Absorb`] implementations into [`Act`].
 pub struct Impulse<E, A>(PhantomData<fn() -> (E, A)>);
-impl<E, A> AutoAct for Impulse<E, A> {}
 
-impl<T, E, A> Emit<T> for Impulse<E, A>
+impl<T, E, A> Act<T> for Impulse<E, A>
 where
     T: Animal,
     E: Emit<T>,
     A: Absorb<T, Action = <E as Emit<T>>::Action, Aspect = <E as Emit<T>>::Aspect>,
 {
-    type CarryIn = <E as Emit<T>>::CarryIn;
-    type Aspect = <E as Emit<T>>::Aspect;
     type Action = <E as Emit<T>>::Action;
+    type Aspect = <E as Emit<T>>::Aspect;
+    type In = <E as Emit<T>>::CarryIn;
+    type Out = <A as Absorb<T>>::CarryOut;
 
     fn emit(
-        view: &<Self::Aspect as Aspect<T::State>>::View,
-        input: Self::CarryIn,
+        view: &<<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        input: Self::In,
     ) -> <Self::Action as Action>::In {
         <E as Emit<T>>::emit(view, input)
     }
-}
-
-impl<T, E, A> Absorb<T> for Impulse<E, A>
-where
-    T: Animal,
-    E: Emit<T>,
-    A: Absorb<T, Action = <E as Emit<T>>::Action, Aspect = <E as Emit<T>>::Aspect>,
-{
-    type CarryOut = <A as Absorb<T>>::CarryOut;
-    type Aspect = <A as Absorb<T>>::Aspect;
-    type Action = <A as Absorb<T>>::Action;
 
     fn absorb(
-        view: &mut <Self::Aspect as Aspect<T::State>>::View,
+        view: &mut <<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Out {
         <A as Absorb<T>>::absorb(view, output)
     }
 }

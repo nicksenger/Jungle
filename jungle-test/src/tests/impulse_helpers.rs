@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    Absorb, AbsorbFn, AbsorbMapper, ActionCompletion, AutoAct, Emit, EmitFn, EmitMapper,
-    FocusedStep, Identity, IdentityStep, Impulse, ManualExecutor, PassthroughEmit, Step, UnitEmit,
+    AbsorbFn, AbsorbMapper, ActionCompletion, EmitFn, EmitMapper, FocusedStep, Identity,
+    IdentityStep, Impulse, ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
 use jungle_sdk::Journey;
@@ -60,34 +60,8 @@ type FunctionEmitStep = Step<
     >,
 >;
 
-struct DirectStep;
-impl AutoAct for DirectStep {}
-impl Emit<HelperAnimal> for DirectStep {
-    type CarryIn = i32;
-    type Aspect = Identity;
-    type Action = EchoAction;
-
-    fn emit(view: &HelperState, input: Self::CarryIn) -> i32 {
-        view.value + input
-    }
-}
-
-impl Absorb<HelperAnimal> for DirectStep {
-    type CarryOut = i32;
-    type Aspect = Identity;
-    type Action = EchoAction;
-
-    fn absorb(view: &mut HelperState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
-        let value = output.expect("direct step should succeed");
-        view.value = value;
-        value
-    }
-}
-
-type DirectEmitAbsorbStep = Step<HelperAnimal, DirectStep>;
-
 #[derive(Journey)]
-struct ImpulseHelpersJourney(PassthroughStep, UnitStep, FunctionEmitStep, DirectEmitAbsorbStep);
+struct ImpulseHelpersJourney(PassthroughStep, UnitStep, FunctionEmitStep);
 
 animal!(
     HelperAnimal,
@@ -114,9 +88,5 @@ fn helper_emit_absorb_adapters_work_in_flow() {
     let step2: i32 = executor.next_typed(2, Ok::<i32, ()>(13)).expect("step 2");
     assert_eq!(step2, 13);
     assert_eq!(executor.state().value, 13);
-
-    let step3: i32 = executor.next_typed(4, Ok::<i32, ()>(18)).expect("step 3");
-    assert_eq!(step3, 18);
-    assert_eq!(executor.state().value, 18);
     assert!(executor.is_complete());
 }
