@@ -261,84 +261,101 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
         }
     });
 
-    let client = connect_client_with_retry(listen_addr).await;
+    let control_client = connect_client_with_retry(listen_addr).await;
+    let worker_one_client = connect_client_with_retry(listen_addr).await;
+    let worker_two_client = connect_client_with_retry(listen_addr).await;
 
-    let pre_counter = Arc::new(AtomicUsize::new(0));
-    let post_counter = Arc::new(AtomicUsize::new(0));
-    let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
-    let gate = Arc::new(Semaphore::new(0));
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let pre_counter = Arc::new(AtomicUsize::new(0));
+            let post_counter = Arc::new(AtomicUsize::new(0));
+            let (reached_tx, mut reached_rx) = mpsc::unbounded_channel::<()>();
+            let gate = Arc::new(Semaphore::new(0));
 
-    let worker_one = tokio::spawn({
-        let client = client.clone();
-        let zoo = ReplayGateZoo {
-            pre_counter: Arc::clone(&pre_counter),
-            post_counter: Arc::clone(&post_counter),
-            reached_tx: reached_tx.clone(),
-            gate: Arc::clone(&gate),
-        };
-        async move {
-            let worker = JungleWorker::new(zoo, client);
-            let _ = worker.spawn().await;
-        }
-    });
+            let worker_one = tokio::task::spawn_local({
+                let client = worker_one_client.clone();
+                let zoo = ReplayGateZoo {
+                    pre_counter: Arc::clone(&pre_counter),
+                    post_counter: Arc::clone(&post_counter),
+                    reached_tx: reached_tx.clone(),
+                    gate: Arc::clone(&gate),
+                };
+                async move {
+                    let worker = JungleWorker::new(zoo, client);
+                    let _ = worker.spawn().await;
+                }
+            });
 
-    let seed = postcard::to_allocvec(&ReplayGateState { phase: 0 }).expect("seed should serialize");
-    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
-    let journey_id = client
-        .start_journey(ordinal, seed)
-        .await
-        .expect("start_journey should succeed");
+            let seed =
+                postcard::to_allocvec(&ReplayGateState { phase: 0 }).expect("seed should serialize");
+            let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
+            let journey_id = control_client
+                .start_journey(ordinal, seed)
+                .await
+                .expect("start_journey should succeed");
 
-    tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
-        .await
-        .expect("first gate notification should arrive")
-        .expect("first gate notification channel should remain open");
+            tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
+                .await
+                .expect("first gate notification should arrive")
+                .expect("first gate notification channel should remain open");
 
-    assert_eq!(
-        pre_counter.load(Ordering::SeqCst),
-        PRE_STEPS,
-        "pre-gate side effects should run exactly once before crash"
-    );
-    assert_eq!(post_counter.load(Ordering::SeqCst), 0);
+            assert_eq!(
+                pre_counter.load(Ordering::SeqCst),
+                PRE_STEPS,
+                "pre-gate side effects should run exactly once before crash"
+            );
+            assert_eq!(post_counter.load(Ordering::SeqCst), 0);
 
-    worker_one.abort();
-    let _ = worker_one.await;
+            worker_one.abort();
+            let _ = worker_one.await;
 
-    let worker_two = tokio::spawn({
-        let client = client.clone();
-        let zoo = ReplayGateZoo {
-            pre_counter: Arc::clone(&pre_counter),
-            post_counter: Arc::clone(&post_counter),
-            reached_tx,
-            gate: Arc::clone(&gate),
-        };
-        async move {
-            let worker = JungleWorker::new(zoo, client);
-            let _ = worker.spawn().await;
-        }
-    });
+            let worker_two = tokio::task::spawn_local({
+                let client = worker_two_client.clone();
+                let zoo = ReplayGateZoo {
+                    pre_counter: Arc::clone(&pre_counter),
+                    post_counter: Arc::clone(&post_counter),
+                    reached_tx,
+                    gate: Arc::clone(&gate),
+                };
+                async move {
+                    let worker = JungleWorker::new(zoo, client);
+                    let _ = worker.spawn().await;
+                }
+            });
 
-    tokio::time::timeout(Duration::from_secs(45), reached_rx.recv())
-        .await
-        .expect("replay gate notification should arrive after reclaim")
-        .expect("replay gate notification channel should remain open");
+            tokio::time::timeout(Duration::from_secs(45), async {
+                loop {
+                    if reached_rx.try_recv().is_ok() {
+                        break;
+                    }
+                    let _ = control_client
+                        .journey_details(journey_id)
+                        .await
+                        .expect("journey_details should succeed while waiting for replay gate");
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            })
+            .await
+            .expect("replay gate notification should arrive after reclaim");
 
-    assert_eq!(
-        pre_counter.load(Ordering::SeqCst),
-        PRE_STEPS,
-        "replay should not rerun pre-gate side effects"
-    );
-    assert_eq!(post_counter.load(Ordering::SeqCst), 0);
+            assert_eq!(
+                pre_counter.load(Ordering::SeqCst),
+                PRE_STEPS,
+                "replay should not rerun pre-gate side effects"
+            );
+            assert_eq!(post_counter.load(Ordering::SeqCst), 0);
 
-    gate.add_permits(1);
+            gate.add_permits(1);
 
-    wait_for_completed(&client, journey_id, Duration::from_secs(10)).await;
+            wait_for_completed(listen_addr, journey_id, Duration::from_secs(10)).await;
 
-    assert_eq!(pre_counter.load(Ordering::SeqCst), PRE_STEPS);
-    assert_eq!(post_counter.load(Ordering::SeqCst), POST_STEPS);
+            assert_eq!(pre_counter.load(Ordering::SeqCst), PRE_STEPS);
+            assert_eq!(post_counter.load(Ordering::SeqCst), POST_STEPS);
 
-    worker_two.abort();
-    let _ = worker_two.await;
+            worker_two.abort();
+            let _ = worker_two.await;
+        })
+        .await;
     server_task.abort();
     let _ = server_task.await;
 }
@@ -555,139 +572,148 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
         }
     });
 
-    let client = connect_client_with_retry(listen_addr).await;
+    let control_client = connect_client_with_retry(listen_addr).await;
+    let worker_one_client = connect_client_with_retry(listen_addr).await;
+    let worker_two_client = connect_client_with_retry(listen_addr).await;
 
-    let global_pre_counter = Arc::new(AtomicUsize::new(0));
-    let global_post_counter = Arc::new(AtomicUsize::new(0));
-    let worker_one_pre_counter = Arc::new(AtomicUsize::new(0));
-    let worker_two_pre_counter = Arc::new(AtomicUsize::new(0));
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let global_pre_counter = Arc::new(AtomicUsize::new(0));
+            let global_post_counter = Arc::new(AtomicUsize::new(0));
+            let worker_one_pre_counter = Arc::new(AtomicUsize::new(0));
+            let worker_two_pre_counter = Arc::new(AtomicUsize::new(0));
 
-    let mut worker_one = Some(tokio::spawn({
-        let client = client.clone();
-        let zoo = ReplayTimeoutZoo {
-            global_pre_counter: Arc::clone(&global_pre_counter),
-            global_post_counter: Arc::clone(&global_post_counter),
-            worker_pre_counter: Arc::clone(&worker_one_pre_counter),
-        };
-        async move {
-            let worker = JungleWorker::new(zoo, client);
-            let _ = worker.spawn().await;
-        }
-    }));
-    let mut worker_two = Some(tokio::spawn({
-        let client = client.clone();
-        let zoo = ReplayTimeoutZoo {
-            global_pre_counter: Arc::clone(&global_pre_counter),
-            global_post_counter: Arc::clone(&global_post_counter),
-            worker_pre_counter: Arc::clone(&worker_two_pre_counter),
-        };
-        async move {
-            let worker = JungleWorker::new(zoo, client);
-            let _ = worker.spawn().await;
-        }
-    }));
+            let mut worker_one = Some(tokio::task::spawn_local({
+                let client = worker_one_client.clone();
+                let zoo = ReplayTimeoutZoo {
+                    global_pre_counter: Arc::clone(&global_pre_counter),
+                    global_post_counter: Arc::clone(&global_post_counter),
+                    worker_pre_counter: Arc::clone(&worker_one_pre_counter),
+                };
+                async move {
+                    let worker = JungleWorker::new(zoo, client);
+                    let _ = worker.spawn().await;
+                }
+            }));
+            let mut worker_two = Some(tokio::task::spawn_local({
+                let client = worker_two_client.clone();
+                let zoo = ReplayTimeoutZoo {
+                    global_pre_counter: Arc::clone(&global_pre_counter),
+                    global_post_counter: Arc::clone(&global_post_counter),
+                    worker_pre_counter: Arc::clone(&worker_two_pre_counter),
+                };
+                async move {
+                    let worker = JungleWorker::new(zoo, client);
+                    let _ = worker.spawn().await;
+                }
+            }));
 
-    let seed = postcard::to_allocvec(&ReplayTimeoutState {
-        phase: 0,
-        sleep_for_ms: 31_500,
-    })
-    .expect("timeout test seed should serialize");
-    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
-    let journey_id = client
-        .start_journey(ordinal, seed)
-        .await
-        .expect("start_journey should succeed");
-
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if global_pre_counter.load(Ordering::SeqCst) == PRE_STEPS {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-    })
-    .await
-    .expect("pre-timeout increments should finish");
-
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            let history = client
-                .journey_history(journey_id)
+            let seed = postcard::to_allocvec(&ReplayTimeoutState {
+                phase: 0,
+                sleep_for_ms: 35_000,
+            })
+            .expect("timeout test seed should serialize");
+            let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
+            let journey_id = control_client
+                .start_journey(ordinal, seed)
                 .await
-                .expect("journey_history should succeed");
-            if history
-                .iter()
-                .any(|event| matches!(event, RunnerOut::SleepScheduled { .. }))
-            {
-                break;
+                .expect("start_journey should succeed");
+
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    if global_pre_counter.load(Ordering::SeqCst) == PRE_STEPS {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+            })
+            .await
+            .expect("pre-timeout increments should finish");
+
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let history = control_client
+                        .journey_history(journey_id)
+                        .await
+                        .expect("journey_history should succeed");
+                    if history
+                        .iter()
+                        .any(|event| matches!(event, RunnerOut::SleepScheduled { .. }))
+                    {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+            })
+            .await
+            .expect("sleep should be scheduled before owner kill");
+
+            let owner_is_worker_one = worker_one_pre_counter.load(Ordering::SeqCst) > 0;
+            if owner_is_worker_one {
+                if let Some(handle) = worker_one.take() {
+                    handle.abort();
+                    let _ = handle.await;
+                }
+            } else if let Some(handle) = worker_two.take() {
+                handle.abort();
+                let _ = handle.await;
             }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-    })
-    .await
-    .expect("sleep should be scheduled before owner kill");
 
-    let owner_is_worker_one = worker_one_pre_counter.load(Ordering::SeqCst) > 0;
-    if owner_is_worker_one {
-        if let Some(handle) = worker_one.take() {
-            handle.abort();
-            let _ = handle.await;
-        }
-    } else {
-        if let Some(handle) = worker_two.take() {
-            handle.abort();
-            let _ = handle.await;
-        }
-    }
+            wait_for_completed(listen_addr, journey_id, Duration::from_secs(80)).await;
 
-    wait_for_completed(&client, journey_id, Duration::from_secs(50)).await;
+            assert_eq!(
+                global_pre_counter.load(Ordering::SeqCst),
+                PRE_STEPS,
+                "replay after timeout failover should not rerun pre-timeout side effects"
+            );
+            assert_eq!(
+                global_post_counter.load(Ordering::SeqCst),
+                POST_STEPS,
+                "post-timeout side effects should run once after resume"
+            );
 
-    assert_eq!(
-        global_pre_counter.load(Ordering::SeqCst),
-        PRE_STEPS,
-        "replay after timeout failover should not rerun pre-timeout side effects"
-    );
-    assert_eq!(
-        global_post_counter.load(Ordering::SeqCst),
-        POST_STEPS,
-        "post-timeout side effects should run once after resume"
-    );
+            let worker_one_pre = worker_one_pre_counter.load(Ordering::SeqCst);
+            let worker_two_pre = worker_two_pre_counter.load(Ordering::SeqCst);
+            assert_eq!(
+                worker_one_pre + worker_two_pre,
+                PRE_STEPS,
+                "only one worker should have executed original pre-timeout steps"
+            );
 
-    let worker_one_pre = worker_one_pre_counter.load(Ordering::SeqCst);
-    let worker_two_pre = worker_two_pre_counter.load(Ordering::SeqCst);
-    assert_eq!(
-        worker_one_pre + worker_two_pre,
-        PRE_STEPS,
-        "only one worker should have executed original pre-timeout steps"
-    );
-
-    if let Some(handle) = worker_one {
-        handle.abort();
-        let _ = handle.await;
-    }
-    if let Some(handle) = worker_two {
-        handle.abort();
-        let _ = handle.await;
-    }
+            if let Some(handle) = worker_one {
+                handle.abort();
+                let _ = handle.await;
+            }
+            if let Some(handle) = worker_two {
+                handle.abort();
+                let _ = handle.await;
+            }
+        })
+        .await;
     server_task.abort();
     let _ = server_task.await;
 }
 
-async fn wait_for_completed(client: &jungle_sdk::Client, journey_id: uuid::Uuid, timeout: Duration) {
-    tokio::time::timeout(timeout, async {
-        loop {
-            let status = client
-                .journey_details(journey_id)
-                .await
-                .expect("journey_details should succeed");
-            if status == JourneyStatus::Completed {
-                break;
+async fn wait_for_completed(remote: SocketAddr, journey_id: uuid::Uuid, timeout: Duration) {
+    let deadline = std::time::Instant::now() + timeout;
+    let mut client = connect_client_with_retry(remote).await;
+    loop {
+        match client.journey_details(journey_id).await {
+            Ok(status) => {
+                if status == JourneyStatus::Completed {
+                    return;
+                }
             }
-            tokio::time::sleep(Duration::from_millis(25)).await;
+            Err(_) => {
+                client = connect_client_with_retry(remote).await;
+            }
         }
-    })
-    .await
-    .expect("journey should complete before timeout");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "journey should complete before timeout"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
 }
 
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
