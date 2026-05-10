@@ -4,27 +4,26 @@ use jungle_types::{
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::sync::Arc;
 
-pub struct JungleExecutor<'a, T, A>
+pub struct JungleExecutor<T, A>
 where
     T: Jungle + 'static,
     A: Animal,
-    A::Journey:
-        for<'ctx> BuildFlowWithContext<(&'ctx T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
-    inner: ContextExecutor<'a, T, A>,
+    inner: ContextExecutor<T, A>,
 }
 
-impl<'a, T, A> JungleExecutor<'a, T, A>
+impl<T, A> JungleExecutor<T, A>
 where
     T: Jungle + 'static,
     A: Animal,
-    A::Journey:
-        for<'ctx> BuildFlowWithContext<(&'ctx T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
-    pub fn new(jungle: &'a T, state: A::State) -> Self {
+    pub fn new(jungle: T, state: A::State) -> Self {
         Self {
-            inner: ContextExecutor::new(jungle, state),
+            inner: ContextExecutor::new(Arc::new(jungle), state),
         }
     }
 

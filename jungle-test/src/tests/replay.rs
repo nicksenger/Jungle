@@ -14,6 +14,7 @@ use tokio::sync::{mpsc, Semaphore};
 
 const PRE_STEPS: usize = 2;
 const POST_STEPS: usize = 2;
+const TEST_OWNER_LEASE_TTL_MS: i64 = 1_500;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ReplayGateState {
@@ -591,7 +592,8 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
                     worker_pre_counter: Arc::clone(&worker_one_pre_counter),
                 };
                 async move {
-                    let worker = JungleWorker::new(zoo, client);
+                    let worker =
+                        JungleWorker::new(zoo, client).with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS);
                     let _ = worker.spawn().await;
                 }
             }));
@@ -603,14 +605,15 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
                     worker_pre_counter: Arc::clone(&worker_two_pre_counter),
                 };
                 async move {
-                    let worker = JungleWorker::new(zoo, client);
+                    let worker =
+                        JungleWorker::new(zoo, client).with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS);
                     let _ = worker.spawn().await;
                 }
             }));
 
             let seed = postcard::to_allocvec(&ReplayTimeoutState {
                 phase: 0,
-                sleep_for_ms: 35_000,
+                sleep_for_ms: 4_000,
             })
             .expect("timeout test seed should serialize");
             let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
@@ -659,7 +662,7 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
                 let _ = handle.await;
             }
 
-            wait_for_completed(listen_addr, journey_id, Duration::from_secs(80)).await;
+            wait_for_completed(listen_addr, journey_id, Duration::from_secs(20)).await;
 
             assert_eq!(
                 global_pre_counter.load(Ordering::SeqCst),
