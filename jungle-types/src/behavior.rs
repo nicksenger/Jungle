@@ -223,18 +223,18 @@ where
 pub trait Pulse<T: Animal> {
     type Action: Action;
     type Aspect: Aspect<T::State>;
-    type In;
-    type Out;
+    type CarryIn;
+    type CarryOut;
 
     fn emit(
         view: &<<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
-        input: Self::In,
+        input: Self::CarryIn,
     ) -> <Self::Action as Action>::In;
 
     fn absorb(
         view: &mut <<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::Out;
+    ) -> Self::CarryOut;
 }
 
 /// Forward half of [`Pulse`], responsible for producing an action request input.
@@ -373,12 +373,12 @@ where
 {
     type Action = <E as Emit<T>>::Action;
     type Aspect = <E as Emit<T>>::Aspect;
-    type In = <E as Emit<T>>::CarryIn;
-    type Out = <A as Absorb<T>>::CarryOut;
+    type CarryIn = <E as Emit<T>>::CarryIn;
+    type CarryOut = <A as Absorb<T>>::CarryOut;
 
     fn emit(
         view: &<<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
-        input: Self::In,
+        input: Self::CarryIn,
     ) -> <Self::Action as Action>::In {
         <E as Emit<T>>::emit(view, input)
     }
@@ -386,7 +386,7 @@ where
     fn absorb(
         view: &mut <<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::Out {
+    ) -> Self::CarryOut {
         <A as Absorb<T>>::absorb(view, output)
     }
 }
@@ -468,7 +468,7 @@ where
     T: Animal,
     A: Pulse<T>,
 {
-    type In = (T::State, <A as Pulse<T>>::In);
+    type In = (T::State, <A as Pulse<T>>::CarryIn);
     type Out = (T::State, ActionRequest<<A as Pulse<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
@@ -488,7 +488,7 @@ where
     A: Pulse<T>,
 {
     type In = (T::State, ActionCompletion<<A as Pulse<T>>::Action>);
-    type Out = (T::State, <A as Pulse<T>>::Out);
+    type Out = (T::State, <A as Pulse<T>>::CarryOut);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
         let view = <<A as Pulse<T>>::Aspect as Aspect<T::State>>::view(&mut state);

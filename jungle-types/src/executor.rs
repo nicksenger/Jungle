@@ -179,8 +179,8 @@ where
     <<A as Pulse<T>>::Action as Action>::Err: Serialize + 'static,
     <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
-    A::In: DeserializeOwned,
-    A::Out: Serialize,
+    A::CarryIn: DeserializeOwned,
+    A::CarryOut: Serialize,
 {
     fn request(
         &mut self,
@@ -194,7 +194,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::In>(&input) {
+        let typed_input = match postcard::from_bytes::<A::CarryIn>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -219,7 +219,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::In>(&input) {
+        let typed_input = match postcard::from_bytes::<A::CarryIn>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -317,8 +317,8 @@ where
     <<A as Pulse<T>>::Action as Action>::Err: Serialize + 'static,
     <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
-    A::In: DeserializeOwned,
-    A::Out: Serialize,
+    A::CarryIn: DeserializeOwned,
+    A::CarryOut: Serialize,
 {
     fn request(
         &mut self,
@@ -332,7 +332,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::In>(&input) {
+        let typed_input = match postcard::from_bytes::<A::CarryIn>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -357,7 +357,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::In>(&input) {
+        let typed_input = match postcard::from_bytes::<A::CarryIn>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -1414,8 +1414,8 @@ where
     <<A as Pulse<T>>::Action as Action>::Err: Serialize,
     <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
-    A::In: DeserializeOwned,
-    A::Out: Serialize,
+    A::CarryIn: DeserializeOwned,
+    A::CarryOut: Serialize,
 {
     type Output = DynFlow<T::State>;
 
@@ -1563,8 +1563,8 @@ where
     <<A as Pulse<T>>::Action as Action>::Err: Serialize,
     <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
-    A::In: DeserializeOwned,
-    A::Out: Serialize,
+    A::CarryIn: DeserializeOwned,
+    A::CarryOut: Serialize,
 {
     type Output = DynFlow<T::State>;
 

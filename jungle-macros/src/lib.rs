@@ -573,10 +573,10 @@ mod tests {
             impl Pulse<MyAnimal> for MyStep {
                 type Action = MyAction;
                 type Aspect = Identity;
-                type In = ();
-                type Out = ();
+                type CarryIn = ();
+                type CarryOut = ();
 
-                fn emit(_state: &State, _input: Self::In) -> () {
+                fn emit(_state: &State, _input: Self::CarryIn) -> () {
                     let _ = chrono::Utc::now();
                 }
 
@@ -632,10 +632,10 @@ mod tests {
             impl Pulse<MyAnimal> for MyStep {
                 type Action = MyAction;
                 type Aspect = Identity;
-                type In = ();
-                type Out = ();
+                type CarryIn = ();
+                type CarryOut = ();
 
-                fn emit(_state: &State, _input: Self::In) -> () {
+                fn emit(_state: &State, _input: Self::CarryIn) -> () {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                     tokio::task::spawn(async move {});
                 }

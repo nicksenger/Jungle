@@ -21,14 +21,14 @@ struct Tick;
 impl Pulse<Looper> for Tick {
     type Action = TickAction;
     type Aspect = Identity;
-    type In = i32;
-    type Out = (bool, i32);
+    type CarryIn = i32;
+    type CarryOut = (bool, i32);
 
-    fn emit(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::CarryOut {
         let value = output.expect("tick action should succeed");
         *state = value;
         (*state < 3, value)

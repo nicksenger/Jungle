@@ -44,12 +44,12 @@ struct StepA;
 impl Pulse<TraverseAnimal> for StepA {
     type Action = TraverseAAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &i32, _input: Self::In) -> Self::In {}
+    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("step A should succeed");
     }
 }
@@ -58,12 +58,12 @@ struct StepB;
 impl Pulse<TraverseAnimal> for StepB {
     type Action = TraverseBAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &i32, _input: Self::In) -> Self::In {}
+    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("step B should succeed");
     }
 }
@@ -72,12 +72,12 @@ struct StepC;
 impl Pulse<TraverseAnimal> for StepC {
     type Action = TraverseCAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &i32, _input: Self::In) -> Self::In {}
+    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("step C should succeed");
     }
 }
@@ -86,12 +86,12 @@ struct StepD;
 impl Pulse<TraverseAnimal> for StepD {
     type Action = TraverseDAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &i32, _input: Self::In) -> Self::In {}
+    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("step D should succeed");
     }
 }

@@ -134,12 +134,12 @@ struct ReplayPreStep;
 impl Pulse<ReplayGateAnimal> for ReplayPreStep {
     type Action = ReplayPreIncrementAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &ReplayGateState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &ReplayGateState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("pre increment should succeed");
         state.phase += 1;
     }
@@ -149,12 +149,12 @@ struct ReplayPostStep;
 impl Pulse<ReplayGateAnimal> for ReplayPostStep {
     type Action = ReplayPostIncrementAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &ReplayGateState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &ReplayGateState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("post increment should succeed");
         state.phase += 1;
     }
@@ -164,12 +164,12 @@ struct ReplayGateStep;
 impl Pulse<ReplayGateAnimal> for ReplayGateStep {
     type Action = ReplayGateAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &ReplayGateState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &ReplayGateState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("gate action should succeed");
         state.phase += 1;
     }
@@ -445,12 +445,12 @@ struct ReplayTimeoutPreStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
     type Action = ReplayTimeoutPreIncrementAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &ReplayTimeoutState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &ReplayTimeoutState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("pre-timeout increment should succeed");
         state.phase += 1;
     }
@@ -460,14 +460,14 @@ struct ReplayTimeoutSleepStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
     type Action = Sleep;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(state: &ReplayTimeoutState, _input: Self::In) -> Duration {
+    fn emit(state: &ReplayTimeoutState, _input: Self::CarryIn) -> Duration {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("timeout sleep should succeed");
         state.phase += 1;
     }
@@ -477,12 +477,12 @@ struct ReplayTimeoutPostStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
     type Action = ReplayTimeoutPostIncrementAction;
     type Aspect = Identity;
-    type In = ();
-    type Out = ();
+    type CarryIn = ();
+    type CarryOut = ();
 
-    fn emit(_state: &ReplayTimeoutState, _input: Self::In) -> Self::In {}
+    fn emit(_state: &ReplayTimeoutState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Out {
+    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         output.expect("post-timeout increment should succeed");
         state.phase += 1;
     }

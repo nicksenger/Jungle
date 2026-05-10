@@ -36,14 +36,14 @@ struct Left;
 impl Pulse<ConditionalAnimal> for Left {
     type Action = LeftAction;
     type Aspect = Identity;
-    type In = i32;
-    type Out = i32;
+    type CarryIn = i32;
+    type CarryOut = i32;
 
-    fn emit(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::CarryOut {
         let value = output.expect("left action should succeed");
         *state = value;
         value
@@ -54,14 +54,14 @@ struct Right;
 impl Pulse<ConditionalAnimal> for Right {
     type Action = RightAction;
     type Aspect = Identity;
-    type In = i32;
-    type Out = bool;
+    type CarryIn = i32;
+    type CarryOut = bool;
 
-    fn emit(state: &i32, input: Self::In) -> i32 {
+    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
         *state - input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::Out {
+    fn absorb(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::CarryOut {
         let value = output.expect("right action should succeed");
         *state = value;
         value % 2 == 0
