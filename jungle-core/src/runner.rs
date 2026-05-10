@@ -41,7 +41,6 @@ where
     ) -> Result<A::State, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
@@ -105,7 +104,6 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
@@ -149,7 +147,6 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {

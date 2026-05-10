@@ -41,7 +41,6 @@ where
 
     pub fn next_request<Request>(&mut self) -> Result<Request, ExecutorError>
     where
-        A::State: Clone,
         Request: DeserializeOwned + Default + Serialize,
     {
         self.inner.next_request()
@@ -52,7 +51,6 @@ where
         initial_input: Initial,
     ) -> Result<ExecutableActionRequest, ExecutorError>
     where
-        A::State: Clone,
         Initial: Serialize,
     {
         self.inner.next_executable_request(initial_input)
@@ -80,10 +78,7 @@ where
     pub async fn next_and_complete_with(
         &mut self,
         initial_input: impl Serialize,
-    ) -> Result<Vec<u8>, ExecutorError>
-    where
-        A::State: Clone,
-    {
+    ) -> Result<Vec<u8>, ExecutorError> {
         self.inner.next_and_complete_with(initial_input).await
     }
 
@@ -92,7 +87,6 @@ where
         initial_input: Initial,
     ) -> Result<Vec<Vec<u8>>, ExecutorError>
     where
-        A::State: Clone,
         Initial: Serialize + Clone,
     {
         self.inner.advance_to_end_with(initial_input).await
@@ -103,7 +97,6 @@ where
         completions: impl IntoIterator<Item = Result<Out, Err>>,
     ) -> Result<Vec<Emitted>, ExecutorError>
     where
-        A::State: Clone,
         Out: Serialize,
         Err: Serialize,
         Request: DeserializeOwned + Default + Serialize,

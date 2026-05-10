@@ -14,6 +14,8 @@ type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
 type ActionFuture = Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>>>>;
 type ActionRunner = Box<dyn FnOnce() -> ActionFuture>;
+type RequestError<State> = (State, ExecutorError);
+type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
 
 fn decode_controlled_input<In, F>(
     input: &[u8],
@@ -79,7 +81,7 @@ pub trait ErasedFlow<State> {
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError>;
+    ) -> RequestResult<State, Serialized>;
 
     fn complete(
         &mut self,
@@ -91,7 +93,7 @@ pub trait ErasedFlow<State> {
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError>;
+    ) -> RequestResult<State, ExecutableActionRequest>;
 
     fn is_waiting_completion(&self) -> bool;
 
@@ -184,19 +186,23 @@ where
         &mut self,
         state: T::State,
         input: Serialized,
-    ) -> Result<(T::State, Serialized), ExecutorError> {
+    ) -> RequestResult<T::State, Serialized> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
         if self.waiting_completion {
-            return Err(ExecutorError::AwaitingCompletion);
+            return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = postcard::from_bytes::<A::In>(&input)
-            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        let typed_input = match postcard::from_bytes::<A::In>(&input) {
+            Ok(typed_input) => typed_input,
+            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+        };
         let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
-        let request = postcard::to_allocvec(&request.into_input())
-            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let request = match postcard::to_allocvec(&request.into_input()) {
+            Ok(request) => request,
+            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+        };
         self.waiting_completion = true;
         Ok((state, request))
     }
@@ -205,20 +211,24 @@ where
         &mut self,
         state: T::State,
         input: Serialized,
-    ) -> Result<(T::State, ExecutableActionRequest), ExecutorError> {
+    ) -> RequestResult<T::State, ExecutableActionRequest> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
         if self.waiting_completion {
-            return Err(ExecutorError::AwaitingCompletion);
+            return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = postcard::from_bytes::<A::In>(&input)
-            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        let typed_input = match postcard::from_bytes::<A::In>(&input) {
+            Ok(typed_input) => typed_input,
+            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+        };
         let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
         let action_input = request.into_input();
-        let request = postcard::to_allocvec(&action_input)
-            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let request = match postcard::to_allocvec(&action_input) {
+            Ok(request) => request,
+            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+        };
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion = <<A as Act<T>>::Action as Action>::act(&(), action_input).await;
@@ -314,19 +324,23 @@ where
         &mut self,
         state: T::State,
         input: Serialized,
-    ) -> Result<(T::State, Serialized), ExecutorError> {
+    ) -> RequestResult<T::State, Serialized> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
         if self.waiting_completion {
-            return Err(ExecutorError::AwaitingCompletion);
+            return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = postcard::from_bytes::<A::In>(&input)
-            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        let typed_input = match postcard::from_bytes::<A::In>(&input) {
+            Ok(typed_input) => typed_input,
+            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+        };
         let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
-        let request = postcard::to_allocvec(&request.into_input())
-            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let request = match postcard::to_allocvec(&request.into_input()) {
+            Ok(request) => request,
+            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+        };
         self.waiting_completion = true;
         Ok((state, request))
     }
@@ -335,20 +349,24 @@ where
         &mut self,
         state: T::State,
         input: Serialized,
-    ) -> Result<(T::State, ExecutableActionRequest), ExecutorError> {
+    ) -> RequestResult<T::State, ExecutableActionRequest> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
         if self.waiting_completion {
-            return Err(ExecutorError::AwaitingCompletion);
+            return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = postcard::from_bytes::<A::In>(&input)
-            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        let typed_input = match postcard::from_bytes::<A::In>(&input) {
+            Ok(typed_input) => typed_input,
+            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+        };
         let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
         let action_input = request.into_input();
-        let request = postcard::to_allocvec(&action_input)
-            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let request = match postcard::to_allocvec(&action_input) {
+            Ok(request) => request,
+            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+        };
         let dependency: <<A as Act<T>>::Action as Action>::Dependency = self.context.as_ref().into();
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
@@ -469,10 +487,13 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        let (choose_left, branch_input) = decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        })?;
+    ) -> RequestResult<State, Serialized> {
+        let (choose_left, branch_input) =
+            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
+            {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
@@ -480,11 +501,13 @@ where
                 ActiveBranch::Right
             });
         }
-        let branch_input = postcard::to_allocvec(&branch_input)
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        let branch_input = match postcard::to_allocvec(&branch_input) {
+            Ok(branch_input) => branch_input,
+            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+        };
 
         if self.cursor >= self.branch_len() {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
 
         let node = self
@@ -516,10 +539,13 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
-        let (choose_left, branch_input) = decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        })?;
+    ) -> RequestResult<State, ExecutableActionRequest> {
+        let (choose_left, branch_input) =
+            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
+            {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
@@ -527,11 +553,13 @@ where
                 ActiveBranch::Right
             });
         }
-        let branch_input = postcard::to_allocvec(&branch_input)
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        let branch_input = match postcard::to_allocvec(&branch_input) {
+            Ok(branch_input) => branch_input,
+            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+        };
 
         if self.cursor >= self.branch_len() {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
 
         let node = self
@@ -632,11 +660,14 @@ where
 {
     fn request(
         &mut self,
-        _state: State,
+        state: State,
         _input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        Err(ExecutorError::ClientTransport(
+    ) -> RequestResult<State, Serialized> {
+        Err((
+            state,
+            ExecutorError::ClientTransport(
             "Select requires executable request mode".to_string(),
+            ),
         ))
     }
 
@@ -697,25 +728,33 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+    ) -> RequestResult<State, ExecutableActionRequest> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
         if self.waiting_completion {
-            return Err(ExecutorError::AwaitingCompletion);
+            return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let left_node = match self.left.get_mut(0) {
+            Some(left_node) => left_node,
+            None => return Err((state, ExecutorError::Complete)),
+        };
         let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
-        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let right_node = match self.right.get_mut(0) {
+            Some(right_node) => right_node,
+            None => return Err((state, ExecutorError::Complete)),
+        };
         let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
 
         let payload = SelectRequestEnvelope {
             left: left_req.request_bytes().to_vec(),
             right: right_req.request_bytes().to_vec(),
         };
-        let request = postcard::to_allocvec(&payload)
-            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let request = match postcard::to_allocvec(&payload) {
+            Ok(request) => request,
+            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+        };
 
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
@@ -762,11 +801,14 @@ where
 {
     fn request(
         &mut self,
-        _state: State,
+        state: State,
         _input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        Err(ExecutorError::ClientTransport(
+    ) -> RequestResult<State, Serialized> {
+        Err((
+            state,
+            ExecutorError::ClientTransport(
             "Select requires executable request mode".to_string(),
+            ),
         ))
     }
 
@@ -827,25 +869,33 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+    ) -> RequestResult<State, ExecutableActionRequest> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
         if self.waiting_completion {
-            return Err(ExecutorError::AwaitingCompletion);
+            return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let left_node = match self.left.get_mut(0) {
+            Some(left_node) => left_node,
+            None => return Err((state, ExecutorError::Complete)),
+        };
         let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
-        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let right_node = match self.right.get_mut(0) {
+            Some(right_node) => right_node,
+            None => return Err((state, ExecutorError::Complete)),
+        };
         let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
 
         let payload = SelectRequestEnvelope {
             left: left_req.request_bytes().to_vec(),
             right: right_req.request_bytes().to_vec(),
         };
-        let request = postcard::to_allocvec(&payload)
-            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let request = match postcard::to_allocvec(&payload) {
+            Ok(request) => request,
+            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+        };
 
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
@@ -940,11 +990,14 @@ where
 {
     fn request(
         &mut self,
-        _state: State,
+        state: State,
         _input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        Err(ExecutorError::ClientTransport(
+    ) -> RequestResult<State, Serialized> {
+        Err((
+            state,
+            ExecutorError::ClientTransport(
             "Join requires executable request mode".to_string(),
+            ),
         ))
     }
 
@@ -988,25 +1041,33 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+    ) -> RequestResult<State, ExecutableActionRequest> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
         if self.waiting_completion {
-            return Err(ExecutorError::AwaitingCompletion);
+            return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let left_node = match self.left.get_mut(0) {
+            Some(left_node) => left_node,
+            None => return Err((state, ExecutorError::Complete)),
+        };
         let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
-        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let right_node = match self.right.get_mut(0) {
+            Some(right_node) => right_node,
+            None => return Err((state, ExecutorError::Complete)),
+        };
         let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
 
         let payload = JoinRequestEnvelope {
             left: left_req.request_bytes().to_vec(),
             right: right_req.request_bytes().to_vec(),
         };
-        let request = postcard::to_allocvec(&payload)
-            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let request = match postcard::to_allocvec(&payload) {
+            Ok(request) => request,
+            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+        };
 
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
@@ -1044,11 +1105,14 @@ where
 {
     fn request(
         &mut self,
-        _state: State,
+        state: State,
         _input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        Err(ExecutorError::ClientTransport(
+    ) -> RequestResult<State, Serialized> {
+        Err((
+            state,
+            ExecutorError::ClientTransport(
             "Join requires executable request mode".to_string(),
+            ),
         ))
     }
 
@@ -1092,25 +1156,33 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+    ) -> RequestResult<State, ExecutableActionRequest> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
         if self.waiting_completion {
-            return Err(ExecutorError::AwaitingCompletion);
+            return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let left_node = match self.left.get_mut(0) {
+            Some(left_node) => left_node,
+            None => return Err((state, ExecutorError::Complete)),
+        };
         let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
-        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
+        let right_node = match self.right.get_mut(0) {
+            Some(right_node) => right_node,
+            None => return Err((state, ExecutorError::Complete)),
+        };
         let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
 
         let payload = JoinRequestEnvelope {
             left: left_req.request_bytes().to_vec(),
             right: right_req.request_bytes().to_vec(),
         };
-        let request = postcard::to_allocvec(&payload)
-            .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
+        let request = match postcard::to_allocvec(&payload) {
+            Ok(request) => request,
+            Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+        };
 
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
@@ -1177,20 +1249,29 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError> {
+    ) -> RequestResult<State, Serialized> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
-        let (should_continue, branch_input) = decode_controlled_input::<In, _>(&input, |carry| {
-            (self.should_continue)(&state, carry)
-        })?;
+        let (should_continue, branch_input) =
+            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
+            {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            };
         if !should_continue {
             self.complete = true;
             self.deferred_state = Some(state);
-            return Err(ExecutorError::Complete);
+            let state = self
+                .deferred_state
+                .take()
+                .expect("deferred state was just set");
+            return Err((state, ExecutorError::Complete));
         }
-        let branch_input = postcard::to_allocvec(&branch_input)
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        let branch_input = match postcard::to_allocvec(&branch_input) {
+            Ok(branch_input) => branch_input,
+            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+        };
 
         self.ensure_iteration_ready();
 
@@ -1229,20 +1310,29 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+    ) -> RequestResult<State, ExecutableActionRequest> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
-        let (should_continue, branch_input) = decode_controlled_input::<In, _>(&input, |carry| {
-            (self.should_continue)(&state, carry)
-        })?;
+        let (should_continue, branch_input) =
+            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
+            {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            };
         if !should_continue {
             self.complete = true;
             self.deferred_state = Some(state);
-            return Err(ExecutorError::Complete);
+            let state = self
+                .deferred_state
+                .take()
+                .expect("deferred state was just set");
+            return Err((state, ExecutorError::Complete));
         }
-        let branch_input = postcard::to_allocvec(&branch_input)
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        let branch_input = match postcard::to_allocvec(&branch_input) {
+            Ok(branch_input) => branch_input,
+            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+        };
 
         self.ensure_iteration_ready();
 
@@ -1541,10 +1631,13 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError> {
-        let (choose_left, branch_input) = decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        })?;
+    ) -> RequestResult<State, Serialized> {
+        let (choose_left, branch_input) =
+            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
+            {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
@@ -1552,11 +1645,13 @@ where
                 ActiveContextBranch::Right
             });
         }
-        let branch_input = postcard::to_allocvec(&branch_input)
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        let branch_input = match postcard::to_allocvec(&branch_input) {
+            Ok(branch_input) => branch_input,
+            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+        };
 
         if self.cursor >= self.branch_len() {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
 
         let node = self
@@ -1588,10 +1683,13 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
-        let (choose_left, branch_input) = decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        })?;
+    ) -> RequestResult<State, ExecutableActionRequest> {
+        let (choose_left, branch_input) =
+            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
+            {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
@@ -1599,11 +1697,13 @@ where
                 ActiveContextBranch::Right
             });
         }
-        let branch_input = postcard::to_allocvec(&branch_input)
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        let branch_input = match postcard::to_allocvec(&branch_input) {
+            Ok(branch_input) => branch_input,
+            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+        };
 
         if self.cursor >= self.branch_len() {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
 
         let node = self
@@ -1719,20 +1819,29 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, Serialized), ExecutorError> {
+    ) -> RequestResult<State, Serialized> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
-        let (should_continue, branch_input) = decode_controlled_input::<In, _>(&input, |carry| {
-            (self.should_continue)(&state, carry)
-        })?;
+        let (should_continue, branch_input) =
+            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
+            {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            };
         if !should_continue {
             self.complete = true;
             self.deferred_state = Some(state);
-            return Err(ExecutorError::Complete);
+            let state = self
+                .deferred_state
+                .take()
+                .expect("deferred state was just set");
+            return Err((state, ExecutorError::Complete));
         }
-        let branch_input = postcard::to_allocvec(&branch_input)
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        let branch_input = match postcard::to_allocvec(&branch_input) {
+            Ok(branch_input) => branch_input,
+            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+        };
 
         self.ensure_iteration_ready();
 
@@ -1771,20 +1880,29 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+    ) -> RequestResult<State, ExecutableActionRequest> {
         if self.complete {
-            return Err(ExecutorError::Complete);
+            return Err((state, ExecutorError::Complete));
         }
-        let (should_continue, branch_input) = decode_controlled_input::<In, _>(&input, |carry| {
-            (self.should_continue)(&state, carry)
-        })?;
+        let (should_continue, branch_input) =
+            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
+            {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            };
         if !should_continue {
             self.complete = true;
             self.deferred_state = Some(state);
-            return Err(ExecutorError::Complete);
+            let state = self
+                .deferred_state
+                .take()
+                .expect("deferred state was just set");
+            return Err((state, ExecutorError::Complete));
         }
-        let branch_input = postcard::to_allocvec(&branch_input)
-            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        let branch_input = match postcard::to_allocvec(&branch_input) {
+            Ok(branch_input) => branch_input,
+            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+        };
 
         self.ensure_iteration_ready();
 
@@ -2022,7 +2140,6 @@ where
 
     pub fn next_request<Request>(&mut self) -> Result<Request, ExecutorError>
     where
-        A::State: Clone,
         Request: DeserializeOwned + Default + Serialize,
     {
         let input = self.last_emitted.take().unwrap_or_else(|| {
@@ -2037,7 +2154,6 @@ where
         initial_input: Initial,
     ) -> Result<ExecutableActionRequest, ExecutorError>
     where
-        A::State: Clone,
         Initial: Serialize,
     {
         let input = match self.last_emitted.take() {
@@ -2050,7 +2166,6 @@ where
         }
 
         let state = self.state.take().expect("executor state is always present");
-        let state_backup = state.clone();
         let node = self
             .steps
             .get_mut(self.cursor)
@@ -2060,8 +2175,8 @@ where
                 self.state = Some(state);
                 Ok(request)
             }
-            Err(ExecutorError::Complete) => {
-                self.state = Some(state_backup);
+            Err((state, ExecutorError::Complete)) => {
+                self.state = Some(state);
                 let state = self.state.take().expect("executor state is always present");
                 let (state, completed) = node.try_complete_without_progress(state)?;
                 self.state = Some(state);
@@ -2071,8 +2186,8 @@ where
                 self.settle_without_progress()?;
                 Err(ExecutorError::Complete)
             }
-            Err(err) => {
-                self.state = Some(state_backup);
+            Err((state, err)) => {
+                self.state = Some(state);
                 Err(err)
             }
         }
@@ -2120,8 +2235,6 @@ where
         &mut self,
         initial_input: impl Serialize,
     ) -> Result<Serialized, ExecutorError>
-    where
-        A::State: Clone,
     {
         let request = self.next_executable_request(initial_input)?;
         let completion = request.run().await?;
@@ -2133,7 +2246,6 @@ where
         initial_input: Initial,
     ) -> Result<Vec<Serialized>, ExecutorError>
     where
-        A::State: Clone,
         Initial: Serialize + Clone,
     {
         let mut emitted = Vec::new();
@@ -2148,7 +2260,6 @@ where
         completions: impl IntoIterator<Item = Result<Out, Err>>,
     ) -> Result<Vec<Emitted>, ExecutorError>
     where
-        A::State: Clone,
         Out: Serialize,
         Err: Serialize,
         Request: DeserializeOwned + Default + Serialize,
@@ -2172,17 +2283,13 @@ where
         self.state.expect("executor state is always present")
     }
 
-    fn next_request_serialized(&mut self, input: Serialized) -> Result<Serialized, ExecutorError>
-    where
-        A::State: Clone,
-    {
+    fn next_request_serialized(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
         self.settle_without_progress()?;
         if self.is_complete() {
             return Err(ExecutorError::Complete);
         }
 
         let state = self.state.take().expect("executor state is always present");
-        let state_backup = state.clone();
         let node = self
             .steps
             .get_mut(self.cursor)
@@ -2192,8 +2299,8 @@ where
                 self.state = Some(state);
                 Ok(request)
             }
-            Err(ExecutorError::Complete) => {
-                self.state = Some(state_backup);
+            Err((state, ExecutorError::Complete)) => {
+                self.state = Some(state);
                 let state = self.state.take().expect("executor state is always present");
                 let (state, completed) = node.try_complete_without_progress(state)?;
                 self.state = Some(state);
@@ -2203,8 +2310,8 @@ where
                 self.settle_without_progress()?;
                 Err(ExecutorError::Complete)
             }
-            Err(err) => {
-                self.state = Some(state_backup);
+            Err((state, err)) => {
+                self.state = Some(state);
                 Err(err)
             }
         }
@@ -2281,8 +2388,6 @@ where
     }
 
     pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError>
-    where
-        A::State: Clone,
     {
         self.settle_without_progress()?;
         if self.is_complete() {
@@ -2290,7 +2395,6 @@ where
         }
 
         let state = self.state.take().expect("executor state is always present");
-        let state_backup = state.clone();
         let node = self
             .steps
             .get_mut(self.cursor)
@@ -2300,8 +2404,8 @@ where
                 self.state = Some(state);
                 Ok(request)
             }
-            Err(ExecutorError::Complete) => {
-                self.state = Some(state_backup);
+            Err((state, ExecutorError::Complete)) => {
+                self.state = Some(state);
                 let state = self.state.take().expect("executor state is always present");
                 let (state, completed) = node.try_complete_without_progress(state)?;
                 self.state = Some(state);
@@ -2311,8 +2415,8 @@ where
                 self.settle_without_progress()?;
                 Err(ExecutorError::Complete)
             }
-            Err(err) => {
-                self.state = Some(state_backup);
+            Err((state, err)) => {
+                self.state = Some(state);
                 Err(err)
             }
         }
@@ -2322,8 +2426,6 @@ where
         &mut self,
         input: Serialized,
     ) -> Result<ExecutableActionRequest, ExecutorError>
-    where
-        A::State: Clone,
     {
         self.settle_without_progress()?;
         if self.is_complete() {
@@ -2331,7 +2433,6 @@ where
         }
 
         let state = self.state.take().expect("executor state is always present");
-        let state_backup = state.clone();
         let node = self
             .steps
             .get_mut(self.cursor)
@@ -2341,8 +2442,8 @@ where
                 self.state = Some(state);
                 Ok(request)
             }
-            Err(ExecutorError::Complete) => {
-                self.state = Some(state_backup);
+            Err((state, ExecutorError::Complete)) => {
+                self.state = Some(state);
                 let state = self.state.take().expect("executor state is always present");
                 let (state, completed) = node.try_complete_without_progress(state)?;
                 self.state = Some(state);
@@ -2352,8 +2453,8 @@ where
                 self.settle_without_progress()?;
                 Err(ExecutorError::Complete)
             }
-            Err(err) => {
-                self.state = Some(state_backup);
+            Err((state, err)) => {
+                self.state = Some(state);
                 Err(err)
             }
         }
@@ -2361,7 +2462,6 @@ where
 
     pub fn next_request_typed<In, Request>(&mut self, input: In) -> Result<Request, ExecutorError>
     where
-        A::State: Clone,
         In: Serialize,
         Request: DeserializeOwned,
     {
@@ -2439,7 +2539,6 @@ where
         completion: SerializedCompletion,
     ) -> Result<Emitted, ExecutorError>
     where
-        A::State: Clone,
         Emitted: DeserializeOwned,
     {
         self.next_request(input)?;
@@ -2452,7 +2551,6 @@ where
         completion: Result<Out, Err>,
     ) -> Result<Emitted, ExecutorError>
     where
-        A::State: Clone,
         In: Serialize,
         Out: Serialize,
         Err: Serialize,
@@ -2468,7 +2566,6 @@ where
         inputs: impl IntoIterator<Item = (Serialized, SerializedCompletion)>,
     ) -> Result<Vec<Emitted>, ExecutorError>
     where
-        A::State: Clone,
         Emitted: DeserializeOwned,
     {
         let mut completions = inputs.into_iter();
@@ -2488,7 +2585,6 @@ where
         inputs: impl IntoIterator<Item = (In, Result<Out, Err>)>,
     ) -> Result<Vec<Emitted>, ExecutorError>
     where
-        A::State: Clone,
         In: Serialize,
         Out: Serialize,
         Err: Serialize,
@@ -2546,7 +2642,6 @@ where
 
     pub fn next_request<Request>(&mut self) -> Result<Request, ExecutorError>
     where
-        A::State: Clone,
         Request: DeserializeOwned + Default + Serialize,
     {
         let input = self.last_emitted.take().unwrap_or_else(|| {
@@ -2561,7 +2656,6 @@ where
         initial_input: Initial,
     ) -> Result<ExecutableActionRequest, ExecutorError>
     where
-        A::State: Clone,
         Initial: Serialize,
     {
         let input = match self.last_emitted.take() {
@@ -2600,8 +2694,6 @@ where
         &mut self,
         initial_input: impl Serialize,
     ) -> Result<Serialized, ExecutorError>
-    where
-        A::State: Clone,
     {
         let request = self.next_executable_request(initial_input)?;
         let completion = request.run().await?;
@@ -2613,7 +2705,6 @@ where
         initial_input: Initial,
     ) -> Result<Vec<Serialized>, ExecutorError>
     where
-        A::State: Clone,
         Initial: Serialize + Clone,
     {
         let mut emitted = Vec::new();
@@ -2628,7 +2719,6 @@ where
         completions: impl IntoIterator<Item = Result<Out, Err>>,
     ) -> Result<Vec<Emitted>, ExecutorError>
     where
-        A::State: Clone,
         Out: Serialize,
         Err: Serialize,
         Request: DeserializeOwned + Default + Serialize,
