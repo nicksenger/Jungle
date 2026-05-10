@@ -1,5 +1,5 @@
 use crate::{
-    Act, Action, ActionCompletion, Animal, BackendError, Condition, Conditional, Join,
+    Act, Action, ActionCompletion, Animal, BackendError, ConditionInput, Conditional, Join,
     LoopCondition, Running, Select, Step, While,
 };
 use inception::*;
@@ -399,9 +399,9 @@ where
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
-    choose_left: Box<dyn Fn(&(State, In)) -> bool>,
     active_branch: Option<ActiveBranch>,
     cursor: usize,
+    marker: core::marker::PhantomData<fn() -> In>,
 }
 
 impl<State, In> ConditionalErasedFlow<State, In>
@@ -411,14 +411,13 @@ where
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        choose_left: Box<dyn Fn(&(State, In)) -> bool>,
     ) -> Self {
         Self {
             left,
             right,
-            choose_left,
             active_branch: None,
             cursor: 0,
+            marker: core::marker::PhantomData,
         }
     }
 
@@ -446,18 +445,17 @@ where
 
 impl<State, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
 where
-    State: Clone,
-    In: DeserializeOwned,
+    In: DeserializeOwned + ConditionInput,
 {
     fn request(
         &mut self,
         state: State,
         input: Serialized,
     ) -> Result<(State, Serialized), ExecutorError> {
+        let typed_input = postcard::from_bytes::<In>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
         if self.active_branch.is_none() {
-            let typed_input = postcard::from_bytes::<In>(&input)
-                .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-            let choose_left = (self.choose_left)(&(state.clone(), typed_input));
+            let choose_left = <In as ConditionInput>::choose_left(&typed_input);
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
             } else {
@@ -499,10 +497,10 @@ where
         state: State,
         input: Serialized,
     ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+        let typed_input = postcard::from_bytes::<In>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
         if self.active_branch.is_none() {
-            let typed_input = postcard::from_bytes::<In>(&input)
-                .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-            let choose_left = (self.choose_left)(&(state.clone(), typed_input));
+            let choose_left = <In as ConditionInput>::choose_left(&typed_input);
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
             } else {
@@ -545,12 +543,15 @@ where
     }
 }
 
-struct WhileErasedFlow<State> {
-    should_continue: Box<dyn Fn(&State) -> bool>,
+struct WhileErasedFlow<State, In>
+where
+    In: DeserializeOwned + Serialize,
+{
     build_body: Box<dyn Fn() -> DynFlow<State>>,
     active_body: DynFlow<State>,
     body_cursor: usize,
     complete: bool,
+    marker: core::marker::PhantomData<fn() -> In>,
 }
 
 #[derive(Debug, Clone, Deserialize, SerdeSerialize)]
@@ -1117,17 +1118,17 @@ where
     }
 }
 
-impl<State> WhileErasedFlow<State> {
-    fn new(
-        should_continue: Box<dyn Fn(&State) -> bool>,
-        build_body: Box<dyn Fn() -> DynFlow<State>>,
-    ) -> Self {
+impl<State, In> WhileErasedFlow<State, In>
+where
+    In: DeserializeOwned + Serialize,
+{
+    fn new(build_body: Box<dyn Fn() -> DynFlow<State>>) -> Self {
         Self {
-            should_continue,
             build_body,
             active_body: Vec::new(),
             body_cursor: 0,
             complete: false,
+            marker: core::marker::PhantomData,
         }
     }
 
@@ -1139,7 +1140,10 @@ impl<State> WhileErasedFlow<State> {
     }
 }
 
-impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
+impl<State, In> ErasedFlow<State> for WhileErasedFlow<State, In>
+where
+    In: DeserializeOwned + Serialize,
+{
     fn request(
         &mut self,
         state: State,
@@ -1148,11 +1152,14 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
         if self.complete {
             return Err(ExecutorError::Complete);
         }
-
-        if !(self.should_continue)(&state) {
+        let (should_continue, branch_input) = postcard::from_bytes::<(bool, In)>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        if !should_continue {
             self.complete = true;
             return Err(ExecutorError::Complete);
         }
+        let branch_input = postcard::to_allocvec(&branch_input)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
 
         self.ensure_iteration_ready();
 
@@ -1160,7 +1167,7 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
             .active_body
             .get_mut(self.body_cursor)
             .expect("body cursor always points to an active body node");
-        node.request(state, input)
+        node.request(state, branch_input)
     }
 
     fn complete(
@@ -1195,11 +1202,14 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
         if self.complete {
             return Err(ExecutorError::Complete);
         }
-
-        if !(self.should_continue)(&state) {
+        let (should_continue, branch_input) = postcard::from_bytes::<(bool, In)>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        if !should_continue {
             self.complete = true;
             return Err(ExecutorError::Complete);
         }
+        let branch_input = postcard::to_allocvec(&branch_input)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
 
         self.ensure_iteration_ready();
 
@@ -1207,7 +1217,7 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
             .active_body
             .get_mut(self.body_cursor)
             .expect("body cursor always points to an active body node");
-        node.request_executable(state, input)
+        node.request_executable(state, branch_input)
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -1226,10 +1236,6 @@ impl<State> ErasedFlow<State> for WhileErasedFlow<State> {
         state: State,
     ) -> Result<(State, bool), ExecutorError> {
         if self.complete {
-            return Ok((state, true));
-        }
-        if !(self.should_continue)(&state) {
-            self.complete = true;
             return Ok((state, true));
         }
         Ok((state, false))
@@ -1296,9 +1302,8 @@ where
 #[inception::primitive(property = crate::JungleDynFlow)]
 impl<State, In, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
 where
-    State: Clone + 'static,
-    In: DeserializeOwned + 'static,
-    P: Condition<(State, In)> + 'static,
+    State: 'static,
+    In: DeserializeOwned + ConditionInput + 'static,
     L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
     R: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
 {
@@ -1307,31 +1312,26 @@ where
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let left = <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
-        let choose_left =
-            Box::new(|input: &(State, In)| <P as Condition<(State, In)>>::choose(input));
-        steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(
-            left,
-            right,
-            choose_left,
-        )));
+        let _marker = core::marker::PhantomData::<P>;
+        steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(left, right)));
         steps
     }
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, C, F> BuildFlow<DynFlow<State>> for While<C, F>
+impl<State, In, C, F> BuildFlow<DynFlow<State>> for While<C, F>
 where
     State: 'static,
-    C: LoopCondition<State> + 'static,
+    In: DeserializeOwned + Serialize + 'static,
+    C: LoopCondition<State, CarryIn = In> + 'static,
     F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
-        let should_continue =
-            Box::new(|state: &State| <C as LoopCondition<State>>::should_continue(state));
+        let _marker = core::marker::PhantomData::<(C, In)>;
         let build_body = Box::new(|| <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
-        steps.push(Box::new(WhileErasedFlow::new(should_continue, build_body)));
+        steps.push(Box::new(WhileErasedFlow::<State, In>::new(build_body)));
         steps
     }
 }
@@ -1446,9 +1446,9 @@ where
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
-    choose_left: Box<dyn Fn(&(State, In)) -> bool>,
     active_branch: Option<ActiveContextBranch>,
     cursor: usize,
+    marker: core::marker::PhantomData<fn() -> In>,
 }
 
 impl<State, In> ConditionalContextErasedFlow<State, In>
@@ -1458,14 +1458,13 @@ where
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        choose_left: Box<dyn Fn(&(State, In)) -> bool>,
     ) -> Self {
         Self {
             left,
             right,
-            choose_left,
             active_branch: None,
             cursor: 0,
+            marker: core::marker::PhantomData,
         }
     }
 
@@ -1493,18 +1492,17 @@ where
 
 impl<State, In> ErasedFlow<State> for ConditionalContextErasedFlow<State, In>
 where
-    State: Clone,
-    In: DeserializeOwned,
+    In: DeserializeOwned + ConditionInput,
 {
     fn request(
         &mut self,
         state: State,
         input: Serialized,
     ) -> Result<(State, Serialized), ExecutorError> {
+        let typed_input = postcard::from_bytes::<In>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
         if self.active_branch.is_none() {
-            let typed_input = postcard::from_bytes::<In>(&input)
-                .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-            let choose_left = (self.choose_left)(&(state.clone(), typed_input));
+            let choose_left = <In as ConditionInput>::choose_left(&typed_input);
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
             } else {
@@ -1546,10 +1544,10 @@ where
         state: State,
         input: Serialized,
     ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
+        let typed_input = postcard::from_bytes::<In>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
         if self.active_branch.is_none() {
-            let typed_input = postcard::from_bytes::<In>(&input)
-                .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-            let choose_left = (self.choose_left)(&(state.clone(), typed_input));
+            let choose_left = <In as ConditionInput>::choose_left(&typed_input);
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
             } else {
@@ -1597,9 +1595,8 @@ impl<Context, State, In, P, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<St
     for Conditional<P, L, R>
 where
     Context: 'static,
-    State: Clone + 'static,
-    In: DeserializeOwned + 'static,
-    P: Condition<(State, In)> + 'static,
+    State: 'static,
+    In: DeserializeOwned + ConditionInput + 'static,
     L: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
         + Running<In = (State, In)>,
     R: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
@@ -1616,36 +1613,34 @@ where
             context,
             Vec::new(),
         ));
-        let choose_left =
-            Box::new(|input: &(State, In)| <P as Condition<(State, In)>>::choose(input));
-        steps.push(Box::new(ConditionalContextErasedFlow::<State, In>::new(
-            left,
-            right,
-            choose_left,
-        )));
+        let _marker = core::marker::PhantomData::<P>;
+        steps.push(Box::new(ConditionalContextErasedFlow::<State, In>::new(left, right)));
         steps
     }
 }
 
-struct WhileContextErasedFlow<State> {
-    should_continue: Box<dyn Fn(&State) -> bool>,
+struct WhileContextErasedFlow<State, In>
+where
+    In: DeserializeOwned + Serialize,
+{
     build_body: Box<dyn Fn() -> DynFlow<State>>,
     active_body: DynFlow<State>,
     body_cursor: usize,
     complete: bool,
+    marker: core::marker::PhantomData<fn() -> In>,
 }
 
-impl<State> WhileContextErasedFlow<State> {
-    fn new(
-        should_continue: Box<dyn Fn(&State) -> bool>,
-        build_body: Box<dyn Fn() -> DynFlow<State>>,
-    ) -> Self {
+impl<State, In> WhileContextErasedFlow<State, In>
+where
+    In: DeserializeOwned + Serialize,
+{
+    fn new(build_body: Box<dyn Fn() -> DynFlow<State>>) -> Self {
         Self {
-            should_continue,
             build_body,
             active_body: Vec::new(),
             body_cursor: 0,
             complete: false,
+            marker: core::marker::PhantomData,
         }
     }
 
@@ -1657,7 +1652,10 @@ impl<State> WhileContextErasedFlow<State> {
     }
 }
 
-impl<State> ErasedFlow<State> for WhileContextErasedFlow<State> {
+impl<State, In> ErasedFlow<State> for WhileContextErasedFlow<State, In>
+where
+    In: DeserializeOwned + Serialize,
+{
     fn request(
         &mut self,
         state: State,
@@ -1666,11 +1664,14 @@ impl<State> ErasedFlow<State> for WhileContextErasedFlow<State> {
         if self.complete {
             return Err(ExecutorError::Complete);
         }
-
-        if !(self.should_continue)(&state) {
+        let (should_continue, branch_input) = postcard::from_bytes::<(bool, In)>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        if !should_continue {
             self.complete = true;
             return Err(ExecutorError::Complete);
         }
+        let branch_input = postcard::to_allocvec(&branch_input)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
 
         self.ensure_iteration_ready();
 
@@ -1678,7 +1679,7 @@ impl<State> ErasedFlow<State> for WhileContextErasedFlow<State> {
             .active_body
             .get_mut(self.body_cursor)
             .expect("body cursor always points to an active body node");
-        node.request(state, input)
+        node.request(state, branch_input)
     }
 
     fn complete(
@@ -1713,11 +1714,14 @@ impl<State> ErasedFlow<State> for WhileContextErasedFlow<State> {
         if self.complete {
             return Err(ExecutorError::Complete);
         }
-
-        if !(self.should_continue)(&state) {
+        let (should_continue, branch_input) = postcard::from_bytes::<(bool, In)>(&input)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        if !should_continue {
             self.complete = true;
             return Err(ExecutorError::Complete);
         }
+        let branch_input = postcard::to_allocvec(&branch_input)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
 
         self.ensure_iteration_ready();
 
@@ -1725,7 +1729,7 @@ impl<State> ErasedFlow<State> for WhileContextErasedFlow<State> {
             .active_body
             .get_mut(self.body_cursor)
             .expect("body cursor always points to an active body node");
-        node.request_executable(state, input)
+        node.request_executable(state, branch_input)
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -1746,37 +1750,30 @@ impl<State> ErasedFlow<State> for WhileContextErasedFlow<State> {
         if self.complete {
             return Ok((state, true));
         }
-        if !(self.should_continue)(&state) {
-            self.complete = true;
-            return Ok((state, true));
-        }
         Ok((state, false))
     }
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, C, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for While<C, F>
+impl<Context, State, In, C, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for While<C, F>
 where
     Context: 'static,
     State: 'static,
-    C: LoopCondition<State> + 'static,
+    In: DeserializeOwned + Serialize + 'static,
+    C: LoopCondition<State, CarryIn = In> + 'static,
     F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>> + 'static,
 {
     type Output = DynFlow<State>;
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let should_continue =
-            Box::new(|state: &State| <C as LoopCondition<State>>::should_continue(state));
+        let _marker = core::marker::PhantomData::<(C, In)>;
         let build_body = Box::new(move || {
             <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
                 Arc::clone(&context),
                 Vec::new(),
             ))
         });
-        steps.push(Box::new(WhileContextErasedFlow::new(
-            should_continue,
-            build_body,
-        )));
+        steps.push(Box::new(WhileContextErasedFlow::<State, In>::new(build_body)));
         steps
     }
 }

@@ -1,6 +1,5 @@
 use jungle_sdk::types::{
-    Act, ActionCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, Step,
-    Waiting, While,
+    Act, ActionCompletion, Executor, Identity, ManualExecutor, Running, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Journey;
@@ -22,7 +21,7 @@ impl Act<Looper> for Tick {
     type Action = TickAction;
     type Aspect = Identity;
     type In = i32;
-    type Out = i32;
+    type Out = (bool, i32);
 
     fn emit(state: &i32, input: Self::In) -> i32 {
         *state + input
@@ -31,19 +30,13 @@ impl Act<Looper> for Tick {
     fn absorb(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Out {
         let value = output.expect("tick action should succeed");
         *state = value;
-        value
+        (*state < 3, value)
     }
 }
 
 type TickFlow = Step<Looper, Tick>;
 
 struct LessThanThree;
-impl LoopCondition<i32> for LessThanThree {
-    fn should_continue(state: &i32) -> bool {
-        *state < 3
-    }
-}
-
 type WhileTickFlow = While<LessThanThree, TickFlow>;
 
 #[derive(Journey)]
@@ -51,13 +44,13 @@ struct LoopJourney(WhileTickFlow);
 
 #[test]
 fn while_running_checks_state_before_iteration() {
-    let run = <WhileTickFlow as Running>::run((0, 1));
+    let run = <WhileTickFlow as Running>::run((true, (0, 1)));
     match run {
         Some((_state, request)) => assert_eq!(request.into_input(), 1),
         None => panic!("expected iteration to run"),
     }
 
-    let run = <WhileTickFlow as Running>::run((3, 1));
+    let run = <WhileTickFlow as Running>::run((false, (3, 1)));
     assert!(run.is_none());
 }
 
@@ -67,7 +60,7 @@ fn while_waiting_passthroughs_optional_branch() {
     match waited {
         Some((state, emitted)) => {
             assert_eq!(state, 2);
-            assert_eq!(emitted, 2);
+            assert_eq!(emitted, (true, 2));
         }
         None => panic!("expected waiting output"),
     }
@@ -79,49 +72,55 @@ fn while_waiting_passthroughs_optional_branch() {
 #[test]
 fn executor_repeats_until_condition_fails() {
     let mut loop_executor = ManualExecutor::<Looper>::new(0);
-    let emitted: Vec<i32> = loop_executor
+    let emitted: Vec<(bool, i32)> = loop_executor
         .advance_to_end_typed(vec![
-            (1, Ok::<i32, ()>(1)),
-            (1, Ok::<i32, ()>(2)),
-            (1, Ok::<i32, ()>(3)),
+            ((true, 1), Ok::<i32, ()>(1)),
+            ((true, 1), Ok::<i32, ()>(2)),
+            ((true, 1), Ok::<i32, ()>(3)),
         ])
         .expect("while loop should advance");
-    assert_eq!(emitted, vec![1, 2, 3]);
+    assert_eq!(emitted, vec![(true, 1), (true, 2), (false, 3)]);
     assert!(loop_executor.is_complete());
     assert_eq!(loop_executor.into_state(), 3);
 }
 
 #[test]
 fn executor_completes_zero_iteration_loop() {
-    let loop_executor = Executor::<Looper>::new(3);
-    assert!(loop_executor.is_complete());
-    assert_eq!(loop_executor.into_state(), 3);
+    let mut loop_executor = Executor::<Looper>::new(3);
+    let run = loop_executor.next_request::<(bool, i32)>();
+    assert!(run.is_err());
+    assert!(!loop_executor.is_complete());
+    let _ = loop_executor
+        .next_executable_request((false, 1))
+        .expect_err("false loop flag should complete without request");
 }
 
 #[test]
 fn executor_threads_loop_inputs_from_previous_emitted_output() {
     let mut loop_executor = Executor::<Looper>::new(0);
 
-    let request1: i32 = loop_executor.next_request().expect("request 1");
+    let request1: i32 = loop_executor
+        .next_request::<(bool, i32)>()
+        .expect("request 1");
     assert_eq!(request1, 0);
-    let emitted1: i32 = loop_executor
+    let emitted1: (bool, i32) = loop_executor
         .complete(Ok::<i32, ()>(1))
         .expect("complete 1");
-    assert_eq!(emitted1, 1);
+    assert_eq!(emitted1, (true, 1));
 
     let request2: i32 = loop_executor.next_request().expect("request 2");
     assert_eq!(request2, 2);
-    let emitted2: i32 = loop_executor
+    let emitted2: (bool, i32) = loop_executor
         .complete(Ok::<i32, ()>(2))
         .expect("complete 2");
-    assert_eq!(emitted2, 2);
+    assert_eq!(emitted2, (true, 2));
 
     let request3: i32 = loop_executor.next_request().expect("request 3");
     assert_eq!(request3, 4);
-    let emitted3: i32 = loop_executor
+    let emitted3: (bool, i32) = loop_executor
         .complete(Ok::<i32, ()>(3))
         .expect("complete 3");
-    assert_eq!(emitted3, 3);
+    assert_eq!(emitted3, (false, 3));
 
     assert!(loop_executor.is_complete());
     assert_eq!(loop_executor.into_state(), 3);
