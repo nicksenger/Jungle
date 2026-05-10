@@ -10,7 +10,6 @@ pub struct JungleExecutor<T, A>
 where
     T: Jungle + 'static,
     A: Animal,
-    A::State: Clone,
     A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     inner: ContextExecutor<T, A>,
@@ -20,7 +19,6 @@ impl<T, A> JungleExecutor<T, A>
 where
     T: Jungle + 'static,
     A: Animal,
-    A::State: Clone,
     A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     pub fn new(jungle: T, state: A::State) -> Self {
@@ -43,6 +41,7 @@ where
 
     pub fn next_request<Request>(&mut self) -> Result<Request, ExecutorError>
     where
+        A::State: Clone,
         Request: DeserializeOwned + Default + Serialize,
     {
         self.inner.next_request()
@@ -53,6 +52,7 @@ where
         initial_input: Initial,
     ) -> Result<ExecutableActionRequest, ExecutorError>
     where
+        A::State: Clone,
         Initial: Serialize,
     {
         self.inner.next_executable_request(initial_input)
@@ -80,7 +80,10 @@ where
     pub async fn next_and_complete_with(
         &mut self,
         initial_input: impl Serialize,
-    ) -> Result<Vec<u8>, ExecutorError> {
+    ) -> Result<Vec<u8>, ExecutorError>
+    where
+        A::State: Clone,
+    {
         self.inner.next_and_complete_with(initial_input).await
     }
 
@@ -89,6 +92,7 @@ where
         initial_input: Initial,
     ) -> Result<Vec<Vec<u8>>, ExecutorError>
     where
+        A::State: Clone,
         Initial: Serialize + Clone,
     {
         self.inner.advance_to_end_with(initial_input).await
@@ -99,6 +103,7 @@ where
         completions: impl IntoIterator<Item = Result<Out, Err>>,
     ) -> Result<Vec<Emitted>, ExecutorError>
     where
+        A::State: Clone,
         Out: Serialize,
         Err: Serialize,
         Request: DeserializeOwned + Default + Serialize,

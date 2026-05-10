@@ -263,7 +263,6 @@ struct SuspendedAnimalJourney<T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::State: Clone,
     A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     journey_id: Uuid,

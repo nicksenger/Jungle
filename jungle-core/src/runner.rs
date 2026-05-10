@@ -63,7 +63,6 @@ where
     pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<T, A>
     where
         A: Animal,
-        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
@@ -78,7 +77,6 @@ where
     ) -> Result<(), ExecutorError>
     where
         A: Animal + AnimalObservation,
-        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
