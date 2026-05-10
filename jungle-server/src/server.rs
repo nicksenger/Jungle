@@ -168,6 +168,69 @@ impl JungleServer for Server {
                     )));
                 }
             }
+            Some(WireIn::PerturbAnimal { journey_id, data }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    self.store
+                        .enqueue_animal_perturbation(journey_id, data)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
+                    WireOut::Ack
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (journey_id, data);
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "perturb_animal is unavailable without a persistence backend".to_string(),
+                    )));
+                }
+            }
+            Some(WireIn::ClaimAnimalPerturbation(journey_id)) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let claimed = self
+                        .store
+                        .claim_animal_perturbation(journey_id)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
+                    WireOut::ClaimedAnimalPerturbation(claimed)
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = journey_id;
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "claim_animal_perturbation is unavailable without a persistence backend"
+                            .to_string(),
+                    )));
+                }
+            }
+            Some(WireIn::AckAnimalPerturbation {
+                journey_id,
+                perturbation_id,
+            }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    self.store
+                        .ack_animal_perturbation(journey_id, perturbation_id)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
+                    WireOut::Ack
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (journey_id, perturbation_id);
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "ack_animal_perturbation is unavailable without a persistence backend"
+                            .to_string(),
+                    )));
+                }
+            }
             Some(WireIn::JourneyComplete(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {

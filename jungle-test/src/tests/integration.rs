@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Act, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    Lens, LoopCondition, Observe, Step, While,
+    Lens, LoopCondition, Observe, Perturb, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -337,7 +337,8 @@ animal!(
     jungle_sdk::typosaurus::num::consts::U0,
     IntegrationState,
     IntegrationJourney,
-    observe = true
+    observe = true,
+    perturb = true
 );
 
 impl Observe for IntegrationAnimal {
@@ -345,6 +346,19 @@ impl Observe for IntegrationAnimal {
 
     fn observe(state: &Self::State) -> Self::Appearance {
         *state
+    }
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+struct IntegrationPerturbation {
+    delta: i32,
+}
+
+impl Perturb for IntegrationAnimal {
+    type Stimulus = IntegrationPerturbation;
+
+    fn perturb(state: &mut Self::State, stimulus: Self::Stimulus) {
+        state.total += stimulus.delta;
     }
 }
 
@@ -398,6 +412,12 @@ async fn redb_client_worker_flow_runs_to_completion() {
         .start_journey(ordinal, seed)
         .await
         .expect("start_journey should succeed");
+    let perturb_payload = postcard::to_allocvec(&IntegrationPerturbation { delta: 1000 })
+        .expect("perturb payload should serialize");
+    client
+        .perturb_animal(journey_id, perturb_payload)
+        .await
+        .expect("perturb_animal should enqueue perturbation");
 
     tokio::select! {
         result = &mut worker_future => {
@@ -455,6 +475,10 @@ async fn redb_client_worker_flow_runs_to_completion() {
     assert!(
         final_appearance.after_steps > 0,
         "final appearance should reflect progressed state"
+    );
+    assert!(
+        final_appearance.total >= 1000,
+        "final appearance should include applied perturbation delta"
     );
 
     server_task.abort();

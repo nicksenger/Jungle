@@ -1,6 +1,7 @@
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
-    BackendError, JourneyStatus, JungleClient, MockServer, RunnerOut, RunnerStep, WireIn, WireOut,
+    BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
+    RunnerStep, WireIn, WireOut,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -311,6 +312,109 @@ async fn client_handles_animal_appearance_round_trip() {
         requests[1],
         WireIn::HistoryEvent(RunnerOut::Appearance { uuid, ref data })
             if uuid == journey_id && data == &vec![7, 8, 9]
+    ));
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn client_handles_animal_perturbation_round_trip() {
+    let journey_id = Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb);
+    let captured_requests: Arc<Mutex<Vec<WireIn>>> = Arc::new(Mutex::new(Vec::new()));
+    let request_count = Arc::new(AtomicUsize::new(0));
+
+    let server = MockServer::builder()
+        .on_request({
+            let captured_requests = Arc::clone(&captured_requests);
+            let request_count = Arc::clone(&request_count);
+
+            move |request| {
+                let captured_requests = Arc::clone(&captured_requests);
+                let request_count = Arc::clone(&request_count);
+                Box::pin(async move {
+                    let Some(msg) = request else {
+                        return Err(BackendError::Message("expected a request".to_string()));
+                    };
+                    captured_requests.lock().unwrap().push(msg.clone());
+                    let idx = request_count.fetch_add(1, Ordering::SeqCst);
+                    match (idx, msg) {
+                        (
+                            0,
+                            WireIn::PerturbAnimal {
+                                journey_id: id,
+                                data,
+                            },
+                        ) if id == journey_id && data == vec![1, 2, 3] => Ok(WireOut::Ack),
+                        (1, WireIn::ClaimAnimalPerturbation(id)) if id == journey_id => Ok(
+                            WireOut::ClaimedAnimalPerturbation(Some(ClaimedAnimalPerturbation {
+                                id: 4,
+                                data: vec![9, 8, 7],
+                            })),
+                        ),
+                        (
+                            2,
+                            WireIn::AckAnimalPerturbation {
+                                journey_id: id,
+                                perturbation_id,
+                            },
+                        ) if id == journey_id && perturbation_id == 4 => Ok(WireOut::Ack),
+                        _ => Err(BackendError::Message(
+                            "unexpected request sequence for animal perturbation".to_string(),
+                        )),
+                    }
+                })
+            }
+        })
+        .build();
+
+    let listen_addr = super::reserve_local_addr();
+    let server_task = tokio::spawn(async move {
+        ServerBuilder::new()
+            .listen(listen_addr)
+            .backend(server)
+            .run()
+            .await
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    client
+        .perturb_animal(journey_id, vec![1, 2, 3])
+        .await
+        .expect("perturb_animal should ack");
+
+    let claimed = client
+        .claim_animal_perturbation(journey_id)
+        .await
+        .expect("claim_animal_perturbation should succeed")
+        .expect("claim_animal_perturbation should return a claim");
+    assert_eq!(claimed.id, 4);
+    assert_eq!(claimed.data, vec![9, 8, 7]);
+
+    client
+        .ack_animal_perturbation(journey_id, claimed.id)
+        .await
+        .expect("ack_animal_perturbation should ack");
+
+    let requests = captured_requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 3);
+    assert!(matches!(
+        requests[0],
+        WireIn::PerturbAnimal {
+            journey_id: id,
+            ref data
+        } if id == journey_id && data == &vec![1, 2, 3]
+    ));
+    assert!(matches!(
+        requests[1],
+        WireIn::ClaimAnimalPerturbation(id) if id == journey_id
+    ));
+    assert!(matches!(
+        requests[2],
+        WireIn::AckAnimalPerturbation {
+            journey_id: id,
+            perturbation_id
+        } if id == journey_id && perturbation_id == 4
     ));
 
     server_task.abort();

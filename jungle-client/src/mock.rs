@@ -1,7 +1,9 @@
-use crate::{JungleClient, RunnerChannelRx};
+use crate::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelRx};
 use async_trait::async_trait;
 use futures::StreamExt;
-use jungle_types::{ExecutorError, JourneyStatus, RunnerOut, RunnerStep};
+use jungle_types::{
+    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, RunnerOut, RunnerStep,
+};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -28,6 +30,16 @@ type FlowCompleteHandlerFuture =
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> FlowCompleteHandlerFuture + Send + Sync + 'static>;
 type FlowAppearanceUpdateHandler =
     Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
+type ClaimPerturbationHandlerFuture = Pin<
+    Box<
+        dyn Future<Output = Result<Option<ClaimedAnimalPerturbation>, ExecutorError>>
+            + Send
+            + 'static,
+    >,
+>;
+type ClaimPerturbationHandler =
+    Arc<dyn Fn(Uuid) -> ClaimPerturbationHandlerFuture + Send + Sync + 'static>;
+type AckPerturbationHandler = Arc<dyn Fn(Uuid, u64) -> HandlerFuture + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct MockClient {
@@ -35,6 +47,9 @@ pub struct MockClient {
     on_flow_status: FlowStatusHandler,
     on_flow_appearance: FlowAppearanceHandler,
     on_flow_appearance_update: FlowAppearanceUpdateHandler,
+    on_perturb_animal: Handler,
+    on_claim_perturbation: ClaimPerturbationHandler,
+    on_ack_perturbation: AckPerturbationHandler,
     on_flow_complete: FlowCompleteHandler,
     on_poll_work: PollStepHandler,
     on_action_input: Handler,
@@ -50,16 +65,34 @@ impl MockClient {
     pub async fn serve_runner_channel(&self, mut rx: RunnerChannelRx) {
         while let Some((message, done)) = rx.next().await {
             let result = match message {
-                RunnerOut::ActionInput { data, uuid } => self.action_input(uuid, data).await,
-                RunnerOut::ActionSuccessOutput { data, uuid } => {
-                    self.action_success_output(uuid, data).await
+                RunnerChannelMessage::History(history) => {
+                    let out = match history {
+                        RunnerOut::ActionInput { data, uuid } => {
+                            self.action_input(uuid, data).await
+                        }
+                        RunnerOut::ActionSuccessOutput { data, uuid } => {
+                            self.action_success_output(uuid, data).await
+                        }
+                        RunnerOut::ActionFailureOutput { data, uuid } => {
+                            self.action_failure_output(uuid, data).await
+                        }
+                        RunnerOut::Appearance { data, uuid } => {
+                            self.animal_appearance_update(uuid, data).await
+                        }
+                    };
+                    out.map(|_| RunnerChannelResponse::Ack)
                 }
-                RunnerOut::ActionFailureOutput { data, uuid } => {
-                    self.action_failure_output(uuid, data).await
-                }
-                RunnerOut::Appearance { data, uuid } => {
-                    self.animal_appearance_update(uuid, data).await
-                }
+                RunnerChannelMessage::ClaimAnimalPerturbation { journey_id } => self
+                    .claim_animal_perturbation(journey_id)
+                    .await
+                    .map(RunnerChannelResponse::ClaimedPerturbation),
+                RunnerChannelMessage::AckAnimalPerturbation {
+                    journey_id,
+                    perturbation_id,
+                } => self
+                    .ack_animal_perturbation(journey_id, perturbation_id)
+                    .await
+                    .map(|_| RunnerChannelResponse::Ack),
             };
             let _ = done.send(result);
         }
@@ -86,12 +119,27 @@ impl JungleClient for MockClient {
         (self.on_flow_appearance)(id).await
     }
 
-    async fn animal_appearance_update(
+    async fn animal_appearance_update(&self, id: Uuid, data: Vec<u8>) -> Result<(), ExecutorError> {
+        (self.on_flow_appearance_update)(id, data).await
+    }
+
+    async fn perturb_animal(&self, id: Uuid, payload: Vec<u8>) -> Result<(), ExecutorError> {
+        (self.on_perturb_animal)(id, payload).await
+    }
+
+    async fn claim_animal_perturbation(
         &self,
         id: Uuid,
-        data: Vec<u8>,
+    ) -> Result<Option<ClaimedAnimalPerturbation>, ExecutorError> {
+        (self.on_claim_perturbation)(id).await
+    }
+
+    async fn ack_animal_perturbation(
+        &self,
+        id: Uuid,
+        perturbation_id: u64,
     ) -> Result<(), ExecutorError> {
-        (self.on_flow_appearance_update)(id, data).await
+        (self.on_ack_perturbation)(id, perturbation_id).await
     }
 
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
@@ -121,6 +169,9 @@ pub struct MockClientBuilder {
     on_flow_status: Option<FlowStatusHandler>,
     on_flow_appearance: Option<FlowAppearanceHandler>,
     on_flow_appearance_update: Option<FlowAppearanceUpdateHandler>,
+    on_perturb_animal: Option<Handler>,
+    on_claim_perturbation: Option<ClaimPerturbationHandler>,
+    on_ack_perturbation: Option<AckPerturbationHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
     on_poll_work: Option<PollStepHandler>,
     on_action_input: Option<Handler>,
@@ -174,6 +225,37 @@ impl MockClientBuilder {
         self
     }
 
+    pub fn on_perturb_animal<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Vec<u8>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
+    {
+        self.on_perturb_animal = Some(Arc::new(move |id, payload| Box::pin(f(id, payload))));
+        self
+    }
+
+    pub fn on_claim_perturbation<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Option<ClaimedAnimalPerturbation>, ExecutorError>>
+            + Send
+            + 'static,
+    {
+        self.on_claim_perturbation = Some(Arc::new(move |id| Box::pin(f(id))));
+        self
+    }
+
+    pub fn on_ack_perturbation<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, u64) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
+    {
+        self.on_ack_perturbation = Some(Arc::new(move |id, perturbation_id| {
+            Box::pin(f(id, perturbation_id))
+        }));
+        self
+    }
+
     pub fn on_flow_complete<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Fut + Send + Sync + 'static,
@@ -220,6 +302,10 @@ impl MockClientBuilder {
             Arc::new(|_| Box::pin(async { Ok(None) }));
         let default_flow_appearance_update_handler: FlowAppearanceUpdateHandler =
             Arc::new(|_, _| Box::pin(async { Ok(()) }));
+        let default_claim_perturbation_handler: ClaimPerturbationHandler =
+            Arc::new(|_| Box::pin(async { Ok(None) }));
+        let default_ack_perturbation_handler: AckPerturbationHandler =
+            Arc::new(|_, _| Box::pin(async { Ok(()) }));
         let default_flow_complete_handler: FlowCompleteHandler =
             Arc::new(|_| Box::pin(async { Ok(()) }));
         let default_poll_work_handler: PollStepHandler = Arc::new(|| Box::pin(async { Ok(None) }));
@@ -236,6 +322,15 @@ impl MockClientBuilder {
             on_flow_appearance_update: self
                 .on_flow_appearance_update
                 .unwrap_or_else(|| default_flow_appearance_update_handler.clone()),
+            on_perturb_animal: self
+                .on_perturb_animal
+                .unwrap_or_else(|| default_handler.clone()),
+            on_claim_perturbation: self
+                .on_claim_perturbation
+                .unwrap_or_else(|| default_claim_perturbation_handler.clone()),
+            on_ack_perturbation: self
+                .on_ack_perturbation
+                .unwrap_or_else(|| default_ack_perturbation_handler.clone()),
             on_flow_complete: self
                 .on_flow_complete
                 .unwrap_or_else(|| default_flow_complete_handler.clone()),

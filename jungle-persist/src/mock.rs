@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use jungle_types::{JourneyStatus, RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, RunnerOut, RunnerStep};
 use uuid::Uuid;
 
 use crate::{JungleStore, Result};
@@ -11,6 +11,10 @@ type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync 
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
 type FlowAppearanceHandler = Arc<dyn Fn(Uuid) -> Result<Option<Vec<u8>>> + Send + Sync + 'static>;
 type UpsertFlowAppearanceHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static>;
+type EnqueuePerturbationHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static>;
+type ClaimPerturbationHandler =
+    Arc<dyn Fn(Uuid) -> Result<Option<ClaimedAnimalPerturbation>> + Send + Sync + 'static>;
+type AckPerturbationHandler = Arc<dyn Fn(Uuid, u64) -> Result<()> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
@@ -23,6 +27,9 @@ pub struct MockStore {
     on_flow_status: FlowStatusHandler,
     on_flow_appearance: FlowAppearanceHandler,
     on_upsert_flow_appearance: UpsertFlowAppearanceHandler,
+    on_enqueue_perturbation: EnqueuePerturbationHandler,
+    on_claim_perturbation: ClaimPerturbationHandler,
+    on_ack_perturbation: AckPerturbationHandler,
     on_flow_complete: FlowCompleteHandler,
     on_flow_alive_if_created: FlowAliveIfCreatedHandler,
     on_claim_work: ClaimWorkHandler,
@@ -65,6 +72,21 @@ impl JungleStore for MockStore {
         (self.on_upsert_flow_appearance)(journey_id, data)
     }
 
+    async fn enqueue_animal_perturbation(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        (self.on_enqueue_perturbation)(journey_id, data)
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        journey_id: Uuid,
+    ) -> Result<Option<ClaimedAnimalPerturbation>> {
+        (self.on_claim_perturbation)(journey_id)
+    }
+
+    async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()> {
+        (self.on_ack_perturbation)(journey_id, perturbation_id)
+    }
+
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
         (self.on_flow_complete)(journey_id)
     }
@@ -96,6 +118,9 @@ pub struct MockStoreBuilder {
     on_flow_status: Option<FlowStatusHandler>,
     on_flow_appearance: Option<FlowAppearanceHandler>,
     on_upsert_flow_appearance: Option<UpsertFlowAppearanceHandler>,
+    on_enqueue_perturbation: Option<EnqueuePerturbationHandler>,
+    on_claim_perturbation: Option<ClaimPerturbationHandler>,
+    on_ack_perturbation: Option<AckPerturbationHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
     on_flow_alive_if_created: Option<FlowAliveIfCreatedHandler>,
     on_claim_work: Option<ClaimWorkHandler>,
@@ -145,6 +170,30 @@ impl MockStoreBuilder {
         self
     }
 
+    pub fn on_enqueue_perturbation<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_enqueue_perturbation = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_claim_perturbation<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<Option<ClaimedAnimalPerturbation>> + Send + Sync + 'static,
+    {
+        self.on_claim_perturbation = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_ack_perturbation<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, u64) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_ack_perturbation = Some(Arc::new(f));
+        self
+    }
+
     pub fn on_flow_complete<F>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Result<()> + Send + Sync + 'static,
@@ -190,6 +239,9 @@ impl MockStoreBuilder {
         let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(JourneyStatus::Alive));
         let default_flow_appearance: FlowAppearanceHandler = Arc::new(|_| Ok(None));
         let default_upsert_flow_appearance: UpsertFlowAppearanceHandler = Arc::new(|_, _| Ok(()));
+        let default_enqueue_perturbation: EnqueuePerturbationHandler = Arc::new(|_, _| Ok(()));
+        let default_claim_perturbation: ClaimPerturbationHandler = Arc::new(|_| Ok(None));
+        let default_ack_perturbation: AckPerturbationHandler = Arc::new(|_, _| Ok(()));
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));
@@ -210,6 +262,15 @@ impl MockStoreBuilder {
             on_upsert_flow_appearance: self
                 .on_upsert_flow_appearance
                 .unwrap_or_else(|| default_upsert_flow_appearance.clone()),
+            on_enqueue_perturbation: self
+                .on_enqueue_perturbation
+                .unwrap_or_else(|| default_enqueue_perturbation.clone()),
+            on_claim_perturbation: self
+                .on_claim_perturbation
+                .unwrap_or_else(|| default_claim_perturbation.clone()),
+            on_ack_perturbation: self
+                .on_ack_perturbation
+                .unwrap_or_else(|| default_ack_perturbation.clone()),
             on_flow_complete: self
                 .on_flow_complete
                 .unwrap_or_else(|| default_flow_complete.clone()),

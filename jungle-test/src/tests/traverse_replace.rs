@@ -152,3 +152,7 @@ impl jungle_sdk::types::Animal for TraverseAnimal {
 impl jungle_sdk::types::AnimalObservation for TraverseAnimal {
     type Adapter = jungle_sdk::types::NoopObservation;
 }
+
+impl jungle_sdk::types::AnimalPerturbation for TraverseAnimal {
+    type Adapter = jungle_sdk::types::NoopPerturbation;
+}

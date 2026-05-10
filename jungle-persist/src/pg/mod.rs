@@ -4,7 +4,7 @@ use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
-use jungle_types::{RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, RunnerOut, RunnerStep};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
@@ -165,6 +165,119 @@ impl JungleStore for PgStore {
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(())
+    }
+
+    async fn enqueue_animal_perturbation(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        sqlx::query(
+            r#"
+            WITH next_sequence AS (
+                SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
+                FROM animal_perturbations
+                WHERE journey_id = $1
+            )
+            INSERT INTO animal_perturbations (
+                journey_id,
+                sequence_id,
+                data,
+                status,
+                claimed_at,
+                lease_until
+            )
+            SELECT $1, next_sequence.sequence_id, $2, $3, NULL, NULL
+            FROM next_sequence
+            "#,
+        )
+        .bind(journey_id)
+        .bind(data)
+        .bind(0_i16)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(())
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        journey_id: Uuid,
+    ) -> Result<Option<ClaimedAnimalPerturbation>> {
+        #[derive(Debug, sqlx::FromRow)]
+        struct ClaimedRow {
+            sequence_id: i64,
+            data: Vec<u8>,
+        }
+
+        let row = sqlx::query_as::<_, ClaimedRow>(
+            r#"
+            WITH next_item AS (
+                SELECT journey_id, sequence_id
+                FROM animal_perturbations
+                WHERE journey_id = $1
+                  AND (status = $2 OR (status = $3 AND lease_until < NOW()))
+                ORDER BY sequence_id
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            ),
+            claimed AS (
+                UPDATE animal_perturbations ap
+                SET status = $3,
+                    claimed_at = NOW(),
+                    lease_until = NOW() + INTERVAL '30 seconds'
+                FROM next_item ni
+                WHERE ap.journey_id = ni.journey_id
+                  AND ap.sequence_id = ni.sequence_id
+                RETURNING ap.sequence_id, ap.data
+            )
+            SELECT sequence_id, data
+            FROM claimed
+            "#,
+        )
+        .bind(journey_id)
+        .bind(0_i16)
+        .bind(1_i16)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let id = u64::try_from(row.sequence_id).map_err(|_| {
+            crate::PersistenceError::Message(format!(
+                "negative sequence_id claimed for perturbation: {}",
+                row.sequence_id
+            ))
+        })?;
+
+        Ok(Some(ClaimedAnimalPerturbation { id, data: row.data }))
+    }
+
+    async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()> {
+        let sequence_id = i64::try_from(perturbation_id).map_err(|_| {
+            crate::PersistenceError::Message(format!(
+                "perturbation id exceeds i64 range for postgres: {perturbation_id}"
+            ))
+        })?;
+        let result = sqlx::query(
+            r#"
+            DELETE FROM animal_perturbations
+            WHERE journey_id = $1 AND sequence_id = $2
+            "#,
+        )
+        .bind(journey_id)
+        .bind(sequence_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        if result.rows_affected() == 0 {
+            return Err(crate::PersistenceError::Message(format!(
+                "animal perturbation not found for ack: {journey_id}:{perturbation_id}"
+            )));
+        }
 
         Ok(())
     }

@@ -1,7 +1,8 @@
 use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
-    BackendError, ExecutorError, JourneyStatus, RunnerOut, RunnerStep, WireIn, WireOut,
+    BackendError, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, RunnerOut, RunnerStep,
+    WireIn, WireOut,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -210,6 +211,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(journey_id) => Ok(journey_id),
             WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
@@ -228,6 +230,7 @@ impl JungleClient for Client {
             WireOut::JourneyStatus(status) => Ok(status),
             WireOut::JourneyCreated(_)
             | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
@@ -246,6 +249,7 @@ impl JungleClient for Client {
             WireOut::AnimalAppearance(appearance) => Ok(appearance),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
@@ -254,11 +258,7 @@ impl JungleClient for Client {
         }
     }
 
-    async fn animal_appearance_update(
-        &self,
-        id: Uuid,
-        data: Vec<u8>,
-    ) -> Result<(), ExecutorError> {
+    async fn animal_appearance_update(&self, id: Uuid, data: Vec<u8>) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::HistoryEvent(RunnerOut::Appearance {
                 data,
@@ -272,9 +272,80 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for animal_appearance_update".to_string(),
+            )),
+        }
+    }
+
+    async fn perturb_animal(&self, id: Uuid, payload: Vec<u8>) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::PerturbAnimal {
+                journey_id: id,
+                data: payload,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for perturb_animal".to_string(),
+            )),
+        }
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<ClaimedAnimalPerturbation>, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::ClaimAnimalPerturbation(id))
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::ClaimedAnimalPerturbation(claimed) => Ok(claimed),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_)
+            | WireOut::Ack => Err(ExecutorError::ClientTransport(
+                "unexpected response for claim_animal_perturbation".to_string(),
+            )),
+        }
+    }
+
+    async fn ack_animal_perturbation(
+        &self,
+        id: Uuid,
+        perturbation_id: u64,
+    ) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::AckAnimalPerturbation {
+                journey_id: id,
+                perturbation_id,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for ack_animal_perturbation".to_string(),
             )),
         }
     }
@@ -290,6 +361,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
@@ -309,6 +381,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for poll_work".to_string(),
             )),
@@ -329,6 +402,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_input".to_string(),
@@ -350,6 +424,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_success_output".to_string(),
@@ -371,6 +446,7 @@ impl JungleClient for Client {
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_failure_output".to_string(),

@@ -1,10 +1,10 @@
 use crate::runner::JungleRunner;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use jungle_client::{JungleClient, RunnerChannelTx};
+use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    Animal, AnimalObservation, AnimalSet, Animals, BuildFlowWithContext, DynFlow, Ecosystem,
-    ExecutorError, RunnerOut, RunnerStep, StripAnimalHeaders,
+    Animal, AnimalObservation, AnimalPerturbation, AnimalSet, Animals, BuildFlowWithContext,
+    DynFlow, Ecosystem, ExecutorError, RunnerOut, RunnerStep, StripAnimalHeaders,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -51,21 +51,39 @@ where
         let client_for_transport = self.client.clone();
         tokio::spawn(async move {
             while let Some((message, done)) = rx.next().await {
-                let result = match message {
-                    RunnerOut::ActionInput { data, uuid } => {
-                        client_for_transport.action_input(uuid, data).await
+                let result: Result<RunnerChannelResponse, ExecutorError> = match message {
+                    RunnerChannelMessage::History(history) => {
+                        let out = match history {
+                            RunnerOut::ActionInput { data, uuid } => {
+                                client_for_transport.action_input(uuid, data).await
+                            }
+                            RunnerOut::ActionSuccessOutput { data, uuid } => {
+                                client_for_transport.action_success_output(uuid, data).await
+                            }
+                            RunnerOut::ActionFailureOutput { data, uuid } => {
+                                client_for_transport.action_failure_output(uuid, data).await
+                            }
+                            RunnerOut::Appearance { data, uuid } => {
+                                client_for_transport
+                                    .animal_appearance_update(uuid, data)
+                                    .await
+                            }
+                        };
+                        out.map(|_| RunnerChannelResponse::Ack)
                     }
-                    RunnerOut::ActionSuccessOutput { data, uuid } => {
-                        client_for_transport.action_success_output(uuid, data).await
-                    }
-                    RunnerOut::ActionFailureOutput { data, uuid } => {
-                        client_for_transport.action_failure_output(uuid, data).await
-                    }
-                    RunnerOut::Appearance { data, uuid } => {
+                    RunnerChannelMessage::ClaimAnimalPerturbation { journey_id } => {
                         client_for_transport
-                            .animal_appearance_update(uuid, data)
+                            .claim_animal_perturbation(journey_id)
                             .await
+                            .map(RunnerChannelResponse::ClaimedPerturbation)
                     }
+                    RunnerChannelMessage::AckAnimalPerturbation {
+                        journey_id,
+                        perturbation_id,
+                    } => client_for_transport
+                        .ack_animal_perturbation(journey_id, perturbation_id)
+                        .await
+                        .map(|_| RunnerChannelResponse::Ack),
                 };
                 let _ = done.send(result);
             }
@@ -125,6 +143,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
 impl<T, Head, Tail, Ordinal> SpawnByOrdinal<T> for list::List<(Head, Tail)>
 where
     Head: Animal<Id = jungle_types::Id<Ordinal>> + AnimalObservation + Send + Sync + 'static,
+    Head: AnimalPerturbation,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
     Head::Journey:

@@ -10,8 +10,9 @@ const SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
-const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("animal_appearances");
+const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("animal_appearances");
+const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
+    TableDefinition::new("animal_perturbations");
 
 impl RedbStore {
     pub(super) async fn migrate_v0(&self) -> Result<()> {
@@ -62,6 +63,11 @@ impl RedbStore {
         tx.open_table(APPEARANCES_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!(
                 "redb open animal_appearances table failed: {err}"
+            ))
+        })?;
+        tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb open animal_perturbations table failed: {err}"
             ))
         })?;
 

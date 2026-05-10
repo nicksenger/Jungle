@@ -22,6 +22,7 @@ pub use meta::{
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
+pub use transport::ClaimedAnimalPerturbation;
 pub use transport::{BackendError, JourneyStatus, RunnerOut, Step as RunnerStep, WireIn, WireOut};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
@@ -127,6 +128,52 @@ where
 /// Per-animal binding that selects how appearance snapshots are produced.
 pub trait AnimalObservation: Animal + Sized {
     type Adapter: ObservationAdapter<Self>;
+}
+
+/// Adapter invoked by executors/runners to optionally apply perturbation payloads.
+pub trait PerturbationAdapter<A: Animal> {
+    fn enabled() -> bool {
+        true
+    }
+
+    fn apply(state: &mut A::State, payload: &[u8]) -> Result<bool, ExecutorError>;
+}
+
+/// Default no-op perturbation adapter for animals without perturb handlers.
+pub struct NoopPerturbation;
+
+impl<A> PerturbationAdapter<A> for NoopPerturbation
+where
+    A: Animal,
+{
+    fn enabled() -> bool {
+        false
+    }
+
+    fn apply(_state: &mut A::State, _payload: &[u8]) -> Result<bool, ExecutorError> {
+        Ok(false)
+    }
+}
+
+/// Perturbation adapter that bridges [`Perturb`] from serialized stimuli.
+pub struct TraitPerturbation;
+
+impl<A> PerturbationAdapter<A> for TraitPerturbation
+where
+    A: Perturb,
+    A::Stimulus: DeserializeOwned,
+{
+    fn apply(state: &mut A::State, payload: &[u8]) -> Result<bool, ExecutorError> {
+        let stimulus: A::Stimulus = postcard::from_bytes(payload)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        <A as Perturb>::perturb(state, stimulus);
+        Ok(true)
+    }
+}
+
+/// Per-animal binding that selects how perturbation payloads are applied.
+pub trait AnimalPerturbation: Animal + Sized {
+    type Adapter: PerturbationAdapter<Self>;
 }
 
 #[inception(property = Ident, types)]

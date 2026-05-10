@@ -15,6 +15,12 @@ pub enum RunnerOut {
     Appearance { data: Vec<u8>, uuid: Uuid },
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ClaimedAnimalPerturbation {
+    pub id: u64,
+    pub data: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum JourneyStatus {
     Created,
@@ -37,9 +43,21 @@ pub enum Step {
 /// Wire-level messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireIn {
-    CreateJourney { ordinal: u32, seed: Vec<u8> },
+    CreateJourney {
+        ordinal: u32,
+        seed: Vec<u8>,
+    },
     JourneyStatus(Uuid),
     AnimalAppearance(Uuid),
+    PerturbAnimal {
+        journey_id: Uuid,
+        data: Vec<u8>,
+    },
+    ClaimAnimalPerturbation(Uuid),
+    AckAnimalPerturbation {
+        journey_id: Uuid,
+        perturbation_id: u64,
+    },
     JourneyComplete(Uuid),
     PollStep,
     HistoryEvent(RunnerOut),
@@ -51,6 +69,7 @@ pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyStatus(JourneyStatus),
     AnimalAppearance(Option<Vec<u8>>),
+    ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),
     NoAvailableSteps,
     PendingStep(Step),
     Ack,

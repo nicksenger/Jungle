@@ -4,7 +4,7 @@ use crate::models::{SchemaVersion, StepKind, StepStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use jungle_types::{JourneyStatus, RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, RunnerOut, RunnerStep};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,8 +13,9 @@ use uuid::Uuid;
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
-const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("animal_appearances");
+const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("animal_appearances");
+const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
+    TableDefinition::new("animal_perturbations");
 
 const STEP_KIND_START_JOURNEY: u8 = 0;
 const STEP_STATUS_AVAILABLE: u8 = 0;
@@ -257,6 +258,172 @@ impl JungleStore for RedbStore {
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
                 "redb upsert_animal_appearance commit failed: {err}"
+            ))
+        })?;
+        Ok(())
+    }
+
+    async fn enqueue_animal_perturbation(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        let write_tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb enqueue_animal_perturbation begin failed: {err}"
+            ))
+        })?;
+
+        {
+            let mut perturbations = write_tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb enqueue_animal_perturbation open animal_perturbations table failed: {err}"
+                ))
+            })?;
+
+            let mut max_sequence: Option<u64> = None;
+            let iter = perturbations.iter().map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb enqueue_animal_perturbation iterate table failed: {err}"
+                ))
+            })?;
+            for entry in iter {
+                let (key, _) = entry.map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb enqueue_animal_perturbation read entry failed: {err}"
+                    ))
+                })?;
+                let (entry_journey_id, sequence_id) =
+                    decode_event_key(key.value(), "redb enqueue_animal_perturbation decode key")?;
+                if entry_journey_id == journey_id {
+                    max_sequence =
+                        Some(max_sequence.map_or(sequence_id, |max| max.max(sequence_id)));
+                }
+            }
+
+            let sequence_id = max_sequence.map_or(0_u64, |max| max.saturating_add(1));
+            let key = encode_event_key(journey_id, sequence_id);
+            let value = encode_perturbation_value(0_i64, &data);
+            perturbations
+                .insert(key.as_slice(), value.as_slice())
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb enqueue_animal_perturbation insert failed: {err}"
+                    ))
+                })?;
+        }
+
+        write_tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb enqueue_animal_perturbation commit failed: {err}"
+            ))
+        })?;
+        Ok(())
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        journey_id: Uuid,
+    ) -> Result<Option<ClaimedAnimalPerturbation>> {
+        let write_tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb claim_animal_perturbation begin failed: {err}"
+            ))
+        })?;
+
+        let now = Utc::now().timestamp_millis();
+        let lease_until = now.saturating_add(30_000);
+        let mut selected: Option<(u64, Vec<u8>)> = None;
+
+        {
+            let mut perturbations = write_tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb claim_animal_perturbation open animal_perturbations table failed: {err}"
+                ))
+            })?;
+            let iter = perturbations.iter().map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb claim_animal_perturbation iterate table failed: {err}"
+                ))
+            })?;
+            for entry in iter {
+                let (key, value) = entry.map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb claim_animal_perturbation read entry failed: {err}"
+                    ))
+                })?;
+                let (entry_journey_id, sequence_id) =
+                    decode_event_key(key.value(), "redb claim_animal_perturbation decode key")?;
+                if entry_journey_id != journey_id {
+                    continue;
+                }
+                let (entry_lease_until, payload) = decode_perturbation_value(
+                    value.value(),
+                    "redb claim_animal_perturbation decode value",
+                )?;
+                if entry_lease_until != 0 && entry_lease_until >= now {
+                    continue;
+                }
+                let replace = selected
+                    .as_ref()
+                    .map(|(best, _)| sequence_id < *best)
+                    .unwrap_or(true);
+                if replace {
+                    selected = Some((sequence_id, payload));
+                }
+            }
+
+            if let Some((sequence_id, payload)) = selected.as_ref() {
+                let key = encode_event_key(journey_id, *sequence_id);
+                let value = encode_perturbation_value(lease_until, payload);
+                perturbations
+                    .insert(key.as_slice(), value.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb claim_animal_perturbation write claim failed: {err}"
+                        ))
+                    })?;
+            }
+        }
+
+        write_tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb claim_animal_perturbation commit failed: {err}"
+            ))
+        })?;
+
+        let Some((sequence_id, data)) = selected else {
+            return Ok(None);
+        };
+        Ok(Some(ClaimedAnimalPerturbation {
+            id: sequence_id,
+            data,
+        }))
+    }
+
+    async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()> {
+        let write_tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb ack_animal_perturbation begin failed: {err}"
+            ))
+        })?;
+        {
+            let mut perturbations = write_tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb ack_animal_perturbation open animal_perturbations table failed: {err}"
+                ))
+            })?;
+            let key = encode_event_key(journey_id, perturbation_id);
+            let removed = perturbations.remove(key.as_slice()).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb ack_animal_perturbation remove failed: {err}"
+                ))
+            })?;
+            if removed.is_none() {
+                return Err(crate::PersistenceError::Message(format!(
+                    "animal perturbation not found for ack: {journey_id}:{perturbation_id}"
+                )));
+            }
+        }
+        write_tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb ack_animal_perturbation commit failed: {err}"
             ))
         })?;
         Ok(())
@@ -624,4 +791,24 @@ fn encode_event_value(kind: u8, data: &[u8]) -> Vec<u8> {
     value.push(kind);
     value.extend_from_slice(data);
     value
+}
+
+fn encode_perturbation_value(lease_until_millis: i64, data: &[u8]) -> Vec<u8> {
+    let mut value = Vec::with_capacity(8 + data.len());
+    value.extend_from_slice(&lease_until_millis.to_be_bytes());
+    value.extend_from_slice(data);
+    value
+}
+
+fn decode_perturbation_value(raw: &[u8], context: &str) -> Result<(i64, Vec<u8>)> {
+    if raw.len() < 8 {
+        return Err(crate::PersistenceError::Message(format!(
+            "{context}: expected at least 8 bytes, got {}",
+            raw.len()
+        )));
+    }
+    let mut lease_bytes = [0_u8; 8];
+    lease_bytes.copy_from_slice(&raw[..8]);
+    let lease_until = i64::from_be_bytes(lease_bytes);
+    Ok((lease_until, raw[8..].to_vec()))
 }

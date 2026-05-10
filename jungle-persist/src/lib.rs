@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
-use jungle_types::{JourneyStatus, RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, RunnerOut, RunnerStep};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -43,6 +43,12 @@ pub trait JungleStore: DynClone + Send + Sync {
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus>;
     async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>>;
     async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()>;
+    async fn enqueue_animal_perturbation(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()>;
+    async fn claim_animal_perturbation(
+        &self,
+        journey_id: Uuid,
+    ) -> Result<Option<ClaimedAnimalPerturbation>>;
+    async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()>;
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()>;
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()>;
     async fn claim_work(&self) -> Result<Option<RunnerStep>>;
