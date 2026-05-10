@@ -12,6 +12,7 @@ pub enum RunnerOut {
     ActionInput { data: Vec<u8>, uuid: Uuid },
     ActionSuccessOutput { data: Vec<u8>, uuid: Uuid },
     ActionFailureOutput { data: Vec<u8>, uuid: Uuid },
+    Appearance { data: Vec<u8>, uuid: Uuid },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -38,6 +39,7 @@ pub enum Step {
 pub enum WireIn {
     CreateJourney { ordinal: u32, seed: Vec<u8> },
     JourneyStatus(Uuid),
+    JourneyAppearance(Uuid),
     JourneyComplete(Uuid),
     PollStep,
     HistoryEvent(RunnerOut),
@@ -48,6 +50,7 @@ pub enum WireIn {
 pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyStatus(JourneyStatus),
+    JourneyAppearance(Option<Vec<u8>>),
     NoAvailableSteps,
     PendingStep(Step),
     Ack,

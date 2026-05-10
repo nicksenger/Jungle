@@ -41,6 +41,8 @@ pub trait JungleStore: DynClone + Send + Sync {
     async fn migrate(&self) -> Result<()>;
     async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid>;
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus>;
+    async fn journey_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>>;
+    async fn upsert_journey_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()>;
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()>;
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()>;
     async fn claim_work(&self) -> Result<Option<RunnerStep>>;

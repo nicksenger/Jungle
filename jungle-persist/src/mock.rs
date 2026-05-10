@@ -9,6 +9,8 @@ use crate::{JungleStore, Result};
 type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<RunnerStep>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
+type FlowAppearanceHandler = Arc<dyn Fn(Uuid) -> Result<Option<Vec<u8>>> + Send + Sync + 'static>;
+type UpsertFlowAppearanceHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
@@ -19,6 +21,8 @@ type DetailsHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 pub struct MockStore {
     on_create_flow: CreateFlowHandler,
     on_flow_status: FlowStatusHandler,
+    on_flow_appearance: FlowAppearanceHandler,
+    on_upsert_flow_appearance: UpsertFlowAppearanceHandler,
     on_flow_complete: FlowCompleteHandler,
     on_flow_alive_if_created: FlowAliveIfCreatedHandler,
     on_claim_work: ClaimWorkHandler,
@@ -53,6 +57,14 @@ impl JungleStore for MockStore {
         (self.on_flow_status)(journey_id)
     }
 
+    async fn journey_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
+        (self.on_flow_appearance)(journey_id)
+    }
+
+    async fn upsert_journey_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        (self.on_upsert_flow_appearance)(journey_id, data)
+    }
+
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
         (self.on_flow_complete)(journey_id)
     }
@@ -82,6 +94,8 @@ impl JungleStore for MockStore {
 pub struct MockStoreBuilder {
     on_create_flow: Option<CreateFlowHandler>,
     on_flow_status: Option<FlowStatusHandler>,
+    on_flow_appearance: Option<FlowAppearanceHandler>,
+    on_upsert_flow_appearance: Option<UpsertFlowAppearanceHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
     on_flow_alive_if_created: Option<FlowAliveIfCreatedHandler>,
     on_claim_work: Option<ClaimWorkHandler>,
@@ -112,6 +126,22 @@ impl MockStoreBuilder {
         F: Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static,
     {
         self.on_flow_status = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_flow_appearance<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<Option<Vec<u8>>> + Send + Sync + 'static,
+    {
+        self.on_flow_appearance = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_upsert_flow_appearance<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_upsert_flow_appearance = Some(Arc::new(f));
         self
     }
 
@@ -158,6 +188,8 @@ impl MockStoreBuilder {
     pub fn build(self) -> MockStore {
         let default_create_flow: CreateFlowHandler = Arc::new(|_, _| Ok(Uuid::new_v4()));
         let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(JourneyStatus::Alive));
+        let default_flow_appearance: FlowAppearanceHandler = Arc::new(|_| Ok(None));
+        let default_upsert_flow_appearance: UpsertFlowAppearanceHandler = Arc::new(|_, _| Ok(()));
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));
@@ -172,6 +204,12 @@ impl MockStoreBuilder {
             on_flow_status: self
                 .on_flow_status
                 .unwrap_or_else(|| default_flow_status.clone()),
+            on_flow_appearance: self
+                .on_flow_appearance
+                .unwrap_or_else(|| default_flow_appearance.clone()),
+            on_upsert_flow_appearance: self
+                .on_upsert_flow_appearance
+                .unwrap_or_else(|| default_upsert_flow_appearance.clone()),
             on_flow_complete: self
                 .on_flow_complete
                 .unwrap_or_else(|| default_flow_complete.clone()),

@@ -209,6 +209,7 @@ impl JungleClient for Client {
         match response {
             WireOut::JourneyCreated(journey_id) => Ok(journey_id),
             WireOut::JourneyStatus(_)
+            | WireOut::JourneyAppearance(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
@@ -226,10 +227,54 @@ impl JungleClient for Client {
         match response {
             WireOut::JourneyStatus(status) => Ok(status),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyAppearance(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-status response for journey_details".to_string(),
+            )),
+        }
+    }
+
+    async fn journey_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::JourneyAppearance(id))
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::JourneyAppearance(appearance) => Ok(appearance),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_)
+            | WireOut::Ack => Err(ExecutorError::ClientTransport(
+                "unexpected non-journey-appearance response for journey_appearance".to_string(),
+            )),
+        }
+    }
+
+    async fn journey_appearance_update(
+        &self,
+        id: Uuid,
+        data: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::HistoryEvent(RunnerOut::Appearance {
+                data,
+                uuid: id,
+            }))
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::JourneyAppearance(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for journey_appearance_update".to_string(),
             )),
         }
     }
@@ -244,6 +289,7 @@ impl JungleClient for Client {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
+            | WireOut::JourneyAppearance(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
@@ -260,9 +306,12 @@ impl JungleClient for Client {
         match response {
             WireOut::NoAvailableSteps => Ok(None),
             WireOut::PendingStep(work) => Ok(Some(work)),
-            WireOut::JourneyCreated(_) | WireOut::JourneyStatus(_) | WireOut::Ack => Err(
-                ExecutorError::ClientTransport("unexpected response for poll_work".to_string()),
-            ),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::JourneyAppearance(_)
+            | WireOut::Ack => Err(ExecutorError::ClientTransport(
+                "unexpected response for poll_work".to_string(),
+            )),
         }
     }
 
@@ -279,6 +328,7 @@ impl JungleClient for Client {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
+            | WireOut::JourneyAppearance(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_input".to_string(),
@@ -299,6 +349,7 @@ impl JungleClient for Client {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
+            | WireOut::JourneyAppearance(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_success_output".to_string(),
@@ -319,6 +370,7 @@ impl JungleClient for Client {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
+            | WireOut::JourneyAppearance(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_failure_output".to_string(),

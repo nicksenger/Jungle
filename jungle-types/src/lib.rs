@@ -4,9 +4,7 @@ mod executor;
 mod journey;
 mod meta;
 mod transport;
-pub use behavior::{
-    Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step,
-};
+pub use behavior::{Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
 pub use error::Error;
 pub use executor::{
     BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,
@@ -18,8 +16,8 @@ pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
     ActionMember, ActionSet, AllFrom, AnimalActionDependencies, AnimalActionDependenciesCompatible,
-    AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, StripActionHeaders,
-    StripAnimalHeaders,
+    AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible,
+    StripActionHeaders, StripAnimalHeaders,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -91,6 +89,44 @@ pub trait Animal {
 
     /// The fundamental behavior of this Animal.
     type Journey;
+}
+
+/// Adapter invoked by executors/runners to optionally snapshot appearance bytes.
+pub trait ObservationAdapter<A: Animal> {
+    fn snapshot(state: &A::State) -> Result<Option<Vec<u8>>, ExecutorError>;
+}
+
+/// Default no-op observation adapter for animals without appearance snapshots.
+pub struct NoopObservation;
+
+impl<A> ObservationAdapter<A> for NoopObservation
+where
+    A: Animal,
+{
+    fn snapshot(_state: &A::State) -> Result<Option<Vec<u8>>, ExecutorError> {
+        Ok(None)
+    }
+}
+
+/// Observation adapter that bridges [`Observe`] into serialized snapshot bytes.
+pub struct ObserveObservation;
+
+impl<A> ObservationAdapter<A> for ObserveObservation
+where
+    A: Observe,
+    A::Appearance: Serialize,
+{
+    fn snapshot(state: &A::State) -> Result<Option<Vec<u8>>, ExecutorError> {
+        let appearance = <A as Observe>::observe(state);
+        let bytes = postcard::to_allocvec(&appearance)
+            .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
+        Ok(Some(bytes))
+    }
+}
+
+/// Per-animal binding that selects how appearance snapshots are produced.
+pub trait AnimalObservation: Animal + Sized {
+    type Adapter: ObservationAdapter<Self>;
 }
 
 #[inception(property = Ident, types)]
@@ -291,8 +327,7 @@ where
 
 pub type Traversed<Flow, Traversal> =
     <<Flow as TraverseFlow>::Output as TraverseWith<Traversal>>::Output;
-pub type Replace<Flow, Replacer> =
-    <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
+pub type Replace<Flow, Replacer> = <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
 pub type ReplaceNodes<Flow, Replacer> =
     <Replacer as ReplaceNode<<Flow as ReplaceFlow>::Output>>::Output;
 
@@ -619,7 +654,8 @@ where
     F: ReplaceNodesWith<Replacer>,
     Replacer: ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>,
 {
-    type Output = <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
+    type Output =
+        <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
 }
 
 /// A read-only view over an [`Animal`]'s current state.

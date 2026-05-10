@@ -109,6 +109,21 @@ mod tests {
     }
 
     macro_rules! animal {
+        ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty, observe = true) => {
+            struct $name;
+
+            impl jungle_sdk::types::Animal for $name {
+                type Id = jungle_sdk::types::Id<$id>;
+                type State = $state;
+                type Seed = $state;
+                type Journey = $journey;
+            }
+
+            impl jungle_sdk::types::AnimalObservation for $name {
+                type Adapter = jungle_sdk::types::ObserveObservation;
+            }
+        };
+
         ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty) => {
             struct $name;
 
@@ -117,6 +132,10 @@ mod tests {
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
+            }
+
+            impl jungle_sdk::types::AnimalObservation for $name {
+                type Adapter = jungle_sdk::types::NoopObservation;
             }
         };
 
@@ -137,6 +156,36 @@ mod tests {
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
+            }
+
+            impl jungle_sdk::types::AnimalObservation for $name {
+                type Adapter = jungle_sdk::types::NoopObservation;
+            }
+
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            impl jungle_sdk::types::Animals for $name {
+                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
+            }
+
+            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            impl jungle_sdk::types::Identified for $name {
+                type Id = $id;
+            }
+        };
+
+        ($name:ident, $id:ty, $state:ty, $journey:ty, observe = true) => {
+            struct $name;
+            impl jungle_sdk::types::AnimalMember for $name {}
+
+            impl jungle_sdk::types::Animal for $name {
+                type Id = jungle_sdk::types::Id<$id>;
+                type State = $state;
+                type Seed = $state;
+                type Journey = $journey;
+            }
+
+            impl jungle_sdk::types::AnimalObservation for $name {
+                type Adapter = jungle_sdk::types::ObserveObservation;
             }
 
             #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]

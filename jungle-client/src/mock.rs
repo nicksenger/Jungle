@@ -19,14 +19,22 @@ type CreateFlowHandler =
 type FlowStatusHandlerFuture =
     Pin<Box<dyn Future<Output = Result<JourneyStatus, ExecutorError>> + Send + 'static>>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> FlowStatusHandlerFuture + Send + Sync + 'static>;
+type FlowAppearanceHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<Option<Vec<u8>>, ExecutorError>> + Send + 'static>>;
+type FlowAppearanceHandler =
+    Arc<dyn Fn(Uuid) -> FlowAppearanceHandlerFuture + Send + Sync + 'static>;
 type FlowCompleteHandlerFuture =
     Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> FlowCompleteHandlerFuture + Send + Sync + 'static>;
+type FlowAppearanceUpdateHandler =
+    Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct MockClient {
     on_create_flow: CreateFlowHandler,
     on_flow_status: FlowStatusHandler,
+    on_flow_appearance: FlowAppearanceHandler,
+    on_flow_appearance_update: FlowAppearanceUpdateHandler,
     on_flow_complete: FlowCompleteHandler,
     on_poll_work: PollStepHandler,
     on_action_input: Handler,
@@ -49,6 +57,9 @@ impl MockClient {
                 RunnerOut::ActionFailureOutput { data, uuid } => {
                     self.action_failure_output(uuid, data).await
                 }
+                RunnerOut::Appearance { data, uuid } => {
+                    self.journey_appearance_update(uuid, data).await
+                }
             };
             let _ = done.send(result);
         }
@@ -69,6 +80,18 @@ impl JungleClient for MockClient {
 
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError> {
         (self.on_flow_status)(id).await
+    }
+
+    async fn journey_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError> {
+        (self.on_flow_appearance)(id).await
+    }
+
+    async fn journey_appearance_update(
+        &self,
+        id: Uuid,
+        data: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        (self.on_flow_appearance_update)(id, data).await
     }
 
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
@@ -96,6 +119,8 @@ impl JungleClient for MockClient {
 pub struct MockClientBuilder {
     on_create_flow: Option<CreateFlowHandler>,
     on_flow_status: Option<FlowStatusHandler>,
+    on_flow_appearance: Option<FlowAppearanceHandler>,
+    on_flow_appearance_update: Option<FlowAppearanceUpdateHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
     on_poll_work: Option<PollStepHandler>,
     on_action_input: Option<Handler>,
@@ -128,6 +153,24 @@ impl MockClientBuilder {
         Fut: Future<Output = Result<JourneyStatus, ExecutorError>> + Send + 'static,
     {
         self.on_flow_status = Some(Arc::new(move |id| Box::pin(f(id))));
+        self
+    }
+
+    pub fn on_flow_appearance<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Option<Vec<u8>>, ExecutorError>> + Send + 'static,
+    {
+        self.on_flow_appearance = Some(Arc::new(move |id| Box::pin(f(id))));
+        self
+    }
+
+    pub fn on_flow_appearance_update<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Vec<u8>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
+    {
+        self.on_flow_appearance_update = Some(Arc::new(move |id, data| Box::pin(f(id, data))));
         self
     }
 
@@ -173,6 +216,10 @@ impl MockClientBuilder {
             Arc::new(|_, _| Box::pin(async { Ok(Uuid::new_v4()) }));
         let default_flow_status_handler: FlowStatusHandler =
             Arc::new(|_| Box::pin(async { Ok(JourneyStatus::Alive) }));
+        let default_flow_appearance_handler: FlowAppearanceHandler =
+            Arc::new(|_| Box::pin(async { Ok(None) }));
+        let default_flow_appearance_update_handler: FlowAppearanceUpdateHandler =
+            Arc::new(|_, _| Box::pin(async { Ok(()) }));
         let default_flow_complete_handler: FlowCompleteHandler =
             Arc::new(|_| Box::pin(async { Ok(()) }));
         let default_poll_work_handler: PollStepHandler = Arc::new(|| Box::pin(async { Ok(None) }));
@@ -183,6 +230,12 @@ impl MockClientBuilder {
             on_flow_status: self
                 .on_flow_status
                 .unwrap_or_else(|| default_flow_status_handler.clone()),
+            on_flow_appearance: self
+                .on_flow_appearance
+                .unwrap_or_else(|| default_flow_appearance_handler.clone()),
+            on_flow_appearance_update: self
+                .on_flow_appearance_update
+                .unwrap_or_else(|| default_flow_appearance_update_handler.clone()),
             on_flow_complete: self
                 .on_flow_complete
                 .unwrap_or_else(|| default_flow_complete_handler.clone()),

@@ -13,6 +13,8 @@ use uuid::Uuid;
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
+const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> =
+    TableDefinition::new("journey_appearances");
 
 const STEP_KIND_START_JOURNEY: u8 = 0;
 const STEP_STATUS_AVAILABLE: u8 = 0;
@@ -44,7 +46,9 @@ impl RedbStore {
         expected_current: Option<JourneyStatus>,
     ) -> Result<()> {
         let write_tx = self.db.begin_write().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb update_journey_status begin failed: {err}"))
+            crate::PersistenceError::Message(format!(
+                "redb update_journey_status begin failed: {err}"
+            ))
         })?;
 
         {
@@ -74,11 +78,13 @@ impl RedbStore {
             )?;
             if expected_current.is_none_or(|expected| flow.status == expected) {
                 let updated_value = encode_journey(flow.ordinal, new_status, &flow.seed);
-                journeys.insert(key, updated_value.as_slice()).map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb update_journey_status write journey failed: {err}"
-                    ))
-                })?;
+                journeys
+                    .insert(key, updated_value.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb update_journey_status write journey failed: {err}"
+                        ))
+                    })?;
             }
         }
 
@@ -174,7 +180,9 @@ impl JungleStore for RedbStore {
 
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {
         let read_tx = self.db.begin_read().map_err(|err| {
-            crate::PersistenceError::Message(format!("redb journey_status begin read failed: {err}"))
+            crate::PersistenceError::Message(format!(
+                "redb journey_status begin read failed: {err}"
+            ))
         })?;
 
         let journeys = read_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
@@ -194,8 +202,64 @@ impl JungleStore for RedbStore {
                 crate::PersistenceError::Message(format!("journey not found: {journey_id}"))
             })?;
 
-        let flow = decode_journey(flow_value.value(), "redb journey_status decode journey value")?;
+        let flow = decode_journey(
+            flow_value.value(),
+            "redb journey_status decode journey value",
+        )?;
         Ok(flow.status)
+    }
+
+    async fn journey_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_appearance begin read failed: {err}"
+            ))
+        })?;
+
+        let appearances = read_tx.open_table(APPEARANCES_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_appearance open journey_appearances table failed: {err}"
+            ))
+        })?;
+
+        let key = &journey_id.as_bytes()[..];
+        let value = appearances.get(key).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_appearance read appearance failed: {err}"
+            ))
+        })?;
+
+        Ok(value.map(|entry| entry.value().to_vec()))
+    }
+
+    async fn upsert_journey_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        let write_tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb upsert_journey_appearance begin failed: {err}"
+            ))
+        })?;
+
+        {
+            let mut appearances = write_tx.open_table(APPEARANCES_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb upsert_journey_appearance open journey_appearances table failed: {err}"
+                ))
+            })?;
+            appearances
+                .insert(&journey_id.as_bytes()[..], data.as_slice())
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb upsert_journey_appearance write failed: {err}"
+                    ))
+                })?;
+        }
+
+        write_tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb upsert_journey_appearance commit failed: {err}"
+            ))
+        })?;
+        Ok(())
     }
 
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
@@ -203,7 +267,11 @@ impl JungleStore for RedbStore {
     }
 
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()> {
-        self.update_journey_status(journey_id, JourneyStatus::Alive, Some(JourneyStatus::Created))
+        self.update_journey_status(
+            journey_id,
+            JourneyStatus::Alive,
+            Some(JourneyStatus::Created),
+        )
     }
 
     async fn claim_work(&self) -> Result<Option<RunnerStep>> {
@@ -253,7 +321,8 @@ impl JungleStore for RedbStore {
                 }
             }
 
-            if let Some((selected_id, selected_journey_id, selected_kind, selected_expiry)) = selected
+            if let Some((selected_id, selected_journey_id, selected_kind, selected_expiry)) =
+                selected
             {
                 let claimed = encode_work_item(
                     selected_journey_id,
@@ -324,6 +393,11 @@ impl JungleStore for RedbStore {
             }
             RunnerOut::ActionFailureOutput { data, uuid } => {
                 (uuid, EVENT_KIND_ACTION_FAILURE_OUTPUT, data)
+            }
+            RunnerOut::Appearance { .. } => {
+                return Err(crate::PersistenceError::Message(
+                    "appearance snapshots are not history events in redb".to_string(),
+                ))
             }
         };
 

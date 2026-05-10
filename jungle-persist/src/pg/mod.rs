@@ -128,9 +128,45 @@ impl JungleStore for PgStore {
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?
-        .ok_or_else(|| crate::PersistenceError::Message(format!("journey not found: {journey_id}")))?;
+        .ok_or_else(|| {
+            crate::PersistenceError::Message(format!("journey not found: {journey_id}"))
+        })?;
 
         decode_journey_status(status)
+    }
+
+    async fn journey_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
+        let appearance = sqlx::query_scalar::<_, Vec<u8>>(
+            r#"
+            SELECT data
+            FROM journey_appearances
+            WHERE journey_id = $1
+            "#,
+        )
+        .bind(journey_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(appearance)
+    }
+
+    async fn upsert_journey_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO journey_appearances (journey_id, data, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (journey_id)
+            DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+            "#,
+        )
+        .bind(journey_id)
+        .bind(data)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(())
     }
 
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
@@ -243,6 +279,11 @@ impl JungleStore for PgStore {
             RunnerOut::ActionInput { data, uuid } => (uuid, 0_i16, data),
             RunnerOut::ActionSuccessOutput { data, uuid } => (uuid, 1_i16, data),
             RunnerOut::ActionFailureOutput { data, uuid } => (uuid, 2_i16, data),
+            RunnerOut::Appearance { .. } => {
+                return Err(crate::PersistenceError::Message(
+                    "appearance snapshots are not history events in postgres".to_string(),
+                ))
+            }
         };
 
         sqlx::query(

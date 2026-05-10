@@ -3,8 +3,8 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelTx};
 use jungle_types::{
-    BuildFlowWithContext, Animal, AnimalSet, Animals, DynFlow, Ecosystem, ExecutorError,
-    RunnerOut, RunnerStep, StripAnimalHeaders,
+    Animal, AnimalObservation, AnimalSet, Animals, BuildFlowWithContext, DynFlow, Ecosystem,
+    ExecutorError, RunnerOut, RunnerStep, StripAnimalHeaders,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -61,6 +61,11 @@ where
                     RunnerOut::ActionFailureOutput { data, uuid } => {
                         client_for_transport.action_failure_output(uuid, data).await
                     }
+                    RunnerOut::Appearance { data, uuid } => {
+                        client_for_transport
+                            .journey_appearance_update(uuid, data)
+                            .await
+                    }
                 };
                 let _ = done.send(result);
             }
@@ -73,15 +78,14 @@ where
                     ordinal,
                     seed,
                 }) => {
-                    let launched =
-                        <AnimalSet<T::Animals> as SpawnByOrdinal<T>>::spawn_by_ordinal(
-                            ordinal,
-                            seed,
-                            journey_id,
-                            &self.runner,
-                            tx.clone(),
-                        )
-                        .await?;
+                    let launched = <AnimalSet<T::Animals> as SpawnByOrdinal<T>>::spawn_by_ordinal(
+                        ordinal,
+                        seed,
+                        journey_id,
+                        &self.runner,
+                        tx.clone(),
+                    )
+                    .await?;
                     if !launched {
                         return Err(ExecutorError::InputDeserialize(format!(
                             "unknown animal ordinal: {ordinal}"
@@ -120,7 +124,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
 
 impl<T, Head, Tail, Ordinal> SpawnByOrdinal<T> for list::List<(Head, Tail)>
 where
-    Head: Animal<Id = jungle_types::Id<Ordinal>> + Send + Sync + 'static,
+    Head: Animal<Id = jungle_types::Id<Ordinal>> + AnimalObservation + Send + Sync + 'static,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
     Head::Journey:

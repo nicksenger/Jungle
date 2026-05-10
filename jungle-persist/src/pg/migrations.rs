@@ -104,6 +104,19 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS journey_appearances (
+                journey_id UUID PRIMARY KEY REFERENCES journeys(id) ON DELETE CASCADE,
+                data BYTEA NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
         if version_row.is_none() {
             sqlx::query("INSERT INTO jungle_schema_metadata (id, version) VALUES (1, 0)")
                 .execute(&mut *tx)
