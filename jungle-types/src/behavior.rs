@@ -237,6 +237,59 @@ pub trait Act<T: Animal> {
     ) -> Self::Out;
 }
 
+/// Forward half of [`Act`], responsible for producing an action request input.
+pub trait Emit<T: Animal> {
+    type CarryIn;
+    type Aspect: Aspect<T::State>;
+    type Action: Action;
+
+    fn emit(
+        view: &<Self::Aspect as Aspect<T::State>>::View,
+        input: Self::CarryIn,
+    ) -> <Self::Action as Action>::In;
+}
+
+/// Backward half of [`Act`], responsible for consuming an action completion.
+pub trait Absorb<T: Animal> {
+    type CarryOut;
+    type Aspect: Aspect<T::State>;
+    type Action: Action;
+
+    fn absorb(
+        view: &mut <Self::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut;
+}
+
+/// Combines independent [`Emit`] and [`Absorb`] implementations into [`Act`].
+pub struct Impulse<E, A>(PhantomData<fn() -> (E, A)>);
+
+impl<T, E, A> Act<T> for Impulse<E, A>
+where
+    T: Animal,
+    E: Emit<T>,
+    A: Absorb<T, Action = <E as Emit<T>>::Action, Aspect = <E as Emit<T>>::Aspect>,
+{
+    type Action = <E as Emit<T>>::Action;
+    type Aspect = <E as Emit<T>>::Aspect;
+    type In = <E as Emit<T>>::CarryIn;
+    type Out = <A as Absorb<T>>::CarryOut;
+
+    fn emit(
+        view: &<<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        input: Self::In,
+    ) -> <Self::Action as Action>::In {
+        <E as Emit<T>>::emit(view, input)
+    }
+
+    fn absorb(
+        view: &mut <<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::Out {
+        <A as Absorb<T>>::absorb(view, output)
+    }
+}
+
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Running`]/[`Waiting`] protocol.
 pub struct Step<T, A>
@@ -348,4 +401,3 @@ where
 {
     type Output = <Replacer as ReplaceNode<Step<T, A>>>::Output;
 }
-

@@ -6,6 +6,7 @@ mod meta;
 mod sleep;
 mod transport;
 pub use behavior::{Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
+pub use behavior::{Absorb, Emit, Impulse};
 pub use error::Error;
 pub use executor::{
     BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,
