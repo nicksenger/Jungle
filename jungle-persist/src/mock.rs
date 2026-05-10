@@ -8,6 +8,7 @@ use crate::{JungleStore, Result};
 
 type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<RunnerStep>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
+type JourneyHistoryHandler = Arc<dyn Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
 type FlowAppearanceHandler = Arc<dyn Fn(Uuid) -> Result<Option<Vec<u8>>> + Send + Sync + 'static>;
 type UpsertFlowAppearanceHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static>;
@@ -27,6 +28,7 @@ type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'sta
 #[derive(Clone)]
 pub struct MockStore {
     on_create_flow: CreateFlowHandler,
+    on_journey_history: JourneyHistoryHandler,
     on_flow_status: FlowStatusHandler,
     on_flow_appearance: FlowAppearanceHandler,
     on_upsert_flow_appearance: UpsertFlowAppearanceHandler,
@@ -63,6 +65,10 @@ impl JungleStore for MockStore {
 
     async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
         (self.on_create_flow)(ordinal, seed)
+    }
+
+    async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
+        (self.on_journey_history)(journey_id)
     }
 
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {
@@ -138,6 +144,7 @@ impl JungleStore for MockStore {
 #[derive(Default)]
 pub struct MockStoreBuilder {
     on_create_flow: Option<CreateFlowHandler>,
+    on_journey_history: Option<JourneyHistoryHandler>,
     on_flow_status: Option<FlowStatusHandler>,
     on_flow_appearance: Option<FlowAppearanceHandler>,
     on_upsert_flow_appearance: Option<UpsertFlowAppearanceHandler>,
@@ -168,6 +175,14 @@ impl MockStoreBuilder {
         F: Fn() -> Result<Option<RunnerStep>> + Send + Sync + 'static,
     {
         self.on_claim_work = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_journey_history<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static,
+    {
+        self.on_journey_history = Some(Arc::new(f));
         self
     }
 
@@ -277,6 +292,7 @@ impl MockStoreBuilder {
 
     pub fn build(self) -> MockStore {
         let default_create_flow: CreateFlowHandler = Arc::new(|_, _| Ok(Uuid::new_v4()));
+        let default_journey_history: JourneyHistoryHandler = Arc::new(|_| Ok(Vec::new()));
         let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(JourneyStatus::Alive));
         let default_flow_appearance: FlowAppearanceHandler = Arc::new(|_| Ok(None));
         let default_upsert_flow_appearance: UpsertFlowAppearanceHandler = Arc::new(|_, _| Ok(()));
@@ -297,6 +313,9 @@ impl MockStoreBuilder {
             on_create_flow: self
                 .on_create_flow
                 .unwrap_or_else(|| default_create_flow.clone()),
+            on_journey_history: self
+                .on_journey_history
+                .unwrap_or_else(|| default_journey_history.clone()),
             on_flow_status: self
                 .on_flow_status
                 .unwrap_or_else(|| default_flow_status.clone()),

@@ -40,6 +40,7 @@ pub enum PersistenceError {
 pub trait JungleStore: DynClone + Send + Sync {
     async fn migrate(&self) -> Result<()>;
     async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid>;
+    async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>>;
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus>;
     async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>>;
     async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()>;

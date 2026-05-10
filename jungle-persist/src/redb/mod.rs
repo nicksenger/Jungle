@@ -188,6 +188,48 @@ impl JungleStore for RedbStore {
         Ok(journey_id)
     }
 
+    async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_history begin read failed: {err}"
+            ))
+        })?;
+        let events = read_tx.open_table(EVENTS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_history open events table failed: {err}"
+            ))
+        })?;
+        let iter = events.iter().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_history iterate events failed: {err}"
+            ))
+        })?;
+
+        let mut rows: Vec<(u64, u8, Vec<u8>)> = Vec::new();
+        for entry in iter {
+            let (key, value) = entry.map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb journey_history read events entry failed: {err}"
+                ))
+            })?;
+            let (event_journey_id, sequence_id) =
+                decode_event_key(key.value(), "redb journey_history decode event key")?;
+            if event_journey_id != journey_id {
+                continue;
+            }
+            let (kind, data) =
+                decode_event_value(value.value(), "redb journey_history decode event value")?;
+            rows.push((sequence_id, kind, data));
+        }
+
+        rows.sort_by_key(|(sequence_id, _, _)| *sequence_id);
+        let mut history = Vec::with_capacity(rows.len());
+        for (_, kind, data) in rows {
+            history.push(decode_runner_out(journey_id, kind, data)?);
+        }
+        Ok(history)
+    }
+
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {
         let read_tx = self.db.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
@@ -546,6 +588,8 @@ impl JungleStore for RedbStore {
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
         })?;
+        let now = Utc::now();
+        let lease_until = now + chrono::Duration::seconds(30);
 
         let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
 
@@ -572,7 +616,11 @@ impl JungleStore for RedbStore {
                 let (journey_id, kind, status, expiry) =
                     decode_work_item(value.value(), "redb claim_work decode work_item value")?;
 
-                if status != StepStatus::Available {
+                let claimable = match status {
+                    StepStatus::Available => true,
+                    StepStatus::Claimed => expiry <= now,
+                };
+                if !claimable {
                     continue;
                 }
 
@@ -589,14 +637,14 @@ impl JungleStore for RedbStore {
                 }
             }
 
-            if let Some((selected_id, selected_journey_id, selected_kind, selected_expiry)) =
+            if let Some((selected_id, selected_journey_id, selected_kind, _selected_expiry)) =
                 selected
             {
                 let claimed = encode_work_item(
                     selected_journey_id,
                     selected_kind,
                     StepStatus::Claimed,
-                    selected_expiry,
+                    lease_until,
                 );
                 let work_item_id_key = &selected_id.as_bytes()[..];
                 work_items
@@ -650,6 +698,8 @@ impl JungleStore for RedbStore {
             },
             StepKind::ResumeJourney => RunnerStep::ResumeJourney {
                 journey_id: selected_journey_id,
+                ordinal: flow.ordinal,
+                seed: flow.seed,
             },
         };
 
@@ -1279,6 +1329,53 @@ fn encode_event_value(kind: u8, data: &[u8]) -> Vec<u8> {
     value.push(kind);
     value.extend_from_slice(data);
     value
+}
+
+fn decode_event_value(raw: &[u8], context: &str) -> Result<(u8, Vec<u8>)> {
+    if raw.is_empty() {
+        return Err(crate::PersistenceError::Message(format!(
+            "{context}: expected at least 1 byte for event value kind"
+        )));
+    }
+    Ok((raw[0], raw[1..].to_vec()))
+}
+
+fn decode_runner_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<RunnerOut> {
+    match kind {
+        EVENT_KIND_ACTION_INPUT => Ok(RunnerOut::ActionInput {
+            uuid: journey_id,
+            data,
+        }),
+        EVENT_KIND_ACTION_SUCCESS_OUTPUT => Ok(RunnerOut::ActionSuccessOutput {
+            uuid: journey_id,
+            data,
+        }),
+        EVENT_KIND_ACTION_FAILURE_OUTPUT => Ok(RunnerOut::ActionFailureOutput {
+            uuid: journey_id,
+            data,
+        }),
+        EVENT_KIND_SLEEP_SCHEDULED => {
+            let event: SleepScheduledEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerOut::SleepScheduled {
+                uuid: journey_id,
+                timer_id: event.timer_id,
+                wake_at_unix_ms: event.wake_at_unix_ms,
+            })
+        }
+        EVENT_KIND_SLEEP_FIRED => {
+            let event: SleepFiredEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerOut::SleepFired {
+                uuid: journey_id,
+                timer_id: event.timer_id,
+                fired_at_unix_ms: event.fired_at_unix_ms,
+            })
+        }
+        other => Err(crate::PersistenceError::Message(format!(
+            "unsupported event kind in redb: {other}"
+        ))),
+    }
 }
 
 fn encode_perturbation_value(lease_until_millis: i64, data: &[u8]) -> Vec<u8> {

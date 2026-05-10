@@ -131,6 +131,22 @@ impl JungleServer for Server {
                     )));
                 }
             }
+            Some(WireIn::JourneyHistory(journey_id)) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let history = self.store.journey_history(journey_id).await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
+                    WireOut::JourneyHistory(history)
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = journey_id;
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "journey_history is unavailable without a persistence backend".to_string(),
+                    )));
+                }
+            }
             Some(WireIn::JourneyStatus(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {

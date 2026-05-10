@@ -117,6 +117,33 @@ impl JungleStore for PgStore {
         Ok(journey_id)
     }
 
+    async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
+        #[derive(Debug, sqlx::FromRow)]
+        struct HistoryRow {
+            kind: i16,
+            data: Vec<u8>,
+        }
+
+        let rows = sqlx::query_as::<_, HistoryRow>(
+            r#"
+            SELECT kind, data
+            FROM events
+            WHERE journey_id = $1
+            ORDER BY sequence_id
+            "#,
+        )
+        .bind(journey_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let mut history = Vec::with_capacity(rows.len());
+        for row in rows {
+            history.push(decode_history_row(journey_id, row.kind, row.data)?);
+        }
+        Ok(history)
+    }
+
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {
         let status = sqlx::query_scalar::<_, i16>(
             r#"
@@ -397,14 +424,15 @@ impl JungleStore for PgStore {
             WITH candidate AS (
                 SELECT id
                 FROM work_items
-                WHERE status = $1
+                WHERE status = $1 OR (status = $2 AND expiry < NOW())
                 ORDER BY expiry, id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             ),
             claimed AS (
                 UPDATE work_items wi
-                SET status = $2
+                SET status = $2,
+                    expiry = NOW() + INTERVAL '30 seconds'
                 FROM candidate c
                 WHERE wi.id = c.id
                 RETURNING wi.journey_id, wi.kind
@@ -438,9 +466,19 @@ impl JungleStore for PgStore {
                     seed: row.seed,
                 }
             }
-            1 => RunnerStep::ResumeJourney {
-                journey_id: row.journey_id,
-            },
+            1 => {
+                let ordinal = u32::try_from(row.ordinal).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "invalid negative ordinal in postgres journey: {}",
+                        row.ordinal
+                    ))
+                })?;
+                RunnerStep::ResumeJourney {
+                    journey_id: row.journey_id,
+                    ordinal,
+                    seed: row.seed,
+                }
+            }
             kind => {
                 return Err(crate::PersistenceError::Message(format!(
                     "unsupported work item kind in postgres: {kind}"
@@ -678,6 +716,44 @@ struct SleepScheduledEvent {
 struct SleepFiredEvent {
     timer_id: Uuid,
     fired_at_unix_ms: i64,
+}
+
+fn decode_history_row(journey_id: Uuid, kind: i16, data: Vec<u8>) -> Result<RunnerOut> {
+    match kind {
+        0 => Ok(RunnerOut::ActionInput {
+            uuid: journey_id,
+            data,
+        }),
+        1 => Ok(RunnerOut::ActionSuccessOutput {
+            uuid: journey_id,
+            data,
+        }),
+        2 => Ok(RunnerOut::ActionFailureOutput {
+            uuid: journey_id,
+            data,
+        }),
+        3 => {
+            let event: SleepScheduledEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerOut::SleepScheduled {
+                uuid: journey_id,
+                timer_id: event.timer_id,
+                wake_at_unix_ms: event.wake_at_unix_ms,
+            })
+        }
+        4 => {
+            let event: SleepFiredEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerOut::SleepFired {
+                uuid: journey_id,
+                timer_id: event.timer_id,
+                fired_at_unix_ms: event.fired_at_unix_ms,
+            })
+        }
+        other => Err(crate::PersistenceError::Message(format!(
+            "unsupported event kind in postgres: {other}"
+        ))),
+    }
 }
 
 fn encode_journey_status(status: JourneyStatus) -> i16 {
