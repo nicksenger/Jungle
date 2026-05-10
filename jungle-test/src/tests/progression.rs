@@ -80,10 +80,7 @@ impl Act<ProgressAnimal> for Finish {
 }
 
 #[derive(Journey)]
-struct ProgressJourney(
-    Step<ProgressAnimal, Seed>,
-    Step<ProgressAnimal, Finish>,
-);
+struct ProgressJourney(Step<ProgressAnimal, Seed>, Step<ProgressAnimal, Finish>);
 
 animal!(ProgressAnimal, U0, i32, ProgressJourney);
 

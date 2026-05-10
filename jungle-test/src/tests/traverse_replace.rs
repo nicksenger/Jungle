@@ -148,3 +148,11 @@ impl jungle_sdk::types::Animal for TraverseAnimal {
     type Seed = i32;
     type Journey = SourceFlow;
 }
+
+impl jungle_sdk::types::AnimalObservation for TraverseAnimal {
+    type Adapter = jungle_sdk::types::NoopObservation;
+}
+
+impl jungle_sdk::types::AnimalPerturbation for TraverseAnimal {
+    type Adapter = jungle_sdk::types::NoopPerturbation;
+}

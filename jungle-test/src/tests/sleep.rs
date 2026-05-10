@@ -1,0 +1,238 @@
+use jungle_sdk::core::JungleWorker;
+use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::{
+    Act, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    LoopCondition, Observe, Sleep, Step, While,
+};
+use jungle_sdk::typosaurus::num::Unsigned;
+use jungle_sdk::{Animals, JungleClient, Optic};
+use std::net::SocketAddr;
+use std::time::Duration;
+
+#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct SleepState {
+    counter: i32,
+    phase: u8,
+    sleep_for_ms: u64,
+}
+
+#[derive(Clone, Copy)]
+struct AddDependency {
+    value: i32,
+}
+
+impl From<&SleepZoo> for AddDependency {
+    fn from(_value: &SleepZoo) -> Self {
+        Self { value: 1 }
+    }
+}
+
+struct AddAction;
+impl jungle_sdk::types::ActionMember for AddAction {}
+impl Action for AddAction {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
+    type Dependency = AddDependency;
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        dependency: &Self::Dependency,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(dependency.value))
+    }
+}
+
+struct AddBeforeSleep;
+impl Act<SleepAnimal> for AddBeforeSleep {
+    type Action = AddAction;
+    type Aspect = Identity;
+    type In = ();
+    type Out = ();
+
+    fn emit(_state: &SleepState, _input: Self::In) -> Self::In {}
+
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.counter += output.expect("add before sleep should succeed");
+        state.phase += 1;
+    }
+}
+
+struct SleepForStateWake;
+impl Act<SleepAnimal> for SleepForStateWake {
+    type Action = Sleep;
+    type Aspect = Identity;
+    type In = ();
+    type Out = ();
+
+    fn emit(state: &SleepState, _input: Self::In) -> Duration {
+        Duration::from_millis(state.sleep_for_ms)
+    }
+
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        output.expect("sleep should resume successfully");
+        state.phase += 1;
+    }
+}
+
+struct AddAfterSleep;
+impl Act<SleepAnimal> for AddAfterSleep {
+    type Action = AddAction;
+    type Aspect = Identity;
+    type In = ();
+    type Out = ();
+
+    fn emit(_state: &SleepState, _input: Self::In) -> Self::In {}
+
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Out {
+        state.counter += output.expect("add after sleep should succeed");
+        state.phase += 1;
+    }
+}
+
+struct SleepNotComplete;
+impl LoopCondition<SleepState> for SleepNotComplete {
+    fn should_continue(state: &SleepState) -> bool {
+        state.phase < 3
+    }
+}
+
+struct SleepPhaseZero;
+impl Condition<(SleepState, ())> for SleepPhaseZero {
+    fn choose((state, _): &(SleepState, ())) -> bool {
+        state.phase == 0
+    }
+}
+
+struct SleepPhaseOne;
+impl Condition<(SleepState, ())> for SleepPhaseOne {
+    fn choose((state, _): &(SleepState, ())) -> bool {
+        state.phase == 1
+    }
+}
+
+type SleepJourney = While<
+    SleepNotComplete,
+    Conditional<
+        SleepPhaseZero,
+        Step<SleepAnimal, AddBeforeSleep>,
+        Conditional<
+            SleepPhaseOne,
+            Step<SleepAnimal, SleepForStateWake>,
+            Step<SleepAnimal, AddAfterSleep>,
+        >,
+    >,
+>;
+
+animal!(
+    SleepAnimal,
+    jungle_sdk::typosaurus::num::consts::U0,
+    SleepState,
+    SleepJourney,
+    observe = true
+);
+
+impl Observe for SleepAnimal {
+    type Appearance = SleepState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct SleepAnimals(SleepAnimal);
+
+struct SleepZoo;
+impl Ecosystem for SleepZoo {
+    type Animals = SleepAnimals;
+}
+
+#[tokio::test]
+async fn sleep_action_suspends_then_resumes_flow_to_completion() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let worker = JungleWorker::new(SleepZoo, client.clone());
+    let worker_future = worker.spawn();
+    tokio::pin!(worker_future);
+
+    let seed = postcard::to_allocvec(&SleepState {
+        counter: 0,
+        phase: 0,
+        sleep_for_ms: 250,
+    })
+    .expect("sleep test seed should serialize");
+    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
+    let journey_id = client
+        .start_journey(ordinal, seed)
+        .await
+        .expect("start_journey should succeed for sleep flow");
+
+    tokio::select! {
+        result = &mut worker_future => {
+            panic!("worker should continue polling, got: {result:?}");
+        }
+        completion = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let status = client
+                    .journey_details(journey_id)
+                    .await
+                    .expect("journey_details should succeed");
+                if status == JourneyStatus::Completed {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }) => {
+            if completion.is_err() {
+                panic!("sleep flow did not complete before timeout");
+            }
+        }
+    }
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("animal_appearance should succeed")
+        .expect("animal_appearance should be present at completion");
+    let appearance: SleepState =
+        postcard::from_bytes(&appearance_bytes).expect("sleep appearance should deserialize");
+    assert_eq!(appearance.counter, 2);
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
+    for attempt in 0..40 {
+        match jungle_sdk::client::ClientBuilder::new()
+            .remote(remote)
+            .server_name("localhost")
+            .build()
+            .await
+        {
+            Ok(client) => return client,
+            Err(err) if attempt < 39 => {
+                std::thread::sleep(Duration::from_millis(25));
+                let _ = err;
+            }
+            Err(err) => panic!("failed to connect to test server: {err}"),
+        }
+    }
+    unreachable!("retry loop always returns or panics")
+}

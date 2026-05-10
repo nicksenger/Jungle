@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use jungle_types::{JourneyStatus, RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, RunnerStep};
 use uuid::Uuid;
 
 use crate::{JungleStore, Result};
@@ -9,22 +9,38 @@ use crate::{JungleStore, Result};
 type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<RunnerStep>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
+type FlowAppearanceHandler = Arc<dyn Fn(Uuid) -> Result<Option<Vec<u8>>> + Send + Sync + 'static>;
+type UpsertFlowAppearanceHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static>;
+type EnqueuePerturbationHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static>;
+type ClaimPerturbationHandler =
+    Arc<dyn Fn(Uuid) -> Result<Option<ClaimedAnimalPerturbation>> + Send + Sync + 'static>;
+type AckPerturbationHandler = Arc<dyn Fn(Uuid, u64) -> Result<()> + Send + Sync + 'static>;
+type HeartbeatJourneyLeaseHandler =
+    Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
+type ClaimOwnerWakeHandler = Arc<dyn Fn(Uuid) -> Result<Option<OwnerWake>> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
+type ScheduleSleepTimerHandler = Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
 type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'static>;
-type DetailsHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct MockStore {
     on_create_flow: CreateFlowHandler,
     on_flow_status: FlowStatusHandler,
+    on_flow_appearance: FlowAppearanceHandler,
+    on_upsert_flow_appearance: UpsertFlowAppearanceHandler,
+    on_enqueue_perturbation: EnqueuePerturbationHandler,
+    on_claim_perturbation: ClaimPerturbationHandler,
+    on_ack_perturbation: AckPerturbationHandler,
+    on_heartbeat_journey_lease: HeartbeatJourneyLeaseHandler,
+    on_claim_owner_wake: ClaimOwnerWakeHandler,
     on_flow_complete: FlowCompleteHandler,
     on_flow_alive_if_created: FlowAliveIfCreatedHandler,
     on_claim_work: ClaimWorkHandler,
     on_append_history: AppendHistoryHandler,
+    on_schedule_sleep_timer: ScheduleSleepTimerHandler,
     on_poll_timers: PollTimersHandler,
-    on_details: DetailsHandler,
 }
 
 impl MockStore {
@@ -53,6 +69,42 @@ impl JungleStore for MockStore {
         (self.on_flow_status)(journey_id)
     }
 
+    async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
+        (self.on_flow_appearance)(journey_id)
+    }
+
+    async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        (self.on_upsert_flow_appearance)(journey_id, data)
+    }
+
+    async fn enqueue_animal_perturbation(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        (self.on_enqueue_perturbation)(journey_id, data)
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        journey_id: Uuid,
+    ) -> Result<Option<ClaimedAnimalPerturbation>> {
+        (self.on_claim_perturbation)(journey_id)
+    }
+
+    async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()> {
+        (self.on_ack_perturbation)(journey_id, perturbation_id)
+    }
+
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<()> {
+        (self.on_heartbeat_journey_lease)(journey_id, owner_id, lease_ttl_ms)
+    }
+
+    async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>> {
+        (self.on_claim_owner_wake)(owner_id)
+    }
+
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
         (self.on_flow_complete)(journey_id)
     }
@@ -69,12 +121,17 @@ impl JungleStore for MockStore {
         (self.on_append_history)(history)
     }
 
-    async fn poll_timers(&self) -> Result<Option<()>> {
-        (self.on_poll_timers)()
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<()> {
+        (self.on_schedule_sleep_timer)(journey_id, timer_id, wake_at_unix_ms)
     }
 
-    async fn details(&self, journey_id: Uuid) -> Result<()> {
-        (self.on_details)(journey_id)
+    async fn poll_timers(&self) -> Result<Option<()>> {
+        (self.on_poll_timers)()
     }
 }
 
@@ -82,12 +139,19 @@ impl JungleStore for MockStore {
 pub struct MockStoreBuilder {
     on_create_flow: Option<CreateFlowHandler>,
     on_flow_status: Option<FlowStatusHandler>,
+    on_flow_appearance: Option<FlowAppearanceHandler>,
+    on_upsert_flow_appearance: Option<UpsertFlowAppearanceHandler>,
+    on_enqueue_perturbation: Option<EnqueuePerturbationHandler>,
+    on_claim_perturbation: Option<ClaimPerturbationHandler>,
+    on_ack_perturbation: Option<AckPerturbationHandler>,
+    on_heartbeat_journey_lease: Option<HeartbeatJourneyLeaseHandler>,
+    on_claim_owner_wake: Option<ClaimOwnerWakeHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
     on_flow_alive_if_created: Option<FlowAliveIfCreatedHandler>,
     on_claim_work: Option<ClaimWorkHandler>,
     on_append_history: Option<AppendHistoryHandler>,
+    on_schedule_sleep_timer: Option<ScheduleSleepTimerHandler>,
     on_poll_timers: Option<PollTimersHandler>,
-    on_details: Option<DetailsHandler>,
 }
 
 impl MockStoreBuilder {
@@ -115,6 +179,62 @@ impl MockStoreBuilder {
         self
     }
 
+    pub fn on_flow_appearance<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<Option<Vec<u8>>> + Send + Sync + 'static,
+    {
+        self.on_flow_appearance = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_upsert_flow_appearance<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_upsert_flow_appearance = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_enqueue_perturbation<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_enqueue_perturbation = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_claim_perturbation<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<Option<ClaimedAnimalPerturbation>> + Send + Sync + 'static,
+    {
+        self.on_claim_perturbation = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_ack_perturbation<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, u64) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_ack_perturbation = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_heartbeat_journey_lease<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_heartbeat_journey_lease = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_claim_owner_wake<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<Option<OwnerWake>> + Send + Sync + 'static,
+    {
+        self.on_claim_owner_wake = Some(Arc::new(f));
+        self
+    }
+
     pub fn on_flow_complete<F>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Result<()> + Send + Sync + 'static,
@@ -139,6 +259,14 @@ impl MockStoreBuilder {
         self
     }
 
+    pub fn on_schedule_sleep_timer<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_schedule_sleep_timer = Some(Arc::new(f));
+        self
+    }
+
     pub fn on_poll_timers<F>(mut self, f: F) -> Self
     where
         F: Fn() -> Result<Option<()>> + Send + Sync + 'static,
@@ -147,23 +275,23 @@ impl MockStoreBuilder {
         self
     }
 
-    pub fn on_details<F>(mut self, f: F) -> Self
-    where
-        F: Fn(Uuid) -> Result<()> + Send + Sync + 'static,
-    {
-        self.on_details = Some(Arc::new(f));
-        self
-    }
-
     pub fn build(self) -> MockStore {
         let default_create_flow: CreateFlowHandler = Arc::new(|_, _| Ok(Uuid::new_v4()));
         let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(JourneyStatus::Alive));
+        let default_flow_appearance: FlowAppearanceHandler = Arc::new(|_| Ok(None));
+        let default_upsert_flow_appearance: UpsertFlowAppearanceHandler = Arc::new(|_, _| Ok(()));
+        let default_enqueue_perturbation: EnqueuePerturbationHandler = Arc::new(|_, _| Ok(()));
+        let default_claim_perturbation: ClaimPerturbationHandler = Arc::new(|_| Ok(None));
+        let default_ack_perturbation: AckPerturbationHandler = Arc::new(|_, _| Ok(()));
+        let default_heartbeat_journey_lease: HeartbeatJourneyLeaseHandler =
+            Arc::new(|_, _, _| Ok(()));
+        let default_claim_owner_wake: ClaimOwnerWakeHandler = Arc::new(|_| Ok(None));
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));
         let default_append_history: AppendHistoryHandler = Arc::new(|_| Ok(()));
+        let default_schedule_sleep_timer: ScheduleSleepTimerHandler = Arc::new(|_, _, _| Ok(()));
         let default_poll_timers: PollTimersHandler = Arc::new(|| Ok(None));
-        let default_details: DetailsHandler = Arc::new(|_| Ok(()));
 
         MockStore {
             on_create_flow: self
@@ -172,6 +300,27 @@ impl MockStoreBuilder {
             on_flow_status: self
                 .on_flow_status
                 .unwrap_or_else(|| default_flow_status.clone()),
+            on_flow_appearance: self
+                .on_flow_appearance
+                .unwrap_or_else(|| default_flow_appearance.clone()),
+            on_upsert_flow_appearance: self
+                .on_upsert_flow_appearance
+                .unwrap_or_else(|| default_upsert_flow_appearance.clone()),
+            on_enqueue_perturbation: self
+                .on_enqueue_perturbation
+                .unwrap_or_else(|| default_enqueue_perturbation.clone()),
+            on_claim_perturbation: self
+                .on_claim_perturbation
+                .unwrap_or_else(|| default_claim_perturbation.clone()),
+            on_ack_perturbation: self
+                .on_ack_perturbation
+                .unwrap_or_else(|| default_ack_perturbation.clone()),
+            on_heartbeat_journey_lease: self
+                .on_heartbeat_journey_lease
+                .unwrap_or_else(|| default_heartbeat_journey_lease.clone()),
+            on_claim_owner_wake: self
+                .on_claim_owner_wake
+                .unwrap_or_else(|| default_claim_owner_wake.clone()),
             on_flow_complete: self
                 .on_flow_complete
                 .unwrap_or_else(|| default_flow_complete.clone()),
@@ -184,10 +333,12 @@ impl MockStoreBuilder {
             on_append_history: self
                 .on_append_history
                 .unwrap_or_else(|| default_append_history.clone()),
+            on_schedule_sleep_timer: self
+                .on_schedule_sleep_timer
+                .unwrap_or_else(|| default_schedule_sleep_timer.clone()),
             on_poll_timers: self
                 .on_poll_timers
                 .unwrap_or_else(|| default_poll_timers.clone()),
-            on_details: self.on_details.unwrap_or(default_details),
         }
     }
 }

@@ -1322,6 +1322,7 @@ dependencies = [
 name = "jungle-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures",
  "jungle-client",
  "jungle-types",
@@ -1350,7 +1351,9 @@ dependencies = [
  "chrono",
  "dyn-clone",
  "jungle-types",
+ "postcard",
  "redb",
+ "serde",
  "sqlx",
  "thiserror 2.0.18",
  "tracing",
@@ -1396,6 +1399,7 @@ dependencies = [
 name = "jungle-test"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "futures",
  "jungle-sdk",
  "postcard",

@@ -196,12 +196,7 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
 #[derive(Journey)]
 struct TigerJourney(While<TigerUnderHundredStripes, TigerLoopSequence>);
 
-animal!(
-    Gorilla,
-    U1,
-    state = GorillaState,
-    journey = GorillaJourney
-);
+animal!(Gorilla, U1, state = GorillaState, journey = GorillaJourney);
 animal!(Tiger, U2, state = TigerState, journey = TigerJourney);
 
 #[test]

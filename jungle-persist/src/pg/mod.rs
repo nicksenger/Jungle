@@ -4,7 +4,8 @@ use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
-use jungle_types::{RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, OwnerWake, RunnerOut, RunnerStep};
+use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
@@ -128,9 +129,218 @@ impl JungleStore for PgStore {
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?
-        .ok_or_else(|| crate::PersistenceError::Message(format!("journey not found: {journey_id}")))?;
+        .ok_or_else(|| {
+            crate::PersistenceError::Message(format!("journey not found: {journey_id}"))
+        })?;
 
         decode_journey_status(status)
+    }
+
+    async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
+        let appearance = sqlx::query_scalar::<_, Vec<u8>>(
+            r#"
+            SELECT data
+            FROM animal_appearances
+            WHERE journey_id = $1
+            "#,
+        )
+        .bind(journey_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(appearance)
+    }
+
+    async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO animal_appearances (journey_id, data, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (journey_id)
+            DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+            "#,
+        )
+        .bind(journey_id)
+        .bind(data)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(())
+    }
+
+    async fn enqueue_animal_perturbation(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+        sqlx::query(
+            r#"
+            WITH next_sequence AS (
+                SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
+                FROM animal_perturbations
+                WHERE journey_id = $1
+            )
+            INSERT INTO animal_perturbations (
+                journey_id,
+                sequence_id,
+                data,
+                status,
+                claimed_at,
+                lease_until
+            )
+            SELECT $1, next_sequence.sequence_id, $2, $3, NULL, NULL
+            FROM next_sequence
+            "#,
+        )
+        .bind(journey_id)
+        .bind(data)
+        .bind(0_i16)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(())
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        journey_id: Uuid,
+    ) -> Result<Option<ClaimedAnimalPerturbation>> {
+        #[derive(Debug, sqlx::FromRow)]
+        struct ClaimedRow {
+            sequence_id: i64,
+            data: Vec<u8>,
+        }
+
+        let row = sqlx::query_as::<_, ClaimedRow>(
+            r#"
+            WITH next_item AS (
+                SELECT journey_id, sequence_id
+                FROM animal_perturbations
+                WHERE journey_id = $1
+                  AND (status = $2 OR (status = $3 AND lease_until < NOW()))
+                ORDER BY sequence_id
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            ),
+            claimed AS (
+                UPDATE animal_perturbations ap
+                SET status = $3,
+                    claimed_at = NOW(),
+                    lease_until = NOW() + INTERVAL '30 seconds'
+                FROM next_item ni
+                WHERE ap.journey_id = ni.journey_id
+                  AND ap.sequence_id = ni.sequence_id
+                RETURNING ap.sequence_id, ap.data
+            )
+            SELECT sequence_id, data
+            FROM claimed
+            "#,
+        )
+        .bind(journey_id)
+        .bind(0_i16)
+        .bind(1_i16)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let id = u64::try_from(row.sequence_id).map_err(|_| {
+            crate::PersistenceError::Message(format!(
+                "negative sequence_id claimed for perturbation: {}",
+                row.sequence_id
+            ))
+        })?;
+
+        Ok(Some(ClaimedAnimalPerturbation { id, data: row.data }))
+    }
+
+    async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()> {
+        let sequence_id = i64::try_from(perturbation_id).map_err(|_| {
+            crate::PersistenceError::Message(format!(
+                "perturbation id exceeds i64 range for postgres: {perturbation_id}"
+            ))
+        })?;
+        let result = sqlx::query(
+            r#"
+            DELETE FROM animal_perturbations
+            WHERE journey_id = $1 AND sequence_id = $2
+            "#,
+        )
+        .bind(journey_id)
+        .bind(sequence_id)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        if result.rows_affected() == 0 {
+            return Err(crate::PersistenceError::Message(format!(
+                "animal perturbation not found for ack: {journey_id}:{perturbation_id}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<()> {
+        let lease_ttl_ms = lease_ttl_ms.max(0);
+        sqlx::query(
+            r#"
+            INSERT INTO journey_leases (journey_id, owner_id, lease_until, heartbeat_at)
+            VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 millisecond'), NOW())
+            ON CONFLICT (journey_id)
+            DO UPDATE SET owner_id = EXCLUDED.owner_id,
+                          lease_until = EXCLUDED.lease_until,
+                          heartbeat_at = EXCLUDED.heartbeat_at
+            "#,
+        )
+        .bind(journey_id)
+        .bind(owner_id)
+        .bind(lease_ttl_ms)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+        Ok(())
+    }
+
+    async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>> {
+        #[derive(Debug, sqlx::FromRow)]
+        struct WakeRow {
+            journey_id: Uuid,
+            timer_id: Uuid,
+        }
+
+        let wake = sqlx::query_as::<_, WakeRow>(
+            r#"
+            WITH next_wake AS (
+                SELECT id
+                FROM owner_wakes
+                WHERE owner_id = $1
+                ORDER BY created_at, id
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            DELETE FROM owner_wakes ow
+            USING next_wake nw
+            WHERE ow.id = nw.id
+            RETURNING ow.journey_id, ow.timer_id
+            "#,
+        )
+        .bind(owner_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(wake.map(|row| OwnerWake {
+            journey_id: row.journey_id,
+            timer_id: row.timer_id,
+        }))
     }
 
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
@@ -228,6 +438,9 @@ impl JungleStore for PgStore {
                     seed: row.seed,
                 }
             }
+            1 => RunnerStep::ResumeJourney {
+                journey_id: row.journey_id,
+            },
             kind => {
                 return Err(crate::PersistenceError::Message(format!(
                     "unsupported work item kind in postgres: {kind}"
@@ -243,6 +456,37 @@ impl JungleStore for PgStore {
             RunnerOut::ActionInput { data, uuid } => (uuid, 0_i16, data),
             RunnerOut::ActionSuccessOutput { data, uuid } => (uuid, 1_i16, data),
             RunnerOut::ActionFailureOutput { data, uuid } => (uuid, 2_i16, data),
+            RunnerOut::SleepScheduled {
+                uuid,
+                timer_id,
+                wake_at_unix_ms,
+            } => (
+                uuid,
+                3_i16,
+                postcard::to_allocvec(&SleepScheduledEvent {
+                    timer_id,
+                    wake_at_unix_ms,
+                })
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
+            RunnerOut::SleepFired {
+                uuid,
+                timer_id,
+                fired_at_unix_ms,
+            } => (
+                uuid,
+                4_i16,
+                postcard::to_allocvec(&SleepFiredEvent {
+                    timer_id,
+                    fired_at_unix_ms,
+                })
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
+            RunnerOut::Appearance { .. } => {
+                return Err(crate::PersistenceError::Message(
+                    "appearance snapshots are not history events in postgres".to_string(),
+                ))
+            }
         };
 
         sqlx::query(
@@ -267,15 +511,173 @@ impl JungleStore for PgStore {
         Ok(())
     }
 
-    async fn poll_timers(&self) -> Result<Option<()>> {
-        let _ = &self.pool;
-        todo!()
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO timer_tasks (id, journey_id, status, visible_at, fired_at)
+            VALUES ($1, $2, $3, to_timestamp($4::double precision / 1000.0), NULL)
+            ON CONFLICT (id) DO NOTHING
+            "#,
+        )
+        .bind(timer_id)
+        .bind(journey_id)
+        .bind(0_i16)
+        .bind(wake_at_unix_ms)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        self.append_history(RunnerOut::SleepScheduled {
+            uuid: journey_id,
+            timer_id,
+            wake_at_unix_ms,
+        })
+        .await?;
+
+        Ok(())
     }
 
-    async fn details(&self, _journey_id: Uuid) -> Result<()> {
-        let _ = &self.pool;
-        todo!()
+    async fn poll_timers(&self) -> Result<Option<()>> {
+        #[derive(Debug, sqlx::FromRow)]
+        struct DueTimerRow {
+            id: Uuid,
+            journey_id: Uuid,
+        }
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let due = sqlx::query_as::<_, DueTimerRow>(
+            r#"
+            SELECT id, journey_id
+            FROM timer_tasks
+            WHERE status = $1 AND visible_at <= NOW()
+            ORDER BY visible_at, id
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+            "#,
+        )
+        .bind(0_i16)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let Some(due) = due else {
+            tx.commit()
+                .await
+                .map_err(crate::PersistenceError::PostgresQuery)?;
+            return Ok(None);
+        };
+
+        sqlx::query(
+            r#"
+            UPDATE timer_tasks
+            SET status = $2, fired_at = NOW()
+            WHERE id = $1 AND status = $3
+            "#,
+        )
+        .bind(due.id)
+        .bind(1_i16)
+        .bind(0_i16)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let fired_at_unix_ms = chrono::Utc::now().timestamp_millis();
+        let sleep_fired_data = postcard::to_allocvec(&SleepFiredEvent {
+            timer_id: due.id,
+            fired_at_unix_ms,
+        })
+        .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+
+        sqlx::query(
+            r#"
+            WITH next_sequence AS (
+                SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
+                FROM events
+                WHERE journey_id = $1
+            )
+            INSERT INTO events (journey_id, sequence_id, kind, data)
+            SELECT $1, next_sequence.sequence_id, $2, $3
+            FROM next_sequence
+            "#,
+        )
+        .bind(due.journey_id)
+        .bind(4_i16)
+        .bind(sleep_fired_data)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let owner_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT owner_id
+            FROM journey_leases
+            WHERE journey_id = $1 AND lease_until > NOW()
+            LIMIT 1
+            "#,
+        )
+        .bind(due.journey_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        if let Some(owner_id) = owner_id {
+            sqlx::query(
+                r#"
+                INSERT INTO owner_wakes (id, owner_id, journey_id, timer_id, created_at)
+                VALUES ($1, $2, $3, $4, NOW())
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(owner_id)
+            .bind(due.journey_id)
+            .bind(due.id)
+            .execute(&mut *tx)
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        } else {
+            sqlx::query(
+                r#"
+                INSERT INTO work_items (id, journey_id, kind, status, expiry)
+                VALUES ($1, $2, $3, $4, NOW())
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(due.journey_id)
+            .bind(1_i16)
+            .bind(0_i16)
+            .execute(&mut *tx)
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        }
+
+        tx.commit()
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(Some(()))
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SleepScheduledEvent {
+    timer_id: Uuid,
+    wake_at_unix_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SleepFiredEvent {
+    timer_id: Uuid,
+    fired_at_unix_ms: i64,
 }
 
 fn encode_journey_status(status: JourneyStatus) -> i16 {

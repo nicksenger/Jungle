@@ -120,11 +120,10 @@ where
 pub type AnimalActionMembers<T> =
     <SPFlatten<<AnimalSet<T> as CollectAnimalJourneyActions>::Out> as StripActionHeaders>::Out;
 
-pub type AnimalActionDependencies<T> =
-    <(AnimalActionMembers<T>, WithActionDependency) as Map<
-        <AnimalActionMembers<T> as Container>::Content,
-        WithActionDependency,
-    >>::Out;
+pub type AnimalActionDependencies<T> = <(AnimalActionMembers<T>, WithActionDependency) as Map<
+    <AnimalActionMembers<T> as Container>::Content,
+    WithActionDependency,
+>>::Out;
 
 pub trait AnimalStatesCompatible<From>: Animals {}
 impl<T, From> AnimalStatesCompatible<From> for T
@@ -133,8 +132,7 @@ where
     <T as Animals>::List: FlattenNodes,
     SPFlatten<<T as Animals>::List>: StripAnimalHeaders,
     AnimalSet<T>: Container,
-    (AnimalSet<T>, WithAnimalState):
-        Map<<AnimalSet<T> as Container>::Content, WithAnimalState>,
+    (AnimalSet<T>, WithAnimalState): Map<<AnimalSet<T> as Container>::Content, WithAnimalState>,
     AnimalStates<T>: AllFrom<From>,
 {
 }

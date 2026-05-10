@@ -96,8 +96,102 @@ impl PgStore {
 
         sqlx::query(
             r#"
+            CREATE TABLE IF NOT EXISTS timer_tasks (
+                id UUID PRIMARY KEY,
+                journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
+                status SMALLINT NOT NULL,
+                visible_at TIMESTAMPTZ NOT NULL,
+                fired_at TIMESTAMPTZ
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_timer_tasks_status_visible_at
+            ON timer_tasks (status, visible_at)
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS journey_leases (
+                journey_id UUID PRIMARY KEY REFERENCES journeys(id) ON DELETE CASCADE,
+                owner_id UUID NOT NULL,
+                lease_until TIMESTAMPTZ NOT NULL,
+                heartbeat_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS owner_wakes (
+                id UUID PRIMARY KEY,
+                owner_id UUID NOT NULL,
+                journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
+                timer_id UUID NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_owner_wakes_owner_id_created_at
+            ON owner_wakes (owner_id, created_at, id)
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
             ALTER TABLE work_items
             ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS animal_appearances (
+                journey_id UUID PRIMARY KEY REFERENCES journeys(id) ON DELETE CASCADE,
+                data BYTEA NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS animal_perturbations (
+                journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
+                sequence_id BIGINT NOT NULL,
+                data BYTEA NOT NULL,
+                status SMALLINT NOT NULL,
+                claimed_at TIMESTAMPTZ,
+                lease_until TIMESTAMPTZ,
+                PRIMARY KEY (journey_id, sequence_id)
+            )
             "#,
         )
         .execute(&mut *tx)

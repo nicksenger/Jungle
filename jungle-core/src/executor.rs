@@ -1,7 +1,6 @@
 use crate::Jungle;
 use jungle_types::{
-    BuildFlowWithContext, ContextExecutor, Animal, DynFlow, ExecutableActionRequest,
-    ExecutorError,
+    Animal, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutableActionRequest, ExecutorError,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;

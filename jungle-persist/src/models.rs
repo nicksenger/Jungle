@@ -45,6 +45,7 @@ pub enum EventKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepKind {
     StartJourney,
+    ResumeJourney,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

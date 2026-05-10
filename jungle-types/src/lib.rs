@@ -3,10 +3,9 @@ mod error;
 mod executor;
 mod journey;
 mod meta;
+mod sleep;
 mod transport;
-pub use behavior::{
-    Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step,
-};
+pub use behavior::{Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
 pub use error::Error;
 pub use executor::{
     BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,
@@ -18,18 +17,21 @@ pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
     ActionMember, ActionSet, AllFrom, AnimalActionDependencies, AnimalActionDependenciesCompatible,
-    AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, StripActionHeaders,
-    StripAnimalHeaders,
+    AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible,
+    StripActionHeaders, StripAnimalHeaders,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+pub use sleep::{Sleep, SleepDependency, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{BackendError, JourneyStatus, RunnerOut, Step as RunnerStep, WireIn, WireOut};
+pub use transport::{ClaimedAnimalPerturbation, OwnerWake};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
 
 /// A tagged union over two possible outputs.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Either<L, R> {
     Left(L),
     Right(R),
@@ -73,6 +75,12 @@ pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
 /// A flow combinator that repeatedly executes `F` while `C` is true.
 pub struct While<C, F>(PhantomData<fn() -> (C, F)>);
 
+/// A flow combinator that runs two activities and resolves to whichever completes first.
+pub struct Select<L, R>(PhantomData<fn() -> (L, R)>);
+
+/// A flow combinator that runs two activities and resolves when both complete.
+pub struct Join<L, R>(PhantomData<fn() -> (L, R)>);
+
 /// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
     type Animals;
@@ -91,6 +99,90 @@ pub trait Animal {
 
     /// The fundamental behavior of this Animal.
     type Journey;
+}
+
+/// Adapter invoked by executors/runners to optionally snapshot appearance bytes.
+pub trait ObservationAdapter<A: Animal> {
+    fn snapshot(state: &A::State) -> Result<Option<Vec<u8>>, ExecutorError>;
+}
+
+/// Default no-op observation adapter for animals without appearance snapshots.
+pub struct NoopObservation;
+
+impl<A> ObservationAdapter<A> for NoopObservation
+where
+    A: Animal,
+{
+    fn snapshot(_state: &A::State) -> Result<Option<Vec<u8>>, ExecutorError> {
+        Ok(None)
+    }
+}
+
+/// Observation adapter that bridges [`Observe`] into serialized snapshot bytes.
+pub struct ObserveObservation;
+
+impl<A> ObservationAdapter<A> for ObserveObservation
+where
+    A: Observe,
+    A::Appearance: Serialize,
+{
+    fn snapshot(state: &A::State) -> Result<Option<Vec<u8>>, ExecutorError> {
+        let appearance = <A as Observe>::observe(state);
+        let bytes = postcard::to_allocvec(&appearance)
+            .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
+        Ok(Some(bytes))
+    }
+}
+
+/// Per-animal binding that selects how appearance snapshots are produced.
+pub trait AnimalObservation: Animal + Sized {
+    type Adapter: ObservationAdapter<Self>;
+}
+
+/// Adapter invoked by executors/runners to optionally apply perturbation payloads.
+pub trait PerturbationAdapter<A: Animal> {
+    fn enabled() -> bool {
+        true
+    }
+
+    fn apply(state: &mut A::State, payload: &[u8]) -> Result<bool, ExecutorError>;
+}
+
+/// Default no-op perturbation adapter for animals without perturb handlers.
+pub struct NoopPerturbation;
+
+impl<A> PerturbationAdapter<A> for NoopPerturbation
+where
+    A: Animal,
+{
+    fn enabled() -> bool {
+        false
+    }
+
+    fn apply(_state: &mut A::State, _payload: &[u8]) -> Result<bool, ExecutorError> {
+        Ok(false)
+    }
+}
+
+/// Perturbation adapter that bridges [`Perturb`] from serialized stimuli.
+pub struct TraitPerturbation;
+
+impl<A> PerturbationAdapter<A> for TraitPerturbation
+where
+    A: Perturb,
+    A::Stimulus: DeserializeOwned,
+{
+    fn apply(state: &mut A::State, payload: &[u8]) -> Result<bool, ExecutorError> {
+        let stimulus: A::Stimulus = postcard::from_bytes(payload)
+            .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        <A as Perturb>::perturb(state, stimulus);
+        Ok(true)
+    }
+}
+
+/// Per-animal binding that selects how perturbation payloads are applied.
+pub trait AnimalPerturbation: Animal + Sized {
+    type Adapter: PerturbationAdapter<Self>;
 }
 
 #[inception(property = Ident, types)]
@@ -291,8 +383,7 @@ where
 
 pub type Traversed<Flow, Traversal> =
     <<Flow as TraverseFlow>::Output as TraverseWith<Traversal>>::Output;
-pub type Replace<Flow, Replacer> =
-    <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
+pub type Replace<Flow, Replacer> = <<Flow as ReplaceFlow>::Output as ReplaceWith<Replacer>>::Output;
 pub type ReplaceNodes<Flow, Replacer> =
     <Replacer as ReplaceNode<<Flow as ReplaceFlow>::Output>>::Output;
 
@@ -619,26 +710,206 @@ where
     F: ReplaceNodesWith<Replacer>,
     Replacer: ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>,
 {
-    type Output = <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
+    type Output =
+        <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
 }
 
-/// An organism that hosts symbionts.
-pub trait Host {
-    /// Organisms that live in close association with this Host.
-    type Symbionts;
+#[primitive(property = JungleRunning)]
+impl<L, R> Running for Select<L, R>
+where
+    L: Running,
+    R: Running<In = L::In>,
+{
+    type In = L::In;
+    type Out = Either<L::Out, R::Out>;
+
+    fn run(input: Self::In) -> Self::Out {
+        let _ = input;
+        panic!("Select::run is executed by dynamic flow runtime");
+    }
 }
 
-/// A trait that transforms a stream of inputs into a stream of outputs.
-pub trait Evoke {
-    /// The input type accepted by this evoke.
-    type In;
+#[primitive(property = JungleWaiting)]
+impl<L, R> Waiting for Select<L, R>
+where
+    L: Waiting,
+    R: Waiting,
+{
+    type In = Either<L::In, R::In>;
+    type Out = Either<L::Out, R::Out>;
 
-    /// The output type produced by this evoke.
-    type Out;
+    fn accept(input: Self::In) -> Self::Out {
+        match input {
+            Either::Left(input) => Either::Left(<L as Waiting>::accept(input)),
+            Either::Right(input) => Either::Right(<R as Waiting>::accept(input)),
+        }
+    }
+}
 
-    /// Process a stream of inputs, yielding a stream of outputs.
-    fn evoke(
-        self,
-        input: impl futures::Stream<Item = Self::In>,
-    ) -> impl futures::Stream<Item = Self::Out>;
+#[primitive(property = JungleFlow)]
+impl<L, R> FlowActions for Select<L, R>
+where
+    L: FlowActions,
+    R: FlowActions,
+{
+    type List = TList<(L::List, R::List)>;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<L, R> TraverseFlow for Select<L, R>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Select<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+}
+
+impl<L, R, Traversal> TraverseWith<Traversal> for Select<L, R>
+where
+    L: TraverseWith<Traversal>,
+    R: TraverseWith<Traversal>,
+{
+    type Output =
+        Select<<L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output>;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<L, R> ReplaceFlow for Select<L, R>
+where
+    L: ReplaceFlow,
+    R: ReplaceFlow,
+{
+    type Output = Select<<L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+}
+
+impl<L, R, Replacer> ReplaceWith<Replacer> for Select<L, R>
+where
+    L: ReplaceWith<Replacer>,
+    R: ReplaceWith<Replacer>,
+{
+    type Output =
+        Select<<L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<L, R, Replacer> ReplaceNodesWith<Replacer> for Select<L, R>
+where
+    L: ReplaceNodesWith<Replacer>,
+    R: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<
+        Select<
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+        >,
+    >,
+{
+    type Output = <Replacer as ReplaceNode<
+        Select<
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+        >,
+    >>::Output;
+}
+
+#[primitive(property = JungleRunning)]
+impl<L, R> Running for Join<L, R>
+where
+    L: Running,
+    R: Running<In = L::In>,
+{
+    type In = L::In;
+    type Out = (L::Out, R::Out);
+
+    fn run(input: Self::In) -> Self::Out {
+        let _ = input;
+        panic!("Join::run is executed by dynamic flow runtime");
+    }
+}
+
+#[primitive(property = JungleWaiting)]
+impl<L, R> Waiting for Join<L, R>
+where
+    L: Waiting,
+    R: Waiting,
+{
+    type In = (L::In, R::In);
+    type Out = (L::Out, R::Out);
+
+    fn accept((left, right): Self::In) -> Self::Out {
+        (<L as Waiting>::accept(left), <R as Waiting>::accept(right))
+    }
+}
+
+#[primitive(property = JungleFlow)]
+impl<L, R> FlowActions for Join<L, R>
+where
+    L: FlowActions,
+    R: FlowActions,
+{
+    type List = TList<(L::List, R::List)>;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<L, R> TraverseFlow for Join<L, R>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Join<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+}
+
+impl<L, R, Traversal> TraverseWith<Traversal> for Join<L, R>
+where
+    L: TraverseWith<Traversal>,
+    R: TraverseWith<Traversal>,
+{
+    type Output =
+        Join<<L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output>;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<L, R> ReplaceFlow for Join<L, R>
+where
+    L: ReplaceFlow,
+    R: ReplaceFlow,
+{
+    type Output = Join<<L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+}
+
+impl<L, R, Replacer> ReplaceWith<Replacer> for Join<L, R>
+where
+    L: ReplaceWith<Replacer>,
+    R: ReplaceWith<Replacer>,
+{
+    type Output = Join<<L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<L, R, Replacer> ReplaceNodesWith<Replacer> for Join<L, R>
+where
+    L: ReplaceNodesWith<Replacer>,
+    R: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<
+        Join<<L as ReplaceNodesWith<Replacer>>::Output, <R as ReplaceNodesWith<Replacer>>::Output>,
+    >,
+{
+    type Output = <Replacer as ReplaceNode<
+        Join<<L as ReplaceNodesWith<Replacer>>::Output, <R as ReplaceNodesWith<Replacer>>::Output>,
+    >>::Output;
+}
+
+/// A read-only view over an [`Animal`]'s current state.
+pub trait Observe: Animal {
+    /// The rendered appearance exposed by an observation.
+    type Appearance;
+
+    /// Observe the animal state and derive its outward appearance.
+    fn observe(state: &Self::State) -> Self::Appearance;
+}
+
+/// A write path that perturbs an [`Animal`]'s state with an external stimulus.
+pub trait Perturb: Animal {
+    /// Input that drives a state transition.
+    type Stimulus;
+
+    /// Apply a stimulus to the current state.
+    fn perturb(state: &mut Self::State, stimulus: Self::Stimulus);
 }

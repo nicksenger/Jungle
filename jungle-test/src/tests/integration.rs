@@ -2,13 +2,15 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Act, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    Lens, LoopCondition, Step, While,
+    Lens, LoopCondition, Observe, Perturb, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -334,8 +336,31 @@ animal!(
     IntegrationAnimal,
     jungle_sdk::typosaurus::num::consts::U0,
     IntegrationState,
-    IntegrationJourney
+    IntegrationJourney,
+    observe = true,
+    perturb = true
 );
+
+impl Observe for IntegrationAnimal {
+    type Appearance = IntegrationState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+struct IntegrationPerturbation {
+    delta: i32,
+}
+
+impl Perturb for IntegrationAnimal {
+    type Stimulus = IntegrationPerturbation;
+
+    fn perturb(state: &mut Self::State, stimulus: Self::Stimulus) {
+        state.total += stimulus.delta;
+    }
+}
 
 #[derive(Animals)]
 struct IntegrationAnimals(IntegrationAnimal);
@@ -366,6 +391,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
     let worker = JungleWorker::new(IntegrationZoo, client.clone());
     let worker_future = worker.spawn();
     tokio::pin!(worker_future);
+    let saw_appearance = Arc::new(AtomicBool::new(false));
 
     let seed = postcard::to_allocvec(&IntegrationState {
         total: 0,
@@ -386,21 +412,42 @@ async fn redb_client_worker_flow_runs_to_completion() {
         .start_journey(ordinal, seed)
         .await
         .expect("start_journey should succeed");
+    let perturb_payload = postcard::to_allocvec(&IntegrationPerturbation { delta: 1000 })
+        .expect("perturb payload should serialize");
+    client
+        .perturb_animal(journey_id, perturb_payload)
+        .await
+        .expect("perturb_animal should enqueue perturbation");
 
     tokio::select! {
         result = &mut worker_future => {
             panic!("worker should keep polling, got: {result:?}");
         }
-        completion = tokio::time::timeout(Duration::from_secs(8), async {
+        completion = tokio::time::timeout(Duration::from_secs(8), {
+            let client_ref = &client;
+            let saw_appearance = Arc::clone(&saw_appearance);
+            async move {
             loop {
-                let status = client
+                let status = client_ref
                     .journey_details(journey_id)
                     .await
                     .expect("journey_details should succeed while waiting for completion");
+                if let Some(appearance_bytes) = client_ref
+                    .animal_appearance(journey_id)
+                    .await
+                    .expect("animal_appearance should succeed while waiting for completion")
+                {
+                    let appearance: IntegrationState = postcard::from_bytes(&appearance_bytes)
+                        .expect("animal appearance should deserialize");
+                    if appearance.before_steps > 0 || appearance.after_steps > 0 {
+                        saw_appearance.store(true, Ordering::Relaxed);
+                    }
+                }
                 if status == JourneyStatus::Completed {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(25)).await;
+            }
             }
         }) => {
             if completion.is_err() {
@@ -412,6 +459,27 @@ async fn redb_client_worker_flow_runs_to_completion() {
             }
         }
     }
+
+    assert!(
+        saw_appearance.load(Ordering::Relaxed),
+        "expected to observe at least one non-initial appearance snapshot"
+    );
+
+    let final_appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("final animal_appearance should succeed")
+        .expect("final animal_appearance should be present");
+    let final_appearance: IntegrationState = postcard::from_bytes(&final_appearance_bytes)
+        .expect("final animal appearance should deserialize");
+    assert!(
+        final_appearance.after_steps > 0,
+        "final appearance should reflect progressed state"
+    );
+    assert!(
+        final_appearance.total >= 1000,
+        "final appearance should include applied perturbation delta"
+    );
 
     server_task.abort();
     let _ = server_task.await;
@@ -439,7 +507,10 @@ fn replaced_alias_rewrites_integration_flow_steps() {
 fn replaced_nodes_alias_replaces_loop_branch_section() {
     type Actual = jungle_sdk::types::ReplaceNodes<
         LoopBranchFlow,
-        jungle_sdk::types::SwapNodeLR<LoopBranchFlow, Step<IntegrationAnimal, AddOneAfterFullStateStep>>,
+        jungle_sdk::types::SwapNodeLR<
+            LoopBranchFlow,
+            Step<IntegrationAnimal, AddOneAfterFullStateStep>,
+        >,
     >;
     type Expected = Step<IntegrationAnimal, AddOneAfterFullStateStep>;
     assert_type_eq!(Actual, Expected);

@@ -13,6 +13,8 @@ jungle-types = { path = "../jungle-types" }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 dyn-clone = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+postcard = { workspace = true, features = ["alloc"] }
 thiserror = "2"
 tracing = "0.1"
 chrono = "0.4"

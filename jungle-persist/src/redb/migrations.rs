@@ -10,6 +10,12 @@ const SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
+const TIMER_TASKS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("timer_tasks");
+const JOURNEY_LEASES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journey_leases");
+const OWNER_WAKES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("owner_wakes");
+const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("animal_appearances");
+const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
+    TableDefinition::new("animal_perturbations");
 
 impl RedbStore {
     pub(super) async fn migrate_v0(&self) -> Result<()> {
@@ -56,6 +62,27 @@ impl RedbStore {
         })?;
         tx.open_table(STEPS_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!("redb open work_items table failed: {err}"))
+        })?;
+        tx.open_table(TIMER_TASKS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!("redb open timer_tasks table failed: {err}"))
+        })?;
+        tx.open_table(JOURNEY_LEASES_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb open journey_leases table failed: {err}"
+            ))
+        })?;
+        tx.open_table(OWNER_WAKES_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!("redb open owner_wakes table failed: {err}"))
+        })?;
+        tx.open_table(APPEARANCES_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb open animal_appearances table failed: {err}"
+            ))
+        })?;
+        tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb open animal_perturbations table failed: {err}"
+            ))
         })?;
 
         tx.commit().map_err(|err| {

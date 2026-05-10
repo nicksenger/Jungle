@@ -9,9 +9,44 @@ pub enum BackendError {
 /// Transport messages sent from runners to external clients.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RunnerOut {
-    ActionInput { data: Vec<u8>, uuid: Uuid },
-    ActionSuccessOutput { data: Vec<u8>, uuid: Uuid },
-    ActionFailureOutput { data: Vec<u8>, uuid: Uuid },
+    ActionInput {
+        data: Vec<u8>,
+        uuid: Uuid,
+    },
+    ActionSuccessOutput {
+        data: Vec<u8>,
+        uuid: Uuid,
+    },
+    ActionFailureOutput {
+        data: Vec<u8>,
+        uuid: Uuid,
+    },
+    Appearance {
+        data: Vec<u8>,
+        uuid: Uuid,
+    },
+    SleepScheduled {
+        uuid: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    },
+    SleepFired {
+        uuid: Uuid,
+        timer_id: Uuid,
+        fired_at_unix_ms: i64,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ClaimedAnimalPerturbation {
+    pub id: u64,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OwnerWake {
+    pub journey_id: Uuid,
+    pub timer_id: Uuid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -31,15 +66,45 @@ pub enum Step {
         ordinal: u32,
         seed: Vec<u8>,
     },
+    ResumeJourney {
+        journey_id: Uuid,
+    },
 }
 
 /// Wire-level messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireIn {
-    CreateJourney { ordinal: u32, seed: Vec<u8> },
+    CreateJourney {
+        ordinal: u32,
+        seed: Vec<u8>,
+    },
     JourneyStatus(Uuid),
+    AnimalAppearance(Uuid),
+    PerturbAnimal {
+        journey_id: Uuid,
+        data: Vec<u8>,
+    },
+    ClaimAnimalPerturbation(Uuid),
+    AckAnimalPerturbation {
+        journey_id: Uuid,
+        perturbation_id: u64,
+    },
+    HeartbeatJourneyLease {
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    },
+    PollOwnerWake {
+        owner_id: Uuid,
+    },
+    ScheduleSleep {
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    },
     JourneyComplete(Uuid),
     PollStep,
+    PollTimers,
     HistoryEvent(RunnerOut),
 }
 
@@ -48,6 +113,9 @@ pub enum WireIn {
 pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyStatus(JourneyStatus),
+    AnimalAppearance(Option<Vec<u8>>),
+    ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),
+    OwnerWake(Option<OwnerWake>),
     NoAvailableSteps,
     PendingStep(Step),
     Ack,
