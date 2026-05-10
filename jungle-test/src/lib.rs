@@ -287,7 +287,7 @@ mod tests {
     mod aspect;
     mod conditional;
     mod connection;
-    mod impulse_helpers;
+    mod adapt_helpers;
     mod integration;
     mod migration;
     mod progression;

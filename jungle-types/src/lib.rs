@@ -5,7 +5,7 @@ mod journey;
 mod meta;
 mod sleep;
 mod transport;
-pub use behavior::{Absorb, Emit, Impulse};
+pub use behavior::{Absorb, Adapt, Emit};
 pub use behavior::{
     AbsorbFn, AbsorbMapper, EmitFn, EmitMapper, FocusedStep, IdentityStep, PassthroughEmit,
     UnitEmit,

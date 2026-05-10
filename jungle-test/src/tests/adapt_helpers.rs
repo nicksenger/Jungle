@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
     AbsorbFn, AbsorbMapper, ActionCompletion, EmitFn, EmitMapper, FocusedStep, Identity,
-    IdentityStep, Impulse, ManualExecutor, PassthroughEmit, Step, UnitEmit,
+    IdentityStep, Adapt, ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
 use jungle_sdk::Journey;
@@ -54,20 +54,20 @@ type UnitStep = IdentityStep<
 
 type FunctionEmitStep = Step<
     HelperAnimal,
-    Impulse<
+    Adapt<
         EmitFn<Identity, EchoAction, i32, EmitUsingState>,
         AbsorbFn<Identity, EchoAction, i32, StoreValueAbsorb>,
     >,
 >;
 
 #[derive(Journey)]
-struct ImpulseHelpersJourney(PassthroughStep, UnitStep, FunctionEmitStep);
+struct AdaptHelpersJourney(PassthroughStep, UnitStep, FunctionEmitStep);
 
 animal!(
     HelperAnimal,
     U0,
     state = HelperState,
-    journey = ImpulseHelpersJourney
+    journey = AdaptHelpersJourney
 );
 
 #[test]

@@ -363,9 +363,9 @@ where
 }
 
 /// Combines independent [`Emit`] and [`Absorb`] implementations into [`Act`].
-pub struct Impulse<E, A>(PhantomData<fn() -> (E, A)>);
+pub struct Adapt<E, A>(PhantomData<fn() -> (E, A)>);
 
-impl<T, E, A> Act<T> for Impulse<E, A>
+impl<T, E, A> Act<T> for Adapt<E, A>
 where
     T: Animal,
     E: Emit<T>,
@@ -433,9 +433,9 @@ where
     }
 }
 
-/// Alias for an [`Impulse`] step focused by a specific [`Aspect`].
+/// Alias for an [`Adapt`] step focused by a specific [`Aspect`].
 pub type FocusedStep<T, Focus, E, B> =
-    Step<T, Impulse<FocusedEmit<Focus, E>, FocusedAbsorb<Focus, B>>>;
+    Step<T, Adapt<FocusedEmit<Focus, E>, FocusedAbsorb<Focus, B>>>;
 
 /// Identity-focused [`FocusedStep`].
 pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
