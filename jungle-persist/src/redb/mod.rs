@@ -4,7 +4,7 @@ use crate::models::{SchemaVersion, StepKind, StepStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, RunnerStep};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -15,6 +15,8 @@ const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("jour
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 const TIMER_TASKS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("timer_tasks");
+const JOURNEY_LEASES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journey_leases");
+const OWNER_WAKES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("owner_wakes");
 const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("animal_appearances");
 const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("animal_perturbations");
@@ -436,6 +438,100 @@ impl JungleStore for RedbStore {
         Ok(())
     }
 
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<()> {
+        let now_millis = Utc::now().timestamp_millis();
+        let lease_ttl_ms = lease_ttl_ms.max(0);
+        let lease_until_millis = now_millis.saturating_add(lease_ttl_ms);
+
+        let write_tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb heartbeat_journey_lease begin failed: {err}"
+            ))
+        })?;
+        {
+            let mut leases = write_tx.open_table(JOURNEY_LEASES_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb heartbeat_journey_lease open journey_leases table failed: {err}"
+                ))
+            })?;
+            let key = &journey_id.as_bytes()[..];
+            let value = encode_journey_lease(owner_id, lease_until_millis, now_millis);
+            leases.insert(key, value.as_slice()).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb heartbeat_journey_lease write lease failed: {err}"
+                ))
+            })?;
+        }
+        write_tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb heartbeat_journey_lease commit failed: {err}"
+            ))
+        })?;
+        Ok(())
+    }
+
+    async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>> {
+        let write_tx = self.db.begin_write().map_err(|err| {
+            crate::PersistenceError::Message(format!("redb claim_owner_wake begin failed: {err}"))
+        })?;
+
+        let mut selected_key: Option<Vec<u8>> = None;
+        let mut selected_value: Option<Vec<u8>> = None;
+
+        {
+            let mut owner_wakes = write_tx.open_table(OWNER_WAKES_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb claim_owner_wake open owner_wakes table failed: {err}"
+                ))
+            })?;
+
+            let iter = owner_wakes.iter().map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb claim_owner_wake iterate owner_wakes failed: {err}"
+                ))
+            })?;
+            for entry in iter {
+                let (key, value) = entry.map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb claim_owner_wake read owner_wakes entry failed: {err}"
+                    ))
+                })?;
+                let (entry_owner_id, _, _) =
+                    decode_owner_wake_key(key.value(), "redb claim_owner_wake decode key")?;
+                if entry_owner_id == owner_id {
+                    selected_key = Some(key.value().to_vec());
+                    selected_value = Some(value.value().to_vec());
+                    break;
+                }
+            }
+
+            if let Some(key) = selected_key.as_ref() {
+                owner_wakes.remove(key.as_slice()).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb claim_owner_wake remove wake failed: {err}"
+                    ))
+                })?;
+            }
+        }
+
+        write_tx.commit().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb claim_owner_wake commit failed: {err}"
+            ))
+        })?;
+
+        let Some(value) = selected_value else {
+            return Ok(None);
+        };
+        let wake = decode_owner_wake_value(value.as_slice(), "redb claim_owner_wake decode value")?;
+        Ok(Some(wake))
+    }
+
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
         self.update_journey_status(journey_id, JourneyStatus::Completed, None)
     }
@@ -771,7 +867,44 @@ impl JungleStore for RedbStore {
             return Ok(None);
         };
 
+        let mut valid_owner: Option<Uuid> = None;
         {
+            let leases = write_tx.open_table(JOURNEY_LEASES_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb poll_timers open journey_leases table failed: {err}"
+                ))
+            })?;
+            if let Some(raw) = leases
+                .get(&journey_id.as_bytes()[..])
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb poll_timers read journey lease failed: {err}"
+                    ))
+                })?
+            {
+                let lease =
+                    decode_journey_lease(raw.value(), "redb poll_timers decode journey lease")?;
+                if lease.lease_until_unix_ms > now_millis {
+                    valid_owner = Some(lease.owner_id);
+                }
+            }
+        }
+
+        if let Some(owner_id) = valid_owner {
+            let mut owner_wakes = write_tx.open_table(OWNER_WAKES_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb poll_timers open owner_wakes table failed: {err}"
+                ))
+            })?;
+            let wake_id = Uuid::new_v4();
+            let key = encode_owner_wake_key(owner_id, now_millis, wake_id);
+            let value = encode_owner_wake_value(journey_id, timer_id);
+            owner_wakes.insert(key.as_slice(), value.as_slice()).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb poll_timers enqueue owner wake failed: {err}"
+                ))
+            })?;
+        } else {
             let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "redb poll_timers open work_items table failed: {err}"
@@ -868,6 +1001,12 @@ struct TimerTaskRow {
     journey_id: Uuid,
     status: u8,
     visible_at: DateTime<Utc>,
+}
+
+#[derive(Debug)]
+struct JourneyLeaseRow {
+    owner_id: Uuid,
+    lease_until_unix_ms: i64,
 }
 
 fn decode_uuid(raw: &[u8], context: &str) -> Result<Uuid> {
@@ -987,6 +1126,76 @@ fn decode_timer_task(raw: &[u8], context: &str) -> Result<TimerTaskRow> {
         journey_id,
         status,
         visible_at,
+    })
+}
+
+fn encode_journey_lease(owner_id: Uuid, lease_until_unix_ms: i64, heartbeat_unix_ms: i64) -> Vec<u8> {
+    let mut out = Vec::with_capacity(32);
+    out.extend_from_slice(owner_id.as_bytes());
+    out.extend_from_slice(&lease_until_unix_ms.to_be_bytes());
+    out.extend_from_slice(&heartbeat_unix_ms.to_be_bytes());
+    out
+}
+
+fn decode_journey_lease(raw: &[u8], context: &str) -> Result<JourneyLeaseRow> {
+    if raw.len() < 32 {
+        return Err(crate::PersistenceError::Message(format!(
+            "{context}: expected at least 32 bytes, got {}",
+            raw.len()
+        )));
+    }
+    let owner_id = decode_uuid(&raw[..16], context)?;
+    let mut lease_until_bytes = [0_u8; 8];
+    lease_until_bytes.copy_from_slice(&raw[16..24]);
+    let lease_until_unix_ms = i64::from_be_bytes(lease_until_bytes);
+    Ok(JourneyLeaseRow {
+        owner_id,
+        lease_until_unix_ms,
+    })
+}
+
+fn encode_owner_wake_key(owner_id: Uuid, created_at_unix_ms: i64, wake_id: Uuid) -> Vec<u8> {
+    let mut out = Vec::with_capacity(40);
+    out.extend_from_slice(owner_id.as_bytes());
+    out.extend_from_slice(&created_at_unix_ms.to_be_bytes());
+    out.extend_from_slice(wake_id.as_bytes());
+    out
+}
+
+fn decode_owner_wake_key(raw: &[u8], context: &str) -> Result<(Uuid, i64, Uuid)> {
+    if raw.len() < 40 {
+        return Err(crate::PersistenceError::Message(format!(
+            "{context}: expected at least 40 bytes, got {}",
+            raw.len()
+        )));
+    }
+    let owner_id = decode_uuid(&raw[..16], context)?;
+    let mut created_at_bytes = [0_u8; 8];
+    created_at_bytes.copy_from_slice(&raw[16..24]);
+    let created_at_unix_ms = i64::from_be_bytes(created_at_bytes);
+    let wake_id = decode_uuid(&raw[24..40], context)?;
+    Ok((owner_id, created_at_unix_ms, wake_id))
+}
+
+fn encode_owner_wake_value(journey_id: Uuid, timer_id: Uuid) -> Vec<u8> {
+    let mut out = Vec::with_capacity(32);
+    out.extend_from_slice(journey_id.as_bytes());
+    out.extend_from_slice(timer_id.as_bytes());
+    out
+}
+
+fn decode_owner_wake_value(raw: &[u8], context: &str) -> Result<OwnerWake> {
+    if raw.len() < 32 {
+        return Err(crate::PersistenceError::Message(format!(
+            "{context}: expected at least 32 bytes, got {}",
+            raw.len()
+        )));
+    }
+    let journey_id = decode_uuid(&raw[..16], context)?;
+    let timer_id = decode_uuid(&raw[16..32], context)?;
+    Ok(OwnerWake {
+        journey_id,
+        timer_id,
     })
 }
 

@@ -121,6 +121,45 @@ impl PgStore {
 
         sqlx::query(
             r#"
+            CREATE TABLE IF NOT EXISTS journey_leases (
+                journey_id UUID PRIMARY KEY REFERENCES journeys(id) ON DELETE CASCADE,
+                owner_id UUID NOT NULL,
+                lease_until TIMESTAMPTZ NOT NULL,
+                heartbeat_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS owner_wakes (
+                id UUID PRIMARY KEY,
+                owner_id UUID NOT NULL,
+                journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
+                timer_id UUID NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_owner_wakes_owner_id_created_at
+            ON owner_wakes (owner_id, created_at, id)
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
             ALTER TABLE work_items
             ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0
             "#,

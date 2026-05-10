@@ -2,7 +2,7 @@ use crate::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerCha
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, RunnerOut, RunnerStep,
+    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, RunnerStep,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -45,6 +45,12 @@ type ClaimPerturbationHandler =
 type AckPerturbationHandler = Arc<dyn Fn(Uuid, u64) -> HandlerFuture + Send + Sync + 'static>;
 type ScheduleSleepTimerHandler =
     Arc<dyn Fn(Uuid, Uuid, i64) -> HandlerFuture + Send + Sync + 'static>;
+type HeartbeatJourneyLeaseHandler =
+    Arc<dyn Fn(Uuid, Uuid, i64) -> HandlerFuture + Send + Sync + 'static>;
+type PollOwnerWakeHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<Option<OwnerWake>, ExecutorError>> + Send + 'static>>;
+type PollOwnerWakeHandler =
+    Arc<dyn Fn(Uuid) -> PollOwnerWakeHandlerFuture + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct MockClient {
@@ -55,6 +61,8 @@ pub struct MockClient {
     on_perturb_animal: Handler,
     on_claim_perturbation: ClaimPerturbationHandler,
     on_ack_perturbation: AckPerturbationHandler,
+    on_heartbeat_journey_lease: HeartbeatJourneyLeaseHandler,
+    on_poll_owner_wake: PollOwnerWakeHandler,
     on_schedule_sleep_timer: ScheduleSleepTimerHandler,
     on_flow_complete: FlowCompleteHandler,
     on_poll_timers: PollTimersHandler,
@@ -150,6 +158,19 @@ impl JungleClient for MockClient {
         (self.on_ack_perturbation)(id, perturbation_id).await
     }
 
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        (self.on_heartbeat_journey_lease)(journey_id, owner_id, lease_ttl_ms).await
+    }
+
+    async fn poll_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>, ExecutorError> {
+        (self.on_poll_owner_wake)(owner_id).await
+    }
+
     async fn schedule_sleep_timer(
         &self,
         journey_id: Uuid,
@@ -193,6 +214,8 @@ pub struct MockClientBuilder {
     on_perturb_animal: Option<Handler>,
     on_claim_perturbation: Option<ClaimPerturbationHandler>,
     on_ack_perturbation: Option<AckPerturbationHandler>,
+    on_heartbeat_journey_lease: Option<HeartbeatJourneyLeaseHandler>,
+    on_poll_owner_wake: Option<PollOwnerWakeHandler>,
     on_schedule_sleep_timer: Option<ScheduleSleepTimerHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
     on_poll_timers: Option<PollTimersHandler>,
@@ -288,6 +311,27 @@ impl MockClientBuilder {
         self
     }
 
+    pub fn on_heartbeat_journey_lease<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Uuid, i64) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
+    {
+        self.on_heartbeat_journey_lease =
+            Some(Arc::new(move |journey_id, owner_id, lease_ttl_ms| {
+                Box::pin(f(journey_id, owner_id, lease_ttl_ms))
+            }));
+        self
+    }
+
+    pub fn on_poll_owner_wake<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Option<OwnerWake>, ExecutorError>> + Send + 'static,
+    {
+        self.on_poll_owner_wake = Some(Arc::new(move |owner_id| Box::pin(f(owner_id))));
+        self
+    }
+
     pub fn on_flow_complete<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Fut + Send + Sync + 'static,
@@ -349,6 +393,10 @@ impl MockClientBuilder {
             Arc::new(|_| Box::pin(async { Ok(None) }));
         let default_ack_perturbation_handler: AckPerturbationHandler =
             Arc::new(|_, _| Box::pin(async { Ok(()) }));
+        let default_heartbeat_journey_lease_handler: HeartbeatJourneyLeaseHandler =
+            Arc::new(|_, _, _| Box::pin(async { Ok(()) }));
+        let default_poll_owner_wake_handler: PollOwnerWakeHandler =
+            Arc::new(|_| Box::pin(async { Ok(None) }));
         let default_schedule_sleep_timer_handler: ScheduleSleepTimerHandler =
             Arc::new(|_, _, _| Box::pin(async { Ok(()) }));
         let default_flow_complete_handler: FlowCompleteHandler =
@@ -378,6 +426,12 @@ impl MockClientBuilder {
             on_ack_perturbation: self
                 .on_ack_perturbation
                 .unwrap_or_else(|| default_ack_perturbation_handler.clone()),
+            on_heartbeat_journey_lease: self
+                .on_heartbeat_journey_lease
+                .unwrap_or_else(|| default_heartbeat_journey_lease_handler.clone()),
+            on_poll_owner_wake: self
+                .on_poll_owner_wake
+                .unwrap_or_else(|| default_poll_owner_wake_handler.clone()),
             on_schedule_sleep_timer: self
                 .on_schedule_sleep_timer
                 .unwrap_or_else(|| default_schedule_sleep_timer_handler.clone()),

@@ -4,7 +4,7 @@ use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
-use jungle_types::{ClaimedAnimalPerturbation, RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, OwnerWake, RunnerOut, RunnerStep};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
@@ -283,6 +283,66 @@ impl JungleStore for PgStore {
         Ok(())
     }
 
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<()> {
+        let lease_ttl_ms = lease_ttl_ms.max(0);
+        sqlx::query(
+            r#"
+            INSERT INTO journey_leases (journey_id, owner_id, lease_until, heartbeat_at)
+            VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 millisecond'), NOW())
+            ON CONFLICT (journey_id)
+            DO UPDATE SET owner_id = EXCLUDED.owner_id,
+                          lease_until = EXCLUDED.lease_until,
+                          heartbeat_at = EXCLUDED.heartbeat_at
+            "#,
+        )
+        .bind(journey_id)
+        .bind(owner_id)
+        .bind(lease_ttl_ms)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+        Ok(())
+    }
+
+    async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>> {
+        #[derive(Debug, sqlx::FromRow)]
+        struct WakeRow {
+            journey_id: Uuid,
+            timer_id: Uuid,
+        }
+
+        let wake = sqlx::query_as::<_, WakeRow>(
+            r#"
+            WITH next_wake AS (
+                SELECT id
+                FROM owner_wakes
+                WHERE owner_id = $1
+                ORDER BY created_at, id
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            DELETE FROM owner_wakes ow
+            USING next_wake nw
+            WHERE ow.id = nw.id
+            RETURNING ow.journey_id, ow.timer_id
+            "#,
+        )
+        .bind(owner_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(wake.map(|row| OwnerWake {
+            journey_id: row.journey_id,
+            timer_id: row.timer_id,
+        }))
+    }
+
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
         let result = sqlx::query(
             r#"
@@ -557,19 +617,48 @@ impl JungleStore for PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        let owner_id = sqlx::query_scalar::<_, Uuid>(
             r#"
-            INSERT INTO work_items (id, journey_id, kind, status, expiry)
-            VALUES ($1, $2, $3, $4, NOW())
+            SELECT owner_id
+            FROM journey_leases
+            WHERE journey_id = $1 AND lease_until > NOW()
+            LIMIT 1
             "#,
         )
-        .bind(Uuid::new_v4())
         .bind(due.journey_id)
-        .bind(1_i16)
-        .bind(0_i16)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        if let Some(owner_id) = owner_id {
+            sqlx::query(
+                r#"
+                INSERT INTO owner_wakes (id, owner_id, journey_id, timer_id, created_at)
+                VALUES ($1, $2, $3, $4, NOW())
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(owner_id)
+            .bind(due.journey_id)
+            .bind(due.id)
+            .execute(&mut *tx)
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        } else {
+            sqlx::query(
+                r#"
+                INSERT INTO work_items (id, journey_id, kind, status, expiry)
+                VALUES ($1, $2, $3, $4, NOW())
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(due.journey_id)
+            .bind(1_i16)
+            .bind(0_i16)
+            .execute(&mut *tx)
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        }
 
         tx.commit()
             .await

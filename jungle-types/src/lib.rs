@@ -3,6 +3,7 @@ mod error;
 mod executor;
 mod journey;
 mod meta;
+mod sleep;
 mod transport;
 pub use behavior::{Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
 pub use error::Error;
@@ -19,10 +20,11 @@ pub use meta::{
     AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible,
     StripActionHeaders, StripAnimalHeaders,
 };
+pub use sleep::{Sleep, SleepError, SleepInput, SleepStep};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
-pub use transport::ClaimedAnimalPerturbation;
+pub use transport::{ClaimedAnimalPerturbation, OwnerWake};
 pub use transport::{BackendError, JourneyStatus, RunnerOut, Step as RunnerStep, WireIn, WireOut};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;

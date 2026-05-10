@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, RunnerStep};
 use uuid::Uuid;
 
 use crate::{JungleStore, Result};
@@ -15,6 +15,8 @@ type EnqueuePerturbationHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send
 type ClaimPerturbationHandler =
     Arc<dyn Fn(Uuid) -> Result<Option<ClaimedAnimalPerturbation>> + Send + Sync + 'static>;
 type AckPerturbationHandler = Arc<dyn Fn(Uuid, u64) -> Result<()> + Send + Sync + 'static>;
+type HeartbeatJourneyLeaseHandler = Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
+type ClaimOwnerWakeHandler = Arc<dyn Fn(Uuid) -> Result<Option<OwnerWake>> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
@@ -31,6 +33,8 @@ pub struct MockStore {
     on_enqueue_perturbation: EnqueuePerturbationHandler,
     on_claim_perturbation: ClaimPerturbationHandler,
     on_ack_perturbation: AckPerturbationHandler,
+    on_heartbeat_journey_lease: HeartbeatJourneyLeaseHandler,
+    on_claim_owner_wake: ClaimOwnerWakeHandler,
     on_flow_complete: FlowCompleteHandler,
     on_flow_alive_if_created: FlowAliveIfCreatedHandler,
     on_claim_work: ClaimWorkHandler,
@@ -88,6 +92,19 @@ impl JungleStore for MockStore {
         (self.on_ack_perturbation)(journey_id, perturbation_id)
     }
 
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<()> {
+        (self.on_heartbeat_journey_lease)(journey_id, owner_id, lease_ttl_ms)
+    }
+
+    async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>> {
+        (self.on_claim_owner_wake)(owner_id)
+    }
+
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
         (self.on_flow_complete)(journey_id)
     }
@@ -127,6 +144,8 @@ pub struct MockStoreBuilder {
     on_enqueue_perturbation: Option<EnqueuePerturbationHandler>,
     on_claim_perturbation: Option<ClaimPerturbationHandler>,
     on_ack_perturbation: Option<AckPerturbationHandler>,
+    on_heartbeat_journey_lease: Option<HeartbeatJourneyLeaseHandler>,
+    on_claim_owner_wake: Option<ClaimOwnerWakeHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
     on_flow_alive_if_created: Option<FlowAliveIfCreatedHandler>,
     on_claim_work: Option<ClaimWorkHandler>,
@@ -200,6 +219,22 @@ impl MockStoreBuilder {
         self
     }
 
+    pub fn on_heartbeat_journey_lease<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_heartbeat_journey_lease = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_claim_owner_wake<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<Option<OwnerWake>> + Send + Sync + 'static,
+    {
+        self.on_claim_owner_wake = Some(Arc::new(f));
+        self
+    }
+
     pub fn on_flow_complete<F>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Result<()> + Send + Sync + 'static,
@@ -248,6 +283,9 @@ impl MockStoreBuilder {
         let default_enqueue_perturbation: EnqueuePerturbationHandler = Arc::new(|_, _| Ok(()));
         let default_claim_perturbation: ClaimPerturbationHandler = Arc::new(|_| Ok(None));
         let default_ack_perturbation: AckPerturbationHandler = Arc::new(|_, _| Ok(()));
+        let default_heartbeat_journey_lease: HeartbeatJourneyLeaseHandler =
+            Arc::new(|_, _, _| Ok(()));
+        let default_claim_owner_wake: ClaimOwnerWakeHandler = Arc::new(|_| Ok(None));
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));
@@ -277,6 +315,12 @@ impl MockStoreBuilder {
             on_ack_perturbation: self
                 .on_ack_perturbation
                 .unwrap_or_else(|| default_ack_perturbation.clone()),
+            on_heartbeat_journey_lease: self
+                .on_heartbeat_journey_lease
+                .unwrap_or_else(|| default_heartbeat_journey_lease.clone()),
+            on_claim_owner_wake: self
+                .on_claim_owner_wake
+                .unwrap_or_else(|| default_claim_owner_wake.clone()),
             on_flow_complete: self
                 .on_flow_complete
                 .unwrap_or_else(|| default_flow_complete.clone()),

@@ -17,13 +17,22 @@ pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
 pub type ErasedStep<State> = dyn ErasedFlow<State>;
 
 pub struct ExecutableActionRequest {
+    action_type: &'static str,
     request: Serialized,
     runner: ActionRunner,
 }
 
 impl ExecutableActionRequest {
-    fn new(request: Serialized, runner: ActionRunner) -> Self {
-        Self { request, runner }
+    fn new(action_type: &'static str, request: Serialized, runner: ActionRunner) -> Self {
+        Self {
+            action_type,
+            request,
+            runner,
+        }
+    }
+
+    pub fn action_type(&self) -> &'static str {
+        self.action_type
     }
 
     pub fn request_bytes(&self) -> &[u8] {
@@ -195,7 +204,10 @@ where
         });
 
         self.waiting_completion = true;
-        Ok((state, ExecutableActionRequest::new(request, runner)))
+        Ok((
+            state,
+            ExecutableActionRequest::new(core::any::type_name::<<A as Act<T>>::Action>(), request, runner),
+        ))
     }
 
     fn complete(
@@ -321,7 +333,10 @@ where
         });
 
         self.waiting_completion = true;
-        Ok((state, ExecutableActionRequest::new(request, runner)))
+        Ok((
+            state,
+            ExecutableActionRequest::new(core::any::type_name::<<A as Act<T>>::Action>(), request, runner),
+        ))
     }
 
     fn complete(

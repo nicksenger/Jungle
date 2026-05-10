@@ -231,6 +231,44 @@ impl JungleServer for Server {
                     )));
                 }
             }
+            Some(WireIn::HeartbeatJourneyLease {
+                journey_id,
+                owner_id,
+                lease_ttl_ms,
+            }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    self.store
+                        .heartbeat_journey_lease(journey_id, owner_id, lease_ttl_ms)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
+                    WireOut::Ack
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (journey_id, owner_id, lease_ttl_ms);
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "heartbeat_journey_lease is unavailable without a persistence backend"
+                            .to_string(),
+                    )));
+                }
+            }
+            Some(WireIn::PollOwnerWake { owner_id }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let wake = self.store.claim_owner_wake(owner_id).await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
+                    WireOut::OwnerWake(wake)
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = owner_id;
+                    WireOut::OwnerWake(None)
+                }
+            }
             Some(WireIn::ScheduleSleep {
                 journey_id,
                 timer_id,

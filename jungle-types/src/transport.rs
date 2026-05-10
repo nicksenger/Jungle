@@ -32,6 +32,12 @@ pub struct ClaimedAnimalPerturbation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OwnerWake {
+    pub journey_id: Uuid,
+    pub timer_id: Uuid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum JourneyStatus {
     Created,
     Alive,
@@ -71,6 +77,14 @@ pub enum WireIn {
         journey_id: Uuid,
         perturbation_id: u64,
     },
+    HeartbeatJourneyLease {
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    },
+    PollOwnerWake {
+        owner_id: Uuid,
+    },
     ScheduleSleep {
         journey_id: Uuid,
         timer_id: Uuid,
@@ -89,6 +103,7 @@ pub enum WireOut {
     JourneyStatus(JourneyStatus),
     AnimalAppearance(Option<Vec<u8>>),
     ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),
+    OwnerWake(Option<OwnerWake>),
     NoAvailableSteps,
     PendingStep(Step),
     Ack,

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
 use jungle_types::{
-    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, RunnerOut, RunnerStep,
+    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, RunnerStep,
 };
 use uuid::Uuid;
 
@@ -30,6 +30,13 @@ pub trait JungleClient: DynClone + Send + Sync {
         id: Uuid,
         perturbation_id: u64,
     ) -> Result<(), ExecutorError>;
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<(), ExecutorError>;
+    async fn poll_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>, ExecutorError>;
     async fn schedule_sleep_timer(
         &self,
         journey_id: Uuid,

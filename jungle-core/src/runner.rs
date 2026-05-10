@@ -3,9 +3,14 @@ use futures::SinkExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, BuildFlowWithContext, ContextExecutor, DynFlow,
-    ExecutorError, ObservationAdapter, PerturbationAdapter, RunnerOut,
+    ExecutorError, ObservationAdapter, PerturbationAdapter, RunnerOut, Sleep, SleepInput,
 };
 use uuid::Uuid;
+
+pub enum RunnerAdvance {
+    Completed,
+    SuspendedSleep { wake_at_unix_ms: i64 },
+}
 
 pub struct JungleRunner<T> {
     jungle: T,
@@ -25,24 +30,30 @@ impl<T> JungleRunner<T>
 where
     T: 'static,
 {
-    pub async fn spawn<A>(
-        &self,
-        state: A::State,
-        journey_id: Uuid,
-        mut tx: RunnerChannelTx,
-    ) -> Result<A::State, ExecutorError>
+    pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<'_, T, A>
     where
-        A: Animal + AnimalObservation + AnimalPerturbation,
+        A: Animal,
         A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
-        let mut executor = ContextExecutor::<T, A>::new(&self.jungle, state);
+        ContextExecutor::new(&self.jungle, state)
+    }
+
+    pub async fn emit_initial_appearance<A>(
+        &self,
+        executor: &ContextExecutor<'_, T, A>,
+        journey_id: Uuid,
+        tx: &mut RunnerChannelTx,
+    ) -> Result<(), ExecutorError>
+    where
+        A: Animal + AnimalObservation,
+    {
         if let Some(appearance) =
             <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(
                 executor.state(),
             )?
         {
             send_history(
-                &mut tx,
+                tx,
                 RunnerOut::Appearance {
                     data: appearance,
                     uuid: journey_id,
@@ -50,57 +61,110 @@ where
             )
             .await?;
         }
+        Ok(())
+    }
+
+    pub async fn drive_until_sleep_or_complete<A>(
+        &self,
+        executor: &mut ContextExecutor<'_, T, A>,
+        journey_id: Uuid,
+        tx: &mut RunnerChannelTx,
+    ) -> Result<RunnerAdvance, ExecutorError>
+    where
+        A: Animal + AnimalObservation + AnimalPerturbation,
+        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    {
         while !executor.is_complete() {
-            process_perturbations(&mut executor, journey_id, &mut tx).await?;
+            process_perturbations(executor, journey_id, tx).await?;
             let request = executor.next_executable_request(())?;
             send_history(
-                &mut tx,
+                tx,
                 RunnerOut::ActionInput {
                     data: request.request_bytes().to_vec(),
                     uuid: journey_id,
                 },
             )
             .await?;
+
+            if request.action_type() == core::any::type_name::<Sleep>() {
+                let sleep_input: SleepInput = request.deserialize_request()?;
+                return Ok(RunnerAdvance::SuspendedSleep {
+                    wake_at_unix_ms: sleep_input.wake_at_unix_ms,
+                });
+            }
+
             let completion = request.run().await?;
-            match &completion {
-                Ok(output) => {
-                    send_history(
-                        &mut tx,
-                        RunnerOut::ActionSuccessOutput {
-                            data: output.clone(),
-                            uuid: journey_id,
-                        },
-                    )
-                    .await?
-                }
-                Err(error) => {
-                    send_history(
-                        &mut tx,
-                        RunnerOut::ActionFailureOutput {
-                            data: error.clone(),
-                            uuid: journey_id,
-                        },
-                    )
-                    .await?
-                }
-            }
-            let _emitted = executor.complete_serialized(completion)?;
-            if let Some(appearance) = <<A as AnimalObservation>::Adapter as ObservationAdapter<
-                A,
-            >>::snapshot(executor.state())?
-            {
-                send_history(
-                    &mut tx,
-                    RunnerOut::Appearance {
-                        data: appearance,
-                        uuid: journey_id,
-                    },
-                )
-                .await?;
-            }
+            apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, completion).await?;
         }
-        Ok(executor.into_state())
+        Ok(RunnerAdvance::Completed)
     }
+
+    pub async fn resume_after_sleep<A>(
+        &self,
+        executor: &mut ContextExecutor<'_, T, A>,
+        journey_id: Uuid,
+        tx: &mut RunnerChannelTx,
+    ) -> Result<RunnerAdvance, ExecutorError>
+    where
+        A: Animal + AnimalObservation + AnimalPerturbation,
+        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    {
+        let sleep_out =
+            postcard::to_allocvec(&()).map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
+        let completion = Ok(sleep_out);
+        apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, completion).await?;
+        self.drive_until_sleep_or_complete::<A>(executor, journey_id, tx)
+            .await
+    }
+}
+
+async fn apply_completion_and_emit_appearance<T, A>(
+    executor: &mut ContextExecutor<'_, T, A>,
+    journey_id: Uuid,
+    tx: &mut RunnerChannelTx,
+    completion: Result<Vec<u8>, Vec<u8>>,
+) -> Result<(), ExecutorError>
+where
+    T: 'static,
+    A: Animal + AnimalObservation,
+    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+{
+    match &completion {
+        Ok(output) => {
+            send_history(
+                tx,
+                RunnerOut::ActionSuccessOutput {
+                    data: output.clone(),
+                    uuid: journey_id,
+                },
+            )
+            .await?
+        }
+        Err(error) => {
+            send_history(
+                tx,
+                RunnerOut::ActionFailureOutput {
+                    data: error.clone(),
+                    uuid: journey_id,
+                },
+            )
+            .await?
+        }
+    }
+    let _emitted = executor.complete_serialized(completion)?;
+    if let Some(appearance) =
+        <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(executor.state())?
+    {
+        send_history(
+            tx,
+            RunnerOut::Appearance {
+                data: appearance,
+                uuid: journey_id,
+            },
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn send_history(tx: &mut RunnerChannelTx, history: RunnerOut) -> Result<(), ExecutorError> {

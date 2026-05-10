@@ -1,8 +1,8 @@
 use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
-    BackendError, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, RunnerOut, RunnerStep,
-    WireIn, WireOut,
+    BackendError, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
+    RunnerStep, WireIn, WireOut,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -346,6 +346,43 @@ impl JungleClient for Client {
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for ack_animal_perturbation".to_string(),
+            )),
+        }
+    }
+
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::HeartbeatJourneyLease {
+                journey_id,
+                owner_id,
+                lease_ttl_ms,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            _ => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for heartbeat_journey_lease".to_string(),
+            )),
+        }
+    }
+
+    async fn poll_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::PollOwnerWake { owner_id })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::OwnerWake(wake) => Ok(wake),
+            _ => Err(ExecutorError::ClientTransport(
+                "unexpected response for poll_owner_wake".to_string(),
             )),
         }
     }
