@@ -5,7 +5,13 @@ mod journey;
 mod meta;
 mod sleep;
 mod transport;
+pub use behavior::{Absorb, Adapt, Emit};
+pub use behavior::{
+    AbsorbFn, AbsorbMapper, EmitFn, EmitMapper, FocusedStep, IdentityStep, PassthroughEmit,
+    UnitEmit,
+};
 pub use behavior::{Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
+pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
 pub use executor::{
     BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,

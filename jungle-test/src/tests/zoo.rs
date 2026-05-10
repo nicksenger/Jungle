@@ -527,9 +527,8 @@ animal!(
 async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
     use jungle_sdk::core::JungleExecutor;
 
-    let zoo = Zoo;
     let mut gorilla = JungleExecutor::<Zoo, WorkflowGorilla>::new(
-        &zoo,
+        Zoo,
         ExecutorApeState {
             core: CoreState {
                 energy: 5,
@@ -561,7 +560,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
     assert_eq!(gorilla_state.mood, 2);
 
     let mut tiger = JungleExecutor::<Zoo, WorkflowTiger>::new(
-        &zoo,
+        Zoo,
         ExecutorCatState {
             core: CoreState {
                 energy: 6,
@@ -591,7 +590,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
     assert_eq!(tiger_state.stripes, 8);
 
     let mut tiger_odd = JungleExecutor::<Zoo, WorkflowTiger>::new(
-        &zoo,
+        Zoo,
         ExecutorCatState {
             core: CoreState {
                 energy: 6,
@@ -628,9 +627,8 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
 async fn jungle_executor_exposes_state_during_progression() {
     use jungle_sdk::core::JungleExecutor;
 
-    let zoo = Zoo;
     let mut gorilla = JungleExecutor::<Zoo, WorkflowGorilla>::new(
-        &zoo,
+        Zoo,
         ExecutorApeState {
             core: CoreState {
                 energy: 5,

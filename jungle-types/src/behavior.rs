@@ -237,6 +237,209 @@ pub trait Act<T: Animal> {
     ) -> Self::Out;
 }
 
+/// Forward half of [`Act`], responsible for producing an action request input.
+pub trait Emit<T: Animal> {
+    type CarryIn;
+    type Aspect: Aspect<T::State>;
+    type Action: Action;
+
+    fn emit(
+        view: &<Self::Aspect as Aspect<T::State>>::View,
+        input: Self::CarryIn,
+    ) -> <Self::Action as Action>::In;
+}
+
+/// Backward half of [`Act`], responsible for consuming an action completion.
+pub trait Absorb<T: Animal> {
+    type CarryOut;
+    type Aspect: Aspect<T::State>;
+    type Action: Action;
+
+    fn absorb(
+        view: &mut <Self::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut;
+}
+
+/// Emits by forwarding carry input directly as action input.
+pub struct PassthroughEmit<A, Focus, In = <A as Action>::In>(PhantomData<fn() -> (A, Focus, In)>);
+
+impl<T, A, Focus, In> Emit<T> for PassthroughEmit<A, Focus, In>
+where
+    T: Animal,
+    A: Action<In = In>,
+    Focus: Aspect<T::State>,
+{
+    type CarryIn = In;
+    type Aspect = Focus;
+    type Action = A;
+
+    fn emit(
+        _view: &<Self::Aspect as Aspect<T::State>>::View,
+        input: Self::CarryIn,
+    ) -> <Self::Action as Action>::In {
+        input
+    }
+}
+
+/// Emits canonical unit input for actions whose input type is `()`.
+pub struct UnitEmit<A, Focus>(PhantomData<fn() -> (A, Focus)>);
+
+impl<T, A, Focus> Emit<T> for UnitEmit<A, Focus>
+where
+    T: Animal,
+    A: Action<In = ()>,
+    Focus: Aspect<T::State>,
+{
+    type CarryIn = ();
+    type Aspect = Focus;
+    type Action = A;
+
+    fn emit(
+        _view: &<Self::Aspect as Aspect<T::State>>::View,
+        _input: Self::CarryIn,
+    ) -> <Self::Action as Action>::In {
+    }
+}
+
+/// Type-level callable adapter used by [`EmitFn`].
+pub trait EmitMapper<View, A, In>
+where
+    A: Action,
+{
+    fn emit(view: &View, input: In) -> A::In;
+}
+
+/// Emits via a type-level mapper function.
+pub struct EmitFn<Focus, A, In, F>(PhantomData<fn() -> (Focus, A, In, F)>);
+
+impl<T, Focus, A, In, F> Emit<T> for EmitFn<Focus, A, In, F>
+where
+    T: Animal,
+    Focus: Aspect<T::State>,
+    A: Action,
+    F: EmitMapper<<Focus as Aspect<T::State>>::View, A, In>,
+{
+    type CarryIn = In;
+    type Aspect = Focus;
+    type Action = A;
+
+    fn emit(
+        view: &<Self::Aspect as Aspect<T::State>>::View,
+        input: Self::CarryIn,
+    ) -> <Self::Action as Action>::In {
+        <F as EmitMapper<<Focus as Aspect<T::State>>::View, A, In>>::emit(view, input)
+    }
+}
+
+/// Type-level callable adapter used by [`AbsorbFn`].
+pub trait AbsorbMapper<View, A, Out>
+where
+    A: Action,
+{
+    fn absorb(view: &mut View, output: ActionCompletion<A>) -> Out;
+}
+
+/// Absorbs via a type-level mapper function.
+pub struct AbsorbFn<Focus, A, Out, F>(PhantomData<fn() -> (Focus, A, Out, F)>);
+
+impl<T, Focus, A, Out, F> Absorb<T> for AbsorbFn<Focus, A, Out, F>
+where
+    T: Animal,
+    Focus: Aspect<T::State>,
+    A: Action,
+    F: AbsorbMapper<<Focus as Aspect<T::State>>::View, A, Out>,
+{
+    type CarryOut = Out;
+    type Aspect = Focus;
+    type Action = A;
+
+    fn absorb(
+        view: &mut <Self::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
+        <F as AbsorbMapper<<Focus as Aspect<T::State>>::View, A, Out>>::absorb(view, output)
+    }
+}
+
+/// Combines independent [`Emit`] and [`Absorb`] implementations into [`Act`].
+pub struct Adapt<E, A>(PhantomData<fn() -> (E, A)>);
+
+impl<T, E, A> Act<T> for Adapt<E, A>
+where
+    T: Animal,
+    E: Emit<T>,
+    A: Absorb<T, Action = <E as Emit<T>>::Action, Aspect = <E as Emit<T>>::Aspect>,
+{
+    type Action = <E as Emit<T>>::Action;
+    type Aspect = <E as Emit<T>>::Aspect;
+    type In = <E as Emit<T>>::CarryIn;
+    type Out = <A as Absorb<T>>::CarryOut;
+
+    fn emit(
+        view: &<<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        input: Self::In,
+    ) -> <Self::Action as Action>::In {
+        <E as Emit<T>>::emit(view, input)
+    }
+
+    fn absorb(
+        view: &mut <<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::Out {
+        <A as Absorb<T>>::absorb(view, output)
+    }
+}
+
+/// Enforces a specific [`Aspect`] for an [`Emit`] implementation.
+pub struct FocusedEmit<Focus, E>(PhantomData<fn() -> (Focus, E)>);
+
+impl<T, Focus, E> Emit<T> for FocusedEmit<Focus, E>
+where
+    T: Animal,
+    Focus: Aspect<T::State>,
+    E: Emit<T, Aspect = Focus>,
+{
+    type CarryIn = <E as Emit<T>>::CarryIn;
+    type Aspect = Focus;
+    type Action = <E as Emit<T>>::Action;
+
+    fn emit(
+        view: &<Self::Aspect as Aspect<T::State>>::View,
+        input: Self::CarryIn,
+    ) -> <Self::Action as Action>::In {
+        <E as Emit<T>>::emit(view, input)
+    }
+}
+
+/// Enforces a specific [`Aspect`] for an [`Absorb`] implementation.
+pub struct FocusedAbsorb<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+
+impl<T, Focus, A> Absorb<T> for FocusedAbsorb<Focus, A>
+where
+    T: Animal,
+    Focus: Aspect<T::State>,
+    A: Absorb<T, Aspect = Focus>,
+{
+    type CarryOut = <A as Absorb<T>>::CarryOut;
+    type Aspect = Focus;
+    type Action = <A as Absorb<T>>::Action;
+
+    fn absorb(
+        view: &mut <Self::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
+        <A as Absorb<T>>::absorb(view, output)
+    }
+}
+
+/// Alias for an [`Adapt`] step focused by a specific [`Aspect`].
+pub type FocusedStep<T, Focus, E, B> =
+    Step<T, Adapt<FocusedEmit<Focus, E>, FocusedAbsorb<Focus, B>>>;
+
+/// Identity-focused [`FocusedStep`].
+pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
+
 /// A primitive workflow step that adapts an [`Action`] to the
 /// [`Running`]/[`Waiting`] protocol.
 pub struct Step<T, A>

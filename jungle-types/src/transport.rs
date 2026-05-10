@@ -68,6 +68,8 @@ pub enum Step {
     },
     ResumeJourney {
         journey_id: Uuid,
+        ordinal: u32,
+        seed: Vec<u8>,
     },
 }
 
@@ -78,6 +80,7 @@ pub enum WireIn {
         ordinal: u32,
         seed: Vec<u8>,
     },
+    JourneyHistory(Uuid),
     JourneyStatus(Uuid),
     AnimalAppearance(Uuid),
     PerturbAnimal {
@@ -112,6 +115,7 @@ pub enum WireIn {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireOut {
     JourneyCreated(Uuid),
+    JourneyHistory(Vec<RunnerOut>),
     JourneyStatus(JourneyStatus),
     AnimalAppearance(Option<Vec<u8>>),
     ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),

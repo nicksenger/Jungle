@@ -287,9 +287,11 @@ mod tests {
     mod aspect;
     mod conditional;
     mod connection;
+    mod adapt_helpers;
     mod integration;
     mod migration;
     mod progression;
+    mod replay;
     mod select_join;
     mod sleep;
     mod traverse_replace;

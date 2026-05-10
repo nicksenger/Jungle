@@ -28,6 +28,10 @@ type FlowAppearanceHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Option<Vec<u8>>, ExecutorError>> + Send + 'static>>;
 type FlowAppearanceHandler =
     Arc<dyn Fn(Uuid) -> FlowAppearanceHandlerFuture + Send + Sync + 'static>;
+type JourneyHistoryHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<Vec<RunnerOut>, ExecutorError>> + Send + 'static>>;
+type JourneyHistoryHandler =
+    Arc<dyn Fn(Uuid) -> JourneyHistoryHandlerFuture + Send + Sync + 'static>;
 type FlowCompleteHandlerFuture =
     Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> FlowCompleteHandlerFuture + Send + Sync + 'static>;
@@ -54,6 +58,7 @@ type PollOwnerWakeHandler = Arc<dyn Fn(Uuid) -> PollOwnerWakeHandlerFuture + Sen
 #[derive(Clone)]
 pub struct MockClient {
     on_create_flow: CreateFlowHandler,
+    on_journey_history: JourneyHistoryHandler,
     on_flow_status: FlowStatusHandler,
     on_flow_appearance: FlowAppearanceHandler,
     on_flow_appearance_update: FlowAppearanceUpdateHandler,
@@ -124,6 +129,10 @@ impl Default for MockClient {
 impl JungleClient for MockClient {
     async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
         (self.on_create_flow)(ordinal, seed).await
+    }
+
+    async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
+        (self.on_journey_history)(id).await
     }
 
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError> {
@@ -207,6 +216,7 @@ impl JungleClient for MockClient {
 #[derive(Default)]
 pub struct MockClientBuilder {
     on_create_flow: Option<CreateFlowHandler>,
+    on_journey_history: Option<JourneyHistoryHandler>,
     on_flow_status: Option<FlowStatusHandler>,
     on_flow_appearance: Option<FlowAppearanceHandler>,
     on_flow_appearance_update: Option<FlowAppearanceUpdateHandler>,
@@ -240,6 +250,15 @@ impl MockClientBuilder {
         Fut: Future<Output = Result<Option<RunnerStep>, ExecutorError>> + Send + 'static,
     {
         self.on_poll_work = Some(Arc::new(move || Box::pin(f())));
+        self
+    }
+
+    pub fn on_journey_history<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Vec<RunnerOut>, ExecutorError>> + Send + 'static,
+    {
+        self.on_journey_history = Some(Arc::new(move |id| Box::pin(f(id))));
         self
     }
 
@@ -382,6 +401,8 @@ impl MockClientBuilder {
         let default_handler: Handler = Arc::new(|_, _| Box::pin(async { Ok(()) }));
         let default_create_flow_handler: CreateFlowHandler =
             Arc::new(|_, _| Box::pin(async { Ok(Uuid::new_v4()) }));
+        let default_journey_history_handler: JourneyHistoryHandler =
+            Arc::new(|_| Box::pin(async { Ok(Vec::new()) }));
         let default_flow_status_handler: FlowStatusHandler =
             Arc::new(|_| Box::pin(async { Ok(JourneyStatus::Alive) }));
         let default_flow_appearance_handler: FlowAppearanceHandler =
@@ -407,6 +428,9 @@ impl MockClientBuilder {
             on_create_flow: self
                 .on_create_flow
                 .unwrap_or_else(|| default_create_flow_handler.clone()),
+            on_journey_history: self
+                .on_journey_history
+                .unwrap_or_else(|| default_journey_history_handler.clone()),
             on_flow_status: self
                 .on_flow_status
                 .unwrap_or_else(|| default_flow_status_handler.clone()),

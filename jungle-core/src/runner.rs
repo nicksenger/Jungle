@@ -5,6 +5,7 @@ use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, BuildFlowWithContext, ContextExecutor, DynFlow,
     ExecutorError, ObservationAdapter, PerturbationAdapter, RunnerOut, Sleep,
 };
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub enum RunnerAdvance {
@@ -13,16 +14,18 @@ pub enum RunnerAdvance {
 }
 
 pub struct JungleRunner<T> {
-    jungle: T,
+    jungle: Arc<T>,
 }
 
 impl<T> JungleRunner<T> {
     pub fn new(jungle: T) -> Self {
-        Self { jungle }
+        Self {
+            jungle: Arc::new(jungle),
+        }
     }
 
     pub fn jungle(&self) -> &T {
-        &self.jungle
+        self.jungle.as_ref()
     }
 }
 
@@ -38,7 +41,8 @@ where
     ) -> Result<A::State, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         let mut executor = self.new_executor::<A>(state);
         self.emit_initial_appearance::<A>(&executor, journey_id, &mut tx)
@@ -55,23 +59,25 @@ where
         }
     }
 
-    pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<'_, T, A>
+    pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<T, A>
     where
         A: Animal,
-        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
-        ContextExecutor::new(&self.jungle, state)
+        ContextExecutor::new(Arc::clone(&self.jungle), state)
     }
 
     pub async fn emit_initial_appearance<A>(
         &self,
-        executor: &ContextExecutor<'_, T, A>,
+        executor: &ContextExecutor<T, A>,
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
     ) -> Result<(), ExecutorError>
     where
         A: Animal + AnimalObservation,
-        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         if let Some(appearance) =
             <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(
@@ -92,13 +98,14 @@ where
 
     pub async fn drive_until_sleep_or_complete<A>(
         &self,
-        executor: &mut ContextExecutor<'_, T, A>,
+        executor: &mut ContextExecutor<T, A>,
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         while !executor.is_complete() {
             process_perturbations(executor, journey_id, tx).await?;
@@ -130,13 +137,14 @@ where
 
     pub async fn resume_after_sleep<A>(
         &self,
-        executor: &mut ContextExecutor<'_, T, A>,
+        executor: &mut ContextExecutor<T, A>,
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         let sleep_out = postcard::to_allocvec(&())
             .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
@@ -148,7 +156,7 @@ where
 }
 
 async fn apply_completion_and_emit_appearance<T, A>(
-    executor: &mut ContextExecutor<'_, T, A>,
+    executor: &mut ContextExecutor<T, A>,
     journey_id: Uuid,
     tx: &mut RunnerChannelTx,
     completion: Result<Vec<u8>, Vec<u8>>,
@@ -156,7 +164,7 @@ async fn apply_completion_and_emit_appearance<T, A>(
 where
     T: 'static,
     A: Animal + AnimalObservation,
-    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     match &completion {
         Ok(output) => {
@@ -213,14 +221,14 @@ async fn send_history(tx: &mut RunnerChannelTx, history: RunnerOut) -> Result<()
 }
 
 async fn process_perturbations<A, Ctx>(
-    executor: &mut ContextExecutor<'_, Ctx, A>,
+    executor: &mut ContextExecutor<Ctx, A>,
     journey_id: Uuid,
     tx: &mut RunnerChannelTx,
 ) -> Result<(), ExecutorError>
 where
     A: Animal + AnimalPerturbation,
     Ctx: 'static,
-    A::Journey: BuildFlowWithContext<(*const Ctx, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(Arc<Ctx>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     if !<<A as AnimalPerturbation>::Adapter as PerturbationAdapter<A>>::enabled() {
         return Ok(());

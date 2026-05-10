@@ -274,7 +274,7 @@ async fn select_fast_branch_wins_in_race() {
 #[tokio::test]
 async fn select_supports_sleep_as_timeout_branch() {
     let mut executor = ContextExecutor::<_, TimeoutAnimal>::new(
-        &(),
+        std::sync::Arc::new(()),
         SelectJoinState {
             fast_ms: 15,
             slow_ms: 120,

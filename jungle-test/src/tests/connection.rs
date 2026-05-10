@@ -130,8 +130,12 @@ async fn client_exchanges_messages_with_mock_server() {
             assert_eq!(ordinal, 7);
             assert_eq!(seed, vec![1, 2, 3]);
         }
-        Some(RunnerStep::ResumeJourney { journey_id }) => {
-            panic!("unexpected resume journey work in this test: {journey_id}");
+        Some(RunnerStep::ResumeJourney {
+            journey_id,
+            ordinal,
+            seed,
+        }) => {
+            panic!("unexpected resume journey work in this test: {journey_id} {ordinal} {seed:?}");
         }
         None => panic!("expected pending work from server"),
     }
@@ -290,8 +294,12 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
     match resume_work {
         Some(RunnerStep::ResumeJourney {
             journey_id: resumed,
+            ordinal,
+            seed,
         }) => {
             assert_eq!(resumed, journey_id);
+            assert_eq!(ordinal, 7);
+            assert_eq!(seed, vec![1, 2, 3]);
         }
         Some(RunnerStep::StartJourney { .. }) => {
             panic!("expected resume journey work item, got start journey");

@@ -209,7 +209,8 @@ impl JungleClient for Client {
 
         match response {
             WireOut::JourneyCreated(journey_id) => Ok(journey_id),
-            WireOut::JourneyStatus(_)
+            WireOut::JourneyHistory(_)
+            | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
@@ -217,6 +218,27 @@ impl JungleClient for Client {
             | WireOut::OwnerWake(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-created response for start_journey".to_string(),
+            )),
+        }
+    }
+
+    async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::JourneyHistory(id))
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::JourneyHistory(history) => Ok(history),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
+            | WireOut::Ack => Err(ExecutorError::ClientTransport(
+                "unexpected non-journey-history response for journey_history".to_string(),
             )),
         }
     }
@@ -230,6 +252,7 @@ impl JungleClient for Client {
         match response {
             WireOut::JourneyStatus(status) => Ok(status),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
@@ -250,6 +273,7 @@ impl JungleClient for Client {
         match response {
             WireOut::AnimalAppearance(appearance) => Ok(appearance),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
@@ -273,6 +297,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -296,6 +321,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -319,6 +345,7 @@ impl JungleClient for Client {
         match response {
             WireOut::ClaimedAnimalPerturbation(claimed) => Ok(claimed),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::NoAvailableSteps
@@ -346,6 +373,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -412,6 +440,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -432,6 +461,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -452,6 +482,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(Some(())),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -473,6 +504,7 @@ impl JungleClient for Client {
             WireOut::NoAvailableSteps => Ok(None),
             WireOut::PendingStep(work) => Ok(Some(work)),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -495,6 +527,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -518,6 +551,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
@@ -541,6 +575,7 @@ impl JungleClient for Client {
         match response {
             WireOut::Ack => Ok(()),
             WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
