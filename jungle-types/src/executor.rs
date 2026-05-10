@@ -1,6 +1,6 @@
 use crate::{
-    Act, Action, ActionCompletion, Animal, BackendError, ConditionInput, Conditional, Join,
-    LoopCondition, Running, Select, Step, While,
+    Act, Action, ActionCompletion, Animal, BackendError, Conditional, Join, Running, Select, Step,
+    While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -395,7 +395,7 @@ enum ActiveBranch {
 
 struct ConditionalErasedFlow<State, In>
 where
-    In: DeserializeOwned,
+    In: DeserializeOwned + Serialize,
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
@@ -406,7 +406,7 @@ where
 
 impl<State, In> ConditionalErasedFlow<State, In>
 where
-    In: DeserializeOwned,
+    In: DeserializeOwned + Serialize,
 {
     fn new(
         left: DynFlow<State>,
@@ -445,23 +445,24 @@ where
 
 impl<State, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
 where
-    In: DeserializeOwned + ConditionInput,
+    In: DeserializeOwned + Serialize,
 {
     fn request(
         &mut self,
         state: State,
         input: Serialized,
     ) -> Result<(State, Serialized), ExecutorError> {
-        let typed_input = postcard::from_bytes::<In>(&input)
+        let (choose_left, branch_input) = postcard::from_bytes::<(bool, In)>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
         if self.active_branch.is_none() {
-            let choose_left = <In as ConditionInput>::choose_left(&typed_input);
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
             } else {
                 ActiveBranch::Right
             });
         }
+        let branch_input = postcard::to_allocvec(&branch_input)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
 
         if self.cursor >= self.branch_len() {
             return Err(ExecutorError::Complete);
@@ -470,7 +471,7 @@ where
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        node.request(state, input)
+        node.request(state, branch_input)
     }
 
     fn complete(
@@ -497,16 +498,17 @@ where
         state: State,
         input: Serialized,
     ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
-        let typed_input = postcard::from_bytes::<In>(&input)
+        let (choose_left, branch_input) = postcard::from_bytes::<(bool, In)>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
         if self.active_branch.is_none() {
-            let choose_left = <In as ConditionInput>::choose_left(&typed_input);
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
             } else {
                 ActiveBranch::Right
             });
         }
+        let branch_input = postcard::to_allocvec(&branch_input)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
 
         if self.cursor >= self.branch_len() {
             return Err(ExecutorError::Complete);
@@ -515,7 +517,7 @@ where
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        node.request_executable(state, input)
+        node.request_executable(state, branch_input)
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -1303,7 +1305,7 @@ where
 impl<State, In, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
 where
     State: 'static,
-    In: DeserializeOwned + ConditionInput + 'static,
+    In: DeserializeOwned + Serialize + 'static,
     L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
     R: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
 {
@@ -1323,8 +1325,7 @@ impl<State, In, C, F> BuildFlow<DynFlow<State>> for While<C, F>
 where
     State: 'static,
     In: DeserializeOwned + Serialize + 'static,
-    C: LoopCondition<State, CarryIn = In> + 'static,
-    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)> + 'static,
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = In> + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -1442,7 +1443,7 @@ where
 
 struct ConditionalContextErasedFlow<State, In>
 where
-    In: DeserializeOwned,
+    In: DeserializeOwned + Serialize,
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
@@ -1453,7 +1454,7 @@ where
 
 impl<State, In> ConditionalContextErasedFlow<State, In>
 where
-    In: DeserializeOwned,
+    In: DeserializeOwned + Serialize,
 {
     fn new(
         left: DynFlow<State>,
@@ -1492,23 +1493,24 @@ where
 
 impl<State, In> ErasedFlow<State> for ConditionalContextErasedFlow<State, In>
 where
-    In: DeserializeOwned + ConditionInput,
+    In: DeserializeOwned + Serialize,
 {
     fn request(
         &mut self,
         state: State,
         input: Serialized,
     ) -> Result<(State, Serialized), ExecutorError> {
-        let typed_input = postcard::from_bytes::<In>(&input)
+        let (choose_left, branch_input) = postcard::from_bytes::<(bool, In)>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
         if self.active_branch.is_none() {
-            let choose_left = <In as ConditionInput>::choose_left(&typed_input);
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
             } else {
                 ActiveContextBranch::Right
             });
         }
+        let branch_input = postcard::to_allocvec(&branch_input)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
 
         if self.cursor >= self.branch_len() {
             return Err(ExecutorError::Complete);
@@ -1517,7 +1519,7 @@ where
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        node.request(state, input)
+        node.request(state, branch_input)
     }
 
     fn complete(
@@ -1544,16 +1546,17 @@ where
         state: State,
         input: Serialized,
     ) -> Result<(State, ExecutableActionRequest), ExecutorError> {
-        let typed_input = postcard::from_bytes::<In>(&input)
+        let (choose_left, branch_input) = postcard::from_bytes::<(bool, In)>(&input)
             .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
         if self.active_branch.is_none() {
-            let choose_left = <In as ConditionInput>::choose_left(&typed_input);
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
             } else {
                 ActiveContextBranch::Right
             });
         }
+        let branch_input = postcard::to_allocvec(&branch_input)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
 
         if self.cursor >= self.branch_len() {
             return Err(ExecutorError::Complete);
@@ -1562,7 +1565,7 @@ where
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
-        node.request_executable(state, input)
+        node.request_executable(state, branch_input)
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -1596,7 +1599,7 @@ impl<Context, State, In, P, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<St
 where
     Context: 'static,
     State: 'static,
-    In: DeserializeOwned + ConditionInput + 'static,
+    In: DeserializeOwned + Serialize + 'static,
     L: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
         + Running<In = (State, In)>,
     R: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
@@ -1760,9 +1763,8 @@ where
     Context: 'static,
     State: 'static,
     In: DeserializeOwned + Serialize + 'static,
-    C: LoopCondition<State, CarryIn = In> + 'static,
     F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>
+        + Running<In = In>
         + 'static,
 {
     type Output = DynFlow<State>;

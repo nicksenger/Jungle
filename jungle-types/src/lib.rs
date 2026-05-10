@@ -82,8 +82,6 @@ pub trait Condition<In> {
 
 /// Legacy predicate hook for [`While`], retained as a marker for type-level flow shape.
 pub trait LoopCondition<State> {
-    type CarryIn: Serialize + DeserializeOwned;
-
     fn should_continue(state: &State) -> bool;
 }
 
@@ -560,13 +558,13 @@ impl<P, L, R> Running for Conditional<P, L, R>
 where
     L: Running,
     R: Running<In = L::In>,
-    L::In: ConditionInput,
 {
-    type In = L::In;
+    type In = (bool, L::In);
     type Out = Either<L::Out, R::Out>;
 
     fn run(input: Self::In) -> Self::Out {
-        if <L::In as ConditionInput>::choose_left(&input) {
+        let (choose_left, input) = input;
+        if choose_left {
             Either::Left(<L as Running>::run(input))
         } else {
             Either::Right(<R as Running>::run(input))
