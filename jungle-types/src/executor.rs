@@ -1144,12 +1144,7 @@ pub trait BuildFlowWithContext<Input> {
     }
 }
 
-impl<T> HasOptIn<JungleDynFlowContext, T> for ()
-where
-    T: DataType,
-    (): HasOptIn<JungleDynFlow, T>,
-{
-}
+impl<T> HasOptIn<JungleDynFlowContext, T> for () where T: DataType {}
 
 #[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, T, A> BuildFlowWithContext<(*const Context, DynFlow<T::State>)> for Step<T, A>
