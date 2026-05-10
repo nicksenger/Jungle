@@ -99,7 +99,7 @@ where
             }
         });
 
-        let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
+        let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T> + '_>> = HashMap::new();
 
         loop {
             for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
@@ -225,12 +225,12 @@ where
     }
 }
 
-pub enum JourneyStartOutcome<T> {
+pub enum JourneyStartOutcome<'a, T> {
     NotMatched,
     Completed,
     Sleeping {
         wake_at_unix_ms: i64,
-        journey: Box<dyn SuspendedJourney<T>>,
+        journey: Box<dyn SuspendedJourney<T> + 'a>,
     },
 }
 
@@ -247,21 +247,21 @@ pub trait SuspendedJourney<T> {
     ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + 'a>>;
 }
 
-struct SuspendedAnimalJourney<T, A>
+struct SuspendedAnimalJourney<'a, T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(&'a T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     journey_id: Uuid,
-    executor: ContextExecutor<'static, T, A>,
+    executor: ContextExecutor<'a, T, A>,
 }
 
-impl<T, A> SuspendedJourney<T> for SuspendedAnimalJourney<T, A>
+impl<'a, T, A> SuspendedJourney<T> for SuspendedAnimalJourney<'a, T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(&'a T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     fn resume<'a>(
         &'a mut self,
@@ -289,7 +289,7 @@ pub trait SpawnByOrdinal<T>: Send + Sync {
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<'a, T>, ExecutorError>> + 'a>>;
 
     fn resume_by_ordinal<'a>(
         ordinal: u32,
@@ -298,7 +298,7 @@ pub trait SpawnByOrdinal<T>: Send + Sync {
         history: Vec<RunnerOut>,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<'a, T>, ExecutorError>> + 'a>>;
 }
 
 impl<T> SpawnByOrdinal<T> for list::Empty {
@@ -308,7 +308,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
         _journey_id: Uuid,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<'a, T>, ExecutorError>> + 'a>> {
         Box::pin(async { Ok(JourneyStartOutcome::NotMatched) })
     }
 
@@ -319,7 +319,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
         _history: Vec<RunnerOut>,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<'a, T>, ExecutorError>> + 'a>> {
         Box::pin(async { Ok(JourneyStartOutcome::NotMatched) })
     }
 }
@@ -335,7 +335,7 @@ where
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
     Head::Journey:
-        BuildFlowWithContext<(*const T, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
+        for<'ctx> BuildFlowWithContext<(&'ctx T, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
     Ordinal: Unsigned,
     Tail: SpawnByOrdinal<T>,
     T: 'static,
@@ -346,7 +346,7 @@ where
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<'a, T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
             if ordinal == <Ordinal as Unsigned>::U32 {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
@@ -362,9 +362,7 @@ where
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
                     RunnerAdvance::SuspendedSleep { wake_at_unix_ms } => {
-                        let executor: ContextExecutor<'static, T, Head> =
-                            unsafe { core::mem::transmute(executor) };
-                        let suspended = SuspendedAnimalJourney::<T, Head> {
+                        let suspended = SuspendedAnimalJourney::<'a, T, Head> {
                             journey_id,
                             executor,
                         };
@@ -387,7 +385,7 @@ where
         history: Vec<RunnerOut>,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<'a, T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
             if ordinal == <Ordinal as Unsigned>::U32 {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
@@ -404,9 +402,7 @@ where
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
                     RunnerAdvance::SuspendedSleep { wake_at_unix_ms } => {
-                        let executor: ContextExecutor<'static, T, Head> =
-                            unsafe { core::mem::transmute(executor) };
-                        let suspended = SuspendedAnimalJourney::<T, Head> {
+                        let suspended = SuspendedAnimalJourney::<'a, T, Head> {
                             journey_id,
                             executor,
                         };
@@ -432,7 +428,8 @@ async fn replay_history<T, A>(
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation,
-    A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        for<'ctx> BuildFlowWithContext<(&'ctx T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     let mut index = 0usize;
     while !executor.is_complete() {

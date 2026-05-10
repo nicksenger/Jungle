@@ -255,15 +255,15 @@ where
     }
 }
 
-pub struct ContextualTypedErasedStep<Context, R> {
-    context: *const Context,
+pub struct ContextualTypedErasedStep<'a, Context, R> {
+    context: &'a Context,
     complete: bool,
     waiting_completion: bool,
     marker: core::marker::PhantomData<fn() -> R>,
 }
 
-impl<Context, R> ContextualTypedErasedStep<Context, R> {
-    pub fn new(context: *const Context) -> Self {
+impl<'a, Context, R> ContextualTypedErasedStep<'a, Context, R> {
+    pub fn new(context: &'a Context) -> Self {
         Self {
             context,
             complete: false,
@@ -273,7 +273,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
     }
 }
 
-impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Step<T, A>>
+impl<'a, Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<'a, Context, Step<T, A>>
 where
     T: Animal,
     A: Act<T>,
@@ -327,8 +327,7 @@ where
         let action_input = request.into_input();
         let request = postcard::to_allocvec(&action_input)
             .map_err(|err| ExecutorError::RequestSerialize(err.to_string()))?;
-        let context = unsafe { &*self.context };
-        let dependency: <<A as Act<T>>::Action as Action>::Dependency = context.into();
+        let dependency: <<A as Act<T>>::Action as Action>::Dependency = self.context.into();
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
@@ -1417,7 +1416,7 @@ pub trait BuildFlowWithContext<Input> {
 impl<T> HasOptIn<JungleDynFlowContext, T> for () where T: DataType {}
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, T, A> BuildFlowWithContext<(*const Context, DynFlow<T::State>)> for Step<T, A>
+impl<'a, Context, T, A> BuildFlowWithContext<(&'a Context, DynFlow<T::State>)> for Step<T, A>
 where
     Context: 'static,
     T: Animal + 'static,
@@ -1432,9 +1431,9 @@ where
 {
     type Output = DynFlow<T::State>;
 
-    fn push_steps((context, mut steps): (*const Context, DynFlow<T::State>)) -> Self::Output {
+    fn push_steps((context, mut steps): (&'a Context, DynFlow<T::State>)) -> Self::Output {
         steps.push(Box::new(
-            ContextualTypedErasedStep::<Context, Step<T, A>>::new(context),
+            ContextualTypedErasedStep::<'a, Context, Step<T, A>>::new(context),
         ));
         steps
     }
@@ -1593,26 +1592,26 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, P, L, R> BuildFlowWithContext<(*const Context, DynFlow<State>)>
+impl<'a, Context, State, In, P, L, R> BuildFlowWithContext<(&'a Context, DynFlow<State>)>
     for Conditional<P, L, R>
 where
     Context: 'static,
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
     P: Condition<(State, In)> + 'static,
-    L: BuildFlowWithContext<(*const Context, DynFlow<State>), Output = DynFlow<State>>
+    L: BuildFlowWithContext<(&'a Context, DynFlow<State>), Output = DynFlow<State>>
         + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(*const Context, DynFlow<State>), Output = DynFlow<State>>
+    R: BuildFlowWithContext<(&'a Context, DynFlow<State>), Output = DynFlow<State>>
         + Running<In = (State, In)>,
 {
     type Output = DynFlow<State>;
 
-    fn push_steps((context, mut steps): (*const Context, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(*const Context, DynFlow<State>)>>::push_steps((
+    fn push_steps((context, mut steps): (&'a Context, DynFlow<State>)) -> Self::Output {
+        let left = <L as BuildFlowWithContext<(&'a Context, DynFlow<State>)>>::push_steps((
             context,
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(*const Context, DynFlow<State>)>>::push_steps((
+        let right = <R as BuildFlowWithContext<(&'a Context, DynFlow<State>)>>::push_steps((
             context,
             Vec::new(),
         ));
@@ -1755,20 +1754,20 @@ impl<State> ErasedFlow<State> for WhileContextErasedFlow<State> {
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, C, F> BuildFlowWithContext<(*const Context, DynFlow<State>)> for While<C, F>
+impl<'a, Context, State, C, F> BuildFlowWithContext<(&'a Context, DynFlow<State>)> for While<C, F>
 where
     Context: 'static,
     State: 'static,
     C: LoopCondition<State> + 'static,
-    F: BuildFlowWithContext<(*const Context, DynFlow<State>), Output = DynFlow<State>> + 'static,
+    F: BuildFlowWithContext<(&'a Context, DynFlow<State>), Output = DynFlow<State>> + 'static,
 {
     type Output = DynFlow<State>;
 
-    fn push_steps((context, mut steps): (*const Context, DynFlow<State>)) -> Self::Output {
+    fn push_steps((context, mut steps): (&'a Context, DynFlow<State>)) -> Self::Output {
         let should_continue =
             Box::new(|state: &State| <C as LoopCondition<State>>::should_continue(state));
         let build_body = Box::new(move || {
-            <F as BuildFlowWithContext<(*const Context, DynFlow<State>)>>::push_steps((
+            <F as BuildFlowWithContext<(&'a Context, DynFlow<State>)>>::push_steps((
                 context,
                 Vec::new(),
             ))
@@ -1782,25 +1781,25 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(*const Context, DynFlow<State>)>
+impl<'a, Context, State, In, L, R> BuildFlowWithContext<(&'a Context, DynFlow<State>)>
     for Select<L, R>
 where
     Context: 'static,
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
-    L: BuildFlowWithContext<(*const Context, DynFlow<State>), Output = DynFlow<State>>
+    L: BuildFlowWithContext<(&'a Context, DynFlow<State>), Output = DynFlow<State>>
         + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(*const Context, DynFlow<State>), Output = DynFlow<State>>
+    R: BuildFlowWithContext<(&'a Context, DynFlow<State>), Output = DynFlow<State>>
         + Running<In = (State, In)>,
 {
     type Output = DynFlow<State>;
 
-    fn push_steps((context, mut steps): (*const Context, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(*const Context, DynFlow<State>)>>::push_steps((
+    fn push_steps((context, mut steps): (&'a Context, DynFlow<State>)) -> Self::Output {
+        let left = <L as BuildFlowWithContext<(&'a Context, DynFlow<State>)>>::push_steps((
             context,
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(*const Context, DynFlow<State>)>>::push_steps((
+        let right = <R as BuildFlowWithContext<(&'a Context, DynFlow<State>)>>::push_steps((
             context,
             Vec::new(),
         ));
@@ -1810,24 +1809,25 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(*const Context, DynFlow<State>)> for Join<L, R>
+impl<'a, Context, State, In, L, R> BuildFlowWithContext<(&'a Context, DynFlow<State>)>
+    for Join<L, R>
 where
     Context: 'static,
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
-    L: BuildFlowWithContext<(*const Context, DynFlow<State>), Output = DynFlow<State>>
+    L: BuildFlowWithContext<(&'a Context, DynFlow<State>), Output = DynFlow<State>>
         + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(*const Context, DynFlow<State>), Output = DynFlow<State>>
+    R: BuildFlowWithContext<(&'a Context, DynFlow<State>), Output = DynFlow<State>>
         + Running<In = (State, In)>,
 {
     type Output = DynFlow<State>;
 
-    fn push_steps((context, mut steps): (*const Context, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(*const Context, DynFlow<State>)>>::push_steps((
+    fn push_steps((context, mut steps): (&'a Context, DynFlow<State>)) -> Self::Output {
+        let left = <L as BuildFlowWithContext<(&'a Context, DynFlow<State>)>>::push_steps((
             context,
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(*const Context, DynFlow<State>)>>::push_steps((
+        let right = <R as BuildFlowWithContext<(&'a Context, DynFlow<State>)>>::push_steps((
             context,
             Vec::new(),
         ));
@@ -1876,7 +1876,7 @@ pub struct ContextExecutor<'a, Context, A>
 where
     A: Animal,
     A::Journey:
-        BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        BuildFlowWithContext<(&'a Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     _context: core::marker::PhantomData<&'a Context>,
     state: Option<A::State>,
@@ -1890,7 +1890,7 @@ where
     Context: 'static,
     A: Animal,
     A::Journey:
-        BuildFlowWithContext<(*const Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        BuildFlowWithContext<(&'a Context, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -1922,8 +1922,8 @@ where
         let mut executor = Self {
             _context: core::marker::PhantomData,
             state: Some(state),
-            steps: <A::Journey as BuildFlowWithContext<(*const Context, DynFlow<A::State>)>>::push_steps((
-                context as *const Context,
+            steps: <A::Journey as BuildFlowWithContext<(&'a Context, DynFlow<A::State>)>>::push_steps((
+                context,
                 Vec::new(),
             )),
             cursor: 0,
