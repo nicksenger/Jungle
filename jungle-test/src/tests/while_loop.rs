@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    Act, ActionCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, Step,
+    Pulse, ActionCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, Step,
     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
@@ -18,7 +18,7 @@ action!(
 animal!(Looper, U0, state = i32, journey = LoopJourney);
 
 struct Tick;
-impl Act<Looper> for Tick {
+impl Pulse<Looper> for Tick {
     type Action = TickAction;
     type Aspect = Identity;
     type In = i32;

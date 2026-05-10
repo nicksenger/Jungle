@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    Pulse, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
@@ -45,7 +45,7 @@ impl Action for AddAction {
 }
 
 struct AddBeforeSleep;
-impl Act<SleepAnimal> for AddBeforeSleep {
+impl Pulse<SleepAnimal> for AddBeforeSleep {
     type Action = AddAction;
     type Aspect = Identity;
     type In = ();
@@ -60,7 +60,7 @@ impl Act<SleepAnimal> for AddBeforeSleep {
 }
 
 struct SleepForStateWake;
-impl Act<SleepAnimal> for SleepForStateWake {
+impl Pulse<SleepAnimal> for SleepForStateWake {
     type Action = Sleep;
     type Aspect = Identity;
     type In = ();
@@ -77,7 +77,7 @@ impl Act<SleepAnimal> for SleepForStateWake {
 }
 
 struct AddAfterSleep;
-impl Act<SleepAnimal> for AddAfterSleep {
+impl Pulse<SleepAnimal> for AddAfterSleep {
     type Action = AddAction;
     type Aspect = Identity;
     type In = ();

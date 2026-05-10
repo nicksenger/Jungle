@@ -220,24 +220,24 @@ where
 
 /// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
 /// of animal state.
-pub trait Act<T: Animal> {
+pub trait Pulse<T: Animal> {
     type Action: Action;
     type Aspect: Aspect<T::State>;
     type In;
     type Out;
 
     fn emit(
-        view: &<<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        view: &<<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
         input: Self::In,
     ) -> <Self::Action as Action>::In;
 
     fn absorb(
-        view: &mut <<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        view: &mut <<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Out;
 }
 
-/// Forward half of [`Act`], responsible for producing an action request input.
+/// Forward half of [`Pulse`], responsible for producing an action request input.
 pub trait Emit<T: Animal> {
     type CarryIn;
     type Aspect: Aspect<T::State>;
@@ -249,7 +249,7 @@ pub trait Emit<T: Animal> {
     ) -> <Self::Action as Action>::In;
 }
 
-/// Backward half of [`Act`], responsible for consuming an action completion.
+/// Backward half of [`Pulse`], responsible for consuming an action completion.
 pub trait Absorb<T: Animal> {
     type CarryOut;
     type Aspect: Aspect<T::State>;
@@ -362,10 +362,10 @@ where
     }
 }
 
-/// Combines independent [`Emit`] and [`Absorb`] implementations into [`Act`].
-pub struct Adapt<E, A>(PhantomData<fn() -> (E, A)>);
+/// Combines independent [`Emit`] and [`Absorb`] implementations into [`Pulse`].
+pub struct Fuse<E, A>(PhantomData<fn() -> (E, A)>);
 
-impl<T, E, A> Act<T> for Adapt<E, A>
+impl<T, E, A> Pulse<T> for Fuse<E, A>
 where
     T: Animal,
     E: Emit<T>,
@@ -377,14 +377,14 @@ where
     type Out = <A as Absorb<T>>::CarryOut;
 
     fn emit(
-        view: &<<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        view: &<<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
         input: Self::In,
     ) -> <Self::Action as Action>::In {
         <E as Emit<T>>::emit(view, input)
     }
 
     fn absorb(
-        view: &mut <<Self as Act<T>>::Aspect as Aspect<T::State>>::View,
+        view: &mut <<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Out {
         <A as Absorb<T>>::absorb(view, output)
@@ -433,9 +433,9 @@ where
     }
 }
 
-/// Alias for an [`Adapt`] step focused by a specific [`Aspect`].
+/// Alias for an [`Fuse`] step focused by a specific [`Aspect`].
 pub type FocusedStep<T, Focus, E, B> =
-    Step<T, Adapt<FocusedEmit<Focus, E>, FocusedAbsorb<Focus, B>>>;
+    Step<T, Fuse<FocusedEmit<Focus, E>, FocusedAbsorb<Focus, B>>>;
 
 /// Identity-focused [`FocusedStep`].
 pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
@@ -445,7 +445,7 @@ pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
 pub struct Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
 {
     marker: PhantomData<fn() -> (T, A)>,
 }
@@ -453,7 +453,7 @@ where
 impl<T, A> Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
 {
     pub fn new() -> Self {
         Self {
@@ -466,17 +466,17 @@ where
 impl<T, A> Running for Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
 {
-    type In = (T::State, <A as Act<T>>::In);
-    type Out = (T::State, ActionRequest<<A as Act<T>>::Action>);
+    type In = (T::State, <A as Pulse<T>>::In);
+    type Out = (T::State, ActionRequest<<A as Pulse<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<A as Act<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let action_input = <A as Act<T>>::emit(view, input);
+        let view = <<A as Pulse<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let action_input = <A as Pulse<T>>::emit(view, input);
         (
             state,
-            ActionRequest::<<A as Act<T>>::Action>::new(action_input),
+            ActionRequest::<<A as Pulse<T>>::Action>::new(action_input),
         )
     }
 }
@@ -485,14 +485,14 @@ where
 impl<T, A> Waiting for Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
 {
-    type In = (T::State, ActionCompletion<<A as Act<T>>::Action>);
-    type Out = (T::State, <A as Act<T>>::Out);
+    type In = (T::State, ActionCompletion<<A as Pulse<T>>::Action>);
+    type Out = (T::State, <A as Pulse<T>>::Out);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<A as Act<T>>::Aspect as Aspect<T::State>>::view(&mut state);
-        let emitted = <A as Act<T>>::absorb(view, output);
+        let view = <<A as Pulse<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let emitted = <A as Pulse<T>>::absorb(view, output);
         (state, emitted)
     }
 }
@@ -501,17 +501,17 @@ where
 impl<T, A> FlowActions for Step<T, A>
 where
     T: Animal,
-    <A as Act<T>>::Action: ActionMember,
-    A: Act<T>,
+    <A as Pulse<T>>::Action: ActionMember,
+    A: Pulse<T>,
 {
-    type List = Node<<<A as Act<T>>::Action as Action>::Id, <A as Act<T>>::Action>;
+    type List = Node<<<A as Pulse<T>>::Action as Action>::Id, <A as Pulse<T>>::Action>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
 impl<T, A> TraverseFlow for Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
 {
     type Output = Step<T, A>;
 }
@@ -520,7 +520,7 @@ where
 impl<T, A> ReplaceFlow for Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
 {
     type Output = Step<T, A>;
 }
@@ -528,7 +528,7 @@ where
 impl<T, A, Traversal> TraverseWith<Traversal> for Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
     Traversal: TraverseStep<Step<T, A>>,
 {
     type Output = <Traversal as TraverseStep<Step<T, A>>>::Output;
@@ -537,7 +537,7 @@ where
 impl<T, A, Replacer> ReplaceWith<Replacer> for Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
     Replacer: ReplaceStep<Step<T, A>>,
 {
     type Output = <Replacer as ReplaceStep<Step<T, A>>>::Output;
@@ -546,7 +546,7 @@ where
 impl<T, A, Replacer> ReplaceNodesWith<Replacer> for Step<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: Pulse<T>,
     Replacer: ReplaceNode<Step<T, A>>,
 {
     type Output = <Replacer as ReplaceNode<Step<T, A>>>::Output;

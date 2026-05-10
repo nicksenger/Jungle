@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, ContextExecutor, Either, Executor, Identity, Join, Select,
+    Pulse, Action, ActionCompletion, ContextExecutor, Either, Executor, Identity, Join, Select,
     Sleep, SleepDependency, Step,
 };
 use jungle_sdk::{Journey, Optic};
@@ -54,7 +54,7 @@ impl Action for ContextTimedValueAction {
 }
 
 struct SelectFast;
-impl Act<SelectAnimal> for SelectFast {
+impl Pulse<SelectAnimal> for SelectFast {
     type Action = TimedValueAction;
     type Aspect = Identity;
     type In = ();
@@ -70,7 +70,7 @@ impl Act<SelectAnimal> for SelectFast {
 }
 
 struct SelectSlow;
-impl Act<SelectAnimal> for SelectSlow {
+impl Pulse<SelectAnimal> for SelectSlow {
     type Action = TimedValueAction;
     type Aspect = Identity;
     type In = ();
@@ -86,7 +86,7 @@ impl Act<SelectAnimal> for SelectSlow {
 }
 
 struct CaptureSelectWinner;
-impl Act<SelectAnimal> for CaptureSelectWinner {
+impl Pulse<SelectAnimal> for CaptureSelectWinner {
     type Action = TimedValueAction;
     type Aspect = Identity;
     type In = Either<i32, i32>;
@@ -118,7 +118,7 @@ animal!(
 );
 
 struct JoinFast;
-impl Act<JoinAnimal> for JoinFast {
+impl Pulse<JoinAnimal> for JoinFast {
     type Action = TimedValueAction;
     type Aspect = Identity;
     type In = ();
@@ -134,7 +134,7 @@ impl Act<JoinAnimal> for JoinFast {
 }
 
 struct JoinSlow;
-impl Act<JoinAnimal> for JoinSlow {
+impl Pulse<JoinAnimal> for JoinSlow {
     type Action = TimedValueAction;
     type Aspect = Identity;
     type In = ();
@@ -150,7 +150,7 @@ impl Act<JoinAnimal> for JoinSlow {
 }
 
 struct CaptureJoinSum;
-impl Act<JoinAnimal> for CaptureJoinSum {
+impl Pulse<JoinAnimal> for CaptureJoinSum {
     type Action = TimedValueAction;
     type Aspect = Identity;
     type In = (i32, i32);
@@ -179,7 +179,7 @@ animal!(
 );
 
 struct TimeoutSleep;
-impl Act<TimeoutAnimal> for TimeoutSleep {
+impl Pulse<TimeoutAnimal> for TimeoutSleep {
     type Action = Sleep;
     type Aspect = Identity;
     type In = ();
@@ -197,7 +197,7 @@ impl Act<TimeoutAnimal> for TimeoutSleep {
 }
 
 struct TimeoutSlow;
-impl Act<TimeoutAnimal> for TimeoutSlow {
+impl Pulse<TimeoutAnimal> for TimeoutSlow {
     type Action = ContextTimedValueAction;
     type Aspect = Identity;
     type In = ();

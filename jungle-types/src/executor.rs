@@ -1,5 +1,5 @@
 use crate::{
-    Act, Action, ActionCompletion, Animal, BackendError, Conditional, Join, LoopCondition,
+    Pulse, Action, ActionCompletion, Animal, BackendError, Conditional, Join, LoopCondition,
     Running, Select, Step, While,
 };
 use inception::*;
@@ -171,14 +171,14 @@ impl<Step> TypedErasedStep<Step> {
 impl<T, A> ErasedFlow<T::State> for TypedErasedStep<Step<T, A>>
 where
     T: Animal,
-    A: Act<T>,
-    <A as Act<T>>::Action: Action<Dependency = ()>,
-    <<A as Act<T>>::Action as Action>::Dependency: 'static,
-    <<A as Act<T>>::Action as Action>::In: 'static,
-    <<A as Act<T>>::Action as Action>::Out: 'static,
-    <<A as Act<T>>::Action as Action>::Err: Serialize + 'static,
-    <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
-    <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
+    A: Pulse<T>,
+    <A as Pulse<T>>::Action: Action<Dependency = ()>,
+    <<A as Pulse<T>>::Action as Action>::Dependency: 'static,
+    <<A as Pulse<T>>::Action as Action>::In: 'static,
+    <<A as Pulse<T>>::Action as Action>::Out: 'static,
+    <<A as Pulse<T>>::Action as Action>::Err: Serialize + 'static,
+    <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
+    <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
     A::In: DeserializeOwned,
     A::Out: Serialize,
 {
@@ -231,7 +231,7 @@ where
         };
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as Act<T>>::Action as Action>::act(&(), action_input).await;
+                let completion = <<A as Pulse<T>>::Action as Action>::act(&(), action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -240,7 +240,7 @@ where
         Ok((
             state,
             ExecutableActionRequest::new(
-                core::any::type_name::<<A as Act<T>>::Action>(),
+                core::any::type_name::<<A as Pulse<T>>::Action>(),
                 request,
                 runner,
             ),
@@ -259,13 +259,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<A as Act<T>>::Action> = match completion {
+        let typed_completion: ActionCompletion<<A as Pulse<T>>::Action> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Act<T>>::Action as Action>::Out>(&output)
+                postcard::from_bytes::<<<A as Pulse<T>>::Action as Action>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<A as Act<T>>::Action as Action>::Err>(&error)
+                postcard::from_bytes::<<<A as Pulse<T>>::Action as Action>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -308,15 +308,15 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
 impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Step<T, A>>
 where
     T: Animal,
-    A: Act<T>,
-    <A as Act<T>>::Action: Action,
-    for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Action as Action>::Dependency>,
-    <<A as Act<T>>::Action as Action>::Dependency: 'static,
-    <<A as Act<T>>::Action as Action>::In: 'static,
-    <<A as Act<T>>::Action as Action>::Out: 'static,
-    <<A as Act<T>>::Action as Action>::Err: Serialize + 'static,
-    <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
-    <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
+    A: Pulse<T>,
+    <A as Pulse<T>>::Action: Action,
+    for<'ctx> &'ctx Context: Into<<<A as Pulse<T>>::Action as Action>::Dependency>,
+    <<A as Pulse<T>>::Action as Action>::Dependency: 'static,
+    <<A as Pulse<T>>::Action as Action>::In: 'static,
+    <<A as Pulse<T>>::Action as Action>::Out: 'static,
+    <<A as Pulse<T>>::Action as Action>::Err: Serialize + 'static,
+    <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
+    <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
     A::In: DeserializeOwned,
     A::Out: Serialize,
 {
@@ -367,11 +367,11 @@ where
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
-        let dependency: <<A as Act<T>>::Action as Action>::Dependency = self.context.as_ref().into();
+        let dependency: <<A as Pulse<T>>::Action as Action>::Dependency = self.context.as_ref().into();
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<A as Act<T>>::Action as Action>::act(&dependency, action_input).await;
+                    <<A as Pulse<T>>::Action as Action>::act(&dependency, action_input).await;
                 serialize_completion(completion)
             })
         });
@@ -380,7 +380,7 @@ where
         Ok((
             state,
             ExecutableActionRequest::new(
-                core::any::type_name::<<A as Act<T>>::Action>(),
+                core::any::type_name::<<A as Pulse<T>>::Action>(),
                 request,
                 runner,
             ),
@@ -399,13 +399,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<A as Act<T>>::Action> = match completion {
+        let typed_completion: ActionCompletion<<A as Pulse<T>>::Action> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Act<T>>::Action as Action>::Out>(&output)
+                postcard::from_bytes::<<<A as Pulse<T>>::Action as Action>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<A as Act<T>>::Action as Action>::Err>(&error)
+                postcard::from_bytes::<<<A as Pulse<T>>::Action as Action>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -1409,11 +1409,11 @@ pub trait BuildFlow<Input> {
 impl<T, A> BuildFlow<DynFlow<T::State>> for Step<T, A>
 where
     T: Animal + 'static,
-    A: Act<T> + 'static,
-    <A as Act<T>>::Action: Action<Dependency = ()> + 'static,
-    <<A as Act<T>>::Action as Action>::Err: Serialize,
-    <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
-    <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
+    A: Pulse<T> + 'static,
+    <A as Pulse<T>>::Action: Action<Dependency = ()> + 'static,
+    <<A as Pulse<T>>::Action as Action>::Err: Serialize,
+    <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
+    <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
     A::In: DeserializeOwned,
     A::Out: Serialize,
 {
@@ -1557,12 +1557,12 @@ impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for 
 where
     Context: 'static,
     T: Animal + 'static,
-    A: Act<T> + 'static,
-    <A as Act<T>>::Action: Action + 'static,
-    for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Action as Action>::Dependency>,
-    <<A as Act<T>>::Action as Action>::Err: Serialize,
-    <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
-    <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
+    A: Pulse<T> + 'static,
+    <A as Pulse<T>>::Action: Action + 'static,
+    for<'ctx> &'ctx Context: Into<<<A as Pulse<T>>::Action as Action>::Dependency>,
+    <<A as Pulse<T>>::Action as Action>::Err: Serialize,
+    <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
+    <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
     A::In: DeserializeOwned,
     A::Out: Serialize,
 {

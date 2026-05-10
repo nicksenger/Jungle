@@ -5,12 +5,12 @@ mod journey;
 mod meta;
 mod sleep;
 mod transport;
-pub use behavior::{Absorb, Adapt, Emit};
+pub use behavior::{Absorb, Fuse, Emit};
 pub use behavior::{
     AbsorbFn, AbsorbMapper, EmitFn, EmitMapper, FocusedStep, IdentityStep, PassthroughEmit,
     UnitEmit,
 };
-pub use behavior::{Act, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
+pub use behavior::{Pulse, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
 pub use executor::{
@@ -288,8 +288,8 @@ pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 impl<A, Left, Right> ReplaceStep<Step<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
-    Left: Act<A>,
-    Right: Act<A>,
+    Left: Pulse<A>,
+    Right: Pulse<A>,
 {
     type Output = Step<A, Right>;
 }
@@ -297,8 +297,8 @@ where
 impl<A, Left, Right> ReplaceStep<Step<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
-    Left: Act<A>,
-    Right: Act<A>,
+    Left: Pulse<A>,
+    Right: Pulse<A>,
 {
     type Output = Step<A, Left>;
 }

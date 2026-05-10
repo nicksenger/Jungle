@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    Pulse, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
@@ -131,7 +131,7 @@ impl Action for ReplayGateAction {
 }
 
 struct ReplayPreStep;
-impl Act<ReplayGateAnimal> for ReplayPreStep {
+impl Pulse<ReplayGateAnimal> for ReplayPreStep {
     type Action = ReplayPreIncrementAction;
     type Aspect = Identity;
     type In = ();
@@ -146,7 +146,7 @@ impl Act<ReplayGateAnimal> for ReplayPreStep {
 }
 
 struct ReplayPostStep;
-impl Act<ReplayGateAnimal> for ReplayPostStep {
+impl Pulse<ReplayGateAnimal> for ReplayPostStep {
     type Action = ReplayPostIncrementAction;
     type Aspect = Identity;
     type In = ();
@@ -161,7 +161,7 @@ impl Act<ReplayGateAnimal> for ReplayPostStep {
 }
 
 struct ReplayGateStep;
-impl Act<ReplayGateAnimal> for ReplayGateStep {
+impl Pulse<ReplayGateAnimal> for ReplayGateStep {
     type Action = ReplayGateAction;
     type Aspect = Identity;
     type In = ();
@@ -442,7 +442,7 @@ impl Action for ReplayTimeoutPostIncrementAction {
 }
 
 struct ReplayTimeoutPreStep;
-impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
+impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
     type Action = ReplayTimeoutPreIncrementAction;
     type Aspect = Identity;
     type In = ();
@@ -457,7 +457,7 @@ impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
 }
 
 struct ReplayTimeoutSleepStep;
-impl Act<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
+impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
     type Action = Sleep;
     type Aspect = Identity;
     type In = ();
@@ -474,7 +474,7 @@ impl Act<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
 }
 
 struct ReplayTimeoutPostStep;
-impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
+impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
     type Action = ReplayTimeoutPostIncrementAction;
     type Aspect = Identity;
     type In = ();

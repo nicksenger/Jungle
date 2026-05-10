@@ -1,4 +1,4 @@
-use crate::{Act, Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity};
+use crate::{Pulse, Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity};
 use inception::primitive;
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -52,7 +52,7 @@ impl crate::Identified for Sleep {
 
 pub struct SleepStep<Focus = Identity>(PhantomData<fn() -> Focus>);
 
-impl<T, Focus> Act<T> for SleepStep<Focus>
+impl<T, Focus> Pulse<T> for SleepStep<Focus>
 where
     T: Animal,
     Focus: Aspect<T::State>,

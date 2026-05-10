@@ -268,7 +268,7 @@ fn inspectable_impl_methods(item_impl: &syn::ItemImpl) -> Vec<&syn::ImplItemFn> 
         };
         let method_name = method.sig.ident.to_string();
         let inspect = match trait_name.as_deref() {
-            Some("Act") => matches!(method_name.as_str(), "emit" | "absorb"),
+            Some("Pulse") => matches!(method_name.as_str(), "emit" | "absorb"),
             Some("Condition") => method_name == "choose",
             Some("LoopCondition") => method_name == "should_continue",
             _ => matches!(
@@ -570,7 +570,7 @@ mod tests {
     #[test]
     fn detect_flags_nondeterministic_emit_calls() {
         let item: syn::Item = syn::parse_quote! {
-            impl Act<MyAnimal> for MyStep {
+            impl Pulse<MyAnimal> for MyStep {
                 type Action = MyAction;
                 type Aspect = Identity;
                 type In = ();
@@ -629,7 +629,7 @@ mod tests {
     #[test]
     fn detect_covers_sleep_and_spawn_patterns() {
         let item: syn::Item = syn::parse_quote! {
-            impl Act<MyAnimal> for MyStep {
+            impl Pulse<MyAnimal> for MyStep {
                 type Action = MyAction;
                 type Aspect = Identity;
                 type In = ();
