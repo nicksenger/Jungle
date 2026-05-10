@@ -90,19 +90,15 @@ fn executor_completes_zero_iteration_loop() {
     let run = loop_executor.next_request::<(bool, i32)>();
     assert!(run.is_err());
     assert!(!loop_executor.is_complete());
-    let _ = loop_executor
-        .next_executable_request((false, 1))
-        .expect_err("false loop flag should complete without request");
+    assert!(loop_executor.next_executable_request((false, 1)).is_err());
 }
 
 #[test]
 fn executor_threads_loop_inputs_from_previous_emitted_output() {
     let mut loop_executor = Executor::<Looper>::new(0);
 
-    let request1: i32 = loop_executor
-        .next_request::<(bool, i32)>()
-        .expect("request 1");
-    assert_eq!(request1, 0);
+    let request1: (bool, i32) = loop_executor.next_request().expect("request 1");
+    assert_eq!(request1, (false, 0));
     let emitted1: (bool, i32) = loop_executor
         .complete(Ok::<i32, ()>(1))
         .expect("complete 1");

@@ -136,16 +136,16 @@ fn executor_dynamically_selects_conditional_branch() {
 #[test]
 fn executor_requests_and_completes_conditional_branch() {
     let mut left = Executor::<ConditionalAnimal>::new(5);
-    let left_request: i32 = left.next_request::<(bool, i32)>().expect("left request");
-    assert_eq!(left_request, 5);
+    let left_request: (bool, i32) = left.next_request().expect("left request");
+    assert_eq!(left_request, (false, 5));
     let left_emitted: i32 = left.complete(Ok::<i32, ()>(9)).expect("left completion");
     assert_eq!(left_emitted, 9);
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
     let mut right = Executor::<ConditionalAnimal>::new(-2);
-    let right_request: i32 = right.next_request::<(bool, i32)>().expect("right request");
-    assert_eq!(right_request, -2);
+    let right_request: (bool, i32) = right.next_request().expect("right request");
+    assert_eq!(right_request, (false, -2));
     let right_emitted: bool = right.complete(Ok::<i32, ()>(6)).expect("right completion");
     assert!(right_emitted);
     assert!(right.is_complete());

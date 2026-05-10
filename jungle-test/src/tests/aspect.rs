@@ -324,11 +324,14 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         Step<Tiger, TigerEat>,
         Step<Tiger, TigerSleep>,
     > as Running>::run((
-        TigerState {
-            stripes: 8,
-            core: CoreState { energy: 5, age: 1 },
-        },
-        0,
+        true,
+        (
+            TigerState {
+                stripes: 8,
+                core: CoreState { energy: 5, age: 1 },
+            },
+            0,
+        ),
     ));
     match even {
         Either::Left((_state, request)) => assert_eq!(request.into_input(), 0),
@@ -340,11 +343,14 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         Step<Tiger, TigerEat>,
         Step<Tiger, TigerSleep>,
     > as Running>::run((
-        TigerState {
-            stripes: 9,
-            core: CoreState { energy: 5, age: 1 },
-        },
-        0,
+        false,
+        (
+            TigerState {
+                stripes: 9,
+                core: CoreState { energy: 5, age: 1 },
+            },
+            0,
+        ),
     ));
     match odd {
         Either::Left(_) => panic!("expected sleep branch"),
