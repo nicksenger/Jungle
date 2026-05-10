@@ -1,12 +1,13 @@
 use crate::{Act, Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity};
 use inception::primitive;
 use std::marker::PhantomData;
+use std::time::Duration;
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U65535;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SleepInput {
-    pub wake_at_unix_ms: i64,
+    pub duration: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

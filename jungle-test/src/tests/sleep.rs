@@ -13,7 +13,7 @@ use std::time::Duration;
 struct SleepState {
     counter: i32,
     phase: u8,
-    wake_at_unix_ms: i64,
+    sleep_for_ms: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -68,7 +68,7 @@ impl Act<SleepAnimal> for SleepForStateWake {
 
     fn emit(state: &SleepState, _input: Self::In) -> SleepInput {
         SleepInput {
-            wake_at_unix_ms: state.wake_at_unix_ms,
+            duration: Duration::from_millis(state.sleep_for_ms),
         }
     }
 
@@ -176,7 +176,7 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
     let seed = postcard::to_allocvec(&SleepState {
         counter: 0,
         phase: 0,
-        wake_at_unix_ms: chrono::Utc::now().timestamp_millis() + 250,
+        sleep_for_ms: 250,
     })
     .expect("sleep test seed should serialize");
     let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;

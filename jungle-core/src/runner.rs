@@ -114,9 +114,12 @@ where
 
             if request.action_type() == core::any::type_name::<Sleep>() {
                 let sleep_input: SleepInput = request.deserialize_request()?;
-                return Ok(RunnerAdvance::SuspendedSleep {
-                    wake_at_unix_ms: sleep_input.wake_at_unix_ms,
-                });
+                let duration_millis =
+                    i64::try_from(sleep_input.duration.as_millis()).unwrap_or(i64::MAX);
+                let wake_at_unix_ms = chrono::Utc::now()
+                    .timestamp_millis()
+                    .saturating_add(duration_millis);
+                return Ok(RunnerAdvance::SuspendedSleep { wake_at_unix_ms });
             }
 
             let completion = request.run().await?;
