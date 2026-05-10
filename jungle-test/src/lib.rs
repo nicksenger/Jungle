@@ -289,6 +289,7 @@ mod tests {
     mod connection;
     mod integration;
     mod migration;
+    mod replay;
     mod progression;
     mod select_join;
     mod sleep;
