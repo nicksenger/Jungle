@@ -3,7 +3,7 @@ use futures::SinkExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, BuildFlowWithContext, ContextExecutor, DynFlow,
-    ExecutorError, ObservationAdapter, PerturbationAdapter, RunnerOut, Sleep, SleepInput,
+    ExecutorError, ObservationAdapter, PerturbationAdapter, RunnerOut, Sleep,
 };
 use uuid::Uuid;
 
@@ -113,9 +113,8 @@ where
             .await?;
 
             if request.action_type() == core::any::type_name::<Sleep>() {
-                let sleep_input: SleepInput = request.deserialize_request()?;
-                let duration_millis =
-                    i64::try_from(sleep_input.duration.as_millis()).unwrap_or(i64::MAX);
+                let duration: std::time::Duration = request.deserialize_request()?;
+                let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
                 let wake_at_unix_ms = chrono::Utc::now()
                     .timestamp_millis()
                     .saturating_add(duration_millis);

@@ -5,11 +5,6 @@ use std::time::Duration;
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U65535;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SleepInput {
-    pub duration: Duration,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SleepError {
     pub message: String,
@@ -30,7 +25,7 @@ impl<T> From<&T> for SleepDependency {
 impl Action for Sleep {
     type Id = Id<U65535>;
     type Dependency = SleepDependency;
-    type In = SleepInput;
+    type In = Duration;
     type Out = ();
     type Err = SleepError;
 
@@ -63,7 +58,7 @@ where
 {
     type Action = Sleep;
     type Aspect = Focus;
-    type In = SleepInput;
+    type In = Duration;
     type Out = ();
 
     fn emit(

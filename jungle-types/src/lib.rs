@@ -22,7 +22,7 @@ pub use meta::{
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-pub use sleep::{Sleep, SleepDependency, SleepError, SleepInput, SleepStep};
+pub use sleep::{Sleep, SleepDependency, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{BackendError, JourneyStatus, RunnerOut, Step as RunnerStep, WireIn, WireOut};
 pub use transport::{ClaimedAnimalPerturbation, OwnerWake};

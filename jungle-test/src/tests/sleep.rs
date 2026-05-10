@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Act, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Observe, Sleep, SleepInput, Step, While,
+    LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -66,10 +66,8 @@ impl Act<SleepAnimal> for SleepForStateWake {
     type In = ();
     type Out = ();
 
-    fn emit(state: &SleepState, _input: Self::In) -> SleepInput {
-        SleepInput {
-            duration: Duration::from_millis(state.sleep_for_ms),
-        }
+    fn emit(state: &SleepState, _input: Self::In) -> Duration {
+        Duration::from_millis(state.sleep_for_ms)
     }
 
     fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Out {
