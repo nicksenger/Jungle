@@ -20,12 +20,12 @@ pub use meta::{
     AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible,
     StripActionHeaders, StripAnimalHeaders,
 };
-pub use sleep::{Sleep, SleepError, SleepInput, SleepStep};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+pub use sleep::{Sleep, SleepDependency, SleepError, SleepInput, SleepStep};
 use std::marker::PhantomData;
-pub use transport::{ClaimedAnimalPerturbation, OwnerWake};
 pub use transport::{BackendError, JourneyStatus, RunnerOut, Step as RunnerStep, WireIn, WireOut};
+pub use transport::{ClaimedAnimalPerturbation, OwnerWake};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;

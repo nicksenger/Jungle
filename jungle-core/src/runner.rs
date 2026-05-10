@@ -30,6 +30,31 @@ impl<T> JungleRunner<T>
 where
     T: 'static,
 {
+    pub async fn spawn<A>(
+        &self,
+        state: A::State,
+        journey_id: Uuid,
+        mut tx: RunnerChannelTx,
+    ) -> Result<A::State, ExecutorError>
+    where
+        A: Animal + AnimalObservation + AnimalPerturbation,
+        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    {
+        let mut executor = self.new_executor::<A>(state);
+        self.emit_initial_appearance::<A>(&executor, journey_id, &mut tx)
+            .await?;
+        match self
+            .drive_until_sleep_or_complete::<A>(&mut executor, journey_id, &mut tx)
+            .await?
+        {
+            RunnerAdvance::Completed => Ok(executor.into_state()),
+            RunnerAdvance::SuspendedSleep { .. } => Err(ExecutorError::ClientTransport(
+                "runner.spawn encountered Sleep; use worker runtime for sleep-capable flows"
+                    .to_string(),
+            )),
+        }
+    }
+
     pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<'_, T, A>
     where
         A: Animal,
@@ -95,7 +120,8 @@ where
             }
 
             let completion = request.run().await?;
-            apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, completion).await?;
+            apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, completion)
+                .await?;
         }
         Ok(RunnerAdvance::Completed)
     }
@@ -110,8 +136,8 @@ where
         A: Animal + AnimalObservation + AnimalPerturbation,
         A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
-        let sleep_out =
-            postcard::to_allocvec(&()).map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
+        let sleep_out = postcard::to_allocvec(&())
+            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
         let completion = Ok(sleep_out);
         apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, completion).await?;
         self.drive_until_sleep_or_complete::<A>(executor, journey_id, tx)

@@ -206,7 +206,11 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new(core::any::type_name::<<A as Act<T>>::Action>(), request, runner),
+            ExecutableActionRequest::new(
+                core::any::type_name::<<A as Act<T>>::Action>(),
+                request,
+                runner,
+            ),
         ))
     }
 
@@ -335,7 +339,11 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new(core::any::type_name::<<A as Act<T>>::Action>(), request, runner),
+            ExecutableActionRequest::new(
+                core::any::type_name::<<A as Act<T>>::Action>(),
+                request,
+                runner,
+            ),
         ))
     }
 

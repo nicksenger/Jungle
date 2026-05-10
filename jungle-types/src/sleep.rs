@@ -17,15 +17,24 @@ pub struct SleepError {
 pub struct Sleep;
 impl ActionMember for Sleep {}
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SleepDependency;
+
+impl<T> From<&T> for SleepDependency {
+    fn from(_value: &T) -> Self {
+        Self
+    }
+}
+
 impl Action for Sleep {
     type Id = Id<U65535>;
-    type Dependency = ();
+    type Dependency = SleepDependency;
     type In = SleepInput;
     type Out = ();
     type Err = SleepError;
 
     fn act(
-        _dependency: &Self::Dependency,
+        _dependency: &SleepDependency,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Err(SleepError {

@@ -520,9 +520,7 @@ impl JungleStore for RedbStore {
         }
 
         write_tx.commit().map_err(|err| {
-            crate::PersistenceError::Message(format!(
-                "redb claim_owner_wake commit failed: {err}"
-            ))
+            crate::PersistenceError::Message(format!("redb claim_owner_wake commit failed: {err}"))
         })?;
 
         let Some(value) = selected_value else {
@@ -874,13 +872,11 @@ impl JungleStore for RedbStore {
                     "redb poll_timers open journey_leases table failed: {err}"
                 ))
             })?;
-            let lease_entry = leases
-                .get(&journey_id.as_bytes()[..])
-                .map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb poll_timers read journey lease failed: {err}"
-                    ))
-                })?;
+            let lease_entry = leases.get(&journey_id.as_bytes()[..]).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb poll_timers read journey lease failed: {err}"
+                ))
+            })?;
             if let Some(raw) = lease_entry {
                 let lease =
                     decode_journey_lease(raw.value(), "redb poll_timers decode journey lease")?;
@@ -899,11 +895,13 @@ impl JungleStore for RedbStore {
             let wake_id = Uuid::new_v4();
             let key = encode_owner_wake_key(owner_id, now_millis, wake_id);
             let value = encode_owner_wake_value(journey_id, timer_id);
-            owner_wakes.insert(key.as_slice(), value.as_slice()).map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb poll_timers enqueue owner wake failed: {err}"
-                ))
-            })?;
+            owner_wakes
+                .insert(key.as_slice(), value.as_slice())
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb poll_timers enqueue owner wake failed: {err}"
+                    ))
+                })?;
         } else {
             let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
@@ -1129,7 +1127,11 @@ fn decode_timer_task(raw: &[u8], context: &str) -> Result<TimerTaskRow> {
     })
 }
 
-fn encode_journey_lease(owner_id: Uuid, lease_until_unix_ms: i64, heartbeat_unix_ms: i64) -> Vec<u8> {
+fn encode_journey_lease(
+    owner_id: Uuid,
+    lease_until_unix_ms: i64,
+    heartbeat_unix_ms: i64,
+) -> Vec<u8> {
     let mut out = Vec::with_capacity(32);
     out.extend_from_slice(owner_id.as_bytes());
     out.extend_from_slice(&lease_until_unix_ms.to_be_bytes());

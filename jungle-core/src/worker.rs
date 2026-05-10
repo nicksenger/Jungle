@@ -180,7 +180,7 @@ where
     }
 }
 
-pub(crate) enum JourneyStartOutcome<T> {
+pub enum JourneyStartOutcome<T> {
     NotMatched,
     Completed,
     Sleeping {
@@ -189,12 +189,12 @@ pub(crate) enum JourneyStartOutcome<T> {
     },
 }
 
-enum SuspendedOutcome {
+pub enum SuspendedOutcome {
     Completed,
     Sleeping { wake_at_unix_ms: i64 },
 }
 
-trait SuspendedJourney<T> {
+pub trait SuspendedJourney<T> {
     fn resume<'a>(
         &'a mut self,
         runner: &'a JungleRunner<T>,
@@ -237,7 +237,7 @@ where
     }
 }
 
-pub(crate) trait SpawnByOrdinal<T>: Send + Sync {
+pub trait SpawnByOrdinal<T>: Send + Sync {
     fn spawn_by_ordinal<'a>(
         ordinal: u32,
         seed: Vec<u8>,
@@ -254,8 +254,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
         _journey_id: Uuid,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async { Ok(JourneyStartOutcome::NotMatched) })
     }
 }
@@ -282,8 +281,7 @@ where
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>
-    {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
             if ordinal == <Ordinal as Unsigned>::U32 {
                 let seed: Head::Seed = postcard::from_bytes(&seed)

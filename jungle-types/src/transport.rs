@@ -9,10 +9,22 @@ pub enum BackendError {
 /// Transport messages sent from runners to external clients.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RunnerOut {
-    ActionInput { data: Vec<u8>, uuid: Uuid },
-    ActionSuccessOutput { data: Vec<u8>, uuid: Uuid },
-    ActionFailureOutput { data: Vec<u8>, uuid: Uuid },
-    Appearance { data: Vec<u8>, uuid: Uuid },
+    ActionInput {
+        data: Vec<u8>,
+        uuid: Uuid,
+    },
+    ActionSuccessOutput {
+        data: Vec<u8>,
+        uuid: Uuid,
+    },
+    ActionFailureOutput {
+        data: Vec<u8>,
+        uuid: Uuid,
+    },
+    Appearance {
+        data: Vec<u8>,
+        uuid: Uuid,
+    },
     SleepScheduled {
         uuid: Uuid,
         timer_id: Uuid,

@@ -49,8 +49,7 @@ type HeartbeatJourneyLeaseHandler =
     Arc<dyn Fn(Uuid, Uuid, i64) -> HandlerFuture + Send + Sync + 'static>;
 type PollOwnerWakeHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Option<OwnerWake>, ExecutorError>> + Send + 'static>>;
-type PollOwnerWakeHandler =
-    Arc<dyn Fn(Uuid) -> PollOwnerWakeHandlerFuture + Send + Sync + 'static>;
+type PollOwnerWakeHandler = Arc<dyn Fn(Uuid) -> PollOwnerWakeHandlerFuture + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct MockClient {

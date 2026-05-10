@@ -15,13 +15,13 @@ type EnqueuePerturbationHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send
 type ClaimPerturbationHandler =
     Arc<dyn Fn(Uuid) -> Result<Option<ClaimedAnimalPerturbation>> + Send + Sync + 'static>;
 type AckPerturbationHandler = Arc<dyn Fn(Uuid, u64) -> Result<()> + Send + Sync + 'static>;
-type HeartbeatJourneyLeaseHandler = Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
+type HeartbeatJourneyLeaseHandler =
+    Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
 type ClaimOwnerWakeHandler = Arc<dyn Fn(Uuid) -> Result<Option<OwnerWake>> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
-type ScheduleSleepTimerHandler =
-    Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
+type ScheduleSleepTimerHandler = Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
 type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'static>;
 
 #[derive(Clone)]

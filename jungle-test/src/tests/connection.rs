@@ -281,11 +281,16 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
         .await
         .expect("schedule_sleep_timer should succeed");
 
-    let _ = client.poll_timers().await.expect("poll_timers should succeed");
+    let _ = client
+        .poll_timers()
+        .await
+        .expect("poll_timers should succeed");
 
     let resume_work = client.poll_work().await.expect("poll_work should succeed");
     match resume_work {
-        Some(RunnerStep::ResumeJourney { journey_id: resumed }) => {
+        Some(RunnerStep::ResumeJourney {
+            journey_id: resumed,
+        }) => {
             assert_eq!(resumed, journey_id);
         }
         Some(RunnerStep::StartJourney { .. }) => {
