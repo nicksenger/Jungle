@@ -93,6 +93,8 @@ impl Act<SleepAnimal> for AddAfterSleep {
 
 struct SleepNotComplete;
 impl LoopCondition<SleepState> for SleepNotComplete {
+    type CarryIn = ();
+
     fn should_continue(state: &SleepState) -> bool {
         state.phase < 3
     }

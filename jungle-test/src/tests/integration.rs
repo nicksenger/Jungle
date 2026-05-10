@@ -226,6 +226,8 @@ impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
 
 struct KeepRunning;
 impl LoopCondition<IntegrationState> for KeepRunning {
+    type CarryIn = ();
+
     fn should_continue(state: &IntegrationState) -> bool {
         state.after_steps < 2
     }

@@ -98,6 +98,8 @@ impl Act<TraverseAnimal> for StepD {
 
 struct KeepLooping;
 impl LoopCondition<i32> for KeepLooping {
+    type CarryIn = ();
+
     fn should_continue(state: &i32) -> bool {
         *state < 1
     }

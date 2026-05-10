@@ -164,6 +164,8 @@ struct GorillaLoopSequence(
 
 struct GorillaUnderAgeHundred;
 impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
+    type CarryIn = i32;
+
     fn should_continue(state: &GorillaState) -> bool {
         state.core.age < 100
     }
@@ -188,6 +190,8 @@ struct TigerLoopSequence(
 
 struct TigerUnderHundredStripes;
 impl LoopCondition<TigerState> for TigerUnderHundredStripes {
+    type CarryIn = i32;
+
     fn should_continue(state: &TigerState) -> bool {
         state.core.energy < 100
     }
@@ -272,6 +276,8 @@ async fn executor_runs_aspected_steps() {
         gorilla_emitted.push(emitted);
     }
     assert_eq!(gorilla_emitted, vec![6, 13, 1, 3, 7, 1, 3, 7]);
+    assert!(!gorilla.is_complete());
+    assert!(gorilla.next_request::<i32>().is_err());
     assert!(gorilla.is_complete());
     let gorilla_state = gorilla.into_state();
     assert_eq!(gorilla_state.core.energy, 7);
@@ -285,21 +291,33 @@ async fn executor_runs_aspected_steps() {
     assert!(!tiger.is_complete());
 
     let mut tiger_emitted: Vec<i32> = Vec::new();
-    while !tiger.is_complete() {
+    loop {
         let step = tiger_emitted.len() % 3;
         let completion: i32 = match step % 3 {
             0 => {
-                let request: i32 = tiger.next_request().expect("tiger request should advance");
+                let request: i32 = match tiger.next_request() {
+                    Ok(request) => request,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
+                    Err(err) => panic!("tiger request should advance: {err}"),
+                };
                 Eat::act(&(), request).await.expect("eat should succeed")
             }
             1 => {
-                let request: i32 = tiger.next_request().expect("tiger request should advance");
+                let request: i32 = match tiger.next_request() {
+                    Ok(request) => request,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
+                    Err(err) => panic!("tiger request should advance: {err}"),
+                };
                 Sleep::act(&(), request)
                     .await
                     .expect("sleep should succeed")
             }
             2 => {
-                let request: () = tiger.next_request().expect("tiger request should advance");
+                let request: () = match tiger.next_request() {
+                    Ok(request) => request,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
+                    Err(err) => panic!("tiger request should advance: {err}"),
+                };
                 Hunt::act(&(), request).await.expect("hunt should succeed")
             }
             _ => unreachable!(),
@@ -324,14 +342,11 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         Step<Tiger, TigerEat>,
         Step<Tiger, TigerSleep>,
     > as Running>::run((
-        true,
-        (
-            TigerState {
-                stripes: 8,
-                core: CoreState { energy: 5, age: 1 },
-            },
-            0,
-        ),
+        TigerState {
+            stripes: 8,
+            core: CoreState { energy: 5, age: 1 },
+        },
+        0,
     ));
     match even {
         Either::Left((_state, request)) => assert_eq!(request.into_input(), 0),
@@ -343,14 +358,11 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         Step<Tiger, TigerEat>,
         Step<Tiger, TigerSleep>,
     > as Running>::run((
-        false,
-        (
-            TigerState {
-                stripes: 9,
-                core: CoreState { energy: 5, age: 1 },
-            },
-            0,
-        ),
+        TigerState {
+            stripes: 9,
+            core: CoreState { energy: 5, age: 1 },
+        },
+        0,
     ));
     match odd {
         Either::Left(_) => panic!("expected sleep branch"),
@@ -365,10 +377,19 @@ async fn executor_advances_with_executable_requests_and_dynamic_action_order() {
         core: CoreState { energy: 8, age: 4 },
     });
 
-    let emitted = tiger
-        .advance_to_end_with(0i32)
-        .await
-        .expect("tiger flow should execute through dynamic requests");
+    let mut emitted = Vec::new();
+    loop {
+        let request = match tiger.next_executable_request(0i32) {
+            Ok(request) => request,
+            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(err) => panic!("tiger flow should execute through dynamic requests: {err}"),
+        };
+        let completion = request.run().await.expect("tiger action should execute");
+        let emitted_step = tiger
+            .complete_serialized(completion)
+            .expect("tiger completion should process");
+        emitted.push(emitted_step);
+    }
     assert_eq!(emitted.len(), 7);
     assert!(tiger.is_complete());
 

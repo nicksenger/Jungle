@@ -263,6 +263,7 @@ struct SuspendedAnimalJourney<T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
+    A::State: Clone,
     A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     journey_id: Uuid,
@@ -273,6 +274,7 @@ impl<T, A> SuspendedJourney<T> for SuspendedAnimalJourney<T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
+    A::State: Clone,
     A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     fn resume<'a>(
@@ -345,7 +347,7 @@ where
         + Sync
         + 'static,
     Head::Seed: Send + 'static,
-    Head::State: Send + 'static,
+    Head::State: Clone + Send + 'static,
     Head::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
     Ordinal: Unsigned,
@@ -440,6 +442,7 @@ async fn replay_history<T, A>(
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation,
+    A::State: Clone,
     A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     let mut index = 0usize;
@@ -448,7 +451,11 @@ where
             break;
         }
 
-        let request = executor.next_executable_request(())?;
+        let request = match executor.next_executable_request(()) {
+            Ok(request) => request,
+            Err(ExecutorError::Complete) => break,
+            Err(err) => return Err(err),
+        };
         let expected_input = request.request_bytes();
         let action_type = request.action_type();
 

@@ -72,6 +72,11 @@ type LeftFlow = Step<ConditionalAnimal, Left>;
 type RightFlow = Step<ConditionalAnimal, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
+impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
+    fn choose((state, _): &(i32, i32)) -> bool {
+        *state >= 0
+    }
+}
 
 type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, RightFlow>;
 
@@ -80,13 +85,13 @@ struct ConditionalJourney(ConditionalFlow);
 
 #[test]
 fn conditional_run_selects_branch_from_predicate() {
-    let left = <ConditionalFlow as Running>::run((true, (5, 3)));
+    let left = <ConditionalFlow as Running>::run((5, 3));
     match left {
         Either::Left((_state, request)) => assert_eq!(request.into_input(), 8),
         Either::Right(_) => panic!("expected left branch"),
     }
 
-    let right = <ConditionalFlow as Running>::run((false, (-2, 3)));
+    let right = <ConditionalFlow as Running>::run((-2, 3));
     match right {
         Either::Left(_) => panic!("expected right branch"),
         Either::Right((_state, request)) => assert_eq!(request.into_input(), -5),
@@ -136,16 +141,16 @@ fn executor_dynamically_selects_conditional_branch() {
 #[test]
 fn executor_requests_and_completes_conditional_branch() {
     let mut left = Executor::<ConditionalAnimal>::new(5);
-    let left_request: (bool, i32) = left.next_request().expect("left request");
-    assert_eq!(left_request, (false, 5));
+    let left_request: i32 = left.next_request().expect("left request");
+    assert_eq!(left_request, 5);
     let left_emitted: i32 = left.complete(Ok::<i32, ()>(9)).expect("left completion");
     assert_eq!(left_emitted, 9);
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
     let mut right = Executor::<ConditionalAnimal>::new(-2);
-    let right_request: (bool, i32) = right.next_request().expect("right request");
-    assert_eq!(right_request, (false, -2));
+    let right_request: i32 = right.next_request().expect("right request");
+    assert_eq!(right_request, -2);
     let right_emitted: bool = right.complete(Ok::<i32, ()>(6)).expect("right completion");
     assert!(right_emitted);
     assert!(right.is_complete());

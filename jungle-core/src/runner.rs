@@ -41,6 +41,7 @@ where
     ) -> Result<A::State, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
+        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
@@ -62,6 +63,7 @@ where
     pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<T, A>
     where
         A: Animal,
+        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
@@ -76,6 +78,7 @@ where
     ) -> Result<(), ExecutorError>
     where
         A: Animal + AnimalObservation,
+        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
@@ -104,12 +107,17 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
+        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         while !executor.is_complete() {
             process_perturbations(executor, journey_id, tx).await?;
-            let request = executor.next_executable_request(())?;
+            let request = match executor.next_executable_request(()) {
+                Ok(request) => request,
+                Err(ExecutorError::Complete) => break,
+                Err(err) => return Err(err),
+            };
             send_history(
                 tx,
                 RunnerOut::ActionInput {
@@ -143,6 +151,7 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
+        A::State: Clone,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {

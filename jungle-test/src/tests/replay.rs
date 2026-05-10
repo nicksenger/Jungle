@@ -177,6 +177,8 @@ impl Act<ReplayGateAnimal> for ReplayGateStep {
 
 struct ReplayGateNotComplete;
 impl LoopCondition<ReplayGateState> for ReplayGateNotComplete {
+    type CarryIn = ();
+
     fn should_continue(state: &ReplayGateState) -> bool {
         state.phase < 5
     }
@@ -488,6 +490,8 @@ impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
 
 struct ReplayTimeoutNotComplete;
 impl LoopCondition<ReplayTimeoutState> for ReplayTimeoutNotComplete {
+    type CarryIn = ();
+
     fn should_continue(state: &ReplayTimeoutState) -> bool {
         state.phase < 5
     }
