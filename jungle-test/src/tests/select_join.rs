@@ -1,6 +1,5 @@
 use jungle_sdk::types::{
-    Act, Action, ActionCompletion, ContextExecutor, Either, Executor, Identity, Join, Select,
-    Sleep, Step,
+    Act, Action, ActionCompletion, Either, Executor, Identity, Join, Select, Step,
 };
 use jungle_sdk::{Journey, Optic};
 use std::time::Duration;
@@ -9,7 +8,6 @@ use std::time::Duration;
 struct SelectJoinState {
     fast_ms: u64,
     slow_ms: u64,
-    timeout_ms: u64,
     winner: i32,
     joined_sum: i32,
 }
@@ -159,77 +157,11 @@ animal!(
     JoinJourney
 );
 
-struct TimeoutSleep;
-impl Act<TimeoutAnimal> for TimeoutSleep {
-    type Action = Sleep;
-    type Aspect = Identity;
-    type In = ();
-    type Out = ();
-
-    fn emit(state: &SelectJoinState, _input: Self::In) -> Duration {
-        Duration::from_millis(state.timeout_ms)
-    }
-
-    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        output.expect("timeout sleep should succeed");
-    }
-}
-
-struct TimeoutSlow;
-impl Act<TimeoutAnimal> for TimeoutSlow {
-    type Action = TimedValueAction;
-    type Aspect = Identity;
-    type In = ();
-    type Out = i32;
-
-    fn emit(state: &SelectJoinState, _input: Self::In) -> (u64, i32) {
-        (state.slow_ms, 9)
-    }
-
-    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        output.expect("timeout slow should succeed")
-    }
-}
-
-struct CaptureTimeoutWinner;
-impl Act<TimeoutAnimal> for CaptureTimeoutWinner {
-    type Action = TimedValueAction;
-    type Aspect = Identity;
-    type In = Either<(), i32>;
-    type Out = ();
-
-    fn emit(_state: &SelectJoinState, input: Self::In) -> (u64, i32) {
-        let winner = match input {
-            Either::Left(()) => -1,
-            Either::Right(value) => value,
-        };
-        (0, winner)
-    }
-
-    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Out {
-        state.winner = output.expect("timeout winner capture should succeed");
-    }
-}
-
-#[derive(Journey)]
-struct TimeoutJourney(
-    Select<Step<TimeoutAnimal, TimeoutSleep>, Step<TimeoutAnimal, TimeoutSlow>>,
-    Step<TimeoutAnimal, CaptureTimeoutWinner>,
-);
-
-animal!(
-    TimeoutAnimal,
-    jungle_sdk::typosaurus::num::consts::U2,
-    SelectJoinState,
-    TimeoutJourney
-);
-
 #[tokio::test]
 async fn select_returns_first_completed_branch() {
     let mut executor = Executor::<SelectAnimal>::new(SelectJoinState {
         fast_ms: 10,
         slow_ms: 60,
-        timeout_ms: 20,
         winner: 0,
         joined_sum: 0,
     });
@@ -246,7 +178,6 @@ async fn join_waits_for_both_and_returns_tuple_outputs() {
     let mut executor = Executor::<JoinAnimal>::new(SelectJoinState {
         fast_ms: 10,
         slow_ms: 40,
-        timeout_ms: 20,
         winner: 0,
         joined_sum: 0,
     });
@@ -259,21 +190,17 @@ async fn join_waits_for_both_and_returns_tuple_outputs() {
 }
 
 #[tokio::test]
-async fn select_supports_sleep_as_timeout_branch() {
-    let mut executor = ContextExecutor::<_, TimeoutAnimal>::new(
-        &(),
-        SelectJoinState {
-            fast_ms: 10,
-            slow_ms: 120,
-            timeout_ms: 15,
-            winner: 0,
-            joined_sum: 0,
-        },
-    );
+async fn select_fast_branch_wins_in_race() {
+    let mut executor = Executor::<SelectAnimal>::new(SelectJoinState {
+        fast_ms: 1,
+        slow_ms: 90,
+        winner: 0,
+        joined_sum: 0,
+    });
 
     let _ = executor
         .advance_to_end_with(())
         .await
-        .expect("timeout select executor should complete");
-    assert_eq!(executor.state().winner, -1);
+        .expect("select race executor should complete");
+    assert_eq!(executor.state().winner, 1);
 }

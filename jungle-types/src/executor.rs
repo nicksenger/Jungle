@@ -1,5 +1,5 @@
 use crate::{
-    Act, Action, ActionCompletion, Animal, BackendError, Condition, Conditional, Either, Join,
+    Act, Action, ActionCompletion, Animal, BackendError, Condition, Conditional, Join,
     LoopCondition, Running, Select, Step, While,
 };
 use inception::*;
@@ -627,9 +627,9 @@ where
                     .get_mut(0)
                     .ok_or(ExecutorError::Complete)?
                     .complete(state, left_completion)?;
-                let emitted: Either<Serialized, Serialized> = Either::Left(left_emitted);
-                let serialized = postcard::to_allocvec(&emitted)
-                    .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
+                let mut serialized = Vec::with_capacity(1 + left_emitted.len());
+                serialized.push(0);
+                serialized.extend_from_slice(&left_emitted);
                 (left_state, serialized)
             }
             SelectCompletionEnvelope::Right(right_completion) => {
@@ -638,9 +638,9 @@ where
                     .get_mut(0)
                     .ok_or(ExecutorError::Complete)?
                     .complete(state, right_completion)?;
-                let emitted: Either<Serialized, Serialized> = Either::Right(right_emitted);
-                let serialized = postcard::to_allocvec(&emitted)
-                    .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
+                let mut serialized = Vec::with_capacity(1 + right_emitted.len());
+                serialized.push(1);
+                serialized.extend_from_slice(&right_emitted);
                 (right_state, serialized)
             }
         };
@@ -784,8 +784,9 @@ where
         let (left_state, left_emitted) = left_node.complete(state, envelope.left)?;
         let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
         let (right_state, right_emitted) = right_node.complete(left_state, envelope.right)?;
-        let emitted = postcard::to_allocvec(&(left_emitted, right_emitted))
-            .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
+        let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+        emitted.extend_from_slice(&left_emitted);
+        emitted.extend_from_slice(&right_emitted);
 
         self.waiting_completion = false;
         self.complete = true;
