@@ -1324,7 +1324,7 @@ where
     State: 'static,
     In: DeserializeOwned + Serialize + 'static,
     C: LoopCondition<State, CarryIn = In> + 'static,
-    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)> + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -1761,7 +1761,9 @@ where
     State: 'static,
     In: DeserializeOwned + Serialize + 'static,
     C: LoopCondition<State, CarryIn = In> + 'static,
-    F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>> + 'static,
+    F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
+        + Running<In = (State, In)>
+        + 'static,
 {
     type Output = DynFlow<State>;
 
