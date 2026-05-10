@@ -57,11 +57,11 @@ impl JungleStore for MockStore {
         (self.on_flow_status)(journey_id)
     }
 
-    async fn journey_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
+    async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
         (self.on_flow_appearance)(journey_id)
     }
 
-    async fn upsert_journey_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+    async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
         (self.on_upsert_flow_appearance)(journey_id, data)
     }
 

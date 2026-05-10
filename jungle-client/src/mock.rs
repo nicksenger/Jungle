@@ -58,7 +58,7 @@ impl MockClient {
                     self.action_failure_output(uuid, data).await
                 }
                 RunnerOut::Appearance { data, uuid } => {
-                    self.journey_appearance_update(uuid, data).await
+                    self.animal_appearance_update(uuid, data).await
                 }
             };
             let _ = done.send(result);
@@ -82,11 +82,11 @@ impl JungleClient for MockClient {
         (self.on_flow_status)(id).await
     }
 
-    async fn journey_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError> {
+    async fn animal_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError> {
         (self.on_flow_appearance)(id).await
     }
 
-    async fn journey_appearance_update(
+    async fn animal_appearance_update(
         &self,
         id: Uuid,
         data: Vec<u8>,

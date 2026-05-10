@@ -63,7 +63,7 @@ where
                     }
                     RunnerOut::Appearance { data, uuid } => {
                         client_for_transport
-                            .journey_appearance_update(uuid, data)
+                            .animal_appearance_update(uuid, data)
                             .await
                     }
                 };

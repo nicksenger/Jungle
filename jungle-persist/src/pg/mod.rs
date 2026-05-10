@@ -135,11 +135,11 @@ impl JungleStore for PgStore {
         decode_journey_status(status)
     }
 
-    async fn journey_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
+    async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
         let appearance = sqlx::query_scalar::<_, Vec<u8>>(
             r#"
             SELECT data
-            FROM journey_appearances
+            FROM animal_appearances
             WHERE journey_id = $1
             "#,
         )
@@ -151,10 +151,10 @@ impl JungleStore for PgStore {
         Ok(appearance)
     }
 
-    async fn upsert_journey_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+    async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
         sqlx::query(
             r#"
-            INSERT INTO journey_appearances (journey_id, data, updated_at)
+            INSERT INTO animal_appearances (journey_id, data, updated_at)
             VALUES ($1, $2, NOW())
             ON CONFLICT (journey_id)
             DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()

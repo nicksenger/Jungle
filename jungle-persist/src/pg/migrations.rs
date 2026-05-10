@@ -106,7 +106,7 @@ impl PgStore {
 
         sqlx::query(
             r#"
-            CREATE TABLE IF NOT EXISTS journey_appearances (
+            CREATE TABLE IF NOT EXISTS animal_appearances (
                 journey_id UUID PRIMARY KEY REFERENCES journeys(id) ON DELETE CASCADE,
                 data BYTEA NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL

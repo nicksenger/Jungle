@@ -11,7 +11,7 @@ const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("jour
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("journey_appearances");
+    TableDefinition::new("animal_appearances");
 
 impl RedbStore {
     pub(super) async fn migrate_v0(&self) -> Result<()> {
@@ -61,7 +61,7 @@ impl RedbStore {
         })?;
         tx.open_table(APPEARANCES_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb open journey_appearances table failed: {err}"
+                "redb open animal_appearances table failed: {err}"
             ))
         })?;
 

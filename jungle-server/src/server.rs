@@ -147,23 +147,23 @@ impl JungleServer for Server {
                     )));
                 }
             }
-            Some(WireIn::JourneyAppearance(journey_id)) => {
+            Some(WireIn::AnimalAppearance(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     let appearance =
                         self.store
-                            .journey_appearance(journey_id)
+                            .animal_appearance(journey_id)
                             .await
                             .map_err(|err| {
                                 crate::ServerError::Backend(BackendError::Message(err.to_string()))
                             })?;
-                    WireOut::JourneyAppearance(appearance)
+                    WireOut::AnimalAppearance(appearance)
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
                     let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
-                        "journey_appearance is unavailable without a persistence backend"
+                        "animal_appearance is unavailable without a persistence backend"
                             .to_string(),
                     )));
                 }
@@ -218,7 +218,7 @@ impl JungleServer for Server {
                     match history {
                         jungle_types::RunnerOut::Appearance { data, uuid } => {
                             self.store
-                                .upsert_journey_appearance(uuid, data)
+                                .upsert_animal_appearance(uuid, data)
                                 .await
                                 .map_err(|err| {
                                     crate::ServerError::Backend(BackendError::Message(

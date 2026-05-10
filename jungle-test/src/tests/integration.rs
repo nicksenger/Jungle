@@ -413,12 +413,12 @@ async fn redb_client_worker_flow_runs_to_completion() {
                     .await
                     .expect("journey_details should succeed while waiting for completion");
                 if let Some(appearance_bytes) = client_ref
-                    .journey_appearance(journey_id)
+                    .animal_appearance(journey_id)
                     .await
-                    .expect("journey_appearance should succeed while waiting for completion")
+                    .expect("animal_appearance should succeed while waiting for completion")
                 {
                     let appearance: IntegrationState = postcard::from_bytes(&appearance_bytes)
-                        .expect("journey appearance should deserialize");
+                        .expect("animal appearance should deserialize");
                     if appearance.before_steps > 0 || appearance.after_steps > 0 {
                         saw_appearance.store(true, Ordering::Relaxed);
                     }
@@ -446,12 +446,12 @@ async fn redb_client_worker_flow_runs_to_completion() {
     );
 
     let final_appearance_bytes = client
-        .journey_appearance(journey_id)
+        .animal_appearance(journey_id)
         .await
-        .expect("final journey_appearance should succeed")
-        .expect("final journey_appearance should be present");
+        .expect("final animal_appearance should succeed")
+        .expect("final animal_appearance should be present");
     let final_appearance: IntegrationState = postcard::from_bytes(&final_appearance_bytes)
-        .expect("final journey appearance should deserialize");
+        .expect("final animal appearance should deserialize");
     assert!(
         final_appearance.after_steps > 0,
         "final appearance should reflect progressed state"

@@ -39,7 +39,7 @@ pub enum Step {
 pub enum WireIn {
     CreateJourney { ordinal: u32, seed: Vec<u8> },
     JourneyStatus(Uuid),
-    JourneyAppearance(Uuid),
+    AnimalAppearance(Uuid),
     JourneyComplete(Uuid),
     PollStep,
     HistoryEvent(RunnerOut),
@@ -50,7 +50,7 @@ pub enum WireIn {
 pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyStatus(JourneyStatus),
-    JourneyAppearance(Option<Vec<u8>>),
+    AnimalAppearance(Option<Vec<u8>>),
     NoAvailableSteps,
     PendingStep(Step),
     Ack,

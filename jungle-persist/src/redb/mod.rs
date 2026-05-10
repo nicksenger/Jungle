@@ -14,7 +14,7 @@ const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("jour
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("journey_appearances");
+    TableDefinition::new("animal_appearances");
 
 const STEP_KIND_START_JOURNEY: u8 = 0;
 const STEP_STATUS_AVAILABLE: u8 = 0;
@@ -209,54 +209,54 @@ impl JungleStore for RedbStore {
         Ok(flow.status)
     }
 
-    async fn journey_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
+    async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
         let read_tx = self.db.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_appearance begin read failed: {err}"
+                "redb animal_appearance begin read failed: {err}"
             ))
         })?;
 
         let appearances = read_tx.open_table(APPEARANCES_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_appearance open journey_appearances table failed: {err}"
+                "redb animal_appearance open animal_appearances table failed: {err}"
             ))
         })?;
 
         let key = &journey_id.as_bytes()[..];
         let value = appearances.get(key).map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb journey_appearance read appearance failed: {err}"
+                "redb animal_appearance read appearance failed: {err}"
             ))
         })?;
 
         Ok(value.map(|entry| entry.value().to_vec()))
     }
 
-    async fn upsert_journey_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
+    async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb upsert_journey_appearance begin failed: {err}"
+                "redb upsert_animal_appearance begin failed: {err}"
             ))
         })?;
 
         {
             let mut appearances = write_tx.open_table(APPEARANCES_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb upsert_journey_appearance open journey_appearances table failed: {err}"
+                    "redb upsert_animal_appearance open animal_appearances table failed: {err}"
                 ))
             })?;
             appearances
                 .insert(&journey_id.as_bytes()[..], data.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
-                        "redb upsert_journey_appearance write failed: {err}"
+                        "redb upsert_animal_appearance write failed: {err}"
                     ))
                 })?;
         }
 
         write_tx.commit().map_err(|err| {
             crate::PersistenceError::Message(format!(
-                "redb upsert_journey_appearance commit failed: {err}"
+                "redb upsert_animal_appearance commit failed: {err}"
             ))
         })?;
         Ok(())

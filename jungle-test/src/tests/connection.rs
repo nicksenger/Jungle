@@ -242,7 +242,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 }
 
 #[tokio::test]
-async fn client_handles_journey_appearance_round_trip() {
+async fn client_handles_animal_appearance_round_trip() {
     let journey_id = Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
     let appearance_bytes = vec![42_u8, 99_u8];
     let captured_requests: Arc<Mutex<Vec<WireIn>>> = Arc::new(Mutex::new(Vec::new()));
@@ -265,8 +265,8 @@ async fn client_handles_journey_appearance_round_trip() {
                     captured_requests.lock().unwrap().push(msg.clone());
                     let idx = request_count.fetch_add(1, Ordering::SeqCst);
                     match (idx, msg) {
-                        (0, WireIn::JourneyAppearance(id)) if id == journey_id => {
-                            Ok(WireOut::JourneyAppearance(Some(appearance_bytes)))
+                        (0, WireIn::AnimalAppearance(id)) if id == journey_id => {
+                            Ok(WireOut::AnimalAppearance(Some(appearance_bytes)))
                         }
                         (1, WireIn::HistoryEvent(RunnerOut::Appearance { uuid, data }))
                             if uuid == journey_id && data == vec![7, 8, 9] =>
@@ -274,7 +274,7 @@ async fn client_handles_journey_appearance_round_trip() {
                             Ok(WireOut::Ack)
                         }
                         _ => Err(BackendError::Message(
-                            "unexpected request sequence for journey appearance".to_string(),
+                            "unexpected request sequence for animal appearance".to_string(),
                         )),
                     }
                 })
@@ -293,20 +293,20 @@ async fn client_handles_journey_appearance_round_trip() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let appearance = client
-        .journey_appearance(journey_id)
+        .animal_appearance(journey_id)
         .await
-        .expect("journey_appearance should succeed")
-        .expect("journey_appearance should return some bytes");
+        .expect("animal_appearance should succeed")
+        .expect("animal_appearance should return some bytes");
     assert_eq!(appearance, vec![42_u8, 99_u8]);
 
     client
-        .journey_appearance_update(journey_id, vec![7, 8, 9])
+        .animal_appearance_update(journey_id, vec![7, 8, 9])
         .await
-        .expect("journey_appearance_update should ack");
+        .expect("animal_appearance_update should ack");
 
     let requests = captured_requests.lock().unwrap().clone();
     assert_eq!(requests.len(), 2);
-    assert!(matches!(requests[0], WireIn::JourneyAppearance(id) if id == journey_id));
+    assert!(matches!(requests[0], WireIn::AnimalAppearance(id) if id == journey_id));
     assert!(matches!(
         requests[1],
         WireIn::HistoryEvent(RunnerOut::Appearance { uuid, ref data })
