@@ -32,6 +32,7 @@ animal!(
 );
 
 struct Left;
+#[jungle_sdk::detect]
 impl Act<ConditionalAnimal> for Left {
     type Action = LeftAction;
     type Aspect = Identity;
@@ -71,6 +72,7 @@ type LeftFlow = Step<ConditionalAnimal, Left>;
 type RightFlow = Step<ConditionalAnimal, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
+#[jungle_sdk::detect]
 impl Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
     fn choose((state, _): &(i32, i32)) -> bool {
         *state >= 0

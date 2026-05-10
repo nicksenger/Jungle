@@ -14,4 +14,4 @@ opt-in = []
 inception-derive-gen = { path = "../../inception/inception-derive-gen", version = "0.1.0" }
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full"] }
+syn = { version = "2", features = ["full", "visit"] }
