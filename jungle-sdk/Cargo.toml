@@ -8,6 +8,8 @@ default = []
 server = ["dep:jungle-server"]
 pg = ["server", "jungle-server/postgres"]
 redb = ["server", "jungle-server/redb"]
+detect-warn = ["jungle-macros/detect-warn"]
+detect-error = ["jungle-macros/detect-error"]
 
 [dependencies]
 inception = { workspace = true }

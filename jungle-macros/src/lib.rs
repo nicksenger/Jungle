@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{parse_macro_input, parse_quote, DeriveInput, Path};
@@ -144,25 +144,78 @@ pub fn actions(attr: TokenStream, input: TokenStream) -> TokenStream {
 pub fn detect(attr: TokenStream, input: TokenStream) -> TokenStream {
     let args = proc_macro2::TokenStream::from(attr);
     if !args.is_empty() {
-        return syn::Error::new_spanned(
-            args,
-            "this attribute does not accept arguments",
-        )
-        .into_compile_error()
-        .into();
+        return syn::Error::new_spanned(args, "this attribute does not accept arguments")
+            .into_compile_error()
+            .into();
     }
 
     let item = parse_macro_input!(input as syn::Item);
-    let errors = detect_item(&item);
+    let mode = detect_mode();
+    let findings = match collect_findings(&item) {
+        Ok(findings) => findings,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
     let mut out = quote!(#item);
-    if let Some(err_tokens) = errors {
-        out.extend(err_tokens);
+    if let Some(diagnostics) = render_diagnostics(&findings, mode) {
+        out.extend(diagnostics);
     }
     out.into()
 }
 
-fn detect_item(item: &syn::Item) -> Option<proc_macro2::TokenStream> {
-    let mut errors = Vec::<syn::Error>::new();
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DetectMode {
+    Disabled,
+    Warn,
+    Error,
+}
+
+fn detect_mode() -> DetectMode {
+    if cfg!(feature = "detect-error") {
+        DetectMode::Error
+    } else if cfg!(feature = "detect-warn") {
+        DetectMode::Warn
+    } else {
+        DetectMode::Disabled
+    }
+}
+
+fn render_diagnostics(findings: &[Finding], mode: DetectMode) -> Option<proc_macro2::TokenStream> {
+    if findings.is_empty() || mode == DetectMode::Disabled {
+        return None;
+    }
+
+    let mut out = proc_macro2::TokenStream::new();
+    match mode {
+        DetectMode::Error => {
+            for finding in findings {
+                out.extend(
+                    syn::Error::new(finding.span, finding.message.clone()).to_compile_error(),
+                );
+            }
+        }
+        DetectMode::Warn => {
+            for (idx, finding) in findings.iter().enumerate() {
+                let note = &finding.message;
+                let warning_const = format_ident!("_JUNGLE_DETECT_WARNING_{idx}");
+                out.extend(quote_spanned! {finding.span=>
+                    #[allow(dead_code)]
+                    const _: () = {
+                        #[deprecated(note = #note)]
+                        const #warning_const: () = ();
+                        let _ = #warning_const;
+                    };
+                });
+            }
+        }
+        DetectMode::Disabled => {}
+    }
+
+    Some(out)
+}
+
+fn collect_findings(item: &syn::Item) -> Result<Vec<Finding>, syn::Error> {
+    let mut findings = Vec::<Finding>::new();
 
     match item {
         syn::Item::Impl(item_impl) => {
@@ -170,47 +223,35 @@ fn detect_item(item: &syn::Item) -> Option<proc_macro2::TokenStream> {
             for method in methods {
                 let mut detector = NondeterminismDetector::default();
                 detector.visit_block(&method.block);
-                for finding in detector.findings {
-                    errors.push(syn::Error::new(
-                        finding.span,
-                        format!(
-                            "jungle detect: suspected nondeterministic call `{}` in `{}`; {}",
-                            finding.call, method.sig.ident, finding.reason
-                        ),
-                    ));
-                }
+                findings.extend(detector.findings.into_iter().map(|finding| Finding {
+                    span: finding.span,
+                    message: format!(
+                        "jungle detect: suspected nondeterministic call `{}` in `{}`; {}",
+                        finding.call, method.sig.ident, finding.reason
+                    ),
+                }));
             }
         }
         syn::Item::Fn(item_fn) => {
             let mut detector = NondeterminismDetector::default();
             detector.visit_block(&item_fn.block);
-            for finding in detector.findings {
-                errors.push(syn::Error::new(
-                    finding.span,
-                    format!(
-                        "jungle detect: suspected nondeterministic call `{}` in `{}`; {}",
-                        finding.call, item_fn.sig.ident, finding.reason
-                    ),
-                ));
-            }
+            findings.extend(detector.findings.into_iter().map(|finding| Finding {
+                span: finding.span,
+                message: format!(
+                    "jungle detect: suspected nondeterministic call `{}` in `{}`; {}",
+                    finding.call, item_fn.sig.ident, finding.reason
+                ),
+            }));
         }
         _ => {
-            errors.push(syn::Error::new(
+            return Err(syn::Error::new(
                 item.span(),
                 "#[detect] supports impl blocks and functions only",
             ));
         }
     }
 
-    if errors.is_empty() {
-        None
-    } else {
-        let mut combined = proc_macro2::TokenStream::new();
-        for err in errors {
-            combined.extend(err.to_compile_error());
-        }
-        Some(combined)
-    }
+    Ok(findings)
 }
 
 fn inspectable_impl_methods(item_impl: &syn::ItemImpl) -> Vec<&syn::ImplItemFn> {
@@ -245,10 +286,15 @@ fn inspectable_impl_methods(item_impl: &syn::ItemImpl) -> Vec<&syn::ImplItemFn> 
 
 #[derive(Default)]
 struct NondeterminismDetector {
-    findings: Vec<Finding>,
+    findings: Vec<DetectedCall>,
 }
 
 struct Finding {
+    span: proc_macro2::Span,
+    message: String,
+}
+
+struct DetectedCall {
     span: proc_macro2::Span,
     call: String,
     reason: &'static str,
@@ -259,7 +305,7 @@ impl NondeterminismDetector {
         let normalized = normalize_path(path);
         for rule in path_rules() {
             if normalized == rule.path || normalized.starts_with(rule.prefix) {
-                self.findings.push(Finding {
+                self.findings.push(DetectedCall {
                     span,
                     call: normalized,
                     reason: rule.reason,
@@ -272,7 +318,7 @@ impl NondeterminismDetector {
     fn check_method(&mut self, span: proc_macro2::Span, method: &str) {
         for rule in method_rules() {
             if method == rule.method {
-                self.findings.push(Finding {
+                self.findings.push(DetectedCall {
                     span,
                     call: method.to_string(),
                     reason: rule.reason,
@@ -374,14 +420,94 @@ fn path_rules() -> &'static [PathRule] {
             reason: "environment access can differ across workers",
         },
         PathRule {
+            path: "std::env::vars_os",
+            prefix: "std::env::vars_os::",
+            reason: "environment access can differ across workers",
+        },
+        PathRule {
+            path: "std::env::temp_dir",
+            prefix: "std::env::temp_dir::",
+            reason: "ambient process state can differ across workers",
+        },
+        PathRule {
             path: "std::env::current_dir",
             prefix: "std::env::current_dir::",
             reason: "ambient process state can differ across workers",
         },
         PathRule {
+            path: "std::process::id",
+            prefix: "std::process::id::",
+            reason: "process identifiers vary across workers",
+        },
+        PathRule {
+            path: "std::process::Command::new",
+            prefix: "std::process::Command::new::",
+            reason: "process execution depends on ambient host state",
+        },
+        PathRule {
+            path: "std::fs::read",
+            prefix: "std::fs::read::",
+            reason: "filesystem reads are external nondeterministic inputs",
+        },
+        PathRule {
+            path: "std::fs::read_to_string",
+            prefix: "std::fs::read_to_string::",
+            reason: "filesystem reads are external nondeterministic inputs",
+        },
+        PathRule {
+            path: "std::fs::metadata",
+            prefix: "std::fs::metadata::",
+            reason: "filesystem metadata is external nondeterministic input",
+        },
+        PathRule {
+            path: "std::fs::canonicalize",
+            prefix: "std::fs::canonicalize::",
+            reason: "filesystem state can differ across workers",
+        },
+        PathRule {
+            path: "std::net::TcpStream::connect",
+            prefix: "std::net::TcpStream::connect::",
+            reason: "network I/O is not replay-deterministic",
+        },
+        PathRule {
+            path: "std::net::UdpSocket::bind",
+            prefix: "std::net::UdpSocket::bind::",
+            reason: "network and ephemeral-port assignment are nondeterministic",
+        },
+        PathRule {
+            path: "std::net::ToSocketAddrs::to_socket_addrs",
+            prefix: "std::net::ToSocketAddrs::to_socket_addrs::",
+            reason: "DNS/address resolution is external nondeterministic input",
+        },
+        PathRule {
+            path: "tokio::time::Instant::now",
+            prefix: "tokio::time::Instant::now::",
+            reason: "clock reads are not replay-deterministic",
+        },
+        PathRule {
+            path: "tokio::time::sleep",
+            prefix: "tokio::time::sleep::",
+            reason: "ambient sleep should be expressed via framework sleep action",
+        },
+        PathRule {
+            path: "tokio::task::spawn",
+            prefix: "tokio::task::spawn::",
+            reason: "task scheduling introduces nondeterministic outcomes",
+        },
+        PathRule {
             path: "std::thread::spawn",
             prefix: "std::thread::spawn::",
             reason: "thread scheduling introduces nondeterministic outcomes",
+        },
+        PathRule {
+            path: "std::thread::sleep",
+            prefix: "std::thread::sleep::",
+            reason: "ambient sleep should be expressed via framework sleep action",
+        },
+        PathRule {
+            path: "std::thread::yield_now",
+            prefix: "std::thread::yield_now::",
+            reason: "scheduler interaction can introduce nondeterministic outcomes",
         },
         PathRule {
             path: "tokio::spawn",
@@ -422,6 +548,18 @@ fn method_rules() -> &'static [MethodRule] {
             method: "next_u64",
             reason: "RNG generation is not replay-deterministic",
         },
+        MethodRule {
+            method: "next_u128",
+            reason: "RNG generation is not replay-deterministic",
+        },
+        MethodRule {
+            method: "sample",
+            reason: "RNG generation is not replay-deterministic",
+        },
+        MethodRule {
+            method: "shuffle",
+            reason: "RNG generation is not replay-deterministic",
+        },
     ]
 }
 
@@ -445,8 +583,12 @@ mod tests {
                 fn absorb(_state: &mut State, _output: ActionCompletion<Self::Action>) -> () {}
             }
         };
-        let errors = detect_item(&item).expect("detector should flag now()");
-        let text = errors.to_string();
+        let findings = collect_findings(&item).expect("item should parse");
+        let text = findings
+            .iter()
+            .map(|finding| finding.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(text.contains("chrono::Utc::now"));
         assert!(text.contains("emit"));
     }
@@ -460,7 +602,8 @@ mod tests {
                 }
             }
         };
-        assert!(detect_item(&item).is_none());
+        let findings = collect_findings(&item).expect("item should parse");
+        assert!(findings.is_empty());
     }
 
     #[test]
@@ -473,9 +616,61 @@ mod tests {
                 }
             }
         };
-        let errors = detect_item(&item).expect("detector should flag choose()");
-        let text = errors.to_string();
+        let findings = collect_findings(&item).expect("item should parse");
+        let text = findings
+            .iter()
+            .map(|finding| finding.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(text.contains("SystemTime::now"));
         assert!(text.contains("choose"));
+    }
+
+    #[test]
+    fn detect_covers_sleep_and_spawn_patterns() {
+        let item: syn::Item = syn::parse_quote! {
+            impl Act<MyAnimal> for MyStep {
+                type Action = MyAction;
+                type Aspect = Identity;
+                type In = ();
+                type Out = ();
+
+                fn emit(_state: &State, _input: Self::In) -> () {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                    tokio::task::spawn(async move {});
+                }
+
+                fn absorb(_state: &mut State, _output: ActionCompletion<Self::Action>) -> () {}
+            }
+        };
+        let findings = collect_findings(&item).expect("item should parse");
+        let text = findings
+            .iter()
+            .map(|finding| finding.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("std::thread::sleep"));
+        assert!(text.contains("tokio::task::spawn"));
+    }
+
+    #[test]
+    fn diagnostics_disabled_mode_emits_nothing() {
+        let findings = vec![Finding {
+            span: proc_macro2::Span::call_site(),
+            message: "x".to_string(),
+        }];
+        let rendered = render_diagnostics(&findings, DetectMode::Disabled);
+        assert!(rendered.is_none());
+    }
+
+    #[test]
+    fn diagnostics_warn_mode_emits_tokens() {
+        let findings = vec![Finding {
+            span: proc_macro2::Span::call_site(),
+            message: "x".to_string(),
+        }];
+        let rendered = render_diagnostics(&findings, DetectMode::Warn)
+            .expect("warn mode should produce diagnostics");
+        assert!(rendered.to_string().contains("deprecated"));
     }
 }
