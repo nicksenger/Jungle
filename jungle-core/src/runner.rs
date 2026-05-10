@@ -41,7 +41,8 @@ where
         A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         let mut executor = self.new_executor::<A>(state);
-        self.emit_initial_appearance::<A>(&executor, journey_id, &mut tx)
+        let appearance = self.initial_appearance::<A>(&executor)?;
+        self.emit_appearance(appearance, journey_id, &mut tx)
             .await?;
         match self
             .drive_until_sleep_or_complete::<A>(&mut executor, journey_id, &mut tx)
@@ -63,21 +64,24 @@ where
         ContextExecutor::new(&self.jungle, state)
     }
 
-    pub async fn emit_initial_appearance<A>(
+    pub fn initial_appearance<A>(
         &self,
         executor: &ContextExecutor<'_, T, A>,
-        journey_id: Uuid,
-        tx: &mut RunnerChannelTx,
-    ) -> Result<(), ExecutorError>
+    ) -> Result<Option<Vec<u8>>, ExecutorError>
     where
         A: Animal + AnimalObservation,
         A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
-        if let Some(appearance) =
-            <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(
-                executor.state(),
-            )?
-        {
+        <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(executor.state())
+    }
+
+    pub async fn emit_appearance(
+        &self,
+        appearance: Option<Vec<u8>>,
+        journey_id: Uuid,
+        tx: &mut RunnerChannelTx,
+    ) -> Result<(), ExecutorError> {
+        if let Some(appearance) = appearance {
             send_history(
                 tx,
                 RunnerOut::Appearance {

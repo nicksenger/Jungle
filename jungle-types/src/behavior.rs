@@ -35,7 +35,7 @@ pub trait Action {
     fn act(
         dependency: &Self::Dependency,
         input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>>;
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> + Send;
 }
 
 /// A typed action request emitted by a yielding workflow phase.
@@ -59,7 +59,7 @@ impl<A: Action> ActionRequest<A> {
     pub fn act<'a>(
         self,
         dependency: &'a A::Dependency,
-    ) -> impl Future<Output = Result<A::Out, A::Err>> + 'a
+    ) -> impl Future<Output = Result<A::Out, A::Err>> + Send + 'a
     where
         A: 'a,
     {
