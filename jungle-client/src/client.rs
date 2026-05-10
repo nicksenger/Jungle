@@ -214,6 +214,7 @@ impl JungleClient for Client {
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-created response for start_journey".to_string(),
             )),
@@ -233,6 +234,7 @@ impl JungleClient for Client {
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-status response for journey_details".to_string(),
             )),
@@ -252,6 +254,7 @@ impl JungleClient for Client {
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-animal-appearance response for animal_appearance".to_string(),
             )),
@@ -274,7 +277,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for animal_appearance_update".to_string(),
             )),
         }
@@ -296,7 +300,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for perturb_animal".to_string(),
             )),
         }
@@ -318,6 +323,7 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for claim_animal_perturbation".to_string(),
             )),
@@ -344,7 +350,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for ack_animal_perturbation".to_string(),
             )),
         }
@@ -409,7 +416,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for schedule_sleep_timer".to_string(),
             )),
         }
@@ -428,7 +436,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
             )),
         }
@@ -447,7 +456,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for poll_timers".to_string(),
             )),
         }
@@ -466,6 +476,7 @@ impl JungleClient for Client {
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::OwnerWake(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for poll_work".to_string(),
             )),
@@ -488,7 +499,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_input".to_string(),
             )),
         }
@@ -510,7 +522,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_success_output".to_string(),
             )),
         }
@@ -532,7 +545,8 @@ impl JungleClient for Client {
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::NoAvailableSteps
-            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_failure_output".to_string(),
             )),
         }

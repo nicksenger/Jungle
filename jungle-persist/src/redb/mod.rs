@@ -874,14 +874,14 @@ impl JungleStore for RedbStore {
                     "redb poll_timers open journey_leases table failed: {err}"
                 ))
             })?;
-            if let Some(raw) = leases
+            let lease_entry = leases
                 .get(&journey_id.as_bytes()[..])
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
                         "redb poll_timers read journey lease failed: {err}"
                     ))
-                })?
-            {
+                })?;
+            if let Some(raw) = lease_entry {
                 let lease =
                     decode_journey_lease(raw.value(), "redb poll_timers decode journey lease")?;
                 if lease.lease_until_unix_ms > now_millis {

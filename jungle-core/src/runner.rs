@@ -46,6 +46,7 @@ where
     ) -> Result<(), ExecutorError>
     where
         A: Animal + AnimalObservation,
+        A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         if let Some(appearance) =
             <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(
