@@ -11,11 +11,11 @@ use std::pin::Pin;
 
 type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
-type ActionFuture = Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>> + Send>>;
-type ActionRunner = Box<dyn FnOnce() -> ActionFuture + Send>;
+type ActionFuture = Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>>>>;
+type ActionRunner = Box<dyn FnOnce() -> ActionFuture>;
 
-pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
-pub type ErasedStep<State> = dyn ErasedFlow<State> + Send;
+pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
+pub type ErasedStep<State> = dyn ErasedFlow<State>;
 
 pub struct ExecutableActionRequest {
     action_type: &'static str,
@@ -52,7 +52,7 @@ impl ExecutableActionRequest {
     }
 }
 
-pub trait ErasedFlow<State>: Send {
+pub trait ErasedFlow<State> {
     fn request(
         &mut self,
         state: State,
@@ -149,8 +149,8 @@ where
     T: Animal,
     A: Act<T>,
     <A as Act<T>>::Action: Action<Dependency = ()>,
-    <<A as Act<T>>::Action as Action>::Dependency: Send + 'static,
-    <<A as Act<T>>::Action as Action>::In: Send + 'static,
+    <<A as Act<T>>::Action as Action>::Dependency: 'static,
+    <<A as Act<T>>::Action as Action>::In: 'static,
     <<A as Act<T>>::Action as Action>::Out: 'static,
     <<A as Act<T>>::Action as Action>::Err: Serialize + 'static,
     <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
@@ -262,11 +262,6 @@ pub struct ContextualTypedErasedStep<Context, R> {
     marker: core::marker::PhantomData<fn() -> R>,
 }
 
-// Safety: this type stores only an immutable raw context pointer plus scalar state.
-// Sending it across threads is sound when `Context` is `Sync`, since only shared
-// references are materialized from the pointer.
-unsafe impl<Context, R> Send for ContextualTypedErasedStep<Context, R> where Context: Sync {}
-
 impl<Context, R> ContextualTypedErasedStep<Context, R> {
     pub fn new(context: *const Context) -> Self {
         Self {
@@ -280,13 +275,12 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
 
 impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Step<T, A>>
 where
-    Context: Sync,
     T: Animal,
     A: Act<T>,
     <A as Act<T>>::Action: Action,
     for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Action as Action>::Dependency>,
-    <<A as Act<T>>::Action as Action>::Dependency: Send + 'static,
-    <<A as Act<T>>::Action as Action>::In: Send + 'static,
+    <<A as Act<T>>::Action as Action>::Dependency: 'static,
+    <<A as Act<T>>::Action as Action>::In: 'static,
     <<A as Act<T>>::Action as Action>::Out: 'static,
     <<A as Act<T>>::Action as Action>::Err: Serialize + 'static,
     <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
@@ -405,7 +399,7 @@ where
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
-    choose_left: Box<dyn Fn(&(State, In)) -> bool + Send>,
+    choose_left: Box<dyn Fn(&(State, In)) -> bool>,
     active_branch: Option<ActiveBranch>,
     cursor: usize,
 }
@@ -417,7 +411,7 @@ where
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        choose_left: Box<dyn Fn(&(State, In)) -> bool + Send>,
+        choose_left: Box<dyn Fn(&(State, In)) -> bool>,
     ) -> Self {
         Self {
             left,
@@ -444,7 +438,7 @@ where
         }
     }
 
-    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State> + Send>> {
+    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State>>> {
         let cursor = self.cursor;
         self.active_branch_mut()?.get_mut(cursor)
     }
@@ -552,8 +546,8 @@ where
 }
 
 struct WhileErasedFlow<State> {
-    should_continue: Box<dyn Fn(&State) -> bool + Send>,
-    build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
+    should_continue: Box<dyn Fn(&State) -> bool>,
+    build_body: Box<dyn Fn() -> DynFlow<State>>,
     active_body: DynFlow<State>,
     body_cursor: usize,
     complete: bool,
@@ -1125,8 +1119,8 @@ where
 
 impl<State> WhileErasedFlow<State> {
     fn new(
-        should_continue: Box<dyn Fn(&State) -> bool + Send>,
-        build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
+        should_continue: Box<dyn Fn(&State) -> bool>,
+        build_body: Box<dyn Fn() -> DynFlow<State>>,
     ) -> Self {
         Self {
             should_continue,
@@ -1285,7 +1279,6 @@ where
     T: Animal + 'static,
     A: Act<T> + 'static,
     <A as Act<T>>::Action: Action<Dependency = ()> + 'static,
-    <<A as Act<T>>::Action as Action>::In: Send + 'static,
     <<A as Act<T>>::Action as Action>::Err: Serialize,
     <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
@@ -1426,13 +1419,11 @@ impl<T> HasOptIn<JungleDynFlowContext, T> for () where T: DataType {}
 #[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, T, A> BuildFlowWithContext<(*const Context, DynFlow<T::State>)> for Step<T, A>
 where
-    Context: Sync + 'static,
+    Context: 'static,
     T: Animal + 'static,
     A: Act<T> + 'static,
     <A as Act<T>>::Action: Action + 'static,
     for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Action as Action>::Dependency>,
-    <<A as Act<T>>::Action as Action>::Dependency: Send + 'static,
-    <<A as Act<T>>::Action as Action>::In: Send + 'static,
     <<A as Act<T>>::Action as Action>::Err: Serialize,
     <<A as Act<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Act<T>>::Action as Action>::Err: DeserializeOwned,
@@ -1455,7 +1446,7 @@ where
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
-    choose_left: Box<dyn Fn(&(State, In)) -> bool + Send>,
+    choose_left: Box<dyn Fn(&(State, In)) -> bool>,
     active_branch: Option<ActiveContextBranch>,
     cursor: usize,
 }
@@ -1467,7 +1458,7 @@ where
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        choose_left: Box<dyn Fn(&(State, In)) -> bool + Send>,
+        choose_left: Box<dyn Fn(&(State, In)) -> bool>,
     ) -> Self {
         Self {
             left,
@@ -1494,7 +1485,7 @@ where
         }
     }
 
-    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State> + Send>> {
+    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State>>> {
         let cursor = self.cursor;
         self.active_branch_mut()?.get_mut(cursor)
     }
@@ -1637,8 +1628,8 @@ where
 }
 
 struct WhileContextErasedFlow<State> {
-    should_continue: Box<dyn Fn(&State) -> bool + Send>,
-    build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
+    should_continue: Box<dyn Fn(&State) -> bool>,
+    build_body: Box<dyn Fn() -> DynFlow<State>>,
     active_body: DynFlow<State>,
     body_cursor: usize,
     complete: bool,
@@ -1646,8 +1637,8 @@ struct WhileContextErasedFlow<State> {
 
 impl<State> WhileContextErasedFlow<State> {
     fn new(
-        should_continue: Box<dyn Fn(&State) -> bool + Send>,
-        build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
+        should_continue: Box<dyn Fn(&State) -> bool>,
+        build_body: Box<dyn Fn() -> DynFlow<State>>,
     ) -> Self {
         Self {
             should_continue,
@@ -1776,9 +1767,7 @@ where
     fn push_steps((context, mut steps): (*const Context, DynFlow<State>)) -> Self::Output {
         let should_continue =
             Box::new(|state: &State| <C as LoopCondition<State>>::should_continue(state));
-        let context_addr = context as usize;
         let build_body = Box::new(move || {
-            let context = context_addr as *const Context;
             <F as BuildFlowWithContext<(*const Context, DynFlow<State>)>>::push_steps((
                 context,
                 Vec::new(),

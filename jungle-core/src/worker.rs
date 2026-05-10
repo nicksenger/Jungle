@@ -28,7 +28,7 @@ pub struct JungleWorker<T> {
 
 impl<T> JungleWorker<T>
 where
-    T: Ecosystem + Send + Sync + 'static,
+    T: Ecosystem + 'static,
     T::Animals: Animals,
     <T::Animals as Animals>::List: FlattenNodes,
     SPFlatten<<T::Animals as Animals>::List>: StripAnimalHeaders,
@@ -230,7 +230,7 @@ pub enum JourneyStartOutcome<T> {
     Completed,
     Sleeping {
         wake_at_unix_ms: i64,
-        journey: Box<dyn SuspendedJourney<T> + Send>,
+        journey: Box<dyn SuspendedJourney<T>>,
     },
 }
 
@@ -239,19 +239,18 @@ pub enum SuspendedOutcome {
     Sleeping { wake_at_unix_ms: i64 },
 }
 
-pub trait SuspendedJourney<T>: Send {
+pub trait SuspendedJourney<T> {
     fn resume<'a>(
         &'a mut self,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + 'a>>;
 }
 
 struct SuspendedAnimalJourney<T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::State: Send + 'static,
     A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     journey_id: Uuid,
@@ -260,16 +259,15 @@ where
 
 impl<T, A> SuspendedJourney<T> for SuspendedAnimalJourney<T, A>
 where
-    T: Send + Sync + 'static,
+    T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::State: Send + 'static,
     A::Journey: BuildFlowWithContext<(*const T, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     fn resume<'a>(
         &'a mut self,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + 'a>> {
         Box::pin(async move {
             let advance = runner
                 .resume_after_sleep::<A>(&mut self.executor, self.journey_id, &mut tx)
@@ -291,7 +289,7 @@ pub trait SpawnByOrdinal<T>: Send + Sync {
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
 
     fn resume_by_ordinal<'a>(
         ordinal: u32,
@@ -300,7 +298,7 @@ pub trait SpawnByOrdinal<T>: Send + Sync {
         history: Vec<RunnerOut>,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
 }
 
 impl<T> SpawnByOrdinal<T> for list::Empty {
@@ -310,7 +308,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
         _journey_id: Uuid,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async { Ok(JourneyStartOutcome::NotMatched) })
     }
 
@@ -321,7 +319,7 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
         _history: Vec<RunnerOut>,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async { Ok(JourneyStartOutcome::NotMatched) })
     }
 }
@@ -340,7 +338,7 @@ where
         BuildFlowWithContext<(*const T, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
     Ordinal: Unsigned,
     Tail: SpawnByOrdinal<T>,
-    T: Send + Sync + 'static,
+    T: 'static,
 {
     fn spawn_by_ordinal<'a>(
         ordinal: u32,
@@ -348,16 +346,15 @@ where
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
             if ordinal == <Ordinal as Unsigned>::U32 {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
                 let state: Head::State = seed.into();
                 let mut executor = runner.new_executor::<Head>(state);
-                let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
-                    .emit_appearance(appearance, journey_id, &mut tx)
+                    .emit_initial_appearance::<Head>(&executor, journey_id, &mut tx)
                     .await?;
                 match runner
                     .drive_until_sleep_or_complete::<Head>(&mut executor, journey_id, &mut tx)
@@ -390,7 +387,7 @@ where
         history: Vec<RunnerOut>,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
             if ordinal == <Ordinal as Unsigned>::U32 {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
@@ -398,9 +395,8 @@ where
                 let state: Head::State = seed.into();
                 let mut executor = runner.new_executor::<Head>(state);
                 replay_history::<T, Head>(&mut executor, journey_id, &history, &mut tx).await?;
-                let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
-                    .emit_appearance(appearance, journey_id, &mut tx)
+                    .emit_initial_appearance::<Head>(&executor, journey_id, &mut tx)
                     .await?;
                 match runner
                     .drive_until_sleep_or_complete::<Head>(&mut executor, journey_id, &mut tx)
