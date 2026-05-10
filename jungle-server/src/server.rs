@@ -231,6 +231,30 @@ impl JungleServer for Server {
                     )));
                 }
             }
+            Some(WireIn::ScheduleSleep {
+                journey_id,
+                timer_id,
+                wake_at_unix_ms,
+            }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    self.store
+                        .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
+                    WireOut::Ack
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (journey_id, timer_id, wake_at_unix_ms);
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "schedule_sleep_timer is unavailable without a persistence backend"
+                            .to_string(),
+                    )));
+                }
+            }
             Some(WireIn::JourneyComplete(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
@@ -263,6 +287,19 @@ impl JungleServer for Server {
                     WireOut::NoAvailableSteps
                 }
             }
+            Some(WireIn::PollTimers) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let _ = self.store.poll_timers().await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
+                    WireOut::Ack
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    WireOut::Ack
+                }
+            }
             Some(WireIn::HistoryEvent(history)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
@@ -270,7 +307,9 @@ impl JungleServer for Server {
                         jungle_types::RunnerOut::ActionInput { uuid, .. }
                         | jungle_types::RunnerOut::ActionSuccessOutput { uuid, .. }
                         | jungle_types::RunnerOut::ActionFailureOutput { uuid, .. }
-                        | jungle_types::RunnerOut::Appearance { uuid, .. } => *uuid,
+                        | jungle_types::RunnerOut::Appearance { uuid, .. }
+                        | jungle_types::RunnerOut::SleepScheduled { uuid, .. }
+                        | jungle_types::RunnerOut::SleepFired { uuid, .. } => *uuid,
                     };
                     self.store
                         .journey_alive_if_created(journey_id)

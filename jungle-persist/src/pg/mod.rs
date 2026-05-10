@@ -5,6 +5,7 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
 use jungle_types::{ClaimedAnimalPerturbation, RunnerOut, RunnerStep};
+use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
@@ -377,6 +378,9 @@ impl JungleStore for PgStore {
                     seed: row.seed,
                 }
             }
+            1 => RunnerStep::ResumeJourney {
+                journey_id: row.journey_id,
+            },
             kind => {
                 return Err(crate::PersistenceError::Message(format!(
                     "unsupported work item kind in postgres: {kind}"
@@ -392,6 +396,32 @@ impl JungleStore for PgStore {
             RunnerOut::ActionInput { data, uuid } => (uuid, 0_i16, data),
             RunnerOut::ActionSuccessOutput { data, uuid } => (uuid, 1_i16, data),
             RunnerOut::ActionFailureOutput { data, uuid } => (uuid, 2_i16, data),
+            RunnerOut::SleepScheduled {
+                uuid,
+                timer_id,
+                wake_at_unix_ms,
+            } => (
+                uuid,
+                3_i16,
+                postcard::to_allocvec(&SleepScheduledEvent {
+                    timer_id,
+                    wake_at_unix_ms,
+                })
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
+            RunnerOut::SleepFired {
+                uuid,
+                timer_id,
+                fired_at_unix_ms,
+            } => (
+                uuid,
+                4_i16,
+                postcard::to_allocvec(&SleepFiredEvent {
+                    timer_id,
+                    fired_at_unix_ms,
+                })
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?,
+            ),
             RunnerOut::Appearance { .. } => {
                 return Err(crate::PersistenceError::Message(
                     "appearance snapshots are not history events in postgres".to_string(),
@@ -421,10 +451,144 @@ impl JungleStore for PgStore {
         Ok(())
     }
 
-    async fn poll_timers(&self) -> Result<Option<()>> {
-        let _ = &self.pool;
-        todo!()
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO timer_tasks (id, journey_id, status, visible_at, fired_at)
+            VALUES ($1, $2, $3, to_timestamp($4::double precision / 1000.0), NULL)
+            ON CONFLICT (id) DO NOTHING
+            "#,
+        )
+        .bind(timer_id)
+        .bind(journey_id)
+        .bind(0_i16)
+        .bind(wake_at_unix_ms)
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        self.append_history(RunnerOut::SleepScheduled {
+            uuid: journey_id,
+            timer_id,
+            wake_at_unix_ms,
+        })
+        .await?;
+
+        Ok(())
     }
+
+    async fn poll_timers(&self) -> Result<Option<()>> {
+        #[derive(Debug, sqlx::FromRow)]
+        struct DueTimerRow {
+            id: Uuid,
+            journey_id: Uuid,
+        }
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let due = sqlx::query_as::<_, DueTimerRow>(
+            r#"
+            SELECT id, journey_id
+            FROM timer_tasks
+            WHERE status = $1 AND visible_at <= NOW()
+            ORDER BY visible_at, id
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+            "#,
+        )
+        .bind(0_i16)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let Some(due) = due else {
+            tx.commit()
+                .await
+                .map_err(crate::PersistenceError::PostgresQuery)?;
+            return Ok(None);
+        };
+
+        sqlx::query(
+            r#"
+            UPDATE timer_tasks
+            SET status = $2, fired_at = NOW()
+            WHERE id = $1 AND status = $3
+            "#,
+        )
+        .bind(due.id)
+        .bind(1_i16)
+        .bind(0_i16)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let fired_at_unix_ms = chrono::Utc::now().timestamp_millis();
+        let sleep_fired_data = postcard::to_allocvec(&SleepFiredEvent {
+            timer_id: due.id,
+            fired_at_unix_ms,
+        })
+        .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+
+        sqlx::query(
+            r#"
+            WITH next_sequence AS (
+                SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
+                FROM events
+                WHERE journey_id = $1
+            )
+            INSERT INTO events (journey_id, sequence_id, kind, data)
+            SELECT $1, next_sequence.sequence_id, $2, $3
+            FROM next_sequence
+            "#,
+        )
+        .bind(due.journey_id)
+        .bind(4_i16)
+        .bind(sleep_fired_data)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO work_items (id, journey_id, kind, status, expiry)
+            VALUES ($1, $2, $3, $4, NOW())
+            "#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(due.journey_id)
+        .bind(1_i16)
+        .bind(0_i16)
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        tx.commit()
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        Ok(Some(()))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SleepScheduledEvent {
+    timer_id: Uuid,
+    wake_at_unix_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SleepFiredEvent {
+    timer_id: Uuid,
+    fired_at_unix_ms: i64,
 }
 
 fn encode_journey_status(status: JourneyStatus) -> i16 {

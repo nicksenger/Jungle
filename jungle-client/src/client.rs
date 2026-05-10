@@ -350,6 +350,34 @@ impl JungleClient for Client {
         }
     }
 
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::ScheduleSleep {
+                journey_id,
+                timer_id,
+                wake_at_unix_ms,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for schedule_sleep_timer".to_string(),
+            )),
+        }
+    }
+
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::JourneyComplete(id))
@@ -365,6 +393,25 @@ impl JungleClient for Client {
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
+            )),
+        }
+    }
+
+    async fn poll_timers(&self) -> Result<Option<()>, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::PollTimers)
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(Some(())),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for poll_timers".to_string(),
             )),
         }
     }

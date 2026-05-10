@@ -53,6 +53,12 @@ pub trait JungleStore: DynClone + Send + Sync {
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()>;
     async fn claim_work(&self) -> Result<Option<RunnerStep>>;
     async fn append_history(&self, history: RunnerOut) -> Result<()>;
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<()>;
     async fn poll_timers(&self) -> Result<Option<()>>;
 }
 

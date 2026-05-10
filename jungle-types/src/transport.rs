@@ -13,6 +13,16 @@ pub enum RunnerOut {
     ActionSuccessOutput { data: Vec<u8>, uuid: Uuid },
     ActionFailureOutput { data: Vec<u8>, uuid: Uuid },
     Appearance { data: Vec<u8>, uuid: Uuid },
+    SleepScheduled {
+        uuid: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    },
+    SleepFired {
+        uuid: Uuid,
+        timer_id: Uuid,
+        fired_at_unix_ms: i64,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -38,6 +48,9 @@ pub enum Step {
         ordinal: u32,
         seed: Vec<u8>,
     },
+    ResumeJourney {
+        journey_id: Uuid,
+    },
 }
 
 /// Wire-level messages sent from external clients to runners.
@@ -58,8 +71,14 @@ pub enum WireIn {
         journey_id: Uuid,
         perturbation_id: u64,
     },
+    ScheduleSleep {
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    },
     JourneyComplete(Uuid),
     PollStep,
+    PollTimers,
     HistoryEvent(RunnerOut),
 }
 

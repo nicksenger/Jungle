@@ -68,6 +68,9 @@ where
                                     .animal_appearance_update(uuid, data)
                                     .await
                             }
+                            RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => {
+                                Ok(())
+                            }
                         };
                         out.map(|_| RunnerChannelResponse::Ack)
                     }
@@ -90,6 +93,7 @@ where
         });
 
         loop {
+            let _ = self.client.poll_timers().await?;
             match self.client.poll_work().await? {
                 Some(RunnerStep::StartJourney {
                     journey_id,
@@ -110,6 +114,9 @@ where
                         )));
                     }
                     self.client.complete_journey(journey_id).await?;
+                }
+                Some(RunnerStep::ResumeJourney { journey_id }) => {
+                    let _ = journey_id;
                 }
                 None => {}
             }

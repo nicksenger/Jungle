@@ -10,6 +10,7 @@ const SCHEMA_METADATA_TABLE: TableDefinition<u8, u32> =
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
+const TIMER_TASKS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("timer_tasks");
 const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("animal_appearances");
 const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("animal_perturbations");
@@ -59,6 +60,9 @@ impl RedbStore {
         })?;
         tx.open_table(STEPS_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!("redb open work_items table failed: {err}"))
+        })?;
+        tx.open_table(TIMER_TASKS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!("redb open timer_tasks table failed: {err}"))
         })?;
         tx.open_table(APPEARANCES_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!(

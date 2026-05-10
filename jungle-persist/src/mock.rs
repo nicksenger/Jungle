@@ -18,6 +18,8 @@ type AckPerturbationHandler = Arc<dyn Fn(Uuid, u64) -> Result<()> + Send + Sync 
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
+type ScheduleSleepTimerHandler =
+    Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
 type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'static>;
 
 #[derive(Clone)]
@@ -33,6 +35,7 @@ pub struct MockStore {
     on_flow_alive_if_created: FlowAliveIfCreatedHandler,
     on_claim_work: ClaimWorkHandler,
     on_append_history: AppendHistoryHandler,
+    on_schedule_sleep_timer: ScheduleSleepTimerHandler,
     on_poll_timers: PollTimersHandler,
 }
 
@@ -101,6 +104,15 @@ impl JungleStore for MockStore {
         (self.on_append_history)(history)
     }
 
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<()> {
+        (self.on_schedule_sleep_timer)(journey_id, timer_id, wake_at_unix_ms)
+    }
+
     async fn poll_timers(&self) -> Result<Option<()>> {
         (self.on_poll_timers)()
     }
@@ -119,6 +131,7 @@ pub struct MockStoreBuilder {
     on_flow_alive_if_created: Option<FlowAliveIfCreatedHandler>,
     on_claim_work: Option<ClaimWorkHandler>,
     on_append_history: Option<AppendHistoryHandler>,
+    on_schedule_sleep_timer: Option<ScheduleSleepTimerHandler>,
     on_poll_timers: Option<PollTimersHandler>,
 }
 
@@ -211,6 +224,14 @@ impl MockStoreBuilder {
         self
     }
 
+    pub fn on_schedule_sleep_timer<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_schedule_sleep_timer = Some(Arc::new(f));
+        self
+    }
+
     pub fn on_poll_timers<F>(mut self, f: F) -> Self
     where
         F: Fn() -> Result<Option<()>> + Send + Sync + 'static,
@@ -231,6 +252,7 @@ impl MockStoreBuilder {
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));
         let default_append_history: AppendHistoryHandler = Arc::new(|_| Ok(()));
+        let default_schedule_sleep_timer: ScheduleSleepTimerHandler = Arc::new(|_, _, _| Ok(()));
         let default_poll_timers: PollTimersHandler = Arc::new(|| Ok(None));
 
         MockStore {
@@ -267,6 +289,9 @@ impl MockStoreBuilder {
             on_append_history: self
                 .on_append_history
                 .unwrap_or_else(|| default_append_history.clone()),
+            on_schedule_sleep_timer: self
+                .on_schedule_sleep_timer
+                .unwrap_or_else(|| default_schedule_sleep_timer.clone()),
             on_poll_timers: self
                 .on_poll_timers
                 .unwrap_or_else(|| default_poll_timers.clone()),

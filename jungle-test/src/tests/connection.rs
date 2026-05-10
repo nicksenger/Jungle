@@ -130,6 +130,9 @@ async fn client_exchanges_messages_with_mock_server() {
             assert_eq!(ordinal, 7);
             assert_eq!(seed, vec![1, 2, 3]);
         }
+        Some(RunnerStep::ResumeJourney { journey_id }) => {
+            panic!("unexpected resume journey work in this test: {journey_id}");
+        }
         None => panic!("expected pending work from server"),
     }
 
@@ -237,6 +240,59 @@ async fn flow_status_moves_created_to_alive_to_completed() {
         .await
         .expect("journey_details completed should succeed");
     assert_eq!(completed, JourneyStatus::Completed);
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn poll_timers_promotes_due_sleep_to_resume_work() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+
+    let listen_addr = super::reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let journey_id = client
+        .start_journey(7, vec![1, 2, 3])
+        .await
+        .expect("start_journey should succeed");
+
+    let first_work = client.poll_work().await.expect("poll_work should succeed");
+    assert!(
+        matches!(first_work, Some(RunnerStep::StartJourney { .. })),
+        "expected start journey work item first"
+    );
+
+    let timer_id = Uuid::new_v4();
+    let wake_at = chrono::Utc::now().timestamp_millis() - 10;
+    client
+        .schedule_sleep_timer(journey_id, timer_id, wake_at)
+        .await
+        .expect("schedule_sleep_timer should succeed");
+
+    let _ = client.poll_timers().await.expect("poll_timers should succeed");
+
+    let resume_work = client.poll_work().await.expect("poll_work should succeed");
+    match resume_work {
+        Some(RunnerStep::ResumeJourney { journey_id: resumed }) => {
+            assert_eq!(resumed, journey_id);
+        }
+        Some(RunnerStep::StartJourney { .. }) => {
+            panic!("expected resume journey work item, got start journey");
+        }
+        None => panic!("expected resume journey work item"),
+    }
 
     server_task.abort();
     let _ = server_task.await;
