@@ -1,4 +1,4 @@
-use crate::{Act, Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity};
+use crate::{Absorb, Action, ActionCompletion, ActionMember, Animal, Aspect, AutoAct, Emit, Id, Identity};
 use inception::primitive;
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -51,28 +51,38 @@ impl crate::Identified for Sleep {
 }
 
 pub struct SleepStep<Focus = Identity>(PhantomData<fn() -> Focus>);
+impl<Focus> AutoAct for SleepStep<Focus> {}
 
-impl<T, Focus> Act<T> for SleepStep<Focus>
+impl<T, Focus> Emit<T> for SleepStep<Focus>
 where
     T: Animal,
     Focus: Aspect<T::State>,
 {
-    type Action = Sleep;
+    type CarryIn = Duration;
     type Aspect = Focus;
-    type In = Duration;
-    type Out = ();
+    type Action = Sleep;
 
     fn emit(
         _view: &<Focus as Aspect<T::State>>::View,
-        input: Self::In,
+        input: Self::CarryIn,
     ) -> <Self::Action as Action>::In {
         input
     }
+}
+
+impl<T, Focus> Absorb<T> for SleepStep<Focus>
+where
+    T: Animal,
+    Focus: Aspect<T::State>,
+{
+    type CarryOut = ();
+    type Aspect = Focus;
+    type Action = Sleep;
 
     fn absorb(
         _view: &mut <Focus as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::Out {
+    ) -> Self::CarryOut {
         output.expect("Sleep action should be resumed by worker runtime");
     }
 }
