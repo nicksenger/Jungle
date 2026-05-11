@@ -217,17 +217,17 @@ impl Drop for Client {
 
 #[async_trait]
 impl JungleClient for Client {
-    async fn start_journey_with_observed_generation(
+    async fn start_journey(
         &self,
         animal_id: u32,
-        client_observed_generation: Option<u32>,
+        generation: u32,
         seed: Vec<u8>,
     ) -> Result<Uuid, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::CreateJourney {
                 namespace: self.namespace.clone(),
                 animal_id,
-                client_observed_generation,
+                generation,
                 seed,
             })
             .await

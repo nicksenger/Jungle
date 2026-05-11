@@ -148,7 +148,7 @@ impl JungleStore for RedbStore {
         &self,
         namespace: String,
         animal_id: u32,
-        client_observed_generation: Option<u32>,
+        generation: u32,
         seed: Vec<u8>,
     ) -> Result<Uuid> {
         let journey_id = Uuid::new_v4();
@@ -168,7 +168,7 @@ impl JungleStore for RedbStore {
                     ))
                 })?;
             let generation_key = encode_animal_generation_key(namespace.as_str(), animal_id);
-            let generation = generations
+            let latest_generation = generations
                 .get(generation_key.as_slice())
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
@@ -181,12 +181,10 @@ impl JungleStore for RedbStore {
                 .transpose()?
                 .unwrap_or(0);
 
-            if let Some(observed_generation) = client_observed_generation {
-                if observed_generation > generation {
-                    return Err(crate::PersistenceError::Message(format!(
-                        "client observed generation {observed_generation} exceeds latest server generation {generation} for namespace {namespace} animal {animal_id}"
-                    )));
-                }
+            if generation > latest_generation {
+                return Err(crate::PersistenceError::Message(format!(
+                    "client generation {generation} exceeds latest server generation {latest_generation} for namespace {namespace} animal {animal_id}"
+                )));
             }
 
             let mut journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
@@ -197,7 +195,7 @@ impl JungleStore for RedbStore {
             let flow_value = encode_journey(
                 namespace.as_str(),
                 animal_id,
-                generation,
+                latest_generation,
                 JourneyStatus::Created,
                 &seed,
             );

@@ -182,7 +182,7 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
     .expect("sleep test seed should serialize");
     let ordinal = <jungle::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
-        .start_journey(ordinal, seed)
+        .start_journey(ordinal, 0, seed)
         .await
         .expect("start_journey should succeed for sleep flow");
 

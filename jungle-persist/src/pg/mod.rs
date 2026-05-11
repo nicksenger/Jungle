@@ -71,7 +71,7 @@ impl JungleStore for PgStore {
         &self,
         namespace: String,
         animal_id: u32,
-        client_observed_generation: Option<u32>,
+        generation: u32,
         seed: Vec<u8>,
     ) -> Result<Uuid> {
         let journey_id = Uuid::new_v4();
@@ -88,7 +88,7 @@ impl JungleStore for PgStore {
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        let generation = sqlx::query_scalar!(
+        let latest_generation = sqlx::query_scalar!(
             r#"
             SELECT generation
             FROM animal_generations
@@ -102,17 +102,15 @@ impl JungleStore for PgStore {
         .map_err(crate::PersistenceError::PostgresQuery)?
         .unwrap_or(0);
 
-        if let Some(observed_generation) = client_observed_generation {
-            let observed_generation = i32::try_from(observed_generation).map_err(|_| {
-                crate::PersistenceError::Message(format!(
-                    "client observed generation exceeds i32 range for postgres: {observed_generation}"
-                ))
-            })?;
-            if observed_generation > generation {
-                return Err(crate::PersistenceError::Message(format!(
-                    "client observed generation {observed_generation} exceeds latest server generation {generation} for namespace {namespace} animal {animal_id}"
-                )));
-            }
+        let generation = i32::try_from(generation).map_err(|_| {
+            crate::PersistenceError::Message(format!(
+                "client generation exceeds i32 range for postgres: {generation}"
+            ))
+        })?;
+        if generation > latest_generation {
+            return Err(crate::PersistenceError::Message(format!(
+                "client generation {generation} exceeds latest server generation {latest_generation} for namespace {namespace} animal {animal_id}"
+            )));
         }
 
         sqlx::query!(
@@ -123,7 +121,7 @@ impl JungleStore for PgStore {
             journey_id,
             namespace,
             animal_id,
-            generation,
+            latest_generation,
             0_i16,
             seed
         )

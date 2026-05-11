@@ -264,7 +264,7 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
 }
 
 #[tokio::test]
-async fn create_journey_fails_when_client_observed_generation_exceeds_server_latest() {
+async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
     let listen_addr = super::reserve_local_addr();
@@ -292,12 +292,12 @@ async fn create_journey_fails_when_client_observed_generation_exceeds_server_lat
 
     let seed = postcard::to_allocvec(&0_i32).expect("seed should serialize");
     let err = client
-        .start_journey_with_observed_generation(33, Some(2), seed)
+        .start_journey(33, 2, seed)
         .await
-        .expect_err("start_journey should fail when client observed generation is ahead");
+        .expect_err("start_journey should fail when client generation is ahead");
     let message = err.to_string();
     assert!(
-        message.contains("client observed generation 2 exceeds latest server generation 1"),
+        message.contains("client generation 2 exceeds latest server generation 1"),
         "unexpected error message: {message}"
     );
 

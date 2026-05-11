@@ -44,12 +44,12 @@ async fn client_exchanges_messages_with_mock_server() {
                                 WireIn::CreateJourney {
                                     namespace,
                                     animal_id,
-                                    client_observed_generation,
+                                    generation,
                                     seed,
                                 } => {
                                     if namespace == "default"
                                         && animal_id == 7
-                                        && client_observed_generation.is_none()
+                                        && generation == 0
                                         && seed == vec![1, 2, 3]
                                     {
                                         Ok(WireOut::JourneyCreated(journey_id))
@@ -120,7 +120,7 @@ async fn client_exchanges_messages_with_mock_server() {
     let client = connect_client_with_retry(listen_addr).await;
 
     let created_flow = client
-        .start_journey(7, vec![1, 2, 3])
+        .start_journey(7, 0, vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
     assert_eq!(created_flow, journey_id);
@@ -185,11 +185,11 @@ async fn client_exchanges_messages_with_mock_server() {
         WireIn::CreateJourney {
             ref namespace,
             animal_id,
-            client_observed_generation,
+            generation,
             ref seed,
         } if namespace == "default"
             && animal_id == 7
-            && client_observed_generation.is_none()
+            && generation == 0
             && seed == &vec![1, 2, 3]
     ));
     assert!(matches!(requests[1], WireIn::JourneyStatus(id) if id == journey_id));
@@ -245,7 +245,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, vec![1, 2, 3])
+        .start_journey(7, 0, vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -298,7 +298,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, vec![1, 2, 3])
+        .start_journey(7, 0, vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -549,11 +549,11 @@ async fn poll_work_is_scoped_by_namespace() {
     let beta = connect_client_with_retry_namespace(listen_addr, "beta").await;
 
     let alpha_id = alpha
-        .start_journey(7, vec![1, 2, 3])
+        .start_journey(7, 0, vec![1, 2, 3])
         .await
         .expect("alpha start_journey should succeed");
     let beta_id = beta
-        .start_journey(9, vec![4, 5, 6])
+        .start_journey(9, 0, vec![4, 5, 6])
         .await
         .expect("beta start_journey should succeed");
 

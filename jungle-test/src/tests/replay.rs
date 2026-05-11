@@ -303,7 +303,7 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
                 .expect("seed should serialize");
             let ordinal = <jungle::typosaurus::num::consts::U0 as Unsigned>::U32;
             let journey_id = control_client
-                .start_journey(ordinal, seed)
+                .start_journey(ordinal, 0, seed)
                 .await
                 .expect("start_journey should succeed");
 
@@ -644,7 +644,7 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
             .expect("timeout test seed should serialize");
             let ordinal = <jungle::typosaurus::num::consts::U0 as Unsigned>::U32;
             let journey_id = control_client
-                .start_journey(ordinal, seed)
+                .start_journey(ordinal, 0, seed)
                 .await
                 .expect("start_journey should succeed");
 
