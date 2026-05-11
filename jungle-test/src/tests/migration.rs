@@ -2,7 +2,7 @@ use jungle_sdk::server::ServerBuilder;
 use redb::{Database, ReadableDatabase, TableDefinition};
 use sqlx::PgPool;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 use testcontainers::runners::AsyncRunner;
@@ -155,15 +155,50 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
     }
     fs::create_dir_all(&source_sqlx_dir).expect("target/sqlx directory should be creatable");
 
+    let probe_dir = workspace_root.join("target").join("sqlx-prepare-probe");
+    if probe_dir.exists() {
+        fs::remove_dir_all(&probe_dir).expect("existing sqlx probe directory should be removable");
+    }
+    fs::create_dir_all(probe_dir.join("src")).expect("sqlx probe src dir should be creatable");
+    fs::write(
+        probe_dir.join("Cargo.toml"),
+        r#"[package]
+name = "sqlx-prepare-probe"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "macros"] }
+"#,
+    )
+    .expect("sqlx probe manifest should be writable");
+    fs::write(
+        probe_dir.join("src").join("main.rs"),
+        r#"fn main() {
+    let _ = sqlx::query!("SELECT version FROM jungle_schema_metadata WHERE id = 1");
+}
+"#,
+    )
+    .expect("sqlx probe source should be writable");
+
     let status = Command::new("cargo")
-        .current_dir(&workspace_root)
+        .current_dir(&probe_dir)
         .env("SQLX_OFFLINE", "false")
         .env("SQLX_OFFLINE_DIR", &source_sqlx_dir)
         .env("DATABASE_URL", &connection_string)
-        .args(["check", "-p", "jungle-persist", "--features", "postgres"])
+        .args(["check"])
         .status()
         .expect("cargo check should execute");
     assert!(status.success(), "cargo check failed with status: {status}");
+
+    let generated_files =
+        list_files_recursive(&source_sqlx_dir).expect("target/sqlx should be readable");
+    assert!(
+        !generated_files.is_empty(),
+        "expected sqlx cache files under target/sqlx, but found none"
+    );
 
     assert!(
         source_sqlx_dir.is_dir(),
@@ -267,6 +302,21 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+fn list_files_recursive(path: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let entry_path = entry.path();
+        if file_type.is_dir() {
+            files.extend(list_files_recursive(&entry_path)?);
+        } else {
+            files.push(entry_path);
+        }
+    }
+    Ok(files)
 }
 
 async fn ensure_sqlx_prepare_schema(connection_string: &str) -> Result<(), sqlx::Error> {
