@@ -4,6 +4,7 @@ members = [
     "jungle-core",
     "jungle-cli",
     "jungle-client",
+    "jungle-examples",
     "jungle-macros",
     "jungle-server",
     "jungle-sdk",

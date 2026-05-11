@@ -2496,6 +2496,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "jungle-examples"
+version = "0.1.0"
+dependencies = [
+ "jungle-sdk",
+ "jungle-viewer",
+ "postcard",
+ "serde",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "jungle-macros"
 version = "0.1.0"
 dependencies = [

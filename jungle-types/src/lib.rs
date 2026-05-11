@@ -37,7 +37,7 @@ pub use transport::{ClaimedAnimalPerturbation, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
-pub use view::{BuildJourneyAst, JourneyAst, JourneyAstSource};
+pub use view::{BuildJourneyAst, JourneyAst, JourneyAstSource, JungleJourneyAst};
 
 /// A tagged union over two possible outputs.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
