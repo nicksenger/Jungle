@@ -24,6 +24,7 @@ pub fn derive_journey(input: TokenStream) -> TokenStream {
         &[
             parse_quote!(jungle_types::JungleFlow),
             parse_quote!(jungle_types::JungleDynFlow),
+            parse_quote!(jungle_types::JungleJourneyAst),
             parse_quote!(jungle_types::JungleTraverseFlow),
             parse_quote!(jungle_types::JungleReplaceFlow),
         ],
@@ -97,6 +98,7 @@ pub fn journey(attr: TokenStream, input: TokenStream) -> TokenStream {
         &[
             parse_quote!(jungle_types::JungleFlow),
             parse_quote!(jungle_types::JungleDynFlow),
+            parse_quote!(jungle_types::JungleJourneyAst),
             parse_quote!(jungle_types::JungleTraverseFlow),
             parse_quote!(jungle_types::JungleReplaceFlow),
         ],
