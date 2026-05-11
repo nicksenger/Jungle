@@ -3218,11 +3218,6 @@ dependencies = [
 [[package]]
 name = "jungle-zoo"
 version = "0.1.0"
-dependencies = [
- "inception",
- "jungle-macros",
- "jungle-types",
-]
 
 [[package]]
 name = "khronos-egl"
