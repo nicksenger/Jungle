@@ -70,6 +70,7 @@ impl JungleStore for MockStore {
         &self,
         namespace: String,
         animal_id: u32,
+        _client_observed_generation: Option<u32>,
         seed: Vec<u8>,
     ) -> Result<Uuid> {
         (self.on_create_flow)(namespace, animal_id, seed)

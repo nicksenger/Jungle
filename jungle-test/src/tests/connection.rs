@@ -44,10 +44,12 @@ async fn client_exchanges_messages_with_mock_server() {
                                 WireIn::CreateJourney {
                                     namespace,
                                     animal_id,
+                                    client_observed_generation,
                                     seed,
                                 } => {
                                     if namespace == "default"
                                         && animal_id == 7
+                                        && client_observed_generation.is_none()
                                         && seed == vec![1, 2, 3]
                                     {
                                         Ok(WireOut::JourneyCreated(journey_id))
@@ -183,8 +185,12 @@ async fn client_exchanges_messages_with_mock_server() {
         WireIn::CreateJourney {
             ref namespace,
             animal_id,
+            client_observed_generation,
             ref seed,
-        } if namespace == "default" && animal_id == 7 && seed == &vec![1, 2, 3]
+        } if namespace == "default"
+            && animal_id == 7
+            && client_observed_generation.is_none()
+            && seed == &vec![1, 2, 3]
     ));
     assert!(matches!(requests[1], WireIn::JourneyStatus(id) if id == journey_id));
     assert!(

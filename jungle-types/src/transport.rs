@@ -90,6 +90,7 @@ pub enum WireIn {
     CreateJourney {
         namespace: String,
         animal_id: u32,
+        client_observed_generation: Option<u32>,
         seed: Vec<u8>,
     },
     JourneyHistory(Uuid),

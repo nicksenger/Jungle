@@ -114,13 +114,14 @@ impl JungleServer for Server {
             Some(WireIn::CreateJourney {
                 namespace,
                 animal_id,
+                client_observed_generation,
                 seed,
             }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     let journey_id = self
                         .store
-                        .create_journey(namespace, animal_id, seed)
+                        .create_journey(namespace, animal_id, client_observed_generation, seed)
                         .await
                         .map_err(|err| {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
@@ -129,7 +130,7 @@ impl JungleServer for Server {
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
-                    let _ = (namespace, animal_id, seed);
+                    let _ = (namespace, animal_id, client_observed_generation, seed);
                     return Err(crate::ServerError::Backend(BackendError::Message(
                         "create_journey is unavailable without a persistence backend".to_string(),
                     )));

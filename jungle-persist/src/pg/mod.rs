@@ -71,6 +71,7 @@ impl JungleStore for PgStore {
         &self,
         namespace: String,
         animal_id: u32,
+        client_observed_generation: Option<u32>,
         seed: Vec<u8>,
     ) -> Result<Uuid> {
         let journey_id = Uuid::new_v4();
@@ -100,6 +101,19 @@ impl JungleStore for PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?
         .unwrap_or(0);
+
+        if let Some(observed_generation) = client_observed_generation {
+            let observed_generation = i32::try_from(observed_generation).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "client observed generation exceeds i32 range for postgres: {observed_generation}"
+                ))
+            })?;
+            if observed_generation > generation {
+                return Err(crate::PersistenceError::Message(format!(
+                    "client observed generation {observed_generation} exceeds latest server generation {generation} for namespace {namespace} animal {animal_id}"
+                )));
+            }
+        }
 
         sqlx::query(
             r#"
@@ -476,8 +490,9 @@ impl JungleStore for PgStore {
                 VALUES ($1, $2, $3, NOW())
                 ON CONFLICT (namespace, animal_id)
                 DO UPDATE SET
-                    generation = GREATEST(animal_generations.generation, EXCLUDED.generation),
+                    generation = EXCLUDED.generation,
                     updated_at = NOW()
+                WHERE animal_generations.generation < EXCLUDED.generation
                 "#,
             )
             .bind(namespace.as_str())

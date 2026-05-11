@@ -140,7 +140,12 @@ impl Default for MockClient {
 
 #[async_trait]
 impl JungleClient for MockClient {
-    async fn start_journey(&self, animal_id: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
+    async fn start_journey_with_observed_generation(
+        &self,
+        animal_id: u32,
+        _client_observed_generation: Option<u32>,
+        seed: Vec<u8>,
+    ) -> Result<Uuid, ExecutorError> {
         (self.on_create_flow)(animal_id, seed).await
     }
 

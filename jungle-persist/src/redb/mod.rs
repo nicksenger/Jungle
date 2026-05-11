@@ -148,6 +148,7 @@ impl JungleStore for RedbStore {
         &self,
         namespace: String,
         animal_id: u32,
+        client_observed_generation: Option<u32>,
         seed: Vec<u8>,
     ) -> Result<Uuid> {
         let journey_id = Uuid::new_v4();
@@ -179,6 +180,14 @@ impl JungleStore for RedbStore {
                 })
                 .transpose()?
                 .unwrap_or(0);
+
+            if let Some(observed_generation) = client_observed_generation {
+                if observed_generation > generation {
+                    return Err(crate::PersistenceError::Message(format!(
+                        "client observed generation {observed_generation} exceeds latest server generation {generation} for namespace {namespace} animal {animal_id}"
+                    )));
+                }
+            }
 
             let mut journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
@@ -672,14 +681,18 @@ impl JungleStore for RedbStore {
                     })
                     .transpose()?
                     .unwrap_or(0);
-                let updated = existing.max(supported.generation);
-                generation_table
-                    .insert(key.as_slice(), updated.to_be_bytes().as_slice())
-                    .map_err(|err| {
-                        crate::PersistenceError::Message(format!(
-                            "redb claim_work write animal generation failed: {err}"
-                        ))
-                    })?;
+                if supported.generation > existing {
+                    generation_table
+                        .insert(
+                            key.as_slice(),
+                            supported.generation.to_be_bytes().as_slice(),
+                        )
+                        .map_err(|err| {
+                            crate::PersistenceError::Message(format!(
+                                "redb claim_work write animal generation failed: {err}"
+                            ))
+                        })?;
+                }
             }
 
             let journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {

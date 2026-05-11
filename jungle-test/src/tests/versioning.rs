@@ -263,6 +263,48 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
     let _ = server_task.await;
 }
 
+#[tokio::test]
+async fn create_journey_fails_when_client_observed_generation_exceeds_server_latest() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    assert!(client
+        .poll_work(vec![SupportedAnimal {
+            animal_id: 33,
+            generation: 1,
+        }])
+        .await
+        .expect("poll_work registration should succeed")
+        .is_none());
+
+    let seed = postcard::to_allocvec(&0_i32).expect("seed should serialize");
+    let err = client
+        .start_journey_with_observed_generation(33, Some(2), seed)
+        .await
+        .expect_err("start_journey should fail when client observed generation is ahead");
+    let message = err.to_string();
+    assert!(
+        message.contains("client observed generation 2 exceeds latest server generation 1"),
+        "unexpected error message: {message}"
+    );
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     for attempt in 0..40 {
         match jungle_sdk::client::ClientBuilder::new()

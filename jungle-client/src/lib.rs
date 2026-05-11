@@ -7,6 +7,7 @@ use jungle_types::{
     Animal, AnimalIdValue, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake,
     RunnerOut, SupportedAnimal, Work,
 };
+use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 pub mod client;
@@ -17,15 +18,29 @@ pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
-    async fn start_journey(&self, animal_id: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError>;
+    async fn start_journey_with_observed_generation(
+        &self,
+        animal_id: u32,
+        client_observed_generation: Option<u32>,
+        seed: Vec<u8>,
+    ) -> Result<Uuid, ExecutorError>;
+    async fn start_journey(&self, animal_id: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
+        self.start_journey_with_observed_generation(animal_id, None, seed)
+            .await
+    }
     async fn start_journey_for<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: Animal,
         A::Id: AnimalIdValue + Send + Sync,
+        A::Generation: Unsigned + Send + Sync,
     {
-        self.start_journey(<A::Id as AnimalIdValue>::U32, seed)
-            .await
+        self.start_journey_with_observed_generation(
+            <A::Id as AnimalIdValue>::U32,
+            Some(<A::Generation as Unsigned>::U32),
+            seed,
+        )
+        .await
     }
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError>;
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError>;
