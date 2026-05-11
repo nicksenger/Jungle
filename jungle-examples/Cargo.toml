@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-jungle-sdk = { path = "../jungle-sdk", features = ["redb"] }
+jungle = { path = "../jungle", features = ["redb"] }
 jungle-viewer = { path = "../jungle-viewer" }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }

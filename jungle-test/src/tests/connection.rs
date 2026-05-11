@@ -1,5 +1,5 @@
-use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::{
+use jungle::server::ServerBuilder;
+use jungle::{
     BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
     SupportedAnimal, WireIn, WireOut, Work,
 };
@@ -615,7 +615,7 @@ async fn poll_work_is_scoped_by_namespace() {
     let _ = server_task.await;
 }
 
-async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
+async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
     connect_client_with_retry_namespace(remote, "default").await
 }
 
@@ -629,9 +629,9 @@ fn default_supported(animal_id: u32) -> Vec<SupportedAnimal> {
 async fn connect_client_with_retry_namespace(
     remote: SocketAddr,
     namespace: &str,
-) -> jungle_sdk::Client {
+) -> jungle::Client {
     for attempt in 0..40 {
-        match jungle_sdk::client::ClientBuilder::new()
+        match jungle::client::ClientBuilder::new()
             .namespace(namespace)
             .remote(remote)
             .server_name("localhost")

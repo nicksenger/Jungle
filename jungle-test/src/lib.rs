@@ -1,7 +1,7 @@
 #[cfg(test)]
-extern crate jungle_sdk as inception;
+extern crate jungle as inception;
 #[cfg(test)]
-extern crate jungle_sdk as jungle_types;
+extern crate jungle as jungle_types;
 
 #[cfg(test)]
 mod tests {
@@ -22,10 +22,10 @@ mod tests {
             dependency = $dependency_ty:ty
         ) => {
             struct $name;
-            impl jungle_sdk::types::ActionMember for $name {}
+            impl jungle::types::ActionMember for $name {}
 
-            impl jungle_sdk::types::Action for $name {
-                type Id = jungle_sdk::types::Id<$id>;
+            impl jungle::types::Action for $name {
+                type Id = jungle::types::Id<$id>;
                 type Dependency = $dependency_ty;
                 type In = ();
                 type Out = ();
@@ -39,13 +39,13 @@ mod tests {
                 }
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
-            impl jungle_sdk::types::Actions for $name {
-                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
+            #[jungle::inception::primitive(property = jungle::types::JungleActions)]
+            impl jungle::types::Actions for $name {
+                type List = jungle::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
-            impl jungle_sdk::types::Identified for $name {
+            #[jungle::inception::primitive(property = jungle::types::Ident)]
+            impl jungle::types::Identified for $name {
                 type Id = $id;
             }
         };
@@ -59,10 +59,10 @@ mod tests {
             act = |$dependency:ident, $input:ident| $body:expr
         ) => {
             struct $name;
-            impl jungle_sdk::types::ActionMember for $name {}
+            impl jungle::types::ActionMember for $name {}
 
-            impl jungle_sdk::types::Action for $name {
-                type Id = jungle_sdk::types::Id<$id>;
+            impl jungle::types::Action for $name {
+                type Id = jungle::types::Id<$id>;
                 type Dependency = ();
                 type In = $in;
                 type Out = $out;
@@ -79,10 +79,10 @@ mod tests {
 
         ($name:ident, $id:ty) => {
             struct $name;
-            impl jungle_sdk::types::ActionMember for $name {}
+            impl jungle::types::ActionMember for $name {}
 
-            impl jungle_sdk::types::Action for $name {
-                type Id = jungle_sdk::types::Id<$id>;
+            impl jungle::types::Action for $name {
+                type Id = jungle::types::Id<$id>;
                 type Dependency = ();
                 type In = ();
                 type Out = ();
@@ -96,13 +96,13 @@ mod tests {
                 }
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
-            impl jungle_sdk::types::Actions for $name {
-                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
+            #[jungle::inception::primitive(property = jungle::types::JungleActions)]
+            impl jungle::types::Actions for $name {
+                type List = jungle::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
-            impl jungle_sdk::types::Identified for $name {
+            #[jungle::inception::primitive(property = jungle::types::Ident)]
+            impl jungle::types::Identified for $name {
                 type Id = $id;
             }
         };
@@ -112,80 +112,80 @@ mod tests {
         ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty, observe = true, perturb = true) => {
             struct $name;
 
-            impl jungle_sdk::types::Animal for $name {
-                type Id = jungle_sdk::types::Id<$id>;
-                type Generation = jungle_sdk::typosaurus::num::consts::U0;
+            impl jungle::types::Animal for $name {
+                type Id = jungle::types::Id<$id>;
+                type Generation = jungle::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::ObserveObservation;
+            impl jungle::types::AnimalObservation for $name {
+                type Adapter = jungle::types::ObserveObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::TraitPerturbation;
+            impl jungle::types::AnimalPerturbation for $name {
+                type Adapter = jungle::types::TraitPerturbation;
             }
         };
 
         ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty, perturb = true) => {
             struct $name;
 
-            impl jungle_sdk::types::Animal for $name {
-                type Id = jungle_sdk::types::Id<$id>;
-                type Generation = jungle_sdk::typosaurus::num::consts::U0;
+            impl jungle::types::Animal for $name {
+                type Id = jungle::types::Id<$id>;
+                type Generation = jungle::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::NoopObservation;
+            impl jungle::types::AnimalObservation for $name {
+                type Adapter = jungle::types::NoopObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::TraitPerturbation;
+            impl jungle::types::AnimalPerturbation for $name {
+                type Adapter = jungle::types::TraitPerturbation;
             }
         };
 
         ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty, observe = true) => {
             struct $name;
 
-            impl jungle_sdk::types::Animal for $name {
-                type Id = jungle_sdk::types::Id<$id>;
-                type Generation = jungle_sdk::typosaurus::num::consts::U0;
+            impl jungle::types::Animal for $name {
+                type Id = jungle::types::Id<$id>;
+                type Generation = jungle::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::ObserveObservation;
+            impl jungle::types::AnimalObservation for $name {
+                type Adapter = jungle::types::ObserveObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::NoopPerturbation;
+            impl jungle::types::AnimalPerturbation for $name {
+                type Adapter = jungle::types::NoopPerturbation;
             }
         };
 
         ($name:ident, $id:ty, state = $state:ty, journey = $journey:ty) => {
             struct $name;
 
-            impl jungle_sdk::types::Animal for $name {
-                type Id = jungle_sdk::types::Id<$id>;
-                type Generation = jungle_sdk::typosaurus::num::consts::U0;
+            impl jungle::types::Animal for $name {
+                type Id = jungle::types::Id<$id>;
+                type Generation = jungle::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::NoopObservation;
+            impl jungle::types::AnimalObservation for $name {
+                type Adapter = jungle::types::NoopObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::NoopPerturbation;
+            impl jungle::types::AnimalPerturbation for $name {
+                type Adapter = jungle::types::NoopPerturbation;
             }
         };
 
@@ -199,93 +199,93 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $journey:ty) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
+            impl jungle::types::AnimalMember for $name {}
 
-            impl jungle_sdk::types::Animal for $name {
-                type Id = jungle_sdk::types::Id<$id>;
-                type Generation = jungle_sdk::typosaurus::num::consts::U0;
+            impl jungle::types::Animal for $name {
+                type Id = jungle::types::Id<$id>;
+                type Generation = jungle::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::NoopObservation;
+            impl jungle::types::AnimalObservation for $name {
+                type Adapter = jungle::types::NoopObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::NoopPerturbation;
+            impl jungle::types::AnimalPerturbation for $name {
+                type Adapter = jungle::types::NoopPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
-            impl jungle_sdk::types::Animals for $name {
-                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
+            #[jungle::inception::primitive(property = jungle::types::JungleAnimals)]
+            impl jungle::types::Animals for $name {
+                type List = jungle::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
-            impl jungle_sdk::types::Identified for $name {
+            #[jungle::inception::primitive(property = jungle::types::Ident)]
+            impl jungle::types::Identified for $name {
                 type Id = $id;
             }
         };
 
         ($name:ident, $id:ty, $state:ty, $journey:ty, observe = true, perturb = true) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
+            impl jungle::types::AnimalMember for $name {}
 
-            impl jungle_sdk::types::Animal for $name {
-                type Id = jungle_sdk::types::Id<$id>;
-                type Generation = jungle_sdk::typosaurus::num::consts::U0;
+            impl jungle::types::Animal for $name {
+                type Id = jungle::types::Id<$id>;
+                type Generation = jungle::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::ObserveObservation;
+            impl jungle::types::AnimalObservation for $name {
+                type Adapter = jungle::types::ObserveObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::TraitPerturbation;
+            impl jungle::types::AnimalPerturbation for $name {
+                type Adapter = jungle::types::TraitPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
-            impl jungle_sdk::types::Animals for $name {
-                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
+            #[jungle::inception::primitive(property = jungle::types::JungleAnimals)]
+            impl jungle::types::Animals for $name {
+                type List = jungle::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
-            impl jungle_sdk::types::Identified for $name {
+            #[jungle::inception::primitive(property = jungle::types::Ident)]
+            impl jungle::types::Identified for $name {
                 type Id = $id;
             }
         };
 
         ($name:ident, $id:ty, $state:ty, $journey:ty, observe = true) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
+            impl jungle::types::AnimalMember for $name {}
 
-            impl jungle_sdk::types::Animal for $name {
-                type Id = jungle_sdk::types::Id<$id>;
-                type Generation = jungle_sdk::typosaurus::num::consts::U0;
+            impl jungle::types::Animal for $name {
+                type Id = jungle::types::Id<$id>;
+                type Generation = jungle::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::ObserveObservation;
+            impl jungle::types::AnimalObservation for $name {
+                type Adapter = jungle::types::ObserveObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::NoopPerturbation;
+            impl jungle::types::AnimalPerturbation for $name {
+                type Adapter = jungle::types::NoopPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
-            impl jungle_sdk::types::Animals for $name {
-                type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
+            #[jungle::inception::primitive(property = jungle::types::JungleAnimals)]
+            impl jungle::types::Animals for $name {
+                type List = jungle::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
-            impl jungle_sdk::types::Identified for $name {
+            #[jungle::inception::primitive(property = jungle::types::Ident)]
+            impl jungle::types::Identified for $name {
                 type Id = $id;
             }
         };

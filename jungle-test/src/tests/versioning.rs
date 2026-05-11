@@ -1,18 +1,18 @@
-use jungle_sdk::core::JungleWorker;
-use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::{
+use jungle::core::JungleWorker;
+use jungle::server::ServerBuilder;
+use jungle::types::{
     Action, ActionCompletion, Animal, AnimalMember, Animals as AnimalsTrait, Ecosystem, Id,
     Identity, Observe, Pulse, Step, SupportedAnimal,
 };
-use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U33, U70, U71};
-use jungle_sdk::{Animals, Journey, JungleClient};
+use jungle::typosaurus::assert_type_eq;
+use jungle::typosaurus::list;
+use jungle::typosaurus::num::consts::{U0, U1, U33, U70, U71};
+use jungle::{Animals, Journey, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
 
 struct LegacyAction;
-impl jungle_sdk::types::ActionMember for LegacyAction {}
+impl jungle::types::ActionMember for LegacyAction {}
 
 #[derive(Clone, Copy)]
 struct LegacyDependency;
@@ -33,7 +33,7 @@ impl Action for LegacyAction {
 }
 
 struct ModernAction;
-impl jungle_sdk::types::ActionMember for ModernAction {}
+impl jungle::types::ActionMember for ModernAction {}
 
 #[derive(Clone, Copy)]
 struct ModernDependency;
@@ -96,11 +96,11 @@ impl Animal for LegacyAnimal {
     type Seed = i32;
     type Journey = LegacyJourney;
 }
-impl jungle_sdk::types::AnimalObservation for LegacyAnimal {
-    type Adapter = jungle_sdk::types::ObserveObservation;
+impl jungle::types::AnimalObservation for LegacyAnimal {
+    type Adapter = jungle::types::ObserveObservation;
 }
-impl jungle_sdk::types::AnimalPerturbation for LegacyAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+impl jungle::types::AnimalPerturbation for LegacyAnimal {
+    type Adapter = jungle::types::NoopPerturbation;
 }
 impl Observe for LegacyAnimal {
     type Appearance = i32;
@@ -109,12 +109,12 @@ impl Observe for LegacyAnimal {
         *state
     }
 }
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+#[jungle::inception::primitive(property = jungle::types::JungleAnimals)]
 impl AnimalsTrait for LegacyAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U33, LegacyAnimal>;
+    type List = jungle::typosaurus::collections::sp::Node<U33, LegacyAnimal>;
 }
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for LegacyAnimal {
+#[jungle::inception::primitive(property = jungle::types::Ident)]
+impl jungle::types::Identified for LegacyAnimal {
     type Id = U33;
 }
 
@@ -127,11 +127,11 @@ impl Animal for ModernAnimal {
     type Seed = i32;
     type Journey = ModernJourney;
 }
-impl jungle_sdk::types::AnimalObservation for ModernAnimal {
-    type Adapter = jungle_sdk::types::ObserveObservation;
+impl jungle::types::AnimalObservation for ModernAnimal {
+    type Adapter = jungle::types::ObserveObservation;
 }
-impl jungle_sdk::types::AnimalPerturbation for ModernAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+impl jungle::types::AnimalPerturbation for ModernAnimal {
+    type Adapter = jungle::types::NoopPerturbation;
 }
 impl Observe for ModernAnimal {
     type Appearance = i32;
@@ -140,12 +140,12 @@ impl Observe for ModernAnimal {
         *state
     }
 }
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+#[jungle::inception::primitive(property = jungle::types::JungleAnimals)]
 impl AnimalsTrait for ModernAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U33, ModernAnimal>;
+    type List = jungle::typosaurus::collections::sp::Node<U33, ModernAnimal>;
 }
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ModernAnimal {
+#[jungle::inception::primitive(property = jungle::types::Ident)]
+impl jungle::types::Identified for ModernAnimal {
     type Id = U33;
 }
 
@@ -173,7 +173,7 @@ impl From<&VersionedZoo> for ModernDependency {
 #[test]
 fn generations_helper_collects_all_generations_for_animal_id() {
     type Expected = list![U1, U0];
-    type Actual = jungle_sdk::types::Generations<VersionedZoo, Id<U33>>;
+    type Actual = jungle::types::Generations<VersionedZoo, Id<U33>>;
     assert_type_eq!(Actual, Expected);
 }
 
@@ -235,7 +235,7 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
                     .journey_details(journey_id)
                     .await
                     .expect("journey_details should succeed");
-                if status == jungle_sdk::types::JourneyStatus::Completed {
+                if status == jungle::types::JourneyStatus::Completed {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(25)).await;
@@ -305,9 +305,9 @@ async fn create_journey_fails_when_client_observed_generation_exceeds_server_lat
     let _ = server_task.await;
 }
 
-async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
+async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
     for attempt in 0..40 {
-        match jungle_sdk::client::ClientBuilder::new()
+        match jungle::client::ClientBuilder::new()
             .remote(remote)
             .server_name("localhost")
             .build()

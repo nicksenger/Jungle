@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-jungle-sdk = { path = "../jungle-sdk", features = ["server", "pg", "redb"] }
+jungle = { path = "../jungle", features = ["server", "pg", "redb"] }
 
 [dev-dependencies]
 jungle-persist = { path = "../jungle-persist", features = ["postgres"] }

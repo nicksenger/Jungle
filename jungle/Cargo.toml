@@ -1,5 +1,5 @@
 [package]
-name = "jungle-sdk"
+name = "jungle"
 version = "0.1.0"
 edition = "2021"
 

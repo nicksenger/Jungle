@@ -2459,6 +2459,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "jungle"
+version = "0.1.0"
+dependencies = [
+ "inception",
+ "jungle-client",
+ "jungle-core",
+ "jungle-macros",
+ "jungle-server",
+ "jungle-types",
+ "typosaurus",
+]
+
+[[package]]
 name = "jungle-client"
 version = "0.1.0"
 dependencies = [
@@ -2495,7 +2508,7 @@ dependencies = [
 name = "jungle-examples"
 version = "0.1.0"
 dependencies = [
- "jungle-sdk",
+ "jungle",
  "jungle-viewer",
  "postcard",
  "serde",
@@ -2531,19 +2544,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jungle-sdk"
-version = "0.1.0"
-dependencies = [
- "inception",
- "jungle-client",
- "jungle-core",
- "jungle-macros",
- "jungle-server",
- "jungle-types",
- "typosaurus",
-]
-
-[[package]]
 name = "jungle-server"
 version = "0.1.0"
 dependencies = [
@@ -2571,8 +2571,8 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "futures",
+ "jungle",
  "jungle-persist",
- "jungle-sdk",
  "postcard",
  "redb",
  "serde",

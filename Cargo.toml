@@ -6,7 +6,7 @@ members = [
     "jungle-examples",
     "jungle-macros",
     "jungle-server",
-    "jungle-sdk",
+    "jungle",
     "jungle-persist",
     "jungle-test",
     "jungle-viewer",

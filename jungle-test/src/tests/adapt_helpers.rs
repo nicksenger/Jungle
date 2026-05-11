@@ -1,9 +1,9 @@
-use jungle_sdk::types::{
+use jungle::types::{
     AbsorbFn, AbsorbMapper, ActionCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
     IdentityStep, ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
-use jungle_sdk::Journey;
+use jungle::typosaurus::num::consts::{U0, U70, U71};
+use jungle::Journey;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct HelperState {

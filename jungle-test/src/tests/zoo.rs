@@ -1,13 +1,13 @@
 use futures::channel::mpsc;
-use jungle_sdk::core::Jungle as _;
-use jungle_sdk::types::{
+use jungle::core::Jungle as _;
+use jungle::types::{
     Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
     Ecosystem, Identity, Lens, LoopCondition, Pulse, Step, While,
 };
-use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-use jungle_sdk::{Actions, Animals, Flow, Optic};
+use jungle::typosaurus::assert_type_eq;
+use jungle::typosaurus::list;
+use jungle::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
+use jungle::{Actions, Animals, Flow, Optic};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -172,9 +172,9 @@ impl From<&RunnerZoo> for RunnerState {
 }
 
 struct RunnerStepOneAction;
-impl jungle_sdk::types::ActionMember for RunnerStepOneAction {}
+impl jungle::types::ActionMember for RunnerStepOneAction {}
 impl Action for RunnerStepOneAction {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
+    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U14>;
     type Dependency = RunnerDependency;
     type In = ();
     type Out = i32;
@@ -200,9 +200,9 @@ impl From<&RunnerZoo> for RunnerStepTwoDependency {
 }
 
 struct RunnerStepTwoAction;
-impl jungle_sdk::types::ActionMember for RunnerStepTwoAction {}
+impl jungle::types::ActionMember for RunnerStepTwoAction {}
 impl Action for RunnerStepTwoAction {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
+    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U15>;
     type Dependency = RunnerStepTwoDependency;
     type In = ();
     type Out = i32;
@@ -254,7 +254,7 @@ impl LoopCondition<RunnerState> for RunnerKeepGoing {
 }
 
 struct RunnerUseStepOne;
-impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
+impl jungle::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
     fn choose((state, _): &(RunnerState, ())) -> bool {
         state.0 % 2 == 0
     }
@@ -262,7 +262,7 @@ impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
 
 type RunnerJourney = While<
     RunnerKeepGoing,
-    jungle_sdk::types::Conditional<
+    jungle::types::Conditional<
         RunnerUseStepOne,
         Step<RunnerAnimal, RunnerStepOne>,
         Step<RunnerAnimal, RunnerStepTwo>,
@@ -271,7 +271,7 @@ type RunnerJourney = While<
 
 animal!(
     RunnerAnimal,
-    jungle_sdk::typosaurus::num::consts::U16,
+    jungle::typosaurus::num::consts::U16,
     RunnerState,
     RunnerJourney
 );
@@ -406,9 +406,9 @@ impl From<&Zoo> for RoundDependency {
 }
 
 struct EatEnergy;
-impl jungle_sdk::types::ActionMember for EatEnergy {}
+impl jungle::types::ActionMember for EatEnergy {}
 impl Action for EatEnergy {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
+    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U7>;
     type Dependency = EatDependency;
     type In = i32;
     type Out = i32;
@@ -423,9 +423,9 @@ impl Action for EatEnergy {
 }
 
 struct HuntEnergy;
-impl jungle_sdk::types::ActionMember for HuntEnergy {}
+impl jungle::types::ActionMember for HuntEnergy {}
 impl Action for HuntEnergy {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
+    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U10>;
     type Dependency = HuntDependency;
     type In = i32;
     type Out = i32;
@@ -440,9 +440,9 @@ impl Action for HuntEnergy {
 }
 
 struct RoundAdvance;
-impl jungle_sdk::types::ActionMember for RoundAdvance {}
+impl jungle::types::ActionMember for RoundAdvance {}
 impl Action for RoundAdvance {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
+    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U13>;
     type Dependency = RoundDependency;
     type In = i32;
     type Out = i32;
@@ -460,7 +460,7 @@ struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 impl<T, Focus, A> Pulse<T> for AddI32<Focus, A>
 where
     T: Animal,
-    Focus: jungle_sdk::types::Aspect<T::State, View = i32>,
+    Focus: jungle::types::Aspect<T::State, View = i32>,
     A: Action<In = i32, Out = i32, Err = ()>,
 {
     type Action = A;
@@ -502,7 +502,7 @@ impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
 }
 
 struct TigerChooseHunt;
-impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
+impl jungle::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
     fn choose((state, _): &(ExecutorCatState, i32)) -> bool {
         state.stripes % 2 == 0
     }
@@ -511,7 +511,7 @@ impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
 type WorkflowGorillaJourney = While<ApeKeepRunning, Step<WorkflowGorilla, ApeRoundTask>>;
 type WorkflowTigerJourney = While<
     TigerKeepRunning,
-    jungle_sdk::types::Conditional<
+    jungle::types::Conditional<
         TigerChooseHunt,
         Step<WorkflowTiger, TigerHuntTask>,
         Step<WorkflowTiger, TigerEatTask>,
@@ -520,20 +520,20 @@ type WorkflowTigerJourney = While<
 
 animal!(
     WorkflowGorilla,
-    jungle_sdk::typosaurus::num::consts::U11,
+    jungle::typosaurus::num::consts::U11,
     ExecutorApeState,
     WorkflowGorillaJourney
 );
 animal!(
     WorkflowTiger,
-    jungle_sdk::typosaurus::num::consts::U12,
+    jungle::typosaurus::num::consts::U12,
     ExecutorCatState,
     WorkflowTigerJourney
 );
 
 #[tokio::test]
 async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
-    use jungle_sdk::core::JungleExecutor;
+    use jungle::core::JungleExecutor;
 
     let mut gorilla = JungleExecutor::<Zoo, WorkflowGorilla>::new(
         Zoo,
@@ -550,7 +550,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
     loop {
         let request = match gorilla.next_executable_request(1i32) {
             Ok(request) => request,
-            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(jungle::types::ExecutorError::Complete) => break,
             Err(err) => panic!("gorilla request should build: {err}"),
         };
         let request_input: i32 = request
@@ -583,7 +583,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
     loop {
         let request = match tiger.next_executable_request(1i32) {
             Ok(request) => request,
-            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(jungle::types::ExecutorError::Complete) => break,
             Err(err) => panic!("tiger request should build: {err}"),
         };
         let request_input: i32 = request
@@ -615,7 +615,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
     loop {
         let request = match tiger_odd.next_executable_request(1i32) {
             Ok(request) => request,
-            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(jungle::types::ExecutorError::Complete) => break,
             Err(err) => panic!("tiger odd request should build: {err}"),
         };
         let request_input: i32 = request
@@ -639,7 +639,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
 
 #[tokio::test]
 async fn jungle_executor_exposes_state_during_progression() {
-    use jungle_sdk::core::JungleExecutor;
+    use jungle::core::JungleExecutor;
 
     let mut gorilla = JungleExecutor::<Zoo, WorkflowGorilla>::new(
         Zoo,
@@ -657,7 +657,7 @@ async fn jungle_executor_exposes_state_during_progression() {
         let rounds_before = gorilla.state().core.rounds;
         let request = match gorilla.next_executable_request(1i32) {
             Ok(request) => request,
-            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(jungle::types::ExecutorError::Complete) => break,
             Err(err) => panic!("gorilla request should build: {err}"),
         };
         let completion = request.run().await.expect("gorilla action should execute");
@@ -675,8 +675,8 @@ async fn jungle_executor_exposes_state_during_progression() {
 
 #[tokio::test]
 async fn jungle_runner_spawns_and_completes_animal_flows() {
-    use jungle_sdk::client::{MockClient, RunnerChannelTx};
-    use jungle_sdk::core::JungleRunner;
+    use jungle::client::{MockClient, RunnerChannelTx};
+    use jungle::core::JungleRunner;
 
     let runner = JungleRunner::new(RunnerZoo);
     let input_calls = Arc::new(AtomicUsize::new(0));
@@ -748,9 +748,9 @@ async fn jungle_runner_spawns_and_completes_animal_flows() {
 
 #[tokio::test]
 async fn jungle_worker_polls_and_completes_start_flow_work() {
-    use jungle_sdk::client::MockClient;
-    use jungle_sdk::core::JungleWorker;
-    use jungle_sdk::types::Work;
+    use jungle::client::MockClient;
+    use jungle::core::JungleWorker;
+    use jungle::types::Work;
     use std::time::Duration;
 
     let input_calls = Arc::new(AtomicUsize::new(0));

@@ -1,13 +1,13 @@
-use jungle_sdk::core::JungleWorker;
-use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::{
+use jungle::core::JungleWorker;
+use jungle::server::ServerBuilder;
+use jungle::types::{
     Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus, Lens,
     LoopCondition, Observe, Perturb, Pulse, Step, While,
 };
-use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::Unsigned;
-use jungle_sdk::{Animals, JungleClient, Optic};
+use jungle::typosaurus::assert_type_eq;
+use jungle::typosaurus::list;
+use jungle::typosaurus::num::Unsigned;
+use jungle::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -46,10 +46,10 @@ impl From<&IntegrationZoo> for AddOneDependency {
 }
 
 struct AddOneAction;
-impl jungle_sdk::types::ActionMember for AddOneAction {}
+impl jungle::types::ActionMember for AddOneAction {}
 
 impl Action for AddOneAction {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
+    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U1>;
     type Dependency = AddOneDependency;
     type In = ();
     type Out = i32;
@@ -75,10 +75,10 @@ impl From<&IntegrationZoo> for AddTwoDependency {
 }
 
 struct AddTwoAction;
-impl jungle_sdk::types::ActionMember for AddTwoAction {}
+impl jungle::types::ActionMember for AddTwoAction {}
 
 impl Action for AddTwoAction {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
+    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U2>;
     type Dependency = AddTwoDependency;
     type In = ();
     type Out = i32;
@@ -131,7 +131,7 @@ impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 struct AddOneFocusedStep;
 impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
     type Action = AddOneAction;
-    type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type Aspect = Lens<IntegrationState, list![jungle::typosaurus::num::consts::U1]>;
     type CarryIn = ();
     type CarryOut = ();
 
@@ -146,7 +146,7 @@ impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
 struct AddTwoFocusedStep;
 impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
     type Action = AddTwoAction;
-    type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type Aspect = Lens<IntegrationState, list![jungle::typosaurus::num::consts::U1]>;
     type CarryIn = ();
     type CarryOut = ();
 
@@ -164,8 +164,8 @@ impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
     type Aspect = Lens<
         IntegrationState,
         list![
-            jungle_sdk::typosaurus::num::consts::U1,
-            jungle_sdk::typosaurus::num::consts::U0
+            jungle::typosaurus::num::consts::U1,
+            jungle::typosaurus::num::consts::U0
         ],
     >;
     type CarryIn = ();
@@ -188,8 +188,8 @@ impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type Aspect = Lens<
         IntegrationState,
         list![
-            jungle_sdk::typosaurus::num::consts::U1,
-            jungle_sdk::typosaurus::num::consts::U0
+            jungle::typosaurus::num::consts::U1,
+            jungle::typosaurus::num::consts::U0
         ],
     >;
     type CarryIn = ();
@@ -354,7 +354,7 @@ type IntegrationJourney = While<
 
 animal!(
     IntegrationAnimal,
-    jungle_sdk::typosaurus::num::consts::U0,
+    jungle::typosaurus::num::consts::U0,
     IntegrationState,
     IntegrationJourney,
     observe = true,
@@ -428,7 +428,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
         after_steps: 0,
     })
     .expect("seed should serialize");
-    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
+    let ordinal = <jungle::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
         .start_journey(ordinal, seed)
         .await
@@ -508,9 +508,9 @@ async fn redb_client_worker_flow_runs_to_completion() {
 
 #[test]
 fn replaced_alias_rewrites_integration_flow_steps() {
-    type Actual = jungle_sdk::types::Replace<
+    type Actual = jungle::types::Replace<
         MultiMatchBeforeFlow,
-        jungle_sdk::types::SwapLR<AddOneBeforeFullStateStep, AddTwoBeforeFullStateStep>,
+        jungle::types::SwapLR<AddOneBeforeFullStateStep, AddTwoBeforeFullStateStep>,
     >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
@@ -526,9 +526,9 @@ fn replaced_alias_rewrites_integration_flow_steps() {
 
 #[test]
 fn replaced_nodes_alias_replaces_loop_branch_section() {
-    type Actual = jungle_sdk::types::ReplaceNodes<
+    type Actual = jungle::types::ReplaceNodes<
         LoopBranchFlow,
-        jungle_sdk::types::SwapNodeLR<
+        jungle::types::SwapNodeLR<
             LoopBranchFlow,
             Step<IntegrationAnimal, AddOneAfterFullStateStep>,
         >,
@@ -537,9 +537,9 @@ fn replaced_nodes_alias_replaces_loop_branch_section() {
     assert_type_eq!(Actual, Expected);
 }
 
-async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
+async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
     for attempt in 0..40 {
-        match jungle_sdk::client::ClientBuilder::new()
+        match jungle::client::ClientBuilder::new()
             .remote(remote)
             .server_name("localhost")
             .build()

@@ -1,12 +1,12 @@
-use jungle_sdk::types as jungle_types;
-use jungle_sdk::types::{
+use jungle::types as jungle_types;
+use jungle::types::{
     Action, ActionCompletion, ActionRequest, AnimalActionSet, Executor, Id, Identity,
     ManualExecutor, Pulse, Running, Step, Waiting,
 };
-use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::{Animals, Journey};
+use jungle::typosaurus::assert_type_eq;
+use jungle::typosaurus::list;
+use jungle::typosaurus::num::consts::{U0, U1};
+use jungle::{Animals, Journey};
 use std::future::ready;
 
 struct SeedAction;

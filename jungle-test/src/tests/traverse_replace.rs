@@ -1,9 +1,9 @@
-use jungle_sdk::types::{
+use jungle::types::{
     ActionCompletion, Conditional, Identity, LoopCondition, Pulse, ReplaceStep, Step, TraverseStep,
     While,
 };
-use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::{U20, U21, U22, U23, U24};
+use jungle::typosaurus::assert_type_eq;
+use jungle::typosaurus::num::consts::{U20, U21, U22, U23, U24};
 
 action!(
     TraverseAAction,
@@ -127,7 +127,7 @@ impl ReplaceStep<Step<TraverseAnimal, StepB>> for ReplaceMapper {
 
 #[test]
 fn traverse_and_replace_are_type_level_transformations() {
-    type Traversed = jungle_sdk::types::Traversed<SourceFlow, TraverseMapper>;
+    type Traversed = jungle::types::Traversed<SourceFlow, TraverseMapper>;
     type ExpectedTraversed = Conditional<
         KeepLooping,
         Seen<Step<TraverseAnimal, StepA>>,
@@ -135,7 +135,7 @@ fn traverse_and_replace_are_type_level_transformations() {
     >;
     assert_type_eq!(Traversed, ExpectedTraversed);
 
-    type Replace = jungle_sdk::types::Replace<SourceFlow, ReplaceMapper>;
+    type Replace = jungle::types::Replace<SourceFlow, ReplaceMapper>;
     type ExpectedReplaced = Conditional<
         KeepLooping,
         Step<TraverseAnimal, StepC>,
@@ -144,18 +144,18 @@ fn traverse_and_replace_are_type_level_transformations() {
     assert_type_eq!(Replace, ExpectedReplaced);
 }
 
-impl jungle_sdk::types::Animal for TraverseAnimal {
-    type Id = jungle_sdk::types::Id<U24>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+impl jungle::types::Animal for TraverseAnimal {
+    type Id = jungle::types::Id<U24>;
+    type Generation = jungle::typosaurus::num::consts::U0;
     type State = i32;
     type Seed = i32;
     type Journey = SourceFlow;
 }
 
-impl jungle_sdk::types::AnimalObservation for TraverseAnimal {
-    type Adapter = jungle_sdk::types::NoopObservation;
+impl jungle::types::AnimalObservation for TraverseAnimal {
+    type Adapter = jungle::types::NoopObservation;
 }
 
-impl jungle_sdk::types::AnimalPerturbation for TraverseAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+impl jungle::types::AnimalPerturbation for TraverseAnimal {
+    type Adapter = jungle::types::NoopPerturbation;
 }

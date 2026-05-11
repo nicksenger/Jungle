@@ -1,9 +1,9 @@
-use jungle_sdk::types::{
+use jungle::types::{
     ActionCompletion, Conditional, Either, Executor, Identity, ManualExecutor, Pulse, Running,
     Step, Waiting,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::Journey;
+use jungle::typosaurus::num::consts::{U0, U1};
+use jungle::Journey;
 use std::future::ready;
 
 action!(
@@ -32,7 +32,7 @@ animal!(
 );
 
 struct Left;
-#[jungle_sdk::detect]
+#[jungle::detect]
 impl Pulse<ConditionalAnimal> for Left {
     type Action = LeftAction;
     type Aspect = Identity;
@@ -72,7 +72,7 @@ type LeftFlow = Step<ConditionalAnimal, Left>;
 type RightFlow = Step<ConditionalAnimal, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
-impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
+impl jungle::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
     fn choose((state, _): &(i32, i32)) -> bool {
         *state >= 0
     }
