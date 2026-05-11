@@ -6,7 +6,7 @@ use typosaurus::collections::{
     sp::{FlattenNodes, Node, SPDedupNodes, SPFlatten},
     Container,
 };
-use typosaurus::num::Unsigned;
+use typosaurus::num::{Max, Unsigned};
 use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
@@ -208,6 +208,25 @@ pub type GenerationsForAnimals<T, AnimalId> =
     >>::Out as Foldable<list::Filter>>::Out;
 
 pub type Generations<E, AnimalId> = GenerationsForAnimals<<E as Ecosystem>::Animals, AnimalId>;
+
+pub trait MaxGeneration {
+    type Out;
+}
+impl MaxGeneration for list::Empty {
+    type Out = typosaurus::num::consts::U0;
+}
+impl<Head, Tail> MaxGeneration for list::List<(Head, Tail)>
+where
+    Tail: MaxGeneration,
+    Head: Max<<Tail as MaxGeneration>::Out>,
+{
+    type Out = <Head as Max<<Tail as MaxGeneration>::Out>>::Output;
+}
+
+pub type HighestGenerationForAnimals<T, AnimalId> =
+    <GenerationsForAnimals<T, AnimalId> as MaxGeneration>::Out;
+pub type HighestGeneration<E, AnimalId> =
+    HighestGenerationForAnimals<<E as Ecosystem>::Animals, AnimalId>;
 
 pub struct WithAnimalState;
 impl<T> Mapper<T> for WithAnimalState

@@ -1,24 +1,29 @@
 use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
-    BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake,
-    RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
+    Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem,
+    ExecutorError, HighestGeneration, JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders,
+    SupportedAnimal, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::fs;
 use std::io;
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
+use typosaurus::collections::Container;
+use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
+use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 
 #[derive(Debug, Clone)]
-pub struct ClientBuilder {
+pub struct ClientBuilder<TJungle = DefaultJungle> {
     keylog: bool,
     ca: Option<PathBuf>,
     namespace: String,
@@ -26,9 +31,21 @@ pub struct ClientBuilder {
     bind: SocketAddr,
     remote: Option<SocketAddr>,
     server_name: Option<String>,
+    _jungle: PhantomData<fn() -> TJungle>,
 }
 
-impl Default for ClientBuilder {
+pub struct DefaultAnimals;
+impl Animals for DefaultAnimals {
+    type List = typosaurus::collections::list::Empty;
+}
+
+pub struct DefaultJungle;
+impl Ecosystem for DefaultJungle {
+    const NAME: &'static str = "default";
+    type Animals = DefaultAnimals;
+}
+
+impl<TJungle> Default for ClientBuilder<TJungle> {
     fn default() -> Self {
         Self {
             keylog: false,
@@ -38,11 +55,12 @@ impl Default for ClientBuilder {
             bind: SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
             remote: None,
             server_name: None,
+            _jungle: PhantomData,
         }
     }
 }
 
-impl ClientBuilder {
+impl<TJungle> ClientBuilder<TJungle> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -67,8 +85,17 @@ impl ClientBuilder {
         self
     }
 
-    pub fn ecosystem<T: Ecosystem>(self) -> Self {
-        self.namespace(T::NAME)
+    pub fn ecosystem<TNextJungle: Ecosystem>(self) -> ClientBuilder<TNextJungle> {
+        ClientBuilder {
+            keylog: self.keylog,
+            ca: self.ca,
+            namespace: TNextJungle::NAME.to_string(),
+            rebind: self.rebind,
+            bind: self.bind,
+            remote: self.remote,
+            server_name: self.server_name,
+            _jungle: PhantomData,
+        }
     }
 
     pub fn bind(mut self, bind: SocketAddr) -> Self {
@@ -86,7 +113,7 @@ impl ClientBuilder {
         self
     }
 
-    pub async fn build(self) -> ClientResult<Client> {
+    pub async fn build(self) -> ClientResult<Client<TJungle>> {
         let remote = self.remote.ok_or(ClientError::MissingRemote)?;
         let server_name = self.server_name.ok_or(ClientError::MissingServerName)?;
 
@@ -146,22 +173,26 @@ impl ClientBuilder {
             endpoint,
             conn,
             namespace: self.namespace,
+            _jungle: PhantomData,
         })
     }
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<TJungle = DefaultJungle> {
     endpoint: quinn::Endpoint,
     conn: quinn::Connection,
     namespace: String,
+    _jungle: PhantomData<fn() -> TJungle>,
 }
 
-impl Client {
-    pub fn builder() -> ClientBuilder {
+impl Client<DefaultJungle> {
+    pub fn builder() -> ClientBuilder<DefaultJungle> {
         ClientBuilder::default()
     }
+}
 
+impl<TJungle> Client<TJungle> {
     async fn send_wire_message(&self, input: WireIn) -> ClientResult<WireOut> {
         let (mut tx, mut rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
 
@@ -208,7 +239,7 @@ impl Client {
     }
 }
 
-impl Drop for Client {
+impl<TJungle> Drop for Client<TJungle> {
     fn drop(&mut self) {
         self.conn.close(0u32.into(), b"done");
         self.endpoint.close(0u32.into(), b"done");
@@ -216,7 +247,14 @@ impl Drop for Client {
 }
 
 #[async_trait]
-impl JungleClient for Client {
+impl<TJungle> JungleClient for Client<TJungle>
+where
+    TJungle: Ecosystem,
+    TJungle::Animals: Animals,
+    <TJungle::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<TJungle::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<TJungle::Animals>: Container,
+{
     async fn start_journey(
         &self,
         animal_id: u32,
@@ -246,6 +284,21 @@ impl JungleClient for Client {
                 "unexpected non-journey-created response for start_journey".to_string(),
             )),
         }
+    }
+
+    async fn start_journey_for<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    where
+        Self: Sized,
+        A: Animal,
+        A::Id: AnimalIdValue + Send + Sync,
+        A::Generation: Unsigned + Send + Sync,
+    {
+        self.start_journey(
+            <A::Id as AnimalIdValue>::U32,
+            <HighestGeneration<TJungle, A::Id> as Unsigned>::U32,
+            seed,
+        )
+        .await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {

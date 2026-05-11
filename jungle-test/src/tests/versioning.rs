@@ -177,6 +177,13 @@ fn generations_helper_collects_all_generations_for_animal_id() {
     assert_type_eq!(Actual, Expected);
 }
 
+#[test]
+fn highest_generation_helper_picks_latest_for_animal_id() {
+    type Expected = U1;
+    type Actual = jungle::types::HighestGeneration<VersionedZoo, Id<U33>>;
+    assert_type_eq!(Actual, Expected);
+}
+
 #[tokio::test]
 async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
@@ -305,9 +312,10 @@ async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
     let _ = server_task.await;
 }
 
-async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
+async fn connect_client_with_retry(remote: SocketAddr) -> jungle::client::Client<VersionedZoo> {
     for attempt in 0..40 {
         match jungle::client::ClientBuilder::new()
+            .ecosystem::<VersionedZoo>()
             .remote(remote)
             .server_name("localhost")
             .build()

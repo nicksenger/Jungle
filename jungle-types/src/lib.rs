@@ -26,7 +26,8 @@ pub use meta::{
     ActionMember, ActionSet, AllFrom, AnimalActionDependencies, AnimalActionDependenciesCompatible,
     AnimalActionSet, AnimalIdValue, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible,
     AnimalVersion, AnimalVersionIdentitiesUnique, AnimalVersions, Generations,
-    GenerationsForAnimals, StripActionHeaders, StripAnimalHeaders,
+    GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals, StripActionHeaders,
+    StripAnimalHeaders,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
