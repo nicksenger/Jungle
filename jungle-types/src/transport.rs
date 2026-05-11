@@ -61,9 +61,9 @@ pub enum JourneyStatus {
     Dead,
 }
 
-/// Step messages sent from external clients to runners.
+/// Work messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum Step {
+pub enum Work {
     StartJourney {
         journey_id: Uuid,
         ordinal: u32,
@@ -127,6 +127,6 @@ pub enum WireOut {
     ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),
     OwnerWake(Option<OwnerWake>),
     NoAvailableSteps,
-    PendingStep(Step),
+    PendingStep(Work),
     Ack,
 }
