@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+iced = { version = "0.14", features = ["tokio"] }
+iced-sugiyama = { path = "../../iced-sugiyama" }
+jungle-client = { path = "../jungle-client" }
+jungle-types = { path = "../jungle-types" }
+uuid = { workspace = true }

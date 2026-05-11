@@ -34,10 +34,10 @@ pub use sleep::{Sleep, SleepDependency, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{BackendError, JourneyStatus, RunnerOut, WireIn, WireOut, Work};
 pub use transport::{ClaimedAnimalPerturbation, OwnerWake, SupportedAnimal};
-pub use view::{BuildJourneyAst, JourneyAst, JourneyAstSource};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
+pub use view::{BuildJourneyAst, JourneyAst, JourneyAstSource};
 
 /// A tagged union over two possible outputs.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -96,7 +96,7 @@ pub trait BuildJourneyAst<Input> {
     }
 }
 
-#[inception::primitive(property = crate::JungleJourneyAst)]
+#[inception::primitive(property = JungleJourneyAst)]
 impl<T, A> BuildJourneyAst<Vec<JourneyAst>> for Step<T, A>
 where
     T: crate::Animal + 'static,
@@ -113,7 +113,7 @@ where
     }
 }
 
-#[inception::primitive(property = crate::JungleJourneyAst)]
+#[inception::primitive(property = JungleJourneyAst)]
 impl<P, L, R> BuildJourneyAst<Vec<JourneyAst>> for Conditional<P, L, R>
 where
     P: 'static,
@@ -123,8 +123,10 @@ where
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
-        let left = JourneyAst::sequence(<L as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
-        let right = JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        let left =
+            JourneyAst::sequence(<L as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        let right =
+            JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::Conditional {
             label: core::any::type_name::<P>(),
             left: Box::new(left),
@@ -134,7 +136,7 @@ where
     }
 }
 
-#[inception::primitive(property = crate::JungleJourneyAst)]
+#[inception::primitive(property = JungleJourneyAst)]
 impl<C, F> BuildJourneyAst<Vec<JourneyAst>> for While<C, F>
 where
     C: 'static,
@@ -143,7 +145,8 @@ where
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
-        let body = JourneyAst::sequence(<F as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        let body =
+            JourneyAst::sequence(<F as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::While {
             label: core::any::type_name::<C>(),
             body: Box::new(body),
@@ -152,7 +155,7 @@ where
     }
 }
 
-#[inception::primitive(property = crate::JungleJourneyAst)]
+#[inception::primitive(property = JungleJourneyAst)]
 impl<M, F> BuildJourneyAst<Vec<JourneyAst>> for Transparent<M, F>
 where
     M: NodeMetadata + 'static,
@@ -161,7 +164,8 @@ where
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
-        let body = JourneyAst::sequence(<F as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        let body =
+            JourneyAst::sequence(<F as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::Transparent {
             label: core::any::type_name::<M>(),
             metadata: M::METADATA,
@@ -171,7 +175,7 @@ where
     }
 }
 
-#[inception::primitive(property = crate::JungleJourneyAst)]
+#[inception::primitive(property = JungleJourneyAst)]
 impl<L, R> BuildJourneyAst<Vec<JourneyAst>> for Select<L, R>
 where
     L: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
@@ -180,8 +184,10 @@ where
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
-        let left = JourneyAst::sequence(<L as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
-        let right = JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        let left =
+            JourneyAst::sequence(<L as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        let right =
+            JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::Select {
             label: "Select",
             left: Box::new(left),
@@ -191,7 +197,7 @@ where
     }
 }
 
-#[inception::primitive(property = crate::JungleJourneyAst)]
+#[inception::primitive(property = JungleJourneyAst)]
 impl<L, R> BuildJourneyAst<Vec<JourneyAst>> for Join<L, R>
 where
     L: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
@@ -200,8 +206,10 @@ where
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
-        let left = JourneyAst::sequence(<L as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
-        let right = JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        let left =
+            JourneyAst::sequence(<L as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        let right =
+            JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::Join {
             label: "Join",
             left: Box::new(left),

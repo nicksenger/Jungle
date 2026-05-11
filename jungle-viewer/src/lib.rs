@@ -1,4 +1,1008 @@
-/// jungle-view
-pub fn hello() -> &'static str {
-    concat!("Hello from ", env!("CARGO_PKG_NAME"), "!")
+use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::{Color, Element, Font, Length, Subscription, Task};
+use iced_sugiyama::{Cluster, Graph, Sugiyama};
+use jungle_client::JungleClient;
+use jungle_types::{Animal, JourneyAst, JourneyAstSource, RunnerOut};
+use std::collections::{BTreeSet, HashMap};
+use std::fmt;
+use std::sync::Arc;
+use std::time::Duration;
+use uuid::Uuid;
+
+const WINDOW_WIDTH: f32 = 1360.0;
+const WINDOW_HEIGHT: f32 = 900.0;
+const LIVE_REFRESH: Duration = Duration::from_millis(1000);
+
+#[derive(Clone)]
+pub struct JungleViewerBuilder {
+    title: String,
+    width: f32,
+    height: f32,
+    poll_interval: Duration,
+}
+
+impl Default for JungleViewerBuilder {
+    fn default() -> Self {
+        Self {
+            title: "Jungle Viewer".to_string(),
+            width: WINDOW_WIDTH,
+            height: WINDOW_HEIGHT,
+            poll_interval: LIVE_REFRESH,
+        }
+    }
+}
+
+impl JungleViewerBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn title(mut self, value: impl Into<String>) -> Self {
+        self.title = value.into();
+        self
+    }
+
+    pub fn window_size(mut self, width: f32, height: f32) -> Self {
+        self.width = width;
+        self.height = height;
+        self
+    }
+
+    pub fn live_poll_interval(mut self, interval: Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
+
+    pub fn view_animal<A>(self) -> iced::Result
+    where
+        A: Animal + 'static,
+        A::Journey: JourneyAstSource,
+    {
+        let ast = <A::Journey as JourneyAstSource>::journey_ast();
+        let journey_name = short_type_name::<A::Journey>();
+        let model = GraphModel::from_ast(ast);
+
+        self.run(ViewMode::Static {
+            journey_name,
+            model,
+        })
+    }
+
+    pub fn view_live_animal<A, C>(self, client: C, journey_id: Uuid) -> iced::Result
+    where
+        A: Animal + 'static,
+        A::Journey: JourneyAstSource,
+        C: JungleClient + 'static,
+    {
+        let ast = <A::Journey as JourneyAstSource>::journey_ast();
+        let journey_name = short_type_name::<A::Journey>();
+        let model = GraphModel::from_ast(ast);
+        let client: Arc<dyn JungleClient> = Arc::new(client);
+        let poll_interval = self.poll_interval;
+
+        self.run(ViewMode::Live {
+            journey_name,
+            model,
+            client,
+            journey_id,
+            poll_interval,
+        })
+    }
+
+    fn run(self, mode: ViewMode) -> iced::Result {
+        let title = self.title.clone();
+        let width = self.width;
+        let height = self.height;
+        iced::application(
+            move || ViewerApp::new(mode.clone()),
+            ViewerApp::update,
+            ViewerApp::view,
+        )
+        .title(move |_app: &ViewerApp| title.clone())
+        .subscription(ViewerApp::subscription)
+        .window_size((width, height))
+        .antialiasing(true)
+        .default_font(Font::with_name("Iosevka"))
+        .run()
+    }
+}
+
+pub fn view_animal<A>() -> iced::Result
+where
+    A: Animal + 'static,
+    A::Journey: JourneyAstSource,
+{
+    JungleViewerBuilder::new().view_animal::<A>()
+}
+
+pub fn view_live_animal<A, C>(client: C, journey_id: Uuid) -> iced::Result
+where
+    A: Animal + 'static,
+    A::Journey: JourneyAstSource,
+    C: JungleClient + 'static,
+{
+    JungleViewerBuilder::new().view_live_animal::<A, C>(client, journey_id)
+}
+
+#[derive(Clone)]
+enum ViewMode {
+    Static {
+        journey_name: String,
+        model: GraphModel,
+    },
+    Live {
+        journey_name: String,
+        model: GraphModel,
+        client: Arc<dyn JungleClient>,
+        journey_id: Uuid,
+        poll_interval: Duration,
+    },
+}
+
+struct ViewerApp {
+    mode: ViewMode,
+    state: LiveState,
+}
+
+#[derive(Clone)]
+enum LiveState {
+    Idle,
+    Loading,
+    Error(String),
+    Loaded(LiveData),
+}
+
+#[derive(Debug, Clone, Default)]
+struct LiveData {
+    active_runtime_ids: BTreeSet<u32>,
+    finished_runtime_ids: BTreeSet<u32>,
+    failed_runtime_ids: BTreeSet<u32>,
+    latest_event_count: usize,
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    LiveRefreshTick,
+    LiveLoaded(Result<LiveData, String>),
+    Retry,
+}
+
+impl ViewerApp {
+    fn new(mode: ViewMode) -> (Self, Task<Message>) {
+        let (state, task) = match &mode {
+            ViewMode::Live {
+                client, journey_id, ..
+            } => (
+                LiveState::Loading,
+                live_history_task(client.clone(), *journey_id),
+            ),
+            ViewMode::Static { .. } => (LiveState::Idle, Task::none()),
+        };
+
+        (Self { mode, state }, task)
+    }
+
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::LiveRefreshTick => match &self.mode {
+                ViewMode::Live {
+                    client, journey_id, ..
+                } => {
+                    self.state = LiveState::Loading;
+                    live_history_task(client.clone(), *journey_id)
+                }
+                ViewMode::Static { .. } => Task::none(),
+            },
+            Message::LiveLoaded(result) => {
+                self.state = match result {
+                    Ok(data) => LiveState::Loaded(data),
+                    Err(error) => LiveState::Error(error),
+                };
+                Task::none()
+            }
+            Message::Retry => match &self.mode {
+                ViewMode::Live {
+                    client, journey_id, ..
+                } => {
+                    self.state = LiveState::Loading;
+                    live_history_task(client.clone(), *journey_id)
+                }
+                ViewMode::Static { .. } => Task::none(),
+            },
+        }
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        match &self.mode {
+            ViewMode::Live { poll_interval, .. } => {
+                iced::time::every(*poll_interval).map(|_| Message::LiveRefreshTick)
+            }
+            ViewMode::Static { .. } => Subscription::none(),
+        }
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        let (journey_name, model) = match &self.mode {
+            ViewMode::Static {
+                journey_name,
+                model,
+            }
+            | ViewMode::Live {
+                journey_name,
+                model,
+                ..
+            } => (journey_name, model),
+        };
+
+        let live_data = match (&self.mode, &self.state) {
+            (ViewMode::Live { .. }, LiveState::Loaded(data)) => Some(data),
+            _ => None,
+        };
+
+        let body = row![
+            sidebar(journey_name, model, &self.state),
+            graph_panel(model, live_data)
+        ]
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .spacing(0);
+
+        container(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(app_background)
+            .into()
+    }
+}
+
+fn live_history_task(client: Arc<dyn JungleClient>, journey_id: Uuid) -> Task<Message> {
+    Task::perform(
+        async move {
+            let history = client
+                .journey_history(journey_id)
+                .await
+                .map_err(|err| err.to_string())?;
+            Ok::<LiveData, String>(LiveData::from_history(&history))
+        },
+        Message::LiveLoaded,
+    )
+}
+
+impl LiveData {
+    fn from_history(history: &[RunnerOut]) -> Self {
+        let mut active_runtime_ids = BTreeSet::new();
+        let mut finished_runtime_ids = BTreeSet::new();
+        let mut failed_runtime_ids = BTreeSet::new();
+
+        for event in history {
+            match event {
+                RunnerOut::ActionInput { node_id, .. } => {
+                    active_runtime_ids.insert(*node_id);
+                }
+                RunnerOut::ActionSuccessOutput { node_id, .. } => {
+                    active_runtime_ids.remove(node_id);
+                    finished_runtime_ids.insert(*node_id);
+                }
+                RunnerOut::ActionFailureOutput { node_id, .. } => {
+                    active_runtime_ids.remove(node_id);
+                    failed_runtime_ids.insert(*node_id);
+                }
+                RunnerOut::Appearance { .. }
+                | RunnerOut::SleepScheduled { .. }
+                | RunnerOut::SleepFired { .. } => {}
+            }
+        }
+
+        Self {
+            active_runtime_ids,
+            finished_runtime_ids,
+            failed_runtime_ids,
+            latest_event_count: history.len(),
+        }
+    }
+}
+
+fn sidebar<'a>(
+    journey_name: &'a str,
+    model: &'a GraphModel,
+    state: &'a LiveState,
+) -> Element<'a, Message> {
+    let status_text = match state {
+        LiveState::Idle => "idle".to_string(),
+        LiveState::Loading => "loading live history...".to_string(),
+        LiveState::Error(error) => format!("live update failed: {error}"),
+        LiveState::Loaded(data) => format!(
+            "events: {}  active: {}  done: {}  failed: {}",
+            data.latest_event_count,
+            data.active_runtime_ids.len(),
+            data.finished_runtime_ids.len(),
+            data.failed_runtime_ids.len()
+        ),
+    };
+
+    let mut info = column![
+        text("Jungle Viewer")
+            .size(26)
+            .color(jungle_accent_bright())
+            .font(Font::with_name("Iosevka")),
+        text(journey_name)
+            .size(14)
+            .color(jungle_text_muted())
+            .font(Font::with_name("Iosevka")),
+        Space::new().height(10),
+        text(format!("nodes: {}", model.nodes.len()))
+            .size(13)
+            .color(jungle_text_base()),
+        text(format!("edges: {}", model.edges.len()))
+            .size(13)
+            .color(jungle_text_base()),
+        text(format!("loops: {}", model.while_clusters.len()))
+            .size(13)
+            .color(jungle_text_base()),
+        Space::new().height(10),
+        text(status_text).size(12).color(jungle_text_muted()),
+    ]
+    .spacing(2);
+
+    if matches!(state, LiveState::Error(_)) {
+        info = info.push(
+            button(text("retry").size(12).color(jungle_text_base()))
+                .style(sidebar_button)
+                .on_press(Message::Retry),
+        );
+    }
+
+    let legend = column![
+        text("Legend").size(14).color(jungle_text_base()),
+        text("Step: action request node")
+            .size(12)
+            .color(jungle_text_muted()),
+        text("Conditional: branch fanout")
+            .size(12)
+            .color(jungle_text_muted()),
+        text("While: loop container")
+            .size(12)
+            .color(jungle_text_muted()),
+        text("Green glow: completed in live journey")
+            .size(12)
+            .color(jungle_text_muted()),
+        text("Yellow glow: active in live journey")
+            .size(12)
+            .color(jungle_text_muted()),
+        text("Red glow: failed in live journey")
+            .size(12)
+            .color(jungle_text_muted()),
+    ]
+    .spacing(2);
+
+    container(column![info, Space::new().height(16), legend].spacing(0))
+        .width(320)
+        .height(Length::Fill)
+        .padding(16)
+        .style(sidebar_style)
+        .into()
+}
+
+fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> Element<'a, Message> {
+    let nodes_for_view = model.node_map.clone();
+    let nodes_for_size = model.node_map.clone();
+    let highlights = live_data.cloned();
+
+    let clusters = model.while_clusters.clone();
+
+    let graph =
+        Sugiyama::<Message, iced::Theme, iced::Renderer>::new(&model.graph, move |node_id| {
+            let info = nodes_for_view
+                .get(&node_id)
+                .cloned()
+                .unwrap_or_else(|| NodeDisplay::unknown(node_id));
+            let live_state = highlights.as_ref().and_then(|live| {
+                info.runtime_node_id
+                    .and_then(|rid| live_state_for_node(rid, live))
+            });
+
+            let label = truncate_label(&info.label, 58);
+
+            let badge = if info.is_conditional_branch {
+                "condition"
+            } else if info.is_while_container {
+                "while"
+            } else if info.is_join {
+                "join"
+            } else if info.is_select {
+                "select"
+            } else if info.is_transparent {
+                "transparent"
+            } else {
+                "step"
+            };
+
+            let content = column![
+                text(badge).size(10).color(jungle_text_muted()),
+                text(label).size(13).color(jungle_text_base())
+            ]
+            .spacing(4);
+
+            button(content)
+                .padding([8, 10])
+                .style(move |_theme, status| node_button_style(status, &info, live_state))
+                .into()
+        })
+        .edge_color(jungle_edge)
+        .stroke_width(1.6)
+        .edge_corner_radius(18.0)
+        .node_size(move |node_id| {
+            let info = nodes_for_size
+                .get(&node_id)
+                .cloned()
+                .unwrap_or_else(|| NodeDisplay::unknown(node_id));
+            if info.is_while_container {
+                (260.0, 88.0)
+            } else if info.is_conditional_branch {
+                (260.0, 80.0)
+            } else {
+                (230.0, 72.0)
+            }
+        })
+        .clusters(clusters)
+        .cluster_container(|index, _| {
+            Some(
+                container(
+                    text(format!("while #{index}"))
+                        .size(11)
+                        .color(jungle_text_muted()),
+                )
+                .padding([4, 8])
+                .style(loop_cluster_label)
+                .into(),
+            )
+        })
+        .cluster_color(loop_cluster_color)
+        .padding(24);
+
+    container(scrollable(graph))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(graph_panel_style)
+        .into()
+}
+
+fn live_state_for_node(runtime_id: u32, live: &LiveData) -> Option<RuntimeNodeState> {
+    if live.failed_runtime_ids.contains(&runtime_id) {
+        return Some(RuntimeNodeState::Failed);
+    }
+    if live.active_runtime_ids.contains(&runtime_id) {
+        return Some(RuntimeNodeState::Active);
+    }
+    if live.finished_runtime_ids.contains(&runtime_id) {
+        return Some(RuntimeNodeState::Finished);
+    }
+    None
+}
+
+#[derive(Clone, Copy)]
+enum RuntimeNodeState {
+    Active,
+    Finished,
+    Failed,
+}
+
+#[derive(Clone)]
+struct GraphModel {
+    graph: Graph,
+    nodes: Vec<NodeDisplay>,
+    node_map: HashMap<u32, NodeDisplay>,
+    edges: Vec<(u32, u32)>,
+    while_clusters: Vec<Cluster>,
+}
+
+impl GraphModel {
+    fn from_ast(ast: JourneyAst) -> Self {
+        let mut builder = GraphBuilder::default();
+        builder.flatten(&ast);
+
+        let graph = Graph::new(
+            builder.nodes.iter().map(|node| node.id).collect(),
+            builder.edges.clone(),
+        );
+
+        let node_map = builder
+            .nodes
+            .iter()
+            .map(|node| (node.id, node.clone()))
+            .collect::<HashMap<_, _>>();
+
+        Self {
+            graph,
+            nodes: builder.nodes,
+            node_map,
+            edges: builder.edges,
+            while_clusters: builder.clusters,
+        }
+    }
+}
+
+#[derive(Default)]
+struct GraphBuilder {
+    nodes: Vec<NodeDisplay>,
+    edges: Vec<(u32, u32)>,
+    clusters: Vec<Cluster>,
+    runtime_next_id: u32,
+    layout_next_id: u32,
+}
+
+#[derive(Clone)]
+struct NodeDisplay {
+    id: u32,
+    label: String,
+    runtime_node_id: Option<u32>,
+    is_conditional_branch: bool,
+    is_while_container: bool,
+    is_select: bool,
+    is_join: bool,
+    is_transparent: bool,
+}
+
+impl NodeDisplay {
+    fn unknown(id: u32) -> Self {
+        Self {
+            id,
+            label: format!("node {id}"),
+            runtime_node_id: None,
+            is_conditional_branch: false,
+            is_while_container: false,
+            is_select: false,
+            is_join: false,
+            is_transparent: false,
+        }
+    }
+}
+
+#[derive(Default)]
+struct Flattened {
+    roots: Vec<u32>,
+    exits: Vec<u32>,
+    members: Vec<u32>,
+}
+
+impl GraphBuilder {
+    fn flatten(&mut self, ast: &JourneyAst) -> Flattened {
+        match ast {
+            JourneyAst::Empty => Flattened::default(),
+            JourneyAst::Sequence(items) => {
+                let mut acc = Flattened::default();
+                let mut previous_exits = Vec::<u32>::new();
+                for item in items {
+                    let current = self.flatten(item);
+                    if current.roots.is_empty() {
+                        continue;
+                    }
+
+                    if acc.roots.is_empty() {
+                        acc.roots = current.roots.clone();
+                    }
+
+                    for from in &previous_exits {
+                        for to in &current.roots {
+                            self.edges.push((*from, *to));
+                        }
+                    }
+
+                    previous_exits = current.exits.clone();
+                    acc.exits = current.exits.clone();
+                    acc.members.extend(current.members);
+                }
+                acc
+            }
+            JourneyAst::Step { label } => {
+                let runtime_id = self.runtime_next_id;
+                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
+                let node = self.push_runtime_node(*label, runtime_id);
+                Flattened {
+                    roots: vec![node],
+                    exits: vec![node],
+                    members: vec![node],
+                }
+            }
+            JourneyAst::Conditional { label, left, right } => {
+                let branch = self.push_layout_node(*label, |node| {
+                    node.is_conditional_branch = true;
+                });
+                let left_flow = self.flatten(left);
+                let right_flow = self.flatten(right);
+
+                for target in &left_flow.roots {
+                    self.edges.push((branch, *target));
+                }
+                for target in &right_flow.roots {
+                    self.edges.push((branch, *target));
+                }
+
+                let mut members = vec![branch];
+                members.extend(left_flow.members.iter().copied());
+                members.extend(right_flow.members.iter().copied());
+
+                let mut exits = left_flow.exits;
+                exits.extend(right_flow.exits);
+                exits = dedup(exits);
+
+                Flattened {
+                    roots: vec![branch],
+                    exits,
+                    members,
+                }
+            }
+            JourneyAst::While { label, body } => {
+                let container = self.push_layout_node(*label, |node| {
+                    node.is_while_container = true;
+                });
+                let body_flow = self.flatten(body);
+
+                for target in &body_flow.roots {
+                    self.edges.push((container, *target));
+                }
+                for exit in &body_flow.exits {
+                    self.edges.push((*exit, container));
+                }
+
+                let mut members = vec![container];
+                members.extend(body_flow.members.iter().copied());
+
+                let mut cluster_nodes = vec![container];
+                cluster_nodes.extend(body_flow.members.iter().copied());
+                cluster_nodes = dedup(cluster_nodes);
+                self.clusters
+                    .push(Cluster::new(cluster_nodes).padding(30.0));
+
+                Flattened {
+                    roots: vec![container],
+                    exits: vec![container],
+                    members,
+                }
+            }
+            JourneyAst::Transparent {
+                label,
+                metadata,
+                body,
+            } => {
+                let merged = if metadata.trim().is_empty() {
+                    short_type_name_str(label)
+                } else {
+                    format!("{} :: {}", short_type_name_str(label), metadata)
+                };
+                let transparent = self.push_layout_node(merged, |node| {
+                    node.is_transparent = true;
+                });
+
+                let body_flow = self.flatten(body);
+                for target in &body_flow.roots {
+                    self.edges.push((transparent, *target));
+                }
+
+                let mut members = vec![transparent];
+                members.extend(body_flow.members.iter().copied());
+
+                let exits = if body_flow.exits.is_empty() {
+                    vec![transparent]
+                } else {
+                    body_flow.exits
+                };
+
+                Flattened {
+                    roots: vec![transparent],
+                    exits,
+                    members,
+                }
+            }
+            JourneyAst::Select { left, right, .. } => {
+                let runtime_id = self.runtime_next_id;
+                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
+                let select = self.push_runtime_node("Select", runtime_id);
+                self.mark(select, |node| node.is_select = true);
+
+                let left_flow = self.flatten(left);
+                let right_flow = self.flatten(right);
+                for target in &left_flow.roots {
+                    self.edges.push((select, *target));
+                }
+                for target in &right_flow.roots {
+                    self.edges.push((select, *target));
+                }
+
+                let mut members = vec![select];
+                members.extend(left_flow.members.iter().copied());
+                members.extend(right_flow.members.iter().copied());
+
+                let mut exits = left_flow.exits;
+                exits.extend(right_flow.exits);
+                exits = dedup(exits);
+
+                Flattened {
+                    roots: vec![select],
+                    exits,
+                    members,
+                }
+            }
+            JourneyAst::Join { left, right, .. } => {
+                let runtime_id = self.runtime_next_id;
+                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
+                let join = self.push_runtime_node("Join", runtime_id);
+                self.mark(join, |node| node.is_join = true);
+
+                let left_flow = self.flatten(left);
+                let right_flow = self.flatten(right);
+                for target in &left_flow.roots {
+                    self.edges.push((join, *target));
+                }
+                for target in &right_flow.roots {
+                    self.edges.push((join, *target));
+                }
+
+                let mut members = vec![join];
+                members.extend(left_flow.members.iter().copied());
+                members.extend(right_flow.members.iter().copied());
+
+                let mut exits = left_flow.exits;
+                exits.extend(right_flow.exits);
+                exits = dedup(exits);
+
+                Flattened {
+                    roots: vec![join],
+                    exits,
+                    members,
+                }
+            }
+        }
+    }
+
+    fn push_runtime_node(&mut self, label: impl Into<String>, runtime_id: u32) -> u32 {
+        let node_id = runtime_id;
+        let display = NodeDisplay {
+            id: node_id,
+            label: label.into(),
+            runtime_node_id: Some(runtime_id),
+            is_conditional_branch: false,
+            is_while_container: false,
+            is_select: false,
+            is_join: false,
+            is_transparent: false,
+        };
+        self.nodes.push(display);
+        if self.layout_next_id <= node_id {
+            self.layout_next_id = node_id.saturating_add(1);
+        }
+        node_id
+    }
+
+    fn push_layout_node(
+        &mut self,
+        label: impl Into<String>,
+        apply: impl FnOnce(&mut NodeDisplay),
+    ) -> u32 {
+        let node_id = self.next_layout_id();
+        let mut display = NodeDisplay {
+            id: node_id,
+            label: label.into(),
+            runtime_node_id: None,
+            is_conditional_branch: false,
+            is_while_container: false,
+            is_select: false,
+            is_join: false,
+            is_transparent: false,
+        };
+        apply(&mut display);
+        self.nodes.push(display);
+        node_id
+    }
+
+    fn mark(&mut self, node_id: u32, apply: impl FnOnce(&mut NodeDisplay)) {
+        if let Some(node) = self
+            .nodes
+            .iter_mut()
+            .find(|candidate| candidate.id == node_id)
+        {
+            apply(node);
+        }
+    }
+
+    fn next_layout_id(&mut self) -> u32 {
+        let mut next = self.layout_next_id.max(1);
+        while self.nodes.iter().any(|node| node.id == next) {
+            next = next.saturating_add(1);
+        }
+        self.layout_next_id = next.saturating_add(1);
+        next
+    }
+}
+
+fn truncate_label(label: &str, max_chars: usize) -> String {
+    if label.chars().count() <= max_chars {
+        return label.to_string();
+    }
+    let mut out = String::new();
+    for (index, ch) in label.chars().enumerate() {
+        if index + 1 >= max_chars {
+            break;
+        }
+        out.push(ch);
+    }
+    out.push('…');
+    out
+}
+
+fn short_type_name<T>() -> String {
+    short_type_name_str(core::any::type_name::<T>())
+}
+
+fn short_type_name_str(value: &str) -> String {
+    value
+        .split("::")
+        .filter(|part| !part.is_empty())
+        .last()
+        .unwrap_or(value)
+        .to_string()
+}
+
+fn dedup(values: Vec<u32>) -> Vec<u32> {
+    let mut seen = BTreeSet::new();
+    let mut output = Vec::new();
+    for value in values {
+        if seen.insert(value) {
+            output.push(value);
+        }
+    }
+    output
+}
+
+fn node_button_style(
+    status: button::Status,
+    node: &NodeDisplay,
+    live_state: Option<RuntimeNodeState>,
+) -> iced::widget::button::Style {
+    let mut base = if node.is_while_container {
+        Color::from_rgb8(17, 65, 38)
+    } else if node.is_conditional_branch {
+        Color::from_rgb8(23, 71, 47)
+    } else if node.is_select || node.is_join {
+        Color::from_rgb8(19, 84, 58)
+    } else if node.is_transparent {
+        Color::from_rgb8(16, 57, 36)
+    } else {
+        Color::from_rgb8(25, 99, 65)
+    };
+
+    if let Some(state) = live_state {
+        base = match state {
+            RuntimeNodeState::Active => Color::from_rgb8(123, 166, 52),
+            RuntimeNodeState::Finished => Color::from_rgb8(70, 166, 92),
+            RuntimeNodeState::Failed => Color::from_rgb8(155, 57, 57),
+        };
+    }
+
+    let mut border_color = jungle_accent_dark();
+    if matches!(status, button::Status::Hovered) {
+        border_color = jungle_accent_bright();
+    }
+
+    iced::widget::button::Style {
+        background: Some(iced::Background::Color(base)),
+        text_color: jungle_text_base(),
+        border: iced::border::rounded(10).color(border_color).width(
+            if matches!(status, button::Status::Hovered) {
+                1.6
+            } else {
+                1.0
+            },
+        ),
+        shadow: if matches!(status, button::Status::Hovered) {
+            iced::Shadow {
+                color: Color::from_rgba8(80, 220, 130, 0.28),
+                offset: iced::Vector::new(0.0, 1.0),
+                blur_radius: 8.0,
+            }
+        } else {
+            iced::Shadow::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn jungle_edge(_index: usize) -> (Color, Color) {
+    (
+        Color::from_rgb8(64, 169, 104),
+        Color::from_rgb8(40, 104, 67),
+    )
+}
+
+fn app_background(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color::from_rgb8(8, 19, 13))),
+        text_color: Some(jungle_text_base()),
+        ..Default::default()
+    }
+}
+
+fn sidebar_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color::from_rgb8(10, 26, 17))),
+        border: iced::border::rounded(0)
+            .color(Color::from_rgb8(24, 63, 43))
+            .width(1.0),
+        text_color: Some(jungle_text_base()),
+        ..Default::default()
+    }
+}
+
+fn graph_panel_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color::from_rgb8(7, 17, 11))),
+        ..Default::default()
+    }
+}
+
+fn sidebar_button(_theme: &iced::Theme, status: button::Status) -> iced::widget::button::Style {
+    let background = match status {
+        button::Status::Hovered => Color::from_rgb8(28, 89, 55),
+        _ => Color::from_rgb8(20, 71, 45),
+    };
+    iced::widget::button::Style {
+        background: Some(iced::Background::Color(background)),
+        text_color: jungle_text_base(),
+        border: iced::border::rounded(8)
+            .color(jungle_accent_dark())
+            .width(1.0),
+        shadow: iced::Shadow::default(),
+        ..Default::default()
+    }
+}
+
+fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.74))),
+        border: iced::border::rounded(6)
+            .color(Color::from_rgb8(54, 117, 78))
+            .width(1.0),
+        text_color: Some(jungle_text_muted()),
+        ..Default::default()
+    }
+}
+
+fn loop_cluster_color(_index: usize) -> Color {
+    Color::from_rgba8(30, 91, 53, 0.14)
+}
+
+fn jungle_text_base() -> Color {
+    Color::from_rgb8(223, 245, 230)
+}
+
+fn jungle_text_muted() -> Color {
+    Color::from_rgb8(145, 183, 157)
+}
+
+fn jungle_accent_bright() -> Color {
+    Color::from_rgb8(103, 215, 139)
+}
+
+fn jungle_accent_dark() -> Color {
+    Color::from_rgb8(46, 115, 73)
+}
+
+impl fmt::Debug for ViewMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ViewMode::Static { journey_name, .. } => f
+                .debug_struct("Static")
+                .field("journey_name", journey_name)
+                .finish(),
+            ViewMode::Live {
+                journey_name,
+                journey_id,
+                ..
+            } => f
+                .debug_struct("Live")
+                .field("journey_name", journey_name)
+                .field("journey_id", journey_id)
+                .finish(),
+        }
+    }
 }
