@@ -303,6 +303,7 @@ mod tests {
     mod sleep;
     mod transparent_metadata;
     mod traverse_replace;
+    mod versioning;
     mod while_loop;
     mod zoo;
 }

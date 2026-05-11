@@ -1,16 +1,30 @@
+use typosaurus::bool::{And, Not, Truthy};
 use typosaurus::cmp::Equality;
+use typosaurus::cmp::IsEqual;
 use typosaurus::collections::{
     list,
     sp::{FlattenNodes, Node, SPDedupNodes, SPFlatten},
     Container,
 };
 use typosaurus::num::Unsigned;
+use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Action, Actions, Animal, Animals, FlowActions, Journey};
+use super::{Action, Actions, Animal, Animals, Ecosystem, FlowActions, Journey};
+use core::marker::PhantomData;
 
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
+
+pub trait AnimalIdValue {
+    const U32: u32;
+}
+impl<T> AnimalIdValue for Id<T>
+where
+    T: Unsigned,
+{
+    const U32: u32 = <T as Unsigned>::U32;
+}
 
 /// Blanket impl: `Id<T>` is equal to `Id<U>` iff `T` is equal to `U`.
 impl<T, U> Equality<Id<U>> for Id<T>
@@ -95,6 +109,105 @@ where
 
 pub type ActionSet<T> = <SPFlatten<<T as Actions>::List> as StripActionHeaders>::Out;
 pub type AnimalSet<T> = <SPFlatten<<T as Animals>::List> as StripAnimalHeaders>::Out;
+
+pub struct AnimalVersion<AnimalId, Generation>(PhantomData<(AnimalId, Generation)>);
+impl<IdA, GenA, IdB, GenB> Equality<AnimalVersion<IdB, GenB>> for AnimalVersion<IdA, GenA>
+where
+    IdA: Equality<IdB>,
+    GenA: Equality<GenB>,
+    (<IdA as Equality<IdB>>::Out, <GenA as Equality<GenB>>::Out): And,
+{
+    type Out = <(<IdA as Equality<IdB>>::Out, <GenA as Equality<GenB>>::Out) as And>::Out;
+}
+
+pub struct WithAnimalVersion;
+impl<T> Mapper<T> for WithAnimalVersion
+where
+    T: Animal,
+{
+    type Out = AnimalVersion<<T as Animal>::Id, <T as Animal>::Generation>;
+}
+
+pub type AnimalVersions<T> = <(AnimalSet<T>, WithAnimalVersion) as Map<
+    <AnimalSet<T> as Container>::Content,
+    WithAnimalVersion,
+>>::Out;
+
+pub trait ContainsAnimalVersion<Target> {
+    type Out;
+}
+impl<Target> ContainsAnimalVersion<Target> for list::Empty {
+    type Out = typosaurus::bool::False;
+}
+impl<Head, Tail, Target> ContainsAnimalVersion<Target> for list::List<(Head, Tail)>
+where
+    Head: Equality<Target>,
+    Tail: ContainsAnimalVersion<Target>,
+    (
+        <Head as Equality<Target>>::Out,
+        <Tail as ContainsAnimalVersion<Target>>::Out,
+    ): typosaurus::bool::Or,
+{
+    type Out = <(
+        <Head as Equality<Target>>::Out,
+        <Tail as ContainsAnimalVersion<Target>>::Out,
+    ) as typosaurus::bool::Or>::Out;
+}
+
+pub trait UniqueAnimalVersions {
+    type Out;
+}
+impl UniqueAnimalVersions for list::Empty {
+    type Out = typosaurus::bool::True;
+}
+impl<Head, Tail> UniqueAnimalVersions for list::List<(Head, Tail)>
+where
+    Tail: ContainsAnimalVersion<Head>,
+    <Tail as ContainsAnimalVersion<Head>>::Out: Not,
+    Tail: UniqueAnimalVersions,
+    (
+        <<Tail as ContainsAnimalVersion<Head>>::Out as Not>::Out,
+        <Tail as UniqueAnimalVersions>::Out,
+    ): And,
+{
+    type Out = <(
+        <<Tail as ContainsAnimalVersion<Head>>::Out as Not>::Out,
+        <Tail as UniqueAnimalVersions>::Out,
+    ) as And>::Out;
+}
+
+pub trait AnimalVersionIdentitiesUnique: Animals {}
+impl<T> AnimalVersionIdentitiesUnique for T
+where
+    T: Animals,
+    <T as Animals>::List: FlattenNodes,
+    SPFlatten<<T as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<T>: Container,
+    (AnimalSet<T>, WithAnimalVersion): Map<<AnimalSet<T> as Container>::Content, WithAnimalVersion>,
+    AnimalVersions<T>: UniqueAnimalVersions,
+    <AnimalVersions<T> as UniqueAnimalVersions>::Out: Truthy,
+{
+}
+
+pub struct WithGenerationFor<AnimalId>(PhantomData<AnimalId>);
+impl<T, AnimalId> Mapper<T> for WithGenerationFor<AnimalId>
+where
+    T: Animal,
+    (<T as Animal>::Id, AnimalId): IsEqual,
+{
+    type Out = (
+        <T as Animal>::Generation,
+        <(<T as Animal>::Id, AnimalId) as IsEqual>::Out,
+    );
+}
+
+pub type GenerationsForAnimals<T, AnimalId> =
+    <<(AnimalSet<T>, WithGenerationFor<AnimalId>) as Map<
+        <AnimalSet<T> as Container>::Content,
+        WithGenerationFor<AnimalId>,
+    >>::Out as Foldable<list::Filter>>::Out;
+
+pub type Generations<E, AnimalId> = GenerationsForAnimals<<E as Ecosystem>::Animals, AnimalId>;
 
 pub struct WithAnimalState;
 impl<T> Mapper<T> for WithAnimalState

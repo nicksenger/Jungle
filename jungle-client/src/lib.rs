@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
 use jungle_types::{
-    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal,
-    Work,
+    Animal, AnimalIdValue, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake,
+    RunnerOut, SupportedAnimal, Work,
 };
 use uuid::Uuid;
 
@@ -18,6 +18,15 @@ pub use mock::{MockClient, MockClientBuilder};
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
     async fn start_journey(&self, animal_id: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError>;
+    async fn start_journey_for<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    where
+        Self: Sized,
+        A: Animal,
+        A::Id: AnimalIdValue + Send + Sync,
+    {
+        self.start_journey(<A::Id as AnimalIdValue>::U32, seed)
+            .await
+    }
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError>;
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError>;
     async fn animal_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError>;

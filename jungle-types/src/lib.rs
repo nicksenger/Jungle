@@ -23,8 +23,9 @@ pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
     ActionMember, ActionSet, AllFrom, AnimalActionDependencies, AnimalActionDependenciesCompatible,
-    AnimalActionSet, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible,
-    StripActionHeaders, StripAnimalHeaders,
+    AnimalActionSet, AnimalIdValue, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible,
+    AnimalVersion, AnimalVersionIdentitiesUnique, AnimalVersions, Generations,
+    GenerationsForAnimals, StripActionHeaders, StripAnimalHeaders,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
