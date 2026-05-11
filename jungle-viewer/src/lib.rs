@@ -634,7 +634,9 @@ impl GraphBuilder {
                     self.edges.push((container, *target));
                 }
                 for exit in &body_flow.exits {
-                    self.edges.push((*exit, container));
+                    for target in &body_flow.roots {
+                        self.edges.push((*exit, *target));
+                    }
                 }
 
                 let mut members = vec![container];
@@ -705,13 +707,9 @@ impl GraphBuilder {
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
 
-                let mut exits = left_flow.exits;
-                exits.extend(right_flow.exits);
-                exits = dedup(exits);
-
                 Flattened {
                     roots: vec![select],
-                    exits,
+                    exits: vec![select],
                     members,
                 }
             }
@@ -734,13 +732,9 @@ impl GraphBuilder {
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
 
-                let mut exits = left_flow.exits;
-                exits.extend(right_flow.exits);
-                exits = dedup(exits);
-
                 Flattened {
                     roots: vec![join],
-                    exits,
+                    exits: vec![join],
                     members,
                 }
             }
@@ -1060,5 +1054,81 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn graph_model_control_flow_edges_match_runtime_shape() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::While {
+                label: "Loop",
+                body: Box::new(JourneyAst::Conditional {
+                    label: "Branch",
+                    left: Box::new(JourneyAst::Step { label: "LoopL" }),
+                    right: Box::new(JourneyAst::Step { label: "LoopR" }),
+                }),
+            },
+            JourneyAst::Join {
+                label: "Join",
+                left: Box::new(JourneyAst::Step { label: "JoinL" }),
+                right: Box::new(JourneyAst::Step { label: "JoinR" }),
+            },
+            JourneyAst::Select {
+                label: "Select",
+                left: Box::new(JourneyAst::Step { label: "SelL" }),
+                right: Box::new(JourneyAst::Step { label: "SelR" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]);
+
+        let model = GraphModel::from_ast(ast);
+
+        let id_for = |label: &str| -> u32 {
+            let mut matches = model
+                .nodes
+                .iter()
+                .filter(|node| node.label == label)
+                .map(|node| node.id);
+            let id = matches
+                .next()
+                .unwrap_or_else(|| panic!("missing node with label {label}"));
+            assert!(
+                matches.next().is_none(),
+                "expected unique node label in test: {label}"
+            );
+            id
+        };
+
+        let loop_id = id_for("Loop");
+        let branch_id = id_for("Branch");
+        let loop_l_id = id_for("LoopL");
+        let loop_r_id = id_for("LoopR");
+        let join_id = id_for("Join");
+        let join_l_id = id_for("JoinL");
+        let join_r_id = id_for("JoinR");
+        let select_id = id_for("Select");
+        let sel_l_id = id_for("SelL");
+        let sel_r_id = id_for("SelR");
+        let tail_id = id_for("Tail");
+
+        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
+
+        assert!(edges.contains(&(loop_id, branch_id)));
+        assert!(edges.contains(&(branch_id, loop_l_id)));
+        assert!(edges.contains(&(branch_id, loop_r_id)));
+        assert!(edges.contains(&(loop_l_id, branch_id)));
+        assert!(edges.contains(&(loop_r_id, branch_id)));
+        assert!(edges.contains(&(loop_id, join_id)));
+
+        assert!(edges.contains(&(join_id, join_l_id)));
+        assert!(edges.contains(&(join_id, join_r_id)));
+        assert!(edges.contains(&(join_id, select_id)));
+        assert!(!edges.contains(&(join_l_id, select_id)));
+        assert!(!edges.contains(&(join_r_id, select_id)));
+
+        assert!(edges.contains(&(select_id, sel_l_id)));
+        assert!(edges.contains(&(select_id, sel_r_id)));
+        assert!(edges.contains(&(select_id, tail_id)));
+        assert!(!edges.contains(&(sel_l_id, tail_id)));
+        assert!(!edges.contains(&(sel_r_id, tail_id)));
     }
 }

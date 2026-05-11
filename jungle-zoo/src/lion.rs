@@ -1,2 +1,1 @@
 //! Lion module stub.
-

@@ -1,2 +1,1 @@
 //! Hippo module stub.
-
