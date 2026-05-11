@@ -190,20 +190,45 @@ impl LoopCondition<StaticState> for StaticLoopCondition {
     }
 }
 
-type StaticLoopFlow = While<
-    StaticLoopCondition,
-    Conditional<
-        StaticCondition,
-        Step<StaticAnimal, StaticAddOne>,
-        Step<StaticAnimal, StaticAddTwo>,
-    >,
+pub struct StaticOuterCondition;
+impl Condition<(StaticState, ())> for StaticOuterCondition {
+    fn choose((state, _): &(StaticState, ())) -> bool {
+        state.value % 3 == 0
+    }
+}
+
+pub struct StaticOuterLoopCondition;
+impl LoopCondition<StaticState> for StaticOuterLoopCondition {
+    type CarryIn = ();
+
+    fn should_continue(state: &StaticState) -> bool {
+        state.value < 14
+    }
+}
+
+type StaticInnerConditional = Conditional<
+    StaticCondition,
+    Step<StaticAnimal, StaticAddOne>,
+    Step<StaticAnimal, StaticAddTwo>,
 >;
+
+type StaticInnerLoop = While<StaticLoopCondition, StaticInnerConditional>;
+
+type StaticOuterConditional = Conditional<
+    StaticOuterCondition,
+    StaticInnerLoop,
+    Step<StaticAnimal, StaticAddTwo>,
+>;
+
+type StaticOuterLoopFlow = While<StaticOuterLoopCondition, StaticOuterConditional>;
 
 #[derive(Journey)]
 pub struct StaticJourney(
-    StaticLoopFlow,
+    Step<StaticAnimal, StaticAddOne>,
+    StaticOuterLoopFlow,
     Join<Step<StaticAnimal, StaticAddOne>, Step<StaticAnimal, StaticAddTwo>>,
     Select<Step<StaticAnimal, StaticFast>, Step<StaticAnimal, StaticSlow>>,
+    Step<StaticAnimal, StaticAddTwo>,
 );
 
 pub struct StaticAnimal;
@@ -407,15 +432,26 @@ mod tests {
     use jungle::types::{JourneyAst, JourneyAstSource};
 
     #[test]
-    fn static_journey_ast_shape_is_while_then_join_then_select() {
+    fn static_journey_ast_shape_is_expanded_sequence() {
         let ast = <StaticJourney as JourneyAstSource>::journey_ast();
         let JourneyAst::Sequence(nodes) = ast else {
             panic!("expected StaticJourney AST to be a top-level sequence");
         };
 
-        assert_eq!(nodes.len(), 3);
-        assert!(matches!(nodes[0], JourneyAst::While { .. }));
-        assert!(matches!(nodes[1], JourneyAst::Join { .. }));
-        assert!(matches!(nodes[2], JourneyAst::Select { .. }));
+        assert_eq!(nodes.len(), 5);
+        assert!(matches!(nodes[0], JourneyAst::Step { .. }));
+        assert!(matches!(nodes[1], JourneyAst::While { .. }));
+        assert!(matches!(nodes[2], JourneyAst::Join { .. }));
+        assert!(matches!(nodes[3], JourneyAst::Select { .. }));
+        assert!(matches!(nodes[4], JourneyAst::Step { .. }));
+
+        let JourneyAst::While { body, .. } = &nodes[1] else {
+            panic!("expected second node to be an outer while");
+        };
+        let JourneyAst::Conditional { left, right, .. } = body.as_ref() else {
+            panic!("expected outer while body to be a conditional");
+        };
+        assert!(matches!(left.as_ref(), JourneyAst::While { .. }));
+        assert!(matches!(right.as_ref(), JourneyAst::Step { .. }));
     }
 }
