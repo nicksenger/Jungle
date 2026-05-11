@@ -81,3 +81,17 @@ fn transparent_flow_exposes_custom_metadata() {
     );
     assert_eq!(<BaseFlow as NodeMetadata>::METADATA, "");
 }
+
+struct AnnotatedNonTransparentStep;
+
+impl NodeMetadata for AnnotatedNonTransparentStep {
+    const METADATA: &'static str = "node:custom/non-transparent-step";
+}
+
+#[test]
+fn non_transparent_node_can_customize_metadata() {
+    assert_eq!(
+        <AnnotatedNonTransparentStep as NodeMetadata>::METADATA,
+        "node:custom/non-transparent-step"
+    );
+}
