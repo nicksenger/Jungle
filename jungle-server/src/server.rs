@@ -119,14 +119,19 @@ impl JungleServer for Server {
             }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let journey_id = self
+                    match self
                         .store
                         .create_journey(namespace, animal_id, client_observed_generation, seed)
                         .await
-                        .map_err(|err| {
-                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
-                        })?;
-                    WireOut::JourneyCreated(journey_id)
+                    {
+                        Ok(journey_id) => {
+                            tx.send(Ok(WireOut::JourneyCreated(journey_id))).await?;
+                        }
+                        Err(err) => {
+                            tx.send(Err(BackendError::Message(err.to_string()))).await?;
+                        }
+                    }
+                    return Ok(());
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
