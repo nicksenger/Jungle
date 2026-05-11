@@ -4,7 +4,7 @@ use crate::models::{SchemaVersion, StepKind, StepStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, RunnerStep};
+use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, Work};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -590,7 +590,7 @@ impl JungleStore for RedbStore {
         )
     }
 
-    async fn claim_work(&self, namespace: String) -> Result<Option<RunnerStep>> {
+    async fn claim_work(&self, namespace: String) -> Result<Option<Work>> {
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
         })?;
@@ -722,12 +722,12 @@ impl JungleStore for RedbStore {
         })?;
 
         let work = match selected_kind {
-            StepKind::StartJourney => RunnerStep::StartJourney {
+            StepKind::StartJourney => Work::StartJourney {
                 journey_id: selected_journey_id,
                 ordinal: flow.ordinal,
                 seed: flow.seed,
             },
-            StepKind::ResumeJourney => RunnerStep::ResumeJourney {
+            StepKind::ResumeJourney => Work::ResumeJourney {
                 journey_id: selected_journey_id,
                 ordinal: flow.ordinal,
                 seed: flow.seed,

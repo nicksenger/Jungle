@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
     ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
-    RunnerStep,
+    Work,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -13,7 +13,7 @@ use uuid::Uuid;
 type HandlerFuture = Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
 type Handler = Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
 type PollStepHandlerFuture =
-    Pin<Box<dyn Future<Output = Result<Option<RunnerStep>, ExecutorError>> + Send + 'static>>;
+    Pin<Box<dyn Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static>>;
 type PollStepHandler = Arc<dyn Fn() -> PollStepHandlerFuture + Send + Sync + 'static>;
 type PollTimersHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Option<()>, ExecutorError>> + Send + 'static>>;
@@ -208,7 +208,7 @@ impl JungleClient for MockClient {
         (self.on_poll_timers)().await
     }
 
-    async fn poll_work(&self) -> Result<Option<RunnerStep>, ExecutorError> {
+    async fn poll_work(&self) -> Result<Option<Work>, ExecutorError> {
         (self.on_poll_work)().await
     }
 
@@ -308,7 +308,7 @@ impl MockClientBuilder {
     pub fn on_poll_work<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Option<RunnerStep>, ExecutorError>> + Send + 'static,
+        Fut: Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static,
     {
         self.on_poll_work = Some(Arc::new(move || Box::pin(f())));
         self

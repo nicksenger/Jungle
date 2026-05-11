@@ -750,7 +750,7 @@ async fn jungle_runner_spawns_and_completes_animal_flows() {
 async fn jungle_worker_polls_and_completes_start_flow_work() {
     use jungle_sdk::client::MockClient;
     use jungle_sdk::core::JungleWorker;
-    use jungle_sdk::types::RunnerStep;
+    use jungle_sdk::types::Work;
     use std::time::Duration;
 
     let input_calls = Arc::new(AtomicUsize::new(0));
@@ -771,7 +771,7 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                 async move {
                     let idx = poll_calls.fetch_add(1, Ordering::Relaxed);
                     if idx == 0 {
-                        Ok(Some(RunnerStep::StartJourney {
+                        Ok(Some(Work::StartJourney {
                             journey_id,
                             ordinal: 16,
                             seed,

@@ -1,7 +1,7 @@
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
     BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
-    RunnerStep, WireIn, WireOut,
+    Work, WireIn, WireOut,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,7 +13,7 @@ use uuid::Uuid;
 async fn client_exchanges_messages_with_mock_server() {
     let journey_id = Uuid::from_u128(0x11111111111111111111111111111111);
     let action_id = Uuid::from_u128(0x22222222222222222222222222222222);
-    let expected_work = RunnerStep::StartJourney {
+    let expected_work = Work::StartJourney {
         journey_id,
         ordinal: 7,
         seed: vec![1, 2, 3],
@@ -130,7 +130,7 @@ async fn client_exchanges_messages_with_mock_server() {
 
     let work = client.poll_work().await.expect("poll_work should succeed");
     match work {
-        Some(RunnerStep::StartJourney {
+        Some(Work::StartJourney {
             journey_id: returned_flow,
             ordinal,
             seed,
@@ -139,7 +139,7 @@ async fn client_exchanges_messages_with_mock_server() {
             assert_eq!(ordinal, 7);
             assert_eq!(seed, vec![1, 2, 3]);
         }
-        Some(RunnerStep::ResumeJourney {
+        Some(Work::ResumeJourney {
             journey_id,
             ordinal,
             seed,
@@ -287,7 +287,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let first_work = client.poll_work().await.expect("poll_work should succeed");
     assert!(
-        matches!(first_work, Some(RunnerStep::StartJourney { .. })),
+        matches!(first_work, Some(Work::StartJourney { .. })),
         "expected start journey work item first"
     );
 
@@ -305,7 +305,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let resume_work = client.poll_work().await.expect("poll_work should succeed");
     match resume_work {
-        Some(RunnerStep::ResumeJourney {
+        Some(Work::ResumeJourney {
             journey_id: resumed,
             ordinal,
             seed,
@@ -314,7 +314,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
             assert_eq!(ordinal, 7);
             assert_eq!(seed, vec![1, 2, 3]);
         }
-        Some(RunnerStep::StartJourney { .. }) => {
+        Some(Work::StartJourney { .. }) => {
             panic!("expected resume journey work item, got start journey");
         }
         None => panic!("expected resume journey work item"),
@@ -537,7 +537,7 @@ async fn poll_work_is_scoped_by_namespace() {
         .await
         .expect("alpha poll_work should succeed");
     match alpha_work {
-        Some(RunnerStep::StartJourney {
+        Some(Work::StartJourney {
             journey_id,
             ordinal,
             seed,
@@ -554,7 +554,7 @@ async fn poll_work_is_scoped_by_namespace() {
         .await
         .expect("beta poll_work should succeed");
     match beta_work {
-        Some(RunnerStep::StartJourney {
+        Some(Work::StartJourney {
             journey_id,
             ordinal,
             seed,

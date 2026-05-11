@@ -6,7 +6,7 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, AnimalSet, Animals, BuildFlowWithContext,
-    ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, RunnerStep, Sleep,
+    ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Work, Sleep,
     StripAnimalHeaders,
 };
 use std::collections::HashMap;
@@ -160,7 +160,7 @@ where
             }
 
             match self.client.poll_work().await? {
-                Some(RunnerStep::StartJourney {
+                Some(Work::StartJourney {
                     journey_id,
                     ordinal,
                     seed,
@@ -203,7 +203,7 @@ where
                         }
                     }
                 }
-                Some(RunnerStep::ResumeJourney {
+                Some(Work::ResumeJourney {
                     journey_id,
                     ordinal,
                     seed,

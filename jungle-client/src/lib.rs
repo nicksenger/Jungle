@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
 use jungle_types::{
-    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, RunnerStep,
+    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, Work,
 };
 use uuid::Uuid;
 
@@ -46,7 +46,7 @@ pub trait JungleClient: DynClone + Send + Sync {
     ) -> Result<(), ExecutorError>;
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError>;
     async fn poll_timers(&self) -> Result<Option<()>, ExecutorError>;
-    async fn poll_work(&self) -> Result<Option<RunnerStep>, ExecutorError>;
+    async fn poll_work(&self) -> Result<Option<Work>, ExecutorError>;
     async fn action_input(
         &self,
         id: Uuid,
