@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            CREATE INDEX IF NOT EXISTS idx_owner_wakes_owner_id_created_at\n            ON owner_wakes (owner_id, created_at, id)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "1a3e1cb6b42bba134e176b86bb37330e4d541e0332bc02979b9c0da88e099b44"
+}

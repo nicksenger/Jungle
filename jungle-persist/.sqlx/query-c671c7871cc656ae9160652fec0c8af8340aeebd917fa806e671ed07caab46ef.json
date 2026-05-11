@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            ALTER TABLE work_items\n            ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "c671c7871cc656ae9160652fec0c8af8340aeebd917fa806e671ed07caab46ef"
+}

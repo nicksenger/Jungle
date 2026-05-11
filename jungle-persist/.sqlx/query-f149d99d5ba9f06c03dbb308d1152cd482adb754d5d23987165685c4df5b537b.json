@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO jungle_schema_metadata (id, version) VALUES (1, 0)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "f149d99d5ba9f06c03dbb308d1152cd482adb754d5d23987165685c4df5b537b"
+}

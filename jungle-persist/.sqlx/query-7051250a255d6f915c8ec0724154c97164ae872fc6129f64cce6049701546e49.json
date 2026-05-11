@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            CREATE TABLE IF NOT EXISTS events (\n                journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,\n                sequence_id BIGINT NOT NULL,\n                kind SMALLINT NOT NULL,\n                data BYTEA NOT NULL,\n                PRIMARY KEY (journey_id, sequence_id)\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "7051250a255d6f915c8ec0724154c97164ae872fc6129f64cce6049701546e49"
+}

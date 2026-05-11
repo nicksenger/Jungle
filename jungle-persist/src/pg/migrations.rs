@@ -12,7 +12,7 @@ impl PgStore {
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS jungle_schema_metadata (
                 id SMALLINT PRIMARY KEY,
@@ -25,7 +25,7 @@ impl PgStore {
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
         let version_row =
-            sqlx::query_scalar::<_, i32>("SELECT version FROM jungle_schema_metadata WHERE id = 1")
+            sqlx::query_scalar!("SELECT version FROM jungle_schema_metadata WHERE id = 1")
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -40,7 +40,7 @@ impl PgStore {
             }
         }
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS journeys (
                 id UUID PRIMARY KEY,
@@ -56,7 +56,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             ALTER TABLE journeys
             ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0
@@ -66,7 +66,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             ALTER TABLE journeys
             ADD COLUMN IF NOT EXISTS namespace TEXT NOT NULL DEFAULT 'default'
@@ -76,7 +76,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             ALTER TABLE journeys
             ADD COLUMN IF NOT EXISTS animal_id INTEGER NOT NULL DEFAULT 0
@@ -86,7 +86,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             DO $$
             BEGIN
@@ -107,7 +107,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             ALTER TABLE journeys
             ADD COLUMN IF NOT EXISTS generation INTEGER NOT NULL DEFAULT 0
@@ -117,7 +117,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE INDEX IF NOT EXISTS idx_journeys_namespace
             ON journeys (namespace)
@@ -127,7 +127,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE INDEX IF NOT EXISTS idx_journeys_namespace_animal_generation
             ON journeys (namespace, animal_id, generation)
@@ -137,7 +137,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS animal_generations (
                 namespace TEXT NOT NULL,
@@ -152,7 +152,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS events (
                 journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
@@ -167,7 +167,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS work_items (
                 id UUID PRIMARY KEY,
@@ -182,7 +182,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS timer_tasks (
                 id UUID PRIMARY KEY,
@@ -197,7 +197,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE INDEX IF NOT EXISTS idx_timer_tasks_status_visible_at
             ON timer_tasks (status, visible_at)
@@ -207,7 +207,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS journey_leases (
                 journey_id UUID PRIMARY KEY REFERENCES journeys(id) ON DELETE CASCADE,
@@ -221,7 +221,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS owner_wakes (
                 id UUID PRIMARY KEY,
@@ -236,7 +236,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE INDEX IF NOT EXISTS idx_owner_wakes_owner_id_created_at
             ON owner_wakes (owner_id, created_at, id)
@@ -246,7 +246,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             ALTER TABLE work_items
             ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0
@@ -256,7 +256,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS animal_appearances (
                 journey_id UUID PRIMARY KEY REFERENCES journeys(id) ON DELETE CASCADE,
@@ -269,7 +269,7 @@ impl PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             CREATE TABLE IF NOT EXISTS animal_perturbations (
                 journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
@@ -287,7 +287,7 @@ impl PgStore {
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
         if version_row.is_none() {
-            sqlx::query("INSERT INTO jungle_schema_metadata (id, version) VALUES (1, 0)")
+            sqlx::query!("INSERT INTO jungle_schema_metadata (id, version) VALUES (1, 0)")
                 .execute(&mut *tx)
                 .await
                 .map_err(crate::PersistenceError::PostgresQuery)?;

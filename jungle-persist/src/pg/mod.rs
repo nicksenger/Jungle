@@ -1,6 +1,4 @@
 pub mod migrations;
-#[cfg(feature = "sqlx-checked")]
-mod sqlx_checked;
 
 use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
@@ -90,15 +88,15 @@ impl JungleStore for PgStore {
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        let generation = sqlx::query_scalar::<_, i32>(
+        let generation = sqlx::query_scalar!(
             r#"
             SELECT generation
             FROM animal_generations
             WHERE namespace = $1 AND animal_id = $2
             "#,
+            namespace.as_str(),
+            animal_id
         )
-        .bind(namespace.as_str())
-        .bind(animal_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?
@@ -117,32 +115,32 @@ impl JungleStore for PgStore {
             }
         }
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO journeys (id, namespace, animal_id, generation, status, seed)
             VALUES ($1, $2, $3, $4, $5, $6)
             "#,
+            journey_id,
+            namespace,
+            animal_id,
+            generation,
+            0_i16,
+            seed
         )
-        .bind(journey_id)
-        .bind(namespace)
-        .bind(animal_id)
-        .bind(generation)
-        .bind(0_i16)
-        .bind(seed)
         .execute(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO work_items (id, journey_id, kind, status, expiry)
             VALUES ($1, $2, $3, $4, NOW())
             "#,
+            work_item_id,
+            journey_id,
+            0_i16,
+            0_i16
         )
-        .bind(work_item_id)
-        .bind(journey_id)
-        .bind(0_i16)
-        .bind(0_i16)
         .execute(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -155,21 +153,15 @@ impl JungleStore for PgStore {
     }
 
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
-        #[derive(Debug, sqlx::FromRow)]
-        struct HistoryRow {
-            kind: i16,
-            data: Vec<u8>,
-        }
-
-        let rows = sqlx::query_as::<_, HistoryRow>(
+        let rows = sqlx::query!(
             r#"
             SELECT kind, data
             FROM events
             WHERE journey_id = $1
             ORDER BY sequence_id
             "#,
+            journey_id
         )
-        .bind(journey_id)
         .fetch_all(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -182,14 +174,14 @@ impl JungleStore for PgStore {
     }
 
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {
-        let status = sqlx::query_scalar::<_, i16>(
+        let status = sqlx::query_scalar!(
             r#"
             SELECT status
             FROM journeys
             WHERE id = $1
             "#,
+            journey_id
         )
-        .bind(journey_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?
@@ -201,14 +193,14 @@ impl JungleStore for PgStore {
     }
 
     async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {
-        let appearance = sqlx::query_scalar::<_, Vec<u8>>(
+        let appearance = sqlx::query_scalar!(
             r#"
             SELECT data
             FROM animal_appearances
             WHERE journey_id = $1
             "#,
+            journey_id
         )
-        .bind(journey_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -217,16 +209,16 @@ impl JungleStore for PgStore {
     }
 
     async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO animal_appearances (journey_id, data, updated_at)
             VALUES ($1, $2, NOW())
             ON CONFLICT (journey_id)
             DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
             "#,
+            journey_id,
+            data
         )
-        .bind(journey_id)
-        .bind(data)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -235,7 +227,7 @@ impl JungleStore for PgStore {
     }
 
     async fn enqueue_animal_perturbation(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()> {
-        sqlx::query(
+        sqlx::query!(
             r#"
             WITH next_sequence AS (
                 SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
@@ -253,10 +245,10 @@ impl JungleStore for PgStore {
             SELECT $1, next_sequence.sequence_id, $2, $3, NULL, NULL
             FROM next_sequence
             "#,
+            journey_id,
+            data,
+            0_i16
         )
-        .bind(journey_id)
-        .bind(data)
-        .bind(0_i16)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -268,13 +260,7 @@ impl JungleStore for PgStore {
         &self,
         journey_id: Uuid,
     ) -> Result<Option<ClaimedAnimalPerturbation>> {
-        #[derive(Debug, sqlx::FromRow)]
-        struct ClaimedRow {
-            sequence_id: i64,
-            data: Vec<u8>,
-        }
-
-        let row = sqlx::query_as::<_, ClaimedRow>(
+        let row = sqlx::query!(
             r#"
             WITH next_item AS (
                 SELECT journey_id, sequence_id
@@ -298,10 +284,10 @@ impl JungleStore for PgStore {
             SELECT sequence_id, data
             FROM claimed
             "#,
+            journey_id,
+            0_i16,
+            1_i16
         )
-        .bind(journey_id)
-        .bind(0_i16)
-        .bind(1_i16)
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -326,14 +312,14 @@ impl JungleStore for PgStore {
                 "perturbation id exceeds i64 range for postgres: {perturbation_id}"
             ))
         })?;
-        let result = sqlx::query(
+        let result = sqlx::query!(
             r#"
             DELETE FROM animal_perturbations
             WHERE journey_id = $1 AND sequence_id = $2
             "#,
+            journey_id,
+            sequence_id
         )
-        .bind(journey_id)
-        .bind(sequence_id)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -354,7 +340,7 @@ impl JungleStore for PgStore {
         lease_ttl_ms: i64,
     ) -> Result<()> {
         let lease_ttl_ms = lease_ttl_ms.max(0);
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO journey_leases (journey_id, owner_id, lease_until, heartbeat_at)
             VALUES ($1, $2, NOW() + ($3::BIGINT * INTERVAL '1 millisecond'), NOW())
@@ -363,10 +349,10 @@ impl JungleStore for PgStore {
                           lease_until = EXCLUDED.lease_until,
                           heartbeat_at = EXCLUDED.heartbeat_at
             "#,
+            journey_id,
+            owner_id,
+            lease_ttl_ms
         )
-        .bind(journey_id)
-        .bind(owner_id)
-        .bind(lease_ttl_ms)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -374,13 +360,7 @@ impl JungleStore for PgStore {
     }
 
     async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>> {
-        #[derive(Debug, sqlx::FromRow)]
-        struct WakeRow {
-            journey_id: Uuid,
-            timer_id: Uuid,
-        }
-
-        let wake = sqlx::query_as::<_, WakeRow>(
+        let wake = sqlx::query!(
             r#"
             WITH next_wake AS (
                 SELECT id
@@ -395,8 +375,8 @@ impl JungleStore for PgStore {
             WHERE ow.id = nw.id
             RETURNING ow.journey_id, ow.timer_id
             "#,
+            owner_id
         )
-        .bind(owner_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -408,15 +388,15 @@ impl JungleStore for PgStore {
     }
 
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()> {
-        let result = sqlx::query(
+        let result = sqlx::query!(
             r#"
             UPDATE journeys
             SET status = $2
             WHERE id = $1
             "#,
+            journey_id,
+            encode_journey_status(JourneyStatus::Completed)
         )
-        .bind(journey_id)
-        .bind(encode_journey_status(JourneyStatus::Completed))
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -430,16 +410,16 @@ impl JungleStore for PgStore {
     }
 
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()> {
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE journeys
             SET status = $2
             WHERE id = $1 AND status = $3
             "#,
+            journey_id,
+            encode_journey_status(JourneyStatus::Alive),
+            encode_journey_status(JourneyStatus::Created)
         )
-        .bind(journey_id)
-        .bind(encode_journey_status(JourneyStatus::Alive))
-        .bind(encode_journey_status(JourneyStatus::Created))
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -486,7 +466,7 @@ impl JungleStore for PgStore {
                     supported.generation
                 ))
             })?;
-            sqlx::query(
+            sqlx::query!(
                 r#"
                 INSERT INTO animal_generations (namespace, animal_id, generation, updated_at)
                 VALUES ($1, $2, $3, NOW())
@@ -496,25 +476,16 @@ impl JungleStore for PgStore {
                     updated_at = NOW()
                 WHERE animal_generations.generation < EXCLUDED.generation
                 "#,
+                namespace.as_str(),
+                animal_id,
+                generation
             )
-            .bind(namespace.as_str())
-            .bind(animal_id)
-            .bind(generation)
             .execute(&self.pool)
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
         }
 
-        #[derive(Debug, sqlx::FromRow)]
-        struct ClaimedWorkRow {
-            journey_id: Uuid,
-            kind: i16,
-            animal_id: i32,
-            generation: i32,
-            seed: Vec<u8>,
-        }
-
-        let row = sqlx::query_as::<_, ClaimedWorkRow>(
+        let row = sqlx::query!(
             r#"
             WITH supported AS (
                 SELECT * FROM UNNEST($2::INT4[], $3::INT4[]) AS s(animal_id, generation)
@@ -544,12 +515,12 @@ impl JungleStore for PgStore {
             FROM claimed c
             INNER JOIN journeys f ON f.id = c.journey_id
             "#,
+            namespace,
+            &supported_ids,
+            &supported_generations,
+            0_i16,
+            1_i16
         )
-        .bind(namespace)
-        .bind(supported_ids)
-        .bind(supported_generations)
-        .bind(0_i16)
-        .bind(1_i16)
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -659,7 +630,7 @@ impl JungleStore for PgStore {
             }
         };
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             WITH next_sequence AS (
                 SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
@@ -670,10 +641,10 @@ impl JungleStore for PgStore {
             SELECT $1, next_sequence.sequence_id, $2, $3
             FROM next_sequence
             "#,
+            journey_id,
+            kind,
+            data
         )
-        .bind(journey_id)
-        .bind(kind)
-        .bind(data)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -687,17 +658,17 @@ impl JungleStore for PgStore {
         timer_id: Uuid,
         wake_at_unix_ms: i64,
     ) -> Result<()> {
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO timer_tasks (id, journey_id, status, visible_at, fired_at)
             VALUES ($1, $2, $3, to_timestamp($4::BIGINT::double precision / 1000.0), NULL)
             ON CONFLICT (id) DO NOTHING
             "#,
+            timer_id,
+            journey_id,
+            0_i16,
+            wake_at_unix_ms
         )
-        .bind(timer_id)
-        .bind(journey_id)
-        .bind(0_i16)
-        .bind(wake_at_unix_ms)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -713,19 +684,13 @@ impl JungleStore for PgStore {
     }
 
     async fn poll_timers(&self) -> Result<Option<()>> {
-        #[derive(Debug, sqlx::FromRow)]
-        struct DueTimerRow {
-            id: Uuid,
-            journey_id: Uuid,
-        }
-
         let mut tx = self
             .pool
             .begin()
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        let due = sqlx::query_as::<_, DueTimerRow>(
+        let due = sqlx::query!(
             r#"
             SELECT id, journey_id
             FROM timer_tasks
@@ -734,8 +699,8 @@ impl JungleStore for PgStore {
             FOR UPDATE SKIP LOCKED
             LIMIT 1
             "#,
+            0_i16
         )
-        .bind(0_i16)
         .fetch_optional(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -747,16 +712,16 @@ impl JungleStore for PgStore {
             return Ok(None);
         };
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE timer_tasks
             SET status = $2, fired_at = NOW()
             WHERE id = $1 AND status = $3
             "#,
+            due.id,
+            1_i16,
+            0_i16
         )
-        .bind(due.id)
-        .bind(1_i16)
-        .bind(0_i16)
         .execute(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -768,7 +733,7 @@ impl JungleStore for PgStore {
         })
         .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
 
-        sqlx::query(
+        sqlx::query!(
             r#"
             WITH next_sequence AS (
                 SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
@@ -779,52 +744,52 @@ impl JungleStore for PgStore {
             SELECT $1, next_sequence.sequence_id, $2, $3
             FROM next_sequence
             "#,
+            due.journey_id,
+            4_i16,
+            sleep_fired_data
         )
-        .bind(due.journey_id)
-        .bind(4_i16)
-        .bind(sleep_fired_data)
         .execute(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        let owner_id = sqlx::query_scalar::<_, Uuid>(
+        let owner_id = sqlx::query_scalar!(
             r#"
             SELECT owner_id
             FROM journey_leases
             WHERE journey_id = $1 AND lease_until > NOW()
             LIMIT 1
             "#,
+            due.journey_id
         )
-        .bind(due.journey_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
         if let Some(owner_id) = owner_id {
-            sqlx::query(
+            sqlx::query!(
                 r#"
                 INSERT INTO owner_wakes (id, owner_id, journey_id, timer_id, created_at)
                 VALUES ($1, $2, $3, $4, NOW())
                 "#,
+                Uuid::new_v4(),
+                owner_id,
+                due.journey_id,
+                due.id
             )
-            .bind(Uuid::new_v4())
-            .bind(owner_id)
-            .bind(due.journey_id)
-            .bind(due.id)
             .execute(&mut *tx)
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
         } else {
-            sqlx::query(
+            sqlx::query!(
                 r#"
                 INSERT INTO work_items (id, journey_id, kind, status, expiry)
                 VALUES ($1, $2, $3, $4, NOW())
                 "#,
+                Uuid::new_v4(),
+                due.journey_id,
+                1_i16,
+                0_i16
             )
-            .bind(Uuid::new_v4())
-            .bind(due.journey_id)
-            .bind(1_i16)
-            .bind(0_i16)
             .execute(&mut *tx)
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;

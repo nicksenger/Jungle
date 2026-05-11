@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            CREATE TABLE IF NOT EXISTS owner_wakes (\n                id UUID PRIMARY KEY,\n                owner_id UUID NOT NULL,\n                journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,\n                timer_id UUID NOT NULL,\n                created_at TIMESTAMPTZ NOT NULL\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "0b5c0d32d02f96095d73eb79a52bc9c14ba679e170f09a3a138ea80e1a48eb09"
+}

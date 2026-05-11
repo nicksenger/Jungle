@@ -168,13 +168,7 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
         .env("SQLX_OFFLINE", "false")
         .env("SQLX_OFFLINE_DIR", &source_sqlx_dir)
         .env("DATABASE_URL", &connection_string)
-        .args([
-            "check",
-            "-p",
-            "jungle-persist",
-            "--features",
-            "postgres,sqlx-checked",
-        ])
+        .args(["check", "-p", "jungle-persist", "--features", "postgres"])
         .status()
         .expect("cargo check should execute");
     assert!(status.success(), "cargo check failed with status: {status}");

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            ALTER TABLE journeys\n            ADD COLUMN IF NOT EXISTS generation INTEGER NOT NULL DEFAULT 0\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "96cc1dffd2c4a3f29a020495c56e2dc0fc127df7ba966458aee177f74fce5922"
+}

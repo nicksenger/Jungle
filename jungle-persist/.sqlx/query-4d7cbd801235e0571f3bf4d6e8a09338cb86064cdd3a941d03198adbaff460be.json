@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO animal_generations (namespace, animal_id, generation, updated_at)\n                VALUES ($1, $2, $3, NOW())\n                ON CONFLICT (namespace, animal_id)\n                DO UPDATE SET\n                    generation = EXCLUDED.generation,\n                    updated_at = NOW()\n                WHERE animal_generations.generation < EXCLUDED.generation\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4d7cbd801235e0571f3bf4d6e8a09338cb86064cdd3a941d03198adbaff460be"
+}
