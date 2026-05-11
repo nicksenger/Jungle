@@ -6,8 +6,7 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, AnimalSet, Animals, BuildFlowWithContext,
-    ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Work, Sleep,
-    StripAnimalHeaders,
+    ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep, StripAnimalHeaders, Work,
 };
 use std::collections::HashMap;
 use std::future::Future;

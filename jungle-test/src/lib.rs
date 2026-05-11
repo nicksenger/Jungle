@@ -294,6 +294,7 @@ mod tests {
     mod replay;
     mod select_join;
     mod sleep;
+    mod transparent_metadata;
     mod traverse_replace;
     mod while_loop;
     mod zoo;

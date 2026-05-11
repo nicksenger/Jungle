@@ -2,8 +2,7 @@ use crate::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerCha
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
-    Work,
+    ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, Work,
 };
 use std::future::Future;
 use std::pin::Pin;

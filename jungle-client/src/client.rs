@@ -2,7 +2,7 @@ use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
     BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake,
-    RunnerOut, Work, WireIn, WireOut,
+    RunnerOut, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
