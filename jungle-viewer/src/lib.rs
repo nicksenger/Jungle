@@ -528,7 +528,7 @@ struct GraphBuilder {
     edges: Vec<(u32, u32)>,
     clusters: Vec<Cluster>,
     runtime_next_id: u32,
-    layout_next_id: u32,
+    display_next_id: u32,
 }
 
 #[derive(Clone)]
@@ -756,7 +756,7 @@ impl GraphBuilder {
     }
 
     fn push_runtime_node(&mut self, label: impl Into<String>, runtime_id: u32) -> u32 {
-        let node_id = runtime_id;
+        let node_id = self.next_display_id();
         let display = NodeDisplay {
             id: node_id,
             label: label.into(),
@@ -768,9 +768,6 @@ impl GraphBuilder {
             is_transparent: false,
         };
         self.nodes.push(display);
-        if self.layout_next_id <= node_id {
-            self.layout_next_id = node_id.saturating_add(1);
-        }
         node_id
     }
 
@@ -779,7 +776,7 @@ impl GraphBuilder {
         label: impl Into<String>,
         apply: impl FnOnce(&mut NodeDisplay),
     ) -> u32 {
-        let node_id = self.next_layout_id();
+        let node_id = self.next_display_id();
         let mut display = NodeDisplay {
             id: node_id,
             label: label.into(),
@@ -805,13 +802,10 @@ impl GraphBuilder {
         }
     }
 
-    fn next_layout_id(&mut self) -> u32 {
-        let mut next = self.layout_next_id.max(1);
-        while self.nodes.iter().any(|node| node.id == next) {
-            next = next.saturating_add(1);
-        }
-        self.layout_next_id = next.saturating_add(1);
-        next
+    fn next_display_id(&mut self) -> u32 {
+        let id = self.display_next_id;
+        self.display_next_id = self.display_next_id.saturating_add(1);
+        id
     }
 }
 
@@ -1003,6 +997,76 @@ impl fmt::Debug for ViewMode {
                 .field("journey_name", journey_name)
                 .field("journey_id", journey_id)
                 .finish(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn graph_model_uses_unique_display_node_ids() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::While {
+                label: "Loop",
+                body: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step { label: "A1" },
+                    JourneyAst::Conditional {
+                        label: "Branch",
+                        left: Box::new(JourneyAst::Step { label: "A2" }),
+                        right: Box::new(JourneyAst::Step { label: "A3" }),
+                    },
+                ])),
+            },
+            JourneyAst::Select {
+                label: "Select",
+                left: Box::new(JourneyAst::Step { label: "A4" }),
+                right: Box::new(JourneyAst::Step { label: "A5" }),
+            },
+            JourneyAst::Join {
+                label: "Join",
+                left: Box::new(JourneyAst::Step { label: "A6" }),
+                right: Box::new(JourneyAst::Step { label: "A7" }),
+            },
+        ]);
+
+        let model = GraphModel::from_ast(ast);
+        let ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+        let unique = ids.iter().copied().collect::<HashSet<_>>();
+
+        assert_eq!(
+            ids.len(),
+            unique.len(),
+            "display node IDs must be unique for iced-sugiyama indexing"
+        );
+
+        let max_id = ids.iter().copied().max().unwrap_or(0);
+        assert_eq!(
+            max_id as usize + 1,
+            ids.len(),
+            "display node IDs should be dense for stable layout indexing"
+        );
+
+        for (from, to) in &model.edges {
+            assert!(
+                unique.contains(from),
+                "edge source must reference a known node"
+            );
+            assert!(
+                unique.contains(to),
+                "edge destination must reference a known node"
+            );
+        }
+
+        for cluster in &model.while_clusters {
+            for node in &cluster.nodes {
+                assert!(
+                    unique.contains(node),
+                    "cluster node must reference a known node"
+                );
+            }
         }
     }
 }
