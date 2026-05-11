@@ -45,7 +45,8 @@ impl PgStore {
             CREATE TABLE IF NOT EXISTS journeys (
                 id UUID PRIMARY KEY,
                 namespace TEXT NOT NULL DEFAULT 'default',
-                ordinal INTEGER NOT NULL,
+                animal_id INTEGER NOT NULL,
+                generation INTEGER NOT NULL DEFAULT 0,
                 status SMALLINT NOT NULL,
                 seed BYTEA NOT NULL
             )
@@ -77,8 +78,74 @@ impl PgStore {
 
         sqlx::query(
             r#"
+            ALTER TABLE journeys
+            ADD COLUMN IF NOT EXISTS animal_id INTEGER NOT NULL DEFAULT 0
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'journeys' AND column_name = 'ordinal'
+                ) THEN
+                    UPDATE journeys
+                    SET animal_id = ordinal
+                    WHERE animal_id = 0;
+                END IF;
+            END
+            $$;
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            ALTER TABLE journeys
+            ADD COLUMN IF NOT EXISTS generation INTEGER NOT NULL DEFAULT 0
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
             CREATE INDEX IF NOT EXISTS idx_journeys_namespace
             ON journeys (namespace)
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_journeys_namespace_animal_generation
+            ON journeys (namespace, animal_id, generation)
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS animal_generations (
+                namespace TEXT NOT NULL,
+                animal_id INTEGER NOT NULL,
+                generation INTEGER NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL,
+                PRIMARY KEY (namespace, animal_id)
+            )
             "#,
         )
         .execute(&mut *tx)

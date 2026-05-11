@@ -1,7 +1,7 @@
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
     BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
-    WireIn, WireOut, Work,
+    SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,7 +15,8 @@ async fn client_exchanges_messages_with_mock_server() {
     let action_id = Uuid::from_u128(0x22222222222222222222222222222222);
     let expected_work = Work::StartJourney {
         journey_id,
-        ordinal: 7,
+        animal_id: 7,
+        generation: 0,
         seed: vec![1, 2, 3],
     };
 
@@ -42,11 +43,11 @@ async fn client_exchanges_messages_with_mock_server() {
                             0 => match msg {
                                 WireIn::CreateJourney {
                                     namespace,
-                                    ordinal,
+                                    animal_id,
                                     seed,
                                 } => {
                                     if namespace == "default"
-                                        && ordinal == 7
+                                        && animal_id == 7
                                         && seed == vec![1, 2, 3]
                                     {
                                         Ok(WireOut::JourneyCreated(journey_id))
@@ -71,7 +72,7 @@ async fn client_exchanges_messages_with_mock_server() {
                                 ))),
                             },
                             2 => match msg {
-                                WireIn::PollStep { namespace } if namespace == "default" => {
+                                WireIn::PollStep { namespace, .. } if namespace == "default" => {
                                     Ok(WireOut::PendingStep(expected_work))
                                 }
                                 other => Err(BackendError::Message(format!(
@@ -128,23 +129,31 @@ async fn client_exchanges_messages_with_mock_server() {
         .expect("journey_details should succeed");
     assert_eq!(status, JourneyStatus::Created);
 
-    let work = client.poll_work().await.expect("poll_work should succeed");
+    let work = client
+        .poll_work(default_supported(7))
+        .await
+        .expect("poll_work should succeed");
     match work {
         Some(Work::StartJourney {
             journey_id: returned_flow,
-            ordinal,
+            animal_id,
+            generation,
             seed,
         }) => {
             assert_eq!(returned_flow, journey_id);
-            assert_eq!(ordinal, 7);
+            assert_eq!(animal_id, 7);
+            assert_eq!(generation, 0);
             assert_eq!(seed, vec![1, 2, 3]);
         }
         Some(Work::ResumeJourney {
             journey_id,
-            ordinal,
+            animal_id,
+            generation,
             seed,
         }) => {
-            panic!("unexpected resume journey work in this test: {journey_id} {ordinal} {seed:?}");
+            panic!(
+                "unexpected resume journey work in this test: {journey_id} {animal_id} {generation} {seed:?}"
+            );
         }
         None => panic!("expected pending work from server"),
     }
@@ -173,12 +182,14 @@ async fn client_exchanges_messages_with_mock_server() {
         requests[0],
         WireIn::CreateJourney {
             ref namespace,
-            ordinal,
+            animal_id,
             ref seed,
-        } if namespace == "default" && ordinal == 7 && seed == &vec![1, 2, 3]
+        } if namespace == "default" && animal_id == 7 && seed == &vec![1, 2, 3]
     ));
     assert!(matches!(requests[1], WireIn::JourneyStatus(id) if id == journey_id));
-    assert!(matches!(requests[2], WireIn::PollStep { ref namespace } if namespace == "default"));
+    assert!(
+        matches!(requests[2], WireIn::PollStep { ref namespace, .. } if namespace == "default")
+    );
     assert!(matches!(
         requests[3],
         WireIn::HistoryEvent(RunnerOut::ActionInput {
@@ -285,7 +296,10 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
         .await
         .expect("start_journey should succeed");
 
-    let first_work = client.poll_work().await.expect("poll_work should succeed");
+    let first_work = client
+        .poll_work(default_supported(7))
+        .await
+        .expect("poll_work should succeed");
     assert!(
         matches!(first_work, Some(Work::StartJourney { .. })),
         "expected start journey work item first"
@@ -303,15 +317,20 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
         .await
         .expect("poll_timers should succeed");
 
-    let resume_work = client.poll_work().await.expect("poll_work should succeed");
+    let resume_work = client
+        .poll_work(default_supported(7))
+        .await
+        .expect("poll_work should succeed");
     match resume_work {
         Some(Work::ResumeJourney {
             journey_id: resumed,
-            ordinal,
+            animal_id,
+            generation,
             seed,
         }) => {
             assert_eq!(resumed, journey_id);
-            assert_eq!(ordinal, 7);
+            assert_eq!(animal_id, 7);
+            assert_eq!(generation, 0);
             assert_eq!(seed, vec![1, 2, 3]);
         }
         Some(Work::StartJourney { .. }) => {
@@ -533,34 +552,38 @@ async fn poll_work_is_scoped_by_namespace() {
         .expect("beta start_journey should succeed");
 
     let alpha_work = alpha
-        .poll_work()
+        .poll_work(default_supported(7))
         .await
         .expect("alpha poll_work should succeed");
     match alpha_work {
         Some(Work::StartJourney {
             journey_id,
-            ordinal,
+            animal_id,
+            generation,
             seed,
         }) => {
             assert_eq!(journey_id, alpha_id);
-            assert_eq!(ordinal, 7);
+            assert_eq!(animal_id, 7);
+            assert_eq!(generation, 0);
             assert_eq!(seed, vec![1, 2, 3]);
         }
         other => panic!("expected alpha start work, got {other:?}"),
     }
 
     let beta_work = beta
-        .poll_work()
+        .poll_work(default_supported(9))
         .await
         .expect("beta poll_work should succeed");
     match beta_work {
         Some(Work::StartJourney {
             journey_id,
-            ordinal,
+            animal_id,
+            generation,
             seed,
         }) => {
             assert_eq!(journey_id, beta_id);
-            assert_eq!(ordinal, 9);
+            assert_eq!(animal_id, 9);
+            assert_eq!(generation, 0);
             assert_eq!(seed, vec![4, 5, 6]);
         }
         other => panic!("expected beta start work, got {other:?}"),
@@ -568,14 +591,14 @@ async fn poll_work_is_scoped_by_namespace() {
 
     assert!(
         alpha
-            .poll_work()
+            .poll_work(default_supported(7))
             .await
             .expect("alpha second poll_work should succeed")
             .is_none(),
         "alpha queue should be drained after claiming its own work"
     );
     assert!(
-        beta.poll_work()
+        beta.poll_work(default_supported(9))
             .await
             .expect("beta second poll_work should succeed")
             .is_none(),
@@ -588,6 +611,13 @@ async fn poll_work_is_scoped_by_namespace() {
 
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     connect_client_with_retry_namespace(remote, "default").await
+}
+
+fn default_supported(animal_id: u32) -> Vec<SupportedAnimal> {
+    vec![SupportedAnimal {
+        animal_id,
+        generation: 0,
+    }]
 }
 
 async fn connect_client_with_retry_namespace(

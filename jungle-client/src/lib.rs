@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
 use jungle_types::{
-    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, Work,
+    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal,
+    Work,
 };
 use uuid::Uuid;
 
@@ -16,7 +17,7 @@ pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
-    async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError>;
+    async fn start_journey(&self, animal_id: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError>;
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError>;
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError>;
     async fn animal_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError>;
@@ -46,7 +47,10 @@ pub trait JungleClient: DynClone + Send + Sync {
     ) -> Result<(), ExecutorError>;
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError>;
     async fn poll_timers(&self) -> Result<Option<()>, ExecutorError>;
-    async fn poll_work(&self) -> Result<Option<Work>, ExecutorError>;
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>, ExecutorError>;
     async fn action_input(
         &self,
         id: Uuid,

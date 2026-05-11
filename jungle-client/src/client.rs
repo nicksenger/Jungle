@@ -2,7 +2,7 @@ use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
     BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake,
-    RunnerOut, WireIn, WireOut, Work,
+    RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -217,11 +217,11 @@ impl Drop for Client {
 
 #[async_trait]
 impl JungleClient for Client {
-    async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
+    async fn start_journey(&self, animal_id: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::CreateJourney {
                 namespace: self.namespace.clone(),
-                ordinal,
+                animal_id,
                 seed,
             })
             .await
@@ -514,10 +514,14 @@ impl JungleClient for Client {
         }
     }
 
-    async fn poll_work(&self) -> Result<Option<Work>, ExecutorError> {
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::PollStep {
                 namespace: self.namespace.clone(),
+                supported_animals,
             })
             .await
             .map_err(Self::transport_error)?;

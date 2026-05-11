@@ -2,7 +2,8 @@ use crate::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerCha
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, Work,
+    ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
+    SupportedAnimal, Work,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -13,7 +14,8 @@ type HandlerFuture = Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Se
 type Handler = Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
 type PollStepHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static>>;
-type PollStepHandler = Arc<dyn Fn() -> PollStepHandlerFuture + Send + Sync + 'static>;
+type PollStepHandler =
+    Arc<dyn Fn(Vec<SupportedAnimal>) -> PollStepHandlerFuture + Send + Sync + 'static>;
 type PollTimersHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Option<()>, ExecutorError>> + Send + 'static>>;
 type PollTimersHandler = Arc<dyn Fn() -> PollTimersHandlerFuture + Send + Sync + 'static>;
@@ -138,8 +140,8 @@ impl Default for MockClient {
 
 #[async_trait]
 impl JungleClient for MockClient {
-    async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
-        (self.on_create_flow)(ordinal, seed).await
+    async fn start_journey(&self, animal_id: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
+        (self.on_create_flow)(animal_id, seed).await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
@@ -207,8 +209,11 @@ impl JungleClient for MockClient {
         (self.on_poll_timers)().await
     }
 
-    async fn poll_work(&self) -> Result<Option<Work>, ExecutorError> {
-        (self.on_poll_work)().await
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>, ExecutorError> {
+        (self.on_poll_work)(supported_animals).await
     }
 
     async fn action_input(
@@ -300,16 +305,20 @@ impl MockClientBuilder {
         F: Fn(u32, Vec<u8>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Uuid, ExecutorError>> + Send + 'static,
     {
-        self.on_create_flow = Some(Arc::new(move |ordinal, seed| Box::pin(f(ordinal, seed))));
+        self.on_create_flow = Some(Arc::new(move |animal_id, seed| {
+            Box::pin(f(animal_id, seed))
+        }));
         self
     }
 
     pub fn on_poll_work<F, Fut>(mut self, f: F) -> Self
     where
-        F: Fn() -> Fut + Send + Sync + 'static,
+        F: Fn(Vec<SupportedAnimal>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static,
     {
-        self.on_poll_work = Some(Arc::new(move || Box::pin(f())));
+        self.on_poll_work = Some(Arc::new(move |supported_animals| {
+            Box::pin(f(supported_animals))
+        }));
         self
     }
 
@@ -483,7 +492,7 @@ impl MockClientBuilder {
             Arc::new(|_| Box::pin(async { Ok(()) }));
         let default_poll_timers_handler: PollTimersHandler =
             Arc::new(|| Box::pin(async { Ok(None) }));
-        let default_poll_work_handler: PollStepHandler = Arc::new(|| Box::pin(async { Ok(None) }));
+        let default_poll_work_handler: PollStepHandler = Arc::new(|_| Box::pin(async { Ok(None) }));
         MockClient {
             namespace: self.namespace,
             on_create_flow: self

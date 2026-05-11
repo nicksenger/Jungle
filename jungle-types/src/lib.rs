@@ -31,7 +31,7 @@ use serde::Serialize;
 pub use sleep::{Sleep, SleepDependency, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{BackendError, JourneyStatus, RunnerOut, WireIn, WireOut, Work};
-pub use transport::{ClaimedAnimalPerturbation, OwnerWake};
+pub use transport::{ClaimedAnimalPerturbation, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
@@ -130,6 +130,12 @@ pub trait Ecosystem {
 pub trait Animal {
     /// A type-level identifier for this Animal.
     type Id;
+
+    /// A type-level generation for this Animal.
+    ///
+    /// New journey starts should target the latest generation for a given `Id`,
+    /// while in-flight journeys continue to resume on their original generation.
+    type Generation;
 
     /// The state of this `Animal` at any given time.
     type State;

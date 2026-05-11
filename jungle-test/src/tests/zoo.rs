@@ -765,7 +765,7 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
         .on_poll_work({
             let poll_calls = Arc::clone(&poll_calls);
             let seed = seed.clone();
-            move || {
+            move |_| {
                 let poll_calls = Arc::clone(&poll_calls);
                 let seed = seed.clone();
                 async move {
@@ -773,7 +773,8 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                     if idx == 0 {
                         Ok(Some(Work::StartJourney {
                             journey_id,
-                            ordinal: 16,
+                            animal_id: 16,
+                            generation: 0,
                             seed,
                         }))
                     } else {

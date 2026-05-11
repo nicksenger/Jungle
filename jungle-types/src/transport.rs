@@ -47,6 +47,12 @@ pub struct ClaimedAnimalPerturbation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SupportedAnimal {
+    pub animal_id: u32,
+    pub generation: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OwnerWake {
     pub journey_id: Uuid,
     pub timer_id: Uuid,
@@ -66,12 +72,14 @@ pub enum JourneyStatus {
 pub enum Work {
     StartJourney {
         journey_id: Uuid,
-        ordinal: u32,
+        animal_id: u32,
+        generation: u32,
         seed: Vec<u8>,
     },
     ResumeJourney {
         journey_id: Uuid,
-        ordinal: u32,
+        animal_id: u32,
+        generation: u32,
         seed: Vec<u8>,
     },
 }
@@ -81,7 +89,7 @@ pub enum Work {
 pub enum WireIn {
     CreateJourney {
         namespace: String,
-        ordinal: u32,
+        animal_id: u32,
         seed: Vec<u8>,
     },
     JourneyHistory(Uuid),
@@ -112,6 +120,7 @@ pub enum WireIn {
     JourneyComplete(Uuid),
     PollStep {
         namespace: String,
+        supported_animals: Vec<SupportedAnimal>,
     },
     PollTimers,
     HistoryEvent(RunnerOut),

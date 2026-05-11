@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, Work};
+use jungle_types::{
+    ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
+};
 use uuid::Uuid;
 
 use crate::{JungleStore, Result};
 
-type ClaimWorkHandler = Arc<dyn Fn(String) -> Result<Option<Work>> + Send + Sync + 'static>;
+type ClaimWorkHandler =
+    Arc<dyn Fn(String, Vec<SupportedAnimal>) -> Result<Option<Work>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(String, u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type JourneyHistoryHandler = Arc<dyn Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
@@ -63,8 +66,13 @@ impl JungleStore for MockStore {
         Ok(())
     }
 
-    async fn create_journey(&self, namespace: String, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
-        (self.on_create_flow)(namespace, ordinal, seed)
+    async fn create_journey(
+        &self,
+        namespace: String,
+        animal_id: u32,
+        seed: Vec<u8>,
+    ) -> Result<Uuid> {
+        (self.on_create_flow)(namespace, animal_id, seed)
     }
 
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
@@ -119,8 +127,12 @@ impl JungleStore for MockStore {
         (self.on_flow_alive_if_created)(journey_id)
     }
 
-    async fn claim_work(&self, namespace: String) -> Result<Option<Work>> {
-        (self.on_claim_work)(namespace)
+    async fn claim_work(
+        &self,
+        namespace: String,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>> {
+        (self.on_claim_work)(namespace, supported_animals)
     }
 
     async fn append_history(&self, history: RunnerOut) -> Result<()> {
@@ -172,7 +184,7 @@ impl MockStoreBuilder {
 
     pub fn on_claim_work<F>(mut self, f: F) -> Self
     where
-        F: Fn(String) -> Result<Option<Work>> + Send + Sync + 'static,
+        F: Fn(String, Vec<SupportedAnimal>) -> Result<Option<Work>> + Send + Sync + 'static,
     {
         self.on_claim_work = Some(Arc::new(f));
         self
@@ -304,7 +316,7 @@ impl MockStoreBuilder {
         let default_claim_owner_wake: ClaimOwnerWakeHandler = Arc::new(|_| Ok(None));
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
-        let default_claim_work: ClaimWorkHandler = Arc::new(|_| Ok(None));
+        let default_claim_work: ClaimWorkHandler = Arc::new(|_, _| Ok(None));
         let default_append_history: AppendHistoryHandler = Arc::new(|_| Ok(()));
         let default_schedule_sleep_timer: ScheduleSleepTimerHandler = Arc::new(|_, _, _| Ok(()));
         let default_poll_timers: PollTimersHandler = Arc::new(|| Ok(None));

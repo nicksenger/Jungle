@@ -113,14 +113,14 @@ impl JungleServer for Server {
         let response = match request {
             Some(WireIn::CreateJourney {
                 namespace,
-                ordinal,
+                animal_id,
                 seed,
             }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     let journey_id = self
                         .store
-                        .create_journey(namespace, ordinal, seed)
+                        .create_journey(namespace, animal_id, seed)
                         .await
                         .map_err(|err| {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
@@ -129,7 +129,7 @@ impl JungleServer for Server {
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
-                    let _ = (namespace, ordinal, seed);
+                    let _ = (namespace, animal_id, seed);
                     return Err(crate::ServerError::Backend(BackendError::Message(
                         "create_journey is unavailable without a persistence backend".to_string(),
                     )));
@@ -334,19 +334,26 @@ impl JungleServer for Server {
                     WireOut::Ack
                 }
             }
-            Some(WireIn::PollStep { namespace }) => {
+            Some(WireIn::PollStep {
+                namespace,
+                supported_animals,
+            }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    match self.store.claim_work(namespace).await.map_err(|err| {
-                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
-                    })? {
+                    match self
+                        .store
+                        .claim_work(namespace, supported_animals)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })? {
                         Some(work) => WireOut::PendingStep(work),
                         None => WireOut::NoAvailableSteps,
                     }
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
-                    let _ = namespace;
+                    let _ = (namespace, supported_animals);
                     WireOut::NoAvailableSteps
                 }
             }

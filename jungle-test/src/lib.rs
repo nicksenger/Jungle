@@ -114,6 +114,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -133,6 +134,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -152,6 +154,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -171,6 +174,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -199,6 +203,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -229,6 +234,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -259,6 +265,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;

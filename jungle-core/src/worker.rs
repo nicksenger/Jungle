@@ -6,7 +6,8 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, AnimalSet, Animals, BuildFlowWithContext,
-    ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep, StripAnimalHeaders, Work,
+    ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep, StripAnimalHeaders,
+    SupportedAnimal, Work,
 };
 use std::collections::HashMap;
 use std::future::Future;
@@ -33,7 +34,7 @@ where
     T::Animals: Animals,
     <T::Animals as Animals>::List: FlattenNodes,
     SPFlatten<<T::Animals as Animals>::List>: StripAnimalHeaders,
-    AnimalSet<T::Animals>: SpawnByOrdinal<T>,
+    AnimalSet<T::Animals>: SpawnByAnimal<T> + SupportedAnimalGenerations,
 {
     pub fn new<C>(jungle: T, client: C) -> Self
     where
@@ -121,6 +122,7 @@ where
         });
 
         let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
+        let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations>::collect();
 
         loop {
             for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
@@ -158,15 +160,17 @@ where
                 }
             }
 
-            match self.client.poll_work().await? {
+            match self.client.poll_work(supported_animals.clone()).await? {
                 Some(Work::StartJourney {
                     journey_id,
-                    ordinal,
+                    animal_id,
+                    generation,
                     seed,
                 }) => {
                     let history = self.client.journey_history(journey_id).await?;
-                    match <AnimalSet<T::Animals> as SpawnByOrdinal<T>>::resume_by_ordinal(
-                        ordinal,
+                    match <AnimalSet<T::Animals> as SpawnByAnimal<T>>::resume_by_animal(
+                        animal_id,
+                        generation,
                         seed,
                         journey_id,
                         history,
@@ -177,7 +181,7 @@ where
                     {
                         JourneyStartOutcome::NotMatched => {
                             return Err(ExecutorError::InputDeserialize(format!(
-                                "unknown animal ordinal: {ordinal}"
+                                "unknown animal: id={animal_id}, generation={generation}"
                             )));
                         }
                         JourneyStartOutcome::Completed => {
@@ -204,12 +208,14 @@ where
                 }
                 Some(Work::ResumeJourney {
                     journey_id,
-                    ordinal,
+                    animal_id,
+                    generation,
                     seed,
                 }) => {
                     let history = self.client.journey_history(journey_id).await?;
-                    match <AnimalSet<T::Animals> as SpawnByOrdinal<T>>::resume_by_ordinal(
-                        ordinal,
+                    match <AnimalSet<T::Animals> as SpawnByAnimal<T>>::resume_by_animal(
+                        animal_id,
+                        generation,
                         seed,
                         journey_id,
                         history,
@@ -220,7 +226,7 @@ where
                     {
                         JourneyStartOutcome::NotMatched => {
                             return Err(ExecutorError::InputDeserialize(format!(
-                                "unknown animal ordinal: {ordinal}"
+                                "unknown animal: id={animal_id}, generation={generation}"
                             )));
                         }
                         JourneyStartOutcome::Completed => {
@@ -323,17 +329,19 @@ where
     }
 }
 
-pub trait SpawnByOrdinal<T>: Send + Sync {
-    fn spawn_by_ordinal<'a>(
-        ordinal: u32,
+pub trait SpawnByAnimal<T>: Send + Sync {
+    fn spawn_by_animal<'a>(
+        animal_id: u32,
+        generation: u32,
         seed: Vec<u8>,
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
 
-    fn resume_by_ordinal<'a>(
-        ordinal: u32,
+    fn resume_by_animal<'a>(
+        animal_id: u32,
+        generation: u32,
         seed: Vec<u8>,
         journey_id: Uuid,
         history: Vec<RunnerOut>,
@@ -342,9 +350,10 @@ pub trait SpawnByOrdinal<T>: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
 }
 
-impl<T> SpawnByOrdinal<T> for list::Empty {
-    fn spawn_by_ordinal<'a>(
-        _ordinal: u32,
+impl<T> SpawnByAnimal<T> for list::Empty {
+    fn spawn_by_animal<'a>(
+        _animal_id: u32,
+        _generation: u32,
         _seed: Vec<u8>,
         _journey_id: Uuid,
         _runner: &'a JungleRunner<T>,
@@ -353,8 +362,9 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
         Box::pin(async { Ok(JourneyStartOutcome::NotMatched) })
     }
 
-    fn resume_by_ordinal<'a>(
-        _ordinal: u32,
+    fn resume_by_animal<'a>(
+        _animal_id: u32,
+        _generation: u32,
         _seed: Vec<u8>,
         _journey_id: Uuid,
         _history: Vec<RunnerOut>,
@@ -365,9 +375,9 @@ impl<T> SpawnByOrdinal<T> for list::Empty {
     }
 }
 
-impl<T, Head, Tail, Ordinal> SpawnByOrdinal<T> for list::List<(Head, Tail)>
+impl<T, Head, Tail, AnimalId, Generation> SpawnByAnimal<T> for list::List<(Head, Tail)>
 where
-    Head: Animal<Id = jungle_types::Id<Ordinal>>
+    Head: Animal<Id = jungle_types::Id<AnimalId>, Generation = Generation>
         + AnimalObservation
         + AnimalPerturbation
         + Send
@@ -377,19 +387,23 @@ where
     Head::State: Send + 'static,
     Head::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
-    Ordinal: Unsigned,
-    Tail: SpawnByOrdinal<T>,
+    AnimalId: Unsigned,
+    Generation: Unsigned,
+    Tail: SpawnByAnimal<T>,
     T: 'static,
 {
-    fn spawn_by_ordinal<'a>(
-        ordinal: u32,
+    fn spawn_by_animal<'a>(
+        animal_id: u32,
+        generation: u32,
         seed: Vec<u8>,
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
-            if ordinal == <Ordinal as Unsigned>::U32 {
+            if animal_id == <AnimalId as Unsigned>::U32
+                && generation == <Generation as Unsigned>::U32
+            {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
                 let state: Head::State = seed.into();
@@ -418,13 +432,14 @@ where
                     }
                 }
             } else {
-                Tail::spawn_by_ordinal(ordinal, seed, journey_id, runner, tx).await
+                Tail::spawn_by_animal(animal_id, generation, seed, journey_id, runner, tx).await
             }
         })
     }
 
-    fn resume_by_ordinal<'a>(
-        ordinal: u32,
+    fn resume_by_animal<'a>(
+        animal_id: u32,
+        generation: u32,
         seed: Vec<u8>,
         journey_id: Uuid,
         history: Vec<RunnerOut>,
@@ -432,7 +447,9 @@ where
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
-            if ordinal == <Ordinal as Unsigned>::U32 {
+            if animal_id == <AnimalId as Unsigned>::U32
+                && generation == <Generation as Unsigned>::U32
+            {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
                 let state: Head::State = seed.into();
@@ -462,9 +479,37 @@ where
                     }
                 }
             } else {
-                Tail::resume_by_ordinal(ordinal, seed, journey_id, history, runner, tx).await
+                Tail::resume_by_animal(animal_id, generation, seed, journey_id, history, runner, tx)
+                    .await
             }
         })
+    }
+}
+
+pub trait SupportedAnimalGenerations {
+    fn collect() -> Vec<SupportedAnimal>;
+}
+
+impl SupportedAnimalGenerations for list::Empty {
+    fn collect() -> Vec<SupportedAnimal> {
+        Vec::new()
+    }
+}
+
+impl<Head, Tail, AnimalId, Generation> SupportedAnimalGenerations for list::List<(Head, Tail)>
+where
+    Head: Animal<Id = jungle_types::Id<AnimalId>, Generation = Generation>,
+    AnimalId: Unsigned,
+    Generation: Unsigned,
+    Tail: SupportedAnimalGenerations,
+{
+    fn collect() -> Vec<SupportedAnimal> {
+        let mut out = vec![SupportedAnimal {
+            animal_id: <AnimalId as Unsigned>::U32,
+            generation: <Generation as Unsigned>::U32,
+        }];
+        out.extend(Tail::collect());
+        out
     }
 }
 

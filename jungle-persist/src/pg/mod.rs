@@ -4,7 +4,7 @@ use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
-use jungle_types::{ClaimedAnimalPerturbation, OwnerWake, RunnerOut, Work};
+use jungle_types::{ClaimedAnimalPerturbation, OwnerWake, RunnerOut, SupportedAnimal, Work};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
@@ -67,12 +67,17 @@ impl JungleStore for PgStore {
         }
     }
 
-    async fn create_journey(&self, namespace: String, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+    async fn create_journey(
+        &self,
+        namespace: String,
+        animal_id: u32,
+        seed: Vec<u8>,
+    ) -> Result<Uuid> {
         let journey_id = Uuid::new_v4();
         let work_item_id = Uuid::new_v4();
-        let ordinal = i32::try_from(ordinal).map_err(|_| {
+        let animal_id = i32::try_from(animal_id).map_err(|_| {
             crate::PersistenceError::Message(format!(
-                "journey ordinal exceeds i32 range for postgres: {ordinal}"
+                "animal id exceeds i32 range for postgres: {animal_id}"
             ))
         })?;
 
@@ -82,15 +87,30 @@ impl JungleStore for PgStore {
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
 
+        let generation = sqlx::query_scalar::<_, i32>(
+            r#"
+            SELECT generation
+            FROM animal_generations
+            WHERE namespace = $1 AND animal_id = $2
+            "#,
+        )
+        .bind(namespace.as_str())
+        .bind(animal_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?
+        .unwrap_or(0);
+
         sqlx::query(
             r#"
-            INSERT INTO journeys (id, namespace, ordinal, status, seed)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO journeys (id, namespace, animal_id, generation, status, seed)
+            VALUES ($1, $2, $3, $4, $5, $6)
             "#,
         )
         .bind(journey_id)
         .bind(namespace)
-        .bind(ordinal)
+        .bind(animal_id)
+        .bind(generation)
         .bind(0_i16)
         .bind(seed)
         .execute(&mut *tx)
@@ -411,21 +431,84 @@ impl JungleStore for PgStore {
         Ok(())
     }
 
-    async fn claim_work(&self, namespace: String) -> Result<Option<Work>> {
+    async fn claim_work(
+        &self,
+        namespace: String,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>> {
+        if supported_animals.is_empty() {
+            return Ok(None);
+        }
+
+        let mut supported_ids = Vec::<i32>::with_capacity(supported_animals.len());
+        let mut supported_generations = Vec::<i32>::with_capacity(supported_animals.len());
+        for supported in &supported_animals {
+            supported_ids.push(i32::try_from(supported.animal_id).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "supported animal id exceeds i32 range for postgres: {}",
+                    supported.animal_id
+                ))
+            })?);
+            supported_generations.push(i32::try_from(supported.generation).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "supported animal generation exceeds i32 range for postgres: {}",
+                    supported.generation
+                ))
+            })?);
+        }
+
+        for supported in supported_animals {
+            let animal_id = i32::try_from(supported.animal_id).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "supported animal id exceeds i32 range for postgres: {}",
+                    supported.animal_id
+                ))
+            })?;
+            let generation = i32::try_from(supported.generation).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "supported animal generation exceeds i32 range for postgres: {}",
+                    supported.generation
+                ))
+            })?;
+            sqlx::query(
+                r#"
+                INSERT INTO animal_generations (namespace, animal_id, generation, updated_at)
+                VALUES ($1, $2, $3, NOW())
+                ON CONFLICT (namespace, animal_id)
+                DO UPDATE SET
+                    generation = GREATEST(animal_generations.generation, EXCLUDED.generation),
+                    updated_at = NOW()
+                "#,
+            )
+            .bind(namespace.as_str())
+            .bind(animal_id)
+            .bind(generation)
+            .execute(&self.pool)
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        }
+
         #[derive(Debug, sqlx::FromRow)]
         struct ClaimedWorkRow {
             journey_id: Uuid,
             kind: i16,
-            ordinal: i32,
+            animal_id: i32,
+            generation: i32,
             seed: Vec<u8>,
         }
 
         let row = sqlx::query_as::<_, ClaimedWorkRow>(
             r#"
-            WITH candidate AS (
+            WITH supported AS (
+                SELECT * FROM UNNEST($2::INT4[], $3::INT4[]) AS s(animal_id, generation)
+            ),
+            candidate AS (
                 SELECT wi.id
                 FROM work_items wi
                 INNER JOIN journeys j ON j.id = wi.journey_id
+                INNER JOIN supported s
+                    ON s.animal_id = j.animal_id
+                   AND s.generation = j.generation
                 WHERE j.namespace = $1
                   AND (wi.status = $2 OR (wi.status = $3 AND wi.expiry < NOW()))
                 ORDER BY wi.expiry, wi.id
@@ -440,12 +523,14 @@ impl JungleStore for PgStore {
                 WHERE wi.id = c.id
                 RETURNING wi.journey_id, wi.kind
             )
-            SELECT c.journey_id, c.kind, f.ordinal, f.seed
+            SELECT c.journey_id, c.kind, f.animal_id, f.generation, f.seed
             FROM claimed c
             INNER JOIN journeys f ON f.id = c.journey_id
             "#,
         )
         .bind(namespace)
+        .bind(supported_ids)
+        .bind(supported_generations)
         .bind(0_i16)
         .bind(1_i16)
         .fetch_optional(&self.pool)
@@ -458,28 +543,42 @@ impl JungleStore for PgStore {
 
         let work = match row.kind {
             0 => {
-                let ordinal = u32::try_from(row.ordinal).map_err(|_| {
+                let animal_id = u32::try_from(row.animal_id).map_err(|_| {
                     crate::PersistenceError::Message(format!(
-                        "invalid negative ordinal in postgres journey: {}",
-                        row.ordinal
+                        "invalid negative animal_id in postgres journey: {}",
+                        row.animal_id
+                    ))
+                })?;
+                let generation = u32::try_from(row.generation).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "invalid negative generation in postgres journey: {}",
+                        row.generation
                     ))
                 })?;
                 Work::StartJourney {
                     journey_id: row.journey_id,
-                    ordinal,
+                    animal_id,
+                    generation,
                     seed: row.seed,
                 }
             }
             1 => {
-                let ordinal = u32::try_from(row.ordinal).map_err(|_| {
+                let animal_id = u32::try_from(row.animal_id).map_err(|_| {
                     crate::PersistenceError::Message(format!(
-                        "invalid negative ordinal in postgres journey: {}",
-                        row.ordinal
+                        "invalid negative animal_id in postgres journey: {}",
+                        row.animal_id
+                    ))
+                })?;
+                let generation = u32::try_from(row.generation).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "invalid negative generation in postgres journey: {}",
+                        row.generation
                     ))
                 })?;
                 Work::ResumeJourney {
                     journey_id: row.journey_id,
-                    ordinal,
+                    animal_id,
+                    generation,
                     seed: row.seed,
                 }
             }
