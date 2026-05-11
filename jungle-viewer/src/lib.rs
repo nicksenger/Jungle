@@ -696,11 +696,11 @@ impl GraphBuilder {
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for target in &left_flow.roots {
-                    self.edges.push((select, *target));
+                for source in &left_flow.exits {
+                    self.edges.push((*source, select));
                 }
-                for target in &right_flow.roots {
-                    self.edges.push((select, *target));
+                for source in &right_flow.exits {
+                    self.edges.push((*source, select));
                 }
 
                 let mut members = vec![select];
@@ -708,7 +708,11 @@ impl GraphBuilder {
                 members.extend(right_flow.members.iter().copied());
 
                 Flattened {
-                    roots: vec![select],
+                    roots: dedup({
+                        let mut roots = left_flow.roots;
+                        roots.extend(right_flow.roots);
+                        roots
+                    }),
                     exits: vec![select],
                     members,
                 }
@@ -721,11 +725,11 @@ impl GraphBuilder {
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for target in &left_flow.roots {
-                    self.edges.push((join, *target));
+                for source in &left_flow.exits {
+                    self.edges.push((*source, join));
                 }
-                for target in &right_flow.roots {
-                    self.edges.push((join, *target));
+                for source in &right_flow.exits {
+                    self.edges.push((*source, join));
                 }
 
                 let mut members = vec![join];
@@ -733,7 +737,11 @@ impl GraphBuilder {
                 members.extend(right_flow.members.iter().copied());
 
                 Flattened {
-                    roots: vec![join],
+                    roots: dedup({
+                        let mut roots = left_flow.roots;
+                        roots.extend(right_flow.roots);
+                        roots
+                    }),
                     exits: vec![join],
                     members,
                 }
@@ -1117,18 +1125,77 @@ mod tests {
         assert!(edges.contains(&(branch_id, loop_r_id)));
         assert!(edges.contains(&(loop_l_id, branch_id)));
         assert!(edges.contains(&(loop_r_id, branch_id)));
-        assert!(edges.contains(&(loop_id, join_id)));
+        assert!(edges.contains(&(loop_id, join_l_id)));
+        assert!(edges.contains(&(loop_id, join_r_id)));
+        assert!(!edges.contains(&(loop_id, join_id)));
 
-        assert!(edges.contains(&(join_id, join_l_id)));
-        assert!(edges.contains(&(join_id, join_r_id)));
-        assert!(edges.contains(&(join_id, select_id)));
-        assert!(!edges.contains(&(join_l_id, select_id)));
-        assert!(!edges.contains(&(join_r_id, select_id)));
+        assert!(edges.contains(&(join_l_id, join_id)));
+        assert!(edges.contains(&(join_r_id, join_id)));
+        assert!(edges.contains(&(join_id, sel_l_id)));
+        assert!(edges.contains(&(join_id, sel_r_id)));
+        assert!(!edges.contains(&(join_id, select_id)));
 
-        assert!(edges.contains(&(select_id, sel_l_id)));
-        assert!(edges.contains(&(select_id, sel_r_id)));
+        assert!(edges.contains(&(sel_l_id, select_id)));
+        assert!(edges.contains(&(sel_r_id, select_id)));
         assert!(edges.contains(&(select_id, tail_id)));
-        assert!(!edges.contains(&(sel_l_id, tail_id)));
-        assert!(!edges.contains(&(sel_r_id, tail_id)));
+        assert!(!edges.contains(&(join_id, tail_id)));
+    }
+
+    #[test]
+    fn while_cluster_stays_scoped_to_loop_body() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::While {
+                label: "Loop",
+                body: Box::new(JourneyAst::Conditional {
+                    label: "StaticCondition",
+                    left: Box::new(JourneyAst::Step { label: "InLoopL" }),
+                    right: Box::new(JourneyAst::Step { label: "InLoopR" }),
+                }),
+            },
+            JourneyAst::Join {
+                label: "Join",
+                left: Box::new(JourneyAst::Step { label: "OutJoinL" }),
+                right: Box::new(JourneyAst::Step { label: "OutJoinR" }),
+            },
+            JourneyAst::Select {
+                label: "Select",
+                left: Box::new(JourneyAst::Step { label: "OutSelL" }),
+                right: Box::new(JourneyAst::Step { label: "OutSelR" }),
+            },
+        ]);
+
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+
+        let loop_id = id_for("Loop");
+        let cond_id = id_for("StaticCondition");
+        let in_l_id = id_for("InLoopL");
+        let in_r_id = id_for("InLoopR");
+        let join_id = id_for("Join");
+        let select_id = id_for("Select");
+
+        assert_eq!(model.while_clusters.len(), 1);
+        let cluster = &model.while_clusters[0];
+        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
+        assert!(cluster_nodes.contains(&loop_id));
+        assert!(cluster_nodes.contains(&cond_id));
+        assert!(cluster_nodes.contains(&in_l_id));
+        assert!(cluster_nodes.contains(&in_r_id));
+        assert!(!cluster_nodes.contains(&join_id));
+        assert!(!cluster_nodes.contains(&select_id));
+
+        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
+        assert!(edges.contains(&(loop_id, cond_id)));
+        assert!(edges.contains(&(in_l_id, cond_id)));
+        assert!(edges.contains(&(in_r_id, cond_id)));
+        assert!(edges.contains(&(loop_id, id_for("OutJoinL"))));
+        assert!(edges.contains(&(loop_id, id_for("OutJoinR"))));
     }
 }

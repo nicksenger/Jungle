@@ -400,3 +400,22 @@ pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
 
     (client, journey_id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jungle_sdk::types::{JourneyAst, JourneyAstSource};
+
+    #[test]
+    fn static_journey_ast_shape_is_while_then_join_then_select() {
+        let ast = <StaticJourney as JourneyAstSource>::journey_ast();
+        let JourneyAst::Sequence(nodes) = ast else {
+            panic!("expected StaticJourney AST to be a top-level sequence");
+        };
+
+        assert_eq!(nodes.len(), 3);
+        assert!(matches!(nodes[0], JourneyAst::While { .. }));
+        assert!(matches!(nodes[1], JourneyAst::Join { .. }));
+        assert!(matches!(nodes[2], JourneyAst::Select { .. }));
+    }
+}
