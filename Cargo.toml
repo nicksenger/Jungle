@@ -11,6 +11,7 @@ members = [
     "jungle-test",
     "jungle-viewer",
     "jungle-types",
+    "jungle-zoo",
 ]
 
 [workspace.dependencies]
