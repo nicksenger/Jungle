@@ -7,6 +7,7 @@ edition = "2021"
 jungle-sdk = { path = "../jungle-sdk", features = ["server", "pg", "redb"] }
 
 [dev-dependencies]
+jungle-persist = { path = "../jungle-persist", features = ["postgres"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 futures = { workspace = true }
 uuid = { workspace = true }

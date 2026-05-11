@@ -1,4 +1,6 @@
 pub mod migrations;
+#[cfg(feature = "sqlx-checked")]
+mod sqlx_checked;
 
 use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
@@ -355,7 +357,7 @@ impl JungleStore for PgStore {
         sqlx::query(
             r#"
             INSERT INTO journey_leases (journey_id, owner_id, lease_until, heartbeat_at)
-            VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 millisecond'), NOW())
+            VALUES ($1, $2, NOW() + ($3::BIGINT * INTERVAL '1 millisecond'), NOW())
             ON CONFLICT (journey_id)
             DO UPDATE SET owner_id = EXCLUDED.owner_id,
                           lease_until = EXCLUDED.lease_until,
@@ -525,14 +527,14 @@ impl JungleStore for PgStore {
                     ON s.animal_id = j.animal_id
                    AND s.generation = j.generation
                 WHERE j.namespace = $1
-                  AND (wi.status = $2 OR (wi.status = $3 AND wi.expiry < NOW()))
+                  AND (wi.status = $4 OR (wi.status = $5 AND wi.expiry < NOW()))
                 ORDER BY wi.expiry, wi.id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             ),
             claimed AS (
                 UPDATE work_items wi
-                SET status = $3,
+                SET status = $5,
                     expiry = NOW() + INTERVAL '30 seconds'
                 FROM candidate c
                 WHERE wi.id = c.id
@@ -688,7 +690,7 @@ impl JungleStore for PgStore {
         sqlx::query(
             r#"
             INSERT INTO timer_tasks (id, journey_id, status, visible_at, fired_at)
-            VALUES ($1, $2, $3, to_timestamp($4::double precision / 1000.0), NULL)
+            VALUES ($1, $2, $3, to_timestamp($4::BIGINT::double precision / 1000.0), NULL)
             ON CONFLICT (id) DO NOTHING
             "#,
         )

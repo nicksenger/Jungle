@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH next_wake AS (\n            SELECT id\n            FROM owner_wakes\n            WHERE owner_id = $1\n            ORDER BY created_at, id\n            FOR UPDATE SKIP LOCKED\n            LIMIT 1\n        )\n        DELETE FROM owner_wakes ow\n        USING next_wake nw\n        WHERE ow.id = nw.id\n        RETURNING ow.journey_id, ow.timer_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "journey_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "timer_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e853db825e9e3280dc473f944a31d38cf0cd5a1c4ef6a45f70f4b69b9f86186b"
+}

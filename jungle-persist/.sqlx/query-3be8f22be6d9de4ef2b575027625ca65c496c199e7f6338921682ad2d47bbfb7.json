@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO owner_wakes (id, owner_id, journey_id, timer_id, created_at)\n        VALUES ($1, $2, $3, $4, NOW())\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3be8f22be6d9de4ef2b575027625ca65c496c199e7f6338921682ad2d47bbfb7"
+}
