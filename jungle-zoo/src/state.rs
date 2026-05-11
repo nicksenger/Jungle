@@ -1,10 +1,18 @@
 use jungle_macros::Optic;
 
+#[derive(Optic, Clone, Debug, PartialEq, Eq)]
+pub struct Metabolism {
+    pub energy: u64,
+    pub is_hungry: bool,
+    pub is_sleepy: bool,
+}
+
 #[derive(Optic, Clone, Debug, PartialEq)]
 pub struct Base {
     pub species: String,
     pub age: u32,
     pub weight: f32,
+    pub metabolism: Metabolism,
 }
 
 #[derive(Optic, Clone, Debug, PartialEq)]
