@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::{button, column, container, row, text, Space};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{Cluster, Graph, Sugiyama};
 use jungle_client::JungleClient;
@@ -12,6 +12,9 @@ use uuid::Uuid;
 const WINDOW_WIDTH: f32 = 1360.0;
 const WINDOW_HEIGHT: f32 = 900.0;
 const LIVE_REFRESH: Duration = Duration::from_millis(1000);
+const NODE_WIDTH: f64 = 240.0;
+const NODE_HEIGHT: f64 = 80.0;
+const GRAPH_WIDGET_ID: &str = "jungle-viewer";
 
 #[derive(Clone)]
 pub struct JungleViewerBuilder {
@@ -385,7 +388,6 @@ fn sidebar<'a>(
 
 fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> Element<'a, Message> {
     let nodes_for_view = model.node_map.clone();
-    let nodes_for_size = model.node_map.clone();
     let highlights = live_data.cloned();
 
     let clusters = model.while_clusters.clone();
@@ -425,25 +427,15 @@ fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> El
 
             button(content)
                 .padding([8, 10])
+                .width(Length::Shrink)
                 .style(move |_theme, status| node_button_style(status, &info, live_state))
                 .into()
         })
+        .id(iced_sugiyama::Id::new(GRAPH_WIDGET_ID))
         .edge_color(jungle_edge)
         .stroke_width(1.6)
         .edge_corner_radius(18.0)
-        .node_size(move |node_id| {
-            let info = nodes_for_size
-                .get(&node_id)
-                .cloned()
-                .unwrap_or_else(|| NodeDisplay::unknown(node_id));
-            if info.is_while_container {
-                (260.0, 88.0)
-            } else if info.is_conditional_branch {
-                (260.0, 80.0)
-            } else {
-                (230.0, 72.0)
-            }
-        })
+        .node_size(move |_node_id| (NODE_WIDTH, NODE_HEIGHT))
         .clusters(clusters)
         .cluster_container(|index, _| {
             Some(
@@ -460,7 +452,7 @@ fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> El
         .cluster_color(loop_cluster_color)
         .padding(24);
 
-    container(scrollable(graph))
+    container(container(graph).width(Length::Fill).height(Length::Fill))
         .width(Length::Fill)
         .height(Length::Fill)
         .style(graph_panel_style)
