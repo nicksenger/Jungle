@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 pub enum RunnerAdvance {
     Completed,
-    SuspendedSleep { wake_at_unix_ms: i64 },
+    SuspendedSleep { wake_at_unix_ms: i64, node_id: u32 },
 }
 
 pub struct JungleRunner<T> {
@@ -110,9 +110,11 @@ where
                 Err(ExecutorError::Complete) => break,
                 Err(err) => return Err(err),
             };
+            let node_id = request.node_id();
             send_history(
                 tx,
                 RunnerOut::ActionInput {
+                    node_id,
                     data: request.request_bytes().to_vec(),
                     uuid: journey_id,
                 },
@@ -125,12 +127,17 @@ where
                 let wake_at_unix_ms = chrono::Utc::now()
                     .timestamp_millis()
                     .saturating_add(duration_millis);
-                return Ok(RunnerAdvance::SuspendedSleep { wake_at_unix_ms });
+                return Ok(RunnerAdvance::SuspendedSleep {
+                    wake_at_unix_ms,
+                    node_id,
+                });
             }
 
             let completion = request.run().await?;
-            apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, completion)
-                .await?;
+            apply_completion_and_emit_appearance::<T, A>(
+                executor, journey_id, tx, node_id, completion,
+            )
+            .await?;
         }
         Ok(RunnerAdvance::Completed)
     }
@@ -139,6 +146,7 @@ where
         &self,
         executor: &mut ContextExecutor<T, A>,
         journey_id: Uuid,
+        sleep_node_id: u32,
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
@@ -148,7 +156,14 @@ where
         let sleep_out = postcard::to_allocvec(&())
             .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
         let completion = Ok(sleep_out);
-        apply_completion_and_emit_appearance::<T, A>(executor, journey_id, tx, completion).await?;
+        apply_completion_and_emit_appearance::<T, A>(
+            executor,
+            journey_id,
+            tx,
+            sleep_node_id,
+            completion,
+        )
+        .await?;
         self.drive_until_sleep_or_complete::<A>(executor, journey_id, tx)
             .await
     }
@@ -158,6 +173,7 @@ async fn apply_completion_and_emit_appearance<T, A>(
     executor: &mut ContextExecutor<T, A>,
     journey_id: Uuid,
     tx: &mut RunnerChannelTx,
+    node_id: u32,
     completion: Result<Vec<u8>, Vec<u8>>,
 ) -> Result<(), ExecutorError>
 where
@@ -170,6 +186,7 @@ where
             send_history(
                 tx,
                 RunnerOut::ActionSuccessOutput {
+                    node_id,
                     data: output.clone(),
                     uuid: journey_id,
                 },
@@ -180,6 +197,7 @@ where
             send_history(
                 tx,
                 RunnerOut::ActionFailureOutput {
+                    node_id,
                     data: error.clone(),
                     uuid: journey_id,
                 },

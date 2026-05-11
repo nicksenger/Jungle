@@ -92,15 +92,21 @@ impl MockClient {
             let result = match message {
                 RunnerChannelMessage::History(history) => {
                     let out = match history {
-                        RunnerOut::ActionInput { data, uuid } => {
-                            self.action_input(uuid, data).await
-                        }
-                        RunnerOut::ActionSuccessOutput { data, uuid } => {
-                            self.action_success_output(uuid, data).await
-                        }
-                        RunnerOut::ActionFailureOutput { data, uuid } => {
-                            self.action_failure_output(uuid, data).await
-                        }
+                        RunnerOut::ActionInput {
+                            node_id,
+                            data,
+                            uuid,
+                        } => self.action_input(uuid, node_id, data).await,
+                        RunnerOut::ActionSuccessOutput {
+                            node_id,
+                            data,
+                            uuid,
+                        } => self.action_success_output(uuid, node_id, data).await,
+                        RunnerOut::ActionFailureOutput {
+                            node_id,
+                            data,
+                            uuid,
+                        } => self.action_failure_output(uuid, node_id, data).await,
                         RunnerOut::Appearance { data, uuid } => {
                             self.animal_appearance_update(uuid, data).await
                         }
@@ -206,15 +212,30 @@ impl JungleClient for MockClient {
         (self.on_poll_work)().await
     }
 
-    async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_input(
+        &self,
+        id: Uuid,
+        _node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         (self.on_action_input)(id, input).await
     }
 
-    async fn action_success_output(&self, id: Uuid, output: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_success_output(
+        &self,
+        id: Uuid,
+        _node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         (self.on_action_success_output)(id, output).await
     }
 
-    async fn action_failure_output(&self, id: Uuid, err: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_failure_output(
+        &self,
+        id: Uuid,
+        _node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         (self.on_action_failure_output)(id, err).await
     }
 }

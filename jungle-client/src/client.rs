@@ -537,9 +537,15 @@ impl JungleClient for Client {
         }
     }
 
-    async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_input(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionInput {
+                node_id,
                 data: input,
                 uuid: id,
             }))
@@ -561,9 +567,15 @@ impl JungleClient for Client {
         }
     }
 
-    async fn action_success_output(&self, id: Uuid, output: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_success_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
+                node_id,
                 data: output,
                 uuid: id,
             }))
@@ -585,9 +597,15 @@ impl JungleClient for Client {
         }
     }
 
-    async fn action_failure_output(&self, id: Uuid, err: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_failure_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
+                node_id,
                 data: err,
                 uuid: id,
             }))

@@ -47,9 +47,24 @@ pub trait JungleClient: DynClone + Send + Sync {
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError>;
     async fn poll_timers(&self) -> Result<Option<()>, ExecutorError>;
     async fn poll_work(&self) -> Result<Option<RunnerStep>, ExecutorError>;
-    async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError>;
-    async fn action_success_output(&self, id: Uuid, output: Vec<u8>) -> Result<(), ExecutorError>;
-    async fn action_failure_output(&self, id: Uuid, err: Vec<u8>) -> Result<(), ExecutorError>;
+    async fn action_input(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError>;
+    async fn action_success_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError>;
+    async fn action_failure_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError>;
 }
 
 dyn_clone::clone_trait_object!(JungleClient);

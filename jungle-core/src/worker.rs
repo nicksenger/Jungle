@@ -69,14 +69,28 @@ where
                 let result: Result<RunnerChannelResponse, ExecutorError> = match message {
                     RunnerChannelMessage::History(history) => {
                         let out = match history {
-                            RunnerOut::ActionInput { data, uuid } => {
-                                client_for_transport.action_input(uuid, data).await
+                            RunnerOut::ActionInput {
+                                node_id,
+                                data,
+                                uuid,
+                            } => client_for_transport.action_input(uuid, node_id, data).await,
+                            RunnerOut::ActionSuccessOutput {
+                                node_id,
+                                data,
+                                uuid,
+                            } => {
+                                client_for_transport
+                                    .action_success_output(uuid, node_id, data)
+                                    .await
                             }
-                            RunnerOut::ActionSuccessOutput { data, uuid } => {
-                                client_for_transport.action_success_output(uuid, data).await
-                            }
-                            RunnerOut::ActionFailureOutput { data, uuid } => {
-                                client_for_transport.action_failure_output(uuid, data).await
+                            RunnerOut::ActionFailureOutput {
+                                node_id,
+                                data,
+                                uuid,
+                            } => {
+                                client_for_transport
+                                    .action_failure_output(uuid, node_id, data)
+                                    .await
                             }
                             RunnerOut::Appearance { data, uuid } => {
                                 client_for_transport
@@ -124,7 +138,10 @@ where
                         SuspendedOutcome::Completed => {
                             self.client.complete_journey(wake.journey_id).await?;
                         }
-                        SuspendedOutcome::Sleeping { wake_at_unix_ms } => {
+                        SuspendedOutcome::Sleeping {
+                            wake_at_unix_ms,
+                            node_id: _,
+                        } => {
                             let timer_id = Uuid::new_v4();
                             self.client
                                 .schedule_sleep_timer(wake.journey_id, timer_id, wake_at_unix_ms)
@@ -248,7 +265,7 @@ pub enum JourneyStartOutcome<T> {
 
 pub enum SuspendedOutcome {
     Completed,
-    Sleeping { wake_at_unix_ms: i64 },
+    Sleeping { wake_at_unix_ms: i64, node_id: u32 },
 }
 
 pub trait SuspendedJourney<T> {
@@ -266,6 +283,7 @@ where
     A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     journey_id: Uuid,
+    sleep_node_id: u32,
     executor: ContextExecutor<T, A>,
 }
 
@@ -282,12 +300,24 @@ where
     ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + 'a>> {
         Box::pin(async move {
             let advance = runner
-                .resume_after_sleep::<A>(&mut self.executor, self.journey_id, &mut tx)
+                .resume_after_sleep::<A>(
+                    &mut self.executor,
+                    self.journey_id,
+                    self.sleep_node_id,
+                    &mut tx,
+                )
                 .await?;
             match advance {
                 RunnerAdvance::Completed => Ok(SuspendedOutcome::Completed),
-                RunnerAdvance::SuspendedSleep { wake_at_unix_ms } => {
-                    Ok(SuspendedOutcome::Sleeping { wake_at_unix_ms })
+                RunnerAdvance::SuspendedSleep {
+                    wake_at_unix_ms,
+                    node_id,
+                } => {
+                    self.sleep_node_id = node_id;
+                    Ok(SuspendedOutcome::Sleeping {
+                        wake_at_unix_ms,
+                        node_id,
+                    })
                 }
             }
         })
@@ -373,9 +403,13 @@ where
                     .await?
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
-                    RunnerAdvance::SuspendedSleep { wake_at_unix_ms } => {
+                    RunnerAdvance::SuspendedSleep {
+                        wake_at_unix_ms,
+                        node_id,
+                    } => {
                         let suspended = SuspendedAnimalJourney::<T, Head> {
                             journey_id,
+                            sleep_node_id: node_id,
                             executor,
                         };
                         Ok(JourneyStartOutcome::Sleeping {
@@ -413,9 +447,13 @@ where
                     .await?
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
-                    RunnerAdvance::SuspendedSleep { wake_at_unix_ms } => {
+                    RunnerAdvance::SuspendedSleep {
+                        wake_at_unix_ms,
+                        node_id,
+                    } => {
                         let suspended = SuspendedAnimalJourney::<T, Head> {
                             journey_id,
+                            sleep_node_id: node_id,
                             executor,
                         };
                         Ok(JourneyStartOutcome::Sleeping {
@@ -453,15 +491,21 @@ where
             Err(ExecutorError::Complete) => break,
             Err(err) => return Err(err),
         };
+        let request_node_id = request.node_id();
         let expected_input = request.request_bytes();
         let action_type = request.action_type();
 
-        let Some(RunnerOut::ActionInput { data, uuid }) = history.get(index) else {
+        let Some(RunnerOut::ActionInput {
+            node_id,
+            data,
+            uuid,
+        }) = history.get(index)
+        else {
             return Err(ExecutorError::ClientTransport(
                 "history replay expected ActionInput event".to_string(),
             ));
         };
-        if *uuid != journey_id || data.as_slice() != expected_input {
+        if *uuid != journey_id || *node_id != request_node_id || data.as_slice() != expected_input {
             return Err(ExecutorError::ClientTransport(
                 "history replay ActionInput mismatch".to_string(),
             ));
@@ -485,23 +529,31 @@ where
                 }
                 _ => {
                     let completion = request.run().await?;
-                    send_recovered_completion(tx, journey_id, &completion).await?;
+                    send_recovered_completion(tx, journey_id, request_node_id, &completion).await?;
                     completion
                 }
             }
         } else {
             match history.get(index) {
-                Some(RunnerOut::ActionSuccessOutput { data, uuid }) if *uuid == journey_id => {
+                Some(RunnerOut::ActionSuccessOutput {
+                    node_id,
+                    data,
+                    uuid,
+                }) if *uuid == journey_id && *node_id == request_node_id => {
                     index = index.saturating_add(1);
                     Ok(data.clone())
                 }
-                Some(RunnerOut::ActionFailureOutput { data, uuid }) if *uuid == journey_id => {
+                Some(RunnerOut::ActionFailureOutput {
+                    node_id,
+                    data,
+                    uuid,
+                }) if *uuid == journey_id && *node_id == request_node_id => {
                     index = index.saturating_add(1);
                     Err(data.clone())
                 }
                 _ => {
                     let completion = request.run().await?;
-                    send_recovered_completion(tx, journey_id, &completion).await?;
+                    send_recovered_completion(tx, journey_id, request_node_id, &completion).await?;
                     completion
                 }
             }
@@ -516,14 +568,17 @@ where
 async fn send_recovered_completion(
     tx: &mut RunnerChannelTx,
     journey_id: Uuid,
+    node_id: u32,
     completion: &Result<Vec<u8>, Vec<u8>>,
 ) -> Result<(), ExecutorError> {
     let out = match completion {
         Ok(data) => RunnerOut::ActionSuccessOutput {
+            node_id,
             data: data.clone(),
             uuid: journey_id,
         },
         Err(data) => RunnerOut::ActionFailureOutput {
+            node_id,
             data: data.clone(),
             uuid: journey_id,
         },

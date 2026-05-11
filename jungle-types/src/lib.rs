@@ -107,6 +107,19 @@ pub struct Select<L, R>(PhantomData<fn() -> (L, R)>);
 /// A flow combinator that runs two activities and resolves when both complete.
 pub struct Join<L, R>(PhantomData<fn() -> (L, R)>);
 
+/// Type-level metadata marker for flow nodes.
+pub trait NodeMetadata {
+    const METADATA: &'static str = "";
+}
+
+/// Empty metadata marker used by default when no metadata is provided.
+pub struct NoMetadata;
+
+impl NodeMetadata for NoMetadata {}
+
+/// A no-op boundary wrapper used for organization and metadata anchoring.
+pub struct Transparent<M, F>(PhantomData<fn() -> (M, F)>);
+
 /// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
     const NAME: &'static str;
@@ -737,6 +750,99 @@ where
 {
     type Output =
         <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
+}
+
+#[primitive(property = JungleRunning)]
+impl<M, F> Running for Transparent<M, F>
+where
+    F: Running,
+{
+    type In = F::In;
+    type Out = F::Out;
+
+    fn run(input: Self::In) -> Self::Out {
+        <F as Running>::run(input)
+    }
+}
+
+#[primitive(property = JungleWaiting)]
+impl<M, F> Waiting for Transparent<M, F>
+where
+    F: Waiting,
+{
+    type In = F::In;
+    type Out = F::Out;
+
+    fn accept(input: Self::In) -> Self::Out {
+        <F as Waiting>::accept(input)
+    }
+}
+
+#[primitive(property = JungleFlow)]
+impl<M, F> FlowActions for Transparent<M, F>
+where
+    F: FlowActions,
+{
+    type List = F::List;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<M, F> TraverseFlow for Transparent<M, F>
+where
+    F: TraverseFlow,
+{
+    type Output = Transparent<M, <F as TraverseFlow>::Output>;
+}
+
+impl<M, F, Traversal> TraverseWith<Traversal> for Transparent<M, F>
+where
+    F: TraverseWith<Traversal>,
+{
+    type Output = Transparent<M, <F as TraverseWith<Traversal>>::Output>;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<M, F> ReplaceFlow for Transparent<M, F>
+where
+    F: ReplaceFlow,
+{
+    type Output = Transparent<M, <F as ReplaceFlow>::Output>;
+}
+
+impl<M, F, Replacer> ReplaceWith<Replacer> for Transparent<M, F>
+where
+    F: ReplaceWith<Replacer>,
+{
+    type Output = Transparent<M, <F as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<M, F, Replacer> ReplaceNodesWith<Replacer> for Transparent<M, F>
+where
+    F: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<Transparent<M, <F as ReplaceNodesWith<Replacer>>::Output>>,
+{
+    type Output = <Replacer as ReplaceNode<
+        Transparent<M, <F as ReplaceNodesWith<Replacer>>::Output>,
+    >>::Output;
+}
+
+impl<T, A> NodeMetadata for Step<T, A>
+where
+    T: Animal,
+    A: Pulse<T>,
+{
+}
+
+impl<P, L, R> NodeMetadata for Conditional<P, L, R> {}
+impl<C, F> NodeMetadata for While<C, F> {}
+impl<L, R> NodeMetadata for Select<L, R> {}
+impl<L, R> NodeMetadata for Join<L, R> {}
+
+impl<M, F> NodeMetadata for Transparent<M, F>
+where
+    M: NodeMetadata,
+{
+    const METADATA: &'static str = M::METADATA;
 }
 
 #[primitive(property = JungleRunning)]

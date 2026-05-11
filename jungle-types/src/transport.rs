@@ -10,14 +10,17 @@ pub enum BackendError {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RunnerOut {
     ActionInput {
+        node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
     },
     ActionSuccessOutput {
+        node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
     },
     ActionFailureOutput {
+        node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
     },

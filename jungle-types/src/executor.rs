@@ -1,6 +1,6 @@
 use crate::{
     Action, ActionCompletion, Animal, BackendError, Conditional, Join, LoopCondition, Pulse,
-    Running, Select, Step, While,
+    Running, Select, Step, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -39,18 +39,29 @@ pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
 pub type ErasedStep<State> = dyn ErasedFlow<State>;
 
 pub struct ExecutableActionRequest {
+    node_id: u32,
     action_type: &'static str,
     request: Serialized,
     runner: ActionRunner,
 }
 
 impl ExecutableActionRequest {
-    fn new(action_type: &'static str, request: Serialized, runner: ActionRunner) -> Self {
+    fn new(
+        node_id: u32,
+        action_type: &'static str,
+        request: Serialized,
+        runner: ActionRunner,
+    ) -> Self {
         Self {
+            node_id,
             action_type,
             request,
             runner,
         }
+    }
+
+    pub fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     pub fn action_type(&self) -> &'static str {
@@ -98,6 +109,8 @@ pub trait ErasedFlow<State> {
     ) -> Result<(State, bool), ExecutorError> {
         Ok((state, false))
     }
+
+    fn assign_node_ids(&mut self, _next_id: &mut u32) {}
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -146,6 +159,7 @@ pub trait ExecutorFlow {
 }
 
 pub struct TypedErasedStep<Step> {
+    node_id: u32,
     complete: bool,
     waiting_completion: bool,
     marker: core::marker::PhantomData<fn() -> Step>,
@@ -154,6 +168,7 @@ pub struct TypedErasedStep<Step> {
 impl<Step> TypedErasedStep<Step> {
     pub fn new() -> Self {
         Self {
+            node_id: 0,
             complete: false,
             waiting_completion: false,
             marker: core::marker::PhantomData,
@@ -233,6 +248,7 @@ where
         Ok((
             state,
             ExecutableActionRequest::new(
+                self.node_id,
                 core::any::type_name::<<A as Pulse<T>>::Action>(),
                 request,
                 runner,
@@ -278,10 +294,16 @@ where
     fn is_complete(&self) -> bool {
         self.complete
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+    }
 }
 
 pub struct ContextualTypedErasedStep<Context, R> {
     context: Arc<Context>,
+    node_id: u32,
     complete: bool,
     waiting_completion: bool,
     marker: core::marker::PhantomData<fn() -> R>,
@@ -291,6 +313,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
             context,
+            node_id: 0,
             complete: false,
             waiting_completion: false,
             marker: core::marker::PhantomData,
@@ -374,6 +397,7 @@ where
         Ok((
             state,
             ExecutableActionRequest::new(
+                self.node_id,
                 core::any::type_name::<<A as Pulse<T>>::Action>(),
                 request,
                 runner,
@@ -418,6 +442,11 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
     }
 }
 
@@ -585,6 +614,15 @@ where
     fn is_complete(&self) -> bool {
         self.active_branch.is_some() && self.cursor >= self.branch_len()
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
+    }
 }
 
 struct WhileErasedFlow<State, In>
@@ -594,6 +632,7 @@ where
     should_continue: Box<dyn Fn(&State, &In) -> bool>,
     build_body: Box<dyn Fn() -> DynFlow<State>>,
     active_body: DynFlow<State>,
+    body_node_id_start: u32,
     body_cursor: usize,
     complete: bool,
     deferred_state: Option<State>,
@@ -613,6 +652,7 @@ struct SelectRequestEnvelope {
 }
 
 struct SelectErasedFlow<State> {
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     waiting_completion: bool,
@@ -622,6 +662,7 @@ struct SelectErasedFlow<State> {
 impl<State> SelectErasedFlow<State> {
     fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
         Self {
+            node_id: 0,
             left,
             right,
             waiting_completion: false,
@@ -631,6 +672,7 @@ impl<State> SelectErasedFlow<State> {
 }
 
 struct SelectContextErasedFlow<State> {
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     waiting_completion: bool,
@@ -640,6 +682,7 @@ struct SelectContextErasedFlow<State> {
 impl<State> SelectContextErasedFlow<State> {
     fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
         Self {
+            node_id: 0,
             left,
             right,
             waiting_completion: false,
@@ -770,7 +813,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new("jungle_types::Select", request, runner),
+            ExecutableActionRequest::new(self.node_id, "jungle_types::Select", request, runner),
         ))
     }
 
@@ -780,6 +823,17 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -905,7 +959,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new("jungle_types::Select", request, runner),
+            ExecutableActionRequest::new(self.node_id, "jungle_types::Select", request, runner),
         ))
     }
 
@@ -915,6 +969,17 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -931,6 +996,7 @@ struct JoinRequestEnvelope {
 }
 
 struct JoinErasedFlow<State> {
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     waiting_completion: bool,
@@ -940,6 +1006,7 @@ struct JoinErasedFlow<State> {
 impl<State> JoinErasedFlow<State> {
     fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
         Self {
+            node_id: 0,
             left,
             right,
             waiting_completion: false,
@@ -949,6 +1016,7 @@ impl<State> JoinErasedFlow<State> {
 }
 
 struct JoinContextErasedFlow<State> {
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     waiting_completion: bool,
@@ -958,6 +1026,7 @@ struct JoinContextErasedFlow<State> {
 impl<State> JoinContextErasedFlow<State> {
     fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
         Self {
+            node_id: 0,
             left,
             right,
             waiting_completion: false,
@@ -1062,7 +1131,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new("jungle_types::Join", request, runner),
+            ExecutableActionRequest::new(self.node_id, "jungle_types::Join", request, runner),
         ))
     }
 
@@ -1072,6 +1141,17 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -1171,7 +1251,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new("jungle_types::Join", request, runner),
+            ExecutableActionRequest::new(self.node_id, "jungle_types::Join", request, runner),
         ))
     }
 
@@ -1181,6 +1261,17 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -1196,6 +1287,7 @@ where
             should_continue,
             build_body,
             active_body: Vec::new(),
+            body_node_id_start: 0,
             body_cursor: 0,
             complete: false,
             deferred_state: None,
@@ -1206,6 +1298,10 @@ where
     fn ensure_iteration_ready(&mut self) {
         if self.active_body.is_empty() {
             self.active_body = (self.build_body)();
+            let mut next_id = self.body_node_id_start;
+            for node in &mut self.active_body {
+                node.assign_node_ids(&mut next_id);
+            }
             self.body_cursor = 0;
         }
     }
@@ -1334,6 +1430,14 @@ where
         }
         Ok((state, false))
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.body_node_id_start = *next_id;
+        let mut template = (self.build_body)();
+        for node in &mut template {
+            node.assign_node_ids(next_id);
+        }
+    }
 }
 
 #[inception(property = JungleDynFlow, signature(input = Input, output = Output))]
@@ -1440,6 +1544,18 @@ where
             build_body,
         )));
         steps
+    }
+}
+
+#[inception::primitive(property = crate::JungleDynFlow)]
+impl<State, In, M, F> BuildFlow<DynFlow<State>> for Transparent<M, F>
+where
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(steps: DynFlow<State>) -> Self::Output {
+        <F as BuildFlow<DynFlow<State>>>::push_steps(steps)
     }
 }
 
@@ -1706,6 +1822,15 @@ where
     fn is_complete(&self) -> bool {
         self.active_branch.is_some() && self.cursor >= self.branch_len()
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
+    }
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
@@ -1751,6 +1876,7 @@ where
     should_continue: Box<dyn Fn(&State, &In) -> bool>,
     build_body: Box<dyn Fn() -> DynFlow<State>>,
     active_body: DynFlow<State>,
+    body_node_id_start: u32,
     body_cursor: usize,
     complete: bool,
     deferred_state: Option<State>,
@@ -1769,6 +1895,7 @@ where
             should_continue,
             build_body,
             active_body: Vec::new(),
+            body_node_id_start: 0,
             body_cursor: 0,
             complete: false,
             deferred_state: None,
@@ -1779,6 +1906,10 @@ where
     fn ensure_iteration_ready(&mut self) {
         if self.active_body.is_empty() {
             self.active_body = (self.build_body)();
+            let mut next_id = self.body_node_id_start;
+            for node in &mut self.active_body {
+                node.assign_node_ids(&mut next_id);
+            }
             self.body_cursor = 0;
         }
     }
@@ -1907,6 +2038,14 @@ where
         }
         Ok((state, false))
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.body_node_id_start = *next_id;
+        let mut template = (self.build_body)();
+        for node in &mut template {
+            node.assign_node_ids(next_id);
+        }
+    }
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
@@ -1936,6 +2075,20 @@ where
             build_body,
         )));
         steps
+    }
+}
+
+#[inception::primitive(property = JungleDynFlowContext)]
+impl<Context, State, In, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Transparent<M, F>
+where
+    F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
+        + Running<In = (State, In)>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
     }
 }
 
@@ -2029,6 +2182,13 @@ where
     postcard::from_bytes(&emitted).map_err(|err| ExecutorError::EmitDeserialize(err.to_string()))
 }
 
+fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {
+    let mut next_id = 0_u32;
+    for node in steps {
+        node.assign_node_ids(&mut next_id);
+    }
+}
+
 pub struct ContextExecutor<Context, A>
 where
     A: Animal,
@@ -2074,13 +2234,16 @@ where
     }
 
     pub fn new(context: Arc<Context>, state: A::State) -> Self {
+        let mut steps =
+            <A::Journey as BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>)>>::push_steps((
+                context,
+                Vec::new(),
+            ));
+        assign_flow_node_ids(&mut steps);
         let mut executor = Self {
             _context: core::marker::PhantomData,
             state: Some(state),
-            steps:
-                <A::Journey as BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>)>>::push_steps(
-                    (context, Vec::new()),
-                ),
+            steps,
             cursor: 0,
             last_emitted: None,
         };
@@ -2327,9 +2490,11 @@ where
     }
 
     pub fn new(state: A::State) -> Self {
+        let mut steps = <A::Journey as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new());
+        assign_flow_node_ids(&mut steps);
         let mut executor = Self {
             state: Some(state),
-            steps: <A::Journey as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
+            steps,
             cursor: 0,
         };
         executor

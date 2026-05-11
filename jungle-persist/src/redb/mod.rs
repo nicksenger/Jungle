@@ -739,13 +739,33 @@ impl JungleStore for RedbStore {
 
     async fn append_history(&self, history: RunnerOut) -> Result<()> {
         let (journey_id, kind, data) = match history {
-            RunnerOut::ActionInput { data, uuid } => (uuid, EVENT_KIND_ACTION_INPUT, data),
-            RunnerOut::ActionSuccessOutput { data, uuid } => {
-                (uuid, EVENT_KIND_ACTION_SUCCESS_OUTPUT, data)
-            }
-            RunnerOut::ActionFailureOutput { data, uuid } => {
-                (uuid, EVENT_KIND_ACTION_FAILURE_OUTPUT, data)
-            }
+            RunnerOut::ActionInput {
+                node_id,
+                data,
+                uuid,
+            } => (
+                uuid,
+                EVENT_KIND_ACTION_INPUT,
+                encode_action_event(node_id, data)?,
+            ),
+            RunnerOut::ActionSuccessOutput {
+                node_id,
+                data,
+                uuid,
+            } => (
+                uuid,
+                EVENT_KIND_ACTION_SUCCESS_OUTPUT,
+                encode_action_event(node_id, data)?,
+            ),
+            RunnerOut::ActionFailureOutput {
+                node_id,
+                data,
+                uuid,
+            } => (
+                uuid,
+                EVENT_KIND_ACTION_FAILURE_OUTPUT,
+                encode_action_event(node_id, data)?,
+            ),
             RunnerOut::SleepScheduled {
                 uuid,
                 timer_id,
@@ -1399,20 +1419,58 @@ fn decode_event_value(raw: &[u8], context: &str) -> Result<(u8, Vec<u8>)> {
     Ok((raw[0], raw[1..].to_vec()))
 }
 
+const ACTION_EVENT_ENVELOPE_V1: u8 = 0xA1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ActionEventData {
+    node_id: u32,
+    data: Vec<u8>,
+}
+
+fn encode_action_event(node_id: u32, data: Vec<u8>) -> Result<Vec<u8>> {
+    let mut payload = Vec::with_capacity(1 + data.len() + 8);
+    payload.push(ACTION_EVENT_ENVELOPE_V1);
+    let encoded = postcard::to_allocvec(&ActionEventData { node_id, data })
+        .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+    payload.extend_from_slice(&encoded);
+    Ok(payload)
+}
+
+fn decode_action_event(data: Vec<u8>) -> Result<(u32, Vec<u8>)> {
+    if data.first().copied() != Some(ACTION_EVENT_ENVELOPE_V1) {
+        return Ok((0, data));
+    }
+    let envelope: ActionEventData = postcard::from_bytes(&data[1..])
+        .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+    Ok((envelope.node_id, envelope.data))
+}
+
 fn decode_runner_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<RunnerOut> {
     match kind {
-        EVENT_KIND_ACTION_INPUT => Ok(RunnerOut::ActionInput {
-            uuid: journey_id,
-            data,
-        }),
-        EVENT_KIND_ACTION_SUCCESS_OUTPUT => Ok(RunnerOut::ActionSuccessOutput {
-            uuid: journey_id,
-            data,
-        }),
-        EVENT_KIND_ACTION_FAILURE_OUTPUT => Ok(RunnerOut::ActionFailureOutput {
-            uuid: journey_id,
-            data,
-        }),
+        EVENT_KIND_ACTION_INPUT => {
+            let (node_id, data) = decode_action_event(data)?;
+            Ok(RunnerOut::ActionInput {
+                node_id,
+                uuid: journey_id,
+                data,
+            })
+        }
+        EVENT_KIND_ACTION_SUCCESS_OUTPUT => {
+            let (node_id, data) = decode_action_event(data)?;
+            Ok(RunnerOut::ActionSuccessOutput {
+                node_id,
+                uuid: journey_id,
+                data,
+            })
+        }
+        EVENT_KIND_ACTION_FAILURE_OUTPUT => {
+            let (node_id, data) = decode_action_event(data)?;
+            Ok(RunnerOut::ActionFailureOutput {
+                node_id,
+                uuid: journey_id,
+                data,
+            })
+        }
         EVENT_KIND_SLEEP_SCHEDULED => {
             let event: SleepScheduledEvent = postcard::from_bytes(&data)
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;

@@ -150,15 +150,15 @@ async fn client_exchanges_messages_with_mock_server() {
     }
 
     client
-        .action_input(action_id, vec![4, 5])
+        .action_input(action_id, 11, vec![4, 5])
         .await
         .expect("action_input should ack");
     client
-        .action_success_output(action_id, vec![6])
+        .action_success_output(action_id, 11, vec![6])
         .await
         .expect("action_success_output should ack");
     client
-        .action_failure_output(action_id, vec![7, 8])
+        .action_failure_output(action_id, 11, vec![7, 8])
         .await
         .expect("action_failure_output should ack");
     client
@@ -182,23 +182,26 @@ async fn client_exchanges_messages_with_mock_server() {
     assert!(matches!(
         requests[3],
         WireIn::HistoryEvent(RunnerOut::ActionInput {
+            node_id,
             uuid,
             ref data,
-        }) if uuid == action_id && data == &vec![4, 5]
+        }) if node_id == 11 && uuid == action_id && data == &vec![4, 5]
     ));
     assert!(matches!(
         requests[4],
         WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
+            node_id,
             uuid,
             ref data,
-        }) if uuid == action_id && data == &vec![6]
+        }) if node_id == 11 && uuid == action_id && data == &vec![6]
     ));
     assert!(matches!(
         requests[5],
         WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
+            node_id,
             uuid,
             ref data,
-        }) if uuid == action_id && data == &vec![7, 8]
+        }) if node_id == 11 && uuid == action_id && data == &vec![7, 8]
     ));
     assert!(matches!(requests[6], WireIn::JourneyComplete(id) if id == journey_id));
 
@@ -236,7 +239,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
     assert_eq!(created, JourneyStatus::Created);
 
     client
-        .action_input(journey_id, vec![9, 9, 9])
+        .action_input(journey_id, 9, vec![9, 9, 9])
         .await
         .expect("action_input should succeed");
     let alive = client
