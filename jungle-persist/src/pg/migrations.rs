@@ -44,6 +44,7 @@ impl PgStore {
             r#"
             CREATE TABLE IF NOT EXISTS journeys (
                 id UUID PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'default',
                 ordinal INTEGER NOT NULL,
                 status SMALLINT NOT NULL,
                 seed BYTEA NOT NULL
@@ -58,6 +59,26 @@ impl PgStore {
             r#"
             ALTER TABLE journeys
             ADD COLUMN IF NOT EXISTS status SMALLINT NOT NULL DEFAULT 0
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            ALTER TABLE journeys
+            ADD COLUMN IF NOT EXISTS namespace TEXT NOT NULL DEFAULT 'default'
+            "#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_journeys_namespace
+            ON journeys (namespace)
             "#,
         )
         .execute(&mut *tx)

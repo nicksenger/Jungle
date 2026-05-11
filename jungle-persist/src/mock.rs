@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::{JungleStore, Result};
 
-type ClaimWorkHandler = Arc<dyn Fn() -> Result<Option<RunnerStep>> + Send + Sync + 'static>;
-type CreateFlowHandler = Arc<dyn Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
+type ClaimWorkHandler = Arc<dyn Fn(String) -> Result<Option<RunnerStep>> + Send + Sync + 'static>;
+type CreateFlowHandler = Arc<dyn Fn(String, u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type JourneyHistoryHandler = Arc<dyn Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
 type FlowAppearanceHandler = Arc<dyn Fn(Uuid) -> Result<Option<Vec<u8>>> + Send + Sync + 'static>;
@@ -63,8 +63,8 @@ impl JungleStore for MockStore {
         Ok(())
     }
 
-    async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
-        (self.on_create_flow)(ordinal, seed)
+    async fn create_journey(&self, namespace: String, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+        (self.on_create_flow)(namespace, ordinal, seed)
     }
 
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
@@ -119,8 +119,8 @@ impl JungleStore for MockStore {
         (self.on_flow_alive_if_created)(journey_id)
     }
 
-    async fn claim_work(&self) -> Result<Option<RunnerStep>> {
-        (self.on_claim_work)()
+    async fn claim_work(&self, namespace: String) -> Result<Option<RunnerStep>> {
+        (self.on_claim_work)(namespace)
     }
 
     async fn append_history(&self, history: RunnerOut) -> Result<()> {
@@ -164,7 +164,7 @@ pub struct MockStoreBuilder {
 impl MockStoreBuilder {
     pub fn on_create_flow<F>(mut self, f: F) -> Self
     where
-        F: Fn(u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static,
+        F: Fn(String, u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static,
     {
         self.on_create_flow = Some(Arc::new(f));
         self
@@ -172,7 +172,7 @@ impl MockStoreBuilder {
 
     pub fn on_claim_work<F>(mut self, f: F) -> Self
     where
-        F: Fn() -> Result<Option<RunnerStep>> + Send + Sync + 'static,
+        F: Fn(String) -> Result<Option<RunnerStep>> + Send + Sync + 'static,
     {
         self.on_claim_work = Some(Arc::new(f));
         self
@@ -291,7 +291,7 @@ impl MockStoreBuilder {
     }
 
     pub fn build(self) -> MockStore {
-        let default_create_flow: CreateFlowHandler = Arc::new(|_, _| Ok(Uuid::new_v4()));
+        let default_create_flow: CreateFlowHandler = Arc::new(|_, _, _| Ok(Uuid::new_v4()));
         let default_journey_history: JourneyHistoryHandler = Arc::new(|_| Ok(Vec::new()));
         let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(JourneyStatus::Alive));
         let default_flow_appearance: FlowAppearanceHandler = Arc::new(|_| Ok(None));
@@ -304,7 +304,7 @@ impl MockStoreBuilder {
         let default_claim_owner_wake: ClaimOwnerWakeHandler = Arc::new(|_| Ok(None));
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
-        let default_claim_work: ClaimWorkHandler = Arc::new(|| Ok(None));
+        let default_claim_work: ClaimWorkHandler = Arc::new(|_| Ok(None));
         let default_append_history: AppendHistoryHandler = Arc::new(|_| Ok(()));
         let default_schedule_sleep_timer: ScheduleSleepTimerHandler = Arc::new(|_, _, _| Ok(()));
         let default_poll_timers: PollTimersHandler = Arc::new(|| Ok(None));

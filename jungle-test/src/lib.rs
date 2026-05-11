@@ -284,10 +284,10 @@ mod tests {
         };
     }
 
+    mod adapt_helpers;
     mod aspect;
     mod conditional;
     mod connection;
-    mod adapt_helpers;
     mod integration;
     mod migration;
     mod progression;

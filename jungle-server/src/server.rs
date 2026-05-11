@@ -111,21 +111,25 @@ impl JungleServer for Server {
         info!(has_request = request.is_some(), "received request");
 
         let response = match request {
-            Some(WireIn::CreateJourney { ordinal, seed }) => {
+            Some(WireIn::CreateJourney {
+                namespace,
+                ordinal,
+                seed,
+            }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let journey_id =
-                        self.store
-                            .create_journey(ordinal, seed)
-                            .await
-                            .map_err(|err| {
-                                crate::ServerError::Backend(BackendError::Message(err.to_string()))
-                            })?;
+                    let journey_id = self
+                        .store
+                        .create_journey(namespace, ordinal, seed)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
                     WireOut::JourneyCreated(journey_id)
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
-                    let _ = (ordinal, seed);
+                    let _ = (namespace, ordinal, seed);
                     return Err(crate::ServerError::Backend(BackendError::Message(
                         "create_journey is unavailable without a persistence backend".to_string(),
                     )));
@@ -134,9 +138,13 @@ impl JungleServer for Server {
             Some(WireIn::JourneyHistory(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let history = self.store.journey_history(journey_id).await.map_err(|err| {
-                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
-                    })?;
+                    let history = self
+                        .store
+                        .journey_history(journey_id)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
                     WireOut::JourneyHistory(history)
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
@@ -326,10 +334,10 @@ impl JungleServer for Server {
                     WireOut::Ack
                 }
             }
-            Some(WireIn::PollStep) => {
+            Some(WireIn::PollStep { namespace }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    match self.store.claim_work().await.map_err(|err| {
+                    match self.store.claim_work(namespace).await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })? {
                         Some(work) => WireOut::PendingStep(work),
@@ -338,6 +346,7 @@ impl JungleServer for Server {
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
+                    let _ = namespace;
                     WireOut::NoAvailableSteps
                 }
             }

@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    Pulse, ActionCompletion, Conditional, Either, Executor, Identity, ManualExecutor,
-    Running, Step, Waiting,
+    ActionCompletion, Conditional, Either, Executor, Identity, ManualExecutor, Pulse, Running,
+    Step, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Journey;

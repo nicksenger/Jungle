@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Pulse, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Observe, Sleep, Step, While,
+    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    LoopCondition, Observe, Pulse, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -148,6 +148,7 @@ struct SleepAnimals(SleepAnimal);
 
 struct SleepZoo;
 impl Ecosystem for SleepZoo {
+    const NAME: &'static str = "sleep-zoo";
     type Animals = SleepAnimals;
 }
 

@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    AbsorbFn, AbsorbMapper, ActionCompletion, EmitFn, EmitMapper, FocusedStep, Identity,
-    IdentityStep, Fuse, ManualExecutor, PassthroughEmit, Step, UnitEmit,
+    AbsorbFn, AbsorbMapper, ActionCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
+    IdentityStep, ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
 use jungle_sdk::Journey;

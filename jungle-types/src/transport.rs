@@ -77,6 +77,7 @@ pub enum Step {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireIn {
     CreateJourney {
+        namespace: String,
         ordinal: u32,
         seed: Vec<u8>,
     },
@@ -106,7 +107,9 @@ pub enum WireIn {
         wake_at_unix_ms: i64,
     },
     JourneyComplete(Uuid),
-    PollStep,
+    PollStep {
+        namespace: String,
+    },
     PollTimers,
     HistoryEvent(RunnerOut),
 }

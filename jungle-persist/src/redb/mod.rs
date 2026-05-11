@@ -87,7 +87,12 @@ impl RedbStore {
                 "redb update_journey_status decode journey value",
             )?;
             if expected_current.is_none_or(|expected| flow.status == expected) {
-                let updated_value = encode_journey(flow.ordinal, new_status, &flow.seed);
+                let updated_value = encode_journey(
+                    flow.namespace.as_str(),
+                    flow.ordinal,
+                    new_status,
+                    &flow.seed,
+                );
                 journeys
                     .insert(key, updated_value.as_slice())
                     .map_err(|err| {
@@ -133,7 +138,7 @@ impl JungleStore for RedbStore {
         }
     }
 
-    async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+    async fn create_journey(&self, namespace: String, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
         let journey_id = Uuid::new_v4();
         let work_item_id = Uuid::new_v4();
         let expiry = Utc::now();
@@ -148,7 +153,8 @@ impl JungleStore for RedbStore {
                     "redb create_journey open journeys table failed: {err}"
                 ))
             })?;
-            let flow_value = encode_journey(ordinal, JourneyStatus::Created, &seed);
+            let flow_value =
+                encode_journey(namespace.as_str(), ordinal, JourneyStatus::Created, &seed);
             journeys
                 .insert(&journey_id.as_bytes()[..], flow_value.as_slice())
                 .map_err(|err| {
@@ -584,7 +590,7 @@ impl JungleStore for RedbStore {
         )
     }
 
-    async fn claim_work(&self) -> Result<Option<RunnerStep>> {
+    async fn claim_work(&self, namespace: String) -> Result<Option<RunnerStep>> {
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
         })?;
@@ -594,6 +600,11 @@ impl JungleStore for RedbStore {
         let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
 
         {
+            let journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb claim_work open journeys table failed: {err}"
+                ))
+            })?;
             let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "redb claim_work open work_items table failed: {err}"
@@ -621,6 +632,26 @@ impl JungleStore for RedbStore {
                     StepStatus::Claimed => expiry <= now,
                 };
                 if !claimable {
+                    continue;
+                }
+
+                let journey_raw = journeys
+                    .get(&journey_id.as_bytes()[..])
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb claim_work read journey for namespace filter failed: {err}"
+                        ))
+                    })?
+                    .ok_or_else(|| {
+                        crate::PersistenceError::Message(format!(
+                            "redb claim_work missing journey for work item {id}"
+                        ))
+                    })?;
+                let journey = decode_journey(
+                    journey_raw.value(),
+                    "redb claim_work decode journey for namespace filter",
+                )?;
+                if journey.namespace != namespace.as_str() {
                     continue;
                 }
 
@@ -1027,6 +1058,7 @@ impl JungleStore for RedbStore {
 
 #[derive(Debug)]
 struct JourneyRow {
+    namespace: String,
     ordinal: u32,
     status: JourneyStatus,
     seed: Vec<u8>,
@@ -1263,18 +1295,45 @@ fn decode_journey(raw: &[u8], context: &str) -> Result<JourneyRow> {
     ordinal_bytes.copy_from_slice(&raw[..4]);
     let ordinal = u32::from_be_bytes(ordinal_bytes);
     let status = decode_journey_status(raw[4], context)?;
+    if raw.len() >= 8 && raw[5] == 0xFF {
+        let mut ns_len_bytes = [0_u8; 2];
+        ns_len_bytes.copy_from_slice(&raw[6..8]);
+        let ns_len = usize::from(u16::from_be_bytes(ns_len_bytes));
+        let ns_start: usize = 8;
+        let ns_end = ns_start.saturating_add(ns_len);
+        if ns_end <= raw.len() {
+            if let Ok(namespace) = std::str::from_utf8(&raw[ns_start..ns_end]) {
+                let seed = raw[ns_end..].to_vec();
+                return Ok(JourneyRow {
+                    namespace: namespace.to_string(),
+                    ordinal,
+                    status,
+                    seed,
+                });
+            }
+        }
+    }
+
+    // Legacy rows without explicit namespace default to "default".
     let seed = raw[5..].to_vec();
     Ok(JourneyRow {
+        namespace: "default".to_string(),
         ordinal,
         status,
         seed,
     })
 }
 
-fn encode_journey(ordinal: u32, status: JourneyStatus, seed: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(5 + seed.len());
+fn encode_journey(namespace: &str, ordinal: u32, status: JourneyStatus, seed: &[u8]) -> Vec<u8> {
+    let namespace_bytes = namespace.as_bytes();
+    let namespace_len = u16::try_from(namespace_bytes.len()).unwrap_or(u16::MAX);
+    let namespace_bytes = &namespace_bytes[..usize::from(namespace_len)];
+    let mut out = Vec::with_capacity(8 + namespace_bytes.len() + seed.len());
     out.extend_from_slice(&ordinal.to_be_bytes());
     out.push(encode_journey_status(status));
+    out.push(0xFF);
+    out.extend_from_slice(&namespace_len.to_be_bytes());
+    out.extend_from_slice(namespace_bytes);
     out.extend_from_slice(seed);
     out
 }

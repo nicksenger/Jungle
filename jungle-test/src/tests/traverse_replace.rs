@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    Pulse, ActionCompletion, Conditional, Identity, LoopCondition, ReplaceStep, Step, TraverseStep,
+    ActionCompletion, Conditional, Identity, LoopCondition, Pulse, ReplaceStep, Step, TraverseStep,
     While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;

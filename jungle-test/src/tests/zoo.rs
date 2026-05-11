@@ -1,8 +1,8 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Pulse, Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
-    Ecosystem, Identity, Lens, LoopCondition, Step, While,
+    Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
+    Ecosystem, Identity, Lens, LoopCondition, Pulse, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -147,6 +147,7 @@ struct AllActions(Predator, Prey);
 
 struct Zoo;
 impl Ecosystem for Zoo {
+    const NAME: &'static str = "zoo";
     type Animals = AllAnimals;
 }
 
@@ -280,6 +281,7 @@ struct RunnerAnimals(RunnerAnimal);
 
 struct RunnerZoo;
 impl Ecosystem for RunnerZoo {
+    const NAME: &'static str = "runner-zoo";
     type Animals = RunnerAnimals;
 }
 

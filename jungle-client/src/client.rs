@@ -1,8 +1,8 @@
 use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
-    BackendError, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
-    RunnerStep, WireIn, WireOut,
+    BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake,
+    RunnerOut, RunnerStep, WireIn, WireOut,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -21,6 +21,7 @@ const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 pub struct ClientBuilder {
     keylog: bool,
     ca: Option<PathBuf>,
+    namespace: String,
     rebind: bool,
     bind: SocketAddr,
     remote: Option<SocketAddr>,
@@ -32,6 +33,7 @@ impl Default for ClientBuilder {
         Self {
             keylog: false,
             ca: None,
+            namespace: "default".to_string(),
             rebind: false,
             bind: SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
             remote: None,
@@ -58,6 +60,15 @@ impl ClientBuilder {
     pub fn rebind(mut self, enabled: bool) -> Self {
         self.rebind = enabled;
         self
+    }
+
+    pub fn namespace(mut self, value: impl Into<String>) -> Self {
+        self.namespace = value.into();
+        self
+    }
+
+    pub fn ecosystem<T: Ecosystem>(self) -> Self {
+        self.namespace(T::NAME)
     }
 
     pub fn bind(mut self, bind: SocketAddr) -> Self {
@@ -131,7 +142,11 @@ impl ClientBuilder {
                 .map_err(ClientError::RebindEndpoint)?;
         }
 
-        Ok(Client { endpoint, conn })
+        Ok(Client {
+            endpoint,
+            conn,
+            namespace: self.namespace,
+        })
     }
 }
 
@@ -139,6 +154,7 @@ impl ClientBuilder {
 pub struct Client {
     endpoint: quinn::Endpoint,
     conn: quinn::Connection,
+    namespace: String,
 }
 
 impl Client {
@@ -203,7 +219,11 @@ impl Drop for Client {
 impl JungleClient for Client {
     async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::CreateJourney { ordinal, seed })
+            .send_wire_message(WireIn::CreateJourney {
+                namespace: self.namespace.clone(),
+                ordinal,
+                seed,
+            })
             .await
             .map_err(Self::transport_error)?;
 
@@ -496,7 +516,9 @@ impl JungleClient for Client {
 
     async fn poll_work(&self) -> Result<Option<RunnerStep>, ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::PollStep)
+            .send_wire_message(WireIn::PollStep {
+                namespace: self.namespace.clone(),
+            })
             .await
             .map_err(Self::transport_error)?;
 

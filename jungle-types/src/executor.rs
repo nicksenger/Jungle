@@ -1,5 +1,5 @@
 use crate::{
-    Pulse, Action, ActionCompletion, Animal, BackendError, Conditional, Join, LoopCondition,
+    Action, ActionCompletion, Animal, BackendError, Conditional, Join, LoopCondition, Pulse,
     Running, Select, Step, While,
 };
 use inception::*;
@@ -17,10 +17,7 @@ type ActionRunner = Box<dyn FnOnce() -> ActionFuture>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
 
-fn decode_controlled_input<In, F>(
-    input: &[u8],
-    fallback: F,
-) -> Result<(bool, In), ExecutorError>
+fn decode_controlled_input<In, F>(input: &[u8], fallback: F) -> Result<(bool, In), ExecutorError>
 where
     In: DeserializeOwned + Serialize,
     F: FnOnce(&In) -> bool,
@@ -77,11 +74,7 @@ impl ExecutableActionRequest {
 }
 
 pub trait ErasedFlow<State> {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized>;
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized>;
 
     fn complete(
         &mut self,
@@ -367,7 +360,8 @@ where
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
-        let dependency: <<A as Pulse<T>>::Action as Action>::Dependency = self.context.as_ref().into();
+        let dependency: <<A as Pulse<T>>::Action as Action>::Dependency =
+            self.context.as_ref().into();
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
@@ -447,7 +441,11 @@ impl<State, In> ConditionalErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn new(left: DynFlow<State>, right: DynFlow<State>, choose_left: Box<dyn Fn(&State, &In) -> bool>) -> Self {
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        choose_left: Box<dyn Fn(&State, &In) -> bool>,
+    ) -> Self {
         Self {
             left,
             right,
@@ -483,17 +481,13 @@ impl<State, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized> {
-        let (choose_left, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
-            {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
-            };
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
+        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
+            (self.choose_left)(&state, carry)
+        }) {
+            Ok(pair) => pair,
+            Err(err) => return Err((state, err)),
+        };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
@@ -540,12 +534,12 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableActionRequest> {
-        let (choose_left, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
-            {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
-            };
+        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
+            (self.choose_left)(&state, carry)
+        }) {
+            Ok(pair) => pair,
+            Err(err) => return Err((state, err)),
+        };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
@@ -658,16 +652,10 @@ impl<State> ErasedFlow<State> for SelectErasedFlow<State>
 where
     State: Clone + 'static,
 {
-    fn request(
-        &mut self,
-        state: State,
-        _input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
             state,
-            ExecutorError::ClientTransport(
-            "Select requires executable request mode".to_string(),
-            ),
+            ExecutorError::ClientTransport("Select requires executable request mode".to_string()),
         ))
     }
 
@@ -799,16 +787,10 @@ impl<State> ErasedFlow<State> for SelectContextErasedFlow<State>
 where
     State: Clone + 'static,
 {
-    fn request(
-        &mut self,
-        state: State,
-        _input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
             state,
-            ExecutorError::ClientTransport(
-            "Select requires executable request mode".to_string(),
-            ),
+            ExecutorError::ClientTransport("Select requires executable request mode".to_string()),
         ))
     }
 
@@ -988,16 +970,10 @@ impl<State> ErasedFlow<State> for JoinErasedFlow<State>
 where
     State: Clone + 'static,
 {
-    fn request(
-        &mut self,
-        state: State,
-        _input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
             state,
-            ExecutorError::ClientTransport(
-            "Join requires executable request mode".to_string(),
-            ),
+            ExecutorError::ClientTransport("Join requires executable request mode".to_string()),
         ))
     }
 
@@ -1103,16 +1079,10 @@ impl<State> ErasedFlow<State> for JoinContextErasedFlow<State>
 where
     State: Clone + 'static,
 {
-    fn request(
-        &mut self,
-        state: State,
-        _input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
             state,
-            ExecutorError::ClientTransport(
-            "Join requires executable request mode".to_string(),
-            ),
+            ExecutorError::ClientTransport("Join requires executable request mode".to_string()),
         ))
     }
 
@@ -1245,17 +1215,14 @@ impl<State, In> ErasedFlow<State> for WhileErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
         let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
-            {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.should_continue)(&state, carry)
+            }) {
                 Ok(pair) => pair,
                 Err(err) => return Err((state, err)),
             };
@@ -1315,8 +1282,9 @@ where
             return Err((state, ExecutorError::Complete));
         }
         let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
-            {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.should_continue)(&state, carry)
+            }) {
                 Ok(pair) => pair,
                 Err(err) => return Err((state, err)),
             };
@@ -1443,7 +1411,9 @@ where
             <P as crate::Condition<(State, In)>>::choose(&(state.clone(), input.clone()))
         });
         steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(
-            left, right, choose_left,
+            left,
+            right,
+            choose_left,
         )));
         steps
     }
@@ -1461,8 +1431,9 @@ where
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
-        let should_continue =
-            Box::new(|state: &State, _input: &In| <C as LoopCondition<State>>::should_continue(state));
+        let should_continue = Box::new(|state: &State, _input: &In| {
+            <C as LoopCondition<State>>::should_continue(state)
+        });
         let build_body = Box::new(|| <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         steps.push(Box::new(WhileErasedFlow::<State, In>::new(
             should_continue,
@@ -1591,7 +1562,11 @@ impl<State, In> ConditionalContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn new(left: DynFlow<State>, right: DynFlow<State>, choose_left: Box<dyn Fn(&State, &In) -> bool>) -> Self {
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        choose_left: Box<dyn Fn(&State, &In) -> bool>,
+    ) -> Self {
         Self {
             left,
             right,
@@ -1627,17 +1602,13 @@ impl<State, In> ErasedFlow<State> for ConditionalContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized> {
-        let (choose_left, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
-            {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
-            };
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
+        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
+            (self.choose_left)(&state, carry)
+        }) {
+            Ok(pair) => pair,
+            Err(err) => return Err((state, err)),
+        };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
@@ -1684,12 +1655,12 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableActionRequest> {
-        let (choose_left, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
-            {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
-            };
+        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
+            (self.choose_left)(&state, carry)
+        }) {
+            Ok(pair) => pair,
+            Err(err) => return Err((state, err)),
+        };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
@@ -1765,7 +1736,9 @@ where
             <P as crate::Condition<(State, In)>>::choose(&(state.clone(), input.clone()))
         });
         steps.push(Box::new(ConditionalContextErasedFlow::<State, In>::new(
-            left, right, choose_left,
+            left,
+            right,
+            choose_left,
         )));
         steps
     }
@@ -1815,17 +1788,14 @@ impl<State, In> ErasedFlow<State> for WhileContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
         let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
-            {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.should_continue)(&state, carry)
+            }) {
                 Ok(pair) => pair,
                 Err(err) => return Err((state, err)),
             };
@@ -1885,8 +1855,9 @@ where
             return Err((state, ExecutorError::Complete));
         }
         let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
-            {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.should_continue)(&state, carry)
+            }) {
                 Ok(pair) => pair,
                 Err(err) => return Err((state, err)),
             };
@@ -1951,8 +1922,9 @@ where
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
-        let should_continue =
-            Box::new(|state: &State, _input: &In| <C as LoopCondition<State>>::should_continue(state));
+        let should_continue = Box::new(|state: &State, _input: &In| {
+            <C as LoopCondition<State>>::should_continue(state)
+        });
         let build_body = Box::new(move || {
             <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
                 Arc::clone(&context),
@@ -1968,8 +1940,7 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Select<L, R>
+impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Select<L, R>
 where
     Context: 'static,
     State: Clone + 'static,
@@ -1996,8 +1967,7 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Join<L, R>
+impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Join<L, R>
 where
     Context: 'static,
     State: Clone + 'static,
@@ -2062,8 +2032,7 @@ where
 pub struct ContextExecutor<Context, A>
 where
     A: Animal,
-    A::Journey:
-        BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     _context: core::marker::PhantomData<fn() -> Context>,
     state: Option<A::State>,
@@ -2076,8 +2045,7 @@ impl<Context, A> ContextExecutor<Context, A>
 where
     Context: 'static,
     A: Animal,
-    A::Journey:
-        BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -2109,10 +2077,10 @@ where
         let mut executor = Self {
             _context: core::marker::PhantomData,
             state: Some(state),
-            steps: <A::Journey as BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>)>>::push_steps((
-                context,
-                Vec::new(),
-            )),
+            steps:
+                <A::Journey as BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>)>>::push_steps(
+                    (context, Vec::new()),
+                ),
             cursor: 0,
             last_emitted: None,
         };
@@ -2234,8 +2202,7 @@ where
     pub async fn next_and_complete_with(
         &mut self,
         initial_input: impl Serialize,
-    ) -> Result<Serialized, ExecutorError>
-    {
+    ) -> Result<Serialized, ExecutorError> {
         let request = self.next_executable_request(initial_input)?;
         let completion = request.run().await?;
         self.complete_serialized(completion)
@@ -2387,8 +2354,7 @@ where
             .expect("executor state is always present")
     }
 
-    pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError>
-    {
+    pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
         self.settle_without_progress()?;
         if self.is_complete() {
             return Err(ExecutorError::Complete);
@@ -2425,8 +2391,7 @@ where
     pub fn next_executable_request(
         &mut self,
         input: Serialized,
-    ) -> Result<ExecutableActionRequest, ExecutorError>
-    {
+    ) -> Result<ExecutableActionRequest, ExecutorError> {
         self.settle_without_progress()?;
         if self.is_complete() {
             return Err(ExecutorError::Complete);
@@ -2693,8 +2658,7 @@ where
     pub async fn next_and_complete_with(
         &mut self,
         initial_input: impl Serialize,
-    ) -> Result<Serialized, ExecutorError>
-    {
+    ) -> Result<Serialized, ExecutorError> {
         let request = self.next_executable_request(initial_input)?;
         let completion = request.run().await?;
         self.complete_serialized(completion)

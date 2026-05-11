@@ -13,6 +13,7 @@ pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion::V0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Journey {
     pub id: Uuid,
+    pub namespace: String,
     pub ordinal: u32,
     pub status: JourneyStatus,
     pub seed: Vec<u8>,

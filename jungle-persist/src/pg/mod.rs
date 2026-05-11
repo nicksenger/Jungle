@@ -67,7 +67,7 @@ impl JungleStore for PgStore {
         }
     }
 
-    async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+    async fn create_journey(&self, namespace: String, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
         let journey_id = Uuid::new_v4();
         let work_item_id = Uuid::new_v4();
         let ordinal = i32::try_from(ordinal).map_err(|_| {
@@ -84,11 +84,12 @@ impl JungleStore for PgStore {
 
         sqlx::query(
             r#"
-            INSERT INTO journeys (id, ordinal, status, seed)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO journeys (id, namespace, ordinal, status, seed)
+            VALUES ($1, $2, $3, $4, $5)
             "#,
         )
         .bind(journey_id)
+        .bind(namespace)
         .bind(ordinal)
         .bind(0_i16)
         .bind(seed)
@@ -410,7 +411,7 @@ impl JungleStore for PgStore {
         Ok(())
     }
 
-    async fn claim_work(&self) -> Result<Option<RunnerStep>> {
+    async fn claim_work(&self, namespace: String) -> Result<Option<RunnerStep>> {
         #[derive(Debug, sqlx::FromRow)]
         struct ClaimedWorkRow {
             journey_id: Uuid,
@@ -422,16 +423,18 @@ impl JungleStore for PgStore {
         let row = sqlx::query_as::<_, ClaimedWorkRow>(
             r#"
             WITH candidate AS (
-                SELECT id
-                FROM work_items
-                WHERE status = $1 OR (status = $2 AND expiry < NOW())
-                ORDER BY expiry, id
+                SELECT wi.id
+                FROM work_items wi
+                INNER JOIN journeys j ON j.id = wi.journey_id
+                WHERE j.namespace = $1
+                  AND (wi.status = $2 OR (wi.status = $3 AND wi.expiry < NOW()))
+                ORDER BY wi.expiry, wi.id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             ),
             claimed AS (
                 UPDATE work_items wi
-                SET status = $2,
+                SET status = $3,
                     expiry = NOW() + INTERVAL '30 seconds'
                 FROM candidate c
                 WHERE wi.id = c.id
@@ -442,6 +445,7 @@ impl JungleStore for PgStore {
             INNER JOIN journeys f ON f.id = c.journey_id
             "#,
         )
+        .bind(namespace)
         .bind(0_i16)
         .bind(1_i16)
         .fetch_optional(&self.pool)

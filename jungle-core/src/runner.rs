@@ -41,8 +41,7 @@ where
     ) -> Result<A::State, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey:
-            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         let mut executor = self.new_executor::<A>(state);
         self.emit_initial_appearance::<A>(&executor, journey_id, &mut tx)
@@ -62,8 +61,7 @@ where
     pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<T, A>
     where
         A: Animal,
-        A::Journey:
-            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         ContextExecutor::new(Arc::clone(&self.jungle), state)
     }
@@ -76,8 +74,7 @@ where
     ) -> Result<(), ExecutorError>
     where
         A: Animal + AnimalObservation,
-        A::Journey:
-            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         if let Some(appearance) =
             <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(
@@ -104,8 +101,7 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey:
-            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         while !executor.is_complete() {
             process_perturbations(executor, journey_id, tx).await?;
@@ -147,8 +143,7 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey:
-            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
     {
         let sleep_out = postcard::to_allocvec(&())
             .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;

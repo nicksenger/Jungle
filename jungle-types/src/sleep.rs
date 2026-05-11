@@ -1,4 +1,4 @@
-use crate::{Pulse, Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity};
+use crate::{Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity, Pulse};
 use inception::primitive;
 use std::marker::PhantomData;
 use std::time::Duration;

@@ -5,12 +5,12 @@ mod journey;
 mod meta;
 mod sleep;
 mod transport;
-pub use behavior::{Absorb, Fuse, Emit};
+pub use behavior::{Absorb, Emit, Fuse};
 pub use behavior::{
     AbsorbFn, AbsorbMapper, EmitFn, EmitMapper, FocusedStep, IdentityStep, PassthroughEmit,
     UnitEmit,
 };
-pub use behavior::{Pulse, Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Step};
+pub use behavior::{Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Pulse, Step};
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
 pub use executor::{
@@ -109,6 +109,7 @@ pub struct Join<L, R>(PhantomData<fn() -> (L, R)>);
 
 /// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
+    const NAME: &'static str;
     type Animals;
 }
 

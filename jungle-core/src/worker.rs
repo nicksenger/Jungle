@@ -1,6 +1,6 @@
 use crate::runner::{JungleRunner, RunnerAdvance};
-use futures::channel::oneshot;
 use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};

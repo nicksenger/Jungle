@@ -2,7 +2,8 @@ use crate::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerCha
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, RunnerStep,
+    ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
+    RunnerStep,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -57,6 +58,7 @@ type PollOwnerWakeHandler = Arc<dyn Fn(Uuid) -> PollOwnerWakeHandlerFuture + Sen
 
 #[derive(Clone)]
 pub struct MockClient {
+    namespace: String,
     on_create_flow: CreateFlowHandler,
     on_journey_history: JourneyHistoryHandler,
     on_flow_status: FlowStatusHandler,
@@ -79,6 +81,10 @@ pub struct MockClient {
 impl MockClient {
     pub fn builder() -> MockClientBuilder {
         MockClientBuilder::default()
+    }
+
+    pub fn namespace(&self) -> &str {
+        &self.namespace
     }
 
     pub async fn serve_runner_channel(&self, mut rx: RunnerChannelRx) {
@@ -213,8 +219,8 @@ impl JungleClient for MockClient {
     }
 }
 
-#[derive(Default)]
 pub struct MockClientBuilder {
+    namespace: String,
     on_create_flow: Option<CreateFlowHandler>,
     on_journey_history: Option<JourneyHistoryHandler>,
     on_flow_status: Option<FlowStatusHandler>,
@@ -234,7 +240,41 @@ pub struct MockClientBuilder {
     on_action_failure_output: Option<Handler>,
 }
 
+impl Default for MockClientBuilder {
+    fn default() -> Self {
+        Self {
+            namespace: "default".to_string(),
+            on_create_flow: None,
+            on_journey_history: None,
+            on_flow_status: None,
+            on_flow_appearance: None,
+            on_flow_appearance_update: None,
+            on_perturb_animal: None,
+            on_claim_perturbation: None,
+            on_ack_perturbation: None,
+            on_heartbeat_journey_lease: None,
+            on_poll_owner_wake: None,
+            on_schedule_sleep_timer: None,
+            on_flow_complete: None,
+            on_poll_timers: None,
+            on_poll_work: None,
+            on_action_input: None,
+            on_action_success_output: None,
+            on_action_failure_output: None,
+        }
+    }
+}
+
 impl MockClientBuilder {
+    pub fn namespace(mut self, value: impl Into<String>) -> Self {
+        self.namespace = value.into();
+        self
+    }
+
+    pub fn ecosystem<T: Ecosystem>(self) -> Self {
+        self.namespace(T::NAME)
+    }
+
     pub fn on_create_flow<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(u32, Vec<u8>) -> Fut + Send + Sync + 'static,
@@ -425,6 +465,7 @@ impl MockClientBuilder {
             Arc::new(|| Box::pin(async { Ok(None) }));
         let default_poll_work_handler: PollStepHandler = Arc::new(|| Box::pin(async { Ok(None) }));
         MockClient {
+            namespace: self.namespace,
             on_create_flow: self
                 .on_create_flow
                 .unwrap_or_else(|| default_create_flow_handler.clone()),
