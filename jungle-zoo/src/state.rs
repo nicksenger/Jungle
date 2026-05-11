@@ -1,4 +1,4 @@
-use jungle::Optic;
+use jungle_macros::Optic;
 
 #[derive(Optic, Clone, Debug, PartialEq)]
 pub struct Base {
@@ -38,7 +38,7 @@ pub struct Mammal {
     pub fur_color: Color,
 }
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScalePattern {
     Cycloid,
     DiamondLattice,
@@ -59,7 +59,7 @@ pub struct Climber {
     pub is_ape: bool,
 }
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Weapon {
     Teeth,
     Claws,
