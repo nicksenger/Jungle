@@ -7,4 +7,3 @@ edition = "2021"
 inception = { workspace = true }
 jungle-macros = { path = "../jungle-macros" }
 jungle-types = { path = "../jungle-types" }
-serde = { workspace = true }

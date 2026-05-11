@@ -3222,7 +3222,6 @@ dependencies = [
  "inception",
  "jungle-macros",
  "jungle-types",
- "serde",
 ]
 
 [[package]]
