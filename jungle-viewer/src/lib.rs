@@ -1,10 +1,13 @@
 use iced::widget::{button, column, container, row, text, Space};
+use iced::window;
+use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{Cluster, Graph, Sugiyama};
 use jungle_client::JungleClient;
 use jungle_types::{Animal, JourneyAst, JourneyAstSource, RunnerOut};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -22,6 +25,8 @@ pub struct JungleViewerBuilder {
     width: f32,
     height: f32,
     poll_interval: Duration,
+    screenshot_path: Option<PathBuf>,
+    headless: bool,
 }
 
 impl Default for JungleViewerBuilder {
@@ -31,6 +36,8 @@ impl Default for JungleViewerBuilder {
             width: WINDOW_WIDTH,
             height: WINDOW_HEIGHT,
             poll_interval: LIVE_REFRESH,
+            screenshot_path: None,
+            headless: false,
         }
     }
 }
@@ -53,6 +60,16 @@ impl JungleViewerBuilder {
 
     pub fn live_poll_interval(mut self, interval: Duration) -> Self {
         self.poll_interval = interval;
+        self
+    }
+
+    pub fn screenshot_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.screenshot_path = Some(path.into());
+        self
+    }
+
+    pub fn headless(mut self, headless: bool) -> Self {
+        self.headless = headless;
         self
     }
 
@@ -96,8 +113,15 @@ impl JungleViewerBuilder {
         let title = self.title.clone();
         let width = self.width;
         let height = self.height;
+        let capture = self
+            .screenshot_path
+            .clone()
+            .map(|path| CaptureConfig {
+                output_path: path,
+                close_after_capture: self.headless,
+            });
         iced::application(
-            move || ViewerApp::new(mode.clone()),
+            move || ViewerApp::new(mode.clone(), capture.clone()),
             ViewerApp::update,
             ViewerApp::view,
         )
@@ -127,6 +151,44 @@ where
     JungleViewerBuilder::new().view_live_animal::<A, C>(client, journey_id)
 }
 
+#[derive(Debug, Clone)]
+pub struct DebugGraphNode {
+    pub id: u32,
+    pub label: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DebugGraph {
+    pub nodes: Vec<DebugGraphNode>,
+    pub edges: Vec<(u32, u32)>,
+    pub while_clusters: Vec<Vec<u32>>,
+}
+
+pub fn debug_graph_for_animal<A>() -> DebugGraph
+where
+    A: Animal + 'static,
+    A::Journey: JourneyAstSource,
+{
+    let ast = <A::Journey as JourneyAstSource>::journey_ast();
+    let model = GraphModel::from_ast(ast);
+    DebugGraph {
+        nodes: model
+            .nodes
+            .iter()
+            .map(|node| DebugGraphNode {
+                id: node.id,
+                label: node.label.clone(),
+            })
+            .collect(),
+        edges: model.edges.clone(),
+        while_clusters: model
+            .while_clusters
+            .iter()
+            .map(|cluster| cluster.nodes.clone())
+            .collect(),
+    }
+}
+
 #[derive(Clone)]
 enum ViewMode {
     Static {
@@ -145,6 +207,13 @@ enum ViewMode {
 struct ViewerApp {
     mode: ViewMode,
     state: LiveState,
+    capture: Option<CaptureConfig>,
+}
+
+#[derive(Clone)]
+struct CaptureConfig {
+    output_path: PathBuf,
+    close_after_capture: bool,
 }
 
 #[derive(Clone)]
@@ -165,28 +234,47 @@ struct LiveData {
 
 #[derive(Debug, Clone)]
 enum Message {
+    AppStarted,
     LiveRefreshTick,
     LiveLoaded(Result<LiveData, String>),
     Retry,
+    CaptureView,
+    ViewCaptured(Screenshot),
+    ViewSaved(Result<PathBuf, String>),
 }
 
 impl ViewerApp {
-    fn new(mode: ViewMode) -> (Self, Task<Message>) {
-        let (state, task) = match &mode {
+    fn new(mode: ViewMode, capture: Option<CaptureConfig>) -> (Self, Task<Message>) {
+        let mut tasks = vec![Task::done(Message::AppStarted)];
+        let state = match &mode {
             ViewMode::Live {
                 client, journey_id, ..
-            } => (
-                LiveState::Loading,
-                live_history_task(client.clone(), *journey_id),
-            ),
-            ViewMode::Static { .. } => (LiveState::Idle, Task::none()),
+            } => {
+                tasks.push(live_history_task(client.clone(), *journey_id));
+                LiveState::Loading
+            }
+            ViewMode::Static { .. } => LiveState::Idle,
         };
 
-        (Self { mode, state }, task)
+        (
+            Self {
+                mode,
+                state,
+                capture,
+            },
+            Task::batch(tasks),
+        )
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::AppStarted => {
+                if self.capture.is_some() {
+                    Task::done(Message::CaptureView)
+                } else {
+                    Task::none()
+                }
+            }
             Message::LiveRefreshTick => match &self.mode {
                 ViewMode::Live {
                     client, journey_id, ..
@@ -212,6 +300,35 @@ impl ViewerApp {
                 }
                 ViewMode::Static { .. } => Task::none(),
             },
+            Message::CaptureView => window::latest().then(|id| match id {
+                Some(id) => window::screenshot(id).map(Message::ViewCaptured),
+                None => Task::none(),
+            }),
+            Message::ViewCaptured(screenshot) => {
+                let Some(capture) = self.capture.clone() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    save_screenshot_png(capture.output_path, screenshot),
+                    Message::ViewSaved,
+                )
+            }
+            Message::ViewSaved(result) => {
+                let close_after_capture = self
+                    .capture
+                    .as_ref()
+                    .map(|capture| capture.close_after_capture)
+                    .unwrap_or(false);
+                match result {
+                    Ok(path) => println!("Wrote {}", path.display()),
+                    Err(error) => eprintln!("Failed to save screenshot: {error}"),
+                }
+                if close_after_capture {
+                    close_latest_window()
+                } else {
+                    Task::none()
+                }
+            }
         }
     }
 
@@ -269,6 +386,27 @@ fn live_history_task(client: Arc<dyn JungleClient>, journey_id: Uuid) -> Task<Me
         },
         Message::LiveLoaded,
     )
+}
+
+fn close_latest_window() -> Task<Message> {
+    window::latest().then(|id| match id {
+        Some(id) => window::close(id),
+        None => Task::none(),
+    })
+}
+
+async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<PathBuf, String> {
+    let image = image::RgbaImage::from_raw(
+        screenshot.size.width,
+        screenshot.size.height,
+        screenshot.rgba.to_vec(),
+    )
+    .ok_or_else(|| "failed to build image buffer from screenshot".to_string())?;
+
+    image
+        .save(&path)
+        .map_err(|error| format!("failed to save screenshot to {}: {error}", path.display()))?;
+    Ok(path)
 }
 
 impl LiveData {
@@ -521,6 +659,7 @@ struct GraphBuilder {
     clusters: Vec<Cluster>,
     runtime_next_id: u32,
     display_next_id: u32,
+    label_occurrences: HashMap<String, u32>,
 }
 
 #[derive(Clone)]
@@ -589,7 +728,8 @@ impl GraphBuilder {
             JourneyAst::Step { label } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let node = self.push_runtime_node(*label, runtime_id);
+                let label = self.unique_label(*label);
+                let node = self.push_runtime_node(label, runtime_id);
                 Flattened {
                     roots: vec![node],
                     exits: vec![node],
@@ -634,19 +774,18 @@ impl GraphBuilder {
                     self.edges.push((container, *target));
                 }
                 for exit in &body_flow.exits {
-                    for target in &body_flow.roots {
-                        self.edges.push((*exit, *target));
-                    }
+                    self.edges.push((*exit, container));
                 }
 
                 let mut members = vec![container];
                 members.extend(body_flow.members.iter().copied());
 
-                let mut cluster_nodes = vec![container];
-                cluster_nodes.extend(body_flow.members.iter().copied());
-                cluster_nodes = dedup(cluster_nodes);
+                let mut cluster_nodes = dedup(body_flow.members.clone());
+                if cluster_nodes.is_empty() {
+                    cluster_nodes.push(container);
+                }
                 self.clusters
-                    .push(Cluster::new(cluster_nodes).padding(30.0));
+                    .push(Cluster::new(cluster_nodes).padding(14.0));
 
                 Flattened {
                     roots: vec![container],
@@ -691,16 +830,17 @@ impl GraphBuilder {
             JourneyAst::Select { left, right, .. } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let select = self.push_runtime_node("Select", runtime_id);
+                let label = self.unique_label("Select");
+                let select = self.push_runtime_node(label, runtime_id);
                 self.mark(select, |node| node.is_select = true);
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for source in &left_flow.exits {
-                    self.edges.push((*source, select));
+                for target in &left_flow.roots {
+                    self.edges.push((select, *target));
                 }
-                for source in &right_flow.exits {
-                    self.edges.push((*source, select));
+                for target in &right_flow.roots {
+                    self.edges.push((select, *target));
                 }
 
                 let mut members = vec![select];
@@ -708,11 +848,7 @@ impl GraphBuilder {
                 members.extend(right_flow.members.iter().copied());
 
                 Flattened {
-                    roots: dedup({
-                        let mut roots = left_flow.roots;
-                        roots.extend(right_flow.roots);
-                        roots
-                    }),
+                    roots: vec![select],
                     exits: vec![select],
                     members,
                 }
@@ -720,16 +856,17 @@ impl GraphBuilder {
             JourneyAst::Join { left, right, .. } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let join = self.push_runtime_node("Join", runtime_id);
+                let label = self.unique_label("Join");
+                let join = self.push_runtime_node(label, runtime_id);
                 self.mark(join, |node| node.is_join = true);
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for source in &left_flow.exits {
-                    self.edges.push((*source, join));
+                for target in &left_flow.roots {
+                    self.edges.push((join, *target));
                 }
-                for source in &right_flow.exits {
-                    self.edges.push((*source, join));
+                for target in &right_flow.roots {
+                    self.edges.push((join, *target));
                 }
 
                 let mut members = vec![join];
@@ -737,11 +874,7 @@ impl GraphBuilder {
                 members.extend(right_flow.members.iter().copied());
 
                 Flattened {
-                    roots: dedup({
-                        let mut roots = left_flow.roots;
-                        roots.extend(right_flow.roots);
-                        roots
-                    }),
+                    roots: vec![join],
                     exits: vec![join],
                     members,
                 }
@@ -800,6 +933,19 @@ impl GraphBuilder {
         let id = self.display_next_id;
         self.display_next_id = self.display_next_id.saturating_add(1);
         id
+    }
+
+    fn unique_label(&mut self, raw: impl Into<String>) -> String {
+        let full = raw.into();
+        let short = short_type_name_str(&full);
+        let entry = self.label_occurrences.entry(short.clone()).or_insert(0);
+        let label = if *entry == 0 {
+            short
+        } else {
+            format!("{short} #{}", *entry + 1)
+        };
+        *entry = entry.saturating_add(1);
+        label
     }
 }
 
@@ -1123,22 +1269,21 @@ mod tests {
         assert!(edges.contains(&(loop_id, branch_id)));
         assert!(edges.contains(&(branch_id, loop_l_id)));
         assert!(edges.contains(&(branch_id, loop_r_id)));
-        assert!(edges.contains(&(loop_l_id, branch_id)));
-        assert!(edges.contains(&(loop_r_id, branch_id)));
-        assert!(edges.contains(&(loop_id, join_l_id)));
-        assert!(edges.contains(&(loop_id, join_r_id)));
-        assert!(!edges.contains(&(loop_id, join_id)));
+        assert!(edges.contains(&(loop_l_id, loop_id)));
+        assert!(edges.contains(&(loop_r_id, loop_id)));
+        assert!(edges.contains(&(loop_id, join_id)));
 
-        assert!(edges.contains(&(join_l_id, join_id)));
-        assert!(edges.contains(&(join_r_id, join_id)));
-        assert!(edges.contains(&(join_id, sel_l_id)));
-        assert!(edges.contains(&(join_id, sel_r_id)));
-        assert!(!edges.contains(&(join_id, select_id)));
+        assert!(edges.contains(&(join_id, join_l_id)));
+        assert!(edges.contains(&(join_id, join_r_id)));
+        assert!(edges.contains(&(join_id, select_id)));
+        assert!(!edges.contains(&(join_l_id, select_id)));
+        assert!(!edges.contains(&(join_r_id, select_id)));
 
-        assert!(edges.contains(&(sel_l_id, select_id)));
-        assert!(edges.contains(&(sel_r_id, select_id)));
+        assert!(edges.contains(&(select_id, sel_l_id)));
+        assert!(edges.contains(&(select_id, sel_r_id)));
         assert!(edges.contains(&(select_id, tail_id)));
-        assert!(!edges.contains(&(join_id, tail_id)));
+        assert!(!edges.contains(&(sel_l_id, tail_id)));
+        assert!(!edges.contains(&(sel_r_id, tail_id)));
     }
 
     #[test]
@@ -1184,18 +1329,17 @@ mod tests {
         assert_eq!(model.while_clusters.len(), 1);
         let cluster = &model.while_clusters[0];
         let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
-        assert!(cluster_nodes.contains(&loop_id));
         assert!(cluster_nodes.contains(&cond_id));
         assert!(cluster_nodes.contains(&in_l_id));
         assert!(cluster_nodes.contains(&in_r_id));
+        assert!(!cluster_nodes.contains(&loop_id));
         assert!(!cluster_nodes.contains(&join_id));
         assert!(!cluster_nodes.contains(&select_id));
 
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
         assert!(edges.contains(&(loop_id, cond_id)));
-        assert!(edges.contains(&(in_l_id, cond_id)));
-        assert!(edges.contains(&(in_r_id, cond_id)));
-        assert!(edges.contains(&(loop_id, id_for("OutJoinL"))));
-        assert!(edges.contains(&(loop_id, id_for("OutJoinR"))));
+        assert!(edges.contains(&(in_l_id, loop_id)));
+        assert!(edges.contains(&(in_r_id, loop_id)));
+        assert!(edges.contains(&(loop_id, join_id)));
     }
 }
