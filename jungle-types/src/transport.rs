@@ -90,6 +90,10 @@ pub enum WireIn {
     CreateJourney {
         namespace: String,
         animal_id: u32,
+        /// Latest animal generation the client believes exists for `animal_id`.
+        ///
+        /// `None` means "no client-side version expectation".
+        /// `Some(generation)` asks the server to fail fast if its latest generation is older.
         client_observed_generation: Option<u32>,
         seed: Vec<u8>,
     },

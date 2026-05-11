@@ -18,6 +18,10 @@ pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
+    /// Start a journey and optionally assert the latest generation the client has seen.
+    ///
+    /// If `client_observed_generation` is `Some(g)`, servers may reject creation when their
+    /// latest generation for this animal is older than `g`.
     async fn start_journey_with_observed_generation(
         &self,
         animal_id: u32,
@@ -35,6 +39,7 @@ pub trait JungleClient: DynClone + Send + Sync {
         A::Id: AnimalIdValue + Send + Sync,
         A::Generation: Unsigned + Send + Sync,
     {
+        // Typed callers pin journey creation to the generation compiled into `A`.
         self.start_journey_with_observed_generation(
             <A::Id as AnimalIdValue>::U32,
             Some(<A::Generation as Unsigned>::U32),
