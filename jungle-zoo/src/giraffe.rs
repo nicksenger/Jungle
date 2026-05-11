@@ -1,0 +1,2 @@
+//! Giraffe module stub.
+

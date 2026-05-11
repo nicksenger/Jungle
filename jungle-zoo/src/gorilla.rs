@@ -1,0 +1,2 @@
+//! Gorilla module stub.
+

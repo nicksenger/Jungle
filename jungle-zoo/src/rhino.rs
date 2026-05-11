@@ -1,0 +1,2 @@
+//! Rhino module stub.
+

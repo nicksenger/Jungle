@@ -1,0 +1,2 @@
+//! Crocodile module stub.
+
