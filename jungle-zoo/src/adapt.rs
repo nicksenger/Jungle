@@ -2,8 +2,8 @@
 
 use crate::actions;
 use crate::state::{
-    ActivitySchedule, AgeState, Ears, Hands, Horns, PerceivedTimeOfDay, Scales, Skeleton, Torso,
-    TimePerception, VitalReadings,
+    ActivitySchedule, AgeState, Ears, FruitMeal, Hands, Horns, LeafCrop, PerceivedTimeOfDay,
+    PreyCut, Scales, Skeleton, TimePerception, Torso, VitalReadings,
 };
 use jungle_types::{
     AbsorbFn, AbsorbMapper, Action, ActionCompletion, Animal, EmitFn, EmitMapper, Fuse, Identity,
@@ -135,6 +135,104 @@ pub type UseToolStep<T> = Step<
     Fuse<
         EmitFn<Identity, actions::UseTool, (), EmitUseTool>,
         AbsorbFn<Identity, actions::UseTool, String, AbsorbUseTool>,
+    >,
+>;
+
+pub struct EmitStripLeaves;
+impl EmitMapper<LeafCrop, actions::StripLeaves, ()> for EmitStripLeaves {
+    fn emit(view: &LeafCrop, _input: ()) -> <actions::StripLeaves as Action>::In {
+        (view.fiber.toughness, view.mass_g)
+    }
+}
+
+pub struct AbsorbStripLeaves;
+impl AbsorbMapper<LeafCrop, actions::StripLeaves, u16> for AbsorbStripLeaves {
+    fn absorb(view: &mut LeafCrop, output: ActionCompletion<actions::StripLeaves>) -> u16 {
+        let edible = output.expect("strip-leaves should succeed");
+        view.mass_g = edible;
+        edible
+    }
+}
+
+pub type StripLeavesStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::StripLeaves, (), EmitStripLeaves>,
+        AbsorbFn<Identity, actions::StripLeaves, u16, AbsorbStripLeaves>,
+    >,
+>;
+
+pub struct EmitPeelFruit;
+impl EmitMapper<FruitMeal, actions::PeelFruit, ()> for EmitPeelFruit {
+    fn emit(view: &FruitMeal, _input: ()) -> <actions::PeelFruit as Action>::In {
+        (view.rind.thickness_mm, view.flesh.mass_g)
+    }
+}
+
+pub struct AbsorbPeelFruit;
+impl AbsorbMapper<FruitMeal, actions::PeelFruit, u16> for AbsorbPeelFruit {
+    fn absorb(view: &mut FruitMeal, output: ActionCompletion<actions::PeelFruit>) -> u16 {
+        let edible = output.expect("peel-fruit should succeed");
+        view.flesh.mass_g = edible;
+        edible
+    }
+}
+
+pub type PeelFruitStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::PeelFruit, (), EmitPeelFruit>,
+        AbsorbFn<Identity, actions::PeelFruit, u16, AbsorbPeelFruit>,
+    >,
+>;
+
+pub struct EmitCrackShell;
+impl EmitMapper<PreyCut, actions::CrackShell, u8> for EmitCrackShell {
+    fn emit(view: &PreyCut, bite_strength: u8) -> <actions::CrackShell as Action>::In {
+        (view.has_shell, bite_strength)
+    }
+}
+
+pub struct AbsorbCrackShell;
+impl AbsorbMapper<PreyCut, actions::CrackShell, bool> for AbsorbCrackShell {
+    fn absorb(view: &mut PreyCut, output: ActionCompletion<actions::CrackShell>) -> bool {
+        let cracked = output.expect("crack-shell should succeed");
+        if cracked {
+            view.has_shell = false;
+        }
+        cracked
+    }
+}
+
+pub type CrackShellStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::CrackShell, u8, EmitCrackShell>,
+        AbsorbFn<Identity, actions::CrackShell, bool, AbsorbCrackShell>,
+    >,
+>;
+
+pub struct EmitTearMeat;
+impl EmitMapper<PreyCut, actions::TearMeat, ()> for EmitTearMeat {
+    fn emit(view: &PreyCut, _input: ()) -> <actions::TearMeat as Action>::In {
+        (view.muscle.mass_g, view.hide.thickness_mm)
+    }
+}
+
+pub struct AbsorbTearMeat;
+impl AbsorbMapper<PreyCut, actions::TearMeat, u16> for AbsorbTearMeat {
+    fn absorb(view: &mut PreyCut, output: ActionCompletion<actions::TearMeat>) -> u16 {
+        let exposed = output.expect("tear-meat should succeed");
+        view.muscle.mass_g = exposed;
+        exposed
+    }
+}
+
+pub type TearMeatStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::TearMeat, (), EmitTearMeat>,
+        AbsorbFn<Identity, actions::TearMeat, u16, AbsorbTearMeat>,
     >,
 >;
 
@@ -366,12 +464,7 @@ pub type TickPerceivedTimeStep<T> = Step<
     T,
     Fuse<
         EmitFn<Identity, actions::TickPerceivedTime, (), EmitTickPerceivedTime>,
-        AbsorbFn<
-            Identity,
-            actions::TickPerceivedTime,
-            u16,
-            AbsorbTickPerceivedTime,
-        >,
+        AbsorbFn<Identity, actions::TickPerceivedTime, u16, AbsorbTickPerceivedTime>,
     >,
 >;
 
@@ -408,12 +501,7 @@ pub type EvaluateActivityWindowStep<T> = Step<
             PerceivedTimeOfDay,
             EmitEvaluateActivityWindow,
         >,
-        AbsorbFn<
-            Identity,
-            actions::EvaluateActivityWindow,
-            bool,
-            AbsorbEvaluateActivityWindow,
-        >,
+        AbsorbFn<Identity, actions::EvaluateActivityWindow, bool, AbsorbEvaluateActivityWindow>,
     >,
 >;
 
@@ -437,6 +525,15 @@ impl<T> SkeletonAnimal for T where T: Animal<State = Skeleton> {}
 
 pub trait HornsAnimal: Animal<State = Horns> {}
 impl<T> HornsAnimal for T where T: Animal<State = Horns> {}
+
+pub trait LeafCropAnimal: Animal<State = LeafCrop> {}
+impl<T> LeafCropAnimal for T where T: Animal<State = LeafCrop> {}
+
+pub trait FruitMealAnimal: Animal<State = FruitMeal> {}
+impl<T> FruitMealAnimal for T where T: Animal<State = FruitMeal> {}
+
+pub trait PreyCutAnimal: Animal<State = PreyCut> {}
+impl<T> PreyCutAnimal for T where T: Animal<State = PreyCut> {}
 
 pub trait AgeAnimal: Animal<State = AgeState> {}
 impl<T> AgeAnimal for T where T: Animal<State = AgeState> {}

@@ -88,6 +88,60 @@ pub struct DigestiveSystem {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlantFiberProfile {
+    pub toughness: u8,
+    pub cellulose_percent: u8,
+    pub moisture_percent: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeafCrop {
+    pub species: String,
+    pub mass_g: u16,
+    pub fiber: PlantFiberProfile,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FruitRind {
+    pub thickness_mm: u8,
+    pub fibrous: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FruitFlesh {
+    pub sugar_brix: u8,
+    pub mass_g: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FruitMeal {
+    pub name: String,
+    pub rind: FruitRind,
+    pub flesh: FruitFlesh,
+    pub has_hard_seed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreyHide {
+    pub thickness_mm: u8,
+    pub plated: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreyMuscle {
+    pub mass_g: u16,
+    pub fat_percent: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreyCut {
+    pub species: String,
+    pub hide: PreyHide,
+    pub muscle: PreyMuscle,
+    pub has_shell: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoneDensity {
     pub grams_per_cm3: u8,
 }
