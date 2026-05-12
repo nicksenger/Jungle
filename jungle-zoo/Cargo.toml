@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+inception = { workspace = true }
 serde = { workspace = true }
 jungle-types = { path = "../jungle-types" }
+jungle-macros = { path = "../jungle-macros" }
