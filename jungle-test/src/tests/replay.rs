@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Pulse, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Sleep, Step, While,
+    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    LoopCondition, Pulse, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
@@ -139,7 +139,10 @@ impl Pulse<ReplayGateAnimal> for ReplayPreStep {
 
     fn emit(_state: &ReplayGateState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut ReplayGateState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         output.expect("pre increment should succeed");
         state.phase += 1;
     }
@@ -154,7 +157,10 @@ impl Pulse<ReplayGateAnimal> for ReplayPostStep {
 
     fn emit(_state: &ReplayGateState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut ReplayGateState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         output.expect("post increment should succeed");
         state.phase += 1;
     }
@@ -169,7 +175,10 @@ impl Pulse<ReplayGateAnimal> for ReplayGateStep {
 
     fn emit(_state: &ReplayGateState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut ReplayGateState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         output.expect("gate action should succeed");
         state.phase += 1;
     }
@@ -244,6 +253,7 @@ animal!(
 struct ReplayGateAnimals(ReplayGateAnimal);
 
 impl Ecosystem for ReplayGateZoo {
+    const NAME: &'static str = "replay-gate-zoo";
     type Animals = ReplayGateAnimals;
 }
 
@@ -289,11 +299,11 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
                 }
             });
 
-            let seed =
-                postcard::to_allocvec(&ReplayGateState { phase: 0 }).expect("seed should serialize");
+            let seed = postcard::to_allocvec(&ReplayGateState { phase: 0 })
+                .expect("seed should serialize");
             let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
             let journey_id = control_client
-                .start_journey(ordinal, seed)
+                .start_journey(ordinal, 0, seed)
                 .await
                 .expect("start_journey should succeed");
 
@@ -436,7 +446,9 @@ impl Action for ReplayTimeoutPostIncrementAction {
         dependency: &Self::Dependency,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        dependency.global_post_counter.fetch_add(1, Ordering::SeqCst);
+        dependency
+            .global_post_counter
+            .fetch_add(1, Ordering::SeqCst);
         std::future::ready(Ok(()))
     }
 }
@@ -450,7 +462,10 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
 
     fn emit(_state: &ReplayTimeoutState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         output.expect("pre-timeout increment should succeed");
         state.phase += 1;
     }
@@ -467,7 +482,10 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         output.expect("timeout sleep should succeed");
         state.phase += 1;
     }
@@ -482,7 +500,10 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
 
     fn emit(_state: &ReplayTimeoutState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         output.expect("post-timeout increment should succeed");
         state.phase += 1;
     }
@@ -557,6 +578,7 @@ animal!(
 struct ReplayTimeoutAnimals(ReplayTimeoutAnimal);
 
 impl Ecosystem for ReplayTimeoutZoo {
+    const NAME: &'static str = "replay-timeout-zoo";
     type Animals = ReplayTimeoutAnimals;
 }
 
@@ -596,8 +618,8 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
                     worker_pre_counter: Arc::clone(&worker_one_pre_counter),
                 };
                 async move {
-                    let worker =
-                        JungleWorker::new(zoo, client).with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS);
+                    let worker = JungleWorker::new(zoo, client)
+                        .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS);
                     let _ = worker.spawn().await;
                 }
             }));
@@ -609,8 +631,8 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
                     worker_pre_counter: Arc::clone(&worker_two_pre_counter),
                 };
                 async move {
-                    let worker =
-                        JungleWorker::new(zoo, client).with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS);
+                    let worker = JungleWorker::new(zoo, client)
+                        .with_owner_lease_ttl_ms(TEST_OWNER_LEASE_TTL_MS);
                     let _ = worker.spawn().await;
                 }
             }));
@@ -622,7 +644,7 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
             .expect("timeout test seed should serialize");
             let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
             let journey_id = control_client
-                .start_journey(ordinal, seed)
+                .start_journey(ordinal, 0, seed)
                 .await
                 .expect("start_journey should succeed");
 
@@ -725,7 +747,7 @@ async fn wait_for_completed(remote: SocketAddr, journey_id: uuid::Uuid, timeout:
 
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     for attempt in 0..40 {
-        match jungle_sdk::client::ClientBuilder::new()
+        match jungle_sdk::client::Client::builder()
             .remote(remote)
             .server_name("localhost")
             .build()

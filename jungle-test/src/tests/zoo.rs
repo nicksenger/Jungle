@@ -1,8 +1,8 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Pulse, Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
-    Ecosystem, Identity, Lens, LoopCondition, Step, While,
+    Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
+    Ecosystem, Identity, Lens, LoopCondition, Pulse, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -147,6 +147,7 @@ struct AllActions(Predator, Prey);
 
 struct Zoo;
 impl Ecosystem for Zoo {
+    const NAME: &'static str = "zoo";
     type Animals = AllAnimals;
 }
 
@@ -280,6 +281,7 @@ struct RunnerAnimals(RunnerAnimal);
 
 struct RunnerZoo;
 impl Ecosystem for RunnerZoo {
+    const NAME: &'static str = "runner-zoo";
     type Animals = RunnerAnimals;
 }
 
@@ -748,7 +750,7 @@ async fn jungle_runner_spawns_and_completes_animal_flows() {
 async fn jungle_worker_polls_and_completes_start_flow_work() {
     use jungle_sdk::client::MockClient;
     use jungle_sdk::core::JungleWorker;
-    use jungle_sdk::types::RunnerStep;
+    use jungle_sdk::types::Work;
     use std::time::Duration;
 
     let input_calls = Arc::new(AtomicUsize::new(0));
@@ -763,15 +765,16 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
         .on_poll_work({
             let poll_calls = Arc::clone(&poll_calls);
             let seed = seed.clone();
-            move || {
+            move |_| {
                 let poll_calls = Arc::clone(&poll_calls);
                 let seed = seed.clone();
                 async move {
                     let idx = poll_calls.fetch_add(1, Ordering::Relaxed);
                     if idx == 0 {
-                        Ok(Some(RunnerStep::StartJourney {
+                        Ok(Some(Work::StartJourney {
                             journey_id,
-                            ordinal: 16,
+                            animal_id: 16,
+                            generation: 0,
                             seed,
                         }))
                     } else {

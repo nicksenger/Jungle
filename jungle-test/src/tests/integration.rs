@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Pulse, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    Lens, LoopCondition, Observe, Perturb, Step, While,
+    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus, Lens,
+    LoopCondition, Observe, Perturb, Pulse, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -101,7 +101,10 @@ impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut IntegrationState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         state.total += output.expect("first pre-focused full-state action should succeed");
         state.before_steps += 1;
     }
@@ -116,7 +119,10 @@ impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut IntegrationState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         state.total += output.expect("second pre-focused full-state action should succeed");
         state.before_steps += 1;
     }
@@ -167,7 +173,10 @@ impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
 
     fn emit(_state: &DeepFocusState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut DeepFocusState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         state.value += output.expect("first deep-focused integration action should succeed");
         state.updates += 1;
     }
@@ -188,7 +197,10 @@ impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
 
     fn emit(_state: &DeepFocusState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut DeepFocusState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         state.value += output.expect("second deep-focused integration action should succeed");
         state.updates += 1;
     }
@@ -203,7 +215,10 @@ impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut IntegrationState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         state.total += output.expect("first post-focused full-state action should succeed");
         state.after_steps += 1;
     }
@@ -218,7 +233,10 @@ impl Pulse<IntegrationAnimal> for AddTwoAfterFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::CarryIn) -> Self::CarryIn {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(
+        state: &mut IntegrationState,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
         state.total += output.expect("second post-focused full-state action should succeed");
         state.after_steps += 1;
     }
@@ -369,6 +387,7 @@ struct IntegrationAnimals(IntegrationAnimal);
 
 struct IntegrationZoo;
 impl Ecosystem for IntegrationZoo {
+    const NAME: &'static str = "integration-zoo";
     type Animals = IntegrationAnimals;
 }
 
@@ -411,7 +430,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
     .expect("seed should serialize");
     let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
-        .start_journey(ordinal, seed)
+        .start_journey(ordinal, 0, seed)
         .await
         .expect("start_journey should succeed");
     let perturb_payload = postcard::to_allocvec(&IntegrationPerturbation { delta: 1000 })
@@ -520,7 +539,7 @@ fn replaced_nodes_alias_replaces_loop_branch_section() {
 
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     for attempt in 0..40 {
-        match jungle_sdk::client::ClientBuilder::new()
+        match jungle_sdk::client::Client::builder()
             .remote(remote)
             .server_name("localhost")
             .build()

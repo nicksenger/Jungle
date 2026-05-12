@@ -4,8 +4,10 @@ use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
 use jungle_types::{
-    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, RunnerStep,
+    Animal, AnimalIdValue, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake,
+    RunnerOut, SupportedAnimal, Work,
 };
+use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 pub mod client;
@@ -16,7 +18,30 @@ pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
-    async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError>;
+    /// Start a journey and provide the generation for the target animal id.
+    ///
+    /// Servers may reject creation when their latest known generation is older than `generation`.
+    async fn start_journey(
+        &self,
+        animal_id: u32,
+        generation: u32,
+        seed: Vec<u8>,
+    ) -> Result<Uuid, ExecutorError>;
+    async fn start_journey_for<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    where
+        Self: Sized,
+        A: Animal,
+        A::Id: AnimalIdValue + Send + Sync,
+        A::Generation: Unsigned + Send + Sync,
+    {
+        // Typed callers pin journey creation to the generation compiled into `A`.
+        self.start_journey(
+            <A::Id as AnimalIdValue>::U32,
+            <A::Generation as Unsigned>::U32,
+            seed,
+        )
+        .await
+    }
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError>;
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError>;
     async fn animal_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError>;
@@ -46,10 +71,28 @@ pub trait JungleClient: DynClone + Send + Sync {
     ) -> Result<(), ExecutorError>;
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError>;
     async fn poll_timers(&self) -> Result<Option<()>, ExecutorError>;
-    async fn poll_work(&self) -> Result<Option<RunnerStep>, ExecutorError>;
-    async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError>;
-    async fn action_success_output(&self, id: Uuid, output: Vec<u8>) -> Result<(), ExecutorError>;
-    async fn action_failure_output(&self, id: Uuid, err: Vec<u8>) -> Result<(), ExecutorError>;
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>, ExecutorError>;
+    async fn action_input(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError>;
+    async fn action_success_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError>;
+    async fn action_failure_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError>;
 }
 
 dyn_clone::clone_trait_object!(JungleClient);

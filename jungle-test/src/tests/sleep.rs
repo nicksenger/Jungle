@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Pulse, Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Observe, Sleep, Step, While,
+    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    LoopCondition, Observe, Pulse, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -148,6 +148,7 @@ struct SleepAnimals(SleepAnimal);
 
 struct SleepZoo;
 impl Ecosystem for SleepZoo {
+    const NAME: &'static str = "sleep-zoo";
     type Animals = SleepAnimals;
 }
 
@@ -181,7 +182,7 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
     .expect("sleep test seed should serialize");
     let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
-        .start_journey(ordinal, seed)
+        .start_journey(ordinal, 0, seed)
         .await
         .expect("start_journey should succeed for sleep flow");
 
@@ -222,7 +223,7 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
 
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     for attempt in 0..40 {
-        match jungle_sdk::client::ClientBuilder::new()
+        match jungle_sdk::client::Client::builder()
             .remote(remote)
             .server_name("localhost")
             .build()

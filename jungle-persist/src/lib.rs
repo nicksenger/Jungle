@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
-use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, RunnerStep};
+use jungle_types::{
+    ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -39,7 +41,13 @@ pub enum PersistenceError {
 #[async_trait]
 pub trait JungleStore: DynClone + Send + Sync {
     async fn migrate(&self) -> Result<()>;
-    async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid>;
+    async fn create_journey(
+        &self,
+        namespace: String,
+        animal_id: u32,
+        generation: u32,
+        seed: Vec<u8>,
+    ) -> Result<Uuid>;
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>>;
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus>;
     async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>>;
@@ -59,7 +67,11 @@ pub trait JungleStore: DynClone + Send + Sync {
     async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>>;
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()>;
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()>;
-    async fn claim_work(&self) -> Result<Option<RunnerStep>>;
+    async fn claim_work(
+        &self,
+        namespace: String,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>>;
     async fn append_history(&self, history: RunnerOut) -> Result<()>;
     async fn schedule_sleep_timer(
         &self,

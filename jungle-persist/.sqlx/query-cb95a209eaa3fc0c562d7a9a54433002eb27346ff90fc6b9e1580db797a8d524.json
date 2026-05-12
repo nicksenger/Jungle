@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DO $$\n            BEGIN\n                IF EXISTS (\n                    SELECT 1\n                    FROM information_schema.columns\n                    WHERE table_name = 'journeys' AND column_name = 'ordinal'\n                ) THEN\n                    UPDATE journeys\n                    SET animal_id = ordinal\n                    WHERE animal_id = 0;\n                END IF;\n            END\n            $$;\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "cb95a209eaa3fc0c562d7a9a54433002eb27346ff90fc6b9e1580db797a8d524"
+}

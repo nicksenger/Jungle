@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH next_sequence AS (\n                SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id\n                FROM animal_perturbations\n                WHERE journey_id = $1\n            )\n            INSERT INTO animal_perturbations (\n                journey_id,\n                sequence_id,\n                data,\n                status,\n                claimed_at,\n                lease_until\n            )\n            SELECT $1, next_sequence.sequence_id, $2, $3, NULL, NULL\n            FROM next_sequence\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Int2"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "589228723b0be2085dcf2164a0a0da7b0c15003b3dbb0aa42ec58b18034a306a"
+}

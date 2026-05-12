@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            ALTER TABLE journeys\n            ADD COLUMN IF NOT EXISTS namespace TEXT NOT NULL DEFAULT 'default'\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "cf63792199d8440230f62f96614cd50fe4b4b7893ba05e83ede1ea8d08ddadd0"
+}

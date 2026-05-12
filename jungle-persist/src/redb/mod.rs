@@ -4,9 +4,12 @@ use crate::models::{SchemaVersion, StepKind, StepStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use jungle_types::{ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, RunnerStep};
+use jungle_types::{
+    ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
+};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -20,6 +23,8 @@ const OWNER_WAKES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("o
 const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("animal_appearances");
 const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("animal_perturbations");
+const ANIMAL_GENERATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
+    TableDefinition::new("animal_generations");
 
 const STEP_KIND_START_JOURNEY: u8 = 0;
 const STEP_KIND_RESUME_JOURNEY: u8 = 1;
@@ -87,7 +92,13 @@ impl RedbStore {
                 "redb update_journey_status decode journey value",
             )?;
             if expected_current.is_none_or(|expected| flow.status == expected) {
-                let updated_value = encode_journey(flow.ordinal, new_status, &flow.seed);
+                let updated_value = encode_journey(
+                    flow.namespace.as_str(),
+                    flow.animal_id,
+                    flow.generation,
+                    new_status,
+                    &flow.seed,
+                );
                 journeys
                     .insert(key, updated_value.as_slice())
                     .map_err(|err| {
@@ -133,7 +144,13 @@ impl JungleStore for RedbStore {
         }
     }
 
-    async fn create_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid> {
+    async fn create_journey(
+        &self,
+        namespace: String,
+        animal_id: u32,
+        generation: u32,
+        seed: Vec<u8>,
+    ) -> Result<Uuid> {
         let journey_id = Uuid::new_v4();
         let work_item_id = Uuid::new_v4();
         let expiry = Utc::now();
@@ -143,12 +160,45 @@ impl JungleStore for RedbStore {
         })?;
 
         {
+            let generations = write_tx
+                .open_table(ANIMAL_GENERATIONS_TABLE)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb create_journey open animal_generations table failed: {err}"
+                    ))
+                })?;
+            let generation_key = encode_animal_generation_key(namespace.as_str(), animal_id);
+            let latest_generation = generations
+                .get(generation_key.as_slice())
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb create_journey read animal generation failed: {err}"
+                    ))
+                })?
+                .map(|value| {
+                    decode_generation(value.value(), "redb create_journey decode generation")
+                })
+                .transpose()?
+                .unwrap_or(0);
+
+            if generation > latest_generation {
+                return Err(crate::PersistenceError::Message(format!(
+                    "client generation {generation} exceeds latest server generation {latest_generation} for namespace {namespace} animal {animal_id}"
+                )));
+            }
+
             let mut journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "redb create_journey open journeys table failed: {err}"
                 ))
             })?;
-            let flow_value = encode_journey(ordinal, JourneyStatus::Created, &seed);
+            let flow_value = encode_journey(
+                namespace.as_str(),
+                animal_id,
+                latest_generation,
+                JourneyStatus::Created,
+                &seed,
+            );
             journeys
                 .insert(&journey_id.as_bytes()[..], flow_value.as_slice())
                 .map_err(|err| {
@@ -584,7 +634,20 @@ impl JungleStore for RedbStore {
         )
     }
 
-    async fn claim_work(&self) -> Result<Option<RunnerStep>> {
+    async fn claim_work(
+        &self,
+        namespace: String,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>> {
+        if supported_animals.is_empty() {
+            return Ok(None);
+        }
+
+        let supported_set: HashSet<(u32, u32)> = supported_animals
+            .iter()
+            .map(|animal| (animal.animal_id, animal.generation))
+            .collect();
+
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
         })?;
@@ -594,6 +657,47 @@ impl JungleStore for RedbStore {
         let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
 
         {
+            let mut generation_table =
+                write_tx
+                    .open_table(ANIMAL_GENERATIONS_TABLE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb claim_work open animal_generations table failed: {err}"
+                        ))
+                    })?;
+            for supported in supported_animals {
+                let key = encode_animal_generation_key(namespace.as_str(), supported.animal_id);
+                let existing = generation_table
+                    .get(key.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb claim_work read animal generation failed: {err}"
+                        ))
+                    })?
+                    .map(|value| {
+                        decode_generation(value.value(), "redb claim_work decode generation")
+                    })
+                    .transpose()?
+                    .unwrap_or(0);
+                if supported.generation > existing {
+                    generation_table
+                        .insert(
+                            key.as_slice(),
+                            supported.generation.to_be_bytes().as_slice(),
+                        )
+                        .map_err(|err| {
+                            crate::PersistenceError::Message(format!(
+                                "redb claim_work write animal generation failed: {err}"
+                            ))
+                        })?;
+                }
+            }
+
+            let journeys = write_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb claim_work open journeys table failed: {err}"
+                ))
+            })?;
             let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "redb claim_work open work_items table failed: {err}"
@@ -621,6 +725,29 @@ impl JungleStore for RedbStore {
                     StepStatus::Claimed => expiry <= now,
                 };
                 if !claimable {
+                    continue;
+                }
+
+                let journey_raw = journeys
+                    .get(&journey_id.as_bytes()[..])
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb claim_work read journey for namespace filter failed: {err}"
+                        ))
+                    })?
+                    .ok_or_else(|| {
+                        crate::PersistenceError::Message(format!(
+                            "redb claim_work missing journey for work item {id}"
+                        ))
+                    })?;
+                let journey = decode_journey(
+                    journey_raw.value(),
+                    "redb claim_work decode journey for namespace filter",
+                )?;
+                if journey.namespace != namespace.as_str() {
+                    continue;
+                }
+                if !supported_set.contains(&(journey.animal_id, journey.generation)) {
                     continue;
                 }
 
@@ -691,14 +818,16 @@ impl JungleStore for RedbStore {
         })?;
 
         let work = match selected_kind {
-            StepKind::StartJourney => RunnerStep::StartJourney {
+            StepKind::StartJourney => Work::StartJourney {
                 journey_id: selected_journey_id,
-                ordinal: flow.ordinal,
+                animal_id: flow.animal_id,
+                generation: flow.generation,
                 seed: flow.seed,
             },
-            StepKind::ResumeJourney => RunnerStep::ResumeJourney {
+            StepKind::ResumeJourney => Work::ResumeJourney {
                 journey_id: selected_journey_id,
-                ordinal: flow.ordinal,
+                animal_id: flow.animal_id,
+                generation: flow.generation,
                 seed: flow.seed,
             },
         };
@@ -708,13 +837,33 @@ impl JungleStore for RedbStore {
 
     async fn append_history(&self, history: RunnerOut) -> Result<()> {
         let (journey_id, kind, data) = match history {
-            RunnerOut::ActionInput { data, uuid } => (uuid, EVENT_KIND_ACTION_INPUT, data),
-            RunnerOut::ActionSuccessOutput { data, uuid } => {
-                (uuid, EVENT_KIND_ACTION_SUCCESS_OUTPUT, data)
-            }
-            RunnerOut::ActionFailureOutput { data, uuid } => {
-                (uuid, EVENT_KIND_ACTION_FAILURE_OUTPUT, data)
-            }
+            RunnerOut::ActionInput {
+                node_id,
+                data,
+                uuid,
+            } => (
+                uuid,
+                EVENT_KIND_ACTION_INPUT,
+                encode_action_event(node_id, data)?,
+            ),
+            RunnerOut::ActionSuccessOutput {
+                node_id,
+                data,
+                uuid,
+            } => (
+                uuid,
+                EVENT_KIND_ACTION_SUCCESS_OUTPUT,
+                encode_action_event(node_id, data)?,
+            ),
+            RunnerOut::ActionFailureOutput {
+                node_id,
+                data,
+                uuid,
+            } => (
+                uuid,
+                EVENT_KIND_ACTION_FAILURE_OUTPUT,
+                encode_action_event(node_id, data)?,
+            ),
             RunnerOut::SleepScheduled {
                 uuid,
                 timer_id,
@@ -1027,7 +1176,9 @@ impl JungleStore for RedbStore {
 
 #[derive(Debug)]
 struct JourneyRow {
-    ordinal: u32,
+    namespace: String,
+    animal_id: u32,
+    generation: u32,
     status: JourneyStatus,
     seed: Vec<u8>,
 }
@@ -1259,24 +1410,115 @@ fn decode_journey(raw: &[u8], context: &str) -> Result<JourneyRow> {
         )));
     }
 
-    let mut ordinal_bytes = [0_u8; 4];
-    ordinal_bytes.copy_from_slice(&raw[..4]);
-    let ordinal = u32::from_be_bytes(ordinal_bytes);
+    if raw.len() >= 12 && raw[9] == 0xFE {
+        let mut animal_id_bytes = [0_u8; 4];
+        animal_id_bytes.copy_from_slice(&raw[..4]);
+        let animal_id = u32::from_be_bytes(animal_id_bytes);
+
+        let mut generation_bytes = [0_u8; 4];
+        generation_bytes.copy_from_slice(&raw[4..8]);
+        let generation = u32::from_be_bytes(generation_bytes);
+
+        let status = decode_journey_status(raw[8], context)?;
+        let mut ns_len_bytes = [0_u8; 2];
+        ns_len_bytes.copy_from_slice(&raw[10..12]);
+        let ns_len = usize::from(u16::from_be_bytes(ns_len_bytes));
+        let ns_start: usize = 12;
+        let ns_end = ns_start.saturating_add(ns_len);
+        if ns_end > raw.len() {
+            return Err(crate::PersistenceError::Message(format!(
+                "{context}: invalid namespace length for journey row"
+            )));
+        }
+        let namespace = std::str::from_utf8(&raw[ns_start..ns_end])
+            .map_err(|err| crate::PersistenceError::Message(format!("{context}: {err}")))?;
+        let seed = raw[ns_end..].to_vec();
+        return Ok(JourneyRow {
+            namespace: namespace.to_string(),
+            animal_id,
+            generation,
+            status,
+            seed,
+        });
+    }
+
+    let mut animal_id_bytes = [0_u8; 4];
+    animal_id_bytes.copy_from_slice(&raw[..4]);
+    let animal_id = u32::from_be_bytes(animal_id_bytes);
     let status = decode_journey_status(raw[4], context)?;
+    if raw.len() >= 8 && raw[5] == 0xFF {
+        let mut ns_len_bytes = [0_u8; 2];
+        ns_len_bytes.copy_from_slice(&raw[6..8]);
+        let ns_len = usize::from(u16::from_be_bytes(ns_len_bytes));
+        let ns_start: usize = 8;
+        let ns_end = ns_start.saturating_add(ns_len);
+        if ns_end <= raw.len() {
+            if let Ok(namespace) = std::str::from_utf8(&raw[ns_start..ns_end]) {
+                let seed = raw[ns_end..].to_vec();
+                return Ok(JourneyRow {
+                    namespace: namespace.to_string(),
+                    animal_id,
+                    generation: 0,
+                    status,
+                    seed,
+                });
+            }
+        }
+    }
+
+    // Legacy rows without explicit namespace default to "default".
     let seed = raw[5..].to_vec();
     Ok(JourneyRow {
-        ordinal,
+        namespace: "default".to_string(),
+        animal_id,
+        generation: 0,
         status,
         seed,
     })
 }
 
-fn encode_journey(ordinal: u32, status: JourneyStatus, seed: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(5 + seed.len());
-    out.extend_from_slice(&ordinal.to_be_bytes());
+fn encode_journey(
+    namespace: &str,
+    animal_id: u32,
+    generation: u32,
+    status: JourneyStatus,
+    seed: &[u8],
+) -> Vec<u8> {
+    let namespace_bytes = namespace.as_bytes();
+    let namespace_len = u16::try_from(namespace_bytes.len()).unwrap_or(u16::MAX);
+    let namespace_bytes = &namespace_bytes[..usize::from(namespace_len)];
+    let mut out = Vec::with_capacity(12 + namespace_bytes.len() + seed.len());
+    out.extend_from_slice(&animal_id.to_be_bytes());
+    out.extend_from_slice(&generation.to_be_bytes());
     out.push(encode_journey_status(status));
+    out.push(0xFE);
+    out.extend_from_slice(&namespace_len.to_be_bytes());
+    out.extend_from_slice(namespace_bytes);
     out.extend_from_slice(seed);
     out
+}
+
+fn encode_animal_generation_key(namespace: &str, animal_id: u32) -> Vec<u8> {
+    let namespace_bytes = namespace.as_bytes();
+    let namespace_len = u16::try_from(namespace_bytes.len()).unwrap_or(u16::MAX);
+    let namespace_bytes = &namespace_bytes[..usize::from(namespace_len)];
+    let mut out = Vec::with_capacity(6 + namespace_bytes.len());
+    out.extend_from_slice(&namespace_len.to_be_bytes());
+    out.extend_from_slice(namespace_bytes);
+    out.extend_from_slice(&animal_id.to_be_bytes());
+    out
+}
+
+fn decode_generation(raw: &[u8], context: &str) -> Result<u32> {
+    if raw.len() != 4 {
+        return Err(crate::PersistenceError::Message(format!(
+            "{context}: expected 4-byte generation value, got {}",
+            raw.len()
+        )));
+    }
+    let mut generation_bytes = [0_u8; 4];
+    generation_bytes.copy_from_slice(raw);
+    Ok(u32::from_be_bytes(generation_bytes))
 }
 
 fn encode_journey_status(status: JourneyStatus) -> u8 {
@@ -1340,20 +1582,58 @@ fn decode_event_value(raw: &[u8], context: &str) -> Result<(u8, Vec<u8>)> {
     Ok((raw[0], raw[1..].to_vec()))
 }
 
+const ACTION_EVENT_ENVELOPE_V1: u8 = 0xA1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ActionEventData {
+    node_id: u32,
+    data: Vec<u8>,
+}
+
+fn encode_action_event(node_id: u32, data: Vec<u8>) -> Result<Vec<u8>> {
+    let mut payload = Vec::with_capacity(1 + data.len() + 8);
+    payload.push(ACTION_EVENT_ENVELOPE_V1);
+    let encoded = postcard::to_allocvec(&ActionEventData { node_id, data })
+        .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+    payload.extend_from_slice(&encoded);
+    Ok(payload)
+}
+
+fn decode_action_event(data: Vec<u8>) -> Result<(u32, Vec<u8>)> {
+    if data.first().copied() != Some(ACTION_EVENT_ENVELOPE_V1) {
+        return Ok((0, data));
+    }
+    let envelope: ActionEventData = postcard::from_bytes(&data[1..])
+        .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+    Ok((envelope.node_id, envelope.data))
+}
+
 fn decode_runner_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<RunnerOut> {
     match kind {
-        EVENT_KIND_ACTION_INPUT => Ok(RunnerOut::ActionInput {
-            uuid: journey_id,
-            data,
-        }),
-        EVENT_KIND_ACTION_SUCCESS_OUTPUT => Ok(RunnerOut::ActionSuccessOutput {
-            uuid: journey_id,
-            data,
-        }),
-        EVENT_KIND_ACTION_FAILURE_OUTPUT => Ok(RunnerOut::ActionFailureOutput {
-            uuid: journey_id,
-            data,
-        }),
+        EVENT_KIND_ACTION_INPUT => {
+            let (node_id, data) = decode_action_event(data)?;
+            Ok(RunnerOut::ActionInput {
+                node_id,
+                uuid: journey_id,
+                data,
+            })
+        }
+        EVENT_KIND_ACTION_SUCCESS_OUTPUT => {
+            let (node_id, data) = decode_action_event(data)?;
+            Ok(RunnerOut::ActionSuccessOutput {
+                node_id,
+                uuid: journey_id,
+                data,
+            })
+        }
+        EVENT_KIND_ACTION_FAILURE_OUTPUT => {
+            let (node_id, data) = decode_action_event(data)?;
+            Ok(RunnerOut::ActionFailureOutput {
+                node_id,
+                uuid: journey_id,
+                data,
+            })
+        }
         EVENT_KIND_SLEEP_SCHEDULED => {
             let event: SleepScheduledEvent = postcard::from_bytes(&data)
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;

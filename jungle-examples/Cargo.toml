@@ -1,0 +1,20 @@
+[package]
+name = "jungle-examples"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb"] }
+jungle-viewer = { path = "../jungle-viewer" }
+postcard = { workspace = true, features = ["alloc"] }
+serde = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+uuid = { workspace = true }
+
+[[bin]]
+name = "jungle-view"
+path = "src/bin/jungle-view.rs"
+
+[[bin]]
+name = "jungle-observe"
+path = "src/bin/jungle-observe.rs"

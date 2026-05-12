@@ -1,9 +1,4 @@
 #[cfg(test)]
-extern crate jungle_sdk as inception;
-#[cfg(test)]
-extern crate jungle_sdk as jungle_types;
-
-#[cfg(test)]
 mod tests {
     use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 
@@ -39,12 +34,12 @@ mod tests {
                 }
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleActions)]
             impl jungle_sdk::types::Actions for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
@@ -96,12 +91,12 @@ mod tests {
                 }
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleActions)]
             impl jungle_sdk::types::Actions for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
@@ -114,6 +109,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -133,6 +129,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -152,6 +149,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -171,6 +169,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -199,6 +198,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -212,12 +212,12 @@ mod tests {
                 type Adapter = jungle_sdk::types::NoopPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
             impl jungle_sdk::types::Animals for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
@@ -229,6 +229,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -242,12 +243,12 @@ mod tests {
                 type Adapter = jungle_sdk::types::TraitPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
             impl jungle_sdk::types::Animals for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
@@ -259,6 +260,7 @@ mod tests {
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
+                type Generation = jungle_sdk::typosaurus::num::consts::U0;
                 type State = $state;
                 type Seed = $state;
                 type Journey = $journey;
@@ -272,29 +274,31 @@ mod tests {
                 type Adapter = jungle_sdk::types::NoopPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
             impl jungle_sdk::types::Animals for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
         };
     }
 
+    mod adapt_helpers;
     mod aspect;
     mod conditional;
     mod connection;
-    mod adapt_helpers;
     mod integration;
     mod migration;
     mod progression;
     mod replay;
     mod select_join;
     mod sleep;
+    mod transparent_metadata;
     mod traverse_replace;
+    mod versioning;
     mod while_loop;
     mod zoo;
 }

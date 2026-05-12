@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    Pulse, ActionCompletion, Conditional, Identity, LoopCondition, ReplaceStep, Step, TraverseStep,
+    ActionCompletion, Conditional, Identity, LoopCondition, Pulse, ReplaceStep, Step, TraverseStep,
     While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -146,6 +146,7 @@ fn traverse_and_replace_are_type_level_transformations() {
 
 impl jungle_sdk::types::Animal for TraverseAnimal {
     type Id = jungle_sdk::types::Id<U24>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
     type State = i32;
     type Seed = i32;
     type Journey = SourceFlow;

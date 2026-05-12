@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE timer_tasks\n            SET status = $2, fired_at = NOW()\n            WHERE id = $1 AND status = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int2",
+        "Int2"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6beec967cd27cf5bc8037462f7ea3abaa6f6008bd0dfa381056a904476460560"
+}

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO timer_tasks (id, journey_id, status, visible_at, fired_at)\n            VALUES ($1, $2, $3, to_timestamp($4::BIGINT::double precision / 1000.0), NULL)\n            ON CONFLICT (id) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int2",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e23a2919b4aa9e5e712a9097f471a2a7e1caafc4455feceb154b282d5d4c197b"
+}

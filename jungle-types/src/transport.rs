@@ -10,14 +10,17 @@ pub enum BackendError {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RunnerOut {
     ActionInput {
+        node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
     },
     ActionSuccessOutput {
+        node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
     },
     ActionFailureOutput {
+        node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
     },
@@ -44,6 +47,12 @@ pub struct ClaimedAnimalPerturbation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SupportedAnimal {
+    pub animal_id: u32,
+    pub generation: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OwnerWake {
     pub journey_id: Uuid,
     pub timer_id: Uuid,
@@ -58,17 +67,19 @@ pub enum JourneyStatus {
     Dead,
 }
 
-/// Step messages sent from external clients to runners.
+/// Work messages sent from external clients to runners.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum Step {
+pub enum Work {
     StartJourney {
         journey_id: Uuid,
-        ordinal: u32,
+        animal_id: u32,
+        generation: u32,
         seed: Vec<u8>,
     },
     ResumeJourney {
         journey_id: Uuid,
-        ordinal: u32,
+        animal_id: u32,
+        generation: u32,
         seed: Vec<u8>,
     },
 }
@@ -77,7 +88,12 @@ pub enum Step {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum WireIn {
     CreateJourney {
-        ordinal: u32,
+        namespace: String,
+        animal_id: u32,
+        /// Animal generation provided by the client for `animal_id`.
+        ///
+        /// Servers reject creation when this exceeds their latest known generation.
+        generation: u32,
         seed: Vec<u8>,
     },
     JourneyHistory(Uuid),
@@ -106,7 +122,10 @@ pub enum WireIn {
         wake_at_unix_ms: i64,
     },
     JourneyComplete(Uuid),
-    PollStep,
+    PollStep {
+        namespace: String,
+        supported_animals: Vec<SupportedAnimal>,
+    },
     PollTimers,
     HistoryEvent(RunnerOut),
 }
@@ -121,6 +140,6 @@ pub enum WireOut {
     ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),
     OwnerWake(Option<OwnerWake>),
     NoAvailableSteps,
-    PendingStep(Step),
+    PendingStep(Work),
     Ack,
 }

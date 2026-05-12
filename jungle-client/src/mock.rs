@@ -2,7 +2,8 @@ use crate::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerCha
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut, RunnerStep,
+    ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
+    SupportedAnimal, Work,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -12,8 +13,9 @@ use uuid::Uuid;
 type HandlerFuture = Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
 type Handler = Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
 type PollStepHandlerFuture =
-    Pin<Box<dyn Future<Output = Result<Option<RunnerStep>, ExecutorError>> + Send + 'static>>;
-type PollStepHandler = Arc<dyn Fn() -> PollStepHandlerFuture + Send + Sync + 'static>;
+    Pin<Box<dyn Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static>>;
+type PollStepHandler =
+    Arc<dyn Fn(Vec<SupportedAnimal>) -> PollStepHandlerFuture + Send + Sync + 'static>;
 type PollTimersHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Option<()>, ExecutorError>> + Send + 'static>>;
 type PollTimersHandler = Arc<dyn Fn() -> PollTimersHandlerFuture + Send + Sync + 'static>;
@@ -57,6 +59,7 @@ type PollOwnerWakeHandler = Arc<dyn Fn(Uuid) -> PollOwnerWakeHandlerFuture + Sen
 
 #[derive(Clone)]
 pub struct MockClient {
+    namespace: String,
     on_create_flow: CreateFlowHandler,
     on_journey_history: JourneyHistoryHandler,
     on_flow_status: FlowStatusHandler,
@@ -81,20 +84,30 @@ impl MockClient {
         MockClientBuilder::default()
     }
 
+    pub fn namespace(&self) -> &str {
+        &self.namespace
+    }
+
     pub async fn serve_runner_channel(&self, mut rx: RunnerChannelRx) {
         while let Some((message, done)) = rx.next().await {
             let result = match message {
                 RunnerChannelMessage::History(history) => {
                     let out = match history {
-                        RunnerOut::ActionInput { data, uuid } => {
-                            self.action_input(uuid, data).await
-                        }
-                        RunnerOut::ActionSuccessOutput { data, uuid } => {
-                            self.action_success_output(uuid, data).await
-                        }
-                        RunnerOut::ActionFailureOutput { data, uuid } => {
-                            self.action_failure_output(uuid, data).await
-                        }
+                        RunnerOut::ActionInput {
+                            node_id,
+                            data,
+                            uuid,
+                        } => self.action_input(uuid, node_id, data).await,
+                        RunnerOut::ActionSuccessOutput {
+                            node_id,
+                            data,
+                            uuid,
+                        } => self.action_success_output(uuid, node_id, data).await,
+                        RunnerOut::ActionFailureOutput {
+                            node_id,
+                            data,
+                            uuid,
+                        } => self.action_failure_output(uuid, node_id, data).await,
                         RunnerOut::Appearance { data, uuid } => {
                             self.animal_appearance_update(uuid, data).await
                         }
@@ -127,8 +140,13 @@ impl Default for MockClient {
 
 #[async_trait]
 impl JungleClient for MockClient {
-    async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
-        (self.on_create_flow)(ordinal, seed).await
+    async fn start_journey(
+        &self,
+        animal_id: u32,
+        _generation: u32,
+        seed: Vec<u8>,
+    ) -> Result<Uuid, ExecutorError> {
+        (self.on_create_flow)(animal_id, seed).await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
@@ -196,25 +214,43 @@ impl JungleClient for MockClient {
         (self.on_poll_timers)().await
     }
 
-    async fn poll_work(&self) -> Result<Option<RunnerStep>, ExecutorError> {
-        (self.on_poll_work)().await
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>, ExecutorError> {
+        (self.on_poll_work)(supported_animals).await
     }
 
-    async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_input(
+        &self,
+        id: Uuid,
+        _node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         (self.on_action_input)(id, input).await
     }
 
-    async fn action_success_output(&self, id: Uuid, output: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_success_output(
+        &self,
+        id: Uuid,
+        _node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         (self.on_action_success_output)(id, output).await
     }
 
-    async fn action_failure_output(&self, id: Uuid, err: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_failure_output(
+        &self,
+        id: Uuid,
+        _node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         (self.on_action_failure_output)(id, err).await
     }
 }
 
-#[derive(Default)]
 pub struct MockClientBuilder {
+    namespace: String,
     on_create_flow: Option<CreateFlowHandler>,
     on_journey_history: Option<JourneyHistoryHandler>,
     on_flow_status: Option<FlowStatusHandler>,
@@ -234,22 +270,60 @@ pub struct MockClientBuilder {
     on_action_failure_output: Option<Handler>,
 }
 
+impl Default for MockClientBuilder {
+    fn default() -> Self {
+        Self {
+            namespace: "default".to_string(),
+            on_create_flow: None,
+            on_journey_history: None,
+            on_flow_status: None,
+            on_flow_appearance: None,
+            on_flow_appearance_update: None,
+            on_perturb_animal: None,
+            on_claim_perturbation: None,
+            on_ack_perturbation: None,
+            on_heartbeat_journey_lease: None,
+            on_poll_owner_wake: None,
+            on_schedule_sleep_timer: None,
+            on_flow_complete: None,
+            on_poll_timers: None,
+            on_poll_work: None,
+            on_action_input: None,
+            on_action_success_output: None,
+            on_action_failure_output: None,
+        }
+    }
+}
+
 impl MockClientBuilder {
+    pub fn namespace(mut self, value: impl Into<String>) -> Self {
+        self.namespace = value.into();
+        self
+    }
+
+    pub fn ecosystem<T: Ecosystem>(self) -> Self {
+        self.namespace(T::NAME)
+    }
+
     pub fn on_create_flow<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(u32, Vec<u8>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Uuid, ExecutorError>> + Send + 'static,
     {
-        self.on_create_flow = Some(Arc::new(move |ordinal, seed| Box::pin(f(ordinal, seed))));
+        self.on_create_flow = Some(Arc::new(move |animal_id, seed| {
+            Box::pin(f(animal_id, seed))
+        }));
         self
     }
 
     pub fn on_poll_work<F, Fut>(mut self, f: F) -> Self
     where
-        F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Option<RunnerStep>, ExecutorError>> + Send + 'static,
+        F: Fn(Vec<SupportedAnimal>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static,
     {
-        self.on_poll_work = Some(Arc::new(move || Box::pin(f())));
+        self.on_poll_work = Some(Arc::new(move |supported_animals| {
+            Box::pin(f(supported_animals))
+        }));
         self
     }
 
@@ -423,8 +497,9 @@ impl MockClientBuilder {
             Arc::new(|_| Box::pin(async { Ok(()) }));
         let default_poll_timers_handler: PollTimersHandler =
             Arc::new(|| Box::pin(async { Ok(None) }));
-        let default_poll_work_handler: PollStepHandler = Arc::new(|| Box::pin(async { Ok(None) }));
+        let default_poll_work_handler: PollStepHandler = Arc::new(|_| Box::pin(async { Ok(None) }));
         MockClient {
+            namespace: self.namespace,
             on_create_flow: self
                 .on_create_flow
                 .unwrap_or_else(|| default_create_flow_handler.clone()),

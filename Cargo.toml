@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "jungle-core",
-    "jungle-cli",
     "jungle-client",
+    "jungle-examples",
     "jungle-macros",
     "jungle-server",
     "jungle-sdk",
@@ -11,6 +11,7 @@ members = [
     "jungle-test",
     "jungle-viewer",
     "jungle-types",
+    "jungle-zoo",
 ]
 
 [workspace.dependencies]

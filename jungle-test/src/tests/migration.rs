@@ -1,8 +1,10 @@
+use jungle_persist::pg::PgStore;
+use jungle_persist::JungleStore;
 use jungle_sdk::server::ServerBuilder;
 use redb::{Database, ReadableDatabase, TableDefinition};
 use sqlx::PgPool;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 use testcontainers::runners::AsyncRunner;
@@ -144,9 +146,15 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
         .await
         .expect("postgres mapped port should be available");
     let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
-    ensure_sqlx_prepare_schema(&connection_string)
+    let store = PgStore::builder()
+        .connection_string(connection_string.clone())
+        .build()
         .await
-        .expect("sqlx prepare schema should initialize");
+        .expect("postgres store should initialize for sqlx prepare");
+    store
+        .migrate()
+        .await
+        .expect("sqlx prepare schema migrations should initialize");
 
     let source_sqlx_dir = workspace_root.join("target").join("sqlx");
     if source_sqlx_dir.exists() {
@@ -156,7 +164,7 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
     fs::create_dir_all(&source_sqlx_dir).expect("target/sqlx directory should be creatable");
 
     let status = Command::new("cargo")
-        .current_dir(&workspace_root)
+        .current_dir(workspace_root)
         .env("SQLX_OFFLINE", "false")
         .env("SQLX_OFFLINE_DIR", &source_sqlx_dir)
         .env("DATABASE_URL", &connection_string)
@@ -164,6 +172,13 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
         .status()
         .expect("cargo check should execute");
     assert!(status.success(), "cargo check failed with status: {status}");
+
+    let generated_files =
+        list_files_recursive(&source_sqlx_dir).expect("target/sqlx should be readable");
+    assert!(
+        !generated_files.is_empty(),
+        "expected sqlx cache files under target/sqlx, but found none"
+    );
 
     assert!(
         source_sqlx_dir.is_dir(),
@@ -269,61 +284,17 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-async fn ensure_sqlx_prepare_schema(connection_string: &str) -> Result<(), sqlx::Error> {
-    let pool = PgPool::connect(connection_string).await?;
-
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS jungle_schema_metadata (
-            id SMALLINT PRIMARY KEY,
-            version INTEGER NOT NULL
-        )
-        "#,
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS journeys (
-            id UUID PRIMARY KEY,
-            ordinal INTEGER NOT NULL,
-            status SMALLINT NOT NULL,
-            seed BYTEA NOT NULL
-        )
-        "#,
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS events (
-            journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
-            sequence_id BIGINT NOT NULL,
-            kind SMALLINT NOT NULL,
-            data BYTEA NOT NULL,
-            PRIMARY KEY (journey_id, sequence_id)
-        )
-        "#,
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS work_items (
-            id UUID PRIMARY KEY,
-            journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
-            kind SMALLINT NOT NULL,
-            status SMALLINT NOT NULL,
-            expiry TIMESTAMPTZ NOT NULL
-        )
-        "#,
-    )
-    .execute(&pool)
-    .await?;
-
-    pool.close().await;
-    Ok(())
+fn list_files_recursive(path: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let entry_path = entry.path();
+        if file_type.is_dir() {
+            files.extend(list_files_recursive(&entry_path)?);
+        } else {
+            files.push(entry_path);
+        }
+    }
+    Ok(files)
 }

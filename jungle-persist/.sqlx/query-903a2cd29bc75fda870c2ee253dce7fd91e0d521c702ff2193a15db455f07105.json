@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH next_item AS (\n                SELECT journey_id, sequence_id\n                FROM animal_perturbations\n                WHERE journey_id = $1\n                  AND (status = $2 OR (status = $3 AND lease_until < NOW()))\n                ORDER BY sequence_id\n                FOR UPDATE SKIP LOCKED\n                LIMIT 1\n            ),\n            claimed AS (\n                UPDATE animal_perturbations ap\n                SET status = $3,\n                    claimed_at = NOW(),\n                    lease_until = NOW() + INTERVAL '30 seconds'\n                FROM next_item ni\n                WHERE ap.journey_id = ni.journey_id\n                  AND ap.sequence_id = ni.sequence_id\n                RETURNING ap.sequence_id, ap.data\n            )\n            SELECT sequence_id, data\n            FROM claimed\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sequence_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "data",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int2",
+        "Int2"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "903a2cd29bc75fda870c2ee253dce7fd91e0d521c702ff2193a15db455f07105"
+}

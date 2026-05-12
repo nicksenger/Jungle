@@ -1,6 +1,6 @@
 use crate::{
-    Pulse, Action, ActionCompletion, Animal, BackendError, Conditional, Join, LoopCondition,
-    Running, Select, Step, While,
+    Action, ActionCompletion, Animal, BackendError, Conditional, Join, LoopCondition, Pulse,
+    Running, Select, Step, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -17,10 +17,7 @@ type ActionRunner = Box<dyn FnOnce() -> ActionFuture>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
 
-fn decode_controlled_input<In, F>(
-    input: &[u8],
-    fallback: F,
-) -> Result<(bool, In), ExecutorError>
+fn decode_controlled_input<In, F>(input: &[u8], fallback: F) -> Result<(bool, In), ExecutorError>
 where
     In: DeserializeOwned + Serialize,
     F: FnOnce(&In) -> bool,
@@ -42,18 +39,29 @@ pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
 pub type ErasedStep<State> = dyn ErasedFlow<State>;
 
 pub struct ExecutableActionRequest {
+    node_id: u32,
     action_type: &'static str,
     request: Serialized,
     runner: ActionRunner,
 }
 
 impl ExecutableActionRequest {
-    fn new(action_type: &'static str, request: Serialized, runner: ActionRunner) -> Self {
+    fn new(
+        node_id: u32,
+        action_type: &'static str,
+        request: Serialized,
+        runner: ActionRunner,
+    ) -> Self {
         Self {
+            node_id,
             action_type,
             request,
             runner,
         }
+    }
+
+    pub fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     pub fn action_type(&self) -> &'static str {
@@ -77,11 +85,7 @@ impl ExecutableActionRequest {
 }
 
 pub trait ErasedFlow<State> {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized>;
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized>;
 
     fn complete(
         &mut self,
@@ -105,6 +109,8 @@ pub trait ErasedFlow<State> {
     ) -> Result<(State, bool), ExecutorError> {
         Ok((state, false))
     }
+
+    fn assign_node_ids(&mut self, _next_id: &mut u32) {}
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -153,6 +159,7 @@ pub trait ExecutorFlow {
 }
 
 pub struct TypedErasedStep<Step> {
+    node_id: u32,
     complete: bool,
     waiting_completion: bool,
     marker: core::marker::PhantomData<fn() -> Step>,
@@ -161,6 +168,7 @@ pub struct TypedErasedStep<Step> {
 impl<Step> TypedErasedStep<Step> {
     pub fn new() -> Self {
         Self {
+            node_id: 0,
             complete: false,
             waiting_completion: false,
             marker: core::marker::PhantomData,
@@ -240,6 +248,7 @@ where
         Ok((
             state,
             ExecutableActionRequest::new(
+                self.node_id,
                 core::any::type_name::<<A as Pulse<T>>::Action>(),
                 request,
                 runner,
@@ -285,10 +294,16 @@ where
     fn is_complete(&self) -> bool {
         self.complete
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+    }
 }
 
 pub struct ContextualTypedErasedStep<Context, R> {
     context: Arc<Context>,
+    node_id: u32,
     complete: bool,
     waiting_completion: bool,
     marker: core::marker::PhantomData<fn() -> R>,
@@ -298,6 +313,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
             context,
+            node_id: 0,
             complete: false,
             waiting_completion: false,
             marker: core::marker::PhantomData,
@@ -367,7 +383,8 @@ where
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
-        let dependency: <<A as Pulse<T>>::Action as Action>::Dependency = self.context.as_ref().into();
+        let dependency: <<A as Pulse<T>>::Action as Action>::Dependency =
+            self.context.as_ref().into();
         let runner: ActionRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
@@ -380,6 +397,7 @@ where
         Ok((
             state,
             ExecutableActionRequest::new(
+                self.node_id,
                 core::any::type_name::<<A as Pulse<T>>::Action>(),
                 request,
                 runner,
@@ -425,6 +443,11 @@ where
     fn is_complete(&self) -> bool {
         self.complete
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+    }
 }
 
 enum ActiveBranch {
@@ -447,7 +470,11 @@ impl<State, In> ConditionalErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn new(left: DynFlow<State>, right: DynFlow<State>, choose_left: Box<dyn Fn(&State, &In) -> bool>) -> Self {
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        choose_left: Box<dyn Fn(&State, &In) -> bool>,
+    ) -> Self {
         Self {
             left,
             right,
@@ -483,17 +510,13 @@ impl<State, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized> {
-        let (choose_left, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
-            {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
-            };
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
+        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
+            (self.choose_left)(&state, carry)
+        }) {
+            Ok(pair) => pair,
+            Err(err) => return Err((state, err)),
+        };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
@@ -540,12 +563,12 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableActionRequest> {
-        let (choose_left, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
-            {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
-            };
+        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
+            (self.choose_left)(&state, carry)
+        }) {
+            Ok(pair) => pair,
+            Err(err) => return Err((state, err)),
+        };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveBranch::Left
@@ -591,6 +614,15 @@ where
     fn is_complete(&self) -> bool {
         self.active_branch.is_some() && self.cursor >= self.branch_len()
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
+    }
 }
 
 struct WhileErasedFlow<State, In>
@@ -600,6 +632,7 @@ where
     should_continue: Box<dyn Fn(&State, &In) -> bool>,
     build_body: Box<dyn Fn() -> DynFlow<State>>,
     active_body: DynFlow<State>,
+    body_node_id_start: u32,
     body_cursor: usize,
     complete: bool,
     deferred_state: Option<State>,
@@ -619,6 +652,7 @@ struct SelectRequestEnvelope {
 }
 
 struct SelectErasedFlow<State> {
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     waiting_completion: bool,
@@ -628,6 +662,7 @@ struct SelectErasedFlow<State> {
 impl<State> SelectErasedFlow<State> {
     fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
         Self {
+            node_id: 0,
             left,
             right,
             waiting_completion: false,
@@ -637,6 +672,7 @@ impl<State> SelectErasedFlow<State> {
 }
 
 struct SelectContextErasedFlow<State> {
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     waiting_completion: bool,
@@ -646,6 +682,7 @@ struct SelectContextErasedFlow<State> {
 impl<State> SelectContextErasedFlow<State> {
     fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
         Self {
+            node_id: 0,
             left,
             right,
             waiting_completion: false,
@@ -658,16 +695,10 @@ impl<State> ErasedFlow<State> for SelectErasedFlow<State>
 where
     State: Clone + 'static,
 {
-    fn request(
-        &mut self,
-        state: State,
-        _input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
             state,
-            ExecutorError::ClientTransport(
-            "Select requires executable request mode".to_string(),
-            ),
+            ExecutorError::ClientTransport("Select requires executable request mode".to_string()),
         ))
     }
 
@@ -782,7 +813,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new("jungle_types::Select", request, runner),
+            ExecutableActionRequest::new(self.node_id, "jungle_types::Select", request, runner),
         ))
     }
 
@@ -792,6 +823,17 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -799,16 +841,10 @@ impl<State> ErasedFlow<State> for SelectContextErasedFlow<State>
 where
     State: Clone + 'static,
 {
-    fn request(
-        &mut self,
-        state: State,
-        _input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
             state,
-            ExecutorError::ClientTransport(
-            "Select requires executable request mode".to_string(),
-            ),
+            ExecutorError::ClientTransport("Select requires executable request mode".to_string()),
         ))
     }
 
@@ -923,7 +959,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new("jungle_types::Select", request, runner),
+            ExecutableActionRequest::new(self.node_id, "jungle_types::Select", request, runner),
         ))
     }
 
@@ -933,6 +969,17 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -949,6 +996,7 @@ struct JoinRequestEnvelope {
 }
 
 struct JoinErasedFlow<State> {
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     waiting_completion: bool,
@@ -958,6 +1006,7 @@ struct JoinErasedFlow<State> {
 impl<State> JoinErasedFlow<State> {
     fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
         Self {
+            node_id: 0,
             left,
             right,
             waiting_completion: false,
@@ -967,6 +1016,7 @@ impl<State> JoinErasedFlow<State> {
 }
 
 struct JoinContextErasedFlow<State> {
+    node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
     waiting_completion: bool,
@@ -976,6 +1026,7 @@ struct JoinContextErasedFlow<State> {
 impl<State> JoinContextErasedFlow<State> {
     fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
         Self {
+            node_id: 0,
             left,
             right,
             waiting_completion: false,
@@ -988,16 +1039,10 @@ impl<State> ErasedFlow<State> for JoinErasedFlow<State>
 where
     State: Clone + 'static,
 {
-    fn request(
-        &mut self,
-        state: State,
-        _input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
             state,
-            ExecutorError::ClientTransport(
-            "Join requires executable request mode".to_string(),
-            ),
+            ExecutorError::ClientTransport("Join requires executable request mode".to_string()),
         ))
     }
 
@@ -1086,7 +1131,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new("jungle_types::Join", request, runner),
+            ExecutableActionRequest::new(self.node_id, "jungle_types::Join", request, runner),
         ))
     }
 
@@ -1096,6 +1141,17 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -1103,16 +1159,10 @@ impl<State> ErasedFlow<State> for JoinContextErasedFlow<State>
 where
     State: Clone + 'static,
 {
-    fn request(
-        &mut self,
-        state: State,
-        _input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
             state,
-            ExecutorError::ClientTransport(
-            "Join requires executable request mode".to_string(),
-            ),
+            ExecutorError::ClientTransport("Join requires executable request mode".to_string()),
         ))
     }
 
@@ -1201,7 +1251,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new("jungle_types::Join", request, runner),
+            ExecutableActionRequest::new(self.node_id, "jungle_types::Join", request, runner),
         ))
     }
 
@@ -1211,6 +1261,17 @@ where
 
     fn is_complete(&self) -> bool {
         self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -1226,6 +1287,7 @@ where
             should_continue,
             build_body,
             active_body: Vec::new(),
+            body_node_id_start: 0,
             body_cursor: 0,
             complete: false,
             deferred_state: None,
@@ -1236,6 +1298,10 @@ where
     fn ensure_iteration_ready(&mut self) {
         if self.active_body.is_empty() {
             self.active_body = (self.build_body)();
+            let mut next_id = self.body_node_id_start;
+            for node in &mut self.active_body {
+                node.assign_node_ids(&mut next_id);
+            }
             self.body_cursor = 0;
         }
     }
@@ -1245,17 +1311,14 @@ impl<State, In> ErasedFlow<State> for WhileErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
         let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
-            {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.should_continue)(&state, carry)
+            }) {
                 Ok(pair) => pair,
                 Err(err) => return Err((state, err)),
             };
@@ -1315,8 +1378,9 @@ where
             return Err((state, ExecutorError::Complete));
         }
         let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
-            {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.should_continue)(&state, carry)
+            }) {
                 Ok(pair) => pair,
                 Err(err) => return Err((state, err)),
             };
@@ -1365,6 +1429,14 @@ where
             return Ok((state, true));
         }
         Ok((state, false))
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.body_node_id_start = *next_id;
+        let mut template = (self.build_body)();
+        for node in &mut template {
+            node.assign_node_ids(next_id);
+        }
     }
 }
 
@@ -1443,7 +1515,9 @@ where
             <P as crate::Condition<(State, In)>>::choose(&(state.clone(), input.clone()))
         });
         steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(
-            left, right, choose_left,
+            left,
+            right,
+            choose_left,
         )));
         steps
     }
@@ -1461,14 +1535,27 @@ where
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
-        let should_continue =
-            Box::new(|state: &State, _input: &In| <C as LoopCondition<State>>::should_continue(state));
+        let should_continue = Box::new(|state: &State, _input: &In| {
+            <C as LoopCondition<State>>::should_continue(state)
+        });
         let build_body = Box::new(|| <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         steps.push(Box::new(WhileErasedFlow::<State, In>::new(
             should_continue,
             build_body,
         )));
         steps
+    }
+}
+
+#[inception::primitive(property = crate::JungleDynFlow)]
+impl<State, In, M, F> BuildFlow<DynFlow<State>> for Transparent<M, F>
+where
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(steps: DynFlow<State>) -> Self::Output {
+        <F as BuildFlow<DynFlow<State>>>::push_steps(steps)
     }
 }
 
@@ -1591,7 +1678,11 @@ impl<State, In> ConditionalContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn new(left: DynFlow<State>, right: DynFlow<State>, choose_left: Box<dyn Fn(&State, &In) -> bool>) -> Self {
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        choose_left: Box<dyn Fn(&State, &In) -> bool>,
+    ) -> Self {
         Self {
             left,
             right,
@@ -1627,17 +1718,13 @@ impl<State, In> ErasedFlow<State> for ConditionalContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized> {
-        let (choose_left, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
-            {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
-            };
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
+        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
+            (self.choose_left)(&state, carry)
+        }) {
+            Ok(pair) => pair,
+            Err(err) => return Err((state, err)),
+        };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
@@ -1684,12 +1771,12 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableActionRequest> {
-        let (choose_left, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.choose_left)(&state, carry))
-            {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
-            };
+        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
+            (self.choose_left)(&state, carry)
+        }) {
+            Ok(pair) => pair,
+            Err(err) => return Err((state, err)),
+        };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
                 ActiveContextBranch::Left
@@ -1735,6 +1822,15 @@ where
     fn is_complete(&self) -> bool {
         self.active_branch.is_some() && self.cursor >= self.branch_len()
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        for node in &mut self.left {
+            node.assign_node_ids(next_id);
+        }
+        for node in &mut self.right {
+            node.assign_node_ids(next_id);
+        }
+    }
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
@@ -1765,7 +1861,9 @@ where
             <P as crate::Condition<(State, In)>>::choose(&(state.clone(), input.clone()))
         });
         steps.push(Box::new(ConditionalContextErasedFlow::<State, In>::new(
-            left, right, choose_left,
+            left,
+            right,
+            choose_left,
         )));
         steps
     }
@@ -1778,6 +1876,7 @@ where
     should_continue: Box<dyn Fn(&State, &In) -> bool>,
     build_body: Box<dyn Fn() -> DynFlow<State>>,
     active_body: DynFlow<State>,
+    body_node_id_start: u32,
     body_cursor: usize,
     complete: bool,
     deferred_state: Option<State>,
@@ -1796,6 +1895,7 @@ where
             should_continue,
             build_body,
             active_body: Vec::new(),
+            body_node_id_start: 0,
             body_cursor: 0,
             complete: false,
             deferred_state: None,
@@ -1806,6 +1906,10 @@ where
     fn ensure_iteration_ready(&mut self) {
         if self.active_body.is_empty() {
             self.active_body = (self.build_body)();
+            let mut next_id = self.body_node_id_start;
+            for node in &mut self.active_body {
+                node.assign_node_ids(&mut next_id);
+            }
             self.body_cursor = 0;
         }
     }
@@ -1815,17 +1919,14 @@ impl<State, In> ErasedFlow<State> for WhileContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    fn request(
-        &mut self,
-        state: State,
-        input: Serialized,
-    ) -> RequestResult<State, Serialized> {
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
         let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
-            {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.should_continue)(&state, carry)
+            }) {
                 Ok(pair) => pair,
                 Err(err) => return Err((state, err)),
             };
@@ -1885,8 +1986,9 @@ where
             return Err((state, ExecutorError::Complete));
         }
         let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| (self.should_continue)(&state, carry))
-            {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.should_continue)(&state, carry)
+            }) {
                 Ok(pair) => pair,
                 Err(err) => return Err((state, err)),
             };
@@ -1936,6 +2038,14 @@ where
         }
         Ok((state, false))
     }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.body_node_id_start = *next_id;
+        let mut template = (self.build_body)();
+        for node in &mut template {
+            node.assign_node_ids(next_id);
+        }
+    }
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
@@ -1951,8 +2061,9 @@ where
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
-        let should_continue =
-            Box::new(|state: &State, _input: &In| <C as LoopCondition<State>>::should_continue(state));
+        let should_continue = Box::new(|state: &State, _input: &In| {
+            <C as LoopCondition<State>>::should_continue(state)
+        });
         let build_body = Box::new(move || {
             <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
                 Arc::clone(&context),
@@ -1968,8 +2079,21 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Select<L, R>
+impl<Context, State, In, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Transparent<M, F>
+where
+    F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
+        + Running<In = (State, In)>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
+    }
+}
+
+#[inception::primitive(property = JungleDynFlowContext)]
+impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Select<L, R>
 where
     Context: 'static,
     State: Clone + 'static,
@@ -1996,8 +2120,7 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Join<L, R>
+impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Join<L, R>
 where
     Context: 'static,
     State: Clone + 'static,
@@ -2059,11 +2182,17 @@ where
     postcard::from_bytes(&emitted).map_err(|err| ExecutorError::EmitDeserialize(err.to_string()))
 }
 
+fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {
+    let mut next_id = 0_u32;
+    for node in steps {
+        node.assign_node_ids(&mut next_id);
+    }
+}
+
 pub struct ContextExecutor<Context, A>
 where
     A: Animal,
-    A::Journey:
-        BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     _context: core::marker::PhantomData<fn() -> Context>,
     state: Option<A::State>,
@@ -2076,8 +2205,7 @@ impl<Context, A> ContextExecutor<Context, A>
 where
     Context: 'static,
     A: Animal,
-    A::Journey:
-        BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -2106,13 +2234,16 @@ where
     }
 
     pub fn new(context: Arc<Context>, state: A::State) -> Self {
+        let mut steps =
+            <A::Journey as BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>)>>::push_steps((
+                context,
+                Vec::new(),
+            ));
+        assign_flow_node_ids(&mut steps);
         let mut executor = Self {
             _context: core::marker::PhantomData,
             state: Some(state),
-            steps: <A::Journey as BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>)>>::push_steps((
-                context,
-                Vec::new(),
-            )),
+            steps,
             cursor: 0,
             last_emitted: None,
         };
@@ -2234,8 +2365,7 @@ where
     pub async fn next_and_complete_with(
         &mut self,
         initial_input: impl Serialize,
-    ) -> Result<Serialized, ExecutorError>
-    {
+    ) -> Result<Serialized, ExecutorError> {
         let request = self.next_executable_request(initial_input)?;
         let completion = request.run().await?;
         self.complete_serialized(completion)
@@ -2360,9 +2490,11 @@ where
     }
 
     pub fn new(state: A::State) -> Self {
+        let mut steps = <A::Journey as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new());
+        assign_flow_node_ids(&mut steps);
         let mut executor = Self {
             state: Some(state),
-            steps: <A::Journey as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new()),
+            steps,
             cursor: 0,
         };
         executor
@@ -2387,8 +2519,7 @@ where
             .expect("executor state is always present")
     }
 
-    pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError>
-    {
+    pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
         self.settle_without_progress()?;
         if self.is_complete() {
             return Err(ExecutorError::Complete);
@@ -2425,8 +2556,7 @@ where
     pub fn next_executable_request(
         &mut self,
         input: Serialized,
-    ) -> Result<ExecutableActionRequest, ExecutorError>
-    {
+    ) -> Result<ExecutableActionRequest, ExecutorError> {
         self.settle_without_progress()?;
         if self.is_complete() {
             return Err(ExecutorError::Complete);
@@ -2693,8 +2823,7 @@ where
     pub async fn next_and_complete_with(
         &mut self,
         initial_input: impl Serialize,
-    ) -> Result<Serialized, ExecutorError>
-    {
+    ) -> Result<Serialized, ExecutorError> {
         let request = self.next_executable_request(initial_input)?;
         let completion = request.run().await?;
         self.complete_serialized(completion)

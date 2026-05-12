@@ -16,6 +16,8 @@ const OWNER_WAKES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("o
 const APPEARANCES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("animal_appearances");
 const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("animal_perturbations");
+const ANIMAL_GENERATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
+    TableDefinition::new("animal_generations");
 
 impl RedbStore {
     pub(super) async fn migrate_v0(&self) -> Result<()> {
@@ -82,6 +84,11 @@ impl RedbStore {
         tx.open_table(PERTURBATIONS_TABLE).map_err(|err| {
             crate::PersistenceError::Message(format!(
                 "redb open animal_perturbations table failed: {err}"
+            ))
+        })?;
+        tx.open_table(ANIMAL_GENERATIONS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb open animal_generations table failed: {err}"
             ))
         })?;
 

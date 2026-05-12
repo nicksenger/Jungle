@@ -1,7 +1,7 @@
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
     BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
-    RunnerStep, WireIn, WireOut,
+    SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,9 +13,10 @@ use uuid::Uuid;
 async fn client_exchanges_messages_with_mock_server() {
     let journey_id = Uuid::from_u128(0x11111111111111111111111111111111);
     let action_id = Uuid::from_u128(0x22222222222222222222222222222222);
-    let expected_work = RunnerStep::StartJourney {
+    let expected_work = Work::StartJourney {
         journey_id,
-        ordinal: 7,
+        animal_id: 7,
+        generation: 0,
         seed: vec![1, 2, 3],
     };
 
@@ -40,8 +41,17 @@ async fn client_exchanges_messages_with_mock_server() {
                         let idx = request_count.fetch_add(1, Ordering::SeqCst);
                         match idx {
                             0 => match msg {
-                                WireIn::CreateJourney { ordinal, seed } => {
-                                    if ordinal == 7 && seed == vec![1, 2, 3] {
+                                WireIn::CreateJourney {
+                                    namespace,
+                                    animal_id,
+                                    generation,
+                                    seed,
+                                } => {
+                                    if namespace == "default"
+                                        && animal_id == 7
+                                        && generation == 0
+                                        && seed == vec![1, 2, 3]
+                                    {
                                         Ok(WireOut::JourneyCreated(journey_id))
                                     } else {
                                         Err(BackendError::Message(
@@ -64,7 +74,9 @@ async fn client_exchanges_messages_with_mock_server() {
                                 ))),
                             },
                             2 => match msg {
-                                WireIn::PollStep => Ok(WireOut::PendingStep(expected_work)),
+                                WireIn::PollStep { namespace, .. } if namespace == "default" => {
+                                    Ok(WireOut::PendingStep(expected_work))
+                                }
                                 other => Err(BackendError::Message(format!(
                                     "expected poll_work third, got {:?}",
                                     other
@@ -108,7 +120,7 @@ async fn client_exchanges_messages_with_mock_server() {
     let client = connect_client_with_retry(listen_addr).await;
 
     let created_flow = client
-        .start_journey(7, vec![1, 2, 3])
+        .start_journey(7, 0, vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
     assert_eq!(created_flow, journey_id);
@@ -119,37 +131,45 @@ async fn client_exchanges_messages_with_mock_server() {
         .expect("journey_details should succeed");
     assert_eq!(status, JourneyStatus::Created);
 
-    let work = client.poll_work().await.expect("poll_work should succeed");
+    let work = client
+        .poll_work(default_supported(7))
+        .await
+        .expect("poll_work should succeed");
     match work {
-        Some(RunnerStep::StartJourney {
+        Some(Work::StartJourney {
             journey_id: returned_flow,
-            ordinal,
+            animal_id,
+            generation,
             seed,
         }) => {
             assert_eq!(returned_flow, journey_id);
-            assert_eq!(ordinal, 7);
+            assert_eq!(animal_id, 7);
+            assert_eq!(generation, 0);
             assert_eq!(seed, vec![1, 2, 3]);
         }
-        Some(RunnerStep::ResumeJourney {
+        Some(Work::ResumeJourney {
             journey_id,
-            ordinal,
+            animal_id,
+            generation,
             seed,
         }) => {
-            panic!("unexpected resume journey work in this test: {journey_id} {ordinal} {seed:?}");
+            panic!(
+                "unexpected resume journey work in this test: {journey_id} {animal_id} {generation} {seed:?}"
+            );
         }
         None => panic!("expected pending work from server"),
     }
 
     client
-        .action_input(action_id, vec![4, 5])
+        .action_input(action_id, 11, vec![4, 5])
         .await
         .expect("action_input should ack");
     client
-        .action_success_output(action_id, vec![6])
+        .action_success_output(action_id, 11, vec![6])
         .await
         .expect("action_success_output should ack");
     client
-        .action_failure_output(action_id, vec![7, 8])
+        .action_failure_output(action_id, 11, vec![7, 8])
         .await
         .expect("action_failure_output should ack");
     client
@@ -163,32 +183,42 @@ async fn client_exchanges_messages_with_mock_server() {
     assert!(matches!(
         requests[0],
         WireIn::CreateJourney {
-            ordinal,
+            ref namespace,
+            animal_id,
+            generation,
             ref seed,
-        } if ordinal == 7 && seed == &vec![1, 2, 3]
+        } if namespace == "default"
+            && animal_id == 7
+            && generation == 0
+            && seed == &vec![1, 2, 3]
     ));
     assert!(matches!(requests[1], WireIn::JourneyStatus(id) if id == journey_id));
-    assert!(matches!(requests[2], WireIn::PollStep));
+    assert!(
+        matches!(requests[2], WireIn::PollStep { ref namespace, .. } if namespace == "default")
+    );
     assert!(matches!(
         requests[3],
         WireIn::HistoryEvent(RunnerOut::ActionInput {
+            node_id,
             uuid,
             ref data,
-        }) if uuid == action_id && data == &vec![4, 5]
+        }) if node_id == 11 && uuid == action_id && data == &vec![4, 5]
     ));
     assert!(matches!(
         requests[4],
         WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
+            node_id,
             uuid,
             ref data,
-        }) if uuid == action_id && data == &vec![6]
+        }) if node_id == 11 && uuid == action_id && data == &vec![6]
     ));
     assert!(matches!(
         requests[5],
         WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
+            node_id,
             uuid,
             ref data,
-        }) if uuid == action_id && data == &vec![7, 8]
+        }) if node_id == 11 && uuid == action_id && data == &vec![7, 8]
     ));
     assert!(matches!(requests[6], WireIn::JourneyComplete(id) if id == journey_id));
 
@@ -215,7 +245,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, vec![1, 2, 3])
+        .start_journey(7, 0, vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -226,7 +256,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
     assert_eq!(created, JourneyStatus::Created);
 
     client
-        .action_input(journey_id, vec![9, 9, 9])
+        .action_input(journey_id, 9, vec![9, 9, 9])
         .await
         .expect("action_input should succeed");
     let alive = client
@@ -268,13 +298,16 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, vec![1, 2, 3])
+        .start_journey(7, 0, vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
-    let first_work = client.poll_work().await.expect("poll_work should succeed");
+    let first_work = client
+        .poll_work(default_supported(7))
+        .await
+        .expect("poll_work should succeed");
     assert!(
-        matches!(first_work, Some(RunnerStep::StartJourney { .. })),
+        matches!(first_work, Some(Work::StartJourney { .. })),
         "expected start journey work item first"
     );
 
@@ -290,18 +323,23 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
         .await
         .expect("poll_timers should succeed");
 
-    let resume_work = client.poll_work().await.expect("poll_work should succeed");
+    let resume_work = client
+        .poll_work(default_supported(7))
+        .await
+        .expect("poll_work should succeed");
     match resume_work {
-        Some(RunnerStep::ResumeJourney {
+        Some(Work::ResumeJourney {
             journey_id: resumed,
-            ordinal,
+            animal_id,
+            generation,
             seed,
         }) => {
             assert_eq!(resumed, journey_id);
-            assert_eq!(ordinal, 7);
+            assert_eq!(animal_id, 7);
+            assert_eq!(generation, 0);
             assert_eq!(seed, vec![1, 2, 3]);
         }
-        Some(RunnerStep::StartJourney { .. }) => {
+        Some(Work::StartJourney { .. }) => {
             panic!("expected resume journey work item, got start journey");
         }
         None => panic!("expected resume journey work item"),
@@ -490,9 +528,111 @@ async fn client_handles_animal_perturbation_round_trip() {
     let _ = server_task.await;
 }
 
+#[tokio::test]
+async fn poll_work_is_scoped_by_namespace() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+
+    let listen_addr = super::reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let alpha = connect_client_with_retry_namespace(listen_addr, "alpha").await;
+    let beta = connect_client_with_retry_namespace(listen_addr, "beta").await;
+
+    let alpha_id = alpha
+        .start_journey(7, 0, vec![1, 2, 3])
+        .await
+        .expect("alpha start_journey should succeed");
+    let beta_id = beta
+        .start_journey(9, 0, vec![4, 5, 6])
+        .await
+        .expect("beta start_journey should succeed");
+
+    let alpha_work = alpha
+        .poll_work(default_supported(7))
+        .await
+        .expect("alpha poll_work should succeed");
+    match alpha_work {
+        Some(Work::StartJourney {
+            journey_id,
+            animal_id,
+            generation,
+            seed,
+        }) => {
+            assert_eq!(journey_id, alpha_id);
+            assert_eq!(animal_id, 7);
+            assert_eq!(generation, 0);
+            assert_eq!(seed, vec![1, 2, 3]);
+        }
+        other => panic!("expected alpha start work, got {other:?}"),
+    }
+
+    let beta_work = beta
+        .poll_work(default_supported(9))
+        .await
+        .expect("beta poll_work should succeed");
+    match beta_work {
+        Some(Work::StartJourney {
+            journey_id,
+            animal_id,
+            generation,
+            seed,
+        }) => {
+            assert_eq!(journey_id, beta_id);
+            assert_eq!(animal_id, 9);
+            assert_eq!(generation, 0);
+            assert_eq!(seed, vec![4, 5, 6]);
+        }
+        other => panic!("expected beta start work, got {other:?}"),
+    }
+
+    assert!(
+        alpha
+            .poll_work(default_supported(7))
+            .await
+            .expect("alpha second poll_work should succeed")
+            .is_none(),
+        "alpha queue should be drained after claiming its own work"
+    );
+    assert!(
+        beta.poll_work(default_supported(9))
+            .await
+            .expect("beta second poll_work should succeed")
+            .is_none(),
+        "beta queue should be drained after claiming its own work"
+    );
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
+    connect_client_with_retry_namespace(remote, "default").await
+}
+
+fn default_supported(animal_id: u32) -> Vec<SupportedAnimal> {
+    vec![SupportedAnimal {
+        animal_id,
+        generation: 0,
+    }]
+}
+
+async fn connect_client_with_retry_namespace(
+    remote: SocketAddr,
+    namespace: &str,
+) -> jungle_sdk::Client {
     for attempt in 0..40 {
-        match jungle_sdk::client::ClientBuilder::new()
+        match jungle_sdk::client::Client::builder()
+            .namespace(namespace)
             .remote(remote)
             .server_name("localhost")
             .build()

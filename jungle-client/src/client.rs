@@ -1,46 +1,65 @@
 use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
-    BackendError, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
-    RunnerStep, WireIn, WireOut,
+    AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError,
+    JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders, SupportedAnimal, WireIn, WireOut,
+    Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::fs;
 use std::io;
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
+use typosaurus::collections::Container;
+use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
 use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 
 #[derive(Debug, Clone)]
-pub struct ClientBuilder {
+pub struct ClientBuilder<TJungle = DefaultJungle> {
     keylog: bool,
     ca: Option<PathBuf>,
+    namespace: String,
     rebind: bool,
     bind: SocketAddr,
     remote: Option<SocketAddr>,
     server_name: Option<String>,
+    _jungle: PhantomData<fn() -> TJungle>,
 }
 
-impl Default for ClientBuilder {
+pub struct DefaultAnimals;
+impl Animals for DefaultAnimals {
+    type List = typosaurus::collections::list::Empty;
+}
+
+pub struct DefaultJungle;
+impl Ecosystem for DefaultJungle {
+    const NAME: &'static str = "default";
+    type Animals = DefaultAnimals;
+}
+
+impl<TJungle> Default for ClientBuilder<TJungle> {
     fn default() -> Self {
         Self {
             keylog: false,
             ca: None,
+            namespace: "default".to_string(),
             rebind: false,
             bind: SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
             remote: None,
             server_name: None,
+            _jungle: PhantomData,
         }
     }
 }
 
-impl ClientBuilder {
+impl<TJungle> ClientBuilder<TJungle> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -60,6 +79,24 @@ impl ClientBuilder {
         self
     }
 
+    pub fn namespace(mut self, value: impl Into<String>) -> Self {
+        self.namespace = value.into();
+        self
+    }
+
+    pub fn ecosystem<TNextJungle: Ecosystem>(self) -> ClientBuilder<TNextJungle> {
+        ClientBuilder {
+            keylog: self.keylog,
+            ca: self.ca,
+            namespace: TNextJungle::NAME.to_string(),
+            rebind: self.rebind,
+            bind: self.bind,
+            remote: self.remote,
+            server_name: self.server_name,
+            _jungle: PhantomData,
+        }
+    }
+
     pub fn bind(mut self, bind: SocketAddr) -> Self {
         self.bind = bind;
         self
@@ -75,7 +112,7 @@ impl ClientBuilder {
         self
     }
 
-    pub async fn build(self) -> ClientResult<Client> {
+    pub async fn build(self) -> ClientResult<Client<TJungle>> {
         let remote = self.remote.ok_or(ClientError::MissingRemote)?;
         let server_name = self.server_name.ok_or(ClientError::MissingServerName)?;
 
@@ -131,21 +168,40 @@ impl ClientBuilder {
                 .map_err(ClientError::RebindEndpoint)?;
         }
 
-        Ok(Client { endpoint, conn })
+        Ok(Client {
+            endpoint,
+            conn,
+            namespace: self.namespace,
+            _jungle: PhantomData,
+        })
     }
 }
 
-#[derive(Clone)]
-pub struct Client {
+pub struct Client<TJungle = DefaultJungle> {
     endpoint: quinn::Endpoint,
     conn: quinn::Connection,
+    namespace: String,
+    _jungle: PhantomData<fn() -> TJungle>,
 }
 
-impl Client {
-    pub fn builder() -> ClientBuilder {
+impl<TJungle> Clone for Client<TJungle> {
+    fn clone(&self) -> Self {
+        Self {
+            endpoint: self.endpoint.clone(),
+            conn: self.conn.clone(),
+            namespace: self.namespace.clone(),
+            _jungle: PhantomData,
+        }
+    }
+}
+
+impl Client<DefaultJungle> {
+    pub fn builder() -> ClientBuilder<DefaultJungle> {
         ClientBuilder::default()
     }
+}
 
+impl<TJungle> Client<TJungle> {
     async fn send_wire_message(&self, input: WireIn) -> ClientResult<WireOut> {
         let (mut tx, mut rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
 
@@ -192,7 +248,7 @@ impl Client {
     }
 }
 
-impl Drop for Client {
+impl<TJungle> Drop for Client<TJungle> {
     fn drop(&mut self) {
         self.conn.close(0u32.into(), b"done");
         self.endpoint.close(0u32.into(), b"done");
@@ -200,10 +256,27 @@ impl Drop for Client {
 }
 
 #[async_trait]
-impl JungleClient for Client {
-    async fn start_journey(&self, ordinal: u32, seed: Vec<u8>) -> Result<Uuid, ExecutorError> {
+impl<TJungle> JungleClient for Client<TJungle>
+where
+    TJungle: Ecosystem,
+    TJungle::Animals: Animals,
+    <TJungle::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<TJungle::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<TJungle::Animals>: Container,
+{
+    async fn start_journey(
+        &self,
+        animal_id: u32,
+        generation: u32,
+        seed: Vec<u8>,
+    ) -> Result<Uuid, ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::CreateJourney { ordinal, seed })
+            .send_wire_message(WireIn::CreateJourney {
+                namespace: self.namespace.clone(),
+                animal_id,
+                generation,
+                seed,
+            })
             .await
             .map_err(Self::transport_error)?;
 
@@ -494,9 +567,15 @@ impl JungleClient for Client {
         }
     }
 
-    async fn poll_work(&self) -> Result<Option<RunnerStep>, ExecutorError> {
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>, ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::PollStep)
+            .send_wire_message(WireIn::PollStep {
+                namespace: self.namespace.clone(),
+                supported_animals,
+            })
             .await
             .map_err(Self::transport_error)?;
 
@@ -515,9 +594,15 @@ impl JungleClient for Client {
         }
     }
 
-    async fn action_input(&self, id: Uuid, input: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_input(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionInput {
+                node_id,
                 data: input,
                 uuid: id,
             }))
@@ -539,9 +624,15 @@ impl JungleClient for Client {
         }
     }
 
-    async fn action_success_output(&self, id: Uuid, output: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_success_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
+                node_id,
                 data: output,
                 uuid: id,
             }))
@@ -563,9 +654,15 @@ impl JungleClient for Client {
         }
     }
 
-    async fn action_failure_output(&self, id: Uuid, err: Vec<u8>) -> Result<(), ExecutorError> {
+    async fn action_failure_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
         let response = self
             .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
+                node_id,
                 data: err,
                 uuid: id,
             }))

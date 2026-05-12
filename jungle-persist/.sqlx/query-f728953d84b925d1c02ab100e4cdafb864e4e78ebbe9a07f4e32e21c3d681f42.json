@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE journeys\n            SET status = $2\n            WHERE id = $1 AND status = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int2",
+        "Int2"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f728953d84b925d1c02ab100e4cdafb864e4e78ebbe9a07f4e32e21c3d681f42"
+}
