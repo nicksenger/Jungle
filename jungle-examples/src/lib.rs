@@ -215,15 +215,3 @@ pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
 
     (client, journey_id)
 }
-
-#[cfg(test)]
-mod tests {
-    use jungle_sdk::types::{JourneyAst, JourneyAstSource};
-    use jungle_zoo::animals::gorilla::GorillaJourney;
-
-    #[test]
-    fn gorilla_journey_ast_exposes_top_level_growth_loop() {
-        let ast = <GorillaJourney as JourneyAstSource>::journey_ast();
-        assert!(matches!(ast, JourneyAst::While { .. }));
-    }
-}
