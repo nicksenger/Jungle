@@ -1,7 +1,7 @@
 //! Elephant state model.
 
 use crate::state::{Ears, LeafCrop, TemporalState, Trunk, Tusks, VitalReadings};
-use jungle_macros::Optic;
+use jungle_sdk::Optic;
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq)]
 pub struct State {

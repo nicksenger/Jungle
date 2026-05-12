@@ -1,7 +1,7 @@
 //! Gorilla state model.
 
 use crate::state::{FruitMeal, Hands, NervousSystem, TemporalState, VitalReadings};
-use jungle_macros::Optic;
+use jungle_sdk::Optic;
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq)]
 pub struct State {

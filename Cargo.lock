@@ -2666,8 +2666,7 @@ dependencies = [
 name = "jungle-zoo"
 version = "0.1.0"
 dependencies = [
- "inception",
- "jungle-macros",
+ "jungle-sdk",
  "jungle-types",
  "serde",
 ]
