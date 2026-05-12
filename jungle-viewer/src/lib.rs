@@ -1094,7 +1094,7 @@ fn sidebar_button(_theme: &iced::Theme, status: button::Status) -> iced::widget:
 
 fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
-        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.74))),
+        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.04))),
         border: iced::border::rounded(6)
             .color(Color::from_rgb8(54, 117, 78))
             .width(1.0),
