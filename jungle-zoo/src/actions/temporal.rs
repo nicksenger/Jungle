@@ -132,3 +132,24 @@ define_action!(
         }))
     }
 );
+
+define_action!(
+    CelebrateBirth,
+    id = 54,
+    dependency = TemporalDependency,
+    in = AgeState,
+    out = AgeState,
+    err = String,
+    act = |dependency, age| {
+        let adult_age = dependency.adult_age.max(1);
+        let growth_percent =
+            ((u16::from(age.age_years) * 100) / u16::from(adult_age)).min(100) as u8;
+        let life_phase =
+            classify_life_phase(age.age_years, dependency.adolescent_age, dependency.adult_age);
+        std::future::ready(Ok(AgeState {
+            age_years: age.age_years,
+            life_phase,
+            growth_percent,
+        }))
+    }
+);
