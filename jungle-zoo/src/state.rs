@@ -225,3 +225,57 @@ pub struct Horns {
     pub max_length_cm: u16,
     pub keratinized: bool,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum LifePhase {
+    Child,
+    Adolescent,
+    Adult,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PerceivedTimeOfDay {
+    Morning,
+    Afternoon,
+    Evening,
+    Night,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum DailyActivity {
+    Nocturnal,
+    Diurnal,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AgeState {
+    pub age_years: u8,
+    pub life_phase: LifePhase,
+    pub growth_percent: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CircadianWindow {
+    pub start: PerceivedTimeOfDay,
+    pub end: PerceivedTimeOfDay,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ActivitySchedule {
+    pub activity: DailyActivity,
+    pub active_window: CircadianWindow,
+    pub rest_window: CircadianWindow,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TimePerception {
+    pub current: PerceivedTimeOfDay,
+    pub minutes_since_transition: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TemporalState {
+    pub age: AgeState,
+    pub schedule: ActivitySchedule,
+    pub perception: TimePerception,
+}

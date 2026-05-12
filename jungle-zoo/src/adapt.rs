@@ -1,7 +1,10 @@
 //! Action adapters that connect structural state to action inputs/outputs.
 
 use crate::actions;
-use crate::state::{Ears, Hands, Horns, Scales, Skeleton, Torso, VitalReadings};
+use crate::state::{
+    ActivitySchedule, AgeState, Ears, Hands, Horns, PerceivedTimeOfDay, Scales, Skeleton, Torso,
+    TimePerception, VitalReadings,
+};
 use jungle_types::{
     AbsorbFn, AbsorbMapper, Action, ActionCompletion, Animal, EmitFn, EmitMapper, Fuse, Identity,
     Step,
@@ -316,6 +319,104 @@ pub type LionRoarStep<T> = Step<
     >,
 >;
 
+pub struct EmitAdvanceAge;
+impl EmitMapper<AgeState, actions::AdvanceAge, ()> for EmitAdvanceAge {
+    fn emit(view: &AgeState, _input: ()) -> <actions::AdvanceAge as Action>::In {
+        view.age_years
+    }
+}
+
+pub struct AbsorbAdvanceAge;
+impl AbsorbMapper<AgeState, actions::AdvanceAge, ()> for AbsorbAdvanceAge {
+    fn absorb(view: &mut AgeState, output: ActionCompletion<actions::AdvanceAge>) {
+        if let Ok(next) = output {
+            *view = next;
+        }
+    }
+}
+
+pub type AdvanceAgeStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::AdvanceAge, (), EmitAdvanceAge>,
+        AbsorbFn<Identity, actions::AdvanceAge, (), AbsorbAdvanceAge>,
+    >,
+>;
+
+pub struct EmitTickPerceivedTime;
+impl EmitMapper<TimePerception, actions::TickPerceivedTime, ()> for EmitTickPerceivedTime {
+    fn emit(view: &TimePerception, _input: ()) -> <actions::TickPerceivedTime as Action>::In {
+        (view.current, view.minutes_since_transition)
+    }
+}
+
+pub struct AbsorbTickPerceivedTime;
+impl AbsorbMapper<TimePerception, actions::TickPerceivedTime, u16> for AbsorbTickPerceivedTime {
+    fn absorb(
+        view: &mut TimePerception,
+        output: ActionCompletion<actions::TickPerceivedTime>,
+    ) -> u16 {
+        let next = output.expect("tick-perceived-time should succeed");
+        *view = next;
+        view.minutes_since_transition
+    }
+}
+
+pub type TickPerceivedTimeStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::TickPerceivedTime, (), EmitTickPerceivedTime>,
+        AbsorbFn<
+            Identity,
+            actions::TickPerceivedTime,
+            u16,
+            AbsorbTickPerceivedTime,
+        >,
+    >,
+>;
+
+pub struct EmitEvaluateActivityWindow;
+impl EmitMapper<ActivitySchedule, actions::EvaluateActivityWindow, PerceivedTimeOfDay>
+    for EmitEvaluateActivityWindow
+{
+    fn emit(
+        view: &ActivitySchedule,
+        input: PerceivedTimeOfDay,
+    ) -> <actions::EvaluateActivityWindow as Action>::In {
+        (view.activity, input)
+    }
+}
+
+pub struct AbsorbEvaluateActivityWindow;
+impl AbsorbMapper<ActivitySchedule, actions::EvaluateActivityWindow, bool>
+    for AbsorbEvaluateActivityWindow
+{
+    fn absorb(
+        _view: &mut ActivitySchedule,
+        output: ActionCompletion<actions::EvaluateActivityWindow>,
+    ) -> bool {
+        output.expect("evaluate-activity-window should succeed")
+    }
+}
+
+pub type EvaluateActivityWindowStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<
+            Identity,
+            actions::EvaluateActivityWindow,
+            PerceivedTimeOfDay,
+            EmitEvaluateActivityWindow,
+        >,
+        AbsorbFn<
+            Identity,
+            actions::EvaluateActivityWindow,
+            bool,
+            AbsorbEvaluateActivityWindow,
+        >,
+    >,
+>;
+
 pub trait VitalsAnimal: Animal<State = VitalReadings> {}
 impl<T> VitalsAnimal for T where T: Animal<State = VitalReadings> {}
 
@@ -336,3 +437,12 @@ impl<T> SkeletonAnimal for T where T: Animal<State = Skeleton> {}
 
 pub trait HornsAnimal: Animal<State = Horns> {}
 impl<T> HornsAnimal for T where T: Animal<State = Horns> {}
+
+pub trait AgeAnimal: Animal<State = AgeState> {}
+impl<T> AgeAnimal for T where T: Animal<State = AgeState> {}
+
+pub trait TimePerceptionAnimal: Animal<State = TimePerception> {}
+impl<T> TimePerceptionAnimal for T where T: Animal<State = TimePerception> {}
+
+pub trait ActivityScheduleAnimal: Animal<State = ActivitySchedule> {}
+impl<T> ActivityScheduleAnimal for T where T: Animal<State = ActivitySchedule> {}
