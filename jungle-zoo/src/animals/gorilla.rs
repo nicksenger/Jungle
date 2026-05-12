@@ -200,6 +200,23 @@ impl Pulse<Gorilla> for GorillaTickPerceivedTime {
     }
 }
 
+pub struct GorillaBirthday;
+impl Pulse<Gorilla> for GorillaBirthday {
+    type Action = actions::CelebrateBirthday;
+    type Aspect = Identity;
+    type CarryIn = ();
+    type CarryOut = ();
+
+    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+        state.temporal.age.clone()
+    }
+
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+        state.temporal.age = output.expect("gorilla birthday state refresh should succeed");
+        state.age = u32::from(state.temporal.age.age_years);
+    }
+}
+
 pub struct GorillaEvaluateActivityWindow;
 impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
     type Action = actions::EvaluateActivityWindow;
@@ -365,6 +382,7 @@ pub struct GorillaDayFlow(
 pub struct GorillaYearFlow(
     While<GorillaDaylightRemaining, GorillaDayFlow>,
     Step<Gorilla, GorillaAdvanceAge>,
+    Step<Gorilla, GorillaBirthday>,
 );
 
 #[derive(Journey)]

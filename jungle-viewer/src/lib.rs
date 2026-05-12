@@ -660,6 +660,7 @@ struct GraphBuilder {
     edges: Vec<(u32, u32)>,
     clusters: Vec<Cluster>,
     cluster_labels: Vec<String>,
+    while_cluster_stack: Vec<usize>,
     runtime_next_id: u32,
     display_next_id: u32,
     label_occurrences: HashMap<String, u32>,
@@ -766,7 +767,20 @@ impl GraphBuilder {
                 }
             }
             JourneyAst::While { label, body } => {
+                let parent_cluster = self.while_cluster_stack.last().copied();
+                let cluster_index = self.clusters.len();
+                let cluster = Cluster::new(Vec::new()).padding(24.0);
+                let cluster = if let Some(parent) = parent_cluster {
+                    cluster.parent(parent)
+                } else {
+                    cluster
+                };
+                self.clusters.push(cluster);
+                self.cluster_labels
+                    .push(format!("while: {}", short_type_name_str(label)));
+                self.while_cluster_stack.push(cluster_index);
                 let body_flow = self.flatten(body);
+                let _ = self.while_cluster_stack.pop();
 
                 for exit in &body_flow.exits {
                     for root in &body_flow.roots {
@@ -776,10 +790,7 @@ impl GraphBuilder {
 
                 let cluster_nodes = dedup(body_flow.members.clone());
                 if !cluster_nodes.is_empty() {
-                    self.clusters
-                        .push(Cluster::new(cluster_nodes).padding(14.0));
-                    self.cluster_labels
-                        .push(format!("while: {}", short_type_name_str(label)));
+                    self.clusters[cluster_index].nodes = cluster_nodes;
                 }
 
                 Flattened {
@@ -1335,5 +1346,25 @@ mod tests {
         assert!(edges.contains(&(in_l_id, cond_id)));
         assert!(edges.contains(&(in_r_id, cond_id)));
         assert!(edges.contains(&(cond_id, join_id)));
+    }
+
+    #[test]
+    fn nested_while_clusters_use_parent_relationship() {
+        let ast = JourneyAst::While {
+            label: "flow::OuterLoop",
+            body: Box::new(JourneyAst::While {
+                label: "flow::InnerLoop",
+                body: Box::new(JourneyAst::Step { label: "LoopStep" }),
+            }),
+        };
+
+        let model = GraphModel::from_ast(ast);
+
+        assert_eq!(model.while_clusters.len(), 2);
+        assert_eq!(model.while_cluster_labels, vec!["while: OuterLoop", "while: InnerLoop"]);
+        assert_eq!(model.while_clusters[0].parent, None);
+        assert_eq!(model.while_clusters[1].parent, Some(0));
+        assert!(!model.while_clusters[0].nodes.is_empty());
+        assert!(!model.while_clusters[1].nodes.is_empty());
     }
 }
