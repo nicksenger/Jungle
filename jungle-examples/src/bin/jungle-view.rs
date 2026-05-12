@@ -24,7 +24,8 @@ fn main() {
     }
 
     if dump_graph {
-        let graph = jungle_viewer::debug_graph_for_animal::<jungle_examples::StaticAnimal>();
+        let graph =
+            jungle_viewer::debug_graph_for_animal::<jungle_zoo::animals::gorilla::Gorilla>();
         println!("nodes:");
         for node in &graph.nodes {
             println!("  {} {}", node.id, node.label);
@@ -39,7 +40,8 @@ fn main() {
         }
     }
 
-    let mut viewer = jungle_viewer::JungleViewerBuilder::new().title("Jungle View Example");
+    let mut viewer =
+        jungle_viewer::JungleViewerBuilder::new().title("Jungle View Example (zoo::Gorilla)");
     if let Some(path) = screenshot {
         viewer = viewer.screenshot_path(path);
     }
@@ -48,6 +50,6 @@ fn main() {
     }
 
     viewer
-        .view_animal::<jungle_examples::StaticAnimal>()
+        .view_animal::<jungle_zoo::animals::gorilla::Gorilla>()
         .expect("jungle-view example should launch viewer");
 }

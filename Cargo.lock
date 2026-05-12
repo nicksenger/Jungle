@@ -2550,6 +2550,7 @@ version = "0.1.0"
 dependencies = [
  "jungle-sdk",
  "jungle-viewer",
+ "jungle-zoo",
  "postcard",
  "serde",
  "tokio",
