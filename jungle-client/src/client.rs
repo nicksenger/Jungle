@@ -9,14 +9,14 @@ use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::fs;
 use std::io;
-use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::marker::PhantomData;
+use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
-use typosaurus::collections::Container;
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
+use typosaurus::collections::Container;
 use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];

@@ -1,5 +1,3 @@
-pub mod migrations;
-
 use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
@@ -63,7 +61,9 @@ impl PgStoreBuilder {
 impl JungleStore for PgStore {
     async fn migrate(&self) -> Result<()> {
         match SCHEMA_VERSION {
-            SchemaVersion::V0 => self.migrate_v0().await,
+            SchemaVersion::V0 => jungle_migrate::migrate_postgres_v0(&self.pool)
+                .await
+                .map_err(crate::PersistenceError::PostgresQuery),
         }
     }
 

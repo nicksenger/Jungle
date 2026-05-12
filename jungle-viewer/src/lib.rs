@@ -113,13 +113,10 @@ impl JungleViewerBuilder {
         let title = self.title.clone();
         let width = self.width;
         let height = self.height;
-        let capture = self
-            .screenshot_path
-            .clone()
-            .map(|path| CaptureConfig {
-                output_path: path,
-                close_after_capture: self.headless,
-            });
+        let capture = self.screenshot_path.clone().map(|path| CaptureConfig {
+            output_path: path,
+            close_after_capture: self.headless,
+        });
         iced::application(
             move || ViewerApp::new(mode.clone(), capture.clone()),
             ViewerApp::update,

@@ -2568,12 +2568,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "jungle-migrate"
+version = "0.1.0"
+dependencies = [
+ "redb",
+ "sqlx",
+ "tracing",
+]
+
+[[package]]
 name = "jungle-persist"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
  "dyn-clone",
+ "jungle-migrate",
  "jungle-types",
  "postcard",
  "redb",

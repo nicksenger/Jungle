@@ -5,8 +5,8 @@ edition = "2021"
 
 [features]
 default = []
-redb = ["dep:redb"]
-postgres = ["dep:sqlx"]
+redb = ["dep:redb", "dep:jungle-migrate", "jungle-migrate/redb"]
+postgres = ["dep:sqlx", "dep:jungle-migrate", "jungle-migrate/postgres"]
 
 [dependencies]
 jungle-types = { path = "../jungle-types" }
@@ -15,6 +15,7 @@ async-trait = { workspace = true }
 dyn-clone = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 postcard = { workspace = true, features = ["alloc"] }
+jungle-migrate = { path = "../jungle-migrate", optional = true, default-features = false }
 thiserror = "2"
 tracing = "0.1"
 chrono = "0.4"

@@ -1,7 +1,5 @@
 use super::support::define_action;
-use crate::state::{
-    AgeState, DailyActivity, LifePhase, PerceivedTimeOfDay, TimePerception,
-};
+use crate::state::{AgeState, DailyActivity, LifePhase, PerceivedTimeOfDay, TimePerception};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TemporalDependency {

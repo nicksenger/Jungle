@@ -1,5 +1,3 @@
-pub mod migrations;
-
 use crate::models::{SchemaVersion, StepKind, StepStatus, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
@@ -140,7 +138,9 @@ impl RedbStoreBuilder {
 impl JungleStore for RedbStore {
     async fn migrate(&self) -> Result<()> {
         match SCHEMA_VERSION {
-            SchemaVersion::V0 => self.migrate_v0().await,
+            SchemaVersion::V0 => {
+                jungle_migrate::migrate_redb_v0(&self.db).map_err(crate::PersistenceError::Message)
+            }
         }
     }
 
