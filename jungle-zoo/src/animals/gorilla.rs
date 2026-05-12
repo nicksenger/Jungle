@@ -12,7 +12,6 @@ use jungle_sdk::types::{
     NoopPerturbation, Pulse, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
-use jungle_sdk::Flow;
 use jungle_sdk::Journey;
 use jungle_sdk::Optic;
 
@@ -332,21 +331,21 @@ impl Pulse<Gorilla> for GorillaMakeSound {
     }
 }
 
-#[derive(Flow)]
+#[derive(Journey)]
 pub struct GorillaFeedFlow(
     Step<Gorilla, GorillaPeelFruit>,
     Step<Gorilla, GorillaEat>,
     Step<Gorilla, GorillaRest>,
 );
 
-#[derive(Flow)]
+#[derive(Journey)]
 pub struct GorillaToolSocialFlow(
     Step<Gorilla, GorillaUseTool>,
     Step<Gorilla, GorillaChestBeat>,
     Step<Gorilla, GorillaMakeSound>,
 );
 
-#[derive(Flow)]
+#[derive(Journey)]
 pub struct GorillaSimpleSocialFlow(Step<Gorilla, GorillaMakeSound>, Step<Gorilla, GorillaRest>);
 
 pub type GorillaActiveFlow = Conditional<
@@ -355,14 +354,14 @@ pub type GorillaActiveFlow = Conditional<
     Conditional<GorillaCanUseTools, GorillaToolSocialFlow, GorillaSimpleSocialFlow>,
 >;
 
-#[derive(Flow)]
+#[derive(Journey)]
 pub struct GorillaDayFlow(
     Step<Gorilla, GorillaEvaluateActivityWindow>,
     Conditional<GorillaIsActiveNow, GorillaActiveFlow, Step<Gorilla, GorillaRest>>,
     Step<Gorilla, GorillaTickPerceivedTime>,
 );
 
-#[derive(Flow)]
+#[derive(Journey)]
 pub struct GorillaYearFlow(
     While<GorillaDaylightRemaining, GorillaDayFlow>,
     Step<Gorilla, GorillaAdvanceAge>,
@@ -398,93 +397,6 @@ impl Animals for Gorilla {
 #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
 impl Identified for Gorilla {
     type Id = U0;
-}
-
-impl jungle_sdk::types::BuildJourneyAst<Vec<jungle_sdk::types::JourneyAst>> for GorillaJourney {
-    type Output = Vec<jungle_sdk::types::JourneyAst>;
-
-    fn push_ast(mut nodes: Vec<jungle_sdk::types::JourneyAst>) -> Self::Output {
-        use jungle_sdk::types::JourneyAst;
-
-        fn step_label<S>() -> &'static str {
-            std::any::type_name::<S>()
-        }
-
-        let feed_flow = JourneyAst::sequence(vec![
-            JourneyAst::Step {
-                label: step_label::<actions::PeelFruit>(),
-            },
-            JourneyAst::Step {
-                label: step_label::<actions::Eat>(),
-            },
-            JourneyAst::Step {
-                label: step_label::<actions::Rest>(),
-            },
-        ]);
-
-        let tool_social_flow = JourneyAst::sequence(vec![
-            JourneyAst::Step {
-                label: step_label::<actions::UseTool>(),
-            },
-            JourneyAst::Step {
-                label: step_label::<actions::ChestBeat>(),
-            },
-            JourneyAst::Step {
-                label: step_label::<actions::MakeSound>(),
-            },
-        ]);
-
-        let simple_social_flow = JourneyAst::sequence(vec![
-            JourneyAst::Step {
-                label: step_label::<actions::MakeSound>(),
-            },
-            JourneyAst::Step {
-                label: step_label::<actions::Rest>(),
-            },
-        ]);
-
-        let active_flow = JourneyAst::Conditional {
-            label: std::any::type_name::<GorillaIsHungry>(),
-            left: Box::new(feed_flow),
-            right: Box::new(JourneyAst::Conditional {
-                label: std::any::type_name::<GorillaCanUseTools>(),
-                left: Box::new(tool_social_flow),
-                right: Box::new(simple_social_flow),
-            }),
-        };
-
-        let day_flow = JourneyAst::sequence(vec![
-            JourneyAst::Step {
-                label: step_label::<actions::EvaluateActivityWindow>(),
-            },
-            JourneyAst::Conditional {
-                label: std::any::type_name::<GorillaIsActiveNow>(),
-                left: Box::new(active_flow),
-                right: Box::new(JourneyAst::Step {
-                    label: step_label::<actions::Rest>(),
-                }),
-            },
-            JourneyAst::Step {
-                label: step_label::<actions::TickPerceivedTime>(),
-            },
-        ]);
-
-        let year_flow = JourneyAst::sequence(vec![
-            JourneyAst::While {
-                label: std::any::type_name::<GorillaDaylightRemaining>(),
-                body: Box::new(day_flow),
-            },
-            JourneyAst::Step {
-                label: step_label::<actions::AdvanceAge>(),
-            },
-        ]);
-
-        nodes.push(JourneyAst::While {
-            label: std::any::type_name::<GorillaStillGrowing>(),
-            body: Box::new(year_flow),
-        });
-        nodes
-    }
 }
 
 #[allow(dead_code)]
