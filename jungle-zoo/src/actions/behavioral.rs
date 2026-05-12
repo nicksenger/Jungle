@@ -40,7 +40,7 @@ define_action!(
 );
 
 define_action!(
-    Sleep,
+    Rest,
     id = 2,
     dependency = BehavioralDependency,
     in = u16,
@@ -50,6 +50,9 @@ define_action!(
         std::future::ready(Ok(energy.saturating_add(dependency.sleep_recovery)))
     }
 );
+
+/// Backwards-compatibility alias for prior naming.
+pub type Sleep = Rest;
 
 define_action!(
     MakeSound,
