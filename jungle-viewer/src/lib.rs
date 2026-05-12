@@ -1104,7 +1104,7 @@ fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
 }
 
 fn loop_cluster_color(_index: usize) -> Color {
-    Color::from_rgba8(30, 91, 53, 0.08)
+    Color::from_rgba8(30, 91, 53, 0.04)
 }
 
 fn jungle_text_base() -> Color {
