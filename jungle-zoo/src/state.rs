@@ -16,32 +16,115 @@ pub struct VitalReadings {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NeuronDensity {
+    pub neurons_per_mm3: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Lobe {
+    pub name: String,
+    pub density: NeuronDensity,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cortex {
+    pub frontal: Lobe,
+    pub temporal: Lobe,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Brain {
+    pub cortex: Cortex,
+    pub mass_g: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NervousSystem {
     pub cranial_nerves: u8,
     pub reflex_latency_ms: u16,
     pub vitals: VitalReadings,
+    pub brain: Brain,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CellLayer {
+    pub thickness_microns: u16,
+    pub regeneration_rate: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mucosa {
+    pub epithelium: CellLayer,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StomachLining {
+    pub mucosa: Mucosa,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Stomach {
+    pub chamber_count: u8,
+    pub lining: StomachLining,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntestineSegment {
+    pub name: String,
+    pub length_cm: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Intestines {
+    pub small: IntestineSegment,
+    pub large: IntestineSegment,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DigestiveSystem {
-    pub stomach_count: u8,
-    pub intestine_length_cm: u32,
+    pub stomach: Stomach,
+    pub intestines: Intestines,
     pub has_fermentation_chamber: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoneDensity {
+    pub grams_per_cm3: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LimbBone {
+    pub name: String,
+    pub length_cm: u16,
+    pub density: BoneDensity,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Limb {
+    pub upper: LimbBone,
+    pub lower: LimbBone,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Skeleton {
     pub vertebrae: u16,
     pub rib_pairs: u8,
-    pub limb_count: u8,
+    pub forelimb: Limb,
+    pub hindlimb: Limb,
     pub has_tail: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChestCavity {
+    pub lung_capacity_liters: u16,
+    pub heart_volume_ml: u16,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Torso {
     pub length_cm: u16,
     pub girth_cm: u16,
-    pub lung_capacity_liters: u16,
+    pub chest_cavity: ChestCavity,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,23 +142,67 @@ pub struct Dermis {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScaleBed {
+    pub blood_supply_rating: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scale {
+    pub width_mm: u8,
+    pub bed: ScaleBed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Scales {
-    pub rows: u16,
-    pub hardness: u8,
+    pub dorsal: Scale,
+    pub ventral: Scale,
     pub has_osteoderms: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MuscleGroup {
+    pub name: String,
+    pub strength_rating: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tongue {
     pub length_cm: u16,
     pub prehensile: bool,
+    pub muscle_group: MuscleGroup,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Nail {
+    pub length_mm: u8,
+    pub curved: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Finger {
+    pub nail: Nail,
+    pub length_mm: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FingerSet {
+    pub thumb: Finger,
+    pub index: Finger,
+    pub middle: Finger,
+    pub ring: Finger,
+    pub little: Finger,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hand {
+    pub fingers: FingerSet,
+    pub opposable_thumb: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hands {
-    pub hand_count: u8,
-    pub digits_per_hand: u8,
-    pub opposable_thumb: bool,
+    pub left: Hand,
+    pub right: Hand,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,79 +224,4 @@ pub struct Horns {
     pub count: u8,
     pub max_length_cm: u16,
     pub keratinized: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LionState {
-    pub core: AnimalCore,
-    pub nervous_system: NervousSystem,
-    pub digestive_system: DigestiveSystem,
-    pub skeleton: Skeleton,
-    pub torso: Torso,
-    pub ears: Ears,
-    pub dermis: Dermis,
-    pub tongue: Tongue,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ElephantState {
-    pub core: AnimalCore,
-    pub nervous_system: NervousSystem,
-    pub digestive_system: DigestiveSystem,
-    pub skeleton: Skeleton,
-    pub torso: Torso,
-    pub ears: Ears,
-    pub dermis: Dermis,
-    pub trunk: Trunk,
-    pub tusks: Tusks,
-    pub tongue: Tongue,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RhinoState {
-    pub core: AnimalCore,
-    pub nervous_system: NervousSystem,
-    pub digestive_system: DigestiveSystem,
-    pub skeleton: Skeleton,
-    pub torso: Torso,
-    pub ears: Ears,
-    pub dermis: Dermis,
-    pub horns: Horns,
-    pub tongue: Tongue,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CrocodileState {
-    pub core: AnimalCore,
-    pub nervous_system: NervousSystem,
-    pub digestive_system: DigestiveSystem,
-    pub skeleton: Skeleton,
-    pub torso: Torso,
-    pub scales: Scales,
-    pub tongue: Tongue,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GiraffeState {
-    pub core: AnimalCore,
-    pub nervous_system: NervousSystem,
-    pub digestive_system: DigestiveSystem,
-    pub skeleton: Skeleton,
-    pub torso: Torso,
-    pub ears: Ears,
-    pub dermis: Dermis,
-    pub tongue: Tongue,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GorillaState {
-    pub core: AnimalCore,
-    pub nervous_system: NervousSystem,
-    pub digestive_system: DigestiveSystem,
-    pub skeleton: Skeleton,
-    pub torso: Torso,
-    pub ears: Ears,
-    pub dermis: Dermis,
-    pub hands: Hands,
-    pub tongue: Tongue,
 }
