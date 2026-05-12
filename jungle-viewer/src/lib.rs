@@ -577,14 +577,10 @@ fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> El
                 .cloned()
                 .unwrap_or_else(|| format!("while #{index}"));
             Some(
-                container(
-                    text(label)
-                        .size(11)
-                        .color(jungle_text_muted()),
-                )
-                .padding([4, 8])
-                .style(loop_cluster_label)
-                .into(),
+                container(text(label).size(11).color(jungle_text_muted()))
+                    .padding([4, 8])
+                    .style(loop_cluster_label)
+                    .into(),
             )
         })
         .cluster_color(loop_cluster_color)
@@ -1094,7 +1090,7 @@ fn sidebar_button(_theme: &iced::Theme, status: button::Status) -> iced::widget:
 
 fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
-        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.25))),
+        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
         border: iced::border::rounded(6)
             .color(Color::from_rgb8(54, 117, 78))
             .width(1.0),
@@ -1361,7 +1357,10 @@ mod tests {
         let model = GraphModel::from_ast(ast);
 
         assert_eq!(model.while_clusters.len(), 2);
-        assert_eq!(model.while_cluster_labels, vec!["while: OuterLoop", "while: InnerLoop"]);
+        assert_eq!(
+            model.while_cluster_labels,
+            vec!["while: OuterLoop", "while: InnerLoop"]
+        );
         assert_eq!(model.while_clusters[0].parent, None);
         assert_eq!(model.while_clusters[1].parent, Some(0));
         assert!(!model.while_clusters[0].nodes.is_empty());
