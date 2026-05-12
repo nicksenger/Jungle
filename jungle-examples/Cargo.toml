@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb"] }
-jungle-zoo = { path = "../jungle-zoo" }
+jungle-zoo = { path = "../jungle-zoo", features = ["delay"] }
 jungle-viewer = { path = "../jungle-viewer" }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
