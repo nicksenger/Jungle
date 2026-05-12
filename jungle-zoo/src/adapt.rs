@@ -155,8 +155,8 @@ pub type LayEggsStep<T> = Step<
     >,
 >;
 
-pub struct EmitCrocodileDeathRoll;
-impl EmitMapper<Skeleton, actions::CrocodileDeathRoll, u8> for EmitCrocodileDeathRoll {
+pub struct EmitDeathRoll;
+impl EmitMapper<Skeleton, actions::CrocodileDeathRoll, u8> for EmitDeathRoll {
     fn emit(view: &Skeleton, stress: u8) -> <actions::CrocodileDeathRoll as Action>::In {
         (view.has_tail, stress)
     }
@@ -175,13 +175,13 @@ impl AbsorbMapper<Skeleton, actions::CrocodileDeathRoll, String> for AbsorbCrocD
 pub type CrocodileDeathRollStep<T> = Step<
     T,
     Fuse<
-        EmitFn<Identity, actions::CrocodileDeathRoll, u8, EmitCrocodileDeathRoll>,
+        EmitFn<Identity, actions::CrocodileDeathRoll, u8, EmitDeathRoll>,
         AbsorbFn<Identity, actions::CrocodileDeathRoll, String, AbsorbCrocDeathRoll>,
     >,
 >;
 
-pub struct EmitLionRoar;
-impl EmitMapper<Torso, actions::LionRoar, u8> for EmitLionRoar {
+pub struct EmitRoar;
+impl EmitMapper<Torso, actions::LionRoar, u8> for EmitRoar {
     fn emit(view: &Torso, stress: u8) -> <actions::LionRoar as Action>::In {
         (view.chest_cavity.lung_capacity_liters, stress)
     }
@@ -197,7 +197,7 @@ impl AbsorbMapper<Torso, actions::LionRoar, String> for AbsorbLionRoar {
 pub type LionRoarStep<T> = Step<
     T,
     Fuse<
-        EmitFn<Identity, actions::LionRoar, u8, EmitLionRoar>,
+        EmitFn<Identity, actions::LionRoar, u8, EmitRoar>,
         AbsorbFn<Identity, actions::LionRoar, String, AbsorbLionRoar>,
     >,
 >;
