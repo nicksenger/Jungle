@@ -134,7 +134,7 @@ define_action!(
 );
 
 define_action!(
-    CelebrateBirth,
+    Birth,
     id = 54,
     dependency = TemporalDependency,
     in = AgeState,

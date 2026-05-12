@@ -219,7 +219,7 @@ impl Pulse<Gorilla> for GorillaBirthday {
 
 pub struct GorillaBirth;
 impl Pulse<Gorilla> for GorillaBirth {
-    type Action = actions::CelebrateBirth;
+    type Action = actions::Birth;
     type Aspect = Identity;
     type CarryIn = ();
     type CarryOut = ();
@@ -397,9 +397,9 @@ pub struct GorillaDayFlow(
 
 #[derive(Journey)]
 pub struct GorillaYearFlow(
+    Step<Gorilla, GorillaBirthday>,
     While<GorillaDaylightRemaining, GorillaDayFlow>,
     Step<Gorilla, GorillaAdvanceAge>,
-    Step<Gorilla, GorillaBirthday>,
 );
 
 #[derive(Journey)]
