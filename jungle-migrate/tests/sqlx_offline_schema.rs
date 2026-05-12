@@ -36,14 +36,26 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
         .expect("postgres mapped port should be available");
     let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
 
+    // 1) Fresh container is up, now run jungle-migrate migrations against it.
     let pool = sqlx::PgPool::connect(&connection_string)
         .await
         .expect("postgres pool should initialize for sqlx prepare");
     jungle_migrate::migrate_postgres_v0(&pool)
         .await
         .expect("sqlx prepare schema migrations should initialize");
+    let schema_version =
+        sqlx::query_scalar::<_, i32>("SELECT version FROM jungle_schema_metadata WHERE id = 1")
+            .fetch_optional(&pool)
+            .await
+            .expect("schema metadata query should succeed after migration");
+    assert_eq!(
+        schema_version,
+        Some(0),
+        "migration should initialize schema version row"
+    );
     pool.close().await;
 
+    // 2) Compile jungle-persist against the migrated container with SQLX_OFFLINE_DIR set.
     let source_sqlx_dir = workspace_root.join("target").join("sqlx");
     if source_sqlx_dir.exists() {
         fs::remove_dir_all(&source_sqlx_dir)
@@ -82,6 +94,19 @@ async fn regenerate_sqlx_offline_schema_under_jungle_persist() {
         .expect("jungle-persist/.sqlx directory should be creatable");
     copy_dir_all(&source_sqlx_dir, &target_sqlx_dir)
         .expect("target/sqlx should copy to jungle-persist/.sqlx");
+
+    // 3) Verify the offline schema was generated under jungle-persist/.sqlx.
+    let copied_files =
+        list_files_recursive(&target_sqlx_dir).expect("jungle-persist/.sqlx should be readable");
+    assert!(
+        !copied_files.is_empty(),
+        "expected generated SQLx offline schema under jungle-persist/.sqlx, but found none"
+    );
+    assert_eq!(
+        copied_files.len(),
+        generated_files.len(),
+        "copied SQLx cache file count should match generated file count"
+    );
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
