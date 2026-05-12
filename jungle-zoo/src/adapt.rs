@@ -1,7 +1,7 @@
 //! Action adapters that connect structural state to action inputs/outputs.
 
 use crate::actions;
-use crate::state::{Hands, Scales, Skeleton, Torso, VitalReadings};
+use crate::state::{Ears, Hands, Horns, Scales, Skeleton, Torso, VitalReadings};
 use jungle_types::{
     AbsorbFn, AbsorbMapper, Action, ActionCompletion, Animal, EmitFn, EmitMapper, Fuse, Identity,
     Step,
@@ -65,6 +65,32 @@ pub type VitalStressStep<T, A> = Step<
     Fuse<EmitFn<Identity, A, (), EmitVitalStress>, AbsorbFn<Identity, A, (), AbsorbVitalStress>>,
 >;
 
+pub struct EmitRelax;
+impl EmitMapper<VitalReadings, actions::Relax, ()> for EmitRelax {
+    fn emit(view: &VitalReadings, _input: ()) -> <actions::Relax as Action>::In {
+        (view.energy, view.stress)
+    }
+}
+
+pub struct AbsorbRelax;
+impl AbsorbMapper<VitalReadings, actions::Relax, ()> for AbsorbRelax {
+    fn absorb(view: &mut VitalReadings, output: ActionCompletion<actions::Relax>) {
+        if let Ok((energy, stress)) = output {
+            view.energy = energy;
+            view.stress = stress;
+            view.is_sleepy = energy < 25;
+        }
+    }
+}
+
+pub type RelaxStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::Relax, (), EmitRelax>,
+        AbsorbFn<Identity, actions::Relax, (), AbsorbRelax>,
+    >,
+>;
+
 pub struct EmitMakeSound;
 impl EmitMapper<VitalReadings, actions::MakeSound, String> for EmitMakeSound {
     fn emit(view: &VitalReadings, kind: String) -> <actions::MakeSound as Action>::In {
@@ -109,6 +135,28 @@ pub type UseToolStep<T> = Step<
     >,
 >;
 
+pub struct EmitSocialize;
+impl EmitMapper<Ears, actions::Socialize, u8> for EmitSocialize {
+    fn emit(view: &Ears, stress: u8) -> <actions::Socialize as Action>::In {
+        (stress, view.can_rotate)
+    }
+}
+
+pub struct AbsorbSocialize;
+impl AbsorbMapper<Ears, actions::Socialize, String> for AbsorbSocialize {
+    fn absorb(_view: &mut Ears, output: ActionCompletion<actions::Socialize>) -> String {
+        output.expect("socialize should succeed")
+    }
+}
+
+pub type SocializeStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::Socialize, u8, EmitSocialize>,
+        AbsorbFn<Identity, actions::Socialize, String, AbsorbSocialize>,
+    >,
+>;
+
 pub struct EmitSwim;
 impl EmitMapper<Torso, actions::Swim, ()> for EmitSwim {
     fn emit(view: &Torso, _input: ()) -> <actions::Swim as Action>::In {
@@ -130,6 +178,72 @@ pub type SwimStep<T> = Step<
     Fuse<
         EmitFn<Identity, actions::Swim, (), EmitSwim>,
         AbsorbFn<Identity, actions::Swim, u16, AbsorbSwim>,
+    >,
+>;
+
+pub struct EmitWalk;
+impl EmitMapper<Skeleton, actions::Walk, ()> for EmitWalk {
+    fn emit(view: &Skeleton, _input: ()) -> <actions::Walk as Action>::In {
+        (view.forelimb.upper.length_cm, view.hindlimb.upper.length_cm)
+    }
+}
+
+pub struct AbsorbWalk;
+impl AbsorbMapper<Skeleton, actions::Walk, u16> for AbsorbWalk {
+    fn absorb(_view: &mut Skeleton, output: ActionCompletion<actions::Walk>) -> u16 {
+        output.expect("walk should succeed")
+    }
+}
+
+pub type WalkStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::Walk, (), EmitWalk>,
+        AbsorbFn<Identity, actions::Walk, u16, AbsorbWalk>,
+    >,
+>;
+
+pub struct EmitRun;
+impl EmitMapper<Torso, actions::Run, u8> for EmitRun {
+    fn emit(view: &Torso, stress: u8) -> <actions::Run as Action>::In {
+        (view.chest_cavity.lung_capacity_liters, stress)
+    }
+}
+
+pub struct AbsorbRun;
+impl AbsorbMapper<Torso, actions::Run, u16> for AbsorbRun {
+    fn absorb(_view: &mut Torso, output: ActionCompletion<actions::Run>) -> u16 {
+        output.expect("run should succeed")
+    }
+}
+
+pub type RunStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::Run, u8, EmitRun>,
+        AbsorbFn<Identity, actions::Run, u16, AbsorbRun>,
+    >,
+>;
+
+pub struct EmitCharge;
+impl EmitMapper<Horns, actions::Charge, u8> for EmitCharge {
+    fn emit(view: &Horns, stress: u8) -> <actions::Charge as Action>::In {
+        (view.max_length_cm, stress)
+    }
+}
+
+pub struct AbsorbCharge;
+impl AbsorbMapper<Horns, actions::Charge, u16> for AbsorbCharge {
+    fn absorb(_view: &mut Horns, output: ActionCompletion<actions::Charge>) -> u16 {
+        output.expect("charge should succeed")
+    }
+}
+
+pub type ChargeStep<T> = Step<
+    T,
+    Fuse<
+        EmitFn<Identity, actions::Charge, u8, EmitCharge>,
+        AbsorbFn<Identity, actions::Charge, u16, AbsorbCharge>,
     >,
 >;
 
@@ -208,6 +322,9 @@ impl<T> VitalsAnimal for T where T: Animal<State = VitalReadings> {}
 pub trait HandsAnimal: Animal<State = Hands> {}
 impl<T> HandsAnimal for T where T: Animal<State = Hands> {}
 
+pub trait EarsAnimal: Animal<State = Ears> {}
+impl<T> EarsAnimal for T where T: Animal<State = Ears> {}
+
 pub trait TorsoAnimal: Animal<State = Torso> {}
 impl<T> TorsoAnimal for T where T: Animal<State = Torso> {}
 
@@ -216,3 +333,6 @@ impl<T> ScalesAnimal for T where T: Animal<State = Scales> {}
 
 pub trait SkeletonAnimal: Animal<State = Skeleton> {}
 impl<T> SkeletonAnimal for T where T: Animal<State = Skeleton> {}
+
+pub trait HornsAnimal: Animal<State = Horns> {}
+impl<T> HornsAnimal for T where T: Animal<State = Horns> {}

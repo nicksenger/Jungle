@@ -5,6 +5,8 @@ pub struct BehavioralDependency {
     pub breath_recovery: u16,
     pub sleep_recovery: u16,
     pub sound_volume_bias: u8,
+    pub relax_stress_drop: u8,
+    pub socialize_energy_cost: u16,
 }
 
 impl Default for BehavioralDependency {
@@ -13,6 +15,8 @@ impl Default for BehavioralDependency {
             breath_recovery: 1,
             sleep_recovery: 16,
             sound_volume_bias: 2,
+            relax_stress_drop: 12,
+            socialize_energy_cost: 3,
         }
     }
 }
@@ -84,5 +88,38 @@ define_action!(
     act = |_dependency, (stress, opposable_thumb)| {
         let rhythm = if opposable_thumb { 4 } else { 2 };
         std::future::ready(Ok(stress.saturating_add(rhythm)))
+    }
+);
+
+define_action!(
+    Relax,
+    id = 6,
+    dependency = BehavioralDependency,
+    in = (u16, u8),
+    out = (u16, u8),
+    err = String,
+    act = |dependency, (energy, stress)| {
+        let calmer_stress = stress.saturating_sub(dependency.relax_stress_drop);
+        let restored_energy = energy.saturating_add(2);
+        std::future::ready(Ok((restored_energy, calmer_stress)))
+    }
+);
+
+define_action!(
+    Socialize,
+    id = 7,
+    dependency = BehavioralDependency,
+    in = (u8, bool),
+    out = String,
+    err = String,
+    act = |dependency, (stress, can_rotate_ears)| {
+        if stress > 95 {
+            return std::future::ready(Err("too stressed to socialize".to_owned()));
+        }
+        let style = if can_rotate_ears { "expressive" } else { "reserved" };
+        std::future::ready(Ok(format!(
+            "{style} social interaction (energy cost {})",
+            dependency.socialize_energy_cost
+        )))
     }
 );
