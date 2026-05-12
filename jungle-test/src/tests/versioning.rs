@@ -314,7 +314,7 @@ async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
 
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle::client::Client<VersionedZoo> {
     for attempt in 0..40 {
-        match jungle::client::ClientBuilder::new()
+        match jungle::client::Client::builder()
             .ecosystem::<VersionedZoo>()
             .remote(remote)
             .server_name("localhost")

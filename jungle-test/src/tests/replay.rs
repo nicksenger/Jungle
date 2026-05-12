@@ -747,7 +747,7 @@ async fn wait_for_completed(remote: SocketAddr, journey_id: uuid::Uuid, timeout:
 
 async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
     for attempt in 0..40 {
-        match jungle::client::ClientBuilder::new()
+        match jungle::client::Client::builder()
             .remote(remote)
             .server_name("localhost")
             .build()

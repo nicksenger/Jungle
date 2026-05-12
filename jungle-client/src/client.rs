@@ -1,9 +1,9 @@
 use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
-    Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem,
-    ExecutorError, HighestGeneration, JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders,
-    SupportedAnimal, WireIn, WireOut, Work,
+    AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError,
+    JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders, SupportedAnimal, WireIn, WireOut,
+    Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -17,7 +17,6 @@ use thiserror::Error;
 use tracing::{error, info};
 use typosaurus::collections::Container;
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
-use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
@@ -178,12 +177,22 @@ impl<TJungle> ClientBuilder<TJungle> {
     }
 }
 
-#[derive(Clone)]
 pub struct Client<TJungle = DefaultJungle> {
     endpoint: quinn::Endpoint,
     conn: quinn::Connection,
     namespace: String,
     _jungle: PhantomData<fn() -> TJungle>,
+}
+
+impl<TJungle> Clone for Client<TJungle> {
+    fn clone(&self) -> Self {
+        Self {
+            endpoint: self.endpoint.clone(),
+            conn: self.conn.clone(),
+            namespace: self.namespace.clone(),
+            _jungle: PhantomData,
+        }
+    }
 }
 
 impl Client<DefaultJungle> {
@@ -284,21 +293,6 @@ where
                 "unexpected non-journey-created response for start_journey".to_string(),
             )),
         }
-    }
-
-    async fn start_journey_for<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
-    where
-        Self: Sized,
-        A: Animal,
-        A::Id: AnimalIdValue + Send + Sync,
-        A::Generation: Unsigned + Send + Sync,
-    {
-        self.start_journey(
-            <A::Id as AnimalIdValue>::U32,
-            <HighestGeneration<TJungle, A::Id> as Unsigned>::U32,
-            seed,
-        )
-        .await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {

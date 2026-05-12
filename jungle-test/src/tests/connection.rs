@@ -631,7 +631,7 @@ async fn connect_client_with_retry_namespace(
     namespace: &str,
 ) -> jungle::Client {
     for attempt in 0..40 {
-        match jungle::client::ClientBuilder::new()
+        match jungle::client::Client::builder()
             .namespace(namespace)
             .remote(remote)
             .server_name("localhost")

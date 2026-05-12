@@ -1,7 +1,6 @@
 extern crate jungle as inception;
 extern crate jungle as jungle_types;
 
-use jungle::client::ClientBuilder;
 use jungle::core::JungleWorker;
 use jungle::server::ServerBuilder;
 use jungle::types::{
@@ -24,7 +23,7 @@ pub fn reserve_local_addr() -> SocketAddr {
 
 pub async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
     for attempt in 0..40 {
-        match ClientBuilder::new()
+        match jungle::client::Client::builder()
             .remote(remote)
             .server_name("localhost")
             .build()
