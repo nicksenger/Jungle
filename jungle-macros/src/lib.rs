@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::visit::Visit;
@@ -14,7 +15,94 @@ fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStrea
     input
         .attrs
         .push(parse_quote!(#[inception(properties = [#(#properties),*])]));
-    inception_derive_gen::State::gen(quote!(#input)).into()
+    let generated = inception_derive_gen::State::gen(quote!(#input));
+    rewrite_inception_fallback(generated).into()
+}
+
+fn sdk_crate_path() -> Option<proc_macro2::TokenStream> {
+    match crate_name("jungle-sdk") {
+        Ok(FoundCrate::Itself) => Some(quote!(crate)),
+        Ok(FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            Some(quote!(::#ident))
+        }
+        Err(_) => None,
+    }
+}
+
+fn inception_derive_path() -> proc_macro2::TokenStream {
+    match crate_name("inception") {
+        Ok(FoundCrate::Itself) => quote!(crate::inception_derive),
+        Ok(FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident::inception_derive)
+        }
+        Err(_) => {
+            if let Some(sdk_path) = sdk_crate_path() {
+                quote!(#sdk_path::inception::inception_derive)
+            } else {
+                quote!(::inception::inception_derive)
+            }
+        }
+    }
+}
+
+fn rewrite_stream_with_sdk_inception(
+    stream: proc_macro2::TokenStream,
+    sdk_path: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    use proc_macro2::{Group, TokenTree};
+
+    let mut out = proc_macro2::TokenStream::new();
+    let tokens: Vec<TokenTree> = stream.into_iter().collect();
+    let mut i = 0usize;
+
+    while i < tokens.len() {
+        if i + 2 < tokens.len() {
+            let a = &tokens[i];
+            let b = &tokens[i + 1];
+            let c = &tokens[i + 2];
+
+            let leading_colons = matches!(a, TokenTree::Punct(p) if p.as_char() == ':')
+                && matches!(b, TokenTree::Punct(p) if p.as_char() == ':');
+            let inception_ident = matches!(c, TokenTree::Ident(ident) if ident == "inception");
+
+            if leading_colons && inception_ident {
+                out.extend(quote!(#sdk_path::inception));
+                i += 3;
+                continue;
+            }
+        }
+
+        match &tokens[i] {
+            TokenTree::Group(group) => {
+                let mut next = Group::new(
+                    group.delimiter(),
+                    rewrite_stream_with_sdk_inception(group.stream(), sdk_path),
+                );
+                next.set_span(group.span());
+                out.extend(std::iter::once(TokenTree::Group(next)));
+            }
+            _ => out.extend(std::iter::once(tokens[i].clone())),
+        }
+        i += 1;
+    }
+
+    out
+}
+
+fn rewrite_inception_fallback(stream: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    // inception-derive-gen emits ::inception when the downstream crate does not
+    // directly depend on inception. In that case, route through jungle-sdk.
+    if crate_name("inception").is_ok() {
+        return stream;
+    }
+
+    let Some(sdk_path) = sdk_crate_path() else {
+        return stream;
+    };
+
+    rewrite_stream_with_sdk_inception(stream, &sdk_path)
 }
 
 #[proc_macro_derive(Journey)]
@@ -83,8 +171,9 @@ fn expand_with_properties(
     }
 
     let item = parse_macro_input!(input as syn::Item);
+    let inception_derive = inception_derive_path();
     quote! {
-        #[inception::inception_derive(properties = [#(#properties),*])]
+        #[#inception_derive(properties = [#(#properties),*])]
         #item
     }
     .into()
