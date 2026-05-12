@@ -1,7 +1,5 @@
 #[cfg(test)]
 extern crate jungle_sdk as inception;
-#[cfg(test)]
-extern crate jungle_sdk as jungle_types;
 
 #[cfg(test)]
 mod tests {

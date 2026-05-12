@@ -19,6 +19,34 @@ fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStrea
     rewrite_inception_fallback(generated).into()
 }
 
+fn jungle_types_path() -> Path {
+    match crate_name("jungle-types") {
+        Ok(FoundCrate::Itself) => parse_quote!(crate),
+        Ok(FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            parse_quote!(::#ident)
+        }
+        Err(_) => match crate_name("jungle-sdk") {
+            Ok(FoundCrate::Itself) => parse_quote!(crate::types),
+            Ok(FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                parse_quote!(::#ident::types)
+            }
+            Err(_) => parse_quote!(jungle_types),
+        },
+    }
+}
+
+fn jungle_type(name: &str) -> Path {
+    let types = jungle_types_path();
+    let ident = format_ident!("{name}");
+    parse_quote!(#types::#ident)
+}
+
+fn jungle_types(names: &[&str]) -> Vec<Path> {
+    names.iter().map(|name| jungle_type(name)).collect()
+}
+
 fn sdk_crate_path() -> Option<proc_macro2::TokenStream> {
     match crate_name("jungle-sdk") {
         Ok(FoundCrate::Itself) => Some(quote!(crate)),
@@ -107,55 +135,41 @@ fn rewrite_inception_fallback(stream: proc_macro2::TokenStream) -> proc_macro2::
 
 #[proc_macro_derive(Journey)]
 pub fn derive_journey(input: TokenStream) -> TokenStream {
+    let properties = jungle_types(&[
+        "JungleFlow",
+        "JungleDynFlow",
+        "JungleJourneyAst",
+        "JungleTraverseFlow",
+        "JungleReplaceFlow",
+    ]);
     derive_with_properties(
         input,
-        &[
-            parse_quote!(jungle_types::JungleFlow),
-            parse_quote!(jungle_types::JungleDynFlow),
-            parse_quote!(jungle_types::JungleJourneyAst),
-            parse_quote!(jungle_types::JungleTraverseFlow),
-            parse_quote!(jungle_types::JungleReplaceFlow),
-        ],
+        &properties,
     )
 }
 
 #[proc_macro_derive(Flow)]
 pub fn derive_flow(input: TokenStream) -> TokenStream {
-    derive_with_properties(
-        input,
-        &[
-            parse_quote!(jungle_types::JungleFlow),
-            parse_quote!(jungle_types::JungleTraverseFlow),
-            parse_quote!(jungle_types::JungleReplaceFlow),
-        ],
-    )
+    let properties = jungle_types(&["JungleFlow", "JungleTraverseFlow", "JungleReplaceFlow"]);
+    derive_with_properties(input, &properties)
 }
 
 #[proc_macro_derive(Animals)]
 pub fn derive_animals(input: TokenStream) -> TokenStream {
-    derive_with_properties(
-        input,
-        &[
-            parse_quote!(jungle_types::Ident),
-            parse_quote!(jungle_types::JungleAnimals),
-        ],
-    )
+    let properties = jungle_types(&["Ident", "JungleAnimals"]);
+    derive_with_properties(input, &properties)
 }
 
 #[proc_macro_derive(Actions)]
 pub fn derive_actions(input: TokenStream) -> TokenStream {
-    derive_with_properties(
-        input,
-        &[
-            parse_quote!(jungle_types::Ident),
-            parse_quote!(jungle_types::JungleActions),
-        ],
-    )
+    let properties = jungle_types(&["Ident", "JungleActions"]);
+    derive_with_properties(input, &properties)
 }
 
 #[proc_macro_derive(Optic)]
 pub fn derive_optic(input: TokenStream) -> TokenStream {
-    derive_with_properties(input, &[parse_quote!(jungle_types::JungleOptic)])
+    let properties = jungle_types(&["JungleOptic"]);
+    derive_with_properties(input, &properties)
 }
 
 fn expand_with_properties(
@@ -181,54 +195,36 @@ fn expand_with_properties(
 
 #[proc_macro_attribute]
 pub fn journey(attr: TokenStream, input: TokenStream) -> TokenStream {
+    let properties = jungle_types(&[
+        "JungleFlow",
+        "JungleDynFlow",
+        "JungleJourneyAst",
+        "JungleTraverseFlow",
+        "JungleReplaceFlow",
+    ]);
     expand_with_properties(
         attr,
         input,
-        &[
-            parse_quote!(jungle_types::JungleFlow),
-            parse_quote!(jungle_types::JungleDynFlow),
-            parse_quote!(jungle_types::JungleJourneyAst),
-            parse_quote!(jungle_types::JungleTraverseFlow),
-            parse_quote!(jungle_types::JungleReplaceFlow),
-        ],
+        &properties,
     )
 }
 
 #[proc_macro_attribute]
 pub fn flow(attr: TokenStream, input: TokenStream) -> TokenStream {
-    expand_with_properties(
-        attr,
-        input,
-        &[
-            parse_quote!(jungle_types::JungleFlow),
-            parse_quote!(jungle_types::JungleTraverseFlow),
-            parse_quote!(jungle_types::JungleReplaceFlow),
-        ],
-    )
+    let properties = jungle_types(&["JungleFlow", "JungleTraverseFlow", "JungleReplaceFlow"]);
+    expand_with_properties(attr, input, &properties)
 }
 
 #[proc_macro_attribute]
 pub fn animals(attr: TokenStream, input: TokenStream) -> TokenStream {
-    expand_with_properties(
-        attr,
-        input,
-        &[
-            parse_quote!(jungle_types::Ident),
-            parse_quote!(jungle_types::JungleAnimals),
-        ],
-    )
+    let properties = jungle_types(&["Ident", "JungleAnimals"]);
+    expand_with_properties(attr, input, &properties)
 }
 
 #[proc_macro_attribute]
 pub fn actions(attr: TokenStream, input: TokenStream) -> TokenStream {
-    expand_with_properties(
-        attr,
-        input,
-        &[
-            parse_quote!(jungle_types::Ident),
-            parse_quote!(jungle_types::JungleActions),
-        ],
-    )
+    let properties = jungle_types(&["Ident", "JungleActions"]);
+    expand_with_properties(attr, input, &properties)
 }
 
 #[proc_macro_attribute]

@@ -1,5 +1,4 @@
 extern crate jungle_sdk as inception;
-extern crate jungle_sdk as jungle_types;
 
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
