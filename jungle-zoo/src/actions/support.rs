@@ -9,9 +9,7 @@ macro_rules! define_action {
         act = |$dep:ident, $in_arg:pat_param| $body:expr
     ) => {
         pub struct $name;
-
         impl jungle_types::ActionMember for $name {}
-
         impl jungle_types::Action for $name {
             type Id = u16;
             type Dependency = $dependency;

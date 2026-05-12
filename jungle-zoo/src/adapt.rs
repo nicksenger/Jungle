@@ -8,7 +8,6 @@ use jungle_types::{
 };
 
 pub struct EmitVitalEnergy;
-
 impl<A> EmitMapper<VitalReadings, A, ()> for EmitVitalEnergy
 where
     A: Action<In = u16>,
@@ -19,7 +18,6 @@ where
 }
 
 pub struct AbsorbVitalEnergy;
-
 impl<A> AbsorbMapper<VitalReadings, A, ()> for AbsorbVitalEnergy
 where
     A: Action<Out = u16>,
@@ -41,7 +39,6 @@ pub type VitalEnergyStep<T, A> = Step<
 >;
 
 pub struct EmitVitalStress;
-
 impl<A> EmitMapper<VitalReadings, A, ()> for EmitVitalStress
 where
     A: Action<In = u8>,
@@ -52,7 +49,6 @@ where
 }
 
 pub struct AbsorbVitalStress;
-
 impl<A> AbsorbMapper<VitalReadings, A, ()> for AbsorbVitalStress
 where
     A: Action<Out = u8>,
@@ -69,65 +65,59 @@ pub type VitalStressStep<T, A> = Step<
     Fuse<EmitFn<Identity, A, (), EmitVitalStress>, AbsorbFn<Identity, A, (), AbsorbVitalStress>>,
 >;
 
-pub struct EmitMakeSoundFromVitals;
-
-impl EmitMapper<VitalReadings, actions::MakeSound, String> for EmitMakeSoundFromVitals {
+pub struct EmitMakeSound;
+impl EmitMapper<VitalReadings, actions::MakeSound, String> for EmitMakeSound {
     fn emit(view: &VitalReadings, kind: String) -> <actions::MakeSound as Action>::In {
         (kind, view.stress)
     }
 }
 
 pub struct AbsorbMakeSound;
-
 impl AbsorbMapper<VitalReadings, actions::MakeSound, String> for AbsorbMakeSound {
     fn absorb(_view: &mut VitalReadings, output: ActionCompletion<actions::MakeSound>) -> String {
         output.expect("make sound should succeed")
     }
 }
 
-pub type MakeSoundFromVitalsStep<T> = Step<
+pub type MakeSoundStep<T> = Step<
     T,
     Fuse<
-        EmitFn<Identity, actions::MakeSound, String, EmitMakeSoundFromVitals>,
+        EmitFn<Identity, actions::MakeSound, String, EmitMakeSound>,
         AbsorbFn<Identity, actions::MakeSound, String, AbsorbMakeSound>,
     >,
 >;
 
-pub struct EmitUseToolFromHands;
-
-impl EmitMapper<Hands, actions::UseTool, ()> for EmitUseToolFromHands {
+pub struct EmitUseTool;
+impl EmitMapper<Hands, actions::UseTool, ()> for EmitUseTool {
     fn emit(view: &Hands, _input: ()) -> <actions::UseTool as Action>::In {
         view.left.opposable_thumb && view.right.opposable_thumb
     }
 }
 
 pub struct AbsorbUseTool;
-
 impl AbsorbMapper<Hands, actions::UseTool, String> for AbsorbUseTool {
     fn absorb(_view: &mut Hands, output: ActionCompletion<actions::UseTool>) -> String {
         output.expect("tool-use should succeed")
     }
 }
 
-pub type UseToolFromHandsStep<T> = Step<
+pub type UseToolStep<T> = Step<
     T,
     Fuse<
-        EmitFn<Identity, actions::UseTool, (), EmitUseToolFromHands>,
+        EmitFn<Identity, actions::UseTool, (), EmitUseTool>,
         AbsorbFn<Identity, actions::UseTool, String, AbsorbUseTool>,
     >,
 >;
 
-pub struct EmitSwimFromTorso;
-
-impl EmitMapper<Torso, actions::Swim, ()> for EmitSwimFromTorso {
+pub struct EmitSwim;
+impl EmitMapper<Torso, actions::Swim, ()> for EmitSwim {
     fn emit(view: &Torso, _input: ()) -> <actions::Swim as Action>::In {
         view.chest_cavity.lung_capacity_liters
     }
 }
 
-pub struct AbsorbSwimToTorso;
-
-impl AbsorbMapper<Torso, actions::Swim, u16> for AbsorbSwimToTorso {
+pub struct AbsorbSwim;
+impl AbsorbMapper<Torso, actions::Swim, u16> for AbsorbSwim {
     fn absorb(view: &mut Torso, output: ActionCompletion<actions::Swim>) -> u16 {
         let swim_score = output.expect("swim should succeed");
         view.chest_cavity.lung_capacity_liters = swim_score;
@@ -135,48 +125,44 @@ impl AbsorbMapper<Torso, actions::Swim, u16> for AbsorbSwimToTorso {
     }
 }
 
-pub type SwimFromTorsoStep<T> = Step<
+pub type SwimStep<T> = Step<
     T,
     Fuse<
-        EmitFn<Identity, actions::Swim, (), EmitSwimFromTorso>,
-        AbsorbFn<Identity, actions::Swim, u16, AbsorbSwimToTorso>,
+        EmitFn<Identity, actions::Swim, (), EmitSwim>,
+        AbsorbFn<Identity, actions::Swim, u16, AbsorbSwim>,
     >,
 >;
 
-pub struct EmitLayEggsFromScales;
-
-impl EmitMapper<Scales, actions::LayEggs, ()> for EmitLayEggsFromScales {
+pub struct EmitLayEggs;
+impl EmitMapper<Scales, actions::LayEggs, ()> for EmitLayEggs {
     fn emit(view: &Scales, _input: ()) -> <actions::LayEggs as Action>::In {
         view.has_osteoderms
     }
 }
 
 pub struct AbsorbLayEggs;
-
 impl AbsorbMapper<Scales, actions::LayEggs, u8> for AbsorbLayEggs {
     fn absorb(_view: &mut Scales, output: ActionCompletion<actions::LayEggs>) -> u8 {
         output.expect("lay-eggs should succeed")
     }
 }
 
-pub type LayEggsFromScalesStep<T> = Step<
+pub type LayEggsStep<T> = Step<
     T,
     Fuse<
-        EmitFn<Identity, actions::LayEggs, (), EmitLayEggsFromScales>,
+        EmitFn<Identity, actions::LayEggs, (), EmitLayEggs>,
         AbsorbFn<Identity, actions::LayEggs, u8, AbsorbLayEggs>,
     >,
 >;
 
-pub struct EmitCrocDeathRollFromSkeleton;
-
-impl EmitMapper<Skeleton, actions::CrocodileDeathRoll, u8> for EmitCrocDeathRollFromSkeleton {
+pub struct EmitCrocodileDeathRoll;
+impl EmitMapper<Skeleton, actions::CrocodileDeathRoll, u8> for EmitCrocodileDeathRoll {
     fn emit(view: &Skeleton, stress: u8) -> <actions::CrocodileDeathRoll as Action>::In {
         (view.has_tail, stress)
     }
 }
 
 pub struct AbsorbCrocDeathRoll;
-
 impl AbsorbMapper<Skeleton, actions::CrocodileDeathRoll, String> for AbsorbCrocDeathRoll {
     fn absorb(
         _view: &mut Skeleton,
@@ -186,34 +172,32 @@ impl AbsorbMapper<Skeleton, actions::CrocodileDeathRoll, String> for AbsorbCrocD
     }
 }
 
-pub type CrocodileDeathRollFromSkeletonStep<T> = Step<
+pub type CrocodileDeathRollStep<T> = Step<
     T,
     Fuse<
-        EmitFn<Identity, actions::CrocodileDeathRoll, u8, EmitCrocDeathRollFromSkeleton>,
+        EmitFn<Identity, actions::CrocodileDeathRoll, u8, EmitCrocodileDeathRoll>,
         AbsorbFn<Identity, actions::CrocodileDeathRoll, String, AbsorbCrocDeathRoll>,
     >,
 >;
 
-pub struct EmitLionRoarFromTorso;
-
-impl EmitMapper<Torso, actions::LionRoar, u8> for EmitLionRoarFromTorso {
+pub struct EmitLionRoar;
+impl EmitMapper<Torso, actions::LionRoar, u8> for EmitLionRoar {
     fn emit(view: &Torso, stress: u8) -> <actions::LionRoar as Action>::In {
         (view.chest_cavity.lung_capacity_liters, stress)
     }
 }
 
 pub struct AbsorbLionRoar;
-
 impl AbsorbMapper<Torso, actions::LionRoar, String> for AbsorbLionRoar {
     fn absorb(_view: &mut Torso, output: ActionCompletion<actions::LionRoar>) -> String {
         output.expect("lion roar should succeed")
     }
 }
 
-pub type LionRoarFromTorsoStep<T> = Step<
+pub type LionRoarStep<T> = Step<
     T,
     Fuse<
-        EmitFn<Identity, actions::LionRoar, u8, EmitLionRoarFromTorso>,
+        EmitFn<Identity, actions::LionRoar, u8, EmitLionRoar>,
         AbsorbFn<Identity, actions::LionRoar, String, AbsorbLionRoar>,
     >,
 >;
