@@ -32,7 +32,6 @@ animal!(
 );
 
 struct Left;
-#[jungle_sdk::detect]
 impl Pulse<ConditionalAnimal> for Left {
     type Action = LeftAction;
     type Aspect = Identity;
