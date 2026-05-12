@@ -1,9 +1,14 @@
 use proc_macro::TokenStream;
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote, quote_spanned};
+use std::collections::HashSet;
+use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::visit::Visit;
-use syn::{parse_macro_input, parse_quote, DeriveInput, Path};
+use syn::{
+    parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, DeriveInput, Expr,
+    GenericParam, ItemImpl, Meta, Path,
+};
 
 #[proc_macro]
 pub fn noop(input: TokenStream) -> TokenStream {
@@ -70,6 +75,23 @@ fn inception_derive_path() -> proc_macro2::TokenStream {
                 quote!(#sdk_path::inception::inception_derive)
             } else {
                 quote!(::inception::inception_derive)
+            }
+        }
+    }
+}
+
+fn inception_path() -> proc_macro2::TokenStream {
+    match crate_name("inception") {
+        Ok(FoundCrate::Itself) => quote!(crate),
+        Ok(FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => {
+            if let Some(sdk_path) = sdk_crate_path() {
+                quote!(#sdk_path::inception)
+            } else {
+                quote!(::inception)
             }
         }
     }
@@ -142,10 +164,7 @@ pub fn derive_journey(input: TokenStream) -> TokenStream {
         "JungleTraverseFlow",
         "JungleReplaceFlow",
     ]);
-    derive_with_properties(
-        input,
-        &properties,
-    )
+    derive_with_properties(input, &properties)
 }
 
 #[proc_macro_derive(Flow)]
@@ -202,11 +221,7 @@ pub fn journey(attr: TokenStream, input: TokenStream) -> TokenStream {
         "JungleTraverseFlow",
         "JungleReplaceFlow",
     ]);
-    expand_with_properties(
-        attr,
-        input,
-        &properties,
-    )
+    expand_with_properties(attr, input, &properties)
 }
 
 #[proc_macro_attribute]
@@ -225,6 +240,177 @@ pub fn animals(attr: TokenStream, input: TokenStream) -> TokenStream {
 pub fn actions(attr: TokenStream, input: TokenStream) -> TokenStream {
     let properties = jungle_types(&["Ident", "JungleActions"]);
     expand_with_properties(attr, input, &properties)
+}
+
+struct PrimitiveAttributes {
+    property: Path,
+}
+
+impl Parse for PrimitiveAttributes {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
+        let mut property = None;
+
+        for meta in metas {
+            match meta {
+                Meta::NameValue(nv) if nv.path.is_ident("property") => {
+                    if property.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            nv.path,
+                            "Duplicate `property` setting.",
+                        ));
+                    }
+                    let Expr::Path(path_expr) = nv.value else {
+                        return Err(syn::Error::new_spanned(
+                            nv.value,
+                            "Expected `property` to be a path.",
+                        ));
+                    };
+                    property = Some(path_expr.path);
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "Unknown `primitive` setting.",
+                    ));
+                }
+            }
+        }
+
+        let Some(property) = property else {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "Missing `property = ...`.",
+            ));
+        };
+
+        Ok(Self { property })
+    }
+}
+
+fn collect_ident_names(tokens: proc_macro2::TokenStream) -> HashSet<String> {
+    fn walk(stream: proc_macro2::TokenStream, names: &mut HashSet<String>) {
+        for tt in stream {
+            match tt {
+                proc_macro2::TokenTree::Ident(id) => {
+                    names.insert(id.to_string());
+                }
+                proc_macro2::TokenTree::Group(group) => walk(group.stream(), names),
+                proc_macro2::TokenTree::Punct(_) | proc_macro2::TokenTree::Literal(_) => {}
+            }
+        }
+    }
+
+    let mut names = HashSet::new();
+    walk(tokens, &mut names);
+    names
+}
+
+#[proc_macro_attribute]
+pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as syn::Item);
+    let syn::Item::Impl(item_impl) = input else {
+        return syn::Error::new_spanned(
+            input,
+            "This macro can only be applied to trait implementations.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let ItemImpl {
+        trait_: Some(_),
+        self_ty,
+        ..
+    } = &item_impl
+    else {
+        return syn::Error::new_spanned(
+            item_impl,
+            "This macro can only be applied to trait implementations.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let PrimitiveAttributes { property } = match syn::parse(attr) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    let self_ty_tokens = quote!(#self_ty).to_string();
+    let retained_params = item_impl
+        .generics
+        .params
+        .iter()
+        .filter(|param| match param {
+            GenericParam::Type(ty) => self_ty_tokens.contains(&ty.ident.to_string()),
+            GenericParam::Lifetime(lifetime) => {
+                self_ty_tokens.contains(&lifetime.lifetime.ident.to_string())
+            }
+            GenericParam::Const(const_param) => {
+                self_ty_tokens.contains(&const_param.ident.to_string())
+            }
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let retained_param_names = retained_params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .collect::<HashSet<_>>();
+    let dropped_param_names = item_impl
+        .generics
+        .params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .filter(|name| !retained_param_names.contains(name))
+        .collect::<HashSet<_>>();
+    let impl_generics = if retained_params.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#(#retained_params),*> }
+    };
+    let retained_where_predicates = item_impl
+        .generics
+        .where_clause
+        .as_ref()
+        .map(|where_clause| {
+            where_clause
+                .predicates
+                .iter()
+                .filter(|pred| {
+                    let used_names = collect_ident_names(quote!(#pred));
+                    !used_names
+                        .iter()
+                        .any(|name| dropped_param_names.contains(name))
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let impl_where_clause = if retained_where_predicates.is_empty() {
+        quote! {}
+    } else {
+        quote! { where #(#retained_where_predicates),* }
+    };
+
+    let inception = inception_path();
+    quote! {
+        #item_impl
+        const _: () = {
+            impl #impl_generics #inception::IsPrimitive<#property> for #self_ty #impl_where_clause {
+                type Is = #inception::True;
+            }
+        };
+    }
+    .into()
 }
 
 #[proc_macro_attribute]

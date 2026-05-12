@@ -1,5 +1,3 @@
-extern crate jungle_sdk as inception;
-
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
@@ -212,11 +210,8 @@ type StaticInnerConditional = Conditional<
 
 type StaticInnerLoop = While<StaticLoopCondition, StaticInnerConditional>;
 
-type StaticOuterConditional = Conditional<
-    StaticOuterCondition,
-    StaticInnerLoop,
-    Step<StaticAnimal, StaticAddTwo>,
->;
+type StaticOuterConditional =
+    Conditional<StaticOuterCondition, StaticInnerLoop, Step<StaticAnimal, StaticAddTwo>>;
 
 type StaticOuterLoopFlow = While<StaticOuterLoopCondition, StaticOuterConditional>;
 
@@ -348,12 +343,12 @@ impl Observe for ObserveAnimal {
     }
 }
 
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
 impl jungle_sdk::types::Animals for ObserveAnimal {
     type List = jungle_sdk::typosaurus::collections::sp::Node<U1, ObserveAnimal>;
 }
 
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
 impl jungle_sdk::types::Identified for ObserveAnimal {
     type Id = U1;
 }

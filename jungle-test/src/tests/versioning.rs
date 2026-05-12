@@ -109,11 +109,11 @@ impl Observe for LegacyAnimal {
         *state
     }
 }
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
 impl AnimalsTrait for LegacyAnimal {
     type List = jungle_sdk::typosaurus::collections::sp::Node<U33, LegacyAnimal>;
 }
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
 impl jungle_sdk::types::Identified for LegacyAnimal {
     type Id = U33;
 }
@@ -140,11 +140,11 @@ impl Observe for ModernAnimal {
         *state
     }
 }
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
 impl AnimalsTrait for ModernAnimal {
     type List = jungle_sdk::typosaurus::collections::sp::Node<U33, ModernAnimal>;
 }
-#[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
 impl jungle_sdk::types::Identified for ModernAnimal {
     type Id = U33;
 }

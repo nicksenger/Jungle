@@ -1,7 +1,4 @@
 #[cfg(test)]
-extern crate jungle_sdk as inception;
-
-#[cfg(test)]
 mod tests {
     use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 
@@ -37,12 +34,12 @@ mod tests {
                 }
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleActions)]
             impl jungle_sdk::types::Actions for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
@@ -94,12 +91,12 @@ mod tests {
                 }
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleActions)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleActions)]
             impl jungle_sdk::types::Actions for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
@@ -215,12 +212,12 @@ mod tests {
                 type Adapter = jungle_sdk::types::NoopPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
             impl jungle_sdk::types::Animals for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
@@ -246,12 +243,12 @@ mod tests {
                 type Adapter = jungle_sdk::types::TraitPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
             impl jungle_sdk::types::Animals for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
@@ -277,12 +274,12 @@ mod tests {
                 type Adapter = jungle_sdk::types::NoopPerturbation;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
             impl jungle_sdk::types::Animals for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
-            #[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
             impl jungle_sdk::types::Identified for $name {
                 type Id = $id;
             }
