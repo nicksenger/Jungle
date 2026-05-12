@@ -12,3 +12,8 @@ redb = ["dep:redb"]
 tracing = "0.1"
 sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls"] }
 redb = { version = "4.1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }

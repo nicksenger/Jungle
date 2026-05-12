@@ -2573,6 +2573,9 @@ version = "0.1.0"
 dependencies = [
  "redb",
  "sqlx",
+ "testcontainers",
+ "testcontainers-modules",
+ "tokio",
  "tracing",
 ]
 
