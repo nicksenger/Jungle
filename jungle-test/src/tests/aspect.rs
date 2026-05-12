@@ -1,11 +1,11 @@
-use jungle::types as jungle_types;
-use jungle::types::{
+use jungle_sdk::types as jungle_types;
+use jungle_sdk::types::{
     Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, Lens,
     LoopCondition, Pulse, Running, Step, Waiting, While,
 };
-use jungle::typosaurus::list;
-use jungle::typosaurus::num::consts::{U0, U1, U2, U3};
-use jungle::{Journey, Optic};
+use jungle_sdk::typosaurus::list;
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
+use jungle_sdk::{Journey, Optic};
 use std::future::ready;
 use std::marker::PhantomData;
 
@@ -297,7 +297,7 @@ async fn executor_runs_aspected_steps() {
             0 => {
                 let request: i32 = match tiger.next_request() {
                     Ok(request) => request,
-                    Err(jungle::types::ExecutorError::Complete) => break,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
                 Eat::act(&(), request).await.expect("eat should succeed")
@@ -305,7 +305,7 @@ async fn executor_runs_aspected_steps() {
             1 => {
                 let request: i32 = match tiger.next_request() {
                     Ok(request) => request,
-                    Err(jungle::types::ExecutorError::Complete) => break,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
                 Sleep::act(&(), request)
@@ -315,7 +315,7 @@ async fn executor_runs_aspected_steps() {
             2 => {
                 let request: () = match tiger.next_request() {
                     Ok(request) => request,
-                    Err(jungle::types::ExecutorError::Complete) => break,
+                    Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
                 Hunt::act(&(), request).await.expect("hunt should succeed")
@@ -381,7 +381,7 @@ async fn executor_advances_with_executable_requests_and_dynamic_action_order() {
     loop {
         let request = match tiger.next_executable_request(0i32) {
             Ok(request) => request,
-            Err(jungle::types::ExecutorError::Complete) => break,
+            Err(jungle_sdk::types::ExecutorError::Complete) => break,
             Err(err) => panic!("tiger flow should execute through dynamic requests: {err}"),
         };
         let completion = request.run().await.expect("tiger action should execute");

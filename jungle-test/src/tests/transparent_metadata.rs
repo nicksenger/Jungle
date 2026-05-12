@@ -1,7 +1,7 @@
-use jungle::types::{
+use jungle_sdk::types::{
     ActionCompletion, Executor, Identity, ManualExecutor, NodeMetadata, Pulse, Step, Transparent,
 };
-use jungle::typosaurus::num::consts::{U30, U31};
+use jungle_sdk::typosaurus::num::consts::{U30, U31};
 use std::future::ready;
 
 action!(
@@ -46,7 +46,7 @@ impl NodeMetadata for FlowSectionMetadata {
 type BaseFlow = Step<TransparentAnimal, TransparentStep>;
 type TransparentFlow = Transparent<FlowSectionMetadata, BaseFlow>;
 
-#[derive(jungle::Journey)]
+#[derive(jungle_sdk::Journey)]
 struct TransparentJourney(TransparentFlow);
 
 #[test]

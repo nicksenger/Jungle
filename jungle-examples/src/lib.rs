@@ -1,14 +1,14 @@
-extern crate jungle as inception;
-extern crate jungle as jungle_types;
+extern crate jungle_sdk as inception;
+extern crate jungle_sdk as jungle_types;
 
-use jungle::core::JungleWorker;
-use jungle::server::ServerBuilder;
-use jungle::types::{
+use jungle_sdk::core::JungleWorker;
+use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::{
     Action, ActionCompletion, Animal, AnimalMember, Condition, Conditional, Ecosystem, Id,
     Identity, Join, LoopCondition, Observe, Pulse, Select, Sleep, Step, While,
 };
-use jungle::typosaurus::num::consts::{U0, U1, U10, U11, U12, U13, U14};
-use jungle::{Animals, Journey, JungleClient, Optic};
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U10, U11, U12, U13, U14};
+use jungle_sdk::{Animals, Journey, JungleClient, Optic};
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 use uuid::Uuid;
@@ -21,9 +21,9 @@ pub fn reserve_local_addr() -> SocketAddr {
         .expect("temporary udp socket should expose local address")
 }
 
-pub async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
+pub async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     for attempt in 0..40 {
-        match jungle::client::Client::builder()
+        match jungle_sdk::client::Client::builder()
             .remote(remote)
             .server_name("localhost")
             .build()
@@ -46,7 +46,7 @@ pub struct StaticState {
 }
 
 pub struct AddOneAction;
-impl jungle::types::ActionMember for AddOneAction {}
+impl jungle_sdk::types::ActionMember for AddOneAction {}
 impl Action for AddOneAction {
     type Id = Id<U10>;
     type Dependency = ();
@@ -63,7 +63,7 @@ impl Action for AddOneAction {
 }
 
 pub struct AddTwoAction;
-impl jungle::types::ActionMember for AddTwoAction {}
+impl jungle_sdk::types::ActionMember for AddTwoAction {}
 impl Action for AddTwoAction {
     type Id = Id<U11>;
     type Dependency = ();
@@ -80,7 +80,7 @@ impl Action for AddTwoAction {
 }
 
 pub struct FastAction;
-impl jungle::types::ActionMember for FastAction {}
+impl jungle_sdk::types::ActionMember for FastAction {}
 impl Action for FastAction {
     type Id = Id<U12>;
     type Dependency = ();
@@ -97,7 +97,7 @@ impl Action for FastAction {
 }
 
 pub struct SlowAction;
-impl jungle::types::ActionMember for SlowAction {}
+impl jungle_sdk::types::ActionMember for SlowAction {}
 impl Action for SlowAction {
     type Id = Id<U13>;
     type Dependency = ();
@@ -239,11 +239,11 @@ impl Animal for StaticAnimal {
     type Seed = StaticState;
     type Journey = StaticJourney;
 }
-impl jungle::types::AnimalObservation for StaticAnimal {
-    type Adapter = jungle::types::NoopObservation;
+impl jungle_sdk::types::AnimalObservation for StaticAnimal {
+    type Adapter = jungle_sdk::types::NoopObservation;
 }
-impl jungle::types::AnimalPerturbation for StaticAnimal {
-    type Adapter = jungle::types::NoopPerturbation;
+impl jungle_sdk::types::AnimalPerturbation for StaticAnimal {
+    type Adapter = jungle_sdk::types::NoopPerturbation;
 }
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -253,7 +253,7 @@ pub struct ObserveState {
 }
 
 pub struct BumpAction;
-impl jungle::types::ActionMember for BumpAction {}
+impl jungle_sdk::types::ActionMember for BumpAction {}
 impl Action for BumpAction {
     type Id = Id<U14>;
     type Dependency = ();
@@ -335,11 +335,11 @@ impl Animal for ObserveAnimal {
     type Seed = ObserveState;
     type Journey = ObserveJourney;
 }
-impl jungle::types::AnimalObservation for ObserveAnimal {
-    type Adapter = jungle::types::ObserveObservation;
+impl jungle_sdk::types::AnimalObservation for ObserveAnimal {
+    type Adapter = jungle_sdk::types::ObserveObservation;
 }
-impl jungle::types::AnimalPerturbation for ObserveAnimal {
-    type Adapter = jungle::types::NoopPerturbation;
+impl jungle_sdk::types::AnimalPerturbation for ObserveAnimal {
+    type Adapter = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for ObserveAnimal {
     type Appearance = ObserveState;
@@ -349,13 +349,13 @@ impl Observe for ObserveAnimal {
     }
 }
 
-#[jungle::inception::primitive(property = jungle::types::JungleAnimals)]
-impl jungle::types::Animals for ObserveAnimal {
-    type List = jungle::typosaurus::collections::sp::Node<U1, ObserveAnimal>;
+#[jungle_sdk::inception::primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for ObserveAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U1, ObserveAnimal>;
 }
 
-#[jungle::inception::primitive(property = jungle::types::Ident)]
-impl jungle::types::Identified for ObserveAnimal {
+#[jungle_sdk::inception::primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for ObserveAnimal {
     type Id = U1;
 }
 
@@ -372,7 +372,7 @@ impl From<&ObserveEcosystem> for () {
     fn from(_value: &ObserveEcosystem) -> Self {}
 }
 
-pub fn spawn_observe_runtime() -> (jungle::Client, Uuid) {
+pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
     let listen_addr = reserve_local_addr();
     let db_path = std::env::temp_dir().join(format!("jungle-examples-{}.redb", Uuid::new_v4()));
 
@@ -428,7 +428,7 @@ pub fn spawn_observe_runtime() -> (jungle::Client, Uuid) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jungle::types::{JourneyAst, JourneyAstSource};
+    use jungle_sdk::types::{JourneyAst, JourneyAstSource};
 
     #[test]
     fn static_journey_ast_shape_is_expanded_sequence() {

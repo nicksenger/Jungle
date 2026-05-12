@@ -1,11 +1,11 @@
-use jungle::core::JungleWorker;
-use jungle::server::ServerBuilder;
-use jungle::types::{
+use jungle_sdk::core::JungleWorker;
+use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::{
     Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Pulse, Sleep, Step, While,
 };
-use jungle::typosaurus::num::Unsigned;
-use jungle::{Animals, JungleClient, RunnerOut};
+use jungle_sdk::typosaurus::num::Unsigned;
+use jungle_sdk::{Animals, JungleClient, RunnerOut};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -71,9 +71,9 @@ impl From<&ReplayGateZoo> for ReplayGateDependency {
 }
 
 struct ReplayPreIncrementAction;
-impl jungle::types::ActionMember for ReplayPreIncrementAction {}
+impl jungle_sdk::types::ActionMember for ReplayPreIncrementAction {}
 impl Action for ReplayPreIncrementAction {
-    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U41>;
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U41>;
     type Dependency = ReplayGatePreDependency;
     type In = ();
     type Out = ();
@@ -89,9 +89,9 @@ impl Action for ReplayPreIncrementAction {
 }
 
 struct ReplayPostIncrementAction;
-impl jungle::types::ActionMember for ReplayPostIncrementAction {}
+impl jungle_sdk::types::ActionMember for ReplayPostIncrementAction {}
 impl Action for ReplayPostIncrementAction {
-    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U42>;
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U42>;
     type Dependency = ReplayGatePostDependency;
     type In = ();
     type Out = ();
@@ -107,9 +107,9 @@ impl Action for ReplayPostIncrementAction {
 }
 
 struct ReplayGateAction;
-impl jungle::types::ActionMember for ReplayGateAction {}
+impl jungle_sdk::types::ActionMember for ReplayGateAction {}
 impl Action for ReplayGateAction {
-    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U43>;
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U43>;
     type Dependency = ReplayGateDependency;
     type In = ();
     type Out = ();
@@ -244,7 +244,7 @@ type ReplayGateJourney = While<
 
 animal!(
     ReplayGateAnimal,
-    jungle::typosaurus::num::consts::U0,
+    jungle_sdk::typosaurus::num::consts::U0,
     ReplayGateState,
     ReplayGateJourney
 );
@@ -301,7 +301,7 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 
             let seed = postcard::to_allocvec(&ReplayGateState { phase: 0 })
                 .expect("seed should serialize");
-            let ordinal = <jungle::typosaurus::num::consts::U0 as Unsigned>::U32;
+            let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
             let journey_id = control_client
                 .start_journey(ordinal, 0, seed)
                 .await
@@ -415,9 +415,9 @@ impl From<&ReplayTimeoutZoo> for ReplayTimeoutPostDependency {
 }
 
 struct ReplayTimeoutPreIncrementAction;
-impl jungle::types::ActionMember for ReplayTimeoutPreIncrementAction {}
+impl jungle_sdk::types::ActionMember for ReplayTimeoutPreIncrementAction {}
 impl Action for ReplayTimeoutPreIncrementAction {
-    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U44>;
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U44>;
     type Dependency = ReplayTimeoutPreDependency;
     type In = ();
     type Out = ();
@@ -434,9 +434,9 @@ impl Action for ReplayTimeoutPreIncrementAction {
 }
 
 struct ReplayTimeoutPostIncrementAction;
-impl jungle::types::ActionMember for ReplayTimeoutPostIncrementAction {}
+impl jungle_sdk::types::ActionMember for ReplayTimeoutPostIncrementAction {}
 impl Action for ReplayTimeoutPostIncrementAction {
-    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U45>;
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U45>;
     type Dependency = ReplayTimeoutPostDependency;
     type In = ();
     type Out = ();
@@ -569,7 +569,7 @@ type ReplayTimeoutJourney = While<
 
 animal!(
     ReplayTimeoutAnimal,
-    jungle::typosaurus::num::consts::U0,
+    jungle_sdk::typosaurus::num::consts::U0,
     ReplayTimeoutState,
     ReplayTimeoutJourney
 );
@@ -642,7 +642,7 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
                 sleep_for_ms: 4_000,
             })
             .expect("timeout test seed should serialize");
-            let ordinal = <jungle::typosaurus::num::consts::U0 as Unsigned>::U32;
+            let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
             let journey_id = control_client
                 .start_journey(ordinal, 0, seed)
                 .await
@@ -745,9 +745,9 @@ async fn wait_for_completed(remote: SocketAddr, journey_id: uuid::Uuid, timeout:
     }
 }
 
-async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
+async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     for attempt in 0..40 {
-        match jungle::client::Client::builder()
+        match jungle_sdk::client::Client::builder()
             .remote(remote)
             .server_name("localhost")
             .build()

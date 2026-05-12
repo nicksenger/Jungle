@@ -1,11 +1,11 @@
-use jungle::core::JungleWorker;
-use jungle::server::ServerBuilder;
-use jungle::types::{
+use jungle_sdk::core::JungleWorker;
+use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::{
     Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Observe, Pulse, Sleep, Step, While,
 };
-use jungle::typosaurus::num::Unsigned;
-use jungle::{Animals, JungleClient, Optic};
+use jungle_sdk::typosaurus::num::Unsigned;
+use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -28,9 +28,9 @@ impl From<&SleepZoo> for AddDependency {
 }
 
 struct AddAction;
-impl jungle::types::ActionMember for AddAction {}
+impl jungle_sdk::types::ActionMember for AddAction {}
 impl Action for AddAction {
-    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U40>;
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
     type Dependency = AddDependency;
     type In = ();
     type Out = i32;
@@ -129,7 +129,7 @@ type SleepJourney = While<
 
 animal!(
     SleepAnimal,
-    jungle::typosaurus::num::consts::U0,
+    jungle_sdk::typosaurus::num::consts::U0,
     SleepState,
     SleepJourney,
     observe = true
@@ -180,7 +180,7 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
         sleep_for_ms: 250,
     })
     .expect("sleep test seed should serialize");
-    let ordinal = <jungle::typosaurus::num::consts::U0 as Unsigned>::U32;
+    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
         .start_journey(ordinal, 0, seed)
         .await
@@ -221,9 +221,9 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
     let _ = server_task.await;
 }
 
-async fn connect_client_with_retry(remote: SocketAddr) -> jungle::Client {
+async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     for attempt in 0..40 {
-        match jungle::client::Client::builder()
+        match jungle_sdk::client::Client::builder()
             .remote(remote)
             .server_name("localhost")
             .build()

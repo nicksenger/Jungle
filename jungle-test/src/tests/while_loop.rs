@@ -1,9 +1,9 @@
-use jungle::types::{
+use jungle_sdk::types::{
     ActionCompletion, Executor, Identity, LoopCondition, ManualExecutor, Pulse, Running, Step,
     Waiting, While,
 };
-use jungle::typosaurus::num::consts::U0;
-use jungle::Journey;
+use jungle_sdk::typosaurus::num::consts::U0;
+use jungle_sdk::Journey;
 use std::future::ready;
 
 action!(
@@ -100,7 +100,7 @@ fn executor_repeats_until_condition_fails() {
     let done = loop_executor
         .next_request_typed::<_, i32>((false, 3))
         .expect_err("terminal carry should end loop");
-    assert!(matches!(done, jungle::types::ExecutorError::Complete));
+    assert!(matches!(done, jungle_sdk::types::ExecutorError::Complete));
     assert!(loop_executor.is_complete());
     assert_eq!(loop_executor.into_state(), 3);
 }

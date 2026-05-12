@@ -1,6 +1,6 @@
 use jungle_persist::pg::PgStore;
 use jungle_persist::JungleStore;
-use jungle::server::ServerBuilder;
+use jungle_sdk::server::ServerBuilder;
 use redb::{Database, ReadableDatabase, TableDefinition};
 use sqlx::PgPool;
 use std::fs;

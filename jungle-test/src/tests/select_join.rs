@@ -1,8 +1,8 @@
-use jungle::types::{
+use jungle_sdk::types::{
     Action, ActionCompletion, ContextExecutor, Either, Executor, Identity, Join, Pulse, Select,
     Sleep, SleepDependency, Step,
 };
-use jungle::{Journey, Optic};
+use jungle_sdk::{Journey, Optic};
 use std::time::Duration;
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -14,9 +14,9 @@ struct SelectJoinState {
 }
 
 struct TimedValueAction;
-impl jungle::types::ActionMember for TimedValueAction {}
+impl jungle_sdk::types::ActionMember for TimedValueAction {}
 impl Action for TimedValueAction {
-    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U60>;
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U60>;
     type Dependency = ();
     type In = (u64, i32);
     type Out = i32;
@@ -34,9 +34,9 @@ impl Action for TimedValueAction {
 }
 
 struct ContextTimedValueAction;
-impl jungle::types::ActionMember for ContextTimedValueAction {}
+impl jungle_sdk::types::ActionMember for ContextTimedValueAction {}
 impl Action for ContextTimedValueAction {
-    type Id = jungle::types::Id<jungle::typosaurus::num::consts::U61>;
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U61>;
     type Dependency = SleepDependency;
     type In = (u64, i32);
     type Out = i32;
@@ -121,7 +121,7 @@ struct SelectJourney(
 
 animal!(
     SelectAnimal,
-    jungle::typosaurus::num::consts::U0,
+    jungle_sdk::typosaurus::num::consts::U0,
     SelectJoinState,
     SelectJourney
 );
@@ -191,7 +191,7 @@ struct JoinJourney(
 
 animal!(
     JoinAnimal,
-    jungle::typosaurus::num::consts::U1,
+    jungle_sdk::typosaurus::num::consts::U1,
     SelectJoinState,
     JoinJourney
 );
@@ -242,7 +242,7 @@ type TimeoutJourney = Select<Step<TimeoutAnimal, TimeoutSleep>, Step<TimeoutAnim
 
 animal!(
     TimeoutAnimal,
-    jungle::typosaurus::num::consts::U2,
+    jungle_sdk::typosaurus::num::consts::U2,
     SelectJoinState,
     TimeoutJourney
 );
