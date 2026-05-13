@@ -3,13 +3,20 @@ use futures::{SinkExt, StreamExt};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use jungle_persist::JungleStore;
 use jungle_types::{BackendError, JourneyStatus, WireIn, WireOut};
+#[cfg(feature = "postgres")]
+use sqlx::postgres::PgListener;
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::info;
+#[cfg(feature = "postgres")]
+use tracing::warn;
 
 use crate::{JungleServer, Result, WireRx, WireTx};
+
+#[cfg(feature = "postgres")]
+const PG_JOURNEY_EVENTS_CHANNEL: &str = "jungle_journey_events";
 
 #[derive(Clone)]
 pub struct Server {
@@ -186,6 +193,8 @@ impl JungleServer for Server {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     let mut cursor = after_sequence_id;
+                    #[cfg(feature = "postgres")]
+                    let mut pg_listener = pg_listener_for_store(self.store.as_ref()).await;
                     loop {
                         let updates = self
                             .store
@@ -215,6 +224,21 @@ impl JungleServer for Server {
                             tx.close().await?;
                             info!("complete");
                             return Ok(());
+                        }
+
+                        #[cfg(feature = "postgres")]
+                        if let Some(listener) = pg_listener.as_mut() {
+                            match tokio::time::timeout(Duration::from_secs(5), listener.recv())
+                                .await
+                            {
+                                Ok(Ok(_)) => {}
+                                Ok(Err(err)) => {
+                                    warn!("journey updates listener recv failed: {err}");
+                                    pg_listener = None;
+                                }
+                                Err(_) => {}
+                            }
+                            continue;
                         }
 
                         sleep(Duration::from_millis(100)).await;
@@ -477,4 +501,23 @@ impl JungleServer for Server {
         info!("complete");
         Ok(())
     }
+}
+
+#[cfg(feature = "postgres")]
+async fn pg_listener_for_store(store: &dyn JungleStore) -> Option<PgListener> {
+    let pool = store.postgres_pool()?;
+    let mut listener = match PgListener::connect_with(&pool).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            warn!("failed to connect postgres listener: {err}");
+            return None;
+        }
+    };
+
+    if let Err(err) = listener.listen(PG_JOURNEY_EVENTS_CHANNEL).await {
+        warn!("failed to listen on postgres channel {PG_JOURNEY_EVENTS_CHANNEL}: {err}");
+        return None;
+    }
+
+    Some(listener)
 }

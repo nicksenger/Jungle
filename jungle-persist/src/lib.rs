@@ -86,6 +86,11 @@ pub trait JungleStore: DynClone + Send + Sync {
         wake_at_unix_ms: i64,
     ) -> Result<()>;
     async fn poll_timers(&self) -> Result<Option<()>>;
+
+    #[cfg(feature = "postgres")]
+    fn postgres_pool(&self) -> Option<sqlx::PgPool> {
+        None
+    }
 }
 
 dyn_clone::clone_trait_object!(JungleStore);

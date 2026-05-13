@@ -2627,6 +2627,7 @@ dependencies = [
  "quinn",
  "rcgen",
  "rustls",
+ "sqlx",
  "thiserror 1.0.69",
  "tokio",
  "tracing",

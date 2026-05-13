@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = []
-postgres = ["jungle-persist/postgres"]
+postgres = ["jungle-persist/postgres", "dep:sqlx"]
 redb = ["jungle-persist/redb"]
 
 [dependencies]
@@ -25,3 +25,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "ti
 tracing = "0.1"
 tracing-futures = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls"] }

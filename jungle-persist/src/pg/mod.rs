@@ -10,6 +10,8 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::Row;
 use uuid::Uuid;
 
+const PG_JOURNEY_EVENTS_CHANNEL: &str = "jungle_journey_events";
+
 #[derive(Debug, Clone)]
 pub struct PgStore {
     pool: sqlx::PgPool,
@@ -18,6 +20,16 @@ pub struct PgStore {
 impl PgStore {
     pub fn builder() -> PgStoreBuilder {
         PgStoreBuilder::default()
+    }
+
+    async fn notify_journey_event(&self, journey_id: Uuid) -> Result<()> {
+        sqlx::query("SELECT pg_notify($1, $2)")
+            .bind(PG_JOURNEY_EVENTS_CHANNEL)
+            .bind(journey_id.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        Ok(())
     }
 }
 
@@ -706,6 +718,8 @@ impl JungleStore for PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
+        self.notify_journey_event(journey_id).await?;
+
         Ok(())
     }
 
@@ -856,7 +870,13 @@ impl JungleStore for PgStore {
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
 
+        self.notify_journey_event(due.journey_id).await?;
+
         Ok(Some(()))
+    }
+
+    fn postgres_pool(&self) -> Option<sqlx::PgPool> {
+        Some(self.pool.clone())
     }
 }
 
