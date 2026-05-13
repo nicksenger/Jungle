@@ -53,4 +53,3 @@ fn main() {
         .view_animal::<jungle_zoo::animals::gorilla::Gorilla>()
         .expect("jungle-view example should launch viewer");
 }
-

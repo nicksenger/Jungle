@@ -180,7 +180,7 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
     })
     .expect("sleep test seed should serialize");
     let journey_id = client
-        .start_journey_for::<SleepAnimal>(seed)
+        .start_journey::<SleepAnimal>(seed)
         .await
         .expect("start_journey should succeed for sleep flow");
 

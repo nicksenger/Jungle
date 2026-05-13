@@ -20,30 +20,12 @@ pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
-    /// Start a journey and provide the generation for the target animal id.
-    ///
-    /// Servers may reject creation when their latest known generation is older than `generation`.
-    async fn start_journey(
-        &self,
-        animal_id: u32,
-        generation: u32,
-        seed: Vec<u8>,
-    ) -> Result<Uuid, ExecutorError>;
-    async fn start_journey_for<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: Animal,
-        A::Id: AnimalIdValue + Send + Sync,
-        A::Generation: Unsigned + Send + Sync,
-    {
-        // Typed callers pin journey creation to the generation compiled into `A`.
-        self.start_journey(
-            <A::Id as AnimalIdValue>::U32,
-            <A::Generation as Unsigned>::U32,
-            seed,
-        )
-        .await
-    }
+        A::Id: AnimalIdValue,
+        A::Generation: Unsigned;
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError>;
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError>;
     async fn animal_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError>;

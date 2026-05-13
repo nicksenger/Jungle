@@ -178,7 +178,7 @@ async fn client_exchanges_messages_with_mock_server() {
     let client = connect_client_with_retry(listen_addr).await;
 
     let created_flow = client
-        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
     assert_eq!(created_flow, journey_id);
@@ -303,7 +303,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -356,7 +356,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -437,7 +437,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -688,11 +688,11 @@ async fn poll_work_is_scoped_by_namespace() {
     let beta = connect_client_with_retry_namespace(listen_addr, "beta").await;
 
     let alpha_id = alpha
-        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("alpha start_journey should succeed");
     let beta_id = beta
-        .start_journey_for::<ConnectionAnimal9>(vec![4, 5, 6])
+        .start_journey::<ConnectionAnimal9>(vec![4, 5, 6])
         .await
         .expect("beta start_journey should succeed");
 

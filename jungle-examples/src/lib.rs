@@ -210,8 +210,8 @@ pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
     .expect("observe seed should serialize");
 
     let journey_id = setup_runtime
-        .block_on(client.start_journey_for::<ObserveAnimal>(seed))
-        .expect("start_journey_for observe animal should succeed");
+        .block_on(client.start_journey::<ObserveAnimal>(seed))
+        .expect("start_journey observe animal should succeed");
 
     (client, journey_id)
 }
@@ -256,7 +256,7 @@ where
 pub fn spawn_gorilla_runtime_by_animal() -> (jungle_sdk::Client, Uuid) {
     spawn_gorilla_runtime_with_start(|runtime, client, seed| {
         runtime
-            .block_on(client.start_journey_for::<jungle_zoo::animals::gorilla::Gorilla>(seed))
-            .expect("start_journey_for gorilla should succeed")
+            .block_on(client.start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed))
+            .expect("start_journey gorilla should succeed")
     })
 }

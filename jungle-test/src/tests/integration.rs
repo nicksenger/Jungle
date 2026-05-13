@@ -428,7 +428,7 @@ async fn redb_client_worker_flow_runs_to_completion() {
     })
     .expect("seed should serialize");
     let journey_id = client
-        .start_journey_for::<IntegrationAnimal>(seed)
+        .start_journey::<IntegrationAnimal>(seed)
         .await
         .expect("start_journey should succeed");
     let perturb_payload = postcard::to_allocvec(&IntegrationPerturbation { delta: 1000 })
@@ -541,7 +541,7 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
     })
     .expect("seed should serialize");
     let journey_id = client
-        .start_journey_for::<IntegrationAnimal>(seed)
+        .start_journey::<IntegrationAnimal>(seed)
         .await
         .expect("start_journey should succeed");
 

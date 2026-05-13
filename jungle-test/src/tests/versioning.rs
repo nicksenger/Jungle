@@ -255,9 +255,9 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
 
     let seed = postcard::to_allocvec(&0_i32).expect("seed should serialize");
     let journey_id = client
-        .start_journey_for::<LegacyAnimal>(seed)
+        .start_journey::<LegacyAnimal>(seed)
         .await
-        .expect("start_journey_for legacy should succeed");
+        .expect("start_journey legacy should succeed");
 
     let worker = JungleWorker::new(VersionedZoo, client.clone());
     let worker_future = worker.spawn();
@@ -330,7 +330,7 @@ async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
 
     let seed = postcard::to_allocvec(&0_i32).expect("seed should serialize");
     let err = client
-        .start_journey_for::<FutureAnimal>(seed)
+        .start_journey::<FutureAnimal>(seed)
         .await
         .expect_err("start_journey should fail when client generation is ahead");
     let message = err.to_string();

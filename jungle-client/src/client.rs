@@ -1,9 +1,9 @@
 use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
-    AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError,
-    JourneyEvent, JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders, SupportedAnimal, WireIn,
-    WireOut, Work,
+    Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem,
+    ExecutorError, JourneyEvent, JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders,
+    SupportedAnimal, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -18,6 +18,7 @@ use tokio::io::AsyncReadExt;
 use tracing::{error, info};
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
 use typosaurus::collections::Container;
+use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
@@ -383,25 +384,8 @@ impl<TJungle> Client<TJungle> {
             .map_err(Self::transport_error)?;
         Ok(JourneyUpdateSubscription { recv })
     }
-}
 
-impl<TJungle> Drop for Client<TJungle> {
-    fn drop(&mut self) {
-        self.conn.close(0u32.into(), b"done");
-        self.endpoint.close(0u32.into(), b"done");
-    }
-}
-
-#[async_trait]
-impl<TJungle> JungleClient for Client<TJungle>
-where
-    TJungle: Ecosystem,
-    TJungle::Animals: Animals,
-    <TJungle::Animals as Animals>::List: FlattenNodes,
-    SPFlatten<<TJungle::Animals as Animals>::List>: StripAnimalHeaders,
-    AnimalSet<TJungle::Animals>: Container,
-{
-    async fn start_journey(
+    pub(crate) async fn start_journey_by_id(
         &self,
         animal_id: u32,
         generation: u32,
@@ -428,9 +412,41 @@ where
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
-                "unexpected non-journey-created response for start_journey".to_string(),
+                "unexpected non-journey-created response for start_journey_by_id".to_string(),
             )),
         }
+    }
+}
+
+impl<TJungle> Drop for Client<TJungle> {
+    fn drop(&mut self) {
+        self.conn.close(0u32.into(), b"done");
+        self.endpoint.close(0u32.into(), b"done");
+    }
+}
+
+#[async_trait]
+impl<TJungle> JungleClient for Client<TJungle>
+where
+    TJungle: Ecosystem,
+    TJungle::Animals: Animals,
+    <TJungle::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<TJungle::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<TJungle::Animals>: Container,
+{
+    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    where
+        Self: Sized,
+        A: Animal,
+        A::Id: AnimalIdValue,
+        A::Generation: Unsigned,
+    {
+        self.start_journey_by_id(
+            <A::Id as AnimalIdValue>::U32,
+            <A::Generation as Unsigned>::U32,
+            seed,
+        )
+        .await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
