@@ -215,3 +215,62 @@ pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
 
     (client, journey_id)
 }
+
+fn spawn_gorilla_runtime_with_start<F>(start_journey: F) -> (jungle_sdk::Client, Uuid)
+where
+    F: FnOnce(&tokio::runtime::Runtime, &jungle_sdk::Client, Vec<u8>) -> Uuid,
+{
+    let listen_addr = reserve_local_addr();
+    let db_path = std::env::temp_dir().join(format!("jungle-examples-{}.redb", Uuid::new_v4()));
+
+    std::thread::spawn({
+        let db_path = db_path.clone();
+        move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("server runtime should start");
+            runtime.block_on(async move {
+                let _ = ServerBuilder::new()
+                    .listen(listen_addr)
+                    .redb_path(db_path)
+                    .run()
+                    .await;
+            });
+        }
+    });
+
+    let setup_runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("setup runtime should start");
+
+    let client = setup_runtime.block_on(connect_client_with_retry(listen_addr));
+    let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
+        .expect("gorilla seed should serialize");
+    let journey_id = start_journey(&setup_runtime, &client, seed);
+
+    (client, journey_id)
+}
+
+pub fn spawn_gorilla_runtime_by_animal() -> (jungle_sdk::Client, Uuid) {
+    spawn_gorilla_runtime_with_start(|runtime, client, seed| {
+        runtime
+            .block_on(client.start_journey_for::<jungle_zoo::animals::gorilla::Gorilla>(seed))
+            .expect("start_journey_for gorilla should succeed")
+    })
+}
+
+pub fn spawn_gorilla_runtime_by_id() -> (jungle_sdk::Client, Uuid) {
+    type Gorilla = jungle_zoo::animals::gorilla::Gorilla;
+
+    spawn_gorilla_runtime_with_start(|runtime, client, seed| {
+        runtime
+            .block_on(client.start_journey(
+                <<Gorilla as jungle_sdk::types::Animal>::Id as jungle_sdk::types::AnimalIdValue>::U32,
+                <<Gorilla as jungle_sdk::types::Animal>::Generation as jungle_sdk::typosaurus::num::Unsigned>::U32,
+                seed,
+            ))
+            .expect("start_journey gorilla by id should succeed")
+    })
+}
