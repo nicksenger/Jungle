@@ -80,7 +80,8 @@ fn main() {
             .enable_all()
             .build()
             .expect("setup runtime should start");
-        let client = setup_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
+        let client =
+            setup_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
         let worker_client =
             setup_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
 

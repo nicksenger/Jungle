@@ -14,15 +14,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
 
-#[derive(
-    Optic,
-    Clone,
-    Debug,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize
-)]
+#[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct State {
     pub age: u32,
     pub vitals: VitalReadings,
@@ -385,19 +377,22 @@ impl Pulse<Gorilla> for GorillaMakeSound {
     }
 }
 
-pub type GorillaFeedFlow = (
+#[derive(jungle_sdk::Journey)]
+pub struct GorillaFeedFlow(
     Step<Gorilla, GorillaPeelFruit>,
     Step<Gorilla, GorillaEat>,
     Step<Gorilla, GorillaRest>,
 );
 
-pub type GorillaToolSocialFlow = (
+#[derive(jungle_sdk::Journey)]
+pub struct GorillaToolSocialFlow(
     Step<Gorilla, GorillaUseTool>,
     Step<Gorilla, GorillaChestBeat>,
     Step<Gorilla, GorillaMakeSound>,
 );
 
-pub type GorillaSimpleSocialFlow = (Step<Gorilla, GorillaMakeSound>, Step<Gorilla, GorillaRest>);
+#[derive(jungle_sdk::Journey)]
+pub struct GorillaSimpleSocialFlow(Step<Gorilla, GorillaMakeSound>, Step<Gorilla, GorillaRest>);
 
 pub type GorillaActiveFlow = Conditional<
     GorillaIsHungry,
@@ -405,19 +400,22 @@ pub type GorillaActiveFlow = Conditional<
     Conditional<GorillaCanUseTools, GorillaToolSocialFlow, GorillaSimpleSocialFlow>,
 >;
 
-pub type GorillaDayFlow = (
+#[derive(jungle_sdk::Journey)]
+pub struct GorillaDayFlow(
     Step<Gorilla, GorillaEvaluateActivityWindow>,
     Conditional<GorillaIsActiveNow, GorillaActiveFlow, Step<Gorilla, GorillaRest>>,
     Step<Gorilla, GorillaTickPerceivedTime>,
 );
 
-pub type GorillaYearFlow = (
+#[derive(jungle_sdk::Journey)]
+pub struct GorillaYearFlow(
     Step<Gorilla, GorillaBirthday>,
     While<GorillaDaylightRemaining, GorillaDayFlow>,
     Step<Gorilla, GorillaAdvanceAge>,
 );
 
-pub type GorillaJourney = (
+#[derive(jungle_sdk::Journey)]
+pub struct GorillaJourney(
     Step<Gorilla, GorillaBirth>,
     While<GorillaStillGrowing, GorillaYearFlow>,
 );
