@@ -12,3 +12,4 @@ fn main() {
         .view_live_animal::<jungle_zoo::animals::gorilla::Gorilla, _>(client, journey_id)
         .expect("jungle-observe example should launch viewer");
 }
+
