@@ -428,9 +428,8 @@ async fn redb_client_worker_flow_runs_to_completion() {
         after_steps: 0,
     })
     .expect("seed should serialize");
-    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
-        .start_journey(ordinal, 0, seed)
+        .start_journey_for::<IntegrationAnimal>(seed)
         .await
         .expect("start_journey should succeed");
     let perturb_payload = postcard::to_allocvec(&IntegrationPerturbation { delta: 1000 })
