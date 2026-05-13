@@ -1,7 +1,8 @@
-use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::{JourneyStatus, SupportedAnimal, Work};
 use jungle_sdk::JungleClient;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 fn main() {
@@ -30,7 +31,8 @@ fn main() {
     }
 
     if dump_graph {
-        let graph = jungle_viewer::debug_graph_for_animal::<jungle_zoo::probe::ProbeAnimal>();
+        let graph =
+            jungle_viewer::debug_graph_for_animal::<jungle_zoo::animals::gorilla::Gorilla>();
         println!("nodes:");
         for node in &graph.nodes {
             println!("  {} {}", node.id, node.label);
@@ -46,7 +48,7 @@ fn main() {
     }
 
     let mut viewer =
-        jungle_viewer::JungleViewerBuilder::new().title("Jungle View Example (probe::ProbeAnimal)");
+        jungle_viewer::JungleViewerBuilder::new().title("Jungle View Example (zoo::Gorilla)");
     if let Some(path) = screenshot {
         viewer = viewer.screenshot_path(path);
     }
@@ -96,17 +98,21 @@ fn main() {
             });
         });
 
-        let seed = postcard::to_allocvec(&()).expect("probe seed should serialize");
+        let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
+            .expect("gorilla seed should serialize");
         let journey_id = setup_runtime
-            .block_on(client.start_journey::<jungle_zoo::probe::ProbeAnimal>(seed))
-            .expect("start_journey probe should succeed");
+            .block_on(client.start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed))
+            .expect("start_journey gorilla should succeed");
 
         viewer
-            .view_live_animal::<jungle_zoo::probe::ProbeAnimal, _>(client.clone(), journey_id)
+            .view_live_animal::<jungle_zoo::animals::gorilla::Gorilla, _>(
+                client.clone(),
+                journey_id,
+            )
             .expect("jungle-view example should launch live viewer");
     } else {
         viewer
-            .view_animal::<jungle_zoo::probe::ProbeAnimal>()
+            .view_animal::<jungle_zoo::animals::gorilla::Gorilla>()
             .expect("jungle-view example should launch viewer");
     }
 }
