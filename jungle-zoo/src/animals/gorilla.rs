@@ -423,12 +423,34 @@ pub struct GorillaJourney(
 pub struct Gorilla;
 impl AnimalMember for Gorilla {}
 
+pub struct ProbeStep;
+impl<A: Animal> jungle_sdk::types::Pulse<A> for ProbeStep {
+    type Action = crate::probe::ProbeAction;
+    type Aspect = jungle_sdk::types::Identity;
+    type CarryIn = ();
+    type CarryOut = ();
+
+    fn emit(
+        _state: &<A as Animal>::State,
+        _input: Self::CarryIn,
+    ) -> <Self::Action as jungle_sdk::types::Action>::In {
+    }
+
+    fn absorb(
+        _state: &mut <A as Animal>::State,
+        _output: jungle_sdk::types::ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
+    }
+}
+
+#[derive(jungle_sdk::Journey)]
+pub struct ProbeJourney(jungle_sdk::types::Step<Gorilla, ProbeStep>);
 impl Animal for Gorilla {
     type Id = Id<U0>;
     type Generation = U0;
     type State = State;
     type Seed = TemporalState;
-    type Journey = GorillaJourney;
+    type Journey = ProbeJourney;
 }
 
 impl AnimalObservation for Gorilla {
