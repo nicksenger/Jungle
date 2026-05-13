@@ -450,7 +450,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = State;
     type Seed = TemporalState;
-    type Journey = GorillaJourney;
+    type Journey = ProbeJourney;
 }
 
 impl AnimalObservation for Gorilla {
