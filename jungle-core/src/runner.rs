@@ -41,7 +41,8 @@ where
     ) -> Result<A::State, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         let mut executor = self.new_executor::<A>(state);
         self.emit_initial_appearance::<A>(&executor, journey_id, &mut tx)
@@ -61,7 +62,8 @@ where
     pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<T, A>
     where
         A: Animal,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         ContextExecutor::new(Arc::clone(&self.jungle), state)
     }
@@ -74,7 +76,8 @@ where
     ) -> Result<(), ExecutorError>
     where
         A: Animal + AnimalObservation,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         if let Some(appearance) =
             <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(
@@ -101,7 +104,8 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         while !executor.is_complete() {
             process_perturbations(executor, journey_id, tx).await?;
@@ -151,7 +155,8 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         let sleep_out = postcard::to_allocvec(&())
             .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
@@ -179,7 +184,8 @@ async fn apply_completion_and_emit_appearance<T, A>(
 where
     T: 'static,
     A: Animal + AnimalObservation,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     match &completion {
         Ok(output) => {
@@ -245,7 +251,8 @@ async fn process_perturbations<A, Ctx>(
 where
     A: Animal + AnimalPerturbation,
     Ctx: 'static,
-    A::Journey: BuildFlowWithContext<(Arc<Ctx>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<Ctx>, DynFlow<A::State>), Output = (Arc<Ctx>, DynFlow<A::State>)>,
 {
     if !<<A as AnimalPerturbation>::Adapter as PerturbationAdapter<A>>::enabled() {
         return Ok(());

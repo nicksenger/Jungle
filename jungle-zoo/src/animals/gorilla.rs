@@ -444,7 +444,10 @@ impl<A: Animal> jungle_sdk::types::Pulse<A> for ProbeStep {
 }
 
 #[derive(jungle_sdk::Journey)]
-pub struct ProbeJourney(jungle_sdk::types::Step<Gorilla, ProbeStep>);
+pub struct ProbeJourney(
+    jungle_sdk::types::Step<Gorilla, ProbeStep>,
+    jungle_sdk::types::Step<Gorilla, ProbeStep>,
+);
 impl Animal for Gorilla {
     type Id = Id<U0>;
     type Generation = U0;

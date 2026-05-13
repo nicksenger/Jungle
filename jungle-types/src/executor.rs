@@ -1653,13 +1653,13 @@ where
     A::CarryIn: DeserializeOwned,
     A::CarryOut: Serialize,
 {
-    type Output = DynFlow<T::State>;
+    type Output = (Arc<Context>, DynFlow<T::State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<T::State>)) -> Self::Output {
         steps.push(Box::new(
-            ContextualTypedErasedStep::<Context, Step<T, A>>::new(context),
+            ContextualTypedErasedStep::<Context, Step<T, A>>::new(Arc::clone(&context)),
         ));
-        steps
+        (context, steps)
     }
 }
 
@@ -1841,20 +1841,24 @@ where
     State: Clone + 'static,
     In: Clone + DeserializeOwned + Serialize + 'static,
     P: crate::Condition<(State, In)> + 'static,
-    L: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
+    L: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
+    R: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+        let (_, left) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
             Arc::clone(&context),
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
-            context,
+        let (_, right) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+            Arc::clone(&context),
             Vec::new(),
         ));
         let choose_left = Box::new(|state: &State, input: &In| {
@@ -1865,7 +1869,7 @@ where
             right,
             choose_left,
         )));
-        steps
+        (context, steps)
     }
 }
 
@@ -2055,26 +2059,30 @@ where
     State: 'static,
     C: LoopCondition<State, CarryIn = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
-    F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>> + 'static,
+    F: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + 'static,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
         let should_continue = Box::new(|state: &State, _input: &In| {
             <C as LoopCondition<State>>::should_continue(state)
         });
+        let context_for_body = Arc::clone(&context);
         let build_body = Box::new(move || {
-            <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
-                Arc::clone(&context),
-                Vec::new(),
-            ))
+            let (_, flow) = <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
+                (Arc::clone(&context_for_body), Vec::new()),
+            );
+            flow
         });
         steps.push(Box::new(WhileContextErasedFlow::<State, In>::new(
             should_continue,
             build_body,
         )));
-        steps
+        (context, steps)
     }
 }
 
@@ -2082,10 +2090,12 @@ where
 impl<Context, State, In, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
     for Transparent<M, F>
 where
-    F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
+    F: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
         <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
@@ -2098,24 +2108,28 @@ where
     Context: 'static,
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
-    L: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
+    L: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
+    R: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+        let (_, left) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
             Arc::clone(&context),
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
-            context,
+        let (_, right) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+            Arc::clone(&context),
             Vec::new(),
         ));
         steps.push(Box::new(SelectContextErasedFlow::<State>::new(left, right)));
-        steps
+        (context, steps)
     }
 }
 
@@ -2125,24 +2139,28 @@ where
     Context: 'static,
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
-    L: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
+    L: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
+    R: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+        let (_, left) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
             Arc::clone(&context),
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
-            context,
+        let (_, right) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+            Arc::clone(&context),
             Vec::new(),
         ));
         steps.push(Box::new(JoinContextErasedFlow::<State>::new(left, right)));
-        steps
+        (context, steps)
     }
 }
 
@@ -2192,7 +2210,10 @@ fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {
 pub struct ContextExecutor<Context, A>
 where
     A: Animal,
-    A::Journey: BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<A::State>),
+        Output = (Arc<Context>, DynFlow<A::State>),
+    >,
 {
     _context: core::marker::PhantomData<fn() -> Context>,
     state: Option<A::State>,
@@ -2205,7 +2226,10 @@ impl<Context, A> ContextExecutor<Context, A>
 where
     Context: 'static,
     A: Animal,
-    A::Journey: BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<A::State>),
+        Output = (Arc<Context>, DynFlow<A::State>),
+    >,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -2234,11 +2258,10 @@ where
     }
 
     pub fn new(context: Arc<Context>, state: A::State) -> Self {
-        let mut steps =
-            <A::Journey as BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>)>>::push_steps((
-                context,
-                Vec::new(),
-            ));
+        let (_, mut steps) = <A::Journey as BuildFlowWithContext<(
+            Arc<Context>,
+            DynFlow<A::State>,
+        )>>::push_steps((context, Vec::new()));
         assign_flow_node_ids(&mut steps);
         let mut executor = Self {
             _context: core::marker::PhantomData,

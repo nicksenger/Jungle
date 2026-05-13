@@ -1,13 +1,14 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, AnimalActionSet, Executor, Id, Identity,
-    ManualExecutor, Pulse, Running, Step, Waiting,
+    Action, ActionCompletion, ActionRequest, AnimalActionSet, ContextExecutor, Executor, Id,
+    Identity, ManualExecutor, Pulse, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::{Animals, Journey};
 use std::future::ready;
+use std::sync::Arc;
 
 struct SeedAction;
 impl jungle_types::ActionMember for SeedAction {}
@@ -86,6 +87,11 @@ animal!(ProgressAnimal, U0, i32, ProgressJourney);
 
 #[derive(Animals)]
 struct ProgressAnimals(ProgressAnimal);
+
+struct ProgressContext;
+impl From<&ProgressContext> for () {
+    fn from(_value: &ProgressContext) -> Self {}
+}
 
 type SeedStep = Step<ProgressAnimal, Seed>;
 type FinishStep = Step<ProgressAnimal, Finish>;
@@ -170,6 +176,29 @@ fn executor_advance_to_end_runs_remaining_flow() {
 #[test]
 fn executor_threads_previous_emitted_output_into_next_input() {
     let mut executor = Executor::<ProgressAnimal>::new(0);
+
+    let request_seed: i32 = executor.next_request().expect("seed request");
+    assert_eq!(request_seed, 1);
+    let emitted_seed: i32 = executor
+        .complete(Ok::<i32, ()>(8))
+        .expect("seed completion");
+    assert_eq!(emitted_seed, 8);
+
+    let request_finish: i32 = executor.next_request().expect("finish request");
+    assert_eq!(request_finish, 16);
+    let emitted_finish: i32 = executor
+        .complete(Ok::<i32, ()>(36))
+        .expect("finish completion");
+    assert_eq!(emitted_finish, 36);
+
+    assert!(executor.is_complete());
+    assert_eq!(executor.into_state(), 36);
+}
+
+#[test]
+fn context_executor_progresses_multi_step_derived_journey() {
+    let mut executor =
+        ContextExecutor::<ProgressContext, ProgressAnimal>::new(Arc::new(ProgressContext), 0);
 
     let request_seed: i32 = executor.next_request().expect("seed request");
     assert_eq!(request_seed, 1);

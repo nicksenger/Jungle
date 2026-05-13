@@ -285,7 +285,8 @@ struct SuspendedAnimalJourney<T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     journey_id: Uuid,
     sleep_node_id: u32,
@@ -296,7 +297,8 @@ impl<T, A> SuspendedJourney<T> for SuspendedAnimalJourney<T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     fn resume<'a>(
         &'a mut self,
@@ -388,8 +390,10 @@ where
     Head::Generation: Unsigned,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
-    Head::Journey:
-        BuildFlowWithContext<(Arc<T>, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
+    Head::Journey: BuildFlowWithContext<
+        (Arc<T>, DynFlow<Head::State>),
+        Output = (Arc<T>, DynFlow<Head::State>),
+    >,
     Tail: SupportedAnimalGenerations<T>,
     T: 'static,
 {
@@ -505,7 +509,8 @@ async fn replay_history<T, A>(
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     let mut index = 0usize;
     while !executor.is_complete() {
