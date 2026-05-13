@@ -3,7 +3,8 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jungle_types::{
-    ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
+    ClaimedAnimalPerturbation, JourneyEvent, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal,
+    Work,
 };
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -278,6 +279,59 @@ impl JungleStore for RedbStore {
             history.push(decode_runner_out(journey_id, kind, data)?);
         }
         Ok(history)
+    }
+
+    async fn journey_events_since(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<Vec<JourneyEvent>> {
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_events_since begin read failed: {err}"
+            ))
+        })?;
+        let events = read_tx.open_table(EVENTS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_events_since open events table failed: {err}"
+            ))
+        })?;
+        let iter = events.iter().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb journey_events_since iterate events failed: {err}"
+            ))
+        })?;
+
+        let mut rows: Vec<(u64, u8, Vec<u8>)> = Vec::new();
+        for entry in iter {
+            let (key, value) = entry.map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb journey_events_since read events entry failed: {err}"
+                ))
+            })?;
+            let (event_journey_id, sequence_id) =
+                decode_event_key(key.value(), "redb journey_events_since decode event key")?;
+            if event_journey_id != journey_id
+                || after_sequence_id.is_some_and(|after| sequence_id <= after)
+            {
+                continue;
+            }
+            let (kind, data) = decode_event_value(
+                value.value(),
+                "redb journey_events_since decode event value",
+            )?;
+            rows.push((sequence_id, kind, data));
+        }
+
+        rows.sort_by_key(|(sequence_id, _, _)| *sequence_id);
+        let mut updates = Vec::with_capacity(rows.len());
+        for (sequence_id, kind, data) in rows {
+            updates.push(JourneyEvent {
+                sequence_id,
+                event: decode_runner_out(journey_id, kind, data)?,
+            });
+        }
+        Ok(updates)
     }
 
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {

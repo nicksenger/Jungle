@@ -2,9 +2,12 @@ use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
-use jungle_types::{ClaimedAnimalPerturbation, OwnerWake, RunnerOut, SupportedAnimal, Work};
+use jungle_types::{
+    ClaimedAnimalPerturbation, JourneyEvent, OwnerWake, RunnerOut, SupportedAnimal, Work,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
+use sqlx::Row;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -169,6 +172,62 @@ impl JungleStore for PgStore {
             history.push(decode_history_row(journey_id, row.kind, row.data)?);
         }
         Ok(history)
+    }
+
+    async fn journey_events_since(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<Vec<JourneyEvent>> {
+        let after_sequence_id = after_sequence_id
+            .map(|seq| {
+                i64::try_from(seq).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "sequence id exceeds i64 range for postgres: {seq}"
+                    ))
+                })
+            })
+            .transpose()?;
+
+        let rows = sqlx::query(
+            r#"
+            SELECT sequence_id, kind, data
+            FROM events
+            WHERE journey_id = $1
+              AND sequence_id > COALESCE($2, -1)
+            ORDER BY sequence_id
+            "#,
+        )
+        .bind(journey_id)
+        .bind(after_sequence_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let mut updates = Vec::with_capacity(rows.len());
+        for row in rows {
+            let sequence_id_i64 = row
+                .try_get::<i64, _>("sequence_id")
+                .map_err(crate::PersistenceError::PostgresQuery)?;
+            let kind = row
+                .try_get::<i16, _>("kind")
+                .map_err(crate::PersistenceError::PostgresQuery)?;
+            let data = row
+                .try_get::<Vec<u8>, _>("data")
+                .map_err(crate::PersistenceError::PostgresQuery)?;
+
+            let sequence_id = u64::try_from(sequence_id_i64).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "negative sequence_id in postgres events: {}",
+                    sequence_id_i64
+                ))
+            })?;
+            updates.push(JourneyEvent {
+                sequence_id,
+                event: decode_history_row(journey_id, kind, data)?,
+            });
+        }
+        Ok(updates)
     }
 
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus> {

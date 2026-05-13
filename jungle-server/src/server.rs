@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use jungle_persist::JungleStore;
-use jungle_types::{BackendError, WireIn, WireOut};
+use jungle_types::{BackendError, JourneyStatus, WireIn, WireOut};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::sleep;
 use tracing::info;
 
 use crate::{JungleServer, Result, WireRx, WireTx};
@@ -174,6 +176,56 @@ impl JungleServer for Server {
                     let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
                         "journey_status is unavailable without a persistence backend".to_string(),
+                    )));
+                }
+            }
+            Some(WireIn::SubscribeJourneyUpdates {
+                journey_id,
+                after_sequence_id,
+            }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let mut cursor = after_sequence_id;
+                    loop {
+                        let updates = self
+                            .store
+                            .journey_events_since(journey_id, cursor)
+                            .await
+                            .map_err(|err| {
+                                crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                            })?;
+
+                        if !updates.is_empty() {
+                            for update in updates {
+                                cursor = Some(update.sequence_id);
+                                tx.send(Ok(WireOut::JourneyUpdate(update))).await?;
+                            }
+                            continue;
+                        }
+
+                        let status =
+                            self.store.journey_status(journey_id).await.map_err(|err| {
+                                crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                            })?;
+
+                        if matches!(
+                            status,
+                            JourneyStatus::Stopped | JourneyStatus::Completed | JourneyStatus::Dead
+                        ) {
+                            tx.close().await?;
+                            info!("complete");
+                            return Ok(());
+                        }
+
+                        sleep(Duration::from_millis(100)).await;
+                    }
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (journey_id, after_sequence_id);
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "subscribe_journey_updates is unavailable without a persistence backend"
+                            .to_string(),
                     )));
                 }
             }

@@ -280,6 +280,87 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 }
 
 #[tokio::test]
+async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+
+    let listen_addr = super::reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let journey_id = client
+        .start_journey(7, 0, vec![1, 2, 3])
+        .await
+        .expect("start_journey should succeed");
+
+    client
+        .action_input(journey_id, 12, vec![9, 9])
+        .await
+        .expect("action_input should succeed");
+    client
+        .action_success_output(journey_id, 12, vec![8])
+        .await
+        .expect("action_success_output should succeed");
+    client
+        .complete_journey(journey_id)
+        .await
+        .expect("complete_journey should succeed");
+
+    let mut updates = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("subscription should open");
+
+    let first = updates
+        .next_update()
+        .await
+        .expect("first update should decode")
+        .expect("first update should exist");
+    assert_eq!(first.sequence_id, 0);
+    assert!(matches!(
+        first.event,
+        RunnerOut::ActionInput {
+            node_id,
+            ref data,
+            uuid
+        } if node_id == 12 && data == &vec![9, 9] && uuid == journey_id
+    ));
+
+    let second = updates
+        .next_update()
+        .await
+        .expect("second update should decode")
+        .expect("second update should exist");
+    assert_eq!(second.sequence_id, 1);
+    assert!(matches!(
+        second.event,
+        RunnerOut::ActionSuccessOutput {
+            node_id,
+            ref data,
+            uuid
+        } if node_id == 12 && data == &vec![8] && uuid == journey_id
+    ));
+
+    let done = updates
+        .next_update()
+        .await
+        .expect("stream should finish cleanly");
+    assert!(done.is_none(), "terminal journey stream should close");
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
 async fn poll_timers_promotes_due_sleep_to_resume_work() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");

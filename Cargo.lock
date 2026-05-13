@@ -2524,6 +2524,7 @@ dependencies = [
  "quinn",
  "rustls",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "typosaurus",
  "uuid",

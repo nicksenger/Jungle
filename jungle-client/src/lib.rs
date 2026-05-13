@@ -13,7 +13,9 @@ use uuid::Uuid;
 pub mod client;
 pub mod mock;
 
-pub use client::{Client, ClientBuilder, ClientError, ClientResult};
+pub use client::{
+    Client, ClientBuilder, ClientError, ClientResult, JourneyUpdateSubscription, StepUpdate,
+};
 pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]

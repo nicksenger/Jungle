@@ -2,8 +2,8 @@ use crate::JungleClient;
 use async_trait::async_trait;
 use jungle_types::{
     AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError,
-    JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders, SupportedAnimal, WireIn, WireOut,
-    Work,
+    JourneyEvent, JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders, SupportedAnimal, WireIn,
+    WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -14,12 +14,117 @@ use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::io::AsyncReadExt;
 use tracing::{error, info};
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
 use typosaurus::collections::Container;
 use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
+
+#[derive(Debug, Clone)]
+pub enum StepUpdate {
+    Started {
+        sequence_id: u64,
+        journey_id: Uuid,
+        node_id: u32,
+        data: Vec<u8>,
+    },
+    Succeeded {
+        sequence_id: u64,
+        journey_id: Uuid,
+        node_id: u32,
+        data: Vec<u8>,
+    },
+    Failed {
+        sequence_id: u64,
+        journey_id: Uuid,
+        node_id: u32,
+        data: Vec<u8>,
+    },
+}
+
+pub struct JourneyUpdateSubscription {
+    recv: quinn::RecvStream,
+}
+
+impl JourneyUpdateSubscription {
+    pub async fn next_update(&mut self) -> Result<Option<JourneyEvent>, ExecutorError> {
+        let frame_len = match self.recv.read_u32().await {
+            Ok(frame_len) => frame_len,
+            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(err) => return Err(ExecutorError::ClientTransport(err.to_string())),
+        };
+
+        let mut payload = vec![0_u8; frame_len as usize];
+        self.recv
+            .read_exact(&mut payload)
+            .await
+            .map_err(|err| ExecutorError::ClientTransport(err.to_string()))?;
+
+        let response: Result<WireOut, BackendError> =
+            postcard::from_bytes(&payload).map_err(|err| {
+                ExecutorError::ClientTransport(format!("failed to decode wire output: {err}"))
+            })?;
+
+        match response {
+            Ok(WireOut::JourneyUpdate(update)) => Ok(Some(update)),
+            Ok(other) => Err(ExecutorError::ClientTransport(format!(
+                "unexpected response for journey update subscription: {other:?}"
+            ))),
+            Err(err) => Err(ExecutorError::Backend(err)),
+        }
+    }
+
+    pub async fn next_step_update(&mut self) -> Result<Option<StepUpdate>, ExecutorError> {
+        loop {
+            let Some(update) = self.next_update().await? else {
+                return Ok(None);
+            };
+            match update.event {
+                RunnerOut::ActionInput {
+                    node_id,
+                    data,
+                    uuid,
+                } => {
+                    return Ok(Some(StepUpdate::Started {
+                        sequence_id: update.sequence_id,
+                        journey_id: uuid,
+                        node_id,
+                        data,
+                    }))
+                }
+                RunnerOut::ActionSuccessOutput {
+                    node_id,
+                    data,
+                    uuid,
+                } => {
+                    return Ok(Some(StepUpdate::Succeeded {
+                        sequence_id: update.sequence_id,
+                        journey_id: uuid,
+                        node_id,
+                        data,
+                    }))
+                }
+                RunnerOut::ActionFailureOutput {
+                    node_id,
+                    data,
+                    uuid,
+                } => {
+                    return Ok(Some(StepUpdate::Failed {
+                        sequence_id: update.sequence_id,
+                        journey_id: uuid,
+                        node_id,
+                        data,
+                    }))
+                }
+                RunnerOut::Appearance { .. }
+                | RunnerOut::SleepScheduled { .. }
+                | RunnerOut::SleepFired { .. } => continue,
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ClientBuilder<TJungle = DefaultJungle> {
@@ -246,6 +351,38 @@ impl<TJungle> Client<TJungle> {
             other => ExecutorError::ClientTransport(other.to_string()),
         }
     }
+
+    async fn send_wire_subscription(&self, input: WireIn) -> ClientResult<quinn::RecvStream> {
+        let (mut tx, rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
+
+        let payload = postcard::to_allocvec(&input).map_err(ClientError::EncodeWireIn)?;
+        let frame_len = u32::try_from(payload.len())
+            .map_err(|_| ClientError::WireFrameTooLarge(payload.len()))?;
+        tx.write_all(&frame_len.to_be_bytes())
+            .await
+            .map_err(ClientError::WriteWireFrame)?;
+        tx.write_all(&payload)
+            .await
+            .map_err(ClientError::WriteWireFrame)?;
+        tx.finish().map_err(ClientError::FinishWireIn)?;
+
+        Ok(rx)
+    }
+
+    pub async fn subscribe_step_updates(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        let recv = self
+            .send_wire_subscription(WireIn::SubscribeJourneyUpdates {
+                journey_id,
+                after_sequence_id,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+        Ok(JourneyUpdateSubscription { recv })
+    }
 }
 
 impl<TJungle> Drop for Client<TJungle> {
@@ -289,6 +426,7 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-created response for start_journey".to_string(),
             )),
@@ -310,6 +448,7 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-history response for journey_history".to_string(),
             )),
@@ -331,6 +470,7 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-status response for journey_details".to_string(),
             )),
@@ -352,6 +492,7 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-animal-appearance response for animal_appearance".to_string(),
             )),
@@ -379,6 +520,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for animal_appearance_update".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for animal_appearance_update".to_string(),
+            )),
         }
     }
 
@@ -403,6 +547,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for perturb_animal".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for perturb_animal".to_string(),
+            )),
         }
     }
 
@@ -424,6 +571,7 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for claim_animal_perturbation".to_string(),
             )),
@@ -453,6 +601,9 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for ack_animal_perturbation".to_string(),
+            )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for ack_animal_perturbation".to_string(),
             )),
         }
@@ -522,6 +673,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for schedule_sleep_timer".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for schedule_sleep_timer".to_string(),
+            )),
         }
     }
 
@@ -543,6 +697,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for complete_journey".to_string(),
+            )),
         }
     }
 
@@ -562,6 +719,9 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for poll_timers".to_string(),
+            )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for poll_timers".to_string(),
             )),
         }
@@ -588,6 +748,7 @@ where
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for poll_work".to_string(),
             )),
@@ -621,6 +782,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_input".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_input".to_string(),
+            )),
         }
     }
 
@@ -651,6 +815,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_success_output".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_success_output".to_string(),
+            )),
         }
     }
 
@@ -679,6 +846,9 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_failure_output".to_string(),
+            )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_failure_output".to_string(),
             )),
         }

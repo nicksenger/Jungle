@@ -33,7 +33,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 pub use sleep::{Sleep, SleepDependency, SleepError, SleepStep};
 use std::marker::PhantomData;
-pub use transport::{BackendError, JourneyStatus, RunnerOut, WireIn, WireOut, Work};
+pub use transport::{BackendError, JourneyEvent, JourneyStatus, RunnerOut, WireIn, WireOut, Work};
 pub use transport::{ClaimedAnimalPerturbation, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;

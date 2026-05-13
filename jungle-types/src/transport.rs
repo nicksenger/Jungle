@@ -41,6 +41,12 @@ pub enum RunnerOut {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct JourneyEvent {
+    pub sequence_id: u64,
+    pub event: RunnerOut,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ClaimedAnimalPerturbation {
     pub id: u64,
     pub data: Vec<u8>,
@@ -98,6 +104,10 @@ pub enum WireIn {
     },
     JourneyHistory(Uuid),
     JourneyStatus(Uuid),
+    SubscribeJourneyUpdates {
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    },
     AnimalAppearance(Uuid),
     PerturbAnimal {
         journey_id: Uuid,
@@ -136,6 +146,7 @@ pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyHistory(Vec<RunnerOut>),
     JourneyStatus(JourneyStatus),
+    JourneyUpdate(JourneyEvent),
     AnimalAppearance(Option<Vec<u8>>),
     ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),
     OwnerWake(Option<OwnerWake>),
