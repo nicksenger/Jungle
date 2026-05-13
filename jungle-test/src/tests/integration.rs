@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
@@ -613,42 +614,29 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
         }
         completion = tokio::time::timeout(Duration::from_secs(8), async {
             loop {
-                let next = subscription
-                    .next_step_update()
-                    .await
-                    .expect("next_step_update should succeed");
-
-                let Some(update) = next else {
+                let Some(next) = subscription.next().await else {
                     break;
                 };
-                total_step_updates += 1;
+                let update = next.expect("streamed journey update should succeed");
 
-                let (sequence_id, update_journey_id) = match update {
-                    jungle_sdk::client::StepUpdate::Started {
-                        sequence_id,
-                        journey_id,
-                        ..
-                    } => {
+                let (sequence_id, update_journey_id) = match update.event {
+                    jungle_sdk::RunnerOut::ActionInput { uuid, .. } => {
                         started_count += 1;
-                        (sequence_id, journey_id)
+                        (update.sequence_id, uuid)
                     }
-                    jungle_sdk::client::StepUpdate::Succeeded {
-                        sequence_id,
-                        journey_id,
-                        ..
-                    } => {
+                    jungle_sdk::RunnerOut::ActionSuccessOutput { uuid, .. } => {
                         succeeded_count += 1;
-                        (sequence_id, journey_id)
+                        (update.sequence_id, uuid)
                     }
-                    jungle_sdk::client::StepUpdate::Failed {
-                        sequence_id,
-                        journey_id,
-                        ..
-                    } => {
+                    jungle_sdk::RunnerOut::ActionFailureOutput { uuid, .. } => {
                         failed_count += 1;
-                        (sequence_id, journey_id)
+                        (update.sequence_id, uuid)
                     }
+                    jungle_sdk::RunnerOut::Appearance { .. }
+                    | jungle_sdk::RunnerOut::SleepScheduled { .. }
+                    | jungle_sdk::RunnerOut::SleepFired { .. } => continue,
                 };
+                total_step_updates += 1;
 
                 assert_eq!(update_journey_id, journey_id, "stream update should match journey");
                 if let Some(prev) = last_sequence_id {

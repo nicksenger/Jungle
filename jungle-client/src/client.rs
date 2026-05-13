@@ -1,6 +1,6 @@
 use crate::JungleClient;
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use jungle_types::{
     Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem,
     ExecutorError, JourneyEvent, JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders,
@@ -54,14 +54,8 @@ pub struct JourneyUpdateSubscription {
 }
 
 enum SubscriptionFrameState {
-    ReadingFrameLen {
-        bytes: [u8; 4],
-        read: usize,
-    },
-    ReadingPayload {
-        payload: Vec<u8>,
-        read: usize,
-    },
+    ReadingFrameLen { bytes: [u8; 4], read: usize },
+    ReadingPayload { payload: Vec<u8>, read: usize },
 }
 
 impl Default for SubscriptionFrameState {
@@ -75,9 +69,10 @@ impl Default for SubscriptionFrameState {
 
 impl JourneyUpdateSubscription {
     fn decode_update(payload: &[u8]) -> Result<JourneyEvent, ExecutorError> {
-        let response: Result<WireOut, BackendError> = postcard::from_bytes(payload).map_err(|err| {
-            ExecutorError::ClientTransport(format!("failed to decode wire output: {err}"))
-        })?;
+        let response: Result<WireOut, BackendError> =
+            postcard::from_bytes(payload).map_err(|err| {
+                ExecutorError::ClientTransport(format!("failed to decode wire output: {err}"))
+            })?;
 
         match response {
             Ok(WireOut::JourneyUpdate(update)) => Ok(update),
@@ -87,69 +82,15 @@ impl JourneyUpdateSubscription {
             Err(err) => Err(ExecutorError::Backend(err)),
         }
     }
-
-    pub async fn next_update(&mut self) -> Result<Option<JourneyEvent>, ExecutorError> {
-        match self.next().await {
-            Some(Ok(update)) => Ok(Some(update)),
-            Some(Err(err)) => Err(err),
-            None => Ok(None),
-        }
-    }
-
-    pub async fn next_step_update(&mut self) -> Result<Option<StepUpdate>, ExecutorError> {
-        loop {
-            let Some(update) = self.next_update().await? else {
-                return Ok(None);
-            };
-            match update.event {
-                RunnerOut::ActionInput {
-                    node_id,
-                    data,
-                    uuid,
-                } => {
-                    return Ok(Some(StepUpdate::Started {
-                        sequence_id: update.sequence_id,
-                        journey_id: uuid,
-                        node_id,
-                        data,
-                    }))
-                }
-                RunnerOut::ActionSuccessOutput {
-                    node_id,
-                    data,
-                    uuid,
-                } => {
-                    return Ok(Some(StepUpdate::Succeeded {
-                        sequence_id: update.sequence_id,
-                        journey_id: uuid,
-                        node_id,
-                        data,
-                    }))
-                }
-                RunnerOut::ActionFailureOutput {
-                    node_id,
-                    data,
-                    uuid,
-                } => {
-                    return Ok(Some(StepUpdate::Failed {
-                        sequence_id: update.sequence_id,
-                        journey_id: uuid,
-                        node_id,
-                        data,
-                    }))
-                }
-                RunnerOut::Appearance { .. }
-                | RunnerOut::SleepScheduled { .. }
-                | RunnerOut::SleepFired { .. } => continue,
-            }
-        }
-    }
 }
 
 impl Stream for JourneyUpdateSubscription {
     type Item = Result<JourneyEvent, ExecutorError>;
 
-    fn poll_next(mut self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
         if self.closed {
             return Poll::Ready(None);
         }

@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
     BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
@@ -379,10 +380,10 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
         .expect("subscription should open");
 
     let first = updates
-        .next_update()
+        .next()
         .await
-        .expect("first update should decode")
-        .expect("first update should exist");
+        .expect("first update should exist")
+        .expect("first update should decode");
     assert_eq!(first.sequence_id, 0);
     assert!(matches!(
         first.event,
@@ -394,10 +395,10 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
     ));
 
     let second = updates
-        .next_update()
+        .next()
         .await
-        .expect("second update should decode")
-        .expect("second update should exist");
+        .expect("second update should exist")
+        .expect("second update should decode");
     assert_eq!(second.sequence_id, 1);
     assert!(matches!(
         second.event,
@@ -408,10 +409,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
         } if node_id == 12 && data == &vec![8] && uuid == journey_id
     ));
 
-    let done = updates
-        .next_update()
-        .await
-        .expect("stream should finish cleanly");
+    let done = updates.next().await;
     assert!(done.is_none(), "terminal journey stream should close");
 
     server_task.abort();
