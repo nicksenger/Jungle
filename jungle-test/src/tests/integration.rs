@@ -11,6 +11,10 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+#[cfg(feature = "postgres")]
+use testcontainers::runners::AsyncRunner;
+#[cfg(feature = "postgres")]
+use testcontainers_modules::postgres::Postgres;
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct SubFlowState {
@@ -407,26 +411,105 @@ async fn redb_client_worker_flow_runs_to_completion() {
         }
     });
 
+    run_client_worker_flow_runs_to_completion(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+async fn postgres_client_worker_flow_runs_to_completion() {
+    let postgres = Postgres::default()
+        .start()
+        .await
+        .expect("postgres testcontainer should start");
+    let pg_port = postgres
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("postgres mapped port should be available");
+    let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let connection_string = connection_string.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .postgres_connection_string(connection_string)
+                .run()
+                .await
+        }
+    });
+
+    run_client_worker_flow_runs_to_completion(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn redb_client_worker_streams_step_updates_end_to_end() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    run_client_worker_streams_step_updates_end_to_end(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+async fn postgres_client_worker_streams_step_updates_end_to_end() {
+    let postgres = Postgres::default()
+        .start()
+        .await
+        .expect("postgres testcontainer should start");
+    let pg_port = postgres
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("postgres mapped port should be available");
+    let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let connection_string = connection_string.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .postgres_connection_string(connection_string)
+                .run()
+                .await
+        }
+    });
+
+    run_client_worker_streams_step_updates_end_to_end(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
     let client = connect_client_with_retry(listen_addr).await;
     let worker = JungleWorker::new(IntegrationZoo, client.clone());
     let worker_future = worker.spawn();
     tokio::pin!(worker_future);
     let saw_appearance = Arc::new(AtomicBool::new(false));
 
-    let seed = postcard::to_allocvec(&IntegrationState {
-        total: 0,
-        focused: SubFlowState {
-            nested: DeepFocusState {
-                value: 0,
-                updates: 0,
-            },
-            value: 0,
-            updates: 0,
-        },
-        before_steps: 0,
-        after_steps: 0,
-    })
-    .expect("seed should serialize");
+    let seed = integration_seed();
     let journey_id = client
         .start_journey::<IntegrationAnimal>(seed)
         .await
@@ -499,47 +582,15 @@ async fn redb_client_worker_flow_runs_to_completion() {
         final_appearance.total >= 1000,
         "final appearance should include applied perturbation delta"
     );
-
-    server_task.abort();
-    let _ = server_task.await;
 }
 
-#[tokio::test]
-async fn redb_client_worker_streams_step_updates_end_to_end() {
-    let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
-    let listen_addr = super::reserve_local_addr();
-
-    let server_task = tokio::spawn({
-        let db_path = db_path.clone();
-        async move {
-            ServerBuilder::new()
-                .listen(listen_addr)
-                .redb_path(db_path)
-                .run()
-                .await
-        }
-    });
-
+async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAddr) {
     let client = connect_client_with_retry(listen_addr).await;
     let worker = JungleWorker::new(IntegrationZoo, client.clone());
     let worker_future = worker.spawn();
     tokio::pin!(worker_future);
 
-    let seed = postcard::to_allocvec(&IntegrationState {
-        total: 0,
-        focused: SubFlowState {
-            nested: DeepFocusState {
-                value: 0,
-                updates: 0,
-            },
-            value: 0,
-            updates: 0,
-        },
-        before_steps: 0,
-        after_steps: 0,
-    })
-    .expect("seed should serialize");
+    let seed = integration_seed();
     let journey_id = client
         .start_journey::<IntegrationAnimal>(seed)
         .await
@@ -638,9 +689,23 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
         total_step_updates >= INTEGRATION_SHORTEST_PATH_STEPS,
         "expected streamed step updates ({total_step_updates}) to be >= shortest path steps ({INTEGRATION_SHORTEST_PATH_STEPS})"
     );
+}
 
-    server_task.abort();
-    let _ = server_task.await;
+fn integration_seed() -> Vec<u8> {
+    postcard::to_allocvec(&IntegrationState {
+        total: 0,
+        focused: SubFlowState {
+            nested: DeepFocusState {
+                value: 0,
+                updates: 0,
+            },
+            value: 0,
+            updates: 0,
+        },
+        before_steps: 0,
+        after_steps: 0,
+    })
+    .expect("seed should serialize")
 }
 
 #[test]
