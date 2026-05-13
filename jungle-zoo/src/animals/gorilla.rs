@@ -420,6 +420,26 @@ pub struct GorillaJourney(
     While<GorillaStillGrowing, GorillaYearFlow>,
 );
 
+#[derive(jungle_sdk::Journey)]
+pub struct ProbeDayFlow(
+    Step<Gorilla, GorillaEvaluateActivityWindow>,
+    Conditional<GorillaIsActiveNow, ProbeActiveFlow, Step<Gorilla, GorillaRest>>,
+    Step<Gorilla, GorillaTickPerceivedTime>,
+);
+
+#[derive(jungle_sdk::Journey)]
+pub struct ProbeActiveFlow(
+    jungle_sdk::types::Step<Gorilla, ProbeStep>,
+    jungle_sdk::types::Step<Gorilla, ProbeStep>,
+);
+
+#[derive(jungle_sdk::Journey)]
+pub struct ProbeYearFlow(
+    Step<Gorilla, GorillaBirthday>,
+    While<GorillaDaylightRemaining, ProbeDayFlow>,
+    Step<Gorilla, GorillaAdvanceAge>,
+);
+
 pub struct Gorilla;
 impl AnimalMember for Gorilla {}
 
@@ -445,8 +465,8 @@ impl<A: Animal> jungle_sdk::types::Pulse<A> for ProbeStep {
 
 #[derive(jungle_sdk::Journey)]
 pub struct ProbeJourney(
-    jungle_sdk::types::Step<Gorilla, ProbeStep>,
-    jungle_sdk::types::Step<Gorilla, ProbeStep>,
+    Step<Gorilla, GorillaBirth>,
+    While<GorillaStillGrowing, ProbeYearFlow>,
 );
 impl Animal for Gorilla {
     type Id = Id<U0>;
