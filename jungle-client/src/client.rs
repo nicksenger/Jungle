@@ -128,7 +128,7 @@ impl JourneyUpdateSubscription {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClientBuilder<TJungle = DefaultJungle> {
+pub struct ClientBuilder<J = DefaultJungle> {
     keylog: bool,
     ca: Option<PathBuf>,
     namespace: String,
@@ -136,7 +136,7 @@ pub struct ClientBuilder<TJungle = DefaultJungle> {
     bind: SocketAddr,
     remote: Option<SocketAddr>,
     server_name: Option<String>,
-    _jungle: PhantomData<fn() -> TJungle>,
+    _jungle: PhantomData<fn() -> J>,
 }
 
 pub struct DefaultAnimals;
@@ -150,7 +150,7 @@ impl Ecosystem for DefaultJungle {
     type Animals = DefaultAnimals;
 }
 
-impl<TJungle> Default for ClientBuilder<TJungle> {
+impl<J> Default for ClientBuilder<J> {
     fn default() -> Self {
         Self {
             keylog: false,
@@ -165,7 +165,7 @@ impl<TJungle> Default for ClientBuilder<TJungle> {
     }
 }
 
-impl<TJungle> ClientBuilder<TJungle> {
+impl<J> ClientBuilder<J> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -218,7 +218,7 @@ impl<TJungle> ClientBuilder<TJungle> {
         self
     }
 
-    pub async fn build(self) -> ClientResult<Client<TJungle>> {
+    pub async fn build(self) -> ClientResult<Client<J>> {
         let remote = self.remote.ok_or(ClientError::MissingRemote)?;
         let server_name = self.server_name.ok_or(ClientError::MissingServerName)?;
 
@@ -283,14 +283,14 @@ impl<TJungle> ClientBuilder<TJungle> {
     }
 }
 
-pub struct Client<TJungle = DefaultJungle> {
+pub struct Client<J = DefaultJungle> {
     endpoint: quinn::Endpoint,
     conn: quinn::Connection,
     namespace: String,
-    _jungle: PhantomData<fn() -> TJungle>,
+    _jungle: PhantomData<fn() -> J>,
 }
 
-impl<TJungle> Clone for Client<TJungle> {
+impl<J> Clone for Client<J> {
     fn clone(&self) -> Self {
         Self {
             endpoint: self.endpoint.clone(),
@@ -307,7 +307,7 @@ impl Client<DefaultJungle> {
     }
 }
 
-impl<TJungle> Client<TJungle> {
+impl<J> Client<J> {
     async fn send_wire_message(&self, input: WireIn) -> ClientResult<WireOut> {
         let (mut tx, mut rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
 
@@ -418,7 +418,7 @@ impl<TJungle> Client<TJungle> {
     }
 }
 
-impl<TJungle> Drop for Client<TJungle> {
+impl<J> Drop for Client<J> {
     fn drop(&mut self) {
         self.conn.close(0u32.into(), b"done");
         self.endpoint.close(0u32.into(), b"done");
@@ -426,13 +426,13 @@ impl<TJungle> Drop for Client<TJungle> {
 }
 
 #[async_trait]
-impl<TJungle> JungleClient for Client<TJungle>
+impl<J> JungleClient for Client<J>
 where
-    TJungle: Ecosystem,
-    TJungle::Animals: Animals,
-    <TJungle::Animals as Animals>::List: FlattenNodes,
-    SPFlatten<<TJungle::Animals as Animals>::List>: StripAnimalHeaders,
-    AnimalSet<TJungle::Animals>: Container,
+    J: Ecosystem,
+    J::Animals: Animals,
+    <J::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<J::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<J::Animals>: Container,
 {
     async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
     where
