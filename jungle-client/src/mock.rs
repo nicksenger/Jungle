@@ -1,4 +1,7 @@
-use crate::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelRx};
+use crate::{
+    JourneyUpdateSubscription, JungleClient, RunnerChannelMessage, RunnerChannelResponse,
+    RunnerChannelRx,
+};
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
@@ -167,6 +170,16 @@ impl JungleClient for MockClient {
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
         (self.on_journey_history)(id).await
+    }
+
+    async fn subscribe_step_updates(
+        &self,
+        _journey_id: Uuid,
+        _after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        Err(ExecutorError::ClientTransport(
+            "subscribe_step_updates is unsupported by MockClient".to_string(),
+        ))
     }
 
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError> {

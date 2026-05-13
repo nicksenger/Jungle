@@ -15,7 +15,15 @@ use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Journey;
 use jungle_sdk::Optic;
 
-#[derive(Optic, Clone, Debug, PartialEq, Eq)]
+#[derive(
+    Optic,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize
+)]
 pub struct State {
     pub age: u32,
     pub vitals: VitalReadings,

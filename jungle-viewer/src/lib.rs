@@ -3,18 +3,18 @@ use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{Cluster, Graph, Sugiyama};
+use iced::futures::{self, Stream, StreamExt};
 use jungle_client::JungleClient;
-use jungle_types::{Animal, JourneyAst, JourneyAstSource, RunnerOut};
+use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1360.0;
 const WINDOW_HEIGHT: f32 = 900.0;
-const LIVE_REFRESH: Duration = Duration::from_millis(1000);
 const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-viewer";
@@ -24,7 +24,6 @@ pub struct JungleViewerBuilder {
     title: String,
     width: f32,
     height: f32,
-    poll_interval: Duration,
     screenshot_path: Option<PathBuf>,
     headless: bool,
 }
@@ -35,7 +34,6 @@ impl Default for JungleViewerBuilder {
             title: "Jungle Viewer".to_string(),
             width: WINDOW_WIDTH,
             height: WINDOW_HEIGHT,
-            poll_interval: LIVE_REFRESH,
             screenshot_path: None,
             headless: false,
         }
@@ -55,11 +53,6 @@ impl JungleViewerBuilder {
     pub fn window_size(mut self, width: f32, height: f32) -> Self {
         self.width = width;
         self.height = height;
-        self
-    }
-
-    pub fn live_poll_interval(mut self, interval: Duration) -> Self {
-        self.poll_interval = interval;
         self
     }
 
@@ -98,14 +91,12 @@ impl JungleViewerBuilder {
         let journey_name = short_type_name::<A::Journey>();
         let model = GraphModel::from_ast(ast);
         let client: Arc<dyn JungleClient> = Arc::new(client);
-        let poll_interval = self.poll_interval;
 
         self.run(ViewMode::Live {
             journey_name,
             model,
             client,
             journey_id,
-            poll_interval,
         })
     }
 
@@ -197,13 +188,13 @@ enum ViewMode {
         model: GraphModel,
         client: Arc<dyn JungleClient>,
         journey_id: Uuid,
-        poll_interval: Duration,
     },
 }
 
 struct ViewerApp {
     mode: ViewMode,
     state: LiveState,
+    live_generation: u64,
     capture: Option<CaptureConfig>,
 }
 
@@ -232,8 +223,7 @@ struct LiveData {
 #[derive(Debug, Clone)]
 enum Message {
     AppStarted,
-    LiveRefreshTick,
-    LiveLoaded(Result<LiveData, String>),
+    LiveEvent(Result<JourneyUpdateEvent, String>),
     Retry,
     CaptureView,
     ViewCaptured(Screenshot),
@@ -242,14 +232,8 @@ enum Message {
 
 impl ViewerApp {
     fn new(mode: ViewMode, capture: Option<CaptureConfig>) -> (Self, Task<Message>) {
-        let mut tasks = vec![Task::done(Message::AppStarted)];
         let state = match &mode {
-            ViewMode::Live {
-                client, journey_id, ..
-            } => {
-                tasks.push(live_history_task(client.clone(), *journey_id));
-                LiveState::Loading
-            }
+            ViewMode::Live { .. } => LiveState::Loading,
             ViewMode::Static { .. } => LiveState::Idle,
         };
 
@@ -257,9 +241,10 @@ impl ViewerApp {
             Self {
                 mode,
                 state,
+                live_generation: 0,
                 capture,
             },
-            Task::batch(tasks),
+            Task::done(Message::AppStarted),
         )
     }
 
@@ -272,28 +257,32 @@ impl ViewerApp {
                     Task::none()
                 }
             }
-            Message::LiveRefreshTick => match &self.mode {
-                ViewMode::Live {
-                    client, journey_id, ..
-                } => {
-                    self.state = LiveState::Loading;
-                    live_history_task(client.clone(), *journey_id)
+            Message::LiveEvent(result) => {
+                match result {
+                    Ok(update) => {
+                        let data = match &mut self.state {
+                            LiveState::Loaded(data) => data,
+                            _ => {
+                                self.state = LiveState::Loaded(LiveData::default());
+                                match &mut self.state {
+                                    LiveState::Loaded(data) => data,
+                                    _ => unreachable!("state was set to loaded"),
+                                }
+                            }
+                        };
+                        data.apply_update(update);
+                    }
+                    Err(error) => {
+                        self.state = LiveState::Error(error);
+                    }
                 }
-                ViewMode::Static { .. } => Task::none(),
-            },
-            Message::LiveLoaded(result) => {
-                self.state = match result {
-                    Ok(data) => LiveState::Loaded(data),
-                    Err(error) => LiveState::Error(error),
-                };
                 Task::none()
             }
             Message::Retry => match &self.mode {
-                ViewMode::Live {
-                    client, journey_id, ..
-                } => {
+                ViewMode::Live { .. } => {
+                    self.live_generation = self.live_generation.saturating_add(1);
                     self.state = LiveState::Loading;
-                    live_history_task(client.clone(), *journey_id)
+                    Task::none()
                 }
                 ViewMode::Static { .. } => Task::none(),
             },
@@ -331,9 +320,16 @@ impl ViewerApp {
 
     fn subscription(&self) -> Subscription<Message> {
         match &self.mode {
-            ViewMode::Live { poll_interval, .. } => {
-                iced::time::every(*poll_interval).map(|_| Message::LiveRefreshTick)
-            }
+            ViewMode::Live {
+                client, journey_id, ..
+            } => Subscription::run_with(
+                LiveSubscription {
+                    client: client.clone(),
+                    journey_id: *journey_id,
+                    generation: self.live_generation,
+                },
+                live_updates_stream,
+            ),
             ViewMode::Static { .. } => Subscription::none(),
         }
     }
@@ -372,17 +368,35 @@ impl ViewerApp {
     }
 }
 
-fn live_history_task(client: Arc<dyn JungleClient>, journey_id: Uuid) -> Task<Message> {
-    Task::perform(
-        async move {
-            let history = client
-                .journey_history(journey_id)
-                .await
-                .map_err(|err| err.to_string())?;
-            Ok::<LiveData, String>(LiveData::from_history(&history))
-        },
-        Message::LiveLoaded,
-    )
+#[derive(Clone)]
+struct LiveSubscription {
+    client: Arc<dyn JungleClient>,
+    journey_id: Uuid,
+    generation: u64,
+}
+
+impl Hash for LiveSubscription {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.journey_id.hash(state);
+        self.generation.hash(state);
+    }
+}
+
+fn live_updates_stream(config: &LiveSubscription) -> impl Stream<Item = Message> {
+    let client = config.client.clone();
+    let journey_id = config.journey_id;
+    futures::stream::once(async move {
+        match client.subscribe_step_updates(journey_id, None).await {
+            Ok(subscription) => subscription
+                .map(|event| Message::LiveEvent(event.map_err(|err| err.to_string())))
+                .left_stream(),
+            Err(err) => futures::stream::once(async move {
+                Message::LiveEvent(Err(format!("live update stream setup failed: {err}")))
+            })
+            .right_stream(),
+        }
+    })
+    .flatten()
 }
 
 fn close_latest_window() -> Task<Message> {
@@ -407,35 +421,21 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
 }
 
 impl LiveData {
-    fn from_history(history: &[RunnerOut]) -> Self {
-        let mut active_runtime_ids = BTreeSet::new();
-        let mut finished_runtime_ids = BTreeSet::new();
-        let mut failed_runtime_ids = BTreeSet::new();
-
-        for event in history {
-            match event {
-                RunnerOut::ActionInput { node_id, .. } => {
-                    active_runtime_ids.insert(*node_id);
-                }
-                RunnerOut::ActionSuccessOutput { node_id, .. } => {
-                    active_runtime_ids.remove(node_id);
-                    finished_runtime_ids.insert(*node_id);
-                }
-                RunnerOut::ActionFailureOutput { node_id, .. } => {
-                    active_runtime_ids.remove(node_id);
-                    failed_runtime_ids.insert(*node_id);
-                }
-                RunnerOut::Appearance { .. }
-                | RunnerOut::SleepScheduled { .. }
-                | RunnerOut::SleepFired { .. } => {}
+    fn apply_update(&mut self, update: JourneyUpdateEvent) {
+        self.latest_event_count = update.sequence_id as usize;
+        match update.event {
+            RunnerUpdateOut::ActionInput { node_id, .. } => {
+                self.active_runtime_ids.insert(node_id);
             }
-        }
-
-        Self {
-            active_runtime_ids,
-            finished_runtime_ids,
-            failed_runtime_ids,
-            latest_event_count: history.len(),
+            RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
+                self.active_runtime_ids.remove(&node_id);
+                self.finished_runtime_ids.insert(node_id);
+            }
+            RunnerUpdateOut::ActionFailureOutput { node_id, .. } => {
+                self.active_runtime_ids.remove(&node_id);
+                self.failed_runtime_ids.insert(node_id);
+            }
+            RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
         }
     }
 }

@@ -519,6 +519,14 @@ where
         }
     }
 
+    async fn subscribe_step_updates(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        Client::subscribe_step_updates(self, journey_id, after_sequence_id).await
+    }
+
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::JourneyStatus(id))

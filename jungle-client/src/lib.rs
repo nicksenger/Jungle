@@ -27,6 +27,11 @@ pub trait JungleClient: DynClone + Send + Sync {
         A::Id: AnimalIdValue,
         A::Generation: Unsigned;
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError>;
+    async fn subscribe_step_updates(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError>;
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError>;
     async fn animal_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError>;
     async fn animal_appearance_update(&self, id: Uuid, data: Vec<u8>) -> Result<(), ExecutorError>;
