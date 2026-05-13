@@ -4,7 +4,6 @@ use jungle_sdk::types::{
     Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Observe, Pulse, Sleep, Step, While,
 };
-use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -180,9 +179,8 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
         sleep_for_ms: 250,
     })
     .expect("sleep test seed should serialize");
-    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
-        .start_journey(ordinal, 0, seed)
+        .start_journey_for::<SleepAnimal>(seed)
         .await
         .expect("start_journey should succeed for sleep flow");
 

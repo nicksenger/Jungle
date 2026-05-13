@@ -4,7 +4,6 @@ use jungle_sdk::types::{
     Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Pulse, Sleep, Step, While,
 };
-use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -301,9 +300,8 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 
             let seed = postcard::to_allocvec(&ReplayGateState { phase: 0 })
                 .expect("seed should serialize");
-            let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
             let journey_id = control_client
-                .start_journey(ordinal, 0, seed)
+                .start_journey_for::<ReplayGateAnimal>(seed)
                 .await
                 .expect("start_journey should succeed");
 
@@ -642,9 +640,8 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
                 sleep_for_ms: 4_000,
             })
             .expect("timeout test seed should serialize");
-            let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
             let journey_id = control_client
-                .start_journey(ordinal, 0, seed)
+                .start_journey_for::<ReplayTimeoutAnimal>(seed)
                 .await
                 .expect("start_journey should succeed");
 

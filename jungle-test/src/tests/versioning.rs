@@ -6,7 +6,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U33, U70, U71};
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U33, U70, U71};
 use jungle_sdk::{Animals, Journey, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -146,6 +146,37 @@ impl AnimalsTrait for ModernAnimal {
 }
 #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
 impl jungle_sdk::types::Identified for ModernAnimal {
+    type Id = U33;
+}
+
+struct FutureAnimal;
+impl AnimalMember for FutureAnimal {}
+impl Animal for FutureAnimal {
+    type Id = Id<U33>;
+    type Generation = U2;
+    type State = i32;
+    type Seed = i32;
+    type Journey = ModernJourney;
+}
+impl jungle_sdk::types::AnimalObservation for FutureAnimal {
+    type Adapter = jungle_sdk::types::ObserveObservation;
+}
+impl jungle_sdk::types::AnimalPerturbation for FutureAnimal {
+    type Adapter = jungle_sdk::types::NoopPerturbation;
+}
+impl Observe for FutureAnimal {
+    type Appearance = i32;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl AnimalsTrait for FutureAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U33, FutureAnimal>;
+}
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for FutureAnimal {
     type Id = U33;
 }
 
@@ -299,7 +330,7 @@ async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
 
     let seed = postcard::to_allocvec(&0_i32).expect("seed should serialize");
     let err = client
-        .start_journey(33, 2, seed)
+        .start_journey_for::<FutureAnimal>(seed)
         .await
         .expect_err("start_journey should fail when client generation is ahead");
     let message = err.to_string();

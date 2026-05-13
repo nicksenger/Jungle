@@ -6,7 +6,6 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -541,9 +540,8 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
         after_steps: 0,
     })
     .expect("seed should serialize");
-    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
-        .start_journey(ordinal, 0, seed)
+        .start_journey_for::<IntegrationAnimal>(seed)
         .await
         .expect("start_journey should succeed");
 

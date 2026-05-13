@@ -9,6 +9,64 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
 
+action!(ConnectionAction7, jungle_sdk::typosaurus::num::consts::U80);
+
+animal!(
+    ConnectionAnimal7,
+    jungle_sdk::typosaurus::num::consts::U7,
+    state = (),
+    journey = ConnectionJourney7
+);
+
+struct ConnectionStep7;
+impl jungle_sdk::types::Pulse<ConnectionAnimal7> for ConnectionStep7 {
+    type Action = ConnectionAction7;
+    type Aspect = jungle_sdk::types::Identity;
+    type CarryIn = ();
+    type CarryOut = ();
+
+    fn emit(_state: &(), _input: Self::CarryIn) -> Self::CarryIn {}
+
+    fn absorb(
+        _state: &mut (),
+        output: jungle_sdk::types::ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
+        output.expect("connection animal 7 action should succeed");
+    }
+}
+
+#[derive(jungle_sdk::Journey)]
+struct ConnectionJourney7(jungle_sdk::types::Step<ConnectionAnimal7, ConnectionStep7>);
+
+action!(ConnectionAction9, jungle_sdk::typosaurus::num::consts::U81);
+
+animal!(
+    ConnectionAnimal9,
+    jungle_sdk::typosaurus::num::consts::U9,
+    state = (),
+    journey = ConnectionJourney9
+);
+
+struct ConnectionStep9;
+impl jungle_sdk::types::Pulse<ConnectionAnimal9> for ConnectionStep9 {
+    type Action = ConnectionAction9;
+    type Aspect = jungle_sdk::types::Identity;
+    type CarryIn = ();
+    type CarryOut = ();
+
+    fn emit(_state: &(), _input: Self::CarryIn) -> Self::CarryIn {}
+
+    fn absorb(
+        _state: &mut (),
+        output: jungle_sdk::types::ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
+        output.expect("connection animal 9 action should succeed");
+    }
+}
+
+#[derive(jungle_sdk::Journey)]
+struct ConnectionJourney9(jungle_sdk::types::Step<ConnectionAnimal9, ConnectionStep9>);
+
 #[tokio::test]
 async fn client_exchanges_messages_with_mock_server() {
     let journey_id = Uuid::from_u128(0x11111111111111111111111111111111);
@@ -120,7 +178,7 @@ async fn client_exchanges_messages_with_mock_server() {
     let client = connect_client_with_retry(listen_addr).await;
 
     let created_flow = client
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
     assert_eq!(created_flow, journey_id);
@@ -245,7 +303,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -298,7 +356,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -379,7 +437,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -630,11 +688,11 @@ async fn poll_work_is_scoped_by_namespace() {
     let beta = connect_client_with_retry_namespace(listen_addr, "beta").await;
 
     let alpha_id = alpha
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey_for::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("alpha start_journey should succeed");
     let beta_id = beta
-        .start_journey(9, 0, vec![4, 5, 6])
+        .start_journey_for::<ConnectionAnimal9>(vec![4, 5, 6])
         .await
         .expect("beta start_journey should succeed");
 
