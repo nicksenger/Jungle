@@ -506,6 +506,139 @@ async fn redb_client_worker_flow_runs_to_completion() {
     let _ = server_task.await;
 }
 
+#[tokio::test]
+async fn redb_client_worker_streams_step_updates_end_to_end() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let worker = JungleWorker::new(IntegrationZoo, client.clone());
+    let worker_future = worker.spawn();
+    tokio::pin!(worker_future);
+
+    let seed = postcard::to_allocvec(&IntegrationState {
+        total: 0,
+        focused: SubFlowState {
+            nested: DeepFocusState {
+                value: 0,
+                updates: 0,
+            },
+            value: 0,
+            updates: 0,
+        },
+        before_steps: 0,
+        after_steps: 0,
+    })
+    .expect("seed should serialize");
+    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
+    let journey_id = client
+        .start_journey(ordinal, 0, seed)
+        .await
+        .expect("start_journey should succeed");
+
+    let mut subscription = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("subscribe_step_updates should succeed");
+
+    let mut started_count = 0_u32;
+    let mut succeeded_count = 0_u32;
+    let mut failed_count = 0_u32;
+    let mut last_sequence_id: Option<u64> = None;
+
+    tokio::select! {
+        result = &mut worker_future => {
+            panic!("worker should keep polling, got: {result:?}");
+        }
+        completion = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let next = subscription
+                    .next_step_update()
+                    .await
+                    .expect("next_step_update should succeed");
+
+                let Some(update) = next else {
+                    break;
+                };
+
+                let (sequence_id, update_journey_id) = match update {
+                    jungle_sdk::client::StepUpdate::Started {
+                        sequence_id,
+                        journey_id,
+                        ..
+                    } => {
+                        started_count += 1;
+                        (sequence_id, journey_id)
+                    }
+                    jungle_sdk::client::StepUpdate::Succeeded {
+                        sequence_id,
+                        journey_id,
+                        ..
+                    } => {
+                        succeeded_count += 1;
+                        (sequence_id, journey_id)
+                    }
+                    jungle_sdk::client::StepUpdate::Failed {
+                        sequence_id,
+                        journey_id,
+                        ..
+                    } => {
+                        failed_count += 1;
+                        (sequence_id, journey_id)
+                    }
+                };
+
+                assert_eq!(update_journey_id, journey_id, "stream update should match journey");
+                if let Some(prev) = last_sequence_id {
+                    assert!(
+                        sequence_id > prev,
+                        "stream sequence ids must be strictly increasing"
+                    );
+                }
+                last_sequence_id = Some(sequence_id);
+            }
+        }) => {
+            if completion.is_err() {
+                let status = client
+                    .journey_details(journey_id)
+                    .await
+                    .expect("final journey_details should still be queryable");
+                panic!("stream did not finish before timeout, last status: {status:?}");
+            }
+        }
+    }
+
+    let final_status = client
+        .journey_details(journey_id)
+        .await
+        .expect("journey_details should succeed after stream completion");
+    assert_eq!(final_status, JourneyStatus::Completed);
+    assert!(
+        started_count > 0,
+        "expected at least one started step update"
+    );
+    assert!(
+        succeeded_count > 0,
+        "expected at least one succeeded step update"
+    );
+    assert_eq!(failed_count, 0, "expected no failed step updates");
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
 #[test]
 fn replaced_alias_rewrites_integration_flow_steps() {
     type Actual = jungle_sdk::types::Replace<
