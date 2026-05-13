@@ -296,8 +296,8 @@ pub struct ProbeJourney(jungle_sdk::types::Step<ProbeAnimal, ProbeStep>);
 animal!(
     ProbeAnimal,
     jungle_sdk::typosaurus::num::consts::U255,
-    state = (),
-    journey = ProbeJourney
+    (),
+    ProbeJourney
 );
 
 #[derive(jungle_sdk::Animals)]
