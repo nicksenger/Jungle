@@ -19,8 +19,3 @@ uuid = { workspace = true }
 [[bin]]
 name = "jungle-view"
 path = "src/bin/jungle-view.rs"
-
-[[bin]]
-name = "jungle-observe"
-path = "src/bin/jungle-observe.rs"
-
