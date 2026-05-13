@@ -12,7 +12,6 @@ use jungle_sdk::types::{
     NoopPerturbation, Pulse, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
-use jungle_sdk::Flow;
 use jungle_sdk::Optic;
 
 #[derive(
@@ -386,22 +385,19 @@ impl Pulse<Gorilla> for GorillaMakeSound {
     }
 }
 
-#[derive(Flow)]
-pub struct GorillaFeedFlow(
+pub type GorillaFeedFlow = (
     Step<Gorilla, GorillaPeelFruit>,
     Step<Gorilla, GorillaEat>,
     Step<Gorilla, GorillaRest>,
 );
 
-#[derive(Flow)]
-pub struct GorillaToolSocialFlow(
+pub type GorillaToolSocialFlow = (
     Step<Gorilla, GorillaUseTool>,
     Step<Gorilla, GorillaChestBeat>,
     Step<Gorilla, GorillaMakeSound>,
 );
 
-#[derive(Flow)]
-pub struct GorillaSimpleSocialFlow(Step<Gorilla, GorillaMakeSound>, Step<Gorilla, GorillaRest>);
+pub type GorillaSimpleSocialFlow = (Step<Gorilla, GorillaMakeSound>, Step<Gorilla, GorillaRest>);
 
 pub type GorillaActiveFlow = Conditional<
     GorillaIsHungry,
@@ -409,22 +405,19 @@ pub type GorillaActiveFlow = Conditional<
     Conditional<GorillaCanUseTools, GorillaToolSocialFlow, GorillaSimpleSocialFlow>,
 >;
 
-#[derive(Flow)]
-pub struct GorillaDayFlow(
+pub type GorillaDayFlow = (
     Step<Gorilla, GorillaEvaluateActivityWindow>,
     Conditional<GorillaIsActiveNow, GorillaActiveFlow, Step<Gorilla, GorillaRest>>,
     Step<Gorilla, GorillaTickPerceivedTime>,
 );
 
-#[derive(Flow)]
-pub struct GorillaYearFlow(
+pub type GorillaYearFlow = (
     Step<Gorilla, GorillaBirthday>,
     While<GorillaDaylightRemaining, GorillaDayFlow>,
     Step<Gorilla, GorillaAdvanceAge>,
 );
 
-#[derive(Flow)]
-pub struct GorillaJourney(
+pub type GorillaJourney = (
     Step<Gorilla, GorillaBirth>,
     While<GorillaStillGrowing, GorillaYearFlow>,
 );
