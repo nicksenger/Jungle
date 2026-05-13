@@ -1,5 +1,6 @@
 use crate::JungleClient;
 use async_trait::async_trait;
+use futures::{Stream, StreamExt};
 use jungle_types::{
     Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem,
     ExecutorError, JourneyEvent, JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders,
@@ -13,8 +14,9 @@ use std::marker::PhantomData;
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use thiserror::Error;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, ReadBuf};
 use tracing::{error, info};
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
 use typosaurus::collections::Container;
@@ -47,33 +49,50 @@ pub enum StepUpdate {
 
 pub struct JourneyUpdateSubscription {
     recv: quinn::RecvStream,
+    frame_state: SubscriptionFrameState,
+    closed: bool,
+}
+
+enum SubscriptionFrameState {
+    ReadingFrameLen {
+        bytes: [u8; 4],
+        read: usize,
+    },
+    ReadingPayload {
+        payload: Vec<u8>,
+        read: usize,
+    },
+}
+
+impl Default for SubscriptionFrameState {
+    fn default() -> Self {
+        Self::ReadingFrameLen {
+            bytes: [0_u8; 4],
+            read: 0,
+        }
+    }
 }
 
 impl JourneyUpdateSubscription {
-    pub async fn next_update(&mut self) -> Result<Option<JourneyEvent>, ExecutorError> {
-        let frame_len = match self.recv.read_u32().await {
-            Ok(frame_len) => frame_len,
-            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-            Err(err) => return Err(ExecutorError::ClientTransport(err.to_string())),
-        };
-
-        let mut payload = vec![0_u8; frame_len as usize];
-        self.recv
-            .read_exact(&mut payload)
-            .await
-            .map_err(|err| ExecutorError::ClientTransport(err.to_string()))?;
-
-        let response: Result<WireOut, BackendError> =
-            postcard::from_bytes(&payload).map_err(|err| {
-                ExecutorError::ClientTransport(format!("failed to decode wire output: {err}"))
-            })?;
+    fn decode_update(payload: &[u8]) -> Result<JourneyEvent, ExecutorError> {
+        let response: Result<WireOut, BackendError> = postcard::from_bytes(payload).map_err(|err| {
+            ExecutorError::ClientTransport(format!("failed to decode wire output: {err}"))
+        })?;
 
         match response {
-            Ok(WireOut::JourneyUpdate(update)) => Ok(Some(update)),
+            Ok(WireOut::JourneyUpdate(update)) => Ok(update),
             Ok(other) => Err(ExecutorError::ClientTransport(format!(
                 "unexpected response for journey update subscription: {other:?}"
             ))),
             Err(err) => Err(ExecutorError::Backend(err)),
+        }
+    }
+
+    pub async fn next_update(&mut self) -> Result<Option<JourneyEvent>, ExecutorError> {
+        match self.next().await {
+            Some(Ok(update)) => Ok(Some(update)),
+            Some(Err(err)) => Err(err),
+            None => Ok(None),
         }
     }
 
@@ -122,6 +141,90 @@ impl JourneyUpdateSubscription {
                 RunnerOut::Appearance { .. }
                 | RunnerOut::SleepScheduled { .. }
                 | RunnerOut::SleepFired { .. } => continue,
+            }
+        }
+    }
+}
+
+impl Stream for JourneyUpdateSubscription {
+    type Item = Result<JourneyEvent, ExecutorError>;
+
+    fn poll_next(mut self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.closed {
+            return Poll::Ready(None);
+        }
+
+        let this = self.as_mut().get_mut();
+
+        loop {
+            match &mut this.frame_state {
+                SubscriptionFrameState::ReadingFrameLen { bytes, read } => {
+                    let mut read_buf = ReadBuf::new(&mut bytes[*read..]);
+                    match std::pin::Pin::new(&mut this.recv).poll_read(cx, &mut read_buf) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(Err(err)) => {
+                            this.closed = true;
+                            return Poll::Ready(Some(Err(ExecutorError::ClientTransport(
+                                err.to_string(),
+                            ))));
+                        }
+                        Poll::Ready(Ok(())) => {
+                            let just_read = read_buf.filled().len();
+                            if just_read == 0 {
+                                if *read == 0 {
+                                    this.closed = true;
+                                    return Poll::Ready(None);
+                                }
+                                this.closed = true;
+                                return Poll::Ready(Some(Err(ExecutorError::ClientTransport(
+                                    "unexpected EOF while reading journey update frame length"
+                                        .to_string(),
+                                ))));
+                            }
+                            *read += just_read;
+                            if *read < 4 {
+                                continue;
+                            }
+
+                            let frame_len = u32::from_be_bytes(*bytes) as usize;
+                            this.frame_state = SubscriptionFrameState::ReadingPayload {
+                                payload: vec![0_u8; frame_len],
+                                read: 0,
+                            };
+                        }
+                    }
+                }
+                SubscriptionFrameState::ReadingPayload { payload, read } => {
+                    let mut read_buf = ReadBuf::new(&mut payload[*read..]);
+                    match std::pin::Pin::new(&mut this.recv).poll_read(cx, &mut read_buf) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(Err(err)) => {
+                            this.closed = true;
+                            return Poll::Ready(Some(Err(ExecutorError::ClientTransport(
+                                err.to_string(),
+                            ))));
+                        }
+                        Poll::Ready(Ok(())) => {
+                            let just_read = read_buf.filled().len();
+                            if just_read == 0 {
+                                this.closed = true;
+                                return Poll::Ready(Some(Err(ExecutorError::ClientTransport(
+                                    "unexpected EOF while reading journey update payload"
+                                        .to_string(),
+                                ))));
+                            }
+
+                            *read += just_read;
+                            if *read < payload.len() {
+                                continue;
+                            }
+
+                            let decode_result = JourneyUpdateSubscription::decode_update(payload);
+                            this.frame_state = SubscriptionFrameState::default();
+                            return Poll::Ready(Some(decode_result));
+                        }
+                    }
+                }
             }
         }
     }
@@ -382,7 +485,11 @@ impl<J> Client<J> {
             })
             .await
             .map_err(Self::transport_error)?;
-        Ok(JourneyUpdateSubscription { recv })
+        Ok(JourneyUpdateSubscription {
+            recv,
+            frame_state: SubscriptionFrameState::default(),
+            closed: false,
+        })
     }
 
     pub(crate) async fn start_journey_by_id(
