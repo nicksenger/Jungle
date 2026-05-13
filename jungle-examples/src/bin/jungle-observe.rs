@@ -1,4 +1,6 @@
 fn main() {
+    let _zoo_marker = std::any::TypeId::of::<jungle_zoo::animals::gorilla::Gorilla>();
+
     let (client, journey_id) = jungle_examples::spawn_observe_runtime();
 
     jungle_viewer::JungleViewerBuilder::new()
