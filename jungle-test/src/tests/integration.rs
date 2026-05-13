@@ -556,6 +556,7 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
     let mut started_count = 0_u32;
     let mut succeeded_count = 0_u32;
     let mut failed_count = 0_u32;
+    let mut total_step_updates = 0_u32;
     let mut last_sequence_id: Option<u64> = None;
 
     tokio::select! {
@@ -572,6 +573,7 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
                 let Some(update) = next else {
                     break;
                 };
+                total_step_updates += 1;
 
                 let (sequence_id, update_journey_id) = match update {
                     jungle_sdk::client::StepUpdate::Started {
@@ -634,6 +636,11 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
         "expected at least one succeeded step update"
     );
     assert_eq!(failed_count, 0, "expected no failed step updates");
+    const INTEGRATION_SHORTEST_PATH_STEPS: u32 = 8;
+    assert!(
+        total_step_updates >= INTEGRATION_SHORTEST_PATH_STEPS,
+        "expected streamed step updates ({total_step_updates}) to be >= shortest path steps ({INTEGRATION_SHORTEST_PATH_STEPS})"
+    );
 
     server_task.abort();
     let _ = server_task.await;
