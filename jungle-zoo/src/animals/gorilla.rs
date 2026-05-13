@@ -12,7 +12,7 @@ use jungle_sdk::types::{
     NoopPerturbation, Pulse, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
-use jungle_sdk::Journey;
+use jungle_sdk::Flow;
 use jungle_sdk::Optic;
 
 #[derive(
@@ -144,9 +144,22 @@ impl LoopCondition<State> for GorillaDaylightRemaining {
 }
 
 pub struct GorillaIsActiveNow;
-impl Condition<(State, bool)> for GorillaIsActiveNow {
-    fn choose((_state, is_active): &(State, bool)) -> bool {
-        *is_active
+impl Condition<(State, ())> for GorillaIsActiveNow {
+    fn choose((state, _): &(State, ())) -> bool {
+        match state.temporal.schedule.activity {
+            DailyActivity::Diurnal => {
+                matches!(
+                    state.temporal.perception.current,
+                    PerceivedTimeOfDay::Morning | PerceivedTimeOfDay::Afternoon
+                )
+            }
+            DailyActivity::Nocturnal => {
+                matches!(
+                    state.temporal.perception.current,
+                    PerceivedTimeOfDay::Evening | PerceivedTimeOfDay::Night
+                )
+            }
+        }
     }
 }
 
@@ -247,7 +260,7 @@ impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
     type Action = actions::EvaluateActivityWindow;
     type Aspect = Identity;
     type CarryIn = ();
-    type CarryOut = bool;
+    type CarryOut = ();
 
     fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
         (
@@ -257,7 +270,7 @@ impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
     }
 
     fn absorb(_state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
-        output.expect("gorilla activity-window evaluation should succeed")
+        let _ = output.expect("gorilla activity-window evaluation should succeed");
     }
 }
 
@@ -373,21 +386,21 @@ impl Pulse<Gorilla> for GorillaMakeSound {
     }
 }
 
-#[derive(Journey)]
+#[derive(Flow)]
 pub struct GorillaFeedFlow(
     Step<Gorilla, GorillaPeelFruit>,
     Step<Gorilla, GorillaEat>,
     Step<Gorilla, GorillaRest>,
 );
 
-#[derive(Journey)]
+#[derive(Flow)]
 pub struct GorillaToolSocialFlow(
     Step<Gorilla, GorillaUseTool>,
     Step<Gorilla, GorillaChestBeat>,
     Step<Gorilla, GorillaMakeSound>,
 );
 
-#[derive(Journey)]
+#[derive(Flow)]
 pub struct GorillaSimpleSocialFlow(Step<Gorilla, GorillaMakeSound>, Step<Gorilla, GorillaRest>);
 
 pub type GorillaActiveFlow = Conditional<
@@ -396,21 +409,21 @@ pub type GorillaActiveFlow = Conditional<
     Conditional<GorillaCanUseTools, GorillaToolSocialFlow, GorillaSimpleSocialFlow>,
 >;
 
-#[derive(Journey)]
+#[derive(Flow)]
 pub struct GorillaDayFlow(
     Step<Gorilla, GorillaEvaluateActivityWindow>,
     Conditional<GorillaIsActiveNow, GorillaActiveFlow, Step<Gorilla, GorillaRest>>,
     Step<Gorilla, GorillaTickPerceivedTime>,
 );
 
-#[derive(Journey)]
+#[derive(Flow)]
 pub struct GorillaYearFlow(
     Step<Gorilla, GorillaBirthday>,
     While<GorillaDaylightRemaining, GorillaDayFlow>,
     Step<Gorilla, GorillaAdvanceAge>,
 );
 
-#[derive(Journey)]
+#[derive(Flow)]
 pub struct GorillaJourney(
     Step<Gorilla, GorillaBirth>,
     While<GorillaStillGrowing, GorillaYearFlow>,

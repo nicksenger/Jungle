@@ -1,8 +1,7 @@
+use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::{JourneyStatus, SupportedAnimal, Work};
 use jungle_sdk::JungleClient;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 fn main() {
@@ -92,7 +91,8 @@ fn main() {
                 .build()
                 .expect("worker runtime should start");
             runtime.block_on(async move {
-                run_live_worker_loop(worker_client).await;
+                let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
+                let _ = worker.spawn().await;
             });
         });
 
@@ -109,68 +109,5 @@ fn main() {
         viewer
             .view_animal::<jungle_zoo::animals::gorilla::Gorilla>()
             .expect("jungle-view example should launch viewer");
-    }
-}
-
-async fn run_live_worker_loop(client: jungle_sdk::Client) {
-    let supported = vec![SupportedAnimal {
-        animal_id: 0,
-        generation: 0,
-    }];
-
-    loop {
-        let work = client.poll_work(supported.clone()).await;
-        let Some(work) = (match work {
-            Ok(value) => value,
-            Err(_) => {
-                tokio::time::sleep(Duration::from_millis(25)).await;
-                continue;
-            }
-        }) else {
-            let _ = client.poll_timers().await;
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            continue;
-        };
-
-        let (journey_id, seed) = match work {
-            Work::StartJourney {
-                journey_id, seed, ..
-            }
-            | Work::ResumeJourney {
-                journey_id, seed, ..
-            } => (journey_id, seed),
-        };
-
-        let start = Instant::now();
-        loop {
-            let status = match client.journey_details(journey_id).await {
-                Ok(status) => status,
-                Err(_) => break,
-            };
-            if matches!(status, JourneyStatus::Completed) {
-                break;
-            }
-            if start.elapsed() >= Duration::from_secs(8) {
-                let _ = client.complete_journey(journey_id).await;
-                break;
-            }
-
-            let sleep_timer_id = Uuid::new_v4();
-            let wake_at_unix_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64 + 75)
-                .unwrap_or(75);
-            let _ = client
-                .schedule_sleep_timer(journey_id, sleep_timer_id, wake_at_unix_ms)
-                .await;
-
-            let _ = client
-                .action_input(journey_id, 0, postcard::to_allocvec(&seed).unwrap_or_default())
-                .await;
-            let _ = client
-                .action_success_output(journey_id, 0, postcard::to_allocvec(&seed).unwrap_or_default())
-                .await;
-            let _ = client.complete_journey(journey_id).await;
-        }
     }
 }

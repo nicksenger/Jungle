@@ -5,9 +5,9 @@ use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    Animal, AnimalObservation, AnimalPerturbation, AnimalSet, Animals, BuildFlowWithContext,
-    ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep, StripAnimalHeaders,
-    SupportedAnimal, Work,
+    Animal, AnimalIdValue, AnimalObservation, AnimalPerturbation, AnimalSet, Animals,
+    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep,
+    StripAnimalHeaders, SupportedAnimal, Work,
 };
 use std::collections::HashMap;
 use std::future::Future;
@@ -34,7 +34,7 @@ where
     T::Animals: Animals,
     <T::Animals as Animals>::List: FlattenNodes,
     SPFlatten<<T::Animals as Animals>::List>: StripAnimalHeaders,
-    AnimalSet<T::Animals>: SpawnByAnimal<T> + SupportedAnimalGenerations,
+    AnimalSet<T::Animals>: SupportedAnimalGenerations<T>,
 {
     pub fn new<C>(jungle: T, client: C) -> Self
     where
@@ -122,7 +122,7 @@ where
         });
 
         let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
-        let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations>::collect();
+        let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
 
         loop {
             for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
@@ -168,7 +168,7 @@ where
                     seed,
                 }) => {
                     let history = self.client.journey_history(journey_id).await?;
-                    match <AnimalSet<T::Animals> as SpawnByAnimal<T>>::resume_by_animal(
+                    match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
                         animal_id,
                         generation,
                         seed,
@@ -213,7 +213,7 @@ where
                     seed,
                 }) => {
                     let history = self.client.journey_history(journey_id).await?;
-                    match <AnimalSet<T::Animals> as SpawnByAnimal<T>>::resume_by_animal(
+                    match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
                         animal_id,
                         generation,
                         seed,
@@ -329,7 +329,9 @@ where
     }
 }
 
-pub trait SpawnByAnimal<T>: Send + Sync {
+pub trait SupportedAnimalGenerations<T> {
+    fn collect() -> Vec<SupportedAnimal>;
+
     fn spawn_by_animal<'a>(
         animal_id: u32,
         generation: u32,
@@ -350,7 +352,11 @@ pub trait SpawnByAnimal<T>: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
 }
 
-impl<T> SpawnByAnimal<T> for list::Empty {
+impl<T> SupportedAnimalGenerations<T> for list::Empty {
+    fn collect() -> Vec<SupportedAnimal> {
+        Vec::new()
+    }
+
     fn spawn_by_animal<'a>(
         _animal_id: u32,
         _generation: u32,
@@ -375,23 +381,27 @@ impl<T> SpawnByAnimal<T> for list::Empty {
     }
 }
 
-impl<T, Head, Tail, AnimalId, Generation> SpawnByAnimal<T> for list::List<(Head, Tail)>
+impl<T, Head, Tail> SupportedAnimalGenerations<T> for list::List<(Head, Tail)>
 where
-    Head: Animal<Id = jungle_types::Id<AnimalId>, Generation = Generation>
-        + AnimalObservation
-        + AnimalPerturbation
-        + Send
-        + Sync
-        + 'static,
+    Head: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
+    Head::Id: AnimalIdValue,
+    Head::Generation: Unsigned,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
     Head::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
-    AnimalId: Unsigned,
-    Generation: Unsigned,
-    Tail: SpawnByAnimal<T>,
+    Tail: SupportedAnimalGenerations<T>,
     T: 'static,
 {
+    fn collect() -> Vec<SupportedAnimal> {
+        let mut out = vec![SupportedAnimal {
+            animal_id: <Head::Id as AnimalIdValue>::U32,
+            generation: <Head::Generation as Unsigned>::U32,
+        }];
+        out.extend(Tail::collect());
+        out
+    }
+
     fn spawn_by_animal<'a>(
         animal_id: u32,
         generation: u32,
@@ -401,8 +411,8 @@ where
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
-            if animal_id == <AnimalId as Unsigned>::U32
-                && generation == <Generation as Unsigned>::U32
+            if animal_id == <Head::Id as AnimalIdValue>::U32
+                && generation == <Head::Generation as Unsigned>::U32
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
@@ -447,8 +457,8 @@ where
         mut tx: RunnerChannelTx,
     ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
         Box::pin(async move {
-            if animal_id == <AnimalId as Unsigned>::U32
-                && generation == <Generation as Unsigned>::U32
+            if animal_id == <Head::Id as AnimalIdValue>::U32
+                && generation == <Head::Generation as Unsigned>::U32
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
@@ -483,33 +493,6 @@ where
                     .await
             }
         })
-    }
-}
-
-pub trait SupportedAnimalGenerations {
-    fn collect() -> Vec<SupportedAnimal>;
-}
-
-impl SupportedAnimalGenerations for list::Empty {
-    fn collect() -> Vec<SupportedAnimal> {
-        Vec::new()
-    }
-}
-
-impl<Head, Tail, AnimalId, Generation> SupportedAnimalGenerations for list::List<(Head, Tail)>
-where
-    Head: Animal<Id = jungle_types::Id<AnimalId>, Generation = Generation>,
-    AnimalId: Unsigned,
-    Generation: Unsigned,
-    Tail: SupportedAnimalGenerations,
-{
-    fn collect() -> Vec<SupportedAnimal> {
-        let mut out = vec![SupportedAnimal {
-            animal_id: <AnimalId as Unsigned>::U32,
-            generation: <Generation as Unsigned>::U32,
-        }];
-        out.extend(Tail::collect());
-        out
     }
 }
 
