@@ -7,7 +7,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::{Animals, JungleClient, Optic};
+use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -620,21 +620,20 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
                 let update = next.expect("streamed journey update should succeed");
 
                 let (sequence_id, update_journey_id) = match update.event {
-                    jungle_sdk::RunnerOut::ActionInput { uuid, .. } => {
+                    RunnerUpdateOut::ActionInput { uuid, .. } => {
                         started_count += 1;
                         (update.sequence_id, uuid)
                     }
-                    jungle_sdk::RunnerOut::ActionSuccessOutput { uuid, .. } => {
+                    RunnerUpdateOut::ActionSuccessOutput { uuid, .. } => {
                         succeeded_count += 1;
                         (update.sequence_id, uuid)
                     }
-                    jungle_sdk::RunnerOut::ActionFailureOutput { uuid, .. } => {
+                    RunnerUpdateOut::ActionFailureOutput { uuid, .. } => {
                         failed_count += 1;
                         (update.sequence_id, uuid)
                     }
-                    jungle_sdk::RunnerOut::Appearance { .. }
-                    | jungle_sdk::RunnerOut::SleepScheduled { .. }
-                    | jungle_sdk::RunnerOut::SleepFired { .. } => continue,
+                    RunnerUpdateOut::SleepScheduled { .. }
+                    | RunnerUpdateOut::SleepFired { .. } => continue,
                 };
                 total_step_updates += 1;
 

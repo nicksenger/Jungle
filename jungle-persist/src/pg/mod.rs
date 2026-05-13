@@ -3,7 +3,8 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
 use jungle_types::{
-    ClaimedAnimalPerturbation, JourneyEvent, OwnerWake, RunnerOut, SupportedAnimal, Work,
+    ClaimedAnimalPerturbation, JourneyUpdateEvent, OwnerWake, RunnerOut, RunnerUpdateOut,
+    SupportedAnimal, Work,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
@@ -186,11 +187,11 @@ impl JungleStore for PgStore {
         Ok(history)
     }
 
-    async fn journey_events_since(
+    async fn journey_update_events_since(
         &self,
         journey_id: Uuid,
         after_sequence_id: Option<u64>,
-    ) -> Result<Vec<JourneyEvent>> {
+    ) -> Result<Vec<JourneyUpdateEvent>> {
         let after_sequence_id = after_sequence_id
             .map(|seq| {
                 i64::try_from(seq).map_err(|_| {
@@ -203,7 +204,15 @@ impl JungleStore for PgStore {
 
         let rows = sqlx::query(
             r#"
-            SELECT sequence_id, kind, data
+            SELECT
+                sequence_id,
+                kind,
+                node_id,
+                CASE
+                    WHEN kind IN (3, 4) THEN data
+                    WHEN kind IN (0, 1, 2) AND node_id IS NULL THEN data
+                    ELSE NULL
+                END AS data
             FROM events
             WHERE journey_id = $1
               AND sequence_id > COALESCE($2, -1)
@@ -224,8 +233,11 @@ impl JungleStore for PgStore {
             let kind = row
                 .try_get::<i16, _>("kind")
                 .map_err(crate::PersistenceError::PostgresQuery)?;
+            let node_id = row
+                .try_get::<Option<i32>, _>("node_id")
+                .map_err(crate::PersistenceError::PostgresQuery)?;
             let data = row
-                .try_get::<Vec<u8>, _>("data")
+                .try_get::<Option<Vec<u8>>, _>("data")
                 .map_err(crate::PersistenceError::PostgresQuery)?;
 
             let sequence_id = u64::try_from(sequence_id_i64).map_err(|_| {
@@ -234,9 +246,9 @@ impl JungleStore for PgStore {
                     sequence_id_i64
                 ))
             })?;
-            updates.push(JourneyEvent {
+            updates.push(JourneyUpdateEvent {
                 sequence_id,
-                event: decode_history_row(journey_id, kind, data)?,
+                event: decode_journey_update_row(journey_id, kind, node_id, data)?,
             });
         }
         Ok(updates)
@@ -650,22 +662,49 @@ impl JungleStore for PgStore {
     }
 
     async fn append_history(&self, history: RunnerOut) -> Result<()> {
-        let (journey_id, kind, data) = match history {
+        let (journey_id, kind, node_id, data) = match history {
             RunnerOut::ActionInput {
                 node_id,
                 data,
                 uuid,
-            } => (uuid, 0_i16, encode_action_event(node_id, data)?),
+            } => (
+                uuid,
+                0_i16,
+                Some(i32::try_from(node_id).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "node_id exceeds i32 range for postgres: {node_id}"
+                    ))
+                })?),
+                encode_action_event(node_id, data)?,
+            ),
             RunnerOut::ActionSuccessOutput {
                 node_id,
                 data,
                 uuid,
-            } => (uuid, 1_i16, encode_action_event(node_id, data)?),
+            } => (
+                uuid,
+                1_i16,
+                Some(i32::try_from(node_id).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "node_id exceeds i32 range for postgres: {node_id}"
+                    ))
+                })?),
+                encode_action_event(node_id, data)?,
+            ),
             RunnerOut::ActionFailureOutput {
                 node_id,
                 data,
                 uuid,
-            } => (uuid, 2_i16, encode_action_event(node_id, data)?),
+            } => (
+                uuid,
+                2_i16,
+                Some(i32::try_from(node_id).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "node_id exceeds i32 range for postgres: {node_id}"
+                    ))
+                })?),
+                encode_action_event(node_id, data)?,
+            ),
             RunnerOut::SleepScheduled {
                 uuid,
                 timer_id,
@@ -673,6 +712,7 @@ impl JungleStore for PgStore {
             } => (
                 uuid,
                 3_i16,
+                None,
                 postcard::to_allocvec(&SleepScheduledEvent {
                     timer_id,
                     wake_at_unix_ms,
@@ -686,6 +726,7 @@ impl JungleStore for PgStore {
             } => (
                 uuid,
                 4_i16,
+                None,
                 postcard::to_allocvec(&SleepFiredEvent {
                     timer_id,
                     fired_at_unix_ms,
@@ -699,21 +740,22 @@ impl JungleStore for PgStore {
             }
         };
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             WITH next_sequence AS (
                 SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
                 FROM events
                 WHERE journey_id = $1
             )
-            INSERT INTO events (journey_id, sequence_id, kind, data)
-            SELECT $1, next_sequence.sequence_id, $2, $3
+            INSERT INTO events (journey_id, sequence_id, kind, node_id, data)
+            SELECT $1, next_sequence.sequence_id, $2, $3, $4
             FROM next_sequence
             "#,
-            journey_id,
-            kind,
-            data
         )
+        .bind(journey_id)
+        .bind(kind)
+        .bind(node_id)
+        .bind(data)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -804,21 +846,22 @@ impl JungleStore for PgStore {
         })
         .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             WITH next_sequence AS (
                 SELECT COALESCE(MAX(sequence_id) + 1, 0) AS sequence_id
                 FROM events
                 WHERE journey_id = $1
             )
-            INSERT INTO events (journey_id, sequence_id, kind, data)
-            SELECT $1, next_sequence.sequence_id, $2, $3
+            INSERT INTO events (journey_id, sequence_id, kind, node_id, data)
+            SELECT $1, next_sequence.sequence_id, $2, $3, $4
             FROM next_sequence
             "#,
-            due.journey_id,
-            4_i16,
-            sleep_fired_data
         )
+        .bind(due.journey_id)
+        .bind(4_i16)
+        .bind(Option::<i32>::None)
+        .bind(sleep_fired_data)
         .execute(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -957,6 +1000,79 @@ fn decode_history_row(journey_id: Uuid, kind: i16, data: Vec<u8>) -> Result<Runn
             let event: SleepFiredEvent = postcard::from_bytes(&data)
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
             Ok(RunnerOut::SleepFired {
+                uuid: journey_id,
+                timer_id: event.timer_id,
+                fired_at_unix_ms: event.fired_at_unix_ms,
+            })
+        }
+        other => Err(crate::PersistenceError::Message(format!(
+            "unsupported event kind in postgres: {other}"
+        ))),
+    }
+}
+
+fn decode_journey_update_row(
+    journey_id: Uuid,
+    kind: i16,
+    node_id: Option<i32>,
+    data: Option<Vec<u8>>,
+) -> Result<RunnerUpdateOut> {
+    match kind {
+        0..=2 => {
+            let node_id = if let Some(node_id) = node_id {
+                u32::try_from(node_id).map_err(|_| {
+                    crate::PersistenceError::Message(format!(
+                        "invalid negative node_id in postgres events: {node_id}"
+                    ))
+                })?
+            } else {
+                let fallback_data = data.ok_or_else(|| {
+                    crate::PersistenceError::Message(
+                        "missing action event data and node_id in postgres events".to_string(),
+                    )
+                })?;
+                decode_action_event(fallback_data)?.0
+            };
+
+            match kind {
+                0 => Ok(RunnerUpdateOut::ActionInput {
+                    node_id,
+                    uuid: journey_id,
+                }),
+                1 => Ok(RunnerUpdateOut::ActionSuccessOutput {
+                    node_id,
+                    uuid: journey_id,
+                }),
+                2 => Ok(RunnerUpdateOut::ActionFailureOutput {
+                    node_id,
+                    uuid: journey_id,
+                }),
+                _ => unreachable!(),
+            }
+        }
+        3 => {
+            let sleep_data = data.ok_or_else(|| {
+                crate::PersistenceError::Message(
+                    "missing sleep-scheduled payload in postgres events".to_string(),
+                )
+            })?;
+            let event: SleepScheduledEvent = postcard::from_bytes(&sleep_data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerUpdateOut::SleepScheduled {
+                uuid: journey_id,
+                timer_id: event.timer_id,
+                wake_at_unix_ms: event.wake_at_unix_ms,
+            })
+        }
+        4 => {
+            let sleep_data = data.ok_or_else(|| {
+                crate::PersistenceError::Message(
+                    "missing sleep-fired payload in postgres events".to_string(),
+                )
+            })?;
+            let event: SleepFiredEvent = postcard::from_bytes(&sleep_data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerUpdateOut::SleepFired {
                 uuid: journey_id,
                 timer_id: event.timer_id,
                 fired_at_unix_ms: event.fired_at_unix_ms,

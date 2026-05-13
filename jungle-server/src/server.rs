@@ -198,7 +198,7 @@ impl JungleServer for Server {
                     loop {
                         let updates = self
                             .store
-                            .journey_events_since(journey_id, cursor)
+                            .journey_update_events_since(journey_id, cursor)
                             .await
                             .map_err(|err| {
                                 crate::ServerError::Backend(BackendError::Message(err.to_string()))

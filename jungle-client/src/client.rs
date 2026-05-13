@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use jungle_types::{
     Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem,
-    ExecutorError, JourneyEvent, JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders,
+    ExecutorError, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, StripAnimalHeaders,
     SupportedAnimal, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
@@ -68,7 +68,7 @@ impl Default for SubscriptionFrameState {
 }
 
 impl JourneyUpdateSubscription {
-    fn decode_update(payload: &[u8]) -> Result<JourneyEvent, ExecutorError> {
+    fn decode_update(payload: &[u8]) -> Result<JourneyUpdateEvent, ExecutorError> {
         let response: Result<WireOut, BackendError> =
             postcard::from_bytes(payload).map_err(|err| {
                 ExecutorError::ClientTransport(format!("failed to decode wire output: {err}"))
@@ -85,7 +85,7 @@ impl JourneyUpdateSubscription {
 }
 
 impl Stream for JourneyUpdateSubscription {
-    type Item = Result<JourneyEvent, ExecutorError>;
+    type Item = Result<JourneyUpdateEvent, ExecutorError>;
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,

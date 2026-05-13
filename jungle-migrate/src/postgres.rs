@@ -138,9 +138,19 @@ pub async fn migrate_postgres_v0(pool: &sqlx::PgPool) -> Result<(), sqlx::Error>
             journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
             sequence_id BIGINT NOT NULL,
             kind SMALLINT NOT NULL,
+            node_id INTEGER,
             data BYTEA NOT NULL,
             PRIMARY KEY (journey_id, sequence_id)
         )
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        ALTER TABLE events
+        ADD COLUMN IF NOT EXISTS node_id INTEGER
         "#,
     )
     .execute(&mut *tx)

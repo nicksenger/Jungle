@@ -3,8 +3,8 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jungle_types::{
-    ClaimedAnimalPerturbation, JourneyEvent, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal,
-    Work,
+    ClaimedAnimalPerturbation, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
+    RunnerUpdateOut, SupportedAnimal, Work,
 };
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -281,11 +281,11 @@ impl JungleStore for RedbStore {
         Ok(history)
     }
 
-    async fn journey_events_since(
+    async fn journey_update_events_since(
         &self,
         journey_id: Uuid,
         after_sequence_id: Option<u64>,
-    ) -> Result<Vec<JourneyEvent>> {
+    ) -> Result<Vec<JourneyUpdateEvent>> {
         let read_tx = self.db.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
                 "redb journey_events_since begin read failed: {err}"
@@ -326,9 +326,9 @@ impl JungleStore for RedbStore {
         rows.sort_by_key(|(sequence_id, _, _)| *sequence_id);
         let mut updates = Vec::with_capacity(rows.len());
         for (sequence_id, kind, data) in rows {
-            updates.push(JourneyEvent {
+            updates.push(JourneyUpdateEvent {
                 sequence_id,
-                event: decode_runner_out(journey_id, kind, data)?,
+                event: decode_runner_update_out(journey_id, kind, data)?,
             });
         }
         Ok(updates)
@@ -1701,6 +1701,53 @@ fn decode_runner_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<Runner
             let event: SleepFiredEvent = postcard::from_bytes(&data)
                 .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
             Ok(RunnerOut::SleepFired {
+                uuid: journey_id,
+                timer_id: event.timer_id,
+                fired_at_unix_ms: event.fired_at_unix_ms,
+            })
+        }
+        other => Err(crate::PersistenceError::Message(format!(
+            "unsupported event kind in redb: {other}"
+        ))),
+    }
+}
+
+fn decode_runner_update_out(journey_id: Uuid, kind: u8, data: Vec<u8>) -> Result<RunnerUpdateOut> {
+    match kind {
+        EVENT_KIND_ACTION_INPUT => {
+            let (node_id, _) = decode_action_event(data)?;
+            Ok(RunnerUpdateOut::ActionInput {
+                node_id,
+                uuid: journey_id,
+            })
+        }
+        EVENT_KIND_ACTION_SUCCESS_OUTPUT => {
+            let (node_id, _) = decode_action_event(data)?;
+            Ok(RunnerUpdateOut::ActionSuccessOutput {
+                node_id,
+                uuid: journey_id,
+            })
+        }
+        EVENT_KIND_ACTION_FAILURE_OUTPUT => {
+            let (node_id, _) = decode_action_event(data)?;
+            Ok(RunnerUpdateOut::ActionFailureOutput {
+                node_id,
+                uuid: journey_id,
+            })
+        }
+        EVENT_KIND_SLEEP_SCHEDULED => {
+            let event: SleepScheduledEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerUpdateOut::SleepScheduled {
+                uuid: journey_id,
+                timer_id: event.timer_id,
+                wake_at_unix_ms: event.wake_at_unix_ms,
+            })
+        }
+        EVENT_KIND_SLEEP_FIRED => {
+            let event: SleepFiredEvent = postcard::from_bytes(&data)
+                .map_err(|err| crate::PersistenceError::Message(err.to_string()))?;
+            Ok(RunnerUpdateOut::SleepFired {
                 uuid: journey_id,
                 timer_id: event.timer_id,
                 fired_at_unix_ms: event.fired_at_unix_ms,

@@ -2,7 +2,7 @@ use futures::StreamExt;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
     BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
-    SupportedAnimal, WireIn, WireOut, Work,
+    RunnerUpdateOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -387,11 +387,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
     assert_eq!(first.sequence_id, 0);
     assert!(matches!(
         first.event,
-        RunnerOut::ActionInput {
-            node_id,
-            ref data,
-            uuid
-        } if node_id == 12 && data == &vec![9, 9] && uuid == journey_id
+        RunnerUpdateOut::ActionInput { node_id, uuid } if node_id == 12 && uuid == journey_id
     ));
 
     let second = updates
@@ -402,11 +398,8 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
     assert_eq!(second.sequence_id, 1);
     assert!(matches!(
         second.event,
-        RunnerOut::ActionSuccessOutput {
-            node_id,
-            ref data,
-            uuid
-        } if node_id == 12 && data == &vec![8] && uuid == journey_id
+        RunnerUpdateOut::ActionSuccessOutput { node_id, uuid }
+            if node_id == 12 && uuid == journey_id
     ));
 
     let done = updates.next().await;
