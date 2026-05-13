@@ -8,11 +8,6 @@ use syn::{
     GenericParam, ItemImpl, Meta, Path,
 };
 
-#[proc_macro]
-pub fn noop(input: TokenStream) -> TokenStream {
-    input
-}
-
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
     let mut input = parse_macro_input!(input as DeriveInput);
     input
@@ -58,23 +53,6 @@ fn sdk_crate_path() -> Option<proc_macro2::TokenStream> {
             Some(quote!(::#ident))
         }
         Err(_) => None,
-    }
-}
-
-fn inception_derive_path() -> proc_macro2::TokenStream {
-    match crate_name("inception") {
-        Ok(FoundCrate::Itself) => quote!(crate::inception_derive),
-        Ok(FoundCrate::Name(name)) => {
-            let ident = format_ident!("{name}");
-            quote!(::#ident::inception_derive)
-        }
-        Err(_) => {
-            if let Some(sdk_path) = sdk_crate_path() {
-                quote!(#sdk_path::inception::inception_derive)
-            } else {
-                quote!(::inception::inception_derive)
-            }
-        }
     }
 }
 
@@ -193,57 +171,6 @@ pub fn derive_actions(input: TokenStream) -> TokenStream {
 pub fn derive_optic(input: TokenStream) -> TokenStream {
     let properties = jungle_types(&["JungleOptic"]);
     derive_with_properties(input, &properties)
-}
-
-fn expand_with_properties(
-    attr: TokenStream,
-    input: TokenStream,
-    properties: &[Path],
-) -> TokenStream {
-    let args = proc_macro2::TokenStream::from(attr);
-    if !args.is_empty() {
-        return syn::Error::new_spanned(args, "this attribute does not accept arguments")
-            .into_compile_error()
-            .into();
-    }
-
-    let item = parse_macro_input!(input as syn::Item);
-    let inception_derive = inception_derive_path();
-    quote! {
-        #[#inception_derive(properties = [#(#properties),*])]
-        #item
-    }
-    .into()
-}
-
-#[proc_macro_attribute]
-pub fn journey(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let properties = jungle_types(&[
-        "JungleFlow",
-        "JungleDynFlow",
-        "JungleJourneyAst",
-        "JungleTraverseFlow",
-        "JungleReplaceFlow",
-    ]);
-    expand_with_properties(attr, input, &properties)
-}
-
-#[proc_macro_attribute]
-pub fn flow(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let properties = jungle_types(&["JungleFlow", "JungleTraverseFlow", "JungleReplaceFlow"]);
-    expand_with_properties(attr, input, &properties)
-}
-
-#[proc_macro_attribute]
-pub fn animals(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let properties = jungle_types(&["Ident", "JungleAnimals"]);
-    expand_with_properties(attr, input, &properties)
-}
-
-#[proc_macro_attribute]
-pub fn actions(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let properties = jungle_types(&["Ident", "JungleActions"]);
-    expand_with_properties(attr, input, &properties)
 }
 
 struct PrimitiveAttributes {
