@@ -1,3 +1,4 @@
+use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{JourneyStatus, SupportedAnimal, Work};
 use jungle_sdk::JungleClient;
@@ -93,7 +94,7 @@ fn main() {
                 .build()
                 .expect("worker runtime should start");
             runtime.block_on(async move {
-                let worker = JungleWorker::new(jungle_zoo::probe::ProbeZoo, worker_client);
+                let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
                 let _ = worker.spawn().await;
             });
         });
