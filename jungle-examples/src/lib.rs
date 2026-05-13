@@ -260,18 +260,3 @@ pub fn spawn_gorilla_runtime_by_animal() -> (jungle_sdk::Client, Uuid) {
             .expect("start_journey_for gorilla should succeed")
     })
 }
-
-pub fn spawn_gorilla_runtime_by_id() -> (jungle_sdk::Client, Uuid) {
-    type Gorilla = jungle_zoo::animals::gorilla::Gorilla;
-
-    spawn_gorilla_runtime_with_start(|runtime, client, seed| {
-        runtime
-            .block_on(client.start_journey(
-                <<Gorilla as jungle_sdk::types::Animal>::Id as jungle_sdk::types::AnimalIdValue>::U32,
-                <<Gorilla as jungle_sdk::types::Animal>::Generation as jungle_sdk::typosaurus::num::Unsigned>::U32,
-                seed,
-            ))
-            .expect("start_journey gorilla by id should succeed")
-    })
-}
-
