@@ -260,29 +260,30 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
         .expect("start_journey legacy should succeed");
 
     let worker = JungleWorker::new(VersionedZoo, client.clone());
-    let worker_future = worker.spawn();
-    tokio::pin!(worker_future);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
 
-    tokio::select! {
-        result = &mut worker_future => {
-            panic!("worker should continue polling, got: {result:?}");
-        }
-        completion = tokio::time::timeout(Duration::from_secs(8), async {
-            loop {
-                let status = client
-                    .journey_details(journey_id)
-                    .await
-                    .expect("journey_details should succeed");
-                if status == jungle_sdk::types::JourneyStatus::Completed {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
+    let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            let status = client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed");
+            if status == jungle_sdk::types::JourneyStatus::Completed {
+                break;
             }
-        }) => {
-            if completion.is_err() {
-                panic!("versioned journey did not complete before timeout");
-            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
+    })
+    .await;
+    if completion.is_err() {
+        panic!("versioned journey did not complete before timeout");
+    }
+
+    if worker_handle.is_finished() {
+        let joined = worker_handle.await;
+        panic!("worker should continue polling, got: {joined:?}");
     }
 
     let appearance_bytes = client
@@ -296,6 +297,9 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
         value, 99,
         "latest generation journey behavior should execute"
     );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 
     server_task.abort();
     let _ = server_task.await;

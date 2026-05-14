@@ -826,35 +826,38 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
         .build();
 
     let worker = JungleWorker::new(RunnerZoo, client);
-    let worker_future = worker.spawn();
-    tokio::pin!(worker_future);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
 
-    tokio::select! {
-        result = &mut worker_future => {
-            panic!("worker should keep polling, got: {result:?}");
-        }
-        timed = tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                if success_calls.load(Ordering::Relaxed) == 2 {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
+    let timed = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if success_calls.load(Ordering::Relaxed) == 2 {
+                break;
             }
-        }) => {
-            if timed.is_err() {
-                panic!(
-                    "worker flow should complete: polls={}, inputs={}, successes={}, failures={}",
-                    poll_calls.load(Ordering::Relaxed),
-                    input_calls.load(Ordering::Relaxed),
-                    success_calls.load(Ordering::Relaxed),
-                    failure_calls.load(Ordering::Relaxed),
-                );
-            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
+    })
+    .await;
+    if timed.is_err() {
+        panic!(
+            "worker flow should complete: polls={}, inputs={}, successes={}, failures={}",
+            poll_calls.load(Ordering::Relaxed),
+            input_calls.load(Ordering::Relaxed),
+            success_calls.load(Ordering::Relaxed),
+            failure_calls.load(Ordering::Relaxed),
+        );
+    }
+    if worker_handle.is_finished() {
+        let joined = worker_handle.await;
+        panic!("worker should keep polling, got: {joined:?}");
     }
 
     assert_eq!(input_calls.load(Ordering::Relaxed), 2);
     assert_eq!(success_calls.load(Ordering::Relaxed), 2);
     assert_eq!(failure_calls.load(Ordering::Relaxed), 0);
     assert_eq!(flow_complete_calls.load(Ordering::Relaxed), 1);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 }

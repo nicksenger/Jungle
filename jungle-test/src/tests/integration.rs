@@ -506,8 +506,9 @@ async fn postgres_client_worker_streams_step_updates_end_to_end() {
 async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
     let client = connect_client_with_retry(listen_addr).await;
     let worker = JungleWorker::new(IntegrationZoo, client.clone());
-    let worker_future = worker.spawn();
-    tokio::pin!(worker_future);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
     let saw_appearance = Arc::new(AtomicBool::new(false));
 
     let seed = integration_seed();
@@ -522,14 +523,10 @@ async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
         .await
         .expect("perturb_animal should enqueue perturbation");
 
-    tokio::select! {
-        result = &mut worker_future => {
-            panic!("worker should keep polling, got: {result:?}");
-        }
-        completion = tokio::time::timeout(Duration::from_secs(8), {
-            let client_ref = &client;
-            let saw_appearance = Arc::clone(&saw_appearance);
-            async move {
+    let completion = tokio::time::timeout(Duration::from_secs(8), {
+        let client_ref = &client;
+        let saw_appearance = Arc::clone(&saw_appearance);
+        async move {
             loop {
                 let status = client_ref
                     .journey_details(journey_id)
@@ -551,16 +548,19 @@ async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
                 }
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
-            }
-        }) => {
-            if completion.is_err() {
-                let status = client
-                    .journey_details(journey_id)
-                    .await
-                    .expect("final journey_details should still be queryable");
-                panic!("flow did not complete before timeout, last status: {status:?}");
-            }
         }
+    })
+    .await;
+    if completion.is_err() {
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .expect("final journey_details should still be queryable");
+        panic!("flow did not complete before timeout, last status: {status:?}");
+    }
+    if worker_handle.is_finished() {
+        let joined = worker_handle.await;
+        panic!("worker should keep polling, got: {joined:?}");
     }
 
     assert!(
@@ -583,13 +583,17 @@ async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
         final_appearance.total >= 1000,
         "final appearance should include applied perturbation delta"
     );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 }
 
 async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAddr) {
     let client = connect_client_with_retry(listen_addr).await;
     let worker = JungleWorker::new(IntegrationZoo, client.clone());
-    let worker_future = worker.spawn();
-    tokio::pin!(worker_future);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
 
     let seed = integration_seed();
     let journey_id = client
@@ -608,53 +612,56 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
     let mut total_step_updates = 0_u32;
     let mut last_sequence_id: Option<u64> = None;
 
-    tokio::select! {
-        result = &mut worker_future => {
-            panic!("worker should keep polling, got: {result:?}");
-        }
-        completion = tokio::time::timeout(Duration::from_secs(8), async {
-            loop {
-                let Some(next) = subscription.next().await else {
-                    break;
-                };
-                let update = next.expect("streamed journey update should succeed");
+    let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            let Some(next) = subscription.next().await else {
+                break;
+            };
+            let update = next.expect("streamed journey update should succeed");
 
-                let (sequence_id, update_journey_id) = match update.event {
-                    RunnerUpdateOut::ActionInput { uuid, .. } => {
-                        started_count += 1;
-                        (update.sequence_id, uuid)
-                    }
-                    RunnerUpdateOut::ActionSuccessOutput { uuid, .. } => {
-                        succeeded_count += 1;
-                        (update.sequence_id, uuid)
-                    }
-                    RunnerUpdateOut::ActionFailureOutput { uuid, .. } => {
-                        failed_count += 1;
-                        (update.sequence_id, uuid)
-                    }
-                    RunnerUpdateOut::SleepScheduled { .. }
-                    | RunnerUpdateOut::SleepFired { .. } => continue,
-                };
-                total_step_updates += 1;
-
-                assert_eq!(update_journey_id, journey_id, "stream update should match journey");
-                if let Some(prev) = last_sequence_id {
-                    assert!(
-                        sequence_id > prev,
-                        "stream sequence ids must be strictly increasing"
-                    );
+            let (sequence_id, update_journey_id) = match update.event {
+                RunnerUpdateOut::ActionInput { uuid, .. } => {
+                    started_count += 1;
+                    (update.sequence_id, uuid)
                 }
-                last_sequence_id = Some(sequence_id);
+                RunnerUpdateOut::ActionSuccessOutput { uuid, .. } => {
+                    succeeded_count += 1;
+                    (update.sequence_id, uuid)
+                }
+                RunnerUpdateOut::ActionFailureOutput { uuid, .. } => {
+                    failed_count += 1;
+                    (update.sequence_id, uuid)
+                }
+                RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
+                    continue;
+                }
+            };
+            total_step_updates += 1;
+
+            assert_eq!(
+                update_journey_id, journey_id,
+                "stream update should match journey"
+            );
+            if let Some(prev) = last_sequence_id {
+                assert!(
+                    sequence_id > prev,
+                    "stream sequence ids must be strictly increasing"
+                );
             }
-        }) => {
-            if completion.is_err() {
-                let status = client
-                    .journey_details(journey_id)
-                    .await
-                    .expect("final journey_details should still be queryable");
-                panic!("stream did not finish before timeout, last status: {status:?}");
-            }
+            last_sequence_id = Some(sequence_id);
         }
+    })
+    .await;
+    if completion.is_err() {
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .expect("final journey_details should still be queryable");
+        panic!("stream did not finish before timeout, last status: {status:?}");
+    }
+    if worker_handle.is_finished() {
+        let joined = worker_handle.await;
+        panic!("worker should keep polling, got: {joined:?}");
     }
 
     let final_status = client
@@ -676,6 +683,9 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
         total_step_updates >= INTEGRATION_SHORTEST_PATH_STEPS,
         "expected streamed step updates ({total_step_updates}) to be >= shortest path steps ({INTEGRATION_SHORTEST_PATH_STEPS})"
     );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 }
 
 fn integration_seed() -> Vec<u8> {
