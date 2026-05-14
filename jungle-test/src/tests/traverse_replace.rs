@@ -43,7 +43,7 @@ struct TraverseAnimal;
 struct StepA;
 impl Pulse<TraverseAnimal> for StepA {
     type Action = TraverseAAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -57,7 +57,7 @@ impl Pulse<TraverseAnimal> for StepA {
 struct StepB;
 impl Pulse<TraverseAnimal> for StepB {
     type Action = TraverseBAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -71,7 +71,7 @@ impl Pulse<TraverseAnimal> for StepB {
 struct StepC;
 impl Pulse<TraverseAnimal> for StepC {
     type Action = TraverseCAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -85,7 +85,7 @@ impl Pulse<TraverseAnimal> for StepC {
 struct StepD;
 impl Pulse<TraverseAnimal> for StepD {
     type Action = TraverseDAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 

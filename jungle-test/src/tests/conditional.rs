@@ -34,7 +34,7 @@ animal!(
 struct Left;
 impl Pulse<ConditionalAnimal> for Left {
     type Action = LeftAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = i32;
     type Ret = i32;
 
@@ -52,7 +52,7 @@ impl Pulse<ConditionalAnimal> for Left {
 struct Right;
 impl Pulse<ConditionalAnimal> for Right {
     type Action = RightAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = i32;
     type Ret = bool;
 

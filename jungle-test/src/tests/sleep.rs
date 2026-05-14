@@ -46,7 +46,7 @@ impl Action for AddAction {
 struct AddBeforeSleep;
 impl Pulse<SleepAnimal> for AddBeforeSleep {
     type Action = AddAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -61,7 +61,7 @@ impl Pulse<SleepAnimal> for AddBeforeSleep {
 struct SleepForStateWake;
 impl Pulse<SleepAnimal> for SleepForStateWake {
     type Action = Sleep;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -78,7 +78,7 @@ impl Pulse<SleepAnimal> for SleepForStateWake {
 struct AddAfterSleep;
 impl Pulse<SleepAnimal> for AddAfterSleep {
     type Action = AddAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 

@@ -24,7 +24,7 @@ animal!(
 struct TransparentStep;
 impl Pulse<TransparentAnimal> for TransparentStep {
     type Action = TransparentAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = i32;
     type Ret = i32;
 

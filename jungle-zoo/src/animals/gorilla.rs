@@ -224,7 +224,7 @@ impl Condition<(State, ())> for GorillaCanUseTools {
 pub struct GorillaAdvanceAge;
 impl Pulse<Gorilla> for GorillaAdvanceAge {
     type Action = actions::AdvanceAge;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -246,7 +246,7 @@ impl Pulse<Gorilla> for GorillaAdvanceAge {
 pub struct GorillaTickPerceivedTime;
 impl Pulse<Gorilla> for GorillaTickPerceivedTime {
     type Action = actions::TickPerceivedTime;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -276,7 +276,7 @@ impl Pulse<Gorilla> for GorillaTickPerceivedTime {
 pub struct GorillaBirthday;
 impl Pulse<Gorilla> for GorillaBirthday {
     type Action = actions::CelebrateBirthday;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -293,7 +293,7 @@ impl Pulse<Gorilla> for GorillaBirthday {
 pub struct GorillaBirth;
 impl Pulse<Gorilla> for GorillaBirth {
     type Action = actions::Birth;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -310,7 +310,7 @@ impl Pulse<Gorilla> for GorillaBirth {
 pub struct GorillaEvaluateActivityWindow;
 impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
     type Action = actions::EvaluateActivityWindow;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -329,7 +329,7 @@ impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
 pub struct GorillaPeelFruit;
 impl Pulse<Gorilla> for GorillaPeelFruit {
     type Action = actions::PeelFruit;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -346,7 +346,7 @@ impl Pulse<Gorilla> for GorillaPeelFruit {
 pub struct GorillaEat;
 impl Pulse<Gorilla> for GorillaEat {
     type Action = actions::Eat;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -365,7 +365,7 @@ impl Pulse<Gorilla> for GorillaEat {
 pub struct GorillaUseTool;
 impl Pulse<Gorilla> for GorillaUseTool {
     type Action = actions::UseTool;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -381,7 +381,7 @@ impl Pulse<Gorilla> for GorillaUseTool {
 pub struct GorillaChestBeat;
 impl Pulse<Gorilla> for GorillaChestBeat {
     type Action = actions::ChestBeat;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -400,7 +400,7 @@ impl Pulse<Gorilla> for GorillaChestBeat {
 pub struct GorillaRest;
 impl Pulse<Gorilla> for GorillaRest {
     type Action = actions::Rest;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -419,7 +419,7 @@ impl Pulse<Gorilla> for GorillaRest {
 pub struct GorillaMakeSound;
 impl Pulse<Gorilla> for GorillaMakeSound {
     type Action = actions::MakeSound;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -511,7 +511,7 @@ impl AnimalMember for Gorilla {}
 pub struct ProbeStep;
 impl jungle_sdk::types::Pulse<Gorilla> for ProbeStep {
     type Action = crate::probe::ProbeAction;
-    type Aspect = jungle_sdk::types::Identity;
+    type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();
     type Ret = ();
 

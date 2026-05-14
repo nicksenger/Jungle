@@ -56,7 +56,7 @@ impl Action for ContextTimedValueAction {
 struct SelectFast;
 impl Pulse<SelectAnimal> for SelectFast {
     type Action = TimedValueAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -75,7 +75,7 @@ impl Pulse<SelectAnimal> for SelectFast {
 struct SelectSlow;
 impl Pulse<SelectAnimal> for SelectSlow {
     type Action = TimedValueAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -94,7 +94,7 @@ impl Pulse<SelectAnimal> for SelectSlow {
 struct CaptureSelectWinner;
 impl Pulse<SelectAnimal> for CaptureSelectWinner {
     type Action = TimedValueAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = Either<i32, i32>;
     type Ret = ();
 
@@ -129,7 +129,7 @@ animal!(
 struct JoinFast;
 impl Pulse<JoinAnimal> for JoinFast {
     type Action = TimedValueAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -148,7 +148,7 @@ impl Pulse<JoinAnimal> for JoinFast {
 struct JoinSlow;
 impl Pulse<JoinAnimal> for JoinSlow {
     type Action = TimedValueAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -167,7 +167,7 @@ impl Pulse<JoinAnimal> for JoinSlow {
 struct CaptureJoinSum;
 impl Pulse<JoinAnimal> for CaptureJoinSum {
     type Action = TimedValueAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = (i32, i32);
     type Ret = ();
 
@@ -199,7 +199,7 @@ animal!(
 struct TimeoutSleep;
 impl Pulse<TimeoutAnimal> for TimeoutSleep {
     type Action = Sleep;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -220,7 +220,7 @@ impl Pulse<TimeoutAnimal> for TimeoutSleep {
 struct TimeoutSlow;
 impl Pulse<TimeoutAnimal> for TimeoutSlow {
     type Action = ContextTimedValueAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 

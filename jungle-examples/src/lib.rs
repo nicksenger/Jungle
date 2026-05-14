@@ -63,7 +63,7 @@ impl Action for BumpAction {
 pub struct ObserveSleep;
 impl Pulse<ObserveAnimal> for ObserveSleep {
     type Action = Sleep;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -80,7 +80,7 @@ impl Pulse<ObserveAnimal> for ObserveSleep {
 pub struct ObserveBump;
 impl Pulse<ObserveAnimal> for ObserveBump {
     type Action = BumpAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 

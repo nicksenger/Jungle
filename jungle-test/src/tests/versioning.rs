@@ -56,7 +56,7 @@ impl Action for ModernAction {
 struct LegacyStep;
 impl Pulse<LegacyAnimal> for LegacyStep {
     type Action = LegacyAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -70,7 +70,7 @@ impl Pulse<LegacyAnimal> for LegacyStep {
 struct ModernStep;
 impl Pulse<ModernAnimal> for ModernStep {
     type Action = ModernAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 

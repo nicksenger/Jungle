@@ -47,7 +47,7 @@ impl Action for FinishAction {
 struct Seed;
 impl Pulse<ProgressAnimal> for Seed {
     type Action = SeedAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = i32;
     type Ret = i32;
 
@@ -65,7 +65,7 @@ impl Pulse<ProgressAnimal> for Seed {
 struct Finish;
 impl Pulse<ProgressAnimal> for Finish {
     type Action = FinishAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = i32;
     type Ret = i32;
 
@@ -121,7 +121,7 @@ trait StepExecutor:
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
-    A: Pulse<ProgressAnimal, Aspect = Identity, Arg = i32, Ret = i32>,
+    A: Pulse<ProgressAnimal, StateAspect = Identity, Arg = i32, Ret = i32>,
     <A as Pulse<ProgressAnimal>>::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
     type Action = <A as Pulse<ProgressAnimal>>::Action;
@@ -238,7 +238,7 @@ impl Action for BranchAction {
 struct BranchStepA;
 impl Pulse<BranchAnimal> for BranchStepA {
     type Action = BranchAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -254,7 +254,7 @@ impl Pulse<BranchAnimal> for BranchStepA {
 struct BranchStepB;
 impl Pulse<BranchAnimal> for BranchStepB {
     type Action = BranchAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 

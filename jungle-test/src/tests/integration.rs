@@ -99,7 +99,7 @@ impl Action for AddTwoAction {
 struct AddOneBeforeFullStateStep;
 impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
     type Action = AddOneAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -117,7 +117,7 @@ impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
 struct AddTwoBeforeFullStateStep;
 impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
     type Action = AddTwoAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -135,7 +135,7 @@ impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 struct AddOneFocusedStep;
 impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
     type Action = AddOneAction;
-    type Aspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Arg = ();
     type Ret = ();
 
@@ -150,7 +150,7 @@ impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
 struct AddTwoFocusedStep;
 impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
     type Action = AddTwoAction;
-    type Aspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Arg = ();
     type Ret = ();
 
@@ -165,7 +165,7 @@ impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
 struct AddOneDeepFocusedStep;
 impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
     type Action = AddOneAction;
-    type Aspect = StateLens<
+    type StateAspect = StateLens<
         IntegrationState,
         list![
             jungle_sdk::typosaurus::num::consts::U1,
@@ -189,7 +189,7 @@ impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
 struct AddTwoDeepFocusedStep;
 impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type Action = AddTwoAction;
-    type Aspect = StateLens<
+    type StateAspect = StateLens<
         IntegrationState,
         list![
             jungle_sdk::typosaurus::num::consts::U1,
@@ -213,7 +213,7 @@ impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
 struct AddOneAfterFullStateStep;
 impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
     type Action = AddOneAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -231,7 +231,7 @@ impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
 struct AddTwoAfterFullStateStep;
 impl Pulse<IntegrationAnimal> for AddTwoAfterFullStateStep {
     type Action = AddTwoAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 

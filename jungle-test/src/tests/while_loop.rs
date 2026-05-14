@@ -20,7 +20,7 @@ animal!(Looper, U0, state = i32, journey = LoopJourney);
 struct Tick;
 impl Pulse<Looper> for Tick {
     type Action = TickAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = i32;
     type Ret = (bool, i32);
 

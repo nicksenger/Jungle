@@ -40,7 +40,7 @@ where
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Sleep;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Arg = i32;
     type Ret = i32;
 
@@ -61,7 +61,7 @@ where
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Eat;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Arg = i32;
     type Ret = i32;
 
@@ -85,7 +85,7 @@ where
     A: Action<Out = i32>,
 {
     type Action = A;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Arg = A::In;
     type Ret = i32;
 
@@ -112,7 +112,7 @@ where
     A: Action<Out = i32>,
 {
     type Action = A;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Arg = A::In;
     type Ret = i32;
 
@@ -133,7 +133,7 @@ where
 struct GorillaSleepManual;
 impl Pulse<Gorilla> for GorillaSleepManual {
     type Action = Sleep;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = i32;
     type Ret = i32;
 

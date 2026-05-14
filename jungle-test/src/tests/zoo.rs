@@ -48,7 +48,7 @@ where
     A: Action<Out = (), Err = ()>,
 {
     type Action = A;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -219,7 +219,7 @@ impl Action for RunnerStepTwoAction {
 struct RunnerStepOne;
 impl Pulse<RunnerAnimal> for RunnerStepOne {
     type Action = RunnerStepOneAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -233,7 +233,7 @@ impl Pulse<RunnerAnimal> for RunnerStepOne {
 struct RunnerStepTwo;
 impl Pulse<RunnerAnimal> for RunnerStepTwo {
     type Action = RunnerStepTwoAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -464,7 +464,7 @@ where
     A: Action<In = i32, Out = i32, Err = ()>,
 {
     type Action = A;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Arg = i32;
     type Ret = i32;
 

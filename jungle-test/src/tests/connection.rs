@@ -22,7 +22,7 @@ animal!(
 struct ConnectionStep7;
 impl jungle_sdk::types::Pulse<ConnectionAnimal7> for ConnectionStep7 {
     type Action = ConnectionAction7;
-    type Aspect = jungle_sdk::types::Identity;
+    type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();
     type Ret = ();
 
@@ -51,7 +51,7 @@ animal!(
 struct ConnectionStep9;
 impl jungle_sdk::types::Pulse<ConnectionAnimal9> for ConnectionStep9 {
     type Action = ConnectionAction9;
-    type Aspect = jungle_sdk::types::Identity;
+    type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();
     type Ret = ();
 

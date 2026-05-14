@@ -31,7 +31,7 @@ impl jungle_sdk::types::Action for ProbeAction {
 pub struct ProbeStep;
 impl jungle_sdk::types::Pulse<ProbeAnimal> for ProbeStep {
     type Action = ProbeAction;
-    type Aspect = jungle_sdk::types::Identity;
+    type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();
     type Ret = ();
 

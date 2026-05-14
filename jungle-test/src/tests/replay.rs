@@ -132,7 +132,7 @@ impl Action for ReplayGateAction {
 struct ReplayPreStep;
 impl Pulse<ReplayGateAnimal> for ReplayPreStep {
     type Action = ReplayPreIncrementAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -150,7 +150,7 @@ impl Pulse<ReplayGateAnimal> for ReplayPreStep {
 struct ReplayPostStep;
 impl Pulse<ReplayGateAnimal> for ReplayPostStep {
     type Action = ReplayPostIncrementAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -168,7 +168,7 @@ impl Pulse<ReplayGateAnimal> for ReplayPostStep {
 struct ReplayGateStep;
 impl Pulse<ReplayGateAnimal> for ReplayGateStep {
     type Action = ReplayGateAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -449,7 +449,7 @@ impl Action for ReplayTimeoutPostIncrementAction {
 struct ReplayTimeoutPreStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
     type Action = ReplayTimeoutPreIncrementAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -467,7 +467,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
 struct ReplayTimeoutSleepStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
     type Action = Sleep;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -487,7 +487,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
 struct ReplayTimeoutPostStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
     type Action = ReplayTimeoutPostIncrementAction;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 

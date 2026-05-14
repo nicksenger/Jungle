@@ -12,7 +12,7 @@ where
     T: Animal<State = CounterState>,
 {
     type Action = actions::AddOne;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -35,7 +35,7 @@ where
     T: Animal<State = CounterState>,
 {
     type Action = actions::AddTwo;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -65,7 +65,7 @@ where
     T: Animal<State = RaceState>,
 {
     type Action = actions::TimedValue;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -87,7 +87,7 @@ where
     T: Animal<State = RaceState>,
 {
     type Action = actions::TimedValue;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
 
@@ -109,7 +109,7 @@ where
     T: Animal<State = RaceState>,
 {
     type Action = actions::TimedValue;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = Either<i32, i32>;
     type Ret = ();
 
@@ -134,7 +134,7 @@ where
     T: Animal<State = RaceState>,
 {
     type Action = actions::TimedValue;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = (i32, i32);
     type Ret = ();
 
@@ -156,7 +156,7 @@ where
     T: Animal<State = SleepCycleState>,
 {
     type Action = actions::AddOne;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -181,7 +181,7 @@ where
     T: Animal<State = SleepCycleState>,
 {
     type Action = Sleep;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
@@ -207,7 +207,7 @@ where
     T: Animal<State = SleepCycleState>,
 {
     type Action = actions::AddOne;
-    type Aspect = Identity;
+    type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 

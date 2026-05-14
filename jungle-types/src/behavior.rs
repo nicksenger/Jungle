@@ -71,16 +71,21 @@ impl<A: Action> ActionRequest<A> {
 pub type ActionCompletion<A> = Result<<A as Action>::Out, <A as Action>::Err>;
 
 /// Projects a larger state into a focused mutable substate.
-pub trait Aspect<State> {
+pub trait StateCarrier<State> {
     type View;
 
     fn view(state: &mut State) -> &mut Self::View;
 }
 
+// Compatibility shim during carrier-trait migration.
+pub trait Aspect<State>: StateCarrier<State> {}
+
+impl<T, State> Aspect<State> for T where T: StateCarrier<State> {}
+
 /// Focuses to the full state itself.
 pub struct Identity;
 
-impl<State> Aspect<State> for Identity {
+impl<State> StateCarrier<State> for Identity {
     type View = State;
 
     fn view(state: &mut State) -> &mut Self::View {
@@ -207,7 +212,7 @@ where
     }
 }
 
-impl<State, Index> Aspect<State> for StateLens<State, Index>
+impl<State, Index> StateCarrier<State> for StateLens<State, Index>
 where
     (): StateLensPath<State, Index>,
 {
@@ -222,17 +227,17 @@ where
 /// of animal state.
 pub trait Pulse<T: Animal> {
     type Action: Action;
-    type Aspect: Aspect<T::State>;
+    type StateAspect: Aspect<T::State>;
     type Arg;
     type Ret;
 
     fn emit(
-        view: &<<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
+        view: &<<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
     ) -> <Self::Action as Action>::In;
 
     fn absorb(
-        view: &mut <<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
+        view: &mut <<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Ret;
 }
@@ -240,11 +245,11 @@ pub trait Pulse<T: Animal> {
 /// Forward half of [`Pulse`], responsible for producing an action request input.
 pub trait Emit<T: Animal> {
     type Arg;
-    type Aspect: Aspect<T::State>;
+    type StateAspect: Aspect<T::State>;
     type Action: Action;
 
     fn emit(
-        view: &<Self::Aspect as Aspect<T::State>>::View,
+        view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
     ) -> <Self::Action as Action>::In;
 }
@@ -252,11 +257,11 @@ pub trait Emit<T: Animal> {
 /// Backward half of [`Pulse`], responsible for consuming an action completion.
 pub trait Absorb<T: Animal> {
     type Ret;
-    type Aspect: Aspect<T::State>;
+    type StateAspect: Aspect<T::State>;
     type Action: Action;
 
     fn absorb(
-        view: &mut <Self::Aspect as Aspect<T::State>>::View,
+        view: &mut <Self::StateAspect as StateCarrier<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Ret;
 }
@@ -271,11 +276,11 @@ where
     Focus: Aspect<T::State>,
 {
     type Arg = In;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Action = A;
 
     fn emit(
-        _view: &<Self::Aspect as Aspect<T::State>>::View,
+        _view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
     ) -> <Self::Action as Action>::In {
         input
@@ -292,11 +297,11 @@ where
     Focus: Aspect<T::State>,
 {
     type Arg = ();
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Action = A;
 
     fn emit(
-        _view: &<Self::Aspect as Aspect<T::State>>::View,
+        _view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         _input: Self::Arg,
     ) -> <Self::Action as Action>::In {
     }
@@ -318,17 +323,17 @@ where
     T: Animal,
     Focus: Aspect<T::State>,
     A: Action,
-    F: EmitMapper<<Focus as Aspect<T::State>>::View, A, In>,
+    F: EmitMapper<<Focus as StateCarrier<T::State>>::View, A, In>,
 {
     type Arg = In;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Action = A;
 
     fn emit(
-        view: &<Self::Aspect as Aspect<T::State>>::View,
+        view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
     ) -> <Self::Action as Action>::In {
-        <F as EmitMapper<<Focus as Aspect<T::State>>::View, A, In>>::emit(view, input)
+        <F as EmitMapper<<Focus as StateCarrier<T::State>>::View, A, In>>::emit(view, input)
     }
 }
 
@@ -348,17 +353,17 @@ where
     T: Animal,
     Focus: Aspect<T::State>,
     A: Action,
-    F: AbsorbMapper<<Focus as Aspect<T::State>>::View, A, Out>,
+    F: AbsorbMapper<<Focus as StateCarrier<T::State>>::View, A, Out>,
 {
     type Ret = Out;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Action = A;
 
     fn absorb(
-        view: &mut <Self::Aspect as Aspect<T::State>>::View,
+        view: &mut <Self::StateAspect as StateCarrier<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Ret {
-        <F as AbsorbMapper<<Focus as Aspect<T::State>>::View, A, Out>>::absorb(view, output)
+        <F as AbsorbMapper<<Focus as StateCarrier<T::State>>::View, A, Out>>::absorb(view, output)
     }
 }
 
@@ -369,22 +374,22 @@ impl<T, E, A> Pulse<T> for Fuse<E, A>
 where
     T: Animal,
     E: Emit<T>,
-    A: Absorb<T, Action = <E as Emit<T>>::Action, Aspect = <E as Emit<T>>::Aspect>,
+    A: Absorb<T, Action = <E as Emit<T>>::Action, StateAspect = <E as Emit<T>>::StateAspect>,
 {
     type Action = <E as Emit<T>>::Action;
-    type Aspect = <E as Emit<T>>::Aspect;
+    type StateAspect = <E as Emit<T>>::StateAspect;
     type Arg = <E as Emit<T>>::Arg;
     type Ret = <A as Absorb<T>>::Ret;
 
     fn emit(
-        view: &<<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
+        view: &<<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
     ) -> <Self::Action as Action>::In {
         <E as Emit<T>>::emit(view, input)
     }
 
     fn absorb(
-        view: &mut <<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
+        view: &mut <<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Ret {
         <A as Absorb<T>>::absorb(view, output)
@@ -398,14 +403,14 @@ impl<T, Focus, E> Emit<T> for FocusedEmit<Focus, E>
 where
     T: Animal,
     Focus: Aspect<T::State>,
-    E: Emit<T, Aspect = Focus>,
+    E: Emit<T, StateAspect = Focus>,
 {
     type Arg = <E as Emit<T>>::Arg;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Action = <E as Emit<T>>::Action;
 
     fn emit(
-        view: &<Self::Aspect as Aspect<T::State>>::View,
+        view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
     ) -> <Self::Action as Action>::In {
         <E as Emit<T>>::emit(view, input)
@@ -419,14 +424,14 @@ impl<T, Focus, A> Absorb<T> for FocusedAbsorb<Focus, A>
 where
     T: Animal,
     Focus: Aspect<T::State>,
-    A: Absorb<T, Aspect = Focus>,
+    A: Absorb<T, StateAspect = Focus>,
 {
     type Ret = <A as Absorb<T>>::Ret;
-    type Aspect = Focus;
+    type StateAspect = Focus;
     type Action = <A as Absorb<T>>::Action;
 
     fn absorb(
-        view: &mut <Self::Aspect as Aspect<T::State>>::View,
+        view: &mut <Self::StateAspect as StateCarrier<T::State>>::View,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Ret {
         <A as Absorb<T>>::absorb(view, output)
@@ -472,7 +477,7 @@ where
     type Out = (T::State, ActionRequest<<A as Pulse<T>>::Action>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<A as Pulse<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let view = <<A as Pulse<T>>::StateAspect as StateCarrier<T::State>>::view(&mut state);
         let action_input = <A as Pulse<T>>::emit(view, input);
         (
             state,
@@ -491,7 +496,7 @@ where
     type Out = (T::State, <A as Pulse<T>>::Ret);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<A as Pulse<T>>::Aspect as Aspect<T::State>>::view(&mut state);
+        let view = <<A as Pulse<T>>::StateAspect as StateCarrier<T::State>>::view(&mut state);
         let emitted = <A as Pulse<T>>::absorb(view, output);
         (state, emitted)
     }
