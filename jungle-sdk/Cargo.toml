@@ -8,6 +8,7 @@ default = []
 server = ["dep:jungle-server"]
 pg = ["server", "jungle-server/postgres"]
 redb = ["server", "jungle-server/redb"]
+memory = ["server", "jungle-server/memory"]
 
 [dependencies]
 inception = { workspace = true }
