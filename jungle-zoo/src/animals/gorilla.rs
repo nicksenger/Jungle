@@ -14,6 +14,8 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
 
+const GORILLA_DAY_LOOPS_PER_YEAR: u16 = 365;
+
 #[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct State {
     pub age: u32,
@@ -179,7 +181,7 @@ impl LoopCondition<State> for GorillaDaylightRemaining {
     type CarryIn = ();
 
     fn should_continue(state: &State) -> bool {
-        !matches!(state.temporal.perception.current, PerceivedTimeOfDay::Night)
+        state.temporal.perception.minutes_since_transition < GORILLA_DAY_LOOPS_PER_YEAR
     }
 }
 
@@ -249,15 +251,28 @@ impl Pulse<Gorilla> for GorillaTickPerceivedTime {
     type CarryOut = ();
 
     fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+        let segment_minutes = if state.temporal.perception.minutes_since_transition % 2 == 0 {
+            0
+        } else {
+            360
+        };
         (
             state.temporal.perception.current,
-            state.temporal.perception.minutes_since_transition,
+            segment_minutes,
         )
     }
 
     fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
         let next = output.expect("gorilla perceived-time tick should succeed");
-        state.temporal.perception = next;
+        // Track day-loop progress as "iterations elapsed this year" and keep
+        // time-of-day cycling for activity-window branch decisions.
+        let day_iteration = state
+            .temporal
+            .perception
+            .minutes_since_transition
+            .saturating_add(1);
+        state.temporal.perception.current = next.current;
+        state.temporal.perception.minutes_since_transition = day_iteration;
     }
 }
 
