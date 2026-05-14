@@ -8,8 +8,8 @@ use crate::state::{
 };
 use jungle_sdk::types::{
     Action, ActionCompletion, Animal, AnimalMember, AnimalObservation, AnimalPerturbation, Animals,
-    Condition, Conditional, Id, Identified, Identity, LoopCondition, NoopObservation,
-    NodeMetadata, NoopPerturbation, Pulse, Step, Transparent, While,
+    Condition, Conditional, Id, Identified, Identity, LoopCondition, NodeMetadata, NoopObservation,
+    NoopPerturbation, Pulse, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -256,10 +256,7 @@ impl Pulse<Gorilla> for GorillaTickPerceivedTime {
         } else {
             360
         };
-        (
-            state.temporal.perception.current,
-            segment_minutes,
-        )
+        (state.temporal.perception.current, segment_minutes)
     }
 
     fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
