@@ -103,16 +103,16 @@ pub trait Optic: Inception<JungleOptic, False> {}
 impl<T> Optic for T where T: Inception<JungleOptic, False> {}
 
 /// A flow combinator that chooses either `L` or `R` at runtime.
-pub struct Conditional<P, L, R>(PhantomData<fn() -> (P, L, R)>);
+pub struct Conditional<P, L, R, M = NoMetadata>(PhantomData<fn() -> (P, L, R, M)>);
 
 /// A flow combinator that repeatedly executes `F` while `C` is true.
-pub struct While<C, F>(PhantomData<fn() -> (C, F)>);
+pub struct While<C, F, M = NoMetadata>(PhantomData<fn() -> (C, F, M)>);
 
 /// A flow combinator that runs two activities and resolves to whichever completes first.
-pub struct Select<L, R>(PhantomData<fn() -> (L, R)>);
+pub struct Select<L, R, M = NoMetadata>(PhantomData<fn() -> (L, R, M)>);
 
 /// A flow combinator that runs two activities and resolves when both complete.
-pub struct Join<L, R>(PhantomData<fn() -> (L, R)>);
+pub struct Join<L, R, M = NoMetadata>(PhantomData<fn() -> (L, R, M)>);
 
 /// Type-level metadata marker for flow nodes.
 pub trait NodeMetadata {
@@ -612,7 +612,7 @@ where
 }
 
 #[primitive(property = JungleRunning)]
-impl<P, L, R> Running for Conditional<P, L, R>
+impl<P, L, R, M> Running for Conditional<P, L, R, M>
 where
     L: Running,
     R: Running<In = L::In>,
@@ -631,7 +631,7 @@ where
 }
 
 #[primitive(property = JungleWaiting)]
-impl<P, L, R> Waiting for Conditional<P, L, R>
+impl<P, L, R, M> Waiting for Conditional<P, L, R, M>
 where
     L: Waiting,
     R: Waiting,
@@ -648,7 +648,7 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<P, L, R> FlowActions for Conditional<P, L, R>
+impl<P, L, R, M> FlowActions for Conditional<P, L, R, M>
 where
     L: FlowActions,
     R: FlowActions,
@@ -657,15 +657,15 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
-impl<P, L, R> TraverseFlow for Conditional<P, L, R>
+impl<P, L, R, M> TraverseFlow for Conditional<P, L, R, M>
 where
     L: TraverseFlow,
     R: TraverseFlow,
 {
-    type Output = Conditional<P, <L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+    type Output = Conditional<P, <L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
 }
 
-impl<P, L, R, Traversal> TraverseWith<Traversal> for Conditional<P, L, R>
+impl<P, L, R, M, Traversal> TraverseWith<Traversal> for Conditional<P, L, R, M>
 where
     L: TraverseWith<Traversal>,
     R: TraverseWith<Traversal>,
@@ -674,28 +674,33 @@ where
         P,
         <L as TraverseWith<Traversal>>::Output,
         <R as TraverseWith<Traversal>>::Output,
+        M,
     >;
 }
 
 #[primitive(property = JungleReplaceFlow)]
-impl<P, L, R> ReplaceFlow for Conditional<P, L, R>
+impl<P, L, R, M> ReplaceFlow for Conditional<P, L, R, M>
 where
     L: ReplaceFlow,
     R: ReplaceFlow,
 {
-    type Output = Conditional<P, <L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+    type Output = Conditional<P, <L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output, M>;
 }
 
-impl<P, L, R, Replacer> ReplaceWith<Replacer> for Conditional<P, L, R>
+impl<P, L, R, M, Replacer> ReplaceWith<Replacer> for Conditional<P, L, R, M>
 where
     L: ReplaceWith<Replacer>,
     R: ReplaceWith<Replacer>,
 {
-    type Output =
-        Conditional<P, <L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
+    type Output = Conditional<
+        P,
+        <L as ReplaceWith<Replacer>>::Output,
+        <R as ReplaceWith<Replacer>>::Output,
+        M,
+    >;
 }
 
-impl<P, L, R, Replacer> ReplaceNodesWith<Replacer> for Conditional<P, L, R>
+impl<P, L, R, M, Replacer> ReplaceNodesWith<Replacer> for Conditional<P, L, R, M>
 where
     L: ReplaceNodesWith<Replacer>,
     R: ReplaceNodesWith<Replacer>,
@@ -704,6 +709,7 @@ where
             P,
             <L as ReplaceNodesWith<Replacer>>::Output,
             <R as ReplaceNodesWith<Replacer>>::Output,
+            M,
         >,
     >,
 {
@@ -712,12 +718,13 @@ where
             P,
             <L as ReplaceNodesWith<Replacer>>::Output,
             <R as ReplaceNodesWith<Replacer>>::Output,
+            M,
         >,
     >>::Output;
 }
 
 #[primitive(property = JungleRunning)]
-impl<C, F> Running for While<C, F>
+impl<C, F, M> Running for While<C, F, M>
 where
     F: Running,
 {
@@ -735,7 +742,7 @@ where
 }
 
 #[primitive(property = JungleWaiting)]
-impl<C, F> Waiting for While<C, F>
+impl<C, F, M> Waiting for While<C, F, M>
 where
     F: Waiting,
 {
@@ -748,7 +755,7 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<C, F> FlowActions for While<C, F>
+impl<C, F, M> FlowActions for While<C, F, M>
 where
     F: FlowActions,
 {
@@ -756,42 +763,42 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
-impl<C, F> TraverseFlow for While<C, F>
+impl<C, F, M> TraverseFlow for While<C, F, M>
 where
     F: TraverseFlow,
 {
-    type Output = While<C, <F as TraverseFlow>::Output>;
+    type Output = While<C, <F as TraverseFlow>::Output, M>;
 }
 
-impl<C, F, Traversal> TraverseWith<Traversal> for While<C, F>
+impl<C, F, M, Traversal> TraverseWith<Traversal> for While<C, F, M>
 where
     F: TraverseWith<Traversal>,
 {
-    type Output = While<C, <F as TraverseWith<Traversal>>::Output>;
+    type Output = While<C, <F as TraverseWith<Traversal>>::Output, M>;
 }
 
 #[primitive(property = JungleReplaceFlow)]
-impl<C, F> ReplaceFlow for While<C, F>
+impl<C, F, M> ReplaceFlow for While<C, F, M>
 where
     F: ReplaceFlow,
 {
-    type Output = While<C, <F as ReplaceFlow>::Output>;
+    type Output = While<C, <F as ReplaceFlow>::Output, M>;
 }
 
-impl<C, F, Replacer> ReplaceWith<Replacer> for While<C, F>
+impl<C, F, M, Replacer> ReplaceWith<Replacer> for While<C, F, M>
 where
     F: ReplaceWith<Replacer>,
 {
-    type Output = While<C, <F as ReplaceWith<Replacer>>::Output>;
+    type Output = While<C, <F as ReplaceWith<Replacer>>::Output, M>;
 }
 
-impl<C, F, Replacer> ReplaceNodesWith<Replacer> for While<C, F>
+impl<C, F, M, Replacer> ReplaceNodesWith<Replacer> for While<C, F, M>
 where
     F: ReplaceNodesWith<Replacer>,
-    Replacer: ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>,
+    Replacer: ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output, M>>,
 {
     type Output =
-        <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
+        <Replacer as ReplaceNode<While<C, <F as ReplaceNodesWith<Replacer>>::Output, M>>>::Output;
 }
 
 #[primitive(property = JungleRunning)]
@@ -875,10 +882,30 @@ where
 {
 }
 
-impl<P, L, R> NodeMetadata for Conditional<P, L, R> {}
-impl<C, F> NodeMetadata for While<C, F> {}
-impl<L, R> NodeMetadata for Select<L, R> {}
-impl<L, R> NodeMetadata for Join<L, R> {}
+impl<P, L, R, M> NodeMetadata for Conditional<P, L, R, M>
+where
+    M: NodeMetadata,
+{
+    const METADATA: &'static str = M::METADATA;
+}
+impl<C, F, M> NodeMetadata for While<C, F, M>
+where
+    M: NodeMetadata,
+{
+    const METADATA: &'static str = M::METADATA;
+}
+impl<L, R, M> NodeMetadata for Select<L, R, M>
+where
+    M: NodeMetadata,
+{
+    const METADATA: &'static str = M::METADATA;
+}
+impl<L, R, M> NodeMetadata for Join<L, R, M>
+where
+    M: NodeMetadata,
+{
+    const METADATA: &'static str = M::METADATA;
+}
 
 impl<M, F> NodeMetadata for Transparent<M, F>
 where
@@ -888,7 +915,7 @@ where
 }
 
 #[primitive(property = JungleRunning)]
-impl<L, R> Running for Select<L, R>
+impl<L, R, M> Running for Select<L, R, M>
 where
     L: Running,
     R: Running<In = L::In>,
@@ -903,7 +930,7 @@ where
 }
 
 #[primitive(property = JungleWaiting)]
-impl<L, R> Waiting for Select<L, R>
+impl<L, R, M> Waiting for Select<L, R, M>
 where
     L: Waiting,
     R: Waiting,
@@ -920,7 +947,7 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<L, R> FlowActions for Select<L, R>
+impl<L, R, M> FlowActions for Select<L, R, M>
 where
     L: FlowActions,
     R: FlowActions,
@@ -929,42 +956,42 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
-impl<L, R> TraverseFlow for Select<L, R>
+impl<L, R, M> TraverseFlow for Select<L, R, M>
 where
     L: TraverseFlow,
     R: TraverseFlow,
 {
-    type Output = Select<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+    type Output = Select<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
 }
 
-impl<L, R, Traversal> TraverseWith<Traversal> for Select<L, R>
+impl<L, R, M, Traversal> TraverseWith<Traversal> for Select<L, R, M>
 where
     L: TraverseWith<Traversal>,
     R: TraverseWith<Traversal>,
 {
     type Output =
-        Select<<L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output>;
+        Select<<L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output, M>;
 }
 
 #[primitive(property = JungleReplaceFlow)]
-impl<L, R> ReplaceFlow for Select<L, R>
+impl<L, R, M> ReplaceFlow for Select<L, R, M>
 where
     L: ReplaceFlow,
     R: ReplaceFlow,
 {
-    type Output = Select<<L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+    type Output = Select<<L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output, M>;
 }
 
-impl<L, R, Replacer> ReplaceWith<Replacer> for Select<L, R>
+impl<L, R, M, Replacer> ReplaceWith<Replacer> for Select<L, R, M>
 where
     L: ReplaceWith<Replacer>,
     R: ReplaceWith<Replacer>,
 {
     type Output =
-        Select<<L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
+        Select<<L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output, M>;
 }
 
-impl<L, R, Replacer> ReplaceNodesWith<Replacer> for Select<L, R>
+impl<L, R, M, Replacer> ReplaceNodesWith<Replacer> for Select<L, R, M>
 where
     L: ReplaceNodesWith<Replacer>,
     R: ReplaceNodesWith<Replacer>,
@@ -972,6 +999,7 @@ where
         Select<
             <L as ReplaceNodesWith<Replacer>>::Output,
             <R as ReplaceNodesWith<Replacer>>::Output,
+            M,
         >,
     >,
 {
@@ -979,12 +1007,13 @@ where
         Select<
             <L as ReplaceNodesWith<Replacer>>::Output,
             <R as ReplaceNodesWith<Replacer>>::Output,
+            M,
         >,
     >>::Output;
 }
 
 #[primitive(property = JungleRunning)]
-impl<L, R> Running for Join<L, R>
+impl<L, R, M> Running for Join<L, R, M>
 where
     L: Running,
     R: Running<In = L::In>,
@@ -999,7 +1028,7 @@ where
 }
 
 #[primitive(property = JungleWaiting)]
-impl<L, R> Waiting for Join<L, R>
+impl<L, R, M> Waiting for Join<L, R, M>
 where
     L: Waiting,
     R: Waiting,
@@ -1013,7 +1042,7 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<L, R> FlowActions for Join<L, R>
+impl<L, R, M> FlowActions for Join<L, R, M>
 where
     L: FlowActions,
     R: FlowActions,
@@ -1022,50 +1051,59 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
-impl<L, R> TraverseFlow for Join<L, R>
+impl<L, R, M> TraverseFlow for Join<L, R, M>
 where
     L: TraverseFlow,
     R: TraverseFlow,
 {
-    type Output = Join<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output>;
+    type Output = Join<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
 }
 
-impl<L, R, Traversal> TraverseWith<Traversal> for Join<L, R>
+impl<L, R, M, Traversal> TraverseWith<Traversal> for Join<L, R, M>
 where
     L: TraverseWith<Traversal>,
     R: TraverseWith<Traversal>,
 {
     type Output =
-        Join<<L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output>;
+        Join<<L as TraverseWith<Traversal>>::Output, <R as TraverseWith<Traversal>>::Output, M>;
 }
 
 #[primitive(property = JungleReplaceFlow)]
-impl<L, R> ReplaceFlow for Join<L, R>
+impl<L, R, M> ReplaceFlow for Join<L, R, M>
 where
     L: ReplaceFlow,
     R: ReplaceFlow,
 {
-    type Output = Join<<L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output>;
+    type Output = Join<<L as ReplaceFlow>::Output, <R as ReplaceFlow>::Output, M>;
 }
 
-impl<L, R, Replacer> ReplaceWith<Replacer> for Join<L, R>
+impl<L, R, M, Replacer> ReplaceWith<Replacer> for Join<L, R, M>
 where
     L: ReplaceWith<Replacer>,
     R: ReplaceWith<Replacer>,
 {
-    type Output = Join<<L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output>;
+    type Output =
+        Join<<L as ReplaceWith<Replacer>>::Output, <R as ReplaceWith<Replacer>>::Output, M>;
 }
 
-impl<L, R, Replacer> ReplaceNodesWith<Replacer> for Join<L, R>
+impl<L, R, M, Replacer> ReplaceNodesWith<Replacer> for Join<L, R, M>
 where
     L: ReplaceNodesWith<Replacer>,
     R: ReplaceNodesWith<Replacer>,
     Replacer: ReplaceNode<
-        Join<<L as ReplaceNodesWith<Replacer>>::Output, <R as ReplaceNodesWith<Replacer>>::Output>,
+        Join<
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+            M,
+        >,
     >,
 {
     type Output = <Replacer as ReplaceNode<
-        Join<<L as ReplaceNodesWith<Replacer>>::Output, <R as ReplaceNodesWith<Replacer>>::Output>,
+        Join<
+            <L as ReplaceNodesWith<Replacer>>::Output,
+            <R as ReplaceNodesWith<Replacer>>::Output,
+            M,
+        >,
     >>::Output;
 }
 

@@ -743,8 +743,18 @@ impl GraphBuilder {
                     members: vec![node],
                 }
             }
-            JourneyAst::Conditional { label, left, right } => {
-                let branch = self.push_layout_node(short_type_name_str(label), |node| {
+            JourneyAst::Conditional {
+                label,
+                metadata,
+                left,
+                right,
+            } => {
+                let branch_label = if metadata.trim().is_empty() {
+                    short_type_name_str(label).to_string()
+                } else {
+                    format!("{} :: {}", short_type_name_str(label), metadata)
+                };
+                let branch = self.push_layout_node(branch_label, |node| {
                     node.is_conditional_branch = true;
                 });
                 let left_flow = self.flatten(left);
@@ -771,7 +781,11 @@ impl GraphBuilder {
                     members,
                 }
             }
-            JourneyAst::While { label, body } => {
+            JourneyAst::While {
+                label,
+                metadata,
+                body,
+            } => {
                 let parent_cluster = self.cluster_stack.last().copied();
                 let cluster_index = self.clusters.len();
                 let cluster = Cluster::new(Vec::new()).padding(24.0);
@@ -781,8 +795,12 @@ impl GraphBuilder {
                     cluster
                 };
                 self.clusters.push(cluster);
-                self.cluster_labels
-                    .push(format!("while: {}", short_type_name_str(label)));
+                let cluster_label = if metadata.trim().is_empty() {
+                    format!("while: {}", short_type_name_str(label))
+                } else {
+                    format!("while: {} :: {}", short_type_name_str(label), metadata)
+                };
+                self.cluster_labels.push(cluster_label);
                 self.cluster_stack.push(cluster_index);
                 let body_flow = self.flatten(body);
                 let _ = self.cluster_stack.pop();
@@ -845,11 +863,21 @@ impl GraphBuilder {
                     members: body_flow.members,
                 }
             }
-            JourneyAst::Select { left, right, .. } => {
+            JourneyAst::Select {
+                label,
+                metadata,
+                left,
+                right,
+            } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let label = self.unique_label("Select");
-                let select = self.push_runtime_node(label, runtime_id);
+                let select_label = if metadata.trim().is_empty() {
+                    (*label).to_string()
+                } else {
+                    format!("{label} :: {metadata}")
+                };
+                let select_label = self.unique_label(select_label);
+                let select = self.push_runtime_node(select_label, runtime_id);
                 self.mark(select, |node| node.is_select = true);
 
                 let left_flow = self.flatten(left);
@@ -871,11 +899,21 @@ impl GraphBuilder {
                     members,
                 }
             }
-            JourneyAst::Join { left, right, .. } => {
+            JourneyAst::Join {
+                label,
+                metadata,
+                left,
+                right,
+            } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let label = self.unique_label("Join");
-                let join = self.push_runtime_node(label, runtime_id);
+                let join_label = if metadata.trim().is_empty() {
+                    (*label).to_string()
+                } else {
+                    format!("{label} :: {metadata}")
+                };
+                let join_label = self.unique_label(join_label);
+                let join = self.push_runtime_node(join_label, runtime_id);
                 self.mark(join, |node| node.is_join = true);
 
                 let left_flow = self.flatten(left);
@@ -1208,10 +1246,12 @@ mod tests {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
                 label: "Loop",
+                metadata: "",
                 body: Box::new(JourneyAst::Sequence(vec![
                     JourneyAst::Step { label: "A1" },
                     JourneyAst::Conditional {
                         label: "Branch",
+                        metadata: "",
                         left: Box::new(JourneyAst::Step { label: "A2" }),
                         right: Box::new(JourneyAst::Step { label: "A3" }),
                     },
@@ -1219,11 +1259,13 @@ mod tests {
             },
             JourneyAst::Select {
                 label: "Select",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "A4" }),
                 right: Box::new(JourneyAst::Step { label: "A5" }),
             },
             JourneyAst::Join {
                 label: "Join",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "A6" }),
                 right: Box::new(JourneyAst::Step { label: "A7" }),
             },
@@ -1272,19 +1314,23 @@ mod tests {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
                 label: "flow::LoopCondition",
+                metadata: "",
                 body: Box::new(JourneyAst::Conditional {
                     label: "flow::Branch",
+                    metadata: "",
                     left: Box::new(JourneyAst::Step { label: "LoopL" }),
                     right: Box::new(JourneyAst::Step { label: "LoopR" }),
                 }),
             },
             JourneyAst::Join {
                 label: "Join",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "JoinL" }),
                 right: Box::new(JourneyAst::Step { label: "JoinR" }),
             },
             JourneyAst::Select {
                 label: "Select",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "SelL" }),
                 right: Box::new(JourneyAst::Step { label: "SelR" }),
             },
@@ -1351,19 +1397,23 @@ mod tests {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
                 label: "flow::LoopCondition",
+                metadata: "",
                 body: Box::new(JourneyAst::Conditional {
                     label: "flow::StaticCondition",
+                    metadata: "",
                     left: Box::new(JourneyAst::Step { label: "InLoopL" }),
                     right: Box::new(JourneyAst::Step { label: "InLoopR" }),
                 }),
             },
             JourneyAst::Join {
                 label: "Join",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "OutJoinL" }),
                 right: Box::new(JourneyAst::Step { label: "OutJoinR" }),
             },
             JourneyAst::Select {
                 label: "Select",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "OutSelL" }),
                 right: Box::new(JourneyAst::Step { label: "OutSelR" }),
             },
@@ -1407,8 +1457,10 @@ mod tests {
     fn nested_while_clusters_use_parent_relationship() {
         let ast = JourneyAst::While {
             label: "flow::OuterLoop",
+            metadata: "",
             body: Box::new(JourneyAst::While {
                 label: "flow::InnerLoop",
+                metadata: "",
                 body: Box::new(JourneyAst::Step { label: "LoopStep" }),
             }),
         };
@@ -1435,6 +1487,7 @@ mod tests {
                 metadata: "section:gorilla/lifecycle",
                 body: Box::new(JourneyAst::Conditional {
                     label: "flow::Gate",
+                    metadata: "",
                     left: Box::new(JourneyAst::Step { label: "InL" }),
                     right: Box::new(JourneyAst::Step { label: "InR" }),
                 }),

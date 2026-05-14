@@ -1,5 +1,6 @@
 use jungle_sdk::types::{
-    ActionCompletion, Executor, Identity, ManualExecutor, NodeMetadata, Pulse, Step, Transparent,
+    ActionCompletion, Conditional, Executor, Identity, Join, JourneyAst, JourneyAstSource,
+    ManualExecutor, NodeMetadata, Pulse, Select, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U30, U31};
 use std::future::ready;
@@ -94,4 +95,40 @@ fn non_transparent_node_can_customize_metadata() {
         <AnnotatedNonTransparentStep as NodeMetadata>::METADATA,
         "node:custom/non-transparent-step"
     );
+}
+
+struct ControlMetadata;
+impl NodeMetadata for ControlMetadata {
+    const METADATA: &'static str = "control:branching";
+}
+
+type MetadataConditionalFlow =
+    Conditional<AnnotatedNonTransparentStep, BaseFlow, BaseFlow, ControlMetadata>;
+type MetadataWhileFlow = While<AnnotatedNonTransparentStep, BaseFlow, ControlMetadata>;
+type MetadataSelectFlow = Select<BaseFlow, BaseFlow, ControlMetadata>;
+type MetadataJoinFlow = Join<BaseFlow, BaseFlow, ControlMetadata>;
+
+#[test]
+fn control_flow_nodes_expose_custom_metadata_through_ast() {
+    let conditional = <MetadataConditionalFlow as JourneyAstSource>::journey_ast();
+    let while_loop = <MetadataWhileFlow as JourneyAstSource>::journey_ast();
+    let select = <MetadataSelectFlow as JourneyAstSource>::journey_ast();
+    let join = <MetadataJoinFlow as JourneyAstSource>::journey_ast();
+
+    match conditional {
+        JourneyAst::Conditional { metadata, .. } => assert_eq!(metadata, "control:branching"),
+        other => panic!("expected conditional ast node, got {other:?}"),
+    }
+    match while_loop {
+        JourneyAst::While { metadata, .. } => assert_eq!(metadata, "control:branching"),
+        other => panic!("expected while ast node, got {other:?}"),
+    }
+    match select {
+        JourneyAst::Select { metadata, .. } => assert_eq!(metadata, "control:branching"),
+        other => panic!("expected select ast node, got {other:?}"),
+    }
+    match join {
+        JourneyAst::Join { metadata, .. } => assert_eq!(metadata, "control:branching"),
+        other => panic!("expected join ast node, got {other:?}"),
+    }
 }

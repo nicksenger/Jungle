@@ -38,7 +38,7 @@ where
     type Carry = A::CarryIn;
 }
 
-impl<State, P, L, R> CarryInputForState<State> for Conditional<P, L, R>
+impl<State, P, L, R, M> CarryInputForState<State> for Conditional<P, L, R, M>
 where
     L: CarryInputForState<State>,
     R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
@@ -53,7 +53,7 @@ where
     type Carry = <F as CarryInputForState<State>>::Carry;
 }
 
-impl<State, L, R> CarryInputForState<State> for Select<L, R>
+impl<State, L, R, M> CarryInputForState<State> for Select<L, R, M>
 where
     L: CarryInputForState<State>,
     R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
@@ -61,7 +61,7 @@ where
     type Carry = <L as CarryInputForState<State>>::Carry;
 }
 
-impl<State, L, R> CarryInputForState<State> for Join<L, R>
+impl<State, L, R, M> CarryInputForState<State> for Join<L, R, M>
 where
     L: CarryInputForState<State>,
     R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
@@ -69,7 +69,7 @@ where
     type Carry = <L as CarryInputForState<State>>::Carry;
 }
 
-impl<State, C, F> CarryInputForState<State> for While<C, F>
+impl<State, C, F, M> CarryInputForState<State> for While<C, F, M>
 where
     C: LoopCondition<State>,
 {
@@ -1568,7 +1568,7 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
+impl<State, P, L, R, M> BuildFlow<DynFlow<State>> for Conditional<P, L, R, M>
 where
     State: Clone + 'static,
     L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + CarryInputForState<State>,
@@ -1598,7 +1598,7 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, C, F> BuildFlow<DynFlow<State>> for While<C, F>
+impl<State, In, C, F, M> BuildFlow<DynFlow<State>> for While<C, F, M>
 where
     State: Send + 'static,
     C: LoopCondition<State, CarryIn = In> + 'static,
@@ -1634,7 +1634,7 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, L, R> BuildFlow<DynFlow<State>> for Select<L, R>
+impl<State, In, L, R, M> BuildFlow<DynFlow<State>> for Select<L, R, M>
 where
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
@@ -1652,7 +1652,7 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, L, R> BuildFlow<DynFlow<State>> for Join<L, R>
+impl<State, In, L, R, M> BuildFlow<DynFlow<State>> for Join<L, R, M>
 where
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
@@ -1906,8 +1906,8 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, P, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Conditional<P, L, R>
+impl<Context, State, P, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Conditional<P, L, R, M>
 where
     Context: 'static,
     State: Clone + 'static,
@@ -2130,7 +2130,8 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, C, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for While<C, F>
+impl<Context, State, In, C, F, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for While<C, F, M>
 where
     Context: Send + Sync + 'static,
     State: Send + 'static,
@@ -2164,7 +2165,8 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Transparent<M, F>
+impl<Context, State, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Transparent<M, F>
 where
     F: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
@@ -2179,7 +2181,8 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Select<L, R>
+impl<Context, State, In, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Select<L, R, M>
 where
     Context: 'static,
     State: Clone + 'static,
@@ -2210,7 +2213,8 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Join<L, R>
+impl<Context, State, In, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Join<L, R, M>
 where
     Context: 'static,
     State: Clone + 'static,

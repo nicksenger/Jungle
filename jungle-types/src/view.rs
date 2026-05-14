@@ -11,11 +11,13 @@ pub enum JourneyAst {
     },
     Conditional {
         label: &'static str,
+        metadata: &'static str,
         left: Box<JourneyAst>,
         right: Box<JourneyAst>,
     },
     While {
         label: &'static str,
+        metadata: &'static str,
         body: Box<JourneyAst>,
     },
     Transparent {
@@ -25,11 +27,13 @@ pub enum JourneyAst {
     },
     Select {
         label: &'static str,
+        metadata: &'static str,
         left: Box<JourneyAst>,
         right: Box<JourneyAst>,
     },
     Join {
         label: &'static str,
+        metadata: &'static str,
         left: Box<JourneyAst>,
         right: Box<JourneyAst>,
     },
@@ -114,9 +118,10 @@ where
 }
 
 #[inception::primitive(property = JungleJourneyAst)]
-impl<P, L, R> BuildJourneyAst<Vec<JourneyAst>> for Conditional<P, L, R>
+impl<P, L, R, M> BuildJourneyAst<Vec<JourneyAst>> for Conditional<P, L, R, M>
 where
     P: 'static,
+    M: NodeMetadata + 'static,
     L: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
     R: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
 {
@@ -129,6 +134,7 @@ where
             JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::Conditional {
             label: core::any::type_name::<P>(),
+            metadata: <Conditional<P, L, R, M> as NodeMetadata>::METADATA,
             left: Box::new(left),
             right: Box::new(right),
         });
@@ -137,9 +143,10 @@ where
 }
 
 #[inception::primitive(property = JungleJourneyAst)]
-impl<C, F> BuildJourneyAst<Vec<JourneyAst>> for While<C, F>
+impl<C, F, M> BuildJourneyAst<Vec<JourneyAst>> for While<C, F, M>
 where
     C: 'static,
+    M: NodeMetadata + 'static,
     F: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
 {
     type Output = Vec<JourneyAst>;
@@ -149,6 +156,7 @@ where
             JourneyAst::sequence(<F as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::While {
             label: core::any::type_name::<C>(),
+            metadata: <While<C, F, M> as NodeMetadata>::METADATA,
             body: Box::new(body),
         });
         nodes
@@ -176,8 +184,9 @@ where
 }
 
 #[inception::primitive(property = JungleJourneyAst)]
-impl<L, R> BuildJourneyAst<Vec<JourneyAst>> for Select<L, R>
+impl<L, R, M> BuildJourneyAst<Vec<JourneyAst>> for Select<L, R, M>
 where
+    M: NodeMetadata + 'static,
     L: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
     R: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
 {
@@ -190,6 +199,7 @@ where
             JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::Select {
             label: "Select",
+            metadata: <Select<L, R, M> as NodeMetadata>::METADATA,
             left: Box::new(left),
             right: Box::new(right),
         });
@@ -198,8 +208,9 @@ where
 }
 
 #[inception::primitive(property = JungleJourneyAst)]
-impl<L, R> BuildJourneyAst<Vec<JourneyAst>> for Join<L, R>
+impl<L, R, M> BuildJourneyAst<Vec<JourneyAst>> for Join<L, R, M>
 where
+    M: NodeMetadata + 'static,
     L: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
     R: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
 {
@@ -212,6 +223,7 @@ where
             JourneyAst::sequence(<R as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
         nodes.push(JourneyAst::Join {
             label: "Join",
+            metadata: <Join<L, R, M> as NodeMetadata>::METADATA,
             left: Box::new(left),
             right: Box::new(right),
         });
