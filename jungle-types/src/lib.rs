@@ -12,8 +12,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, Aspect, Identity, IoLens, IoMapper, Pulse, StateLens,
-    Step,
+    Action, ActionCompletion, ActionRequest, Aspect, Identity, IoLens, IoMapper, IoPickEither,
+    IoPickTuple0, IoPickTuple1, Pulse, StateLens, StatePick, StatePickMapper, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;

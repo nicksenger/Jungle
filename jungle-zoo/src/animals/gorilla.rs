@@ -9,7 +9,7 @@ use crate::state::{
 use jungle_sdk::types::{
     Action, ActionCompletion, Animal, AnimalMember, AnimalObservation, AnimalPerturbation, Animals,
     Condition, Conditional, Id, Identified, Identity, LoopCondition, NodeMetadata, NoopObservation,
-    NoopPerturbation, Pulse, Step, Transparent, While,
+    NoopPerturbation, Pulse, StatePick, StatePickMapper, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -307,41 +307,36 @@ impl Pulse<Gorilla> for GorillaBirth {
     }
 }
 
-pub struct GorillaEvaluateActivityWindow;
-impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
-    type Action = actions::EvaluateActivityWindow;
-    type Aspect = Identity;
-    type Arg = ();
-    type Ret = ();
-
-    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
+pub struct GorillaEvaluateActivityWindowPick;
+impl StatePickMapper<State, actions::EvaluateActivityWindow, (), (), U0>
+    for GorillaEvaluateActivityWindowPick
+{
+    fn emit(state: &State, _input: ()) -> <actions::EvaluateActivityWindow as Action>::In {
         (
             state.temporal.schedule.activity,
             state.temporal.perception.current,
         )
     }
 
-    fn absorb(_state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(_state: &mut State, output: ActionCompletion<actions::EvaluateActivityWindow>) {
         let _ = output.expect("gorilla activity-window evaluation should succeed");
     }
 }
+pub type GorillaEvaluateActivityWindow =
+    StatePick<actions::EvaluateActivityWindow, U0, GorillaEvaluateActivityWindowPick>;
 
-pub struct GorillaPeelFruit;
-impl Pulse<Gorilla> for GorillaPeelFruit {
-    type Action = actions::PeelFruit;
-    type Aspect = Identity;
-    type Arg = ();
-    type Ret = ();
-
-    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
+pub struct GorillaPeelFruitPick;
+impl StatePickMapper<State, actions::PeelFruit, (), (), U0> for GorillaPeelFruitPick {
+    fn emit(state: &State, _input: ()) -> <actions::PeelFruit as Action>::In {
         (state.meal.rind.thickness_mm, state.meal.flesh.mass_g)
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut State, output: ActionCompletion<actions::PeelFruit>) {
         let edible = output.expect("gorilla peel-fruit should succeed");
         state.meal.flesh.mass_g = edible;
     }
 }
+pub type GorillaPeelFruit = StatePick<actions::PeelFruit, U0, GorillaPeelFruitPick>;
 
 pub struct GorillaEat;
 impl Pulse<Gorilla> for GorillaEat {

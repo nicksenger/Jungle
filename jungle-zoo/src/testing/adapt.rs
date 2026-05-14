@@ -4,8 +4,8 @@ use crate::testing::actions;
 use crate::testing::state::{CounterState, RaceState, SleepCycleState};
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_types::{
-    ActionCompletion, Animal, Condition, Either, Identity, IoLens, IoMapper, LoopCondition, Pulse,
-    Sleep,
+    ActionCompletion, Animal, Condition, Identity, IoLens, IoMapper, IoPickEither, LoopCondition,
+    Pulse, Sleep,
 };
 
 pub struct CounterAddOne;
@@ -129,29 +129,7 @@ where
     }
 }
 
-pub struct WinnerEitherMap;
-impl IoMapper<i32, i32, U0> for WinnerEitherMap {
-    type Arg = Either<i32, i32>;
-    type Ret = Either<i32, i32>;
-    type Carry = bool;
-
-    fn split(input: Self::Arg) -> (Self::Carry, i32) {
-        match input {
-            Either::Left(value) => (true, value),
-            Either::Right(value) => (false, value),
-        }
-    }
-
-    fn merge(carry: Self::Carry, focus: i32) -> Self::Ret {
-        if carry {
-            Either::Left(focus)
-        } else {
-            Either::Right(focus)
-        }
-    }
-}
-
-pub type CaptureSelectWinner = IoLens<CaptureWinnerValue, U0, WinnerEitherMap>;
+pub type CaptureSelectWinner = IoLens<CaptureWinnerValue, U0, IoPickEither>;
 
 pub struct CaptureJoinSumValue;
 impl<T> Pulse<T> for CaptureJoinSumValue
