@@ -1,7 +1,7 @@
 use jungle_sdk::typosaurus::num::consts::U255;
 
 pub struct ProbeAction;
-//impl jungle_sdk::types::ActionMember for ProbeAction {}
+impl jungle_sdk::types::ActionMember for ProbeAction {}
 
 impl jungle_sdk::types::Action for ProbeAction {
     type Id = jungle_sdk::types::Id<U255>;

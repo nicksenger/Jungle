@@ -53,6 +53,52 @@ impl From<TemporalState> for State {
     }
 }
 
+#[cfg(test)]
+mod compile_checks {
+    use super::*;
+    use jungle_sdk::types::{BuildFlowWithContext, DynFlow, FlowActions, Running, Waiting};
+    use std::sync::Arc;
+
+    #[allow(dead_code)]
+    fn assert_running<F: Running<In = (State, ())>>() {}
+
+    #[allow(dead_code)]
+    fn assert_waiting<F: Waiting>() {}
+
+    #[allow(dead_code)]
+    fn assert_flow_actions<F: FlowActions>() {}
+
+    #[allow(dead_code)]
+    fn assert_context_flow<F>()
+    where
+        F: BuildFlowWithContext<(Arc<crate::Zoo>, DynFlow<State>), Output = (Arc<crate::Zoo>, DynFlow<State>)>,
+    {
+    }
+
+    #[test]
+    fn probe_flow_compile_contracts_hold() {
+        assert_running::<Step<Gorilla, GorillaBirth>>();
+        assert_running::<GorillaFeedFlow>();
+        assert_running::<GorillaToolSocialFlow>();
+        assert_running::<GorillaSimpleSocialFlow>();
+        assert_running::<GorillaActiveFlow>();
+        assert_running::<GorillaDayFlow>();
+        assert_running::<GorillaYearFlow>();
+        assert_running::<GorillaJourney>();
+
+        assert_waiting::<Step<Gorilla, GorillaBirth>>();
+        assert_flow_actions::<Step<Gorilla, GorillaBirth>>();
+
+        assert_context_flow::<GorillaFeedFlow>();
+        assert_context_flow::<GorillaToolSocialFlow>();
+        assert_context_flow::<GorillaSimpleSocialFlow>();
+        assert_context_flow::<GorillaActiveFlow>();
+        assert_context_flow::<GorillaDayFlow>();
+        assert_context_flow::<GorillaYearFlow>();
+        assert_context_flow::<GorillaJourney>();
+    }
+}
+
 fn default_hands() -> Hands {
     fn finger(length_mm: u16, nail_len: u8) -> Finger {
         Finger {
@@ -429,8 +475,8 @@ pub struct ProbeDayFlow(
 
 #[derive(jungle_sdk::Journey)]
 pub struct ProbeActiveFlow(
-    jungle_sdk::types::Step<Gorilla, ProbeStep>,
-    jungle_sdk::types::Step<Gorilla, ProbeStep>,
+    Step<Gorilla, ProbeStep>,
+    Step<Gorilla, ProbeStep>,
 );
 
 #[derive(jungle_sdk::Journey)]
@@ -444,20 +490,20 @@ pub struct Gorilla;
 impl AnimalMember for Gorilla {}
 
 pub struct ProbeStep;
-impl<A: Animal> jungle_sdk::types::Pulse<A> for ProbeStep {
+impl jungle_sdk::types::Pulse<Gorilla> for ProbeStep {
     type Action = crate::probe::ProbeAction;
     type Aspect = jungle_sdk::types::Identity;
     type CarryIn = ();
     type CarryOut = ();
 
     fn emit(
-        _state: &<A as Animal>::State,
+        _state: &<Gorilla as Animal>::State,
         _input: Self::CarryIn,
     ) -> <Self::Action as jungle_sdk::types::Action>::In {
     }
 
     fn absorb(
-        _state: &mut <A as Animal>::State,
+        _state: &mut <Gorilla as Animal>::State,
         _output: jungle_sdk::types::ActionCompletion<Self::Action>,
     ) -> Self::CarryOut {
     }
@@ -473,7 +519,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = State;
     type Seed = TemporalState;
-    type Journey = ProbeJourney;
+    type Journey = GorillaJourney;
 }
 
 impl AnimalObservation for Gorilla {
