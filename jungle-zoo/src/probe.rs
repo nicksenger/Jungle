@@ -31,20 +31,20 @@ impl jungle_sdk::types::Action for ProbeAction {
 pub struct ProbeStep;
 impl jungle_sdk::types::Pulse<ProbeAnimal> for ProbeStep {
     type Action = ProbeAction;
-    type Aspect = jungle_sdk::types::Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type StateAspect = jungle_sdk::types::Identity;
+    type Arg = ();
+    type Ret = ();
 
     fn emit(
         _state: &<ProbeAnimal as jungle_sdk::types::Animal>::State,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_sdk::types::Action>::In {
     }
 
     fn absorb(
         _state: &mut <ProbeAnimal as jungle_sdk::types::Animal>::State,
         _output: jungle_sdk::types::ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
     }
 }
 
@@ -63,11 +63,11 @@ impl jungle_sdk::types::Animal for ProbeAnimal {
 }
 
 impl jungle_sdk::types::AnimalObservation for ProbeAnimal {
-    type Adapter = jungle_sdk::types::NoopObservation;
+    type Bridge = jungle_sdk::types::NoopObservation;
 }
 
 impl jungle_sdk::types::AnimalPerturbation for ProbeAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+    type Bridge = jungle_sdk::types::NoopPerturbation;
 }
 
 #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]

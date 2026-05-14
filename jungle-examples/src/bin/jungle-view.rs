@@ -1,8 +1,110 @@
+use iced::widget::{button, column, container, text};
+use iced::{Color, Element, Length, Task};
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::JungleClient;
+use jungle_viewer::{
+    AnyAnimal, ClusterView, ClusterViewCtx, JunglePanelTheme, Phase, RuntimeState, StepKind,
+    StepViewCtx, ViewerEvent,
+};
 use std::path::PathBuf;
 use uuid::Uuid;
+
+#[derive(Clone, Copy)]
+struct ExampleTheme;
+
+impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
+    type State = ();
+    type Message = ();
+
+    fn init(&self) -> Self::State {}
+
+    fn update(
+        &self,
+        _state: &mut Self::State,
+        _event: ViewerEvent<Self::Message>,
+    ) -> Task<ViewerEvent<Self::Message>> {
+        Task::none()
+    }
+
+    fn view_step(
+        &self,
+        _state: &Self::State,
+        cx: &StepViewCtx<'_>,
+    ) -> (Element<'static, ViewerEvent<Self::Message>>, (f64, f64)) {
+        let role = match cx.kind {
+            StepKind::Conditional => "condition",
+            StepKind::Select => "select",
+            StepKind::Join => "join",
+            StepKind::Step => "step",
+        };
+
+        let mut fill = match cx.kind {
+            StepKind::Conditional => Color::from_rgb8(28, 54, 105),
+            StepKind::Select | StepKind::Join => Color::from_rgb8(20, 84, 76),
+            StepKind::Step => Color::from_rgb8(23, 92, 58),
+        };
+        if let Phase::Live(state) = cx.phase {
+            fill = match state {
+                RuntimeState::Running => Color::from_rgb8(146, 158, 40),
+                RuntimeState::Completed => Color::from_rgb8(55, 144, 81),
+                RuntimeState::Failed => Color::from_rgb8(150, 58, 58),
+                RuntimeState::Pending => fill,
+            };
+        }
+
+        let body = column![
+            text(role).size(10).color(Color::from_rgb8(168, 198, 181)),
+            text(cx.label.to_string())
+                .size(13)
+                .color(Color::from_rgb8(223, 245, 230))
+        ]
+        .spacing(4);
+
+        (
+            button(body)
+                .padding([8, 10])
+                .width(Length::Shrink)
+                .style(move |_theme, _status| iced::widget::button::Style {
+                    background: Some(iced::Background::Color(fill)),
+                    text_color: Color::from_rgb8(223, 245, 230),
+                    border: iced::border::rounded(10)
+                        .color(Color::from_rgb8(58, 122, 86))
+                        .width(1.0),
+                    ..Default::default()
+                })
+                .into(),
+            (240.0, 80.0),
+        )
+    }
+
+    fn view_cluster(
+        &self,
+        _state: &Self::State,
+        cx: &ClusterViewCtx<'_>,
+    ) -> ClusterView<Self::Message> {
+        ClusterView::Expanded {
+            overlay: Some(
+                container(
+                    text(cx.label.to_string())
+                        .size(11)
+                        .color(Color::from_rgb8(145, 183, 157)),
+                )
+                .padding([4, 8])
+                .style(|_theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
+                    border: iced::border::rounded(6)
+                        .color(Color::from_rgb8(54, 117, 78))
+                        .width(1.0),
+                    text_color: Some(Color::from_rgb8(145, 183, 157)),
+                    ..Default::default()
+                })
+                .into(),
+            ),
+            fill: Color::from_rgba8(30, 91, 53, 0.04),
+        }
+    }
+}
 
 fn main() {
     let mut headless = false;
@@ -89,14 +191,17 @@ fn main() {
             .expect("start_journey gorilla should succeed");
 
         viewer
-            .view_live_animal::<jungle_zoo::animals::gorilla::Gorilla, _>(
+            .view_live_animal_with_theme::<jungle_zoo::animals::gorilla::Gorilla, _, _, AnyAnimal>(
                 client.clone(),
                 journey_id,
+                ExampleTheme,
             )
             .expect("jungle-view example should launch live viewer");
     } else {
         viewer
-            .view_animal::<jungle_zoo::animals::gorilla::Gorilla>()
+            .view_animal_with_theme::<jungle_zoo::animals::gorilla::Gorilla, _, AnyAnimal>(
+                ExampleTheme,
+            )
             .expect("jungle-view example should launch viewer");
     }
 }

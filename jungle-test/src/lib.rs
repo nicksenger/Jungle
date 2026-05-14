@@ -116,11 +116,11 @@ mod tests {
             }
 
             impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::ObserveObservation;
+                type Bridge = jungle_sdk::types::ObserveObservation;
             }
 
             impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::TraitPerturbation;
+                type Bridge = jungle_sdk::types::TraitPerturbation;
             }
         };
 
@@ -136,11 +136,11 @@ mod tests {
             }
 
             impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::NoopObservation;
+                type Bridge = jungle_sdk::types::NoopObservation;
             }
 
             impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::TraitPerturbation;
+                type Bridge = jungle_sdk::types::TraitPerturbation;
             }
         };
 
@@ -156,11 +156,11 @@ mod tests {
             }
 
             impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::ObserveObservation;
+                type Bridge = jungle_sdk::types::ObserveObservation;
             }
 
             impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::NoopPerturbation;
+                type Bridge = jungle_sdk::types::NoopPerturbation;
             }
         };
 
@@ -176,11 +176,11 @@ mod tests {
             }
 
             impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::NoopObservation;
+                type Bridge = jungle_sdk::types::NoopObservation;
             }
 
             impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::NoopPerturbation;
+                type Bridge = jungle_sdk::types::NoopPerturbation;
             }
         };
 
@@ -205,11 +205,11 @@ mod tests {
             }
 
             impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::NoopObservation;
+                type Bridge = jungle_sdk::types::NoopObservation;
             }
 
             impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::NoopPerturbation;
+                type Bridge = jungle_sdk::types::NoopPerturbation;
             }
 
             #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
@@ -236,11 +236,11 @@ mod tests {
             }
 
             impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::ObserveObservation;
+                type Bridge = jungle_sdk::types::ObserveObservation;
             }
 
             impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::TraitPerturbation;
+                type Bridge = jungle_sdk::types::TraitPerturbation;
             }
 
             #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
@@ -267,11 +267,11 @@ mod tests {
             }
 
             impl jungle_sdk::types::AnimalObservation for $name {
-                type Adapter = jungle_sdk::types::ObserveObservation;
+                type Bridge = jungle_sdk::types::ObserveObservation;
             }
 
             impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Adapter = jungle_sdk::types::NoopPerturbation;
+                type Bridge = jungle_sdk::types::NoopPerturbation;
             }
 
             #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]

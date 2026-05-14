@@ -6,11 +6,12 @@ use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{Cluster, Graph, Sugiyama};
 use jungle_client::JungleClient;
 use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1360.0;
@@ -19,6 +20,127 @@ const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-viewer";
 
+pub struct AnyAnimal;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase<T> {
+    Static,
+    Live(T),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeState {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepKind {
+    Step,
+    Conditional,
+    Select,
+    Join,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClusterKind {
+    While,
+    Transparent,
+}
+
+#[derive(Debug, Clone)]
+pub struct StepViewCtx<'a> {
+    pub display_id: u32,
+    pub runtime_id: Option<u32>,
+    pub kind: StepKind,
+    pub label: &'a str,
+    pub metadata: Option<&'a str>,
+    pub phase: Phase<RuntimeState>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ClusterLive {
+    pub has_running: bool,
+    pub has_failed: bool,
+    pub has_completed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClusterViewCtx<'a> {
+    pub cluster_id: u32,
+    pub cluster_index: usize,
+    pub kind: ClusterKind,
+    pub label: &'a str,
+    pub metadata: Option<&'a str>,
+    pub parent_cluster_id: Option<u32>,
+    pub depth: usize,
+    pub member_display_ids: &'a [u32],
+    pub phase: Phase<ClusterLive>,
+}
+
+pub enum ClusterView<Message: Clone + 'static> {
+    Expanded {
+        overlay: Option<Element<'static, ViewerEvent<Message>>>,
+        fill: Color,
+    },
+    Collapsed {
+        element: Element<'static, ViewerEvent<Message>>,
+        size: (f64, f64),
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EdgeStyleCtx {
+    pub edge_index: usize,
+    pub extent: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EdgeStyle {
+    pub width: f32,
+    pub start: Color,
+    pub end: Color,
+}
+
+#[derive(Debug, Clone)]
+pub enum ViewerEvent<Message: Clone + 'static> {
+    JourneyUpdate(JourneyUpdateEvent),
+    Message(Message),
+}
+
+pub trait JunglePanelTheme<A = AnyAnimal>: Send + Sync + 'static {
+    type State: 'static;
+    type Message: Clone + 'static;
+
+    fn init(&self) -> Self::State;
+
+    fn update(
+        &self,
+        _state: &mut Self::State,
+        _event: ViewerEvent<Self::Message>,
+    ) -> Task<ViewerEvent<Self::Message>> {
+        Task::none()
+    }
+
+    fn view_step(
+        &self,
+        state: &Self::State,
+        cx: &StepViewCtx<'_>,
+    ) -> (Element<'static, ViewerEvent<Self::Message>>, (f64, f64));
+
+    fn view_cluster(
+        &self,
+        state: &Self::State,
+        cx: &ClusterViewCtx<'_>,
+    ) -> ClusterView<Self::Message>;
+
+    fn edge_style(&self, _state: &Self::State, _ctx: EdgeStyleCtx) -> Option<EdgeStyle> {
+        None
+    }
+}
+
 #[derive(Clone)]
 pub struct JungleViewerBuilder {
     title: String,
@@ -26,6 +148,8 @@ pub struct JungleViewerBuilder {
     height: f32,
     screenshot_path: Option<PathBuf>,
     headless: bool,
+    animation_duration: Option<Duration>,
+    animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
 }
 
 impl Default for JungleViewerBuilder {
@@ -36,6 +160,8 @@ impl Default for JungleViewerBuilder {
             height: WINDOW_HEIGHT,
             screenshot_path: None,
             headless: false,
+            animation_duration: None,
+            animation_easing: None,
         }
     }
 }
@@ -66,19 +192,45 @@ impl JungleViewerBuilder {
         self
     }
 
+    pub fn animation_duration(mut self, duration: Duration) -> Self {
+        self.animation_duration = Some(duration);
+        self
+    }
+
+    pub fn animation_easing(
+        mut self,
+        easing: &'static iced_sugiyama::motion::easing::Easing,
+    ) -> Self {
+        self.animation_easing = Some(easing);
+        self
+    }
+
     pub fn view_animal<A>(self) -> iced::Result
     where
         A: Animal + 'static,
         A::Journey: JourneyAstSource,
     {
+        self.view_animal_with_theme::<A, _, AnyAnimal>(DefaultTheme)
+    }
+
+    pub fn view_animal_with_theme<A, T, Scope>(self, theme: T) -> iced::Result
+    where
+        A: Animal + 'static,
+        A::Journey: JourneyAstSource,
+        T: JunglePanelTheme<Scope, Message = ()>,
+        Scope: 'static,
+    {
         let ast = <A::Journey as JourneyAstSource>::journey_ast();
         let journey_name = short_type_name::<A::Journey>();
         let model = GraphModel::from_ast(ast);
 
-        self.run(ViewMode::Static {
-            journey_name,
-            model,
-        })
+        self.run(
+            ViewMode::Static {
+                journey_name,
+                model,
+            },
+            theme,
+        )
     }
 
     pub fn view_live_animal<A, C>(self, client: C, journey_id: Uuid) -> iced::Result
@@ -87,20 +239,43 @@ impl JungleViewerBuilder {
         A::Journey: JourneyAstSource,
         C: JungleClient + 'static,
     {
+        self.view_live_animal_with_theme::<A, C, _, AnyAnimal>(client, journey_id, DefaultTheme)
+    }
+
+    pub fn view_live_animal_with_theme<A, C, T, Scope>(
+        self,
+        client: C,
+        journey_id: Uuid,
+        theme: T,
+    ) -> iced::Result
+    where
+        A: Animal + 'static,
+        A::Journey: JourneyAstSource,
+        C: JungleClient + 'static,
+        T: JunglePanelTheme<Scope, Message = ()>,
+        Scope: 'static,
+    {
         let ast = <A::Journey as JourneyAstSource>::journey_ast();
         let journey_name = short_type_name::<A::Journey>();
         let model = GraphModel::from_ast(ast);
         let client: Arc<dyn JungleClient> = Arc::new(client);
 
-        self.run(ViewMode::Live {
-            journey_name,
-            model,
-            client,
-            journey_id,
-        })
+        self.run(
+            ViewMode::Live {
+                journey_name,
+                model,
+                client,
+                journey_id,
+            },
+            theme,
+        )
     }
 
-    fn run(self, mode: ViewMode) -> iced::Result {
+    fn run<T, Scope>(self, mode: ViewMode, theme: T) -> iced::Result
+    where
+        T: JunglePanelTheme<Scope, Message = ()>,
+        Scope: 'static,
+    {
         let title = self.title.clone();
         let width = self.width;
         let height = self.height;
@@ -108,13 +283,24 @@ impl JungleViewerBuilder {
             output_path: path,
             close_after_capture: self.headless,
         });
+        let animation_duration = self.animation_duration;
+        let animation_easing = self.animation_easing;
+        let theme = Arc::new(theme);
         iced::application(
-            move || ViewerApp::new(mode.clone(), capture.clone()),
-            ViewerApp::update,
-            ViewerApp::view,
+            move || {
+                ViewerApp::new(
+                    mode.clone(),
+                    capture.clone(),
+                    theme.clone(),
+                    animation_duration,
+                    animation_easing,
+                )
+            },
+            ViewerApp::<T, Scope>::update,
+            ViewerApp::<T, Scope>::view,
         )
-        .title(move |_app: &ViewerApp| title.clone())
-        .subscription(ViewerApp::subscription)
+        .title(move |_app: &ViewerApp<T, Scope>| title.clone())
+        .subscription(ViewerApp::<T, Scope>::subscription)
         .window_size((width, height))
         .antialiasing(true)
         .default_font(Font::with_name("Iosevka"))
@@ -170,7 +356,7 @@ where
             .collect(),
         edges: model.edges.clone(),
         while_clusters: model
-            .while_clusters
+            .clusters
             .iter()
             .map(|cluster| cluster.nodes.clone())
             .collect(),
@@ -191,11 +377,19 @@ enum ViewMode {
     },
 }
 
-struct ViewerApp {
+struct ViewerApp<T, Scope>
+where
+    T: JunglePanelTheme<Scope, Message = ()>,
+{
     mode: ViewMode,
     state: LiveState,
     live_generation: u64,
     capture: Option<CaptureConfig>,
+    theme: Arc<T>,
+    theme_state: T::State,
+    animation_duration: Option<Duration>,
+    animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
+    _scope: std::marker::PhantomData<Scope>,
 }
 
 #[derive(Clone)]
@@ -224,18 +418,29 @@ struct LiveData {
 enum Message {
     AppStarted,
     LiveEvent(Result<JourneyUpdateEvent, String>),
+    Theme(ViewerEvent<()>),
     Retry,
     CaptureView,
     ViewCaptured(Screenshot),
     ViewSaved(Result<PathBuf, String>),
 }
 
-impl ViewerApp {
-    fn new(mode: ViewMode, capture: Option<CaptureConfig>) -> (Self, Task<Message>) {
+impl<T, Scope> ViewerApp<T, Scope>
+where
+    T: JunglePanelTheme<Scope, Message = ()>,
+{
+    fn new(
+        mode: ViewMode,
+        capture: Option<CaptureConfig>,
+        theme: Arc<T>,
+        animation_duration: Option<Duration>,
+        animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
+    ) -> (Self, Task<Message>) {
         let state = match &mode {
             ViewMode::Live { .. } => LiveState::Loading,
             ViewMode::Static { .. } => LiveState::Idle,
         };
+        let theme_state = theme.init();
 
         (
             Self {
@@ -243,6 +448,11 @@ impl ViewerApp {
                 state,
                 live_generation: 0,
                 capture,
+                theme,
+                theme_state,
+                animation_duration,
+                animation_easing,
+                _scope: std::marker::PhantomData,
             },
             Task::done(Message::AppStarted),
         )
@@ -260,6 +470,13 @@ impl ViewerApp {
             Message::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
+                        let theme_task = self
+                            .theme
+                            .update(
+                                &mut self.theme_state,
+                                ViewerEvent::JourneyUpdate(update.clone()),
+                            )
+                            .map(Message::Theme);
                         let data = match &mut self.state {
                             LiveState::Loaded(data) => data,
                             _ => {
@@ -271,10 +488,14 @@ impl ViewerApp {
                             }
                         };
                         if data.apply_update(update) {
-                            return iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(
-                                GRAPH_WIDGET_ID,
-                            ));
+                            return Task::batch(vec![
+                                theme_task,
+                                iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(
+                                    GRAPH_WIDGET_ID,
+                                )),
+                            ]);
                         }
+                        return theme_task;
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -282,6 +503,10 @@ impl ViewerApp {
                 }
                 Task::none()
             }
+            Message::Theme(event) => self
+                .theme
+                .update(&mut self.theme_state, event)
+                .map(Message::Theme),
             Message::Retry => match &self.mode {
                 ViewMode::Live { .. } => {
                     self.live_generation = self.live_generation.saturating_add(1);
@@ -358,7 +583,14 @@ impl ViewerApp {
 
         let body = row![
             sidebar(journey_name, model, &self.state),
-            graph_panel(model, live_data)
+            graph_panel(
+                model,
+                live_data,
+                self.theme.as_ref(),
+                &self.theme_state,
+                self.animation_duration,
+                self.animation_easing,
+            )
         ]
         .height(Length::Fill)
         .width(Length::Fill)
@@ -480,7 +712,7 @@ fn sidebar<'a>(
         text(format!("edges: {}", model.edges.len()))
             .size(13)
             .color(jungle_text_base()),
-        text(format!("clusters: {}", model.while_clusters.len()))
+        text(format!("clusters: {}", model.clusters.len()))
             .size(13)
             .color(jungle_text_base()),
         Space::new().height(10),
@@ -530,96 +762,368 @@ fn sidebar<'a>(
         .into()
 }
 
-fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> Element<'a, Message> {
-    let nodes_for_view = model.node_map.clone();
-    let highlights = live_data.cloned();
+fn graph_panel<'a, T, Scope>(
+    model: &'a GraphModel,
+    live_data: Option<&'a LiveData>,
+    theme: &'a T,
+    theme_state: &'a T::State,
+    animation_duration: Option<Duration>,
+    animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
+) -> Element<'a, Message>
+where
+    T: JunglePanelTheme<Scope, Message = ()>,
+{
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum VisibleOwner {
+        Node(u32),
+        Cluster(usize),
+    }
 
-    let clusters = model.while_clusters.clone();
-    let cluster_labels = model.while_cluster_labels.clone();
+    let node_state = move |runtime_id: Option<u32>| -> Phase<RuntimeState> {
+        let Some(live) = live_data else {
+            return Phase::Static;
+        };
+        let state = match runtime_id {
+            Some(id) if live.failed_runtime_ids.contains(&id) => RuntimeState::Failed,
+            Some(id) if live.active_runtime_ids.contains(&id) => RuntimeState::Running,
+            Some(id) if live.finished_runtime_ids.contains(&id) => RuntimeState::Completed,
+            _ => RuntimeState::Pending,
+        };
+        Phase::Live(state)
+    };
 
-    let graph =
-        Sugiyama::<Message, iced::Theme, iced::Renderer>::new(&model.graph, move |node_id| {
-            let info = nodes_for_view
-                .get(&node_id)
-                .cloned()
-                .unwrap_or_else(|| NodeDisplay::unknown(node_id));
-            let live_state = highlights.as_ref().and_then(|live| {
-                info.runtime_node_id
-                    .and_then(|rid| live_state_for_node(rid, live))
-            });
+    let cluster_phase = move |cluster: &ClusterInfo| -> Phase<ClusterLive> {
+        if let Some(live) = live_data {
+            let mut has_running = false;
+            let mut has_failed = false;
+            let mut has_completed = false;
+            for node_id in &cluster.nodes {
+                let Some(node) = model.node_map.get(node_id) else {
+                    continue;
+                };
+                let Some(runtime_id) = node.runtime_node_id else {
+                    continue;
+                };
+                if live.active_runtime_ids.contains(&runtime_id) {
+                    has_running = true;
+                }
+                if live.failed_runtime_ids.contains(&runtime_id) {
+                    has_failed = true;
+                }
+                if live.finished_runtime_ids.contains(&runtime_id) {
+                    has_completed = true;
+                }
+            }
+            Phase::Live(ClusterLive {
+                has_running,
+                has_failed,
+                has_completed,
+            })
+        } else {
+            Phase::Static
+        }
+    };
 
-            let label = truncate_label(&info.label, 58);
+    let mut collapsed_clusters = HashSet::<usize>::new();
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        let cx = ClusterViewCtx {
+            cluster_id: cluster.id,
+            cluster_index: index,
+            kind: cluster.kind,
+            label: &cluster.label,
+            metadata: cluster.metadata.as_deref(),
+            parent_cluster_id: cluster
+                .parent
+                .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
+            depth: cluster.depth,
+            member_display_ids: &cluster.nodes,
+            phase: cluster_phase(cluster),
+        };
+        if matches!(
+            theme.view_cluster(theme_state, &cx),
+            ClusterView::Collapsed { .. }
+        ) {
+            collapsed_clusters.insert(index);
+        }
+    }
 
-            let badge = if info.is_conditional_branch {
-                "condition"
-            } else if info.is_join {
-                "join"
-            } else if info.is_select {
-                "select"
-            } else if info.is_transparent {
-                "transparent"
-            } else {
-                "step"
-            };
+    let mut memberships = HashMap::<u32, Vec<(usize, usize)>>::new();
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        for node_id in &cluster.nodes {
+            memberships
+                .entry(*node_id)
+                .or_default()
+                .push((cluster.depth, index));
+        }
+    }
+    for entry in memberships.values_mut() {
+        entry.sort_by_key(|(depth, _)| *depth);
+    }
 
-            let content = column![
-                text(badge).size(10).color(jungle_text_muted()),
-                text(label).size(13).color(jungle_text_base())
-            ]
-            .spacing(4);
+    let owner_for_node = |node_id: u32| -> VisibleOwner {
+        if let Some(candidates) = memberships.get(&node_id) {
+            for (_, index) in candidates {
+                if collapsed_clusters.contains(index) {
+                    return VisibleOwner::Cluster(*index);
+                }
+            }
+        }
+        VisibleOwner::Node(node_id)
+    };
 
-            button(content)
-                .padding([8, 10])
-                .width(Length::Shrink)
-                .style(move |_theme, status| node_button_style(status, &info, live_state))
-                .into()
-        })
+    let max_node_id = model.nodes.iter().map(|node| node.id).max().unwrap_or(0);
+    let mut cluster_node_id = HashMap::<usize, u32>::new();
+    let mut next_cluster_node_id = max_node_id.saturating_add(1);
+    for index in &collapsed_clusters {
+        cluster_node_id.insert(*index, next_cluster_node_id);
+        next_cluster_node_id = next_cluster_node_id.saturating_add(1);
+    }
+
+    let owner_to_display = |owner: VisibleOwner| -> Option<u32> {
+        match owner {
+            VisibleOwner::Node(node_id) => Some(node_id),
+            VisibleOwner::Cluster(index) => cluster_node_id.get(&index).copied(),
+        }
+    };
+
+    let mut visible_ids = BTreeSet::new();
+    let mut visible_real_nodes = HashSet::<u32>::new();
+    let mut collapsed_cluster_by_display = HashMap::<u32, usize>::new();
+    let mut node_sizes = HashMap::<u32, (f64, f64)>::new();
+
+    for node in &model.nodes {
+        let owner = owner_for_node(node.id);
+        if owner != VisibleOwner::Node(node.id) {
+            continue;
+        }
+        let phase = node_state(node.runtime_node_id);
+        let step_ctx = StepViewCtx {
+            display_id: node.id,
+            runtime_id: node.runtime_node_id,
+            kind: node.kind(),
+            label: &node.label,
+            metadata: node.metadata.as_deref(),
+            phase,
+        };
+        let (element, size) = theme.view_step(theme_state, &step_ctx);
+        let _ = element;
+        visible_ids.insert(node.id);
+        visible_real_nodes.insert(node.id);
+        node_sizes.insert(node.id, size);
+    }
+
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        if !collapsed_clusters.contains(&index) {
+            continue;
+        }
+        let Some(display_id) = cluster_node_id.get(&index).copied() else {
+            continue;
+        };
+        let cx = ClusterViewCtx {
+            cluster_id: cluster.id,
+            cluster_index: index,
+            kind: cluster.kind,
+            label: &cluster.label,
+            metadata: cluster.metadata.as_deref(),
+            parent_cluster_id: cluster
+                .parent
+                .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
+            depth: cluster.depth,
+            member_display_ids: &cluster.nodes,
+            phase: cluster_phase(cluster),
+        };
+        if let ClusterView::Collapsed { element, size } = theme.view_cluster(theme_state, &cx) {
+            let _ = element;
+            visible_ids.insert(display_id);
+            collapsed_cluster_by_display.insert(display_id, index);
+            node_sizes.insert(display_id, size);
+        }
+    }
+
+    let mut edges = Vec::<(u32, u32)>::new();
+    let mut edge_set = HashSet::<(u32, u32)>::new();
+    for (from, to) in &model.edges {
+        let from_display = owner_to_display(owner_for_node(*from));
+        let to_display = owner_to_display(owner_for_node(*to));
+        let (Some(from_display), Some(to_display)) = (from_display, to_display) else {
+            continue;
+        };
+        if from_display == to_display {
+            continue;
+        }
+        if edge_set.insert((from_display, to_display)) {
+            edges.push((from_display, to_display));
+        }
+    }
+
+    let nodes = visible_ids.into_iter().collect::<Vec<_>>();
+    let graph = Graph::new(nodes.clone(), edges.clone());
+
+    let mut visible_clusters = Vec::<Cluster>::new();
+    let mut visible_cluster_source_indices = Vec::<usize>::new();
+    let mut visible_cluster_index_by_source = HashMap::<usize, usize>::new();
+    for (source_index, cluster) in model.cluster_info.iter().enumerate() {
+        let cx = ClusterViewCtx {
+            cluster_id: cluster.id,
+            cluster_index: source_index,
+            kind: cluster.kind,
+            label: &cluster.label,
+            metadata: cluster.metadata.as_deref(),
+            parent_cluster_id: cluster
+                .parent
+                .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
+            depth: cluster.depth,
+            member_display_ids: &cluster.nodes,
+            phase: cluster_phase(cluster),
+        };
+        let ClusterView::Expanded { overlay, fill: _ } = theme.view_cluster(theme_state, &cx)
+        else {
+            continue;
+        };
+        let member_nodes = cluster
+            .nodes
+            .iter()
+            .copied()
+            .filter(|node_id| matches!(owner_for_node(*node_id), VisibleOwner::Node(id) if id == *node_id))
+            .collect::<Vec<_>>();
+        if member_nodes.is_empty() {
+            continue;
+        }
+        let mut spec = Cluster::new(member_nodes).padding(24.0);
+        if let Some(parent_source) = cluster.parent {
+            if let Some(parent_visible) =
+                visible_cluster_index_by_source.get(&parent_source).copied()
+            {
+                spec = spec.parent(parent_visible);
+            }
+        }
+        let visible_index = visible_clusters.len();
+        visible_clusters.push(spec);
+        let _ = overlay;
+        visible_cluster_source_indices.push(source_index);
+        visible_cluster_index_by_source.insert(source_index, visible_index);
+    }
+
+    let edge_style = theme
+        .edge_style(
+            theme_state,
+            EdgeStyleCtx {
+                edge_index: 0,
+                extent: 1.0,
+            },
+        )
+        .unwrap_or(EdgeStyle {
+            width: 1.6,
+            start: Color::from_rgb8(64, 169, 104),
+            end: Color::from_rgb8(40, 104, 67),
+        });
+
+    let graph_widget = {
+        let node_map = model.node_map.clone();
+        let cluster_info_for_nodes = model.cluster_info.clone();
+        let cluster_info_for_clusters = model.cluster_info.clone();
+        let collapsed_display_map = collapsed_cluster_by_display.clone();
+        let visible_nodes = visible_real_nodes.clone();
+        let sizes_for_view = node_sizes.clone();
+        let visible_cluster_sources = visible_cluster_source_indices.clone();
+        let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
+            std::borrow::Cow::Owned(graph.clone()),
+            move |node_id| {
+                if visible_nodes.contains(&node_id) {
+                    if let Some(node) = node_map.get(&node_id) {
+                        let phase = node_state(node.runtime_node_id);
+                        let step_ctx = StepViewCtx {
+                            display_id: node.id,
+                            runtime_id: node.runtime_node_id,
+                            kind: node.kind(),
+                            label: &node.label,
+                            metadata: node.metadata.as_deref(),
+                            phase,
+                        };
+                        let (element, _size) = theme.view_step(theme_state, &step_ctx);
+                        return element.map(|_event| Message::Theme(ViewerEvent::Message(())));
+                    }
+                }
+                if let Some(cluster_index) = collapsed_display_map.get(&node_id).copied() {
+                    if let Some(cluster) = cluster_info_for_nodes.get(cluster_index) {
+                        let cx = ClusterViewCtx {
+                            cluster_id: cluster.id,
+                            cluster_index,
+                            kind: cluster.kind,
+                            label: &cluster.label,
+                            metadata: cluster.metadata.as_deref(),
+                            parent_cluster_id: cluster.parent.and_then(|parent| {
+                                cluster_info_for_nodes.get(parent).map(|info| info.id)
+                            }),
+                            depth: cluster.depth,
+                            member_display_ids: &cluster.nodes,
+                            phase: cluster_phase(cluster),
+                        };
+                        if let ClusterView::Collapsed { element, .. } =
+                            theme.view_cluster(theme_state, &cx)
+                        {
+                            return element.map(|_event| Message::Theme(ViewerEvent::Message(())));
+                        }
+                    }
+                }
+                text(format!("node {node_id}")).into()
+            },
+        )
         .id(iced_sugiyama::Id::new(GRAPH_WIDGET_ID))
         .edge_color(jungle_edge)
-        .stroke_width(1.6)
+        .stroke_width(edge_style.width)
         .edge_corner_radius(18.0)
-        .node_size(move |_node_id| (NODE_WIDTH, NODE_HEIGHT))
-        .clusters(clusters)
+        .node_size(move |node_id| {
+            sizes_for_view
+                .get(&node_id)
+                .copied()
+                .unwrap_or((NODE_WIDTH, NODE_HEIGHT))
+        })
+        .clusters(visible_clusters)
         .cluster_container(move |index, _| {
-            let label = cluster_labels
-                .get(index)
-                .cloned()
-                .unwrap_or_else(|| format!("cluster #{index}"));
-            Some(
-                container(text(label).size(11).color(jungle_text_muted()))
-                    .padding([4, 8])
-                    .style(loop_cluster_label)
-                    .into(),
-            )
+            let Some(source_index) = visible_cluster_sources.get(index).copied() else {
+                return None;
+            };
+            let cluster = cluster_info_for_clusters.get(source_index)?;
+            let cx = ClusterViewCtx {
+                cluster_id: cluster.id,
+                cluster_index: source_index,
+                kind: cluster.kind,
+                label: &cluster.label,
+                metadata: cluster.metadata.as_deref(),
+                parent_cluster_id: cluster
+                    .parent
+                    .and_then(|parent| cluster_info_for_clusters.get(parent).map(|info| info.id)),
+                depth: cluster.depth,
+                member_display_ids: &cluster.nodes,
+                phase: cluster_phase(cluster),
+            };
+            match theme.view_cluster(theme_state, &cx) {
+                ClusterView::Expanded { overlay, .. } => overlay
+                    .map(|element| element.map(|_event| Message::Theme(ViewerEvent::Message(())))),
+                ClusterView::Collapsed { .. } => None,
+            }
         })
         .cluster_color(loop_cluster_color)
         .padding(24);
+        if let Some(duration) = animation_duration {
+            widget = widget.animation_duration(duration);
+        }
+        if let Some(easing) = animation_easing {
+            widget = widget.animation_easing(easing);
+        }
+        widget
+    };
 
-    container(container(graph).width(Length::Fill).height(Length::Fill))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(graph_panel_style)
-        .into()
-}
-
-fn live_state_for_node(runtime_id: u32, live: &LiveData) -> Option<RuntimeNodeState> {
-    if live.failed_runtime_ids.contains(&runtime_id) {
-        return Some(RuntimeNodeState::Failed);
-    }
-    if live.active_runtime_ids.contains(&runtime_id) {
-        return Some(RuntimeNodeState::Active);
-    }
-    if live.finished_runtime_ids.contains(&runtime_id) {
-        return Some(RuntimeNodeState::Finished);
-    }
-    None
-}
-
-#[derive(Clone, Copy)]
-enum RuntimeNodeState {
-    Active,
-    Finished,
-    Failed,
+    container(
+        container(graph_widget)
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(graph_panel_style)
+    .into()
 }
 
 #[derive(Clone)]
@@ -628,8 +1132,10 @@ struct GraphModel {
     nodes: Vec<NodeDisplay>,
     node_map: HashMap<u32, NodeDisplay>,
     edges: Vec<(u32, u32)>,
+    clusters: Vec<Cluster>,
     while_clusters: Vec<Cluster>,
     while_cluster_labels: Vec<String>,
+    cluster_info: Vec<ClusterInfo>,
 }
 
 impl GraphModel {
@@ -653,8 +1159,10 @@ impl GraphModel {
             nodes: builder.nodes,
             node_map,
             edges: builder.edges,
+            clusters: builder.clusters.clone(),
             while_clusters: builder.clusters,
             while_cluster_labels: builder.cluster_labels,
+            cluster_info: builder.cluster_info,
         }
     }
 }
@@ -665,7 +1173,9 @@ struct GraphBuilder {
     edges: Vec<(u32, u32)>,
     clusters: Vec<Cluster>,
     cluster_labels: Vec<String>,
+    cluster_info: Vec<ClusterInfo>,
     cluster_stack: Vec<usize>,
+    cluster_next_id: u32,
     runtime_next_id: u32,
     display_next_id: u32,
     label_occurrences: HashMap<String, u32>,
@@ -675,11 +1185,22 @@ struct GraphBuilder {
 struct NodeDisplay {
     id: u32,
     label: String,
+    metadata: Option<String>,
     runtime_node_id: Option<u32>,
     is_conditional_branch: bool,
     is_select: bool,
     is_join: bool,
-    is_transparent: bool,
+}
+
+#[derive(Clone)]
+struct ClusterInfo {
+    id: u32,
+    kind: ClusterKind,
+    label: String,
+    metadata: Option<String>,
+    parent: Option<usize>,
+    nodes: Vec<u32>,
+    depth: usize,
 }
 
 impl NodeDisplay {
@@ -687,11 +1208,23 @@ impl NodeDisplay {
         Self {
             id,
             label: format!("node {id}"),
+            metadata: None,
             runtime_node_id: None,
             is_conditional_branch: false,
             is_select: false,
             is_join: false,
-            is_transparent: false,
+        }
+    }
+
+    fn kind(&self) -> StepKind {
+        if self.is_conditional_branch {
+            StepKind::Conditional
+        } else if self.is_select {
+            StepKind::Select
+        } else if self.is_join {
+            StepKind::Join
+        } else {
+            StepKind::Step
         }
     }
 }
@@ -743,10 +1276,23 @@ impl GraphBuilder {
                     members: vec![node],
                 }
             }
-            JourneyAst::Conditional { label, left, right } => {
-                let branch = self.push_layout_node(short_type_name_str(label), |node| {
+            JourneyAst::Conditional {
+                label,
+                metadata,
+                left,
+                right,
+            } => {
+                let branch_label = if metadata.trim().is_empty() {
+                    short_type_name_str(label).to_string()
+                } else {
+                    format!("{} :: {}", short_type_name_str(label), metadata)
+                };
+                let branch = self.push_layout_node(branch_label, |node| {
                     node.is_conditional_branch = true;
                 });
+                if !metadata.trim().is_empty() {
+                    self.mark(branch, |node| node.metadata = Some((*metadata).to_string()));
+                }
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
 
@@ -771,9 +1317,16 @@ impl GraphBuilder {
                     members,
                 }
             }
-            JourneyAst::While { label, body } => {
+            JourneyAst::While {
+                label,
+                metadata,
+                body,
+            } => {
                 let parent_cluster = self.cluster_stack.last().copied();
                 let cluster_index = self.clusters.len();
+                let cluster_id = self.cluster_next_id;
+                self.cluster_next_id = self.cluster_next_id.saturating_add(1);
+                let depth = self.cluster_stack.len();
                 let cluster = Cluster::new(Vec::new()).padding(24.0);
                 let cluster = if let Some(parent) = parent_cluster {
                     cluster.parent(parent)
@@ -781,8 +1334,25 @@ impl GraphBuilder {
                     cluster
                 };
                 self.clusters.push(cluster);
-                self.cluster_labels
-                    .push(format!("while: {}", short_type_name_str(label)));
+                let cluster_label = if metadata.trim().is_empty() {
+                    format!("while: {}", short_type_name_str(label))
+                } else {
+                    format!("while: {} :: {}", short_type_name_str(label), metadata)
+                };
+                self.cluster_labels.push(cluster_label.clone());
+                self.cluster_info.push(ClusterInfo {
+                    id: cluster_id,
+                    kind: ClusterKind::While,
+                    label: cluster_label,
+                    metadata: if metadata.trim().is_empty() {
+                        None
+                    } else {
+                        Some((*metadata).to_string())
+                    },
+                    parent: parent_cluster,
+                    nodes: Vec::new(),
+                    depth,
+                });
                 self.cluster_stack.push(cluster_index);
                 let body_flow = self.flatten(body);
                 let _ = self.cluster_stack.pop();
@@ -795,7 +1365,8 @@ impl GraphBuilder {
 
                 let cluster_nodes = dedup(body_flow.members.clone());
                 if !cluster_nodes.is_empty() {
-                    self.clusters[cluster_index].nodes = cluster_nodes;
+                    self.clusters[cluster_index].nodes = cluster_nodes.clone();
+                    self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
 
                 Flattened {
@@ -811,6 +1382,9 @@ impl GraphBuilder {
             } => {
                 let parent_cluster = self.cluster_stack.last().copied();
                 let cluster_index = self.clusters.len();
+                let cluster_id = self.cluster_next_id;
+                self.cluster_next_id = self.cluster_next_id.saturating_add(1);
+                let depth = self.cluster_stack.len();
                 let cluster = Cluster::new(Vec::new()).padding(24.0);
                 let cluster = if let Some(parent) = parent_cluster {
                     cluster.parent(parent)
@@ -828,7 +1402,20 @@ impl GraphBuilder {
                         metadata
                     )
                 };
-                self.cluster_labels.push(cluster_label);
+                self.cluster_labels.push(cluster_label.clone());
+                self.cluster_info.push(ClusterInfo {
+                    id: cluster_id,
+                    kind: ClusterKind::Transparent,
+                    label: cluster_label,
+                    metadata: if metadata.trim().is_empty() {
+                        None
+                    } else {
+                        Some((*metadata).to_string())
+                    },
+                    parent: parent_cluster,
+                    nodes: Vec::new(),
+                    depth,
+                });
 
                 self.cluster_stack.push(cluster_index);
                 let body_flow = self.flatten(body);
@@ -836,7 +1423,8 @@ impl GraphBuilder {
 
                 let cluster_nodes = dedup(body_flow.members.clone());
                 if !cluster_nodes.is_empty() {
-                    self.clusters[cluster_index].nodes = cluster_nodes;
+                    self.clusters[cluster_index].nodes = cluster_nodes.clone();
+                    self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
 
                 Flattened {
@@ -845,12 +1433,25 @@ impl GraphBuilder {
                     members: body_flow.members,
                 }
             }
-            JourneyAst::Select { left, right, .. } => {
+            JourneyAst::Select {
+                label,
+                metadata,
+                left,
+                right,
+            } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let label = self.unique_label("Select");
-                let select = self.push_runtime_node(label, runtime_id);
+                let select_label = if metadata.trim().is_empty() {
+                    (*label).to_string()
+                } else {
+                    format!("{label} :: {metadata}")
+                };
+                let select_label = self.unique_label(select_label);
+                let select = self.push_runtime_node(select_label, runtime_id);
                 self.mark(select, |node| node.is_select = true);
+                if !metadata.trim().is_empty() {
+                    self.mark(select, |node| node.metadata = Some((*metadata).to_string()));
+                }
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
@@ -871,12 +1472,25 @@ impl GraphBuilder {
                     members,
                 }
             }
-            JourneyAst::Join { left, right, .. } => {
+            JourneyAst::Join {
+                label,
+                metadata,
+                left,
+                right,
+            } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let label = self.unique_label("Join");
-                let join = self.push_runtime_node(label, runtime_id);
+                let join_label = if metadata.trim().is_empty() {
+                    (*label).to_string()
+                } else {
+                    format!("{label} :: {metadata}")
+                };
+                let join_label = self.unique_label(join_label);
+                let join = self.push_runtime_node(join_label, runtime_id);
                 self.mark(join, |node| node.is_join = true);
+                if !metadata.trim().is_empty() {
+                    self.mark(join, |node| node.metadata = Some((*metadata).to_string()));
+                }
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
@@ -905,11 +1519,11 @@ impl GraphBuilder {
         let display = NodeDisplay {
             id: node_id,
             label: label.into(),
+            metadata: None,
             runtime_node_id: Some(runtime_id),
             is_conditional_branch: false,
             is_select: false,
             is_join: false,
-            is_transparent: false,
         };
         self.nodes.push(display);
         node_id
@@ -924,11 +1538,11 @@ impl GraphBuilder {
         let mut display = NodeDisplay {
             id: node_id,
             label: label.into(),
+            metadata: None,
             runtime_node_id: None,
             is_conditional_branch: false,
             is_select: false,
             is_join: false,
-            is_transparent: false,
         };
         apply(&mut display);
         self.nodes.push(display);
@@ -1004,54 +1618,110 @@ fn dedup(values: Vec<u32>) -> Vec<u32> {
     output
 }
 
-fn node_button_style(
-    status: button::Status,
-    node: &NodeDisplay,
-    live_state: Option<RuntimeNodeState>,
-) -> iced::widget::button::Style {
-    let mut base = if node.is_conditional_branch {
-        Color::from_rgb8(23, 71, 47)
-    } else if node.is_select || node.is_join {
-        Color::from_rgb8(19, 84, 58)
-    } else if node.is_transparent {
-        Color::from_rgb8(16, 57, 36)
-    } else {
-        Color::from_rgb8(25, 99, 65)
-    };
+#[derive(Clone, Copy)]
+struct DefaultTheme;
 
-    if let Some(state) = live_state {
-        base = match state {
-            RuntimeNodeState::Active => Color::from_rgb8(123, 166, 52),
-            RuntimeNodeState::Finished => Color::from_rgb8(70, 166, 92),
-            RuntimeNodeState::Failed => Color::from_rgb8(155, 57, 57),
+impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
+    type State = ();
+    type Message = ();
+
+    fn init(&self) -> Self::State {}
+
+    fn view_step(
+        &self,
+        _state: &Self::State,
+        cx: &StepViewCtx<'_>,
+    ) -> (Element<'static, ViewerEvent<Self::Message>>, (f64, f64)) {
+        let label = truncate_label(cx.label, 58);
+        let badge = match cx.kind {
+            StepKind::Conditional => "condition",
+            StepKind::Select => "select",
+            StepKind::Join => "join",
+            StepKind::Step => "step",
         };
+        let mut base = match cx.kind {
+            StepKind::Conditional => Color::from_rgb8(23, 71, 47),
+            StepKind::Select | StepKind::Join => Color::from_rgb8(19, 84, 58),
+            StepKind::Step => Color::from_rgb8(25, 99, 65),
+        };
+        if let Phase::Live(state) = cx.phase {
+            base = match state {
+                RuntimeState::Running => Color::from_rgb8(123, 166, 52),
+                RuntimeState::Completed => Color::from_rgb8(70, 166, 92),
+                RuntimeState::Failed => Color::from_rgb8(155, 57, 57),
+                RuntimeState::Pending => base,
+            };
+        }
+
+        let content = column![
+            text(badge).size(10).color(jungle_text_muted()),
+            text(label).size(13).color(jungle_text_base())
+        ]
+        .spacing(4);
+
+        (
+            button(content)
+                .padding([8, 10])
+                .width(Length::Shrink)
+                .style(move |_theme, status| {
+                    let mut border_color = jungle_accent_dark();
+                    if matches!(status, button::Status::Hovered) {
+                        border_color = jungle_accent_bright();
+                    }
+
+                    iced::widget::button::Style {
+                        background: Some(iced::Background::Color(base)),
+                        text_color: jungle_text_base(),
+                        border: iced::border::rounded(10).color(border_color).width(
+                            if matches!(status, button::Status::Hovered) {
+                                1.6
+                            } else {
+                                1.0
+                            },
+                        ),
+                        shadow: if matches!(status, button::Status::Hovered) {
+                            iced::Shadow {
+                                color: Color::from_rgba8(80, 220, 130, 0.28),
+                                offset: iced::Vector::new(0.0, 1.0),
+                                blur_radius: 8.0,
+                            }
+                        } else {
+                            iced::Shadow::default()
+                        },
+                        ..Default::default()
+                    }
+                })
+                .into(),
+            (NODE_WIDTH, NODE_HEIGHT),
+        )
     }
 
-    let mut border_color = jungle_accent_dark();
-    if matches!(status, button::Status::Hovered) {
-        border_color = jungle_accent_bright();
+    fn view_cluster(
+        &self,
+        _state: &Self::State,
+        cx: &ClusterViewCtx<'_>,
+    ) -> ClusterView<Self::Message> {
+        ClusterView::Expanded {
+            overlay: Some(
+                container(
+                    text(cx.label.to_string())
+                        .size(11)
+                        .color(jungle_text_muted()),
+                )
+                .padding([4, 8])
+                .style(loop_cluster_label)
+                .into(),
+            ),
+            fill: Color::from_rgba8(30, 91, 53, 0.04),
+        }
     }
 
-    iced::widget::button::Style {
-        background: Some(iced::Background::Color(base)),
-        text_color: jungle_text_base(),
-        border: iced::border::rounded(10).color(border_color).width(
-            if matches!(status, button::Status::Hovered) {
-                1.6
-            } else {
-                1.0
-            },
-        ),
-        shadow: if matches!(status, button::Status::Hovered) {
-            iced::Shadow {
-                color: Color::from_rgba8(80, 220, 130, 0.28),
-                offset: iced::Vector::new(0.0, 1.0),
-                blur_radius: 8.0,
-            }
-        } else {
-            iced::Shadow::default()
-        },
-        ..Default::default()
+    fn edge_style(&self, _state: &Self::State, _ctx: EdgeStyleCtx) -> Option<EdgeStyle> {
+        Some(EdgeStyle {
+            width: 1.6,
+            start: Color::from_rgb8(64, 169, 104),
+            end: Color::from_rgb8(40, 104, 67),
+        })
     }
 }
 
@@ -1208,10 +1878,12 @@ mod tests {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
                 label: "Loop",
+                metadata: "",
                 body: Box::new(JourneyAst::Sequence(vec![
                     JourneyAst::Step { label: "A1" },
                     JourneyAst::Conditional {
                         label: "Branch",
+                        metadata: "",
                         left: Box::new(JourneyAst::Step { label: "A2" }),
                         right: Box::new(JourneyAst::Step { label: "A3" }),
                     },
@@ -1219,11 +1891,13 @@ mod tests {
             },
             JourneyAst::Select {
                 label: "Select",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "A4" }),
                 right: Box::new(JourneyAst::Step { label: "A5" }),
             },
             JourneyAst::Join {
                 label: "Join",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "A6" }),
                 right: Box::new(JourneyAst::Step { label: "A7" }),
             },
@@ -1272,19 +1946,23 @@ mod tests {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
                 label: "flow::LoopCondition",
+                metadata: "",
                 body: Box::new(JourneyAst::Conditional {
                     label: "flow::Branch",
+                    metadata: "",
                     left: Box::new(JourneyAst::Step { label: "LoopL" }),
                     right: Box::new(JourneyAst::Step { label: "LoopR" }),
                 }),
             },
             JourneyAst::Join {
                 label: "Join",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "JoinL" }),
                 right: Box::new(JourneyAst::Step { label: "JoinR" }),
             },
             JourneyAst::Select {
                 label: "Select",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "SelL" }),
                 right: Box::new(JourneyAst::Step { label: "SelR" }),
             },
@@ -1351,19 +2029,23 @@ mod tests {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
                 label: "flow::LoopCondition",
+                metadata: "",
                 body: Box::new(JourneyAst::Conditional {
                     label: "flow::StaticCondition",
+                    metadata: "",
                     left: Box::new(JourneyAst::Step { label: "InLoopL" }),
                     right: Box::new(JourneyAst::Step { label: "InLoopR" }),
                 }),
             },
             JourneyAst::Join {
                 label: "Join",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "OutJoinL" }),
                 right: Box::new(JourneyAst::Step { label: "OutJoinR" }),
             },
             JourneyAst::Select {
                 label: "Select",
+                metadata: "",
                 left: Box::new(JourneyAst::Step { label: "OutSelL" }),
                 right: Box::new(JourneyAst::Step { label: "OutSelR" }),
             },
@@ -1407,8 +2089,10 @@ mod tests {
     fn nested_while_clusters_use_parent_relationship() {
         let ast = JourneyAst::While {
             label: "flow::OuterLoop",
+            metadata: "",
             body: Box::new(JourneyAst::While {
                 label: "flow::InnerLoop",
+                metadata: "",
                 body: Box::new(JourneyAst::Step { label: "LoopStep" }),
             }),
         };
@@ -1435,6 +2119,7 @@ mod tests {
                 metadata: "section:gorilla/lifecycle",
                 body: Box::new(JourneyAst::Conditional {
                     label: "flow::Gate",
+                    metadata: "",
                     left: Box::new(JourneyAst::Step { label: "InL" }),
                     right: Box::new(JourneyAst::Step { label: "InR" }),
                 }),

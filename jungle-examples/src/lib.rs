@@ -63,15 +63,15 @@ impl Action for BumpAction {
 pub struct ObserveSleep;
 impl Pulse<ObserveAnimal> for ObserveSleep {
     type Action = Sleep;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type StateAspect = Identity;
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &ObserveState, _input: Self::CarryIn) -> Duration {
+    fn emit(state: &ObserveState, _input: Self::Arg) -> Duration {
         Duration::from_millis(state.sleep_ms)
     }
 
-    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("sleep branch should complete");
         state.tick = state.tick.saturating_add(1);
     }
@@ -80,13 +80,13 @@ impl Pulse<ObserveAnimal> for ObserveSleep {
 pub struct ObserveBump;
 impl Pulse<ObserveAnimal> for ObserveBump {
     type Action = BumpAction;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type StateAspect = Identity;
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &ObserveState, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &ObserveState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("bump branch should complete");
         state.tick = state.tick.saturating_add(1);
     }
@@ -101,7 +101,7 @@ impl Condition<(ObserveState, ())> for ObserveChooseSleep {
 
 pub struct ObserveLoopForever;
 impl LoopCondition<ObserveState> for ObserveLoopForever {
-    type CarryIn = ();
+    type Arg = ();
 
     fn should_continue(_state: &ObserveState) -> bool {
         true
@@ -127,10 +127,10 @@ impl Animal for ObserveAnimal {
     type Journey = ObserveJourney;
 }
 impl jungle_sdk::types::AnimalObservation for ObserveAnimal {
-    type Adapter = jungle_sdk::types::ObserveObservation;
+    type Bridge = jungle_sdk::types::ObserveObservation;
 }
 impl jungle_sdk::types::AnimalPerturbation for ObserveAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+    type Bridge = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for ObserveAnimal {
     type Appearance = ObserveState;

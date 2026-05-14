@@ -43,13 +43,13 @@ struct TraverseAnimal;
 struct StepA;
 impl Pulse<TraverseAnimal> for StepA {
     type Action = TraverseAAction;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type StateAspect = Identity;
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("step A should succeed");
     }
 }
@@ -57,13 +57,13 @@ impl Pulse<TraverseAnimal> for StepA {
 struct StepB;
 impl Pulse<TraverseAnimal> for StepB {
     type Action = TraverseBAction;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type StateAspect = Identity;
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("step B should succeed");
     }
 }
@@ -71,13 +71,13 @@ impl Pulse<TraverseAnimal> for StepB {
 struct StepC;
 impl Pulse<TraverseAnimal> for StepC {
     type Action = TraverseCAction;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type StateAspect = Identity;
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("step C should succeed");
     }
 }
@@ -85,20 +85,20 @@ impl Pulse<TraverseAnimal> for StepC {
 struct StepD;
 impl Pulse<TraverseAnimal> for StepD {
     type Action = TraverseDAction;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type StateAspect = Identity;
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("step D should succeed");
     }
 }
 
 struct KeepLooping;
 impl LoopCondition<i32> for KeepLooping {
-    type CarryIn = ();
+    type Arg = ();
 
     fn should_continue(state: &i32) -> bool {
         *state < 1
@@ -153,9 +153,9 @@ impl jungle_sdk::types::Animal for TraverseAnimal {
 }
 
 impl jungle_sdk::types::AnimalObservation for TraverseAnimal {
-    type Adapter = jungle_sdk::types::NoopObservation;
+    type Bridge = jungle_sdk::types::NoopObservation;
 }
 
 impl jungle_sdk::types::AnimalPerturbation for TraverseAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+    type Bridge = jungle_sdk::types::NoopPerturbation;
 }

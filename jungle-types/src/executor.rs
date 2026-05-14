@@ -26,57 +26,57 @@ impl<State, Carry> SplitStateCarry<State> for (State, Carry) {
     type Carry = Carry;
 }
 
-trait CarryInputForState<State> {
+trait ArgputForState<State> {
     type Carry;
 }
 
-impl<State, T, A> CarryInputForState<State> for Step<T, A>
+impl<State, T, A> ArgputForState<State> for Step<T, A>
 where
     T: Animal<State = State>,
     A: Pulse<T>,
 {
-    type Carry = A::CarryIn;
+    type Carry = A::Arg;
 }
 
-impl<State, P, L, R> CarryInputForState<State> for Conditional<P, L, R>
+impl<State, P, L, R, M> ArgputForState<State> for Conditional<P, L, R, M>
 where
-    L: CarryInputForState<State>,
-    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+    L: ArgputForState<State>,
+    R: ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
-    type Carry = <L as CarryInputForState<State>>::Carry;
+    type Carry = <L as ArgputForState<State>>::Carry;
 }
 
-impl<State, M, F> CarryInputForState<State> for Transparent<M, F>
+impl<State, M, F> ArgputForState<State> for Transparent<M, F>
 where
-    F: CarryInputForState<State>,
+    F: ArgputForState<State>,
 {
-    type Carry = <F as CarryInputForState<State>>::Carry;
+    type Carry = <F as ArgputForState<State>>::Carry;
 }
 
-impl<State, L, R> CarryInputForState<State> for Select<L, R>
+impl<State, L, R, M> ArgputForState<State> for Select<L, R, M>
 where
-    L: CarryInputForState<State>,
-    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+    L: ArgputForState<State>,
+    R: ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
-    type Carry = <L as CarryInputForState<State>>::Carry;
+    type Carry = <L as ArgputForState<State>>::Carry;
 }
 
-impl<State, L, R> CarryInputForState<State> for Join<L, R>
+impl<State, L, R, M> ArgputForState<State> for Join<L, R, M>
 where
-    L: CarryInputForState<State>,
-    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+    L: ArgputForState<State>,
+    R: ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
-    type Carry = <L as CarryInputForState<State>>::Carry;
+    type Carry = <L as ArgputForState<State>>::Carry;
 }
 
-impl<State, C, F> CarryInputForState<State> for While<C, F>
+impl<State, C, F, M> ArgputForState<State> for While<C, F, M>
 where
     C: LoopCondition<State>,
 {
-    type Carry = <C as LoopCondition<State>>::CarryIn;
+    type Carry = <C as LoopCondition<State>>::Arg;
 }
 
-impl<State, F> CarryInputForState<State> for F
+impl<State, F> ArgputForState<State> for F
 where
     (): crate::__inception_running::FieldsInput<F>,
     <() as crate::__inception_running::FieldsInput<F>>::In: SplitStateCarry<State>,
@@ -255,8 +255,8 @@ where
     <<A as Pulse<T>>::Action as Action>::Err: Serialize + 'static,
     <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
-    A::CarryIn: DeserializeOwned,
-    A::CarryOut: Serialize,
+    A::Arg: DeserializeOwned,
+    A::Ret: Serialize,
 {
     fn request(
         &mut self,
@@ -270,7 +270,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::CarryIn>(&input) {
+        let typed_input = match postcard::from_bytes::<A::Arg>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -295,7 +295,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::CarryIn>(&input) {
+        let typed_input = match postcard::from_bytes::<A::Arg>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -402,8 +402,8 @@ where
     <<A as Pulse<T>>::Action as Action>::Err: Serialize + 'static,
     <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
-    A::CarryIn: DeserializeOwned,
-    A::CarryOut: Serialize,
+    A::Arg: DeserializeOwned,
+    A::Ret: Serialize,
 {
     fn request(
         &mut self,
@@ -417,7 +417,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::CarryIn>(&input) {
+        let typed_input = match postcard::from_bytes::<A::Arg>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -442,7 +442,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::CarryIn>(&input) {
+        let typed_input = match postcard::from_bytes::<A::Arg>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -1556,8 +1556,8 @@ where
     <<A as Pulse<T>>::Action as Action>::Err: Serialize,
     <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
-    A::CarryIn: DeserializeOwned,
-    A::CarryOut: Serialize,
+    A::Arg: DeserializeOwned,
+    A::Ret: Serialize,
 {
     type Output = DynFlow<T::State>;
 
@@ -1568,14 +1568,14 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
+impl<State, P, L, R, M> BuildFlow<DynFlow<State>> for Conditional<P, L, R, M>
 where
     State: Clone + 'static,
-    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + CarryInputForState<State>,
+    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + ArgputForState<State>,
     R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
-        + CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
-    <L as CarryInputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, <L as CarryInputForState<State>>::Carry)> + 'static,
+        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+    <L as ArgputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
+    P: crate::Condition<(State, <L as ArgputForState<State>>::Carry)> + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -1583,25 +1583,25 @@ where
         let left = <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let choose_left = Box::new(
-            |state: &State, input: &<L as CarryInputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as CarryInputForState<State>>::Carry)>>::choose(
+            |state: &State, input: &<L as ArgputForState<State>>::Carry| {
+                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(
                     &(state.clone(), input.clone()),
                 )
             },
         );
         steps.push(Box::new(ConditionalErasedFlow::<
             State,
-            <L as CarryInputForState<State>>::Carry,
+            <L as ArgputForState<State>>::Carry,
         >::new(left, right, choose_left)));
         steps
     }
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, C, F> BuildFlow<DynFlow<State>> for While<C, F>
+impl<State, In, C, F, M> BuildFlow<DynFlow<State>> for While<C, F, M>
 where
     State: Send + 'static,
-    C: LoopCondition<State, CarryIn = In> + 'static,
+    C: LoopCondition<State, Arg = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
 {
@@ -1634,7 +1634,7 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, L, R> BuildFlow<DynFlow<State>> for Select<L, R>
+impl<State, In, L, R, M> BuildFlow<DynFlow<State>> for Select<L, R, M>
 where
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
@@ -1652,7 +1652,7 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, L, R> BuildFlow<DynFlow<State>> for Join<L, R>
+impl<State, In, L, R, M> BuildFlow<DynFlow<State>> for Join<L, R, M>
 where
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
@@ -1722,8 +1722,8 @@ where
     <<A as Pulse<T>>::Action as Action>::Err: Serialize,
     <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
     <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
-    A::CarryIn: DeserializeOwned,
-    A::CarryOut: Serialize,
+    A::Arg: DeserializeOwned,
+    A::Ret: Serialize,
 {
     type Output = (Arc<Context>, DynFlow<T::State>);
 
@@ -1906,14 +1906,14 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, P, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Conditional<P, L, R>
+impl<Context, State, P, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Conditional<P, L, R, M>
 where
     Context: 'static,
     State: Clone + 'static,
-    L: CarryInputForState<State>,
-    <L as CarryInputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, <L as CarryInputForState<State>>::Carry)> + 'static,
+    L: ArgputForState<State>,
+    <L as ArgputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
+    P: crate::Condition<(State, <L as ArgputForState<State>>::Carry)> + 'static,
     L: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
@@ -1921,7 +1921,7 @@ where
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -1935,15 +1935,15 @@ where
             Vec::new(),
         ));
         let choose_left = Box::new(
-            |state: &State, input: &<L as CarryInputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as CarryInputForState<State>>::Carry)>>::choose(
+            |state: &State, input: &<L as ArgputForState<State>>::Carry| {
+                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(
                     &(state.clone(), input.clone()),
                 )
             },
         );
         steps.push(Box::new(ConditionalContextErasedFlow::<
             State,
-            <L as CarryInputForState<State>>::Carry,
+            <L as ArgputForState<State>>::Carry,
         >::new(left, right, choose_left)));
         (context, steps)
     }
@@ -2130,11 +2130,12 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, C, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for While<C, F>
+impl<Context, State, In, C, F, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for While<C, F, M>
 where
     Context: Send + Sync + 'static,
     State: Send + 'static,
-    C: LoopCondition<State, CarryIn = In> + 'static,
+    C: LoopCondition<State, Arg = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
@@ -2164,7 +2165,8 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Transparent<M, F>
+impl<Context, State, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Transparent<M, F>
 where
     F: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
@@ -2179,7 +2181,8 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Select<L, R>
+impl<Context, State, In, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Select<L, R, M>
 where
     Context: 'static,
     State: Clone + 'static,
@@ -2210,7 +2213,8 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Join<L, R>
+impl<Context, State, In, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for Join<L, R, M>
 where
     Context: 'static,
     State: Clone + 'static,

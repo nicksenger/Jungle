@@ -1,4 +1,6 @@
-use crate::{Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity, Pulse};
+use crate::{
+    Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity, Pulse, StateCarrier,
+};
 use inception::primitive;
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -58,21 +60,21 @@ where
     Focus: Aspect<T::State>,
 {
     type Action = Sleep;
-    type Aspect = Focus;
-    type CarryIn = Duration;
-    type CarryOut = ();
+    type StateAspect = Focus;
+    type Arg = Duration;
+    type Ret = ();
 
     fn emit(
-        _view: &<Focus as Aspect<T::State>>::View,
-        input: Self::CarryIn,
+        _view: &<Focus as StateCarrier<T::State>>::View,
+        input: Self::Arg,
     ) -> <Self::Action as Action>::In {
         input
     }
 
     fn absorb(
-        _view: &mut <Focus as Aspect<T::State>>::View,
+        _view: &mut <Focus as StateCarrier<T::State>>::View,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("Sleep action should be resumed by worker runtime");
     }
 }

@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, Lens,
+    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, StateLens,
     LoopCondition, Pulse, Running, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
@@ -40,15 +40,15 @@ where
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Sleep;
-    type Aspect = Focus;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type StateAspect = Focus;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(core: &CoreState, input: Self::CarryIn) -> i32 {
+    fn emit(core: &CoreState, input: Self::Arg) -> i32 {
         core.energy + input
     }
 
-    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::CarryOut {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Ret {
         let value = output.expect("sleep should succeed");
         core.energy = value;
         value
@@ -61,15 +61,15 @@ where
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Action = Eat;
-    type Aspect = Focus;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type StateAspect = Focus;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(core: &CoreState, input: Self::CarryIn) -> i32 {
+    fn emit(core: &CoreState, input: Self::Arg) -> i32 {
         core.energy + input
     }
 
-    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::CarryOut {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Ret {
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
@@ -85,15 +85,15 @@ where
     A: Action<Out = i32>,
 {
     type Action = A;
-    type Aspect = Focus;
-    type CarryIn = A::In;
-    type CarryOut = i32;
+    type StateAspect = Focus;
+    type Arg = A::In;
+    type Ret = i32;
 
-    fn emit(_value: &i32, input: Self::CarryIn) -> A::In {
+    fn emit(_value: &i32, input: Self::Arg) -> A::In {
         input
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::CarryOut {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Ret {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -112,15 +112,15 @@ where
     A: Action<Out = i32>,
 {
     type Action = A;
-    type Aspect = Focus;
-    type CarryIn = A::In;
-    type CarryOut = i32;
+    type StateAspect = Focus;
+    type Arg = A::In;
+    type Ret = i32;
 
-    fn emit(_value: &i32, input: Self::CarryIn) -> A::In {
+    fn emit(_value: &i32, input: Self::Arg) -> A::In {
         input
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::CarryOut {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Ret {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -133,15 +133,15 @@ where
 struct GorillaSleepManual;
 impl Pulse<Gorilla> for GorillaSleepManual {
     type Action = Sleep;
-    type Aspect = Identity;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type StateAspect = Identity;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(state: &GorillaState, input: Self::CarryIn) -> i32 {
+    fn emit(state: &GorillaState, input: Self::Arg) -> i32 {
         state.core.energy + input
     }
 
-    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::CarryOut {
+    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Ret {
         let value = output.expect("sleep should succeed");
         state.core.energy = value;
         state.core.age += 1;
@@ -149,11 +149,11 @@ impl Pulse<Gorilla> for GorillaSleepManual {
     }
 }
 
-type GorillaEat = AddI32<Lens<GorillaState, list![U0, U0]>, Eat>;
-type GorillaForageStep = SubI32<Lens<GorillaState, list![U0, U0]>, Forage>;
+type GorillaEat = AddI32<StateLens<GorillaState, list![U0, U0]>, Eat>;
+type GorillaForageStep = SubI32<StateLens<GorillaState, list![U0, U0]>, Forage>;
 
-type TigerEat = AddI32<Lens<TigerState, list![U1, U0]>, Eat>;
-type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
+type TigerEat = AddI32<StateLens<TigerState, list![U1, U0]>, Eat>;
+type TigerSleep = AddI32<StateLens<TigerState, list![U1, U0]>, Sleep>;
 
 #[derive(Journey)]
 struct GorillaLoopSequence(
@@ -164,7 +164,7 @@ struct GorillaLoopSequence(
 
 struct GorillaUnderAgeHundred;
 impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
-    type CarryIn = i32;
+    type Arg = i32;
 
     fn should_continue(state: &GorillaState) -> bool {
         state.core.age < 100
@@ -185,12 +185,12 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 struct TigerLoopSequence(
     Conditional<TigerStripesAreEven, Step<Tiger, TigerEat>, Step<Tiger, TigerSleep>>,
     Step<Tiger, TigerSleep>,
-    Step<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
+    Step<Tiger, AddI32<StateLens<TigerState, list![U1, U0]>, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
 impl LoopCondition<TigerState> for TigerUnderHundredStripes {
-    type CarryIn = i32;
+    type Arg = i32;
 
     fn should_continue(state: &TigerState) -> bool {
         state.core.energy < 100
@@ -214,12 +214,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
     };
     let (gorilla_state, gorilla_request) = <Step<
         Gorilla,
-        CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, StateLens<GorillaState, U0>>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
     let (gorilla_state, gorilla_emitted) = <Step<
         Gorilla,
-        CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, StateLens<GorillaState, U0>>,
     > as Waiting>::accept((gorilla_state, Ok(20)));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
@@ -231,13 +231,13 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6, age: 12 },
     };
     let (tiger_state, tiger_request) =
-        <Step<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Running>::run((
+        <Step<Tiger, CoreEnergyStep<Sleep, StateLens<TigerState, U1>>> as Running>::run((
             tiger_state,
             4,
         ));
     assert_eq!(tiger_request.into_input(), 10);
     let (tiger_state, tiger_emitted) =
-        <Step<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Waiting>::accept((
+        <Step<Tiger, CoreEnergyStep<Sleep, StateLens<TigerState, U1>>> as Waiting>::accept((
             tiger_state,
             Ok(15),
         ));
