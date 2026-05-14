@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use jungle_types::{
-    ClaimedAnimalPerturbation, JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
+    ClaimedAnimalPerturbation, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
+    SupportedAnimal, Work,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -49,6 +50,11 @@ pub trait JungleStore: DynClone + Send + Sync {
         seed: Vec<u8>,
     ) -> Result<Uuid>;
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>>;
+    async fn journey_update_events_since(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<Vec<JourneyUpdateEvent>>;
     async fn journey_status(&self, journey_id: Uuid) -> Result<JourneyStatus>;
     async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>>;
     async fn upsert_animal_appearance(&self, journey_id: Uuid, data: Vec<u8>) -> Result<()>;
@@ -80,6 +86,11 @@ pub trait JungleStore: DynClone + Send + Sync {
         wake_at_unix_ms: i64,
     ) -> Result<()>;
     async fn poll_timers(&self) -> Result<Option<()>>;
+
+    #[cfg(feature = "postgres")]
+    fn postgres_pool(&self) -> Option<sqlx::PgPool> {
+        None
+    }
 }
 
 dyn_clone::clone_trait_object!(JungleStore);

@@ -4,7 +4,6 @@ use jungle_sdk::types::{
     Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Observe, Pulse, Sleep, Step, While,
 };
-use jungle_sdk::typosaurus::num::Unsigned;
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -171,8 +170,9 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let worker = JungleWorker::new(SleepZoo, client.clone());
-    let worker_future = worker.spawn();
-    tokio::pin!(worker_future);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
 
     let seed = postcard::to_allocvec(&SleepState {
         counter: 0,
@@ -180,32 +180,31 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
         sleep_for_ms: 250,
     })
     .expect("sleep test seed should serialize");
-    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
     let journey_id = client
-        .start_journey(ordinal, 0, seed)
+        .start_journey::<SleepAnimal>(seed)
         .await
         .expect("start_journey should succeed for sleep flow");
 
-    tokio::select! {
-        result = &mut worker_future => {
-            panic!("worker should continue polling, got: {result:?}");
-        }
-        completion = tokio::time::timeout(Duration::from_secs(8), async {
-            loop {
-                let status = client
-                    .journey_details(journey_id)
-                    .await
-                    .expect("journey_details should succeed");
-                if status == JourneyStatus::Completed {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
+    let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            let status = client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed");
+            if status == JourneyStatus::Completed {
+                break;
             }
-        }) => {
-            if completion.is_err() {
-                panic!("sleep flow did not complete before timeout");
-            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
+    })
+    .await;
+    if completion.is_err() {
+        panic!("sleep flow did not complete before timeout");
+    }
+
+    if worker_handle.is_finished() {
+        let joined = worker_handle.await;
+        panic!("worker should continue polling, got: {joined:?}");
     }
 
     let appearance_bytes = client
@@ -216,6 +215,9 @@ async fn sleep_action_suspends_then_resumes_flow_to_completion() {
     let appearance: SleepState =
         postcard::from_bytes(&appearance_bytes).expect("sleep appearance should deserialize");
     assert_eq!(appearance.counter, 2);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 
     server_task.abort();
     let _ = server_task.await;

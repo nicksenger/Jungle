@@ -1,13 +1,72 @@
+use futures::StreamExt;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
     BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
-    SupportedAnimal, WireIn, WireOut, Work,
+    RunnerUpdateOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
+
+action!(ConnectionAction7, jungle_sdk::typosaurus::num::consts::U80);
+
+animal!(
+    ConnectionAnimal7,
+    jungle_sdk::typosaurus::num::consts::U7,
+    state = (),
+    journey = ConnectionJourney7
+);
+
+struct ConnectionStep7;
+impl jungle_sdk::types::Pulse<ConnectionAnimal7> for ConnectionStep7 {
+    type Action = ConnectionAction7;
+    type Aspect = jungle_sdk::types::Identity;
+    type CarryIn = ();
+    type CarryOut = ();
+
+    fn emit(_state: &(), _input: Self::CarryIn) -> Self::CarryIn {}
+
+    fn absorb(
+        _state: &mut (),
+        output: jungle_sdk::types::ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
+        output.expect("connection animal 7 action should succeed");
+    }
+}
+
+#[derive(jungle_sdk::Journey)]
+struct ConnectionJourney7(jungle_sdk::types::Step<ConnectionAnimal7, ConnectionStep7>);
+
+action!(ConnectionAction9, jungle_sdk::typosaurus::num::consts::U81);
+
+animal!(
+    ConnectionAnimal9,
+    jungle_sdk::typosaurus::num::consts::U9,
+    state = (),
+    journey = ConnectionJourney9
+);
+
+struct ConnectionStep9;
+impl jungle_sdk::types::Pulse<ConnectionAnimal9> for ConnectionStep9 {
+    type Action = ConnectionAction9;
+    type Aspect = jungle_sdk::types::Identity;
+    type CarryIn = ();
+    type CarryOut = ();
+
+    fn emit(_state: &(), _input: Self::CarryIn) -> Self::CarryIn {}
+
+    fn absorb(
+        _state: &mut (),
+        output: jungle_sdk::types::ActionCompletion<Self::Action>,
+    ) -> Self::CarryOut {
+        output.expect("connection animal 9 action should succeed");
+    }
+}
+
+#[derive(jungle_sdk::Journey)]
+struct ConnectionJourney9(jungle_sdk::types::Step<ConnectionAnimal9, ConnectionStep9>);
 
 #[tokio::test]
 async fn client_exchanges_messages_with_mock_server() {
@@ -120,7 +179,7 @@ async fn client_exchanges_messages_with_mock_server() {
     let client = connect_client_with_retry(listen_addr).await;
 
     let created_flow = client
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
     assert_eq!(created_flow, journey_id);
@@ -245,7 +304,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -280,6 +339,77 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 }
 
 #[tokio::test]
+async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+
+    let listen_addr = super::reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let journey_id = client
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .await
+        .expect("start_journey should succeed");
+
+    client
+        .action_input(journey_id, 12, vec![9, 9])
+        .await
+        .expect("action_input should succeed");
+    client
+        .action_success_output(journey_id, 12, vec![8])
+        .await
+        .expect("action_success_output should succeed");
+    client
+        .complete_journey(journey_id)
+        .await
+        .expect("complete_journey should succeed");
+
+    let mut updates = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("subscription should open");
+
+    let first = updates
+        .next()
+        .await
+        .expect("first update should exist")
+        .expect("first update should decode");
+    assert_eq!(first.sequence_id, 0);
+    assert!(matches!(
+        first.event,
+        RunnerUpdateOut::ActionInput { node_id, uuid } if node_id == 12 && uuid == journey_id
+    ));
+
+    let second = updates
+        .next()
+        .await
+        .expect("second update should exist")
+        .expect("second update should decode");
+    assert_eq!(second.sequence_id, 1);
+    assert!(matches!(
+        second.event,
+        RunnerUpdateOut::ActionSuccessOutput { node_id, uuid }
+            if node_id == 12 && uuid == journey_id
+    ));
+
+    let done = updates.next().await;
+    assert!(done.is_none(), "terminal journey stream should close");
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
 async fn poll_timers_promotes_due_sleep_to_resume_work() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
@@ -298,7 +428,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("start_journey should succeed");
 
@@ -549,11 +679,11 @@ async fn poll_work_is_scoped_by_namespace() {
     let beta = connect_client_with_retry_namespace(listen_addr, "beta").await;
 
     let alpha_id = alpha
-        .start_journey(7, 0, vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
         .await
         .expect("alpha start_journey should succeed");
     let beta_id = beta
-        .start_journey(9, 0, vec![4, 5, 6])
+        .start_journey::<ConnectionAnimal9>(vec![4, 5, 6])
         .await
         .expect("beta start_journey should succeed");
 

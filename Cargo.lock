@@ -2524,6 +2524,7 @@ dependencies = [
  "quinn",
  "rustls",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "typosaurus",
  "uuid",
@@ -2550,6 +2551,7 @@ version = "0.1.0"
 dependencies = [
  "jungle-sdk",
  "jungle-viewer",
+ "jungle-zoo",
  "postcard",
  "serde",
  "tokio",
@@ -2568,12 +2570,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "jungle-migrate"
+version = "0.1.0"
+dependencies = [
+ "redb",
+ "sqlx",
+ "testcontainers",
+ "testcontainers-modules",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "jungle-persist"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
  "dyn-clone",
+ "jungle-migrate",
  "jungle-types",
  "postcard",
  "redb",
@@ -2612,6 +2627,7 @@ dependencies = [
  "quinn",
  "rcgen",
  "rustls",
+ "sqlx",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -2670,6 +2686,7 @@ dependencies = [
  "jungle-sdk",
  "jungle-types",
  "serde",
+ "tokio",
 ]
 
 [[package]]

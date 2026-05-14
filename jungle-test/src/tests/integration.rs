@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
@@ -6,12 +7,15 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::Unsigned;
-use jungle_sdk::{Animals, JungleClient, Optic};
+use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+#[cfg(feature = "postgres")]
+use testcontainers::runners::AsyncRunner;
+#[cfg(feature = "postgres")]
+use testcontainers_modules::postgres::Postgres;
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct SubFlowState {
@@ -408,29 +412,108 @@ async fn redb_client_worker_flow_runs_to_completion() {
         }
     });
 
+    run_client_worker_flow_runs_to_completion(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+async fn postgres_client_worker_flow_runs_to_completion() {
+    let postgres = Postgres::default()
+        .start()
+        .await
+        .expect("postgres testcontainer should start");
+    let pg_port = postgres
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("postgres mapped port should be available");
+    let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let connection_string = connection_string.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .postgres_connection_string(connection_string)
+                .run()
+                .await
+        }
+    });
+
+    run_client_worker_flow_runs_to_completion(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn redb_client_worker_streams_step_updates_end_to_end() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    run_client_worker_streams_step_updates_end_to_end(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[cfg(feature = "postgres")]
+#[tokio::test]
+async fn postgres_client_worker_streams_step_updates_end_to_end() {
+    let postgres = Postgres::default()
+        .start()
+        .await
+        .expect("postgres testcontainer should start");
+    let pg_port = postgres
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("postgres mapped port should be available");
+    let connection_string = format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn({
+        let connection_string = connection_string.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .postgres_connection_string(connection_string)
+                .run()
+                .await
+        }
+    });
+
+    run_client_worker_streams_step_updates_end_to_end(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
     let client = connect_client_with_retry(listen_addr).await;
     let worker = JungleWorker::new(IntegrationZoo, client.clone());
-    let worker_future = worker.spawn();
-    tokio::pin!(worker_future);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
     let saw_appearance = Arc::new(AtomicBool::new(false));
 
-    let seed = postcard::to_allocvec(&IntegrationState {
-        total: 0,
-        focused: SubFlowState {
-            nested: DeepFocusState {
-                value: 0,
-                updates: 0,
-            },
-            value: 0,
-            updates: 0,
-        },
-        before_steps: 0,
-        after_steps: 0,
-    })
-    .expect("seed should serialize");
-    let ordinal = <jungle_sdk::typosaurus::num::consts::U0 as Unsigned>::U32;
+    let seed = integration_seed();
     let journey_id = client
-        .start_journey(ordinal, 0, seed)
+        .start_journey::<IntegrationAnimal>(seed)
         .await
         .expect("start_journey should succeed");
     let perturb_payload = postcard::to_allocvec(&IntegrationPerturbation { delta: 1000 })
@@ -440,14 +523,10 @@ async fn redb_client_worker_flow_runs_to_completion() {
         .await
         .expect("perturb_animal should enqueue perturbation");
 
-    tokio::select! {
-        result = &mut worker_future => {
-            panic!("worker should keep polling, got: {result:?}");
-        }
-        completion = tokio::time::timeout(Duration::from_secs(8), {
-            let client_ref = &client;
-            let saw_appearance = Arc::clone(&saw_appearance);
-            async move {
+    let completion = tokio::time::timeout(Duration::from_secs(8), {
+        let client_ref = &client;
+        let saw_appearance = Arc::clone(&saw_appearance);
+        async move {
             loop {
                 let status = client_ref
                     .journey_details(journey_id)
@@ -469,16 +548,19 @@ async fn redb_client_worker_flow_runs_to_completion() {
                 }
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
-            }
-        }) => {
-            if completion.is_err() {
-                let status = client
-                    .journey_details(journey_id)
-                    .await
-                    .expect("final journey_details should still be queryable");
-                panic!("flow did not complete before timeout, last status: {status:?}");
-            }
         }
+    })
+    .await;
+    if completion.is_err() {
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .expect("final journey_details should still be queryable");
+        panic!("flow did not complete before timeout, last status: {status:?}");
+    }
+    if worker_handle.is_finished() {
+        let joined = worker_handle.await;
+        panic!("worker should keep polling, got: {joined:?}");
     }
 
     assert!(
@@ -502,8 +584,125 @@ async fn redb_client_worker_flow_runs_to_completion() {
         "final appearance should include applied perturbation delta"
     );
 
-    server_task.abort();
-    let _ = server_task.await;
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAddr) {
+    let client = connect_client_with_retry(listen_addr).await;
+    let worker = JungleWorker::new(IntegrationZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let seed = integration_seed();
+    let journey_id = client
+        .start_journey::<IntegrationAnimal>(seed)
+        .await
+        .expect("start_journey should succeed");
+
+    let mut subscription = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("subscribe_step_updates should succeed");
+
+    let mut started_count = 0_u32;
+    let mut succeeded_count = 0_u32;
+    let mut failed_count = 0_u32;
+    let mut total_step_updates = 0_u32;
+    let mut last_sequence_id: Option<u64> = None;
+
+    let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            let Some(next) = subscription.next().await else {
+                break;
+            };
+            let update = next.expect("streamed journey update should succeed");
+
+            let (sequence_id, update_journey_id) = match update.event {
+                RunnerUpdateOut::ActionInput { uuid, .. } => {
+                    started_count += 1;
+                    (update.sequence_id, uuid)
+                }
+                RunnerUpdateOut::ActionSuccessOutput { uuid, .. } => {
+                    succeeded_count += 1;
+                    (update.sequence_id, uuid)
+                }
+                RunnerUpdateOut::ActionFailureOutput { uuid, .. } => {
+                    failed_count += 1;
+                    (update.sequence_id, uuid)
+                }
+                RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
+                    continue;
+                }
+            };
+            total_step_updates += 1;
+
+            assert_eq!(
+                update_journey_id, journey_id,
+                "stream update should match journey"
+            );
+            if let Some(prev) = last_sequence_id {
+                assert!(
+                    sequence_id > prev,
+                    "stream sequence ids must be strictly increasing"
+                );
+            }
+            last_sequence_id = Some(sequence_id);
+        }
+    })
+    .await;
+    if completion.is_err() {
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .expect("final journey_details should still be queryable");
+        panic!("stream did not finish before timeout, last status: {status:?}");
+    }
+    if worker_handle.is_finished() {
+        let joined = worker_handle.await;
+        panic!("worker should keep polling, got: {joined:?}");
+    }
+
+    let final_status = client
+        .journey_details(journey_id)
+        .await
+        .expect("journey_details should succeed after stream completion");
+    assert_eq!(final_status, JourneyStatus::Completed);
+    assert!(
+        started_count > 0,
+        "expected at least one started step update"
+    );
+    assert!(
+        succeeded_count > 0,
+        "expected at least one succeeded step update"
+    );
+    assert_eq!(failed_count, 0, "expected no failed step updates");
+    const INTEGRATION_SHORTEST_PATH_STEPS: u32 = 8;
+    assert!(
+        total_step_updates >= INTEGRATION_SHORTEST_PATH_STEPS,
+        "expected streamed step updates ({total_step_updates}) to be >= shortest path steps ({INTEGRATION_SHORTEST_PATH_STEPS})"
+    );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+fn integration_seed() -> Vec<u8> {
+    postcard::to_allocvec(&IntegrationState {
+        total: 0,
+        focused: SubFlowState {
+            nested: DeepFocusState {
+                value: 0,
+                updates: 0,
+            },
+            value: 0,
+            updates: 0,
+        },
+        before_steps: 0,
+        after_steps: 0,
+    })
+    .expect("seed should serialize")
 }
 
 #[test]

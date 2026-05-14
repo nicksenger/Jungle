@@ -41,10 +41,12 @@ where
     ) -> Result<A::State, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         let mut executor = self.new_executor::<A>(state);
-        self.emit_initial_appearance::<A>(&executor, journey_id, &mut tx)
+        let appearance = self.initial_appearance::<A>(&executor)?;
+        self.emit_appearance(journey_id, appearance, &mut tx)
             .await?;
         match self
             .drive_until_sleep_or_complete::<A>(&mut executor, journey_id, &mut tx)
@@ -61,26 +63,31 @@ where
     pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<T, A>
     where
         A: Animal,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         ContextExecutor::new(Arc::clone(&self.jungle), state)
     }
 
-    pub async fn emit_initial_appearance<A>(
+    pub fn initial_appearance<A>(
         &self,
         executor: &ContextExecutor<T, A>,
-        journey_id: Uuid,
-        tx: &mut RunnerChannelTx,
-    ) -> Result<(), ExecutorError>
+    ) -> Result<Option<Vec<u8>>, ExecutorError>
     where
         A: Animal + AnimalObservation,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
-        if let Some(appearance) =
-            <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(
-                executor.state(),
-            )?
-        {
+        <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(executor.state())
+    }
+
+    pub async fn emit_appearance(
+        &self,
+        journey_id: Uuid,
+        appearance: Option<Vec<u8>>,
+        tx: &mut RunnerChannelTx,
+    ) -> Result<(), ExecutorError> {
+        if let Some(appearance) = appearance {
             send_history(
                 tx,
                 RunnerOut::Appearance {
@@ -101,7 +108,8 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         while !executor.is_complete() {
             process_perturbations(executor, journey_id, tx).await?;
@@ -151,7 +159,8 @@ where
     ) -> Result<RunnerAdvance, ExecutorError>
     where
         A: Animal + AnimalObservation + AnimalPerturbation,
-        A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+        A::Journey:
+            BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         let sleep_out = postcard::to_allocvec(&())
             .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
@@ -179,7 +188,8 @@ async fn apply_completion_and_emit_appearance<T, A>(
 where
     T: 'static,
     A: Animal + AnimalObservation,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     match &completion {
         Ok(output) => {
@@ -245,7 +255,8 @@ async fn process_perturbations<A, Ctx>(
 where
     A: Animal + AnimalPerturbation,
     Ctx: 'static,
-    A::Journey: BuildFlowWithContext<(Arc<Ctx>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<Ctx>, DynFlow<A::State>), Output = (Arc<Ctx>, DynFlow<A::State>)>,
 {
     if !<<A as AnimalPerturbation>::Adapter as PerturbationAdapter<A>>::enabled() {
         return Ok(());

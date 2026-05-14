@@ -1,7 +1,5 @@
-use super::support::define_action;
-use crate::state::{
-    AgeState, DailyActivity, LifePhase, PerceivedTimeOfDay, TimePerception,
-};
+use super::support::{define_action, maybe_delay};
+use crate::state::{AgeState, DailyActivity, LifePhase, PerceivedTimeOfDay, TimePerception};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TemporalDependency {
@@ -53,16 +51,20 @@ define_action!(
     out = AgeState,
     err = String,
     act = |dependency, age_years| {
-        let new_age = age_years.saturating_add(1);
-        let adult_age = dependency.adult_age.max(1);
-        let growth_percent = ((u16::from(new_age) * 100) / u16::from(adult_age)).min(100) as u8;
-        let life_phase =
-            classify_life_phase(new_age, dependency.adolescent_age, dependency.adult_age);
-        std::future::ready(Ok(AgeState {
-            age_years: new_age,
-            life_phase,
-            growth_percent,
-        }))
+        async move {
+            maybe_delay().await;
+            let new_age = age_years.saturating_add(1);
+            let adult_age = dependency.adult_age.max(1);
+            let growth_percent =
+                ((u16::from(new_age) * 100) / u16::from(adult_age)).min(100) as u8;
+            let life_phase =
+                classify_life_phase(new_age, dependency.adolescent_age, dependency.adult_age);
+            Ok(AgeState {
+                age_years: new_age,
+                life_phase,
+                growth_percent,
+            })
+        }
     }
 );
 
@@ -74,17 +76,22 @@ define_action!(
     out = TimePerception,
     err = String,
     act = |dependency, (current, minutes_since_transition)| {
-        let total = minutes_since_transition.saturating_add(dependency.minutes_per_segment);
-        if total < 720 {
-            return std::future::ready(Ok(TimePerception {
-                current,
-                minutes_since_transition: total,
-            }));
+        async move {
+            maybe_delay().await;
+            let total = minutes_since_transition.saturating_add(dependency.minutes_per_segment);
+            let next = if total < 720 {
+                TimePerception {
+                    current,
+                    minutes_since_transition: total,
+                }
+            } else {
+                TimePerception {
+                    current: next_time_of_day(current),
+                    minutes_since_transition: total - 720,
+                }
+            };
+            Ok(next)
         }
-        std::future::ready(Ok(TimePerception {
-            current: next_time_of_day(current),
-            minutes_since_transition: total - 720,
-        }))
     }
 );
 
@@ -96,20 +103,71 @@ define_action!(
     out = bool,
     err = String,
     act = |_dependency, (activity, time_of_day)| {
-        let is_active = match activity {
-            DailyActivity::Diurnal => {
-                matches!(
-                    time_of_day,
-                    PerceivedTimeOfDay::Morning | PerceivedTimeOfDay::Afternoon
-                )
-            }
-            DailyActivity::Nocturnal => {
-                matches!(
-                    time_of_day,
-                    PerceivedTimeOfDay::Evening | PerceivedTimeOfDay::Night
-                )
-            }
-        };
-        std::future::ready(Ok(is_active))
+        async move {
+            maybe_delay().await;
+            let is_active = match activity {
+                DailyActivity::Diurnal => {
+                    matches!(
+                        time_of_day,
+                        PerceivedTimeOfDay::Morning | PerceivedTimeOfDay::Afternoon
+                    )
+                }
+                DailyActivity::Nocturnal => {
+                    matches!(
+                        time_of_day,
+                        PerceivedTimeOfDay::Evening | PerceivedTimeOfDay::Night
+                    )
+                }
+            };
+            Ok(is_active)
+        }
+    }
+);
+
+define_action!(
+    CelebrateBirthday,
+    id = 53,
+    dependency = TemporalDependency,
+    in = AgeState,
+    out = AgeState,
+    err = String,
+    act = |dependency, age| {
+        async move {
+            maybe_delay().await;
+            let adult_age = dependency.adult_age.max(1);
+            let growth_percent =
+                ((u16::from(age.age_years) * 100) / u16::from(adult_age)).min(100) as u8;
+            let life_phase =
+                classify_life_phase(age.age_years, dependency.adolescent_age, dependency.adult_age);
+            Ok(AgeState {
+                age_years: age.age_years,
+                life_phase,
+                growth_percent,
+            })
+        }
+    }
+);
+
+define_action!(
+    Birth,
+    id = 54,
+    dependency = TemporalDependency,
+    in = AgeState,
+    out = AgeState,
+    err = String,
+    act = |dependency, age| {
+        async move {
+            maybe_delay().await;
+            let adult_age = dependency.adult_age.max(1);
+            let growth_percent =
+                ((u16::from(age.age_years) * 100) / u16::from(adult_age)).min(100) as u8;
+            let life_phase =
+                classify_life_phase(age.age_years, dependency.adolescent_age, dependency.adult_age);
+            Ok(AgeState {
+                age_years: age.age_years,
+                life_phase,
+                growth_percent,
+            })
+        }
     }
 );

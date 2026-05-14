@@ -16,3 +16,4 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 thiserror = "1"
 tracing = "0.1"
 postcard = { workspace = true, features = ["alloc"] }
+tokio = { version = "1", features = ["io-util"] }

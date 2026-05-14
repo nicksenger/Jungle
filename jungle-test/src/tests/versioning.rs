@@ -6,7 +6,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U33, U70, U71};
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U33, U70, U71};
 use jungle_sdk::{Animals, Journey, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -149,6 +149,37 @@ impl jungle_sdk::types::Identified for ModernAnimal {
     type Id = U33;
 }
 
+struct FutureAnimal;
+impl AnimalMember for FutureAnimal {}
+impl Animal for FutureAnimal {
+    type Id = Id<U33>;
+    type Generation = U2;
+    type State = i32;
+    type Seed = i32;
+    type Journey = ModernJourney;
+}
+impl jungle_sdk::types::AnimalObservation for FutureAnimal {
+    type Adapter = jungle_sdk::types::ObserveObservation;
+}
+impl jungle_sdk::types::AnimalPerturbation for FutureAnimal {
+    type Adapter = jungle_sdk::types::NoopPerturbation;
+}
+impl Observe for FutureAnimal {
+    type Appearance = i32;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl AnimalsTrait for FutureAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U33, FutureAnimal>;
+}
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for FutureAnimal {
+    type Id = U33;
+}
+
 #[derive(Animals)]
 struct VersionedAnimals(LegacyAnimal, ModernAnimal);
 
@@ -224,34 +255,35 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
 
     let seed = postcard::to_allocvec(&0_i32).expect("seed should serialize");
     let journey_id = client
-        .start_journey_for::<LegacyAnimal>(seed)
+        .start_journey::<LegacyAnimal>(seed)
         .await
-        .expect("start_journey_for legacy should succeed");
+        .expect("start_journey legacy should succeed");
 
     let worker = JungleWorker::new(VersionedZoo, client.clone());
-    let worker_future = worker.spawn();
-    tokio::pin!(worker_future);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
 
-    tokio::select! {
-        result = &mut worker_future => {
-            panic!("worker should continue polling, got: {result:?}");
-        }
-        completion = tokio::time::timeout(Duration::from_secs(8), async {
-            loop {
-                let status = client
-                    .journey_details(journey_id)
-                    .await
-                    .expect("journey_details should succeed");
-                if status == jungle_sdk::types::JourneyStatus::Completed {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
+    let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            let status = client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed");
+            if status == jungle_sdk::types::JourneyStatus::Completed {
+                break;
             }
-        }) => {
-            if completion.is_err() {
-                panic!("versioned journey did not complete before timeout");
-            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
+    })
+    .await;
+    if completion.is_err() {
+        panic!("versioned journey did not complete before timeout");
+    }
+
+    if worker_handle.is_finished() {
+        let joined = worker_handle.await;
+        panic!("worker should continue polling, got: {joined:?}");
     }
 
     let appearance_bytes = client
@@ -265,6 +297,9 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
         value, 99,
         "latest generation journey behavior should execute"
     );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 
     server_task.abort();
     let _ = server_task.await;
@@ -299,7 +334,7 @@ async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
 
     let seed = postcard::to_allocvec(&0_i32).expect("seed should serialize");
     let err = client
-        .start_journey(33, 2, seed)
+        .start_journey::<FutureAnimal>(seed)
         .await
         .expect_err("start_journey should fail when client generation is ahead");
     let message = err.to_string();

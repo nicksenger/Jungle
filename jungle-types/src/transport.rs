@@ -41,6 +41,48 @@ pub enum RunnerOut {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct JourneyEvent {
+    pub sequence_id: u64,
+    pub event: RunnerOut,
+}
+
+/// Lightweight event payload for journey update subscriptions.
+///
+/// Action variants intentionally omit action payload bytes to keep subscription
+/// streams inexpensive for long-running journeys.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum RunnerUpdateOut {
+    ActionInput {
+        node_id: u32,
+        uuid: Uuid,
+    },
+    ActionSuccessOutput {
+        node_id: u32,
+        uuid: Uuid,
+    },
+    ActionFailureOutput {
+        node_id: u32,
+        uuid: Uuid,
+    },
+    SleepScheduled {
+        uuid: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    },
+    SleepFired {
+        uuid: Uuid,
+        timer_id: Uuid,
+        fired_at_unix_ms: i64,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct JourneyUpdateEvent {
+    pub sequence_id: u64,
+    pub event: RunnerUpdateOut,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ClaimedAnimalPerturbation {
     pub id: u64,
     pub data: Vec<u8>,
@@ -98,6 +140,10 @@ pub enum WireIn {
     },
     JourneyHistory(Uuid),
     JourneyStatus(Uuid),
+    SubscribeJourneyUpdates {
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    },
     AnimalAppearance(Uuid),
     PerturbAnimal {
         journey_id: Uuid,
@@ -136,6 +182,7 @@ pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyHistory(Vec<RunnerOut>),
     JourneyStatus(JourneyStatus),
+    JourneyUpdate(JourneyUpdateEvent),
     AnimalAppearance(Option<Vec<u8>>),
     ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),
     OwnerWake(Option<OwnerWake>),

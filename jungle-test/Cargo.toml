@@ -3,6 +3,10 @@ name = "jungle-test"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+postgres = []
+
 [dependencies]
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["server", "pg", "redb"] }
 

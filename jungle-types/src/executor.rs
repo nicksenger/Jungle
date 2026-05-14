@@ -12,10 +12,78 @@ use std::sync::Arc;
 
 type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
-type ActionFuture = Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>>>>;
-type ActionRunner = Box<dyn FnOnce() -> ActionFuture>;
+type ActionFuture =
+    Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>> + Send>>;
+type ActionRunner = Box<dyn FnOnce() -> ActionFuture + Send>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
+
+trait SplitStateCarry<State> {
+    type Carry;
+}
+
+impl<State, Carry> SplitStateCarry<State> for (State, Carry) {
+    type Carry = Carry;
+}
+
+trait CarryInputForState<State> {
+    type Carry;
+}
+
+impl<State, T, A> CarryInputForState<State> for Step<T, A>
+where
+    T: Animal<State = State>,
+    A: Pulse<T>,
+{
+    type Carry = A::CarryIn;
+}
+
+impl<State, P, L, R> CarryInputForState<State> for Conditional<P, L, R>
+where
+    L: CarryInputForState<State>,
+    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+{
+    type Carry = <L as CarryInputForState<State>>::Carry;
+}
+
+impl<State, M, F> CarryInputForState<State> for Transparent<M, F>
+where
+    F: CarryInputForState<State>,
+{
+    type Carry = <F as CarryInputForState<State>>::Carry;
+}
+
+impl<State, L, R> CarryInputForState<State> for Select<L, R>
+where
+    L: CarryInputForState<State>,
+    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+{
+    type Carry = <L as CarryInputForState<State>>::Carry;
+}
+
+impl<State, L, R> CarryInputForState<State> for Join<L, R>
+where
+    L: CarryInputForState<State>,
+    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+{
+    type Carry = <L as CarryInputForState<State>>::Carry;
+}
+
+impl<State, C, F> CarryInputForState<State> for While<C, F>
+where
+    C: LoopCondition<State>,
+{
+    type Carry = <C as LoopCondition<State>>::CarryIn;
+}
+
+impl<State, F> CarryInputForState<State> for F
+where
+    (): crate::__inception_running::FieldsInput<F>,
+    <() as crate::__inception_running::FieldsInput<F>>::In: SplitStateCarry<State>,
+{
+    type Carry =
+        <<() as crate::__inception_running::FieldsInput<F>>::In as SplitStateCarry<State>>::Carry;
+}
 
 fn decode_controlled_input<In, F>(input: &[u8], fallback: F) -> Result<(bool, In), ExecutorError>
 where
@@ -35,8 +103,8 @@ where
     Ok((fallback(&carry), carry))
 }
 
-pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
-pub type ErasedStep<State> = dyn ErasedFlow<State>;
+pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
+pub type ErasedStep<State> = dyn ErasedFlow<State> + Send;
 
 pub struct ExecutableActionRequest {
     node_id: u32,
@@ -84,7 +152,7 @@ impl ExecutableActionRequest {
     }
 }
 
-pub trait ErasedFlow<State> {
+pub trait ErasedFlow<State>: Send {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized>;
 
     fn complete(
@@ -323,6 +391,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
 
 impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Step<T, A>>
 where
+    Context: Send + Sync + 'static,
     T: Animal,
     A: Pulse<T>,
     <A as Pulse<T>>::Action: Action,
@@ -461,7 +530,7 @@ where
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
-    choose_left: Box<dyn Fn(&State, &In) -> bool>,
+    choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     active_branch: Option<ActiveBranch>,
     cursor: usize,
 }
@@ -473,7 +542,7 @@ where
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        choose_left: Box<dyn Fn(&State, &In) -> bool>,
+        choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     ) -> Self {
         Self {
             left,
@@ -500,7 +569,7 @@ where
         }
     }
 
-    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State>>> {
+    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State> + Send>> {
         let cursor = self.cursor;
         self.active_branch_mut()?.get_mut(cursor)
     }
@@ -629,8 +698,8 @@ struct WhileErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    should_continue: Box<dyn Fn(&State, &In) -> bool>,
-    build_body: Box<dyn Fn() -> DynFlow<State>>,
+    should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
+    build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     active_body: DynFlow<State>,
     body_node_id_start: u32,
     body_cursor: usize,
@@ -1280,8 +1349,8 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn new(
-        should_continue: Box<dyn Fn(&State, &In) -> bool>,
-        build_body: Box<dyn Fn() -> DynFlow<State>>,
+        should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
+        build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     ) -> Self {
         Self {
             should_continue,
@@ -1309,6 +1378,7 @@ where
 
 impl<State, In> ErasedFlow<State> for WhileErasedFlow<State, In>
 where
+    State: Send,
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
@@ -1498,27 +1568,31 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
+impl<State, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
 where
     State: Clone + 'static,
-    In: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, In)> + 'static,
-    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
-    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + CarryInputForState<State>,
+    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
+        + CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+    <L as CarryInputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
+    P: crate::Condition<(State, <L as CarryInputForState<State>>::Carry)> + 'static,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let left = <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
-        let choose_left = Box::new(|state: &State, input: &In| {
-            <P as crate::Condition<(State, In)>>::choose(&(state.clone(), input.clone()))
-        });
-        steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(
-            left,
-            right,
-            choose_left,
-        )));
+        let choose_left = Box::new(
+            |state: &State, input: &<L as CarryInputForState<State>>::Carry| {
+                <P as crate::Condition<(State, <L as CarryInputForState<State>>::Carry)>>::choose(
+                    &(state.clone(), input.clone()),
+                )
+            },
+        );
+        steps.push(Box::new(ConditionalErasedFlow::<
+            State,
+            <L as CarryInputForState<State>>::Carry,
+        >::new(left, right, choose_left)));
         steps
     }
 }
@@ -1526,7 +1600,7 @@ where
 #[inception::primitive(property = crate::JungleDynFlow)]
 impl<State, In, C, F> BuildFlow<DynFlow<State>> for While<C, F>
 where
-    State: 'static,
+    State: Send + 'static,
     C: LoopCondition<State, CarryIn = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
@@ -1548,9 +1622,9 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, M, F> BuildFlow<DynFlow<State>> for Transparent<M, F>
+impl<State, M, F> BuildFlow<DynFlow<State>> for Transparent<M, F>
 where
-    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
 {
     type Output = DynFlow<State>;
 
@@ -1637,12 +1711,10 @@ pub trait BuildFlowWithContext<Input> {
     }
 }
 
-impl<T> HasOptIn<JungleDynFlowContext, T> for () where T: DataType {}
-
 #[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for Step<T, A>
 where
-    Context: 'static,
+    Context: Send + Sync + 'static,
     T: Animal + 'static,
     A: Pulse<T> + 'static,
     <A as Pulse<T>>::Action: Action + 'static,
@@ -1653,13 +1725,13 @@ where
     A::CarryIn: DeserializeOwned,
     A::CarryOut: Serialize,
 {
-    type Output = DynFlow<T::State>;
+    type Output = (Arc<Context>, DynFlow<T::State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<T::State>)) -> Self::Output {
         steps.push(Box::new(
-            ContextualTypedErasedStep::<Context, Step<T, A>>::new(context),
+            ContextualTypedErasedStep::<Context, Step<T, A>>::new(Arc::clone(&context)),
         ));
-        steps
+        (context, steps)
     }
 }
 
@@ -1669,7 +1741,7 @@ where
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
-    choose_left: Box<dyn Fn(&State, &In) -> bool>,
+    choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     active_branch: Option<ActiveContextBranch>,
     cursor: usize,
 }
@@ -1681,7 +1753,7 @@ where
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        choose_left: Box<dyn Fn(&State, &In) -> bool>,
+        choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     ) -> Self {
         Self {
             left,
@@ -1708,7 +1780,7 @@ where
         }
     }
 
-    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State>>> {
+    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State> + Send>> {
         let cursor = self.cursor;
         self.active_branch_mut()?.get_mut(cursor)
     }
@@ -1834,38 +1906,46 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, P, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+impl<Context, State, P, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
     for Conditional<P, L, R>
 where
     Context: 'static,
     State: Clone + 'static,
-    In: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, In)> + 'static,
-    L: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
+    L: CarryInputForState<State>,
+    <L as CarryInputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
+    P: crate::Condition<(State, <L as CarryInputForState<State>>::Carry)> + 'static,
+    L: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    R: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+        let (_, left) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
             Arc::clone(&context),
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
-            context,
+        let (_, right) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+            Arc::clone(&context),
             Vec::new(),
         ));
-        let choose_left = Box::new(|state: &State, input: &In| {
-            <P as crate::Condition<(State, In)>>::choose(&(state.clone(), input.clone()))
-        });
-        steps.push(Box::new(ConditionalContextErasedFlow::<State, In>::new(
-            left,
-            right,
-            choose_left,
-        )));
-        steps
+        let choose_left = Box::new(
+            |state: &State, input: &<L as CarryInputForState<State>>::Carry| {
+                <P as crate::Condition<(State, <L as CarryInputForState<State>>::Carry)>>::choose(
+                    &(state.clone(), input.clone()),
+                )
+            },
+        );
+        steps.push(Box::new(ConditionalContextErasedFlow::<
+            State,
+            <L as CarryInputForState<State>>::Carry,
+        >::new(left, right, choose_left)));
+        (context, steps)
     }
 }
 
@@ -1873,8 +1953,8 @@ struct WhileContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    should_continue: Box<dyn Fn(&State, &In) -> bool>,
-    build_body: Box<dyn Fn() -> DynFlow<State>>,
+    should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
+    build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     active_body: DynFlow<State>,
     body_node_id_start: u32,
     body_cursor: usize,
@@ -1888,8 +1968,8 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn new(
-        should_continue: Box<dyn Fn(&State, &In) -> bool>,
-        build_body: Box<dyn Fn() -> DynFlow<State>>,
+        should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
+        build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     ) -> Self {
         Self {
             should_continue,
@@ -1917,6 +1997,7 @@ where
 
 impl<State, In> ErasedFlow<State> for WhileContextErasedFlow<State, In>
 where
+    State: Send,
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
@@ -2051,41 +2132,46 @@ where
 #[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, State, In, C, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for While<C, F>
 where
-    Context: 'static,
-    State: 'static,
+    Context: Send + Sync + 'static,
+    State: Send + 'static,
     C: LoopCondition<State, CarryIn = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
-    F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>> + 'static,
+    F: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + 'static,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
         let should_continue = Box::new(|state: &State, _input: &In| {
             <C as LoopCondition<State>>::should_continue(state)
         });
+        let context_for_body = Arc::clone(&context);
         let build_body = Box::new(move || {
-            <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
-                Arc::clone(&context),
-                Vec::new(),
-            ))
+            let (_, flow) = <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
+                (Arc::clone(&context_for_body), Vec::new()),
+            );
+            flow
         });
         steps.push(Box::new(WhileContextErasedFlow::<State, In>::new(
             should_continue,
             build_body,
         )));
-        steps
+        (context, steps)
     }
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Transparent<M, F>
+impl<Context, State, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Transparent<M, F>
 where
-    F: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
+    F: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
         <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
@@ -2098,24 +2184,28 @@ where
     Context: 'static,
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
-    L: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
+    L: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
+    R: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+        let (_, left) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
             Arc::clone(&context),
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
-            context,
+        let (_, right) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+            Arc::clone(&context),
             Vec::new(),
         ));
         steps.push(Box::new(SelectContextErasedFlow::<State>::new(left, right)));
-        steps
+        (context, steps)
     }
 }
 
@@ -2125,24 +2215,28 @@ where
     Context: 'static,
     State: Clone + 'static,
     In: DeserializeOwned + 'static,
-    L: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
-    R: BuildFlowWithContext<(Arc<Context>, DynFlow<State>), Output = DynFlow<State>>
-        + Running<In = (State, In)>,
+    L: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
+    R: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + Running<In = (State, In)>,
 {
-    type Output = DynFlow<State>;
+    type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let left = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+        let (_, left) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
             Arc::clone(&context),
             Vec::new(),
         ));
-        let right = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
-            context,
+        let (_, right) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+            Arc::clone(&context),
             Vec::new(),
         ));
         steps.push(Box::new(JoinContextErasedFlow::<State>::new(left, right)));
-        steps
+        (context, steps)
     }
 }
 
@@ -2192,7 +2286,10 @@ fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {
 pub struct ContextExecutor<Context, A>
 where
     A: Animal,
-    A::Journey: BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<A::State>),
+        Output = (Arc<Context>, DynFlow<A::State>),
+    >,
 {
     _context: core::marker::PhantomData<fn() -> Context>,
     state: Option<A::State>,
@@ -2205,7 +2302,10 @@ impl<Context, A> ContextExecutor<Context, A>
 where
     Context: 'static,
     A: Animal,
-    A::Journey: BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<A::State>),
+        Output = (Arc<Context>, DynFlow<A::State>),
+    >,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -2234,11 +2334,10 @@ where
     }
 
     pub fn new(context: Arc<Context>, state: A::State) -> Self {
-        let mut steps =
-            <A::Journey as BuildFlowWithContext<(Arc<Context>, DynFlow<A::State>)>>::push_steps((
-                context,
-                Vec::new(),
-            ));
+        let (_, mut steps) = <A::Journey as BuildFlowWithContext<(
+            Arc<Context>,
+            DynFlow<A::State>,
+        )>>::push_steps((context, Vec::new()));
         assign_flow_node_ids(&mut steps);
         let mut executor = Self {
             _context: core::marker::PhantomData,

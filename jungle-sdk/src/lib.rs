@@ -7,9 +7,7 @@ pub use inception::*;
 pub use jungle_client as client;
 pub use jungle_client::{Client, JungleClient, MockClient};
 pub use jungle_core as core;
-pub use jungle_macros::{
-    actions, animals, detect, flow, journey, sdk_primitive, Actions, Animals, Flow, Journey, Optic,
-};
+pub use jungle_macros::{sdk_primitive, Actions, Animals, Flow, Journey, Optic};
 #[cfg(feature = "server")]
 pub use jungle_server as server;
 #[cfg(feature = "server")]

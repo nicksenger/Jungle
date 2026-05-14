@@ -17,7 +17,7 @@ pub use error::Error;
 pub use executor::{
     BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,
     ErasedStep, ExecutableActionRequest, Executor, ExecutorError, ExecutorFlow, JungleDynFlow,
-    ManualExecutor, TypedErasedStep,
+    JungleDynFlowContext, ManualExecutor, TypedErasedStep,
 };
 use inception::*;
 pub use journey::Journey;
@@ -33,7 +33,10 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 pub use sleep::{Sleep, SleepDependency, SleepError, SleepStep};
 use std::marker::PhantomData;
-pub use transport::{BackendError, JourneyStatus, RunnerOut, WireIn, WireOut, Work};
+pub use transport::{
+    BackendError, JourneyEvent, JourneyStatus, JourneyUpdateEvent, RunnerOut, RunnerUpdateOut,
+    WireIn, WireOut, Work,
+};
 pub use transport::{ClaimedAnimalPerturbation, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
@@ -508,6 +511,35 @@ pub trait Running {
     {
         let _ = fields;
         <F as Running>::run(input)
+    }
+}
+
+impl<T> __inception_running::FieldsInput<__inception_running::Wrap<T>> for ()
+where
+    T: Fields,
+    <T as Fields>::Head: Field,
+    <<T as Fields>::Head as Field>::Content: Running,
+{
+    type In = <<<T as Fields>::Head as Field>::Content as Running>::In;
+}
+
+impl<T> Running for __inception_running::Wrap<T>
+where
+    (): __inception_running::FieldsInput<__inception_running::Wrap<T>>,
+    __inception_running::Wrap<T>: IsPrimitive<JungleRunning, Is = False>,
+    __inception_running::Wrap<T>: __inception_running::Inductive<
+        False,
+        <() as __inception_running::FieldsInput<__inception_running::Wrap<T>>>::In,
+    >,
+{
+    type In = <() as __inception_running::FieldsInput<__inception_running::Wrap<T>>>::In;
+    type Out = <__inception_running::Wrap<T> as __inception_running::Inductive<
+        False,
+        <() as __inception_running::FieldsInput<__inception_running::Wrap<T>>>::In,
+    >>::Ret;
+
+    fn run(input: Self::In) -> Self::Out {
+        <Self as __inception_running::Inductive<False, Self::In>>::run(input)
     }
 }
 

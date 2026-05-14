@@ -20,22 +20,22 @@ pub trait Action {
     type Id;
 
     /// The shared dependency consumed by this action.
-    type Dependency;
+    type Dependency: Send + Sync + 'static;
 
     /// The input type accepted by this action.
-    type In: Serialize + DeserializeOwned;
+    type In: Serialize + DeserializeOwned + Send + 'static;
 
     /// The output type produced by this action.
-    type Out: Serialize + DeserializeOwned;
+    type Out: Serialize + DeserializeOwned + Send + 'static;
 
     /// The error type produced by this action.
-    type Err;
+    type Err: Send + 'static;
 
     /// Process one input into one output.
     fn act(
         dependency: &Self::Dependency,
         input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>>;
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> + Send;
 }
 
 /// A typed action request emitted by a yielding workflow phase.

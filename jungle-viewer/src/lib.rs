@@ -1,20 +1,20 @@
+use iced::futures::{self, Stream, StreamExt};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{Cluster, Graph, Sugiyama};
 use jungle_client::JungleClient;
-use jungle_types::{Animal, JourneyAst, JourneyAstSource, RunnerOut};
+use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1360.0;
 const WINDOW_HEIGHT: f32 = 900.0;
-const LIVE_REFRESH: Duration = Duration::from_millis(1000);
 const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-viewer";
@@ -24,7 +24,6 @@ pub struct JungleViewerBuilder {
     title: String,
     width: f32,
     height: f32,
-    poll_interval: Duration,
     screenshot_path: Option<PathBuf>,
     headless: bool,
 }
@@ -35,7 +34,6 @@ impl Default for JungleViewerBuilder {
             title: "Jungle Viewer".to_string(),
             width: WINDOW_WIDTH,
             height: WINDOW_HEIGHT,
-            poll_interval: LIVE_REFRESH,
             screenshot_path: None,
             headless: false,
         }
@@ -55,11 +53,6 @@ impl JungleViewerBuilder {
     pub fn window_size(mut self, width: f32, height: f32) -> Self {
         self.width = width;
         self.height = height;
-        self
-    }
-
-    pub fn live_poll_interval(mut self, interval: Duration) -> Self {
-        self.poll_interval = interval;
         self
     }
 
@@ -98,14 +91,12 @@ impl JungleViewerBuilder {
         let journey_name = short_type_name::<A::Journey>();
         let model = GraphModel::from_ast(ast);
         let client: Arc<dyn JungleClient> = Arc::new(client);
-        let poll_interval = self.poll_interval;
 
         self.run(ViewMode::Live {
             journey_name,
             model,
             client,
             journey_id,
-            poll_interval,
         })
     }
 
@@ -113,13 +104,10 @@ impl JungleViewerBuilder {
         let title = self.title.clone();
         let width = self.width;
         let height = self.height;
-        let capture = self
-            .screenshot_path
-            .clone()
-            .map(|path| CaptureConfig {
-                output_path: path,
-                close_after_capture: self.headless,
-            });
+        let capture = self.screenshot_path.clone().map(|path| CaptureConfig {
+            output_path: path,
+            close_after_capture: self.headless,
+        });
         iced::application(
             move || ViewerApp::new(mode.clone(), capture.clone()),
             ViewerApp::update,
@@ -200,13 +188,13 @@ enum ViewMode {
         model: GraphModel,
         client: Arc<dyn JungleClient>,
         journey_id: Uuid,
-        poll_interval: Duration,
     },
 }
 
 struct ViewerApp {
     mode: ViewMode,
     state: LiveState,
+    live_generation: u64,
     capture: Option<CaptureConfig>,
 }
 
@@ -235,8 +223,7 @@ struct LiveData {
 #[derive(Debug, Clone)]
 enum Message {
     AppStarted,
-    LiveRefreshTick,
-    LiveLoaded(Result<LiveData, String>),
+    LiveEvent(Result<JourneyUpdateEvent, String>),
     Retry,
     CaptureView,
     ViewCaptured(Screenshot),
@@ -245,14 +232,8 @@ enum Message {
 
 impl ViewerApp {
     fn new(mode: ViewMode, capture: Option<CaptureConfig>) -> (Self, Task<Message>) {
-        let mut tasks = vec![Task::done(Message::AppStarted)];
         let state = match &mode {
-            ViewMode::Live {
-                client, journey_id, ..
-            } => {
-                tasks.push(live_history_task(client.clone(), *journey_id));
-                LiveState::Loading
-            }
+            ViewMode::Live { .. } => LiveState::Loading,
             ViewMode::Static { .. } => LiveState::Idle,
         };
 
@@ -260,9 +241,10 @@ impl ViewerApp {
             Self {
                 mode,
                 state,
+                live_generation: 0,
                 capture,
             },
-            Task::batch(tasks),
+            Task::done(Message::AppStarted),
         )
     }
 
@@ -275,28 +257,36 @@ impl ViewerApp {
                     Task::none()
                 }
             }
-            Message::LiveRefreshTick => match &self.mode {
-                ViewMode::Live {
-                    client, journey_id, ..
-                } => {
-                    self.state = LiveState::Loading;
-                    live_history_task(client.clone(), *journey_id)
+            Message::LiveEvent(result) => {
+                match result {
+                    Ok(update) => {
+                        let data = match &mut self.state {
+                            LiveState::Loaded(data) => data,
+                            _ => {
+                                self.state = LiveState::Loaded(LiveData::default());
+                                match &mut self.state {
+                                    LiveState::Loaded(data) => data,
+                                    _ => unreachable!("state was set to loaded"),
+                                }
+                            }
+                        };
+                        if data.apply_update(update) {
+                            return iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(
+                                GRAPH_WIDGET_ID,
+                            ));
+                        }
+                    }
+                    Err(error) => {
+                        self.state = LiveState::Error(error);
+                    }
                 }
-                ViewMode::Static { .. } => Task::none(),
-            },
-            Message::LiveLoaded(result) => {
-                self.state = match result {
-                    Ok(data) => LiveState::Loaded(data),
-                    Err(error) => LiveState::Error(error),
-                };
                 Task::none()
             }
             Message::Retry => match &self.mode {
-                ViewMode::Live {
-                    client, journey_id, ..
-                } => {
+                ViewMode::Live { .. } => {
+                    self.live_generation = self.live_generation.saturating_add(1);
                     self.state = LiveState::Loading;
-                    live_history_task(client.clone(), *journey_id)
+                    Task::none()
                 }
                 ViewMode::Static { .. } => Task::none(),
             },
@@ -334,9 +324,16 @@ impl ViewerApp {
 
     fn subscription(&self) -> Subscription<Message> {
         match &self.mode {
-            ViewMode::Live { poll_interval, .. } => {
-                iced::time::every(*poll_interval).map(|_| Message::LiveRefreshTick)
-            }
+            ViewMode::Live {
+                client, journey_id, ..
+            } => Subscription::run_with(
+                LiveSubscription {
+                    client: client.clone(),
+                    journey_id: *journey_id,
+                    generation: self.live_generation,
+                },
+                live_updates_stream,
+            ),
             ViewMode::Static { .. } => Subscription::none(),
         }
     }
@@ -375,17 +372,35 @@ impl ViewerApp {
     }
 }
 
-fn live_history_task(client: Arc<dyn JungleClient>, journey_id: Uuid) -> Task<Message> {
-    Task::perform(
-        async move {
-            let history = client
-                .journey_history(journey_id)
-                .await
-                .map_err(|err| err.to_string())?;
-            Ok::<LiveData, String>(LiveData::from_history(&history))
-        },
-        Message::LiveLoaded,
-    )
+#[derive(Clone)]
+struct LiveSubscription {
+    client: Arc<dyn JungleClient>,
+    journey_id: Uuid,
+    generation: u64,
+}
+
+impl Hash for LiveSubscription {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.journey_id.hash(state);
+        self.generation.hash(state);
+    }
+}
+
+fn live_updates_stream(config: &LiveSubscription) -> impl Stream<Item = Message> {
+    let client = config.client.clone();
+    let journey_id = config.journey_id;
+    futures::stream::once(async move {
+        match client.subscribe_step_updates(journey_id, None).await {
+            Ok(subscription) => subscription
+                .map(|event| Message::LiveEvent(event.map_err(|err| err.to_string())))
+                .left_stream(),
+            Err(err) => futures::stream::once(async move {
+                Message::LiveEvent(Err(format!("live update stream setup failed: {err}")))
+            })
+            .right_stream(),
+        }
+    })
+    .flatten()
 }
 
 fn close_latest_window() -> Task<Message> {
@@ -410,36 +425,24 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
 }
 
 impl LiveData {
-    fn from_history(history: &[RunnerOut]) -> Self {
-        let mut active_runtime_ids = BTreeSet::new();
-        let mut finished_runtime_ids = BTreeSet::new();
-        let mut failed_runtime_ids = BTreeSet::new();
-
-        for event in history {
-            match event {
-                RunnerOut::ActionInput { node_id, .. } => {
-                    active_runtime_ids.insert(*node_id);
-                }
-                RunnerOut::ActionSuccessOutput { node_id, .. } => {
-                    active_runtime_ids.remove(node_id);
-                    finished_runtime_ids.insert(*node_id);
-                }
-                RunnerOut::ActionFailureOutput { node_id, .. } => {
-                    active_runtime_ids.remove(node_id);
-                    failed_runtime_ids.insert(*node_id);
-                }
-                RunnerOut::Appearance { .. }
-                | RunnerOut::SleepScheduled { .. }
-                | RunnerOut::SleepFired { .. } => {}
+    fn apply_update(&mut self, update: JourneyUpdateEvent) -> bool {
+        let mut highlight_changed = false;
+        self.latest_event_count = update.sequence_id as usize;
+        match update.event {
+            RunnerUpdateOut::ActionInput { node_id, .. } => {
+                highlight_changed |= self.active_runtime_ids.insert(node_id);
             }
+            RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
+                highlight_changed |= self.active_runtime_ids.remove(&node_id);
+                highlight_changed |= self.finished_runtime_ids.insert(node_id);
+            }
+            RunnerUpdateOut::ActionFailureOutput { node_id, .. } => {
+                highlight_changed |= self.active_runtime_ids.remove(&node_id);
+                highlight_changed |= self.failed_runtime_ids.insert(node_id);
+            }
+            RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
         }
-
-        Self {
-            active_runtime_ids,
-            finished_runtime_ids,
-            failed_runtime_ids,
-            latest_event_count: history.len(),
-        }
+        highlight_changed
     }
 }
 
@@ -477,7 +480,7 @@ fn sidebar<'a>(
         text(format!("edges: {}", model.edges.len()))
             .size(13)
             .color(jungle_text_base()),
-        text(format!("loops: {}", model.while_clusters.len()))
+        text(format!("clusters: {}", model.while_clusters.len()))
             .size(13)
             .color(jungle_text_base()),
         Space::new().height(10),
@@ -501,7 +504,10 @@ fn sidebar<'a>(
         text("Conditional: branch fanout")
             .size(12)
             .color(jungle_text_muted()),
-        text("While: loop container")
+        text("While: clustered body + condition label")
+            .size(12)
+            .color(jungle_text_muted()),
+        text("Transparent: clustered boundary label")
             .size(12)
             .color(jungle_text_muted()),
         text("Green glow: completed in live journey")
@@ -529,6 +535,7 @@ fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> El
     let highlights = live_data.cloned();
 
     let clusters = model.while_clusters.clone();
+    let cluster_labels = model.while_cluster_labels.clone();
 
     let graph =
         Sugiyama::<Message, iced::Theme, iced::Renderer>::new(&model.graph, move |node_id| {
@@ -545,8 +552,6 @@ fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> El
 
             let badge = if info.is_conditional_branch {
                 "condition"
-            } else if info.is_while_container {
-                "while"
             } else if info.is_join {
                 "join"
             } else if info.is_select {
@@ -575,16 +580,16 @@ fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> El
         .edge_corner_radius(18.0)
         .node_size(move |_node_id| (NODE_WIDTH, NODE_HEIGHT))
         .clusters(clusters)
-        .cluster_container(|index, _| {
+        .cluster_container(move |index, _| {
+            let label = cluster_labels
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| format!("cluster #{index}"));
             Some(
-                container(
-                    text(format!("while #{index}"))
-                        .size(11)
-                        .color(jungle_text_muted()),
-                )
-                .padding([4, 8])
-                .style(loop_cluster_label)
-                .into(),
+                container(text(label).size(11).color(jungle_text_muted()))
+                    .padding([4, 8])
+                    .style(loop_cluster_label)
+                    .into(),
             )
         })
         .cluster_color(loop_cluster_color)
@@ -624,6 +629,7 @@ struct GraphModel {
     node_map: HashMap<u32, NodeDisplay>,
     edges: Vec<(u32, u32)>,
     while_clusters: Vec<Cluster>,
+    while_cluster_labels: Vec<String>,
 }
 
 impl GraphModel {
@@ -648,6 +654,7 @@ impl GraphModel {
             node_map,
             edges: builder.edges,
             while_clusters: builder.clusters,
+            while_cluster_labels: builder.cluster_labels,
         }
     }
 }
@@ -657,6 +664,8 @@ struct GraphBuilder {
     nodes: Vec<NodeDisplay>,
     edges: Vec<(u32, u32)>,
     clusters: Vec<Cluster>,
+    cluster_labels: Vec<String>,
+    cluster_stack: Vec<usize>,
     runtime_next_id: u32,
     display_next_id: u32,
     label_occurrences: HashMap<String, u32>,
@@ -668,7 +677,6 @@ struct NodeDisplay {
     label: String,
     runtime_node_id: Option<u32>,
     is_conditional_branch: bool,
-    is_while_container: bool,
     is_select: bool,
     is_join: bool,
     is_transparent: bool,
@@ -681,7 +689,6 @@ impl NodeDisplay {
             label: format!("node {id}"),
             runtime_node_id: None,
             is_conditional_branch: false,
-            is_while_container: false,
             is_select: false,
             is_join: false,
             is_transparent: false,
@@ -737,7 +744,7 @@ impl GraphBuilder {
                 }
             }
             JourneyAst::Conditional { label, left, right } => {
-                let branch = self.push_layout_node(*label, |node| {
+                let branch = self.push_layout_node(short_type_name_str(label), |node| {
                     node.is_conditional_branch = true;
                 });
                 let left_flow = self.flatten(left);
@@ -765,32 +772,36 @@ impl GraphBuilder {
                 }
             }
             JourneyAst::While { label, body } => {
-                let container = self.push_layout_node(*label, |node| {
-                    node.is_while_container = true;
-                });
+                let parent_cluster = self.cluster_stack.last().copied();
+                let cluster_index = self.clusters.len();
+                let cluster = Cluster::new(Vec::new()).padding(24.0);
+                let cluster = if let Some(parent) = parent_cluster {
+                    cluster.parent(parent)
+                } else {
+                    cluster
+                };
+                self.clusters.push(cluster);
+                self.cluster_labels
+                    .push(format!("while: {}", short_type_name_str(label)));
+                self.cluster_stack.push(cluster_index);
                 let body_flow = self.flatten(body);
+                let _ = self.cluster_stack.pop();
 
-                for target in &body_flow.roots {
-                    self.edges.push((container, *target));
-                }
                 for exit in &body_flow.exits {
-                    self.edges.push((*exit, container));
+                    for root in &body_flow.roots {
+                        self.edges.push((*exit, *root));
+                    }
                 }
 
-                let mut members = vec![container];
-                members.extend(body_flow.members.iter().copied());
-
-                let mut cluster_nodes = dedup(body_flow.members.clone());
-                if cluster_nodes.is_empty() {
-                    cluster_nodes.push(container);
+                let cluster_nodes = dedup(body_flow.members.clone());
+                if !cluster_nodes.is_empty() {
+                    self.clusters[cluster_index].nodes = cluster_nodes;
                 }
-                self.clusters
-                    .push(Cluster::new(cluster_nodes).padding(14.0));
 
                 Flattened {
-                    roots: vec![container],
-                    exits: vec![container],
-                    members,
+                    roots: body_flow.roots.clone(),
+                    exits: body_flow.roots,
+                    members: body_flow.members,
                 }
             }
             JourneyAst::Transparent {
@@ -798,33 +809,40 @@ impl GraphBuilder {
                 metadata,
                 body,
             } => {
-                let merged = if metadata.trim().is_empty() {
-                    short_type_name_str(label)
+                let parent_cluster = self.cluster_stack.last().copied();
+                let cluster_index = self.clusters.len();
+                let cluster = Cluster::new(Vec::new()).padding(24.0);
+                let cluster = if let Some(parent) = parent_cluster {
+                    cluster.parent(parent)
                 } else {
-                    format!("{} :: {}", short_type_name_str(label), metadata)
+                    cluster
                 };
-                let transparent = self.push_layout_node(merged, |node| {
-                    node.is_transparent = true;
-                });
+                self.clusters.push(cluster);
 
+                let cluster_label = if metadata.trim().is_empty() {
+                    format!("transparent: {}", short_type_name_str(label))
+                } else {
+                    format!(
+                        "transparent: {} :: {}",
+                        short_type_name_str(label),
+                        metadata
+                    )
+                };
+                self.cluster_labels.push(cluster_label);
+
+                self.cluster_stack.push(cluster_index);
                 let body_flow = self.flatten(body);
-                for target in &body_flow.roots {
-                    self.edges.push((transparent, *target));
+                let _ = self.cluster_stack.pop();
+
+                let cluster_nodes = dedup(body_flow.members.clone());
+                if !cluster_nodes.is_empty() {
+                    self.clusters[cluster_index].nodes = cluster_nodes;
                 }
 
-                let mut members = vec![transparent];
-                members.extend(body_flow.members.iter().copied());
-
-                let exits = if body_flow.exits.is_empty() {
-                    vec![transparent]
-                } else {
-                    body_flow.exits
-                };
-
                 Flattened {
-                    roots: vec![transparent],
-                    exits,
-                    members,
+                    roots: body_flow.roots.clone(),
+                    exits: body_flow.exits,
+                    members: body_flow.members,
                 }
             }
             JourneyAst::Select { left, right, .. } => {
@@ -889,7 +907,6 @@ impl GraphBuilder {
             label: label.into(),
             runtime_node_id: Some(runtime_id),
             is_conditional_branch: false,
-            is_while_container: false,
             is_select: false,
             is_join: false,
             is_transparent: false,
@@ -909,7 +926,6 @@ impl GraphBuilder {
             label: label.into(),
             runtime_node_id: None,
             is_conditional_branch: false,
-            is_while_container: false,
             is_select: false,
             is_join: false,
             is_transparent: false,
@@ -993,9 +1009,7 @@ fn node_button_style(
     node: &NodeDisplay,
     live_state: Option<RuntimeNodeState>,
 ) -> iced::widget::button::Style {
-    let mut base = if node.is_while_container {
-        Color::from_rgb8(17, 65, 38)
-    } else if node.is_conditional_branch {
+    let mut base = if node.is_conditional_branch {
         Color::from_rgb8(23, 71, 47)
     } else if node.is_select || node.is_join {
         Color::from_rgb8(19, 84, 58)
@@ -1092,7 +1106,7 @@ fn sidebar_button(_theme: &iced::Theme, status: button::Status) -> iced::widget:
 
 fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
-        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.74))),
+        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
         border: iced::border::rounded(6)
             .color(Color::from_rgb8(54, 117, 78))
             .width(1.0),
@@ -1102,7 +1116,7 @@ fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
 }
 
 fn loop_cluster_color(_index: usize) -> Color {
-    Color::from_rgba8(30, 91, 53, 0.14)
+    Color::from_rgba8(30, 91, 53, 0.04)
 }
 
 fn jungle_text_base() -> Color {
@@ -1145,6 +1159,49 @@ impl fmt::Debug for ViewMode {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use uuid::Uuid;
+
+    #[test]
+    fn live_data_apply_update_reports_runtime_highlight_changes() {
+        let mut live = LiveData::default();
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 9,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.active_runtime_ids.contains(&9));
+
+        assert!(!live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 9,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 3,
+            event: RunnerUpdateOut::ActionSuccessOutput {
+                node_id: 9,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(!live.active_runtime_ids.contains(&9));
+        assert!(live.finished_runtime_ids.contains(&9));
+
+        assert!(!live.apply_update(JourneyUpdateEvent {
+            sequence_id: 4,
+            event: RunnerUpdateOut::SleepScheduled {
+                uuid: Uuid::nil(),
+                timer_id: Uuid::nil(),
+                wake_at_unix_ms: 1,
+            },
+        }));
+        assert_eq!(live.latest_event_count, 4);
+    }
 
     #[test]
     fn graph_model_uses_unique_display_node_ids() {
@@ -1214,9 +1271,9 @@ mod tests {
     fn graph_model_control_flow_edges_match_runtime_shape() {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
-                label: "Loop",
+                label: "flow::LoopCondition",
                 body: Box::new(JourneyAst::Conditional {
-                    label: "Branch",
+                    label: "flow::Branch",
                     left: Box::new(JourneyAst::Step { label: "LoopL" }),
                     right: Box::new(JourneyAst::Step { label: "LoopR" }),
                 }),
@@ -1252,7 +1309,6 @@ mod tests {
             id
         };
 
-        let loop_id = id_for("Loop");
         let branch_id = id_for("Branch");
         let loop_l_id = id_for("LoopL");
         let loop_r_id = id_for("LoopR");
@@ -1264,14 +1320,18 @@ mod tests {
         let sel_r_id = id_for("SelR");
         let tail_id = id_for("Tail");
 
+        assert!(
+            model.nodes.iter().all(|node| node.label != "LoopCondition"),
+            "while loops should not render as standalone nodes"
+        );
+
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
 
-        assert!(edges.contains(&(loop_id, branch_id)));
         assert!(edges.contains(&(branch_id, loop_l_id)));
         assert!(edges.contains(&(branch_id, loop_r_id)));
-        assert!(edges.contains(&(loop_l_id, loop_id)));
-        assert!(edges.contains(&(loop_r_id, loop_id)));
-        assert!(edges.contains(&(loop_id, join_id)));
+        assert!(edges.contains(&(loop_l_id, branch_id)));
+        assert!(edges.contains(&(loop_r_id, branch_id)));
+        assert!(edges.contains(&(branch_id, join_id)));
 
         assert!(edges.contains(&(join_id, join_l_id)));
         assert!(edges.contains(&(join_id, join_r_id)));
@@ -1290,9 +1350,9 @@ mod tests {
     fn while_cluster_stays_scoped_to_loop_body() {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
-                label: "Loop",
+                label: "flow::LoopCondition",
                 body: Box::new(JourneyAst::Conditional {
-                    label: "StaticCondition",
+                    label: "flow::StaticCondition",
                     left: Box::new(JourneyAst::Step { label: "InLoopL" }),
                     right: Box::new(JourneyAst::Step { label: "InLoopR" }),
                 }),
@@ -1319,7 +1379,6 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing node with label {label}"))
         };
 
-        let loop_id = id_for("Loop");
         let cond_id = id_for("StaticCondition");
         let in_l_id = id_for("InLoopL");
         let in_r_id = id_for("InLoopR");
@@ -1332,14 +1391,99 @@ mod tests {
         assert!(cluster_nodes.contains(&cond_id));
         assert!(cluster_nodes.contains(&in_l_id));
         assert!(cluster_nodes.contains(&in_r_id));
-        assert!(!cluster_nodes.contains(&loop_id));
         assert!(!cluster_nodes.contains(&join_id));
         assert!(!cluster_nodes.contains(&select_id));
+        assert_eq!(model.while_cluster_labels, vec!["while: LoopCondition"]);
 
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
-        assert!(edges.contains(&(loop_id, cond_id)));
-        assert!(edges.contains(&(in_l_id, loop_id)));
-        assert!(edges.contains(&(in_r_id, loop_id)));
-        assert!(edges.contains(&(loop_id, join_id)));
+        assert!(edges.contains(&(cond_id, in_l_id)));
+        assert!(edges.contains(&(cond_id, in_r_id)));
+        assert!(edges.contains(&(in_l_id, cond_id)));
+        assert!(edges.contains(&(in_r_id, cond_id)));
+        assert!(edges.contains(&(cond_id, join_id)));
+    }
+
+    #[test]
+    fn nested_while_clusters_use_parent_relationship() {
+        let ast = JourneyAst::While {
+            label: "flow::OuterLoop",
+            body: Box::new(JourneyAst::While {
+                label: "flow::InnerLoop",
+                body: Box::new(JourneyAst::Step { label: "LoopStep" }),
+            }),
+        };
+
+        let model = GraphModel::from_ast(ast);
+
+        assert_eq!(model.while_clusters.len(), 2);
+        assert_eq!(
+            model.while_cluster_labels,
+            vec!["while: OuterLoop", "while: InnerLoop"]
+        );
+        assert_eq!(model.while_clusters[0].parent, None);
+        assert_eq!(model.while_clusters[1].parent, Some(0));
+        assert!(!model.while_clusters[0].nodes.is_empty());
+        assert!(!model.while_clusters[1].nodes.is_empty());
+    }
+
+    #[test]
+    fn transparent_cluster_scopes_body_and_preserves_direct_sequence_edges() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "Start" },
+            JourneyAst::Transparent {
+                label: "flow::Boundary",
+                metadata: "section:gorilla/lifecycle",
+                body: Box::new(JourneyAst::Conditional {
+                    label: "flow::Gate",
+                    left: Box::new(JourneyAst::Step { label: "InL" }),
+                    right: Box::new(JourneyAst::Step { label: "InR" }),
+                }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]);
+
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+
+        let start_id = id_for("Start");
+        let gate_id = id_for("Gate");
+        let in_l_id = id_for("InL");
+        let in_r_id = id_for("InR");
+        let tail_id = id_for("Tail");
+
+        assert!(
+            model
+                .nodes
+                .iter()
+                .all(|node| !node.label.contains("Boundary")),
+            "transparent boundaries should not render as standalone nodes"
+        );
+
+        assert_eq!(model.while_clusters.len(), 1);
+        assert_eq!(
+            model.while_cluster_labels,
+            vec!["transparent: Boundary :: section:gorilla/lifecycle"]
+        );
+        let cluster = &model.while_clusters[0];
+        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
+        assert!(cluster_nodes.contains(&gate_id));
+        assert!(cluster_nodes.contains(&in_l_id));
+        assert!(cluster_nodes.contains(&in_r_id));
+        assert!(!cluster_nodes.contains(&start_id));
+        assert!(!cluster_nodes.contains(&tail_id));
+
+        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
+        assert!(edges.contains(&(start_id, gate_id)));
+        assert!(edges.contains(&(gate_id, in_l_id)));
+        assert!(edges.contains(&(gate_id, in_r_id)));
+        assert!(edges.contains(&(in_l_id, tail_id)));
+        assert!(edges.contains(&(in_r_id, tail_id)));
     }
 }

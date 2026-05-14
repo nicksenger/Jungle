@@ -1,13 +1,17 @@
-use crate::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelRx};
+use crate::{
+    JourneyUpdateSubscription, JungleClient, RunnerChannelMessage, RunnerChannelResponse,
+    RunnerChannelRx,
+};
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
-    SupportedAnimal, Work,
+    Animal, AnimalIdValue, ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus,
+    OwnerWake, RunnerOut, SupportedAnimal, Work,
 };
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 type HandlerFuture = Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
@@ -88,6 +92,15 @@ impl MockClient {
         &self.namespace
     }
 
+    pub(crate) async fn start_journey_by_id(
+        &self,
+        animal_id: u32,
+        _generation: u32,
+        seed: Vec<u8>,
+    ) -> Result<Uuid, ExecutorError> {
+        (self.on_create_flow)(animal_id, seed).await
+    }
+
     pub async fn serve_runner_channel(&self, mut rx: RunnerChannelRx) {
         while let Some((message, done)) = rx.next().await {
             let result = match message {
@@ -140,17 +153,33 @@ impl Default for MockClient {
 
 #[async_trait]
 impl JungleClient for MockClient {
-    async fn start_journey(
-        &self,
-        animal_id: u32,
-        _generation: u32,
-        seed: Vec<u8>,
-    ) -> Result<Uuid, ExecutorError> {
-        (self.on_create_flow)(animal_id, seed).await
+    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    where
+        Self: Sized,
+        A: Animal,
+        A::Id: AnimalIdValue,
+        A::Generation: Unsigned,
+    {
+        self.start_journey_by_id(
+            <A::Id as AnimalIdValue>::U32,
+            <A::Generation as Unsigned>::U32,
+            seed,
+        )
+        .await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
         (self.on_journey_history)(id).await
+    }
+
+    async fn subscribe_step_updates(
+        &self,
+        _journey_id: Uuid,
+        _after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        Err(ExecutorError::ClientTransport(
+            "subscribe_step_updates is unsupported by MockClient".to_string(),
+        ))
     }
 
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError> {

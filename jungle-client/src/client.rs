@@ -1,28 +1,178 @@
 use crate::JungleClient;
 use async_trait::async_trait;
+use futures::Stream;
 use jungle_types::{
-    AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem, ExecutorError,
-    JourneyStatus, OwnerWake, RunnerOut, StripAnimalHeaders, SupportedAnimal, WireIn, WireOut,
-    Work,
+    Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem,
+    ExecutorError, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, StripAnimalHeaders,
+    SupportedAnimal, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
 use std::fs;
 use std::io;
-use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::marker::PhantomData;
+use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use thiserror::Error;
+use tokio::io::{AsyncRead, ReadBuf};
 use tracing::{error, info};
-use typosaurus::collections::Container;
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
+use typosaurus::collections::Container;
+use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 
 #[derive(Debug, Clone)]
-pub struct ClientBuilder<TJungle = DefaultJungle> {
+pub enum StepUpdate {
+    Started {
+        sequence_id: u64,
+        journey_id: Uuid,
+        node_id: u32,
+        data: Vec<u8>,
+    },
+    Succeeded {
+        sequence_id: u64,
+        journey_id: Uuid,
+        node_id: u32,
+        data: Vec<u8>,
+    },
+    Failed {
+        sequence_id: u64,
+        journey_id: Uuid,
+        node_id: u32,
+        data: Vec<u8>,
+    },
+}
+
+pub struct JourneyUpdateSubscription {
+    recv: quinn::RecvStream,
+    frame_state: SubscriptionFrameState,
+    closed: bool,
+}
+
+enum SubscriptionFrameState {
+    ReadingFrameLen { bytes: [u8; 4], read: usize },
+    ReadingPayload { payload: Vec<u8>, read: usize },
+}
+
+impl Default for SubscriptionFrameState {
+    fn default() -> Self {
+        Self::ReadingFrameLen {
+            bytes: [0_u8; 4],
+            read: 0,
+        }
+    }
+}
+
+impl JourneyUpdateSubscription {
+    fn decode_update(payload: &[u8]) -> Result<JourneyUpdateEvent, ExecutorError> {
+        let response: Result<WireOut, BackendError> =
+            postcard::from_bytes(payload).map_err(|err| {
+                ExecutorError::ClientTransport(format!("failed to decode wire output: {err}"))
+            })?;
+
+        match response {
+            Ok(WireOut::JourneyUpdate(update)) => Ok(update),
+            Ok(other) => Err(ExecutorError::ClientTransport(format!(
+                "unexpected response for journey update subscription: {other:?}"
+            ))),
+            Err(err) => Err(ExecutorError::Backend(err)),
+        }
+    }
+}
+
+impl Stream for JourneyUpdateSubscription {
+    type Item = Result<JourneyUpdateEvent, ExecutorError>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        if self.closed {
+            return Poll::Ready(None);
+        }
+
+        let this = self.as_mut().get_mut();
+
+        loop {
+            match &mut this.frame_state {
+                SubscriptionFrameState::ReadingFrameLen { bytes, read } => {
+                    let mut read_buf = ReadBuf::new(&mut bytes[*read..]);
+                    match std::pin::Pin::new(&mut this.recv).poll_read(cx, &mut read_buf) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(Err(err)) => {
+                            this.closed = true;
+                            return Poll::Ready(Some(Err(ExecutorError::ClientTransport(
+                                err.to_string(),
+                            ))));
+                        }
+                        Poll::Ready(Ok(())) => {
+                            let just_read = read_buf.filled().len();
+                            if just_read == 0 {
+                                if *read == 0 {
+                                    this.closed = true;
+                                    return Poll::Ready(None);
+                                }
+                                this.closed = true;
+                                return Poll::Ready(Some(Err(ExecutorError::ClientTransport(
+                                    "unexpected EOF while reading journey update frame length"
+                                        .to_string(),
+                                ))));
+                            }
+                            *read += just_read;
+                            if *read < 4 {
+                                continue;
+                            }
+
+                            let frame_len = u32::from_be_bytes(*bytes) as usize;
+                            this.frame_state = SubscriptionFrameState::ReadingPayload {
+                                payload: vec![0_u8; frame_len],
+                                read: 0,
+                            };
+                        }
+                    }
+                }
+                SubscriptionFrameState::ReadingPayload { payload, read } => {
+                    let mut read_buf = ReadBuf::new(&mut payload[*read..]);
+                    match std::pin::Pin::new(&mut this.recv).poll_read(cx, &mut read_buf) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(Err(err)) => {
+                            this.closed = true;
+                            return Poll::Ready(Some(Err(ExecutorError::ClientTransport(
+                                err.to_string(),
+                            ))));
+                        }
+                        Poll::Ready(Ok(())) => {
+                            let just_read = read_buf.filled().len();
+                            if just_read == 0 {
+                                this.closed = true;
+                                return Poll::Ready(Some(Err(ExecutorError::ClientTransport(
+                                    "unexpected EOF while reading journey update payload"
+                                        .to_string(),
+                                ))));
+                            }
+
+                            *read += just_read;
+                            if *read < payload.len() {
+                                continue;
+                            }
+
+                            let decode_result = JourneyUpdateSubscription::decode_update(payload);
+                            this.frame_state = SubscriptionFrameState::default();
+                            return Poll::Ready(Some(decode_result));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientBuilder<J = DefaultJungle> {
     keylog: bool,
     ca: Option<PathBuf>,
     namespace: String,
@@ -30,7 +180,7 @@ pub struct ClientBuilder<TJungle = DefaultJungle> {
     bind: SocketAddr,
     remote: Option<SocketAddr>,
     server_name: Option<String>,
-    _jungle: PhantomData<fn() -> TJungle>,
+    _jungle: PhantomData<fn() -> J>,
 }
 
 pub struct DefaultAnimals;
@@ -44,7 +194,7 @@ impl Ecosystem for DefaultJungle {
     type Animals = DefaultAnimals;
 }
 
-impl<TJungle> Default for ClientBuilder<TJungle> {
+impl<J> Default for ClientBuilder<J> {
     fn default() -> Self {
         Self {
             keylog: false,
@@ -59,7 +209,7 @@ impl<TJungle> Default for ClientBuilder<TJungle> {
     }
 }
 
-impl<TJungle> ClientBuilder<TJungle> {
+impl<J> ClientBuilder<J> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -112,7 +262,7 @@ impl<TJungle> ClientBuilder<TJungle> {
         self
     }
 
-    pub async fn build(self) -> ClientResult<Client<TJungle>> {
+    pub async fn build(self) -> ClientResult<Client<J>> {
         let remote = self.remote.ok_or(ClientError::MissingRemote)?;
         let server_name = self.server_name.ok_or(ClientError::MissingServerName)?;
 
@@ -177,14 +327,14 @@ impl<TJungle> ClientBuilder<TJungle> {
     }
 }
 
-pub struct Client<TJungle = DefaultJungle> {
+pub struct Client<J = DefaultJungle> {
     endpoint: quinn::Endpoint,
     conn: quinn::Connection,
     namespace: String,
-    _jungle: PhantomData<fn() -> TJungle>,
+    _jungle: PhantomData<fn() -> J>,
 }
 
-impl<TJungle> Clone for Client<TJungle> {
+impl<J> Clone for Client<J> {
     fn clone(&self) -> Self {
         Self {
             endpoint: self.endpoint.clone(),
@@ -201,7 +351,7 @@ impl Client<DefaultJungle> {
     }
 }
 
-impl<TJungle> Client<TJungle> {
+impl<J> Client<J> {
     async fn send_wire_message(&self, input: WireIn) -> ClientResult<WireOut> {
         let (mut tx, mut rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
 
@@ -246,25 +396,44 @@ impl<TJungle> Client<TJungle> {
             other => ExecutorError::ClientTransport(other.to_string()),
         }
     }
-}
 
-impl<TJungle> Drop for Client<TJungle> {
-    fn drop(&mut self) {
-        self.conn.close(0u32.into(), b"done");
-        self.endpoint.close(0u32.into(), b"done");
+    async fn send_wire_subscription(&self, input: WireIn) -> ClientResult<quinn::RecvStream> {
+        let (mut tx, rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
+
+        let payload = postcard::to_allocvec(&input).map_err(ClientError::EncodeWireIn)?;
+        let frame_len = u32::try_from(payload.len())
+            .map_err(|_| ClientError::WireFrameTooLarge(payload.len()))?;
+        tx.write_all(&frame_len.to_be_bytes())
+            .await
+            .map_err(ClientError::WriteWireFrame)?;
+        tx.write_all(&payload)
+            .await
+            .map_err(ClientError::WriteWireFrame)?;
+        tx.finish().map_err(ClientError::FinishWireIn)?;
+
+        Ok(rx)
     }
-}
 
-#[async_trait]
-impl<TJungle> JungleClient for Client<TJungle>
-where
-    TJungle: Ecosystem,
-    TJungle::Animals: Animals,
-    <TJungle::Animals as Animals>::List: FlattenNodes,
-    SPFlatten<<TJungle::Animals as Animals>::List>: StripAnimalHeaders,
-    AnimalSet<TJungle::Animals>: Container,
-{
-    async fn start_journey(
+    pub async fn subscribe_step_updates(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        let recv = self
+            .send_wire_subscription(WireIn::SubscribeJourneyUpdates {
+                journey_id,
+                after_sequence_id,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+        Ok(JourneyUpdateSubscription {
+            recv,
+            frame_state: SubscriptionFrameState::default(),
+            closed: false,
+        })
+    }
+
+    pub(crate) async fn start_journey_by_id(
         &self,
         animal_id: u32,
         generation: u32,
@@ -289,10 +458,43 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
-                "unexpected non-journey-created response for start_journey".to_string(),
+                "unexpected non-journey-created response for start_journey_by_id".to_string(),
             )),
         }
+    }
+}
+
+impl<J> Drop for Client<J> {
+    fn drop(&mut self) {
+        self.conn.close(0u32.into(), b"done");
+        self.endpoint.close(0u32.into(), b"done");
+    }
+}
+
+#[async_trait]
+impl<J> JungleClient for Client<J>
+where
+    J: Ecosystem,
+    J::Animals: Animals,
+    <J::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<J::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<J::Animals>: Container,
+{
+    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    where
+        Self: Sized,
+        A: Animal,
+        A::Id: AnimalIdValue,
+        A::Generation: Unsigned,
+    {
+        self.start_journey_by_id(
+            <A::Id as AnimalIdValue>::U32,
+            <A::Generation as Unsigned>::U32,
+            seed,
+        )
+        .await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
@@ -310,10 +512,19 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-history response for journey_history".to_string(),
             )),
         }
+    }
+
+    async fn subscribe_step_updates(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        Client::subscribe_step_updates(self, journey_id, after_sequence_id).await
     }
 
     async fn journey_details(&self, id: Uuid) -> Result<JourneyStatus, ExecutorError> {
@@ -331,6 +542,7 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-status response for journey_details".to_string(),
             )),
@@ -352,6 +564,7 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-animal-appearance response for animal_appearance".to_string(),
             )),
@@ -379,6 +592,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for animal_appearance_update".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for animal_appearance_update".to_string(),
+            )),
         }
     }
 
@@ -403,6 +619,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for perturb_animal".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for perturb_animal".to_string(),
+            )),
         }
     }
 
@@ -424,6 +643,7 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for claim_animal_perturbation".to_string(),
             )),
@@ -453,6 +673,9 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for ack_animal_perturbation".to_string(),
+            )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for ack_animal_perturbation".to_string(),
             )),
         }
@@ -522,6 +745,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for schedule_sleep_timer".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for schedule_sleep_timer".to_string(),
+            )),
         }
     }
 
@@ -543,6 +769,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for complete_journey".to_string(),
+            )),
         }
     }
 
@@ -562,6 +791,9 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for poll_timers".to_string(),
+            )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for poll_timers".to_string(),
             )),
         }
@@ -588,6 +820,7 @@ where
             | WireOut::AnimalAppearance(_)
             | WireOut::ClaimedAnimalPerturbation(_)
             | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for poll_work".to_string(),
             )),
@@ -621,6 +854,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_input".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_input".to_string(),
+            )),
         }
     }
 
@@ -651,6 +887,9 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_success_output".to_string(),
             )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_success_output".to_string(),
+            )),
         }
     }
 
@@ -679,6 +918,9 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for action_failure_output".to_string(),
+            )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for action_failure_output".to_string(),
             )),
         }

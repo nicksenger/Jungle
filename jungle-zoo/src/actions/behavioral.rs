@@ -1,4 +1,4 @@
-use super::support::define_action;
+use super::support::{define_action, maybe_delay};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BehavioralDependency {
@@ -40,16 +40,22 @@ define_action!(
 );
 
 define_action!(
-    Sleep,
+    Rest,
     id = 2,
     dependency = BehavioralDependency,
     in = u16,
     out = u16,
     err = String,
     act = |dependency, energy| {
-        std::future::ready(Ok(energy.saturating_add(dependency.sleep_recovery)))
+        async move {
+            maybe_delay().await;
+            Ok(energy.saturating_add(dependency.sleep_recovery))
+        }
     }
 );
+
+/// Backwards-compatibility alias for prior naming.
+pub type Sleep = Rest;
 
 define_action!(
     MakeSound,
@@ -59,8 +65,11 @@ define_action!(
     out = String,
     err = String,
     act = |dependency, (kind, intensity)| {
-        let volume = intensity.saturating_add(dependency.sound_volume_bias);
-        std::future::ready(Ok(format!("{kind} at volume {volume}")))
+        async move {
+            maybe_delay().await;
+            let volume = intensity.saturating_add(dependency.sound_volume_bias);
+            Ok(format!("{kind} at volume {volume}"))
+        }
     }
 );
 
@@ -86,8 +95,11 @@ define_action!(
     out = u8,
     err = String,
     act = |_dependency, (stress, opposable_thumb)| {
-        let rhythm = if opposable_thumb { 4 } else { 2 };
-        std::future::ready(Ok(stress.saturating_add(rhythm)))
+        async move {
+            maybe_delay().await;
+            let rhythm = if opposable_thumb { 4 } else { 2 };
+            Ok(stress.saturating_add(rhythm))
+        }
     }
 );
 

@@ -5,9 +5,9 @@ use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    Animal, AnimalObservation, AnimalPerturbation, AnimalSet, Animals, BuildFlowWithContext,
-    ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep, StripAnimalHeaders,
-    SupportedAnimal, Work,
+    Animal, AnimalIdValue, AnimalObservation, AnimalPerturbation, AnimalSet, Animals,
+    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep,
+    StripAnimalHeaders, SupportedAnimal, Work,
 };
 use std::collections::HashMap;
 use std::future::Future;
@@ -30,11 +30,11 @@ pub struct JungleWorker<T> {
 
 impl<T> JungleWorker<T>
 where
-    T: Ecosystem + 'static,
+    T: Ecosystem + Send + Sync + 'static,
     T::Animals: Animals,
     <T::Animals as Animals>::List: FlattenNodes,
     SPFlatten<<T::Animals as Animals>::List>: StripAnimalHeaders,
-    AnimalSet<T::Animals>: SpawnByAnimal<T> + SupportedAnimalGenerations,
+    AnimalSet<T::Animals>: SupportedAnimalGenerations<T>,
 {
     pub fn new<C>(jungle: T, client: C) -> Self
     where
@@ -60,115 +60,121 @@ where
         &self.runner
     }
 
-    pub async fn spawn(&self) -> Result<(), ExecutorError> {
-        let owner_id = Uuid::new_v4();
-        let (tx, mut rx): (RunnerChannelTx, _) = mpsc::channel(64);
-        let client_for_transport = self.client.clone();
-        tokio::spawn(async move {
-            while let Some((message, done)) = rx.next().await {
-                let result: Result<RunnerChannelResponse, ExecutorError> = match message {
-                    RunnerChannelMessage::History(history) => {
-                        let out = match history {
-                            RunnerOut::ActionInput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => client_for_transport.action_input(uuid, node_id, data).await,
-                            RunnerOut::ActionSuccessOutput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => {
-                                client_for_transport
-                                    .action_success_output(uuid, node_id, data)
-                                    .await
-                            }
-                            RunnerOut::ActionFailureOutput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => {
-                                client_for_transport
-                                    .action_failure_output(uuid, node_id, data)
-                                    .await
-                            }
-                            RunnerOut::Appearance { data, uuid } => {
-                                client_for_transport
-                                    .animal_appearance_update(uuid, data)
-                                    .await
-                            }
-                            RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => {
-                                Ok(())
-                            }
-                        };
-                        out.map(|_| RunnerChannelResponse::Ack)
-                    }
-                    RunnerChannelMessage::ClaimAnimalPerturbation { journey_id } => {
-                        client_for_transport
-                            .claim_animal_perturbation(journey_id)
+    pub fn spawn(&self) -> impl Future<Output = Result<(), ExecutorError>> + Send + '_ {
+        async move {
+            let owner_id = Uuid::new_v4();
+            let (tx, mut rx): (RunnerChannelTx, _) = mpsc::channel(64);
+            let client_for_transport = self.client.clone();
+            tokio::spawn(async move {
+                while let Some((message, done)) = rx.next().await {
+                    let result: Result<RunnerChannelResponse, ExecutorError> = match message {
+                        RunnerChannelMessage::History(history) => {
+                            let out = match history {
+                                RunnerOut::ActionInput {
+                                    node_id,
+                                    data,
+                                    uuid,
+                                } => client_for_transport.action_input(uuid, node_id, data).await,
+                                RunnerOut::ActionSuccessOutput {
+                                    node_id,
+                                    data,
+                                    uuid,
+                                } => {
+                                    client_for_transport
+                                        .action_success_output(uuid, node_id, data)
+                                        .await
+                                }
+                                RunnerOut::ActionFailureOutput {
+                                    node_id,
+                                    data,
+                                    uuid,
+                                } => {
+                                    client_for_transport
+                                        .action_failure_output(uuid, node_id, data)
+                                        .await
+                                }
+                                RunnerOut::Appearance { data, uuid } => {
+                                    client_for_transport
+                                        .animal_appearance_update(uuid, data)
+                                        .await
+                                }
+                                RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => {
+                                    Ok(())
+                                }
+                            };
+                            out.map(|_| RunnerChannelResponse::Ack)
+                        }
+                        RunnerChannelMessage::ClaimAnimalPerturbation { journey_id } => {
+                            client_for_transport
+                                .claim_animal_perturbation(journey_id)
+                                .await
+                                .map(RunnerChannelResponse::ClaimedPerturbation)
+                        }
+                        RunnerChannelMessage::AckAnimalPerturbation {
+                            journey_id,
+                            perturbation_id,
+                        } => client_for_transport
+                            .ack_animal_perturbation(journey_id, perturbation_id)
                             .await
-                            .map(RunnerChannelResponse::ClaimedPerturbation)
-                    }
-                    RunnerChannelMessage::AckAnimalPerturbation {
-                        journey_id,
-                        perturbation_id,
-                    } => client_for_transport
-                        .ack_animal_perturbation(journey_id, perturbation_id)
-                        .await
-                        .map(|_| RunnerChannelResponse::Ack),
-                };
-                let _ = done.send(result);
-            }
-        });
+                            .map(|_| RunnerChannelResponse::Ack),
+                    };
+                    let _ = done.send(result);
+                }
+            });
 
-        let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
-        let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations>::collect();
+            let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
+            let supported_animals =
+                <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
 
-        loop {
-            for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
-                self.client
-                    .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
-                    .await?;
-            }
+            loop {
+                for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
+                    self.client
+                        .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
+                        .await?;
+                }
 
-            let _ = self.client.poll_timers().await?;
+                let _ = self.client.poll_timers().await?;
 
-            if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
-                if let Some(mut journey) = suspended.remove(&wake.journey_id) {
-                    match journey.resume(&self.runner, tx.clone()).await? {
-                        SuspendedOutcome::Completed => {
-                            self.client.complete_journey(wake.journey_id).await?;
-                        }
-                        SuspendedOutcome::Sleeping {
-                            wake_at_unix_ms,
-                            node_id: _,
-                        } => {
-                            let timer_id = Uuid::new_v4();
-                            self.client
-                                .schedule_sleep_timer(wake.journey_id, timer_id, wake_at_unix_ms)
-                                .await?;
-                            self.client
-                                .heartbeat_journey_lease(
-                                    wake.journey_id,
-                                    owner_id,
-                                    self.owner_lease_ttl_ms,
-                                )
-                                .await?;
-                            suspended.insert(wake.journey_id, journey);
+                if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
+                    if let Some(mut journey) = suspended.remove(&wake.journey_id) {
+                        match journey.resume(&self.runner, tx.clone()).await? {
+                            SuspendedOutcome::Completed => {
+                                self.client.complete_journey(wake.journey_id).await?;
+                            }
+                            SuspendedOutcome::Sleeping {
+                                wake_at_unix_ms,
+                                node_id: _,
+                            } => {
+                                let timer_id = Uuid::new_v4();
+                                self.client
+                                    .schedule_sleep_timer(
+                                        wake.journey_id,
+                                        timer_id,
+                                        wake_at_unix_ms,
+                                    )
+                                    .await?;
+                                self.client
+                                    .heartbeat_journey_lease(
+                                        wake.journey_id,
+                                        owner_id,
+                                        self.owner_lease_ttl_ms,
+                                    )
+                                    .await?;
+                                suspended.insert(wake.journey_id, journey);
+                            }
                         }
                     }
                 }
-            }
 
-            match self.client.poll_work(supported_animals.clone()).await? {
-                Some(Work::StartJourney {
-                    journey_id,
-                    animal_id,
-                    generation,
-                    seed,
-                }) => {
-                    let history = self.client.journey_history(journey_id).await?;
-                    match <AnimalSet<T::Animals> as SpawnByAnimal<T>>::resume_by_animal(
+                match self.client.poll_work(supported_animals.clone()).await? {
+                    Some(Work::StartJourney {
+                        journey_id,
+                        animal_id,
+                        generation,
+                        seed,
+                    }) => {
+                        let history = self.client.journey_history(journey_id).await?;
+                        match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
                         animal_id,
                         generation,
                         seed,
@@ -205,15 +211,15 @@ where
                             suspended.insert(journey_id, journey);
                         }
                     }
-                }
-                Some(Work::ResumeJourney {
-                    journey_id,
-                    animal_id,
-                    generation,
-                    seed,
-                }) => {
-                    let history = self.client.journey_history(journey_id).await?;
-                    match <AnimalSet<T::Animals> as SpawnByAnimal<T>>::resume_by_animal(
+                    }
+                    Some(Work::ResumeJourney {
+                        journey_id,
+                        animal_id,
+                        generation,
+                        seed,
+                    }) => {
+                        let history = self.client.journey_history(journey_id).await?;
+                        match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
                         animal_id,
                         generation,
                         seed,
@@ -250,11 +256,12 @@ where
                             suspended.insert(journey_id, journey);
                         }
                     }
+                    }
+                    None => {}
                 }
-                None => {}
-            }
 
-            sleep(Duration::from_millis(200)).await;
+                sleep(Duration::from_millis(200)).await;
+            }
         }
     }
 }
@@ -264,7 +271,7 @@ pub enum JourneyStartOutcome<T> {
     Completed,
     Sleeping {
         wake_at_unix_ms: i64,
-        journey: Box<dyn SuspendedJourney<T>>,
+        journey: Box<dyn SuspendedJourney<T> + Send>,
     },
 }
 
@@ -273,19 +280,20 @@ pub enum SuspendedOutcome {
     Sleeping { wake_at_unix_ms: i64, node_id: u32 },
 }
 
-pub trait SuspendedJourney<T> {
+pub trait SuspendedJourney<T>: Send {
     fn resume<'a>(
         &'a mut self,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>>;
 }
 
 struct SuspendedAnimalJourney<T, A>
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     journey_id: Uuid,
     sleep_node_id: u32,
@@ -294,15 +302,17 @@ where
 
 impl<T, A> SuspendedJourney<T> for SuspendedAnimalJourney<T, A>
 where
-    T: 'static,
+    T: Send + Sync + 'static,
     A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::State: Send + 'static,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     fn resume<'a>(
         &'a mut self,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<SuspendedOutcome, ExecutorError>> + Send + 'a>> {
         Box::pin(async move {
             let advance = runner
                 .resume_after_sleep::<A>(
@@ -329,7 +339,9 @@ where
     }
 }
 
-pub trait SpawnByAnimal<T>: Send + Sync {
+pub trait SupportedAnimalGenerations<T> {
+    fn collect() -> Vec<SupportedAnimal>;
+
     fn spawn_by_animal<'a>(
         animal_id: u32,
         generation: u32,
@@ -337,7 +349,7 @@ pub trait SpawnByAnimal<T>: Send + Sync {
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>;
 
     fn resume_by_animal<'a>(
         animal_id: u32,
@@ -347,10 +359,14 @@ pub trait SpawnByAnimal<T>: Send + Sync {
         history: Vec<RunnerOut>,
         runner: &'a JungleRunner<T>,
         tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>;
 }
 
-impl<T> SpawnByAnimal<T> for list::Empty {
+impl<T> SupportedAnimalGenerations<T> for list::Empty {
+    fn collect() -> Vec<SupportedAnimal> {
+        Vec::new()
+    }
+
     fn spawn_by_animal<'a>(
         _animal_id: u32,
         _generation: u32,
@@ -358,7 +374,8 @@ impl<T> SpawnByAnimal<T> for list::Empty {
         _journey_id: Uuid,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+    {
         Box::pin(async { Ok(JourneyStartOutcome::NotMatched) })
     }
 
@@ -370,28 +387,35 @@ impl<T> SpawnByAnimal<T> for list::Empty {
         _history: Vec<RunnerOut>,
         _runner: &'a JungleRunner<T>,
         _tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+    {
         Box::pin(async { Ok(JourneyStartOutcome::NotMatched) })
     }
 }
 
-impl<T, Head, Tail, AnimalId, Generation> SpawnByAnimal<T> for list::List<(Head, Tail)>
+impl<T, Head, Tail> SupportedAnimalGenerations<T> for list::List<(Head, Tail)>
 where
-    Head: Animal<Id = jungle_types::Id<AnimalId>, Generation = Generation>
-        + AnimalObservation
-        + AnimalPerturbation
-        + Send
-        + Sync
-        + 'static,
+    Head: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
+    Head::Id: AnimalIdValue,
+    Head::Generation: Unsigned,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
-    Head::Journey:
-        BuildFlowWithContext<(Arc<T>, DynFlow<Head::State>), Output = DynFlow<Head::State>>,
-    AnimalId: Unsigned,
-    Generation: Unsigned,
-    Tail: SpawnByAnimal<T>,
-    T: 'static,
+    Head::Journey: BuildFlowWithContext<
+        (Arc<T>, DynFlow<Head::State>),
+        Output = (Arc<T>, DynFlow<Head::State>),
+    >,
+    Tail: SupportedAnimalGenerations<T>,
+    T: Send + Sync + 'static,
 {
+    fn collect() -> Vec<SupportedAnimal> {
+        let mut out = vec![SupportedAnimal {
+            animal_id: <Head::Id as AnimalIdValue>::U32,
+            generation: <Head::Generation as Unsigned>::U32,
+        }];
+        out.extend(Tail::collect());
+        out
+    }
+
     fn spawn_by_animal<'a>(
         animal_id: u32,
         generation: u32,
@@ -399,17 +423,19 @@ where
         journey_id: Uuid,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+    {
         Box::pin(async move {
-            if animal_id == <AnimalId as Unsigned>::U32
-                && generation == <Generation as Unsigned>::U32
+            if animal_id == <Head::Id as AnimalIdValue>::U32
+                && generation == <Head::Generation as Unsigned>::U32
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
                 let state: Head::State = seed.into();
                 let mut executor = runner.new_executor::<Head>(state);
+                let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
-                    .emit_initial_appearance::<Head>(&executor, journey_id, &mut tx)
+                    .emit_appearance(journey_id, appearance, &mut tx)
                     .await?;
                 match runner
                     .drive_until_sleep_or_complete::<Head>(&mut executor, journey_id, &mut tx)
@@ -445,18 +471,20 @@ where
         history: Vec<RunnerOut>,
         runner: &'a JungleRunner<T>,
         mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+    {
         Box::pin(async move {
-            if animal_id == <AnimalId as Unsigned>::U32
-                && generation == <Generation as Unsigned>::U32
+            if animal_id == <Head::Id as AnimalIdValue>::U32
+                && generation == <Head::Generation as Unsigned>::U32
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
                 let state: Head::State = seed.into();
                 let mut executor = runner.new_executor::<Head>(state);
                 replay_history::<T, Head>(&mut executor, journey_id, &history, &mut tx).await?;
+                let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
-                    .emit_initial_appearance::<Head>(&executor, journey_id, &mut tx)
+                    .emit_appearance(journey_id, appearance, &mut tx)
                     .await?;
                 match runner
                     .drive_until_sleep_or_complete::<Head>(&mut executor, journey_id, &mut tx)
@@ -486,33 +514,6 @@ where
     }
 }
 
-pub trait SupportedAnimalGenerations {
-    fn collect() -> Vec<SupportedAnimal>;
-}
-
-impl SupportedAnimalGenerations for list::Empty {
-    fn collect() -> Vec<SupportedAnimal> {
-        Vec::new()
-    }
-}
-
-impl<Head, Tail, AnimalId, Generation> SupportedAnimalGenerations for list::List<(Head, Tail)>
-where
-    Head: Animal<Id = jungle_types::Id<AnimalId>, Generation = Generation>,
-    AnimalId: Unsigned,
-    Generation: Unsigned,
-    Tail: SupportedAnimalGenerations,
-{
-    fn collect() -> Vec<SupportedAnimal> {
-        let mut out = vec![SupportedAnimal {
-            animal_id: <AnimalId as Unsigned>::U32,
-            generation: <Generation as Unsigned>::U32,
-        }];
-        out.extend(Tail::collect());
-        out
-    }
-}
-
 async fn replay_history<T, A>(
     executor: &mut ContextExecutor<T, A>,
     journey_id: Uuid,
@@ -522,7 +523,8 @@ async fn replay_history<T, A>(
 where
     T: 'static,
     A: Animal + AnimalObservation + AnimalPerturbation,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     let mut index = 0usize;
     while !executor.is_complete() {

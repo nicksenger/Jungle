@@ -2,12 +2,21 @@ use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use jungle_persist::JungleStore;
-use jungle_types::{BackendError, WireIn, WireOut};
+use jungle_types::{BackendError, JourneyStatus, WireIn, WireOut};
+#[cfg(feature = "postgres")]
+use sqlx::postgres::PgListener;
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::sleep;
 use tracing::info;
+#[cfg(feature = "postgres")]
+use tracing::warn;
 
 use crate::{JungleServer, Result, WireRx, WireTx};
+
+#[cfg(feature = "postgres")]
+const PG_JOURNEY_EVENTS_CHANNEL: &str = "jungle_journey_events";
 
 #[derive(Clone)]
 pub struct Server {
@@ -174,6 +183,73 @@ impl JungleServer for Server {
                     let _ = journey_id;
                     return Err(crate::ServerError::Backend(BackendError::Message(
                         "journey_status is unavailable without a persistence backend".to_string(),
+                    )));
+                }
+            }
+            Some(WireIn::SubscribeJourneyUpdates {
+                journey_id,
+                after_sequence_id,
+            }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let mut cursor = after_sequence_id;
+                    #[cfg(feature = "postgres")]
+                    let mut pg_listener = pg_listener_for_store(self.store.as_ref()).await;
+                    loop {
+                        let updates = self
+                            .store
+                            .journey_update_events_since(journey_id, cursor)
+                            .await
+                            .map_err(|err| {
+                                crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                            })?;
+
+                        if !updates.is_empty() {
+                            for update in updates {
+                                cursor = Some(update.sequence_id);
+                                tx.send(Ok(WireOut::JourneyUpdate(update))).await?;
+                            }
+                            continue;
+                        }
+
+                        let status =
+                            self.store.journey_status(journey_id).await.map_err(|err| {
+                                crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                            })?;
+
+                        if matches!(
+                            status,
+                            JourneyStatus::Stopped | JourneyStatus::Completed | JourneyStatus::Dead
+                        ) {
+                            tx.close().await?;
+                            info!("complete");
+                            return Ok(());
+                        }
+
+                        #[cfg(feature = "postgres")]
+                        if let Some(listener) = pg_listener.as_mut() {
+                            match tokio::time::timeout(Duration::from_secs(5), listener.recv())
+                                .await
+                            {
+                                Ok(Ok(_)) => {}
+                                Ok(Err(err)) => {
+                                    warn!("journey updates listener recv failed: {err}");
+                                    pg_listener = None;
+                                }
+                                Err(_) => {}
+                            }
+                            continue;
+                        }
+
+                        sleep(Duration::from_millis(100)).await;
+                    }
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = (journey_id, after_sequence_id);
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "subscribe_journey_updates is unavailable without a persistence backend"
+                            .to_string(),
                     )));
                 }
             }
@@ -425,4 +501,23 @@ impl JungleServer for Server {
         info!("complete");
         Ok(())
     }
+}
+
+#[cfg(feature = "postgres")]
+async fn pg_listener_for_store(store: &dyn JungleStore) -> Option<PgListener> {
+    let pool = store.postgres_pool()?;
+    let mut listener = match PgListener::connect_with(&pool).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            warn!("failed to connect postgres listener: {err}");
+            return None;
+        }
+    };
+
+    if let Err(err) = listener.listen(PG_JOURNEY_EVENTS_CHANNEL).await {
+        warn!("failed to listen on postgres channel {PG_JOURNEY_EVENTS_CHANNEL}: {err}");
+        return None;
+    }
+
+    Some(listener)
 }

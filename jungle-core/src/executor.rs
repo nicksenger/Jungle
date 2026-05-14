@@ -10,7 +10,8 @@ pub struct JungleExecutor<T, A>
 where
     T: Jungle + 'static,
     A: Animal,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     inner: ContextExecutor<T, A>,
 }
@@ -19,7 +20,8 @@ impl<T, A> JungleExecutor<T, A>
 where
     T: Jungle + 'static,
     A: Animal,
-    A::Journey: BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = DynFlow<A::State>>,
+    A::Journey:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     pub fn new(jungle: T, state: A::State) -> Self {
         Self {

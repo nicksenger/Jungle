@@ -3,8 +3,13 @@ name = "jungle-examples"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["zoo-delay"]
+zoo-delay = ["jungle-zoo/delay"]
+
 [dependencies]
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb"] }
+jungle-zoo = { path = "../jungle-zoo" }
 jungle-viewer = { path = "../jungle-viewer" }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
@@ -14,7 +19,3 @@ uuid = { workspace = true }
 [[bin]]
 name = "jungle-view"
 path = "src/bin/jungle-view.rs"
-
-[[bin]]
-name = "jungle-observe"
-path = "src/bin/jungle-observe.rs"

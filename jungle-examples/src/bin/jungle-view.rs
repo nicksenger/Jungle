@@ -1,15 +1,21 @@
+use jungle_sdk::core::JungleWorker;
+use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::JungleClient;
 use std::path::PathBuf;
+use uuid::Uuid;
 
 fn main() {
     let mut headless = false;
     let mut screenshot: Option<PathBuf> = None;
     let mut dump_graph = false;
+    let mut live = false;
     let mut args = std::env::args().skip(1);
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--headless" => headless = true,
             "--dump-graph" => dump_graph = true,
+            "--live" => live = true,
             "--screenshot" => {
                 let value = args
                     .next()
@@ -24,7 +30,8 @@ fn main() {
     }
 
     if dump_graph {
-        let graph = jungle_viewer::debug_graph_for_animal::<jungle_examples::StaticAnimal>();
+        let graph =
+            jungle_viewer::debug_graph_for_animal::<jungle_zoo::animals::gorilla::Gorilla>();
         println!("nodes:");
         for node in &graph.nodes {
             println!("  {} {}", node.id, node.label);
@@ -39,7 +46,8 @@ fn main() {
         }
     }
 
-    let mut viewer = jungle_viewer::JungleViewerBuilder::new().title("Jungle View Example");
+    let mut viewer =
+        jungle_viewer::JungleViewerBuilder::new().title("Jungle View Example (zoo::Gorilla)");
     if let Some(path) = screenshot {
         viewer = viewer.screenshot_path(path);
     }
@@ -47,7 +55,48 @@ fn main() {
         viewer = viewer.headless(true);
     }
 
-    viewer
-        .view_animal::<jungle_examples::StaticAnimal>()
-        .expect("jungle-view example should launch viewer");
+    if live {
+        let listen_addr = jungle_examples::reserve_local_addr();
+        let db_path =
+            std::env::temp_dir().join(format!("jungle-view-example-{}.redb", Uuid::new_v4()));
+
+        let live_runtime = tokio::runtime::Runtime::new().expect("live runtime should start");
+
+        let _server_task = live_runtime.spawn({
+            let db_path = db_path.clone();
+            async move {
+                let _ = ServerBuilder::new()
+                    .listen(listen_addr)
+                    .redb_path(db_path)
+                    .run()
+                    .await;
+            }
+        });
+
+        let client = live_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
+        let worker_client =
+            live_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
+
+        let _worker_task = live_runtime.spawn(async move {
+            let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
+            let _ = worker.spawn().await;
+        });
+
+        let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
+            .expect("gorilla seed should serialize");
+        let journey_id = live_runtime
+            .block_on(client.start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed))
+            .expect("start_journey gorilla should succeed");
+
+        viewer
+            .view_live_animal::<jungle_zoo::animals::gorilla::Gorilla, _>(
+                client.clone(),
+                journey_id,
+            )
+            .expect("jungle-view example should launch live viewer");
+    } else {
+        viewer
+            .view_animal::<jungle_zoo::animals::gorilla::Gorilla>()
+            .expect("jungle-view example should launch viewer");
+    }
 }
