@@ -542,11 +542,11 @@ impl Animal for Gorilla {
 }
 
 impl AnimalObservation for Gorilla {
-    type Adapter = NoopObservation;
+    type Bridge = NoopObservation;
 }
 
 impl AnimalPerturbation for Gorilla {
-    type Adapter = NoopPerturbation;
+    type Bridge = NoopPerturbation;
 }
 
 //#[allow(dead_code)]

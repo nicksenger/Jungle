@@ -154,15 +154,15 @@ pub trait Animal {
     type Journey;
 }
 
-/// Adapter invoked by executors/runners to optionally snapshot appearance bytes.
-pub trait ObservationAdapter<A: Animal> {
+/// Bridge invoked by executors/runners to optionally snapshot appearance bytes.
+pub trait ObservationBridge<A: Animal> {
     fn snapshot(state: &A::State) -> Result<Option<Vec<u8>>, ExecutorError>;
 }
 
-/// Default no-op observation adapter for animals without appearance snapshots.
+/// Default no-op observation bridge for animals without appearance snapshots.
 pub struct NoopObservation;
 
-impl<A> ObservationAdapter<A> for NoopObservation
+impl<A> ObservationBridge<A> for NoopObservation
 where
     A: Animal,
 {
@@ -171,10 +171,10 @@ where
     }
 }
 
-/// Observation adapter that bridges [`Observe`] into serialized snapshot bytes.
+/// Observation bridge that maps [`Observe`] into serialized snapshot bytes.
 pub struct ObserveObservation;
 
-impl<A> ObservationAdapter<A> for ObserveObservation
+impl<A> ObservationBridge<A> for ObserveObservation
 where
     A: Observe,
     A::Appearance: Serialize,
@@ -189,11 +189,11 @@ where
 
 /// Per-animal binding that selects how appearance snapshots are produced.
 pub trait AnimalObservation: Animal + Sized {
-    type Adapter: ObservationAdapter<Self>;
+    type Bridge: ObservationBridge<Self>;
 }
 
-/// Adapter invoked by executors/runners to optionally apply perturbation payloads.
-pub trait PerturbationAdapter<A: Animal> {
+/// Bridge invoked by executors/runners to optionally apply perturbation payloads.
+pub trait PerturbationBridge<A: Animal> {
     fn enabled() -> bool {
         true
     }
@@ -201,10 +201,10 @@ pub trait PerturbationAdapter<A: Animal> {
     fn apply(state: &mut A::State, payload: &[u8]) -> Result<bool, ExecutorError>;
 }
 
-/// Default no-op perturbation adapter for animals without perturb handlers.
+/// Default no-op perturbation bridge for animals without perturb handlers.
 pub struct NoopPerturbation;
 
-impl<A> PerturbationAdapter<A> for NoopPerturbation
+impl<A> PerturbationBridge<A> for NoopPerturbation
 where
     A: Animal,
 {
@@ -217,10 +217,10 @@ where
     }
 }
 
-/// Perturbation adapter that bridges [`Perturb`] from serialized stimuli.
+/// Perturbation bridge that maps [`Perturb`] from serialized stimuli.
 pub struct TraitPerturbation;
 
-impl<A> PerturbationAdapter<A> for TraitPerturbation
+impl<A> PerturbationBridge<A> for TraitPerturbation
 where
     A: Perturb,
     A::Stimulus: DeserializeOwned,
@@ -235,7 +235,7 @@ where
 
 /// Per-animal binding that selects how perturbation payloads are applied.
 pub trait AnimalPerturbation: Animal + Sized {
-    type Adapter: PerturbationAdapter<Self>;
+    type Bridge: PerturbationBridge<Self>;
 }
 
 #[inception(property = Ident, types)]

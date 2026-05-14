@@ -63,11 +63,11 @@ impl jungle_sdk::types::Animal for ProbeAnimal {
 }
 
 impl jungle_sdk::types::AnimalObservation for ProbeAnimal {
-    type Adapter = jungle_sdk::types::NoopObservation;
+    type Bridge = jungle_sdk::types::NoopObservation;
 }
 
 impl jungle_sdk::types::AnimalPerturbation for ProbeAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+    type Bridge = jungle_sdk::types::NoopPerturbation;
 }
 
 #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]

@@ -3,7 +3,7 @@ use futures::SinkExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, BuildFlowWithContext, ContextExecutor, DynFlow,
-    ExecutorError, ObservationAdapter, PerturbationAdapter, RunnerOut, Sleep,
+    ExecutorError, ObservationBridge, PerturbationBridge, RunnerOut, Sleep,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -78,7 +78,7 @@ where
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
-        <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(executor.state())
+        <<A as AnimalObservation>::Bridge as ObservationBridge<A>>::snapshot(executor.state())
     }
 
     pub async fn emit_appearance(
@@ -217,7 +217,7 @@ where
     }
     let _emitted = executor.complete_serialized(completion)?;
     if let Some(appearance) =
-        <<A as AnimalObservation>::Adapter as ObservationAdapter<A>>::snapshot(executor.state())?
+        <<A as AnimalObservation>::Bridge as ObservationBridge<A>>::snapshot(executor.state())?
     {
         send_history(
             tx,
@@ -258,7 +258,7 @@ where
     A::Journey:
         BuildFlowWithContext<(Arc<Ctx>, DynFlow<A::State>), Output = (Arc<Ctx>, DynFlow<A::State>)>,
 {
-    if !<<A as AnimalPerturbation>::Adapter as PerturbationAdapter<A>>::enabled() {
+    if !<<A as AnimalPerturbation>::Bridge as PerturbationBridge<A>>::enabled() {
         return Ok(());
     }
 
@@ -288,7 +288,7 @@ where
 
         {
             let state = executor.state_mut();
-            let applied = <<A as AnimalPerturbation>::Adapter as PerturbationAdapter<A>>::apply(
+            let applied = <<A as AnimalPerturbation>::Bridge as PerturbationBridge<A>>::apply(
                 state,
                 &claimed.data,
             )?;

@@ -97,10 +97,10 @@ impl Animal for LegacyAnimal {
     type Journey = LegacyJourney;
 }
 impl jungle_sdk::types::AnimalObservation for LegacyAnimal {
-    type Adapter = jungle_sdk::types::ObserveObservation;
+    type Bridge = jungle_sdk::types::ObserveObservation;
 }
 impl jungle_sdk::types::AnimalPerturbation for LegacyAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+    type Bridge = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for LegacyAnimal {
     type Appearance = i32;
@@ -128,10 +128,10 @@ impl Animal for ModernAnimal {
     type Journey = ModernJourney;
 }
 impl jungle_sdk::types::AnimalObservation for ModernAnimal {
-    type Adapter = jungle_sdk::types::ObserveObservation;
+    type Bridge = jungle_sdk::types::ObserveObservation;
 }
 impl jungle_sdk::types::AnimalPerturbation for ModernAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+    type Bridge = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for ModernAnimal {
     type Appearance = i32;
@@ -159,10 +159,10 @@ impl Animal for FutureAnimal {
     type Journey = ModernJourney;
 }
 impl jungle_sdk::types::AnimalObservation for FutureAnimal {
-    type Adapter = jungle_sdk::types::ObserveObservation;
+    type Bridge = jungle_sdk::types::ObserveObservation;
 }
 impl jungle_sdk::types::AnimalPerturbation for FutureAnimal {
-    type Adapter = jungle_sdk::types::NoopPerturbation;
+    type Bridge = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for FutureAnimal {
     type Appearance = i32;
