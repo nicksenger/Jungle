@@ -477,10 +477,7 @@ pub struct ProbeDayFlow(
 );
 
 #[derive(jungle_sdk::Journey)]
-pub struct ProbeActiveFlow(
-    Step<Gorilla, ProbeStep>,
-    Step<Gorilla, ProbeStep>,
-);
+pub struct ProbeActiveFlow(Step<Gorilla, ProbeStep>, Step<Gorilla, ProbeStep>);
 
 #[derive(jungle_sdk::Journey)]
 pub struct ProbeYearFlow(
@@ -522,7 +519,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = State;
     type Seed = TemporalState;
-    type Journey = ProbeJourney;
+    type Journey = GorillaJourney;
 }
 
 impl AnimalObservation for Gorilla {
