@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 #[cfg(any(feature = "postgres", feature = "redb"))]
-use jungle_persist::JungleStore;
+use jungle_persist::{Database, JungleStore, StoreBuilder};
 use jungle_types::{BackendError, JourneyStatus, WireIn, WireOut};
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgListener;
@@ -39,17 +39,14 @@ impl Server {
 #[cfg(any(feature = "postgres", feature = "redb"))]
 #[derive(Default, Clone)]
 pub struct ServerBuilder {
-    #[cfg(feature = "postgres")]
-    postgres: Option<jungle_persist::pg::PgStoreBuilder>,
-    #[cfg(feature = "redb")]
-    redb: Option<jungle_persist::redb::RedbStoreBuilder>,
+    db: StoreBuilder,
 }
 
 #[cfg(any(feature = "postgres", feature = "redb"))]
 impl ServerBuilder {
     #[cfg(feature = "postgres")]
     pub fn postgres(mut self, builder: jungle_persist::pg::PgStoreBuilder) -> Self {
-        self.postgres = Some(builder);
+        self.db = self.db.database(Database::Postgres(builder));
         self
     }
 
@@ -60,7 +57,7 @@ impl ServerBuilder {
 
     #[cfg(feature = "redb")]
     pub fn redb(mut self, builder: jungle_persist::redb::RedbStoreBuilder) -> Self {
-        self.redb = Some(builder);
+        self.db = self.db.database(Database::Redb(builder));
         self
     }
 
@@ -71,45 +68,14 @@ impl ServerBuilder {
 
     pub async fn build(self) -> jungle_persist::Result<Server> {
         #[cfg(all(feature = "postgres", feature = "redb"))]
-        {
-            if let Some(builder) = self.postgres {
-                let store = builder.build().await?;
-                store.migrate().await?;
-                return Ok(Server::from_store(Arc::new(store)));
-            }
-
-            if let Some(builder) = self.redb {
-                let store = builder.build()?;
-                store.migrate().await?;
-                return Ok(Server::from_store(Arc::new(store)));
-            }
-
+        let has_configured_database = self.db.has_database();
+        #[cfg(all(feature = "postgres", feature = "redb"))]
+        if !has_configured_database {
             info!("both `postgres` and `redb` features are enabled; defaulting to postgres");
-            let store = jungle_persist::pg::PgStore::builder().build().await?;
-            store.migrate().await?;
-            return Ok(Server::from_store(Arc::new(store)));
         }
-
-        #[cfg(all(feature = "postgres", not(feature = "redb")))]
-        {
-            let store = self
-                .postgres
-                .unwrap_or_else(jungle_persist::pg::PgStore::builder)
-                .build()
-                .await?;
-            store.migrate().await?;
-            return Ok(Server::from_store(Arc::new(store)));
-        }
-
-        #[cfg(all(feature = "redb", not(feature = "postgres")))]
-        {
-            let store = self
-                .redb
-                .unwrap_or_else(jungle_persist::redb::RedbStore::builder)
-                .build()?;
-            store.migrate().await?;
-            return Ok(Server::from_store(Arc::new(store)));
-        }
+        let store = self.db.build().await?;
+        store.migrate().await?;
+        Ok(Server::from_store(Arc::from(store)))
     }
 }
 

@@ -17,6 +17,107 @@ pub mod redb;
 pub type Error = PersistenceError;
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug, Clone)]
+pub enum Database {
+    #[cfg(feature = "postgres")]
+    Postgres(pg::PgStoreBuilder),
+    #[cfg(feature = "redb")]
+    Redb(redb::RedbStoreBuilder),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct StoreBuilder {
+    database: Option<Database>,
+}
+
+impl StoreBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn database(mut self, value: Database) -> Self {
+        self.database = Some(value);
+        self
+    }
+
+    pub fn has_database(&self) -> bool {
+        self.database.is_some()
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres(self, builder: pg::PgStoreBuilder) -> Self {
+        self.database(Database::Postgres(builder))
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres_connection_string(self, value: impl Into<String>) -> Self {
+        self.postgres(pg::PgStore::builder().connection_string(value))
+    }
+
+    #[cfg(feature = "redb")]
+    pub fn redb(self, builder: redb::RedbStoreBuilder) -> Self {
+        self.database(Database::Redb(builder))
+    }
+
+    #[cfg(feature = "redb")]
+    pub fn redb_path(self, value: impl Into<std::path::PathBuf>) -> Self {
+        self.redb(redb::RedbStore::builder().path(value))
+    }
+
+    pub async fn build(self) -> Result<Box<dyn JungleStore>> {
+        #[cfg(all(feature = "postgres", feature = "redb"))]
+        {
+            match self.database {
+                Some(Database::Postgres(builder)) => {
+                    let store = builder.build().await?;
+                    return Ok(Box::new(store));
+                }
+                Some(Database::Redb(builder)) => {
+                    let store = builder.build()?;
+                    return Ok(Box::new(store));
+                }
+                None => {
+                    let store = pg::PgStore::builder().build().await?;
+                    return Ok(Box::new(store));
+                }
+            }
+        }
+
+        #[cfg(all(feature = "postgres", not(feature = "redb")))]
+        {
+            match self.database {
+                Some(Database::Postgres(builder)) => {
+                    let store = builder.build().await?;
+                    return Ok(Box::new(store));
+                }
+                None => {
+                    let store = pg::PgStore::builder().build().await?;
+                    return Ok(Box::new(store));
+                }
+            }
+        }
+
+        #[cfg(all(feature = "redb", not(feature = "postgres")))]
+        {
+            match self.database {
+                Some(Database::Redb(builder)) => {
+                    let store = builder.build()?;
+                    return Ok(Box::new(store));
+                }
+                None => {
+                    let store = redb::RedbStore::builder().build()?;
+                    return Ok(Box::new(store));
+                }
+            }
+        }
+
+        #[allow(unreachable_code)]
+        Err(PersistenceError::Message(
+            "no persistence backend compiled; enable `postgres` or `redb` feature".to_string(),
+        ))
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum PersistenceError {
     #[error("{0}")]
