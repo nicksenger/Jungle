@@ -237,6 +237,204 @@ pub trait Pulse<T: Animal> {
     ) -> Self::Ret;
 }
 
+/// Type-level index path over step I/O products.
+///
+/// This is the I/O analogue of [`StateLensPath`], operating by value and supporting
+/// type-changing rebuilds.
+pub trait IoPath<Input, Index> {
+    type Focus;
+    type Carry;
+    type Rebuilt<New>;
+
+    fn split(input: Input) -> (Self::Carry, Self::Focus);
+    fn merge<New>(carry: Self::Carry, focus: New) -> Self::Rebuilt<New>;
+}
+
+impl<A, B> IoPath<(A, B), U0> for () {
+    type Focus = A;
+    type Carry = B;
+    type Rebuilt<New> = (New, B);
+
+    fn split(input: (A, B)) -> (Self::Carry, Self::Focus) {
+        (input.1, input.0)
+    }
+
+    fn merge<New>(carry: Self::Carry, focus: New) -> Self::Rebuilt<New> {
+        (focus, carry)
+    }
+}
+
+impl<A, B> IoPath<(A, B), U1> for () {
+    type Focus = B;
+    type Carry = A;
+    type Rebuilt<New> = (A, New);
+
+    fn split(input: (A, B)) -> (Self::Carry, Self::Focus) {
+        (input.0, input.1)
+    }
+
+    fn merge<New>(carry: Self::Carry, focus: New) -> Self::Rebuilt<New> {
+        (carry, focus)
+    }
+}
+
+impl<T> IoPath<crate::Either<T, T>, U0> for () {
+    type Focus = T;
+    type Carry = bool;
+    type Rebuilt<New> = crate::Either<New, New>;
+
+    fn split(input: crate::Either<T, T>) -> (Self::Carry, Self::Focus) {
+        match input {
+            crate::Either::Left(value) => (true, value),
+            crate::Either::Right(value) => (false, value),
+        }
+    }
+
+    fn merge<New>(carry: Self::Carry, focus: New) -> Self::Rebuilt<New> {
+        if carry {
+            crate::Either::Left(focus)
+        } else {
+            crate::Either::Right(focus)
+        }
+    }
+}
+
+impl<Input, Head, Next, Tail> IoPath<Input, list::List<(Head, list::List<(Next, Tail)>)>> for ()
+where
+    (): IoPath<Input, Head>,
+    (): IoPath<<() as IoPath<Input, Head>>::Focus, list::List<(Next, Tail)>>,
+{
+    type Focus = <() as IoPath<<() as IoPath<Input, Head>>::Focus, list::List<(Next, Tail)>>>::Focus;
+    type Carry = (
+        <() as IoPath<Input, Head>>::Carry,
+        <() as IoPath<<() as IoPath<Input, Head>>::Focus, list::List<(Next, Tail)>>>::Carry,
+    );
+    type Rebuilt<New> =
+        <() as IoPath<Input, Head>>::Rebuilt<
+            <() as IoPath<
+                <() as IoPath<Input, Head>>::Focus,
+                list::List<(Next, Tail)>,
+            >>::Rebuilt<New>,
+        >;
+
+    fn split(input: Input) -> (Self::Carry, Self::Focus) {
+        let (outer_carry, outer_focus) = <() as IoPath<Input, Head>>::split(input);
+        let (inner_carry, inner_focus) =
+            <() as IoPath<<() as IoPath<Input, Head>>::Focus, list::List<(Next, Tail)>>>::split(
+                outer_focus,
+            );
+        ((outer_carry, inner_carry), inner_focus)
+    }
+
+    fn merge<New>(carry: Self::Carry, focus: New) -> Self::Rebuilt<New> {
+        let (outer_carry, inner_carry) = carry;
+        let rebuilt_inner = <() as IoPath<
+            <() as IoPath<Input, Head>>::Focus,
+            list::List<(Next, Tail)>,
+        >>::merge(inner_carry, focus);
+        <() as IoPath<Input, Head>>::merge(outer_carry, rebuilt_inner)
+    }
+}
+
+impl<Input, Head> IoPath<Input, list::List<(Head, list::Empty)>> for ()
+where
+    (): IoPath<Input, Head>,
+{
+    type Focus = <() as IoPath<Input, Head>>::Focus;
+    type Carry = <() as IoPath<Input, Head>>::Carry;
+    type Rebuilt<New> = <() as IoPath<Input, Head>>::Rebuilt<New>;
+
+    fn split(input: Input) -> (Self::Carry, Self::Focus) {
+        <() as IoPath<Input, Head>>::split(input)
+    }
+
+    fn merge<New>(carry: Self::Carry, focus: New) -> Self::Rebuilt<New> {
+        <() as IoPath<Input, Head>>::merge(carry, focus)
+    }
+}
+
+/// Action wrapper used by [`IoLens`] to thread carry between `emit` and `absorb`.
+pub struct IoLensAction<A, Carry>(PhantomData<fn() -> (A, Carry)>);
+
+impl<A, Carry> Action for IoLensAction<A, Carry>
+where
+    A: Action,
+    Carry: Serialize + DeserializeOwned + Send + 'static,
+{
+    type Id = A::Id;
+    type Dependency = A::Dependency;
+    type In = (Carry, A::In);
+    type Out = (Carry, A::Out);
+    type Err = (Carry, A::Err);
+
+    fn act(
+        dependency: &Self::Dependency,
+        input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> + Send {
+        async move {
+            let (carry, inner_input) = input;
+            match A::act(dependency, inner_input).await {
+                Ok(value) => Ok((carry, value)),
+                Err(err) => Err((carry, err)),
+            }
+        }
+    }
+}
+
+impl<A, Carry> ActionMember for IoLensAction<A, Carry>
+where
+    A: Action + ActionMember,
+    Carry: Serialize + DeserializeOwned + Send + 'static,
+{
+}
+
+/// Focuses a wrapped [`Pulse`] over a path within its `Arg`/`Ret` product shapes.
+pub struct IoLens<P, Index>(PhantomData<fn() -> (P, Index)>);
+
+impl<T, P, Index> Pulse<T> for IoLens<P, Index>
+where
+    T: Animal,
+    P: Pulse<T>,
+    (): IoPath<<P as Pulse<T>>::Arg, Index>,
+    (): IoPath<
+        <() as IoPath<<P as Pulse<T>>::Arg, Index>>::Rebuilt<<P as Pulse<T>>::Ret>,
+        Index,
+    >,
+    <() as IoPath<<P as Pulse<T>>::Arg, Index>>::Carry: Serialize + DeserializeOwned + Send + 'static,
+{
+    type Action = IoLensAction<<P as Pulse<T>>::Action, <() as IoPath<<P as Pulse<T>>::Arg, Index>>::Carry>;
+    type Aspect = <P as Pulse<T>>::Aspect;
+    type Arg = <() as IoPath<<P as Pulse<T>>::Arg, Index>>::Rebuilt<<P as Pulse<T>>::Arg>;
+    type Ret = <() as IoPath<
+        <() as IoPath<<P as Pulse<T>>::Arg, Index>>::Rebuilt<<P as Pulse<T>>::Ret>,
+        Index,
+    >>::Rebuilt<<P as Pulse<T>>::Ret>;
+
+    fn emit(
+        view: &<<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
+        input: Self::Arg,
+    ) -> <Self::Action as Action>::In {
+        let (carry, focused_input) = <() as IoPath<Self::Arg, Index>>::split(input);
+        let action_input = <P as Pulse<T>>::emit(view, focused_input);
+        (carry, action_input)
+    }
+
+    fn absorb(
+        view: &mut <<Self as Pulse<T>>::Aspect as Aspect<T::State>>::View,
+        output: ActionCompletion<Self::Action>,
+    ) -> Self::Ret {
+        let (carry, focused_output) = match output {
+            Ok((carry, out)) => (carry, Ok(out)),
+            Err((carry, err)) => (carry, Err(err)),
+        };
+        let focused_ret = <P as Pulse<T>>::absorb(view, focused_output);
+        <() as IoPath<Self::Ret, Index>>::merge(carry, focused_ret)
+    }
+}
+
+/// Convenience alias for projection-focused I/O optics.
+pub type IoPick<P, Index> = IoLens<P, Index>;
+
 /// Forward half of [`Pulse`], responsible for producing an action request input.
 pub trait Emit<T: Animal> {
     type Arg;
