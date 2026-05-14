@@ -270,7 +270,11 @@ impl ViewerApp {
                                 }
                             }
                         };
-                        data.apply_update(update);
+                        if data.apply_update(update) {
+                            return iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(
+                                GRAPH_WIDGET_ID,
+                            ));
+                        }
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -421,22 +425,24 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
 }
 
 impl LiveData {
-    fn apply_update(&mut self, update: JourneyUpdateEvent) {
+    fn apply_update(&mut self, update: JourneyUpdateEvent) -> bool {
+        let mut highlight_changed = false;
         self.latest_event_count = update.sequence_id as usize;
         match update.event {
             RunnerUpdateOut::ActionInput { node_id, .. } => {
-                self.active_runtime_ids.insert(node_id);
+                highlight_changed |= self.active_runtime_ids.insert(node_id);
             }
             RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
-                self.active_runtime_ids.remove(&node_id);
-                self.finished_runtime_ids.insert(node_id);
+                highlight_changed |= self.active_runtime_ids.remove(&node_id);
+                highlight_changed |= self.finished_runtime_ids.insert(node_id);
             }
             RunnerUpdateOut::ActionFailureOutput { node_id, .. } => {
-                self.active_runtime_ids.remove(&node_id);
-                self.failed_runtime_ids.insert(node_id);
+                highlight_changed |= self.active_runtime_ids.remove(&node_id);
+                highlight_changed |= self.failed_runtime_ids.insert(node_id);
             }
             RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
         }
+        highlight_changed
     }
 }
 
@@ -1143,6 +1149,49 @@ impl fmt::Debug for ViewMode {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use uuid::Uuid;
+
+    #[test]
+    fn live_data_apply_update_reports_runtime_highlight_changes() {
+        let mut live = LiveData::default();
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 9,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.active_runtime_ids.contains(&9));
+
+        assert!(!live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 9,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 3,
+            event: RunnerUpdateOut::ActionSuccessOutput {
+                node_id: 9,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(!live.active_runtime_ids.contains(&9));
+        assert!(live.finished_runtime_ids.contains(&9));
+
+        assert!(!live.apply_update(JourneyUpdateEvent {
+            sequence_id: 4,
+            event: RunnerUpdateOut::SleepScheduled {
+                uuid: Uuid::nil(),
+                timer_id: Uuid::nil(),
+                wake_at_unix_ms: 1,
+            },
+        }));
+        assert_eq!(live.latest_event_count, 4);
+    }
 
     #[test]
     fn graph_model_uses_unique_display_node_ids() {
