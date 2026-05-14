@@ -12,8 +12,9 @@ use std::sync::Arc;
 
 type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
-type ActionFuture = Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>>>>;
-type ActionRunner = Box<dyn FnOnce() -> ActionFuture>;
+type ActionFuture =
+    Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>> + Send>>;
+type ActionRunner = Box<dyn FnOnce() -> ActionFuture + Send>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
 
@@ -102,8 +103,8 @@ where
     Ok((fallback(&carry), carry))
 }
 
-pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State>>>;
-pub type ErasedStep<State> = dyn ErasedFlow<State>;
+pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
+pub type ErasedStep<State> = dyn ErasedFlow<State> + Send;
 
 pub struct ExecutableActionRequest {
     node_id: u32,
@@ -151,7 +152,7 @@ impl ExecutableActionRequest {
     }
 }
 
-pub trait ErasedFlow<State> {
+pub trait ErasedFlow<State>: Send {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized>;
 
     fn complete(
@@ -390,6 +391,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
 
 impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Step<T, A>>
 where
+    Context: Send + Sync + 'static,
     T: Animal,
     A: Pulse<T>,
     <A as Pulse<T>>::Action: Action,
@@ -528,7 +530,7 @@ where
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
-    choose_left: Box<dyn Fn(&State, &In) -> bool>,
+    choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     active_branch: Option<ActiveBranch>,
     cursor: usize,
 }
@@ -540,7 +542,7 @@ where
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        choose_left: Box<dyn Fn(&State, &In) -> bool>,
+        choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     ) -> Self {
         Self {
             left,
@@ -567,7 +569,7 @@ where
         }
     }
 
-    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State>>> {
+    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State> + Send>> {
         let cursor = self.cursor;
         self.active_branch_mut()?.get_mut(cursor)
     }
@@ -696,8 +698,8 @@ struct WhileErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    should_continue: Box<dyn Fn(&State, &In) -> bool>,
-    build_body: Box<dyn Fn() -> DynFlow<State>>,
+    should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
+    build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     active_body: DynFlow<State>,
     body_node_id_start: u32,
     body_cursor: usize,
@@ -1347,8 +1349,8 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn new(
-        should_continue: Box<dyn Fn(&State, &In) -> bool>,
-        build_body: Box<dyn Fn() -> DynFlow<State>>,
+        should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
+        build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     ) -> Self {
         Self {
             should_continue,
@@ -1376,6 +1378,7 @@ where
 
 impl<State, In> ErasedFlow<State> for WhileErasedFlow<State, In>
 where
+    State: Send,
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
@@ -1597,7 +1600,7 @@ where
 #[inception::primitive(property = crate::JungleDynFlow)]
 impl<State, In, C, F> BuildFlow<DynFlow<State>> for While<C, F>
 where
-    State: 'static,
+    State: Send + 'static,
     C: LoopCondition<State, CarryIn = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
@@ -1711,7 +1714,7 @@ pub trait BuildFlowWithContext<Input> {
 #[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for Step<T, A>
 where
-    Context: 'static,
+    Context: Send + Sync + 'static,
     T: Animal + 'static,
     A: Pulse<T> + 'static,
     <A as Pulse<T>>::Action: Action + 'static,
@@ -1738,7 +1741,7 @@ where
 {
     left: DynFlow<State>,
     right: DynFlow<State>,
-    choose_left: Box<dyn Fn(&State, &In) -> bool>,
+    choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     active_branch: Option<ActiveContextBranch>,
     cursor: usize,
 }
@@ -1750,7 +1753,7 @@ where
     fn new(
         left: DynFlow<State>,
         right: DynFlow<State>,
-        choose_left: Box<dyn Fn(&State, &In) -> bool>,
+        choose_left: Box<dyn Fn(&State, &In) -> bool + Send>,
     ) -> Self {
         Self {
             left,
@@ -1777,7 +1780,7 @@ where
         }
     }
 
-    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State>>> {
+    fn active_node_mut(&mut self) -> Option<&mut Box<dyn ErasedFlow<State> + Send>> {
         let cursor = self.cursor;
         self.active_branch_mut()?.get_mut(cursor)
     }
@@ -1950,8 +1953,8 @@ struct WhileContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
-    should_continue: Box<dyn Fn(&State, &In) -> bool>,
-    build_body: Box<dyn Fn() -> DynFlow<State>>,
+    should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
+    build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     active_body: DynFlow<State>,
     body_node_id_start: u32,
     body_cursor: usize,
@@ -1965,8 +1968,8 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn new(
-        should_continue: Box<dyn Fn(&State, &In) -> bool>,
-        build_body: Box<dyn Fn() -> DynFlow<State>>,
+        should_continue: Box<dyn Fn(&State, &In) -> bool + Send>,
+        build_body: Box<dyn Fn() -> DynFlow<State> + Send>,
     ) -> Self {
         Self {
             should_continue,
@@ -1994,6 +1997,7 @@ where
 
 impl<State, In> ErasedFlow<State> for WhileContextErasedFlow<State, In>
 where
+    State: Send,
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
@@ -2128,8 +2132,8 @@ where
 #[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, State, In, C, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for While<C, F>
 where
-    Context: 'static,
-    State: 'static,
+    Context: Send + Sync + 'static,
+    State: Send + 'static,
     C: LoopCondition<State, CarryIn = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlowWithContext<
