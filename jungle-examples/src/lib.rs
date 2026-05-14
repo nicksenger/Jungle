@@ -163,43 +163,38 @@ impl From<&ObserveEcosystem> for () {
     fn from(_value: &ObserveEcosystem) -> Self {}
 }
 
+fn spawn_server_runtime(listen_addr: SocketAddr, db_path: std::path::PathBuf) {
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Runtime::new().expect("server runtime should start");
+        runtime.block_on(async move {
+            let _ = ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await;
+        });
+    });
+}
+
 pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
     let listen_addr = reserve_local_addr();
     let db_path = std::env::temp_dir().join(format!("jungle-examples-{}.redb", Uuid::new_v4()));
 
-    std::thread::spawn({
-        let db_path = db_path.clone();
-        move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("server runtime should start");
-            runtime.block_on(async move {
-                let _ = ServerBuilder::new()
-                    .listen(listen_addr)
-                    .redb_path(db_path)
-                    .run()
-                    .await;
-            });
-        }
-    });
+    spawn_server_runtime(listen_addr, db_path);
 
-    let setup_runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("setup runtime should start");
+    let setup_runtime = tokio::runtime::Runtime::new().expect("setup runtime should start");
 
     let client = setup_runtime.block_on(connect_client_with_retry(listen_addr));
     let worker_client = setup_runtime.block_on(connect_client_with_retry(listen_addr));
 
     std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("worker runtime should start");
+        let runtime = tokio::runtime::Runtime::new().expect("worker runtime should start");
         runtime.block_on(async move {
-            let worker = JungleWorker::new(ObserveEcosystem, worker_client);
-            let _ = worker.spawn().await;
+            let handle = tokio::spawn(async move {
+                let worker = JungleWorker::new(ObserveEcosystem, worker_client);
+                let _ = worker.spawn().await;
+            });
+            let _ = handle.await;
         });
     });
 
@@ -223,27 +218,9 @@ where
     let listen_addr = reserve_local_addr();
     let db_path = std::env::temp_dir().join(format!("jungle-examples-{}.redb", Uuid::new_v4()));
 
-    std::thread::spawn({
-        let db_path = db_path.clone();
-        move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("server runtime should start");
-            runtime.block_on(async move {
-                let _ = ServerBuilder::new()
-                    .listen(listen_addr)
-                    .redb_path(db_path)
-                    .run()
-                    .await;
-            });
-        }
-    });
+    spawn_server_runtime(listen_addr, db_path);
 
-    let setup_runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("setup runtime should start");
+    let setup_runtime = tokio::runtime::Runtime::new().expect("setup runtime should start");
 
     let client = setup_runtime.block_on(connect_client_with_retry(listen_addr));
     let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
