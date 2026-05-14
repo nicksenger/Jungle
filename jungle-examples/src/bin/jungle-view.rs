@@ -4,8 +4,8 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::JungleClient;
 use jungle_viewer::{
-    AnyAnimal, ClusterKind, ClusterView, ClusterViewCtx, JunglePanelTheme, Phase, RuntimeState,
-    StepKind, StepViewCtx, ViewerEvent,
+    AnyAnimal, ClusterView, ClusterViewCtx, JunglePanelTheme, Phase, RuntimeState, StepKind,
+    StepViewCtx, ViewerEvent,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -83,34 +83,6 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         _state: &Self::State,
         cx: &ClusterViewCtx<'_>,
     ) -> ClusterView<Self::Message> {
-        if matches!(cx.kind, ClusterKind::Transparent) {
-            return ClusterView::Collapsed {
-                element: button(
-                    column![
-                        text("transparent")
-                            .size(10)
-                            .color(Color::from_rgb8(168, 198, 181)),
-                        text(cx.label.to_string())
-                            .size(13)
-                            .color(Color::from_rgb8(223, 245, 230))
-                    ]
-                    .spacing(4),
-                )
-                .padding([8, 10])
-                .width(Length::Shrink)
-                .style(|_theme, _status| iced::widget::button::Style {
-                    background: Some(iced::Background::Color(Color::from_rgb8(27, 61, 43))),
-                    text_color: Color::from_rgb8(223, 245, 230),
-                    border: iced::border::rounded(10)
-                        .color(Color::from_rgb8(58, 122, 86))
-                        .width(1.0),
-                    ..Default::default()
-                })
-                .into(),
-                size: (240.0, 80.0),
-            };
-        }
-
         ClusterView::Expanded {
             overlay: Some(
                 container(
