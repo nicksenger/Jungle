@@ -2,8 +2,10 @@
 
 use crate::testing::actions;
 use crate::testing::state::{CounterState, RaceState, SleepCycleState};
+use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_types::{
-    ActionCompletion, Animal, Condition, Either, Identity, LoopCondition, Pulse, Sleep,
+    ActionCompletion, Animal, Condition, Either, Identity, IoLens, IoMapper, LoopCondition, Pulse,
+    Sleep,
 };
 
 pub struct CounterAddOne;
@@ -103,40 +105,63 @@ where
     }
 }
 
-pub struct CaptureSelectWinner;
-impl<T> Pulse<T> for CaptureSelectWinner
+pub struct CaptureWinnerValue;
+impl<T> Pulse<T> for CaptureWinnerValue
 where
     T: Animal<State = RaceState>,
 {
     type Action = actions::TimedValue;
     type Aspect = Identity;
-    type Arg = Either<i32, i32>;
-    type Ret = ();
+    type Arg = i32;
+    type Ret = i32;
 
     fn emit(
         _state: &RaceState,
         input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
-        let winner = match input {
-            Either::Left(value) | Either::Right(value) => value,
-        };
-        (0, winner)
+        (0, input)
     }
 
     fn absorb(state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.winner = output.expect("winner capture should succeed");
+        let winner = output.expect("winner capture should succeed");
+        state.winner = winner;
+        winner
     }
 }
 
-pub struct CaptureJoinSum;
-impl<T> Pulse<T> for CaptureJoinSum
+pub struct WinnerEitherMap;
+impl IoMapper<i32, i32, U0> for WinnerEitherMap {
+    type Arg = Either<i32, i32>;
+    type Ret = Either<i32, i32>;
+    type Carry = bool;
+
+    fn split(input: Self::Arg) -> (Self::Carry, i32) {
+        match input {
+            Either::Left(value) => (true, value),
+            Either::Right(value) => (false, value),
+        }
+    }
+
+    fn merge(carry: Self::Carry, focus: i32) -> Self::Ret {
+        if carry {
+            Either::Left(focus)
+        } else {
+            Either::Right(focus)
+        }
+    }
+}
+
+pub type CaptureSelectWinner = IoLens<CaptureWinnerValue, U0, WinnerEitherMap>;
+
+pub struct CaptureJoinSumValue;
+impl<T> Pulse<T> for CaptureJoinSumValue
 where
     T: Animal<State = RaceState>,
 {
     type Action = actions::TimedValue;
     type Aspect = Identity;
     type Arg = (i32, i32);
-    type Ret = ();
+    type Ret = i32;
 
     fn emit(
         _state: &RaceState,
@@ -146,9 +171,28 @@ where
     }
 
     fn absorb(state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.joined_sum = output.expect("join sum capture should succeed");
+        let total = output.expect("join sum capture should succeed");
+        state.joined_sum = total;
+        total
     }
 }
+
+pub struct JoinTupleMap;
+impl IoMapper<(i32, i32), i32, U0> for JoinTupleMap {
+    type Arg = (i32, i32);
+    type Ret = (i32, i32);
+    type Carry = i32;
+
+    fn split(input: Self::Arg) -> (Self::Carry, (i32, i32)) {
+        (input.0, input)
+    }
+
+    fn merge(carry: Self::Carry, focus: i32) -> Self::Ret {
+        (carry, focus)
+    }
+}
+
+pub type CaptureJoinSum = IoLens<CaptureJoinSumValue, U0, JoinTupleMap>;
 
 pub struct SleepAddBefore;
 impl<T> Pulse<T> for SleepAddBefore

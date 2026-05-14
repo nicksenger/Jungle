@@ -1,8 +1,9 @@
 use jungle_sdk::types::{
-    Action, ActionCompletion, ContextExecutor, Either, Executor, Identity, Join, Pulse, Select,
-    Sleep, SleepDependency, Step,
+    Action, ActionCompletion, ContextExecutor, Either, Executor, Identity, IoLens, IoMapper, Join,
+    Pulse, Select, Sleep, SleepDependency, Step,
 };
 use jungle_sdk::{Journey, Optic};
+use jungle_sdk::typosaurus::num::consts::U0;
 use std::time::Duration;
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -91,27 +92,50 @@ impl Pulse<SelectAnimal> for SelectSlow {
     }
 }
 
-struct CaptureSelectWinner;
-impl Pulse<SelectAnimal> for CaptureSelectWinner {
+struct CaptureWinnerValue;
+impl Pulse<SelectAnimal> for CaptureWinnerValue {
     type Action = TimedValueAction;
     type Aspect = Identity;
-    type Arg = Either<i32, i32>;
-    type Ret = ();
+    type Arg = i32;
+    type Ret = i32;
 
     fn emit(_state: &SelectJoinState, input: Self::Arg) -> (u64, i32) {
-        let winner = match input {
-            Either::Left(value) | Either::Right(value) => value,
-        };
-        (0, winner)
+        (0, input)
     }
 
     fn absorb(
         state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Ret {
-        state.winner = output.expect("winner capture should succeed");
+        let winner = output.expect("winner capture should succeed");
+        state.winner = winner;
+        winner
     }
 }
+
+struct WinnerEitherMap;
+impl IoMapper<i32, i32, U0> for WinnerEitherMap {
+    type Arg = Either<i32, i32>;
+    type Ret = Either<i32, i32>;
+    type Carry = bool;
+
+    fn split(input: Self::Arg) -> (Self::Carry, i32) {
+        match input {
+            Either::Left(value) => (true, value),
+            Either::Right(value) => (false, value),
+        }
+    }
+
+    fn merge(carry: Self::Carry, focus: i32) -> Self::Ret {
+        if carry {
+            Either::Left(focus)
+        } else {
+            Either::Right(focus)
+        }
+    }
+}
+
+type CaptureSelectWinner = IoLens<CaptureWinnerValue, U0, WinnerEitherMap>;
 
 #[derive(Journey)]
 struct SelectJourney(
@@ -164,12 +188,12 @@ impl Pulse<JoinAnimal> for JoinSlow {
     }
 }
 
-struct CaptureJoinSum;
-impl Pulse<JoinAnimal> for CaptureJoinSum {
+struct CaptureJoinSumValue;
+impl Pulse<JoinAnimal> for CaptureJoinSumValue {
     type Action = TimedValueAction;
     type Aspect = Identity;
     type Arg = (i32, i32);
-    type Ret = ();
+    type Ret = i32;
 
     fn emit(_state: &SelectJoinState, input: Self::Arg) -> (u64, i32) {
         (0, input.0 + input.1)
@@ -179,9 +203,28 @@ impl Pulse<JoinAnimal> for CaptureJoinSum {
         state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
     ) -> Self::Ret {
-        state.joined_sum = output.expect("join sum capture should succeed");
+        let total = output.expect("join sum capture should succeed");
+        state.joined_sum = total;
+        total
     }
 }
+
+struct JoinTupleMap;
+impl IoMapper<(i32, i32), i32, U0> for JoinTupleMap {
+    type Arg = (i32, i32);
+    type Ret = (i32, i32);
+    type Carry = i32;
+
+    fn split(input: Self::Arg) -> (Self::Carry, (i32, i32)) {
+        (input.0, input)
+    }
+
+    fn merge(carry: Self::Carry, focus: i32) -> Self::Ret {
+        (carry, focus)
+    }
+}
+
+type CaptureJoinSum = IoLens<CaptureJoinSumValue, U0, JoinTupleMap>;
 
 #[derive(Journey)]
 struct JoinJourney(
