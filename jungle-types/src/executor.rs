@@ -1622,9 +1622,9 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, M, F> BuildFlow<DynFlow<State>> for Transparent<M, F>
+impl<State, M, F> BuildFlow<DynFlow<State>> for Transparent<M, F>
 where
-    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
 {
     type Output = DynFlow<State>;
 
@@ -2164,13 +2164,12 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Transparent<M, F>
+impl<Context, State, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Transparent<M, F>
 where
     F: BuildFlowWithContext<
-            (Arc<Context>, DynFlow<State>),
-            Output = (Arc<Context>, DynFlow<State>),
-        > + Running<In = (State, In)>,
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
