@@ -21,14 +21,14 @@ struct Tick;
 impl Pulse<Looper> for Tick {
     type Action = TickAction;
     type Aspect = Identity;
-    type CarryIn = i32;
-    type CarryOut = (bool, i32);
+    type Arg = i32;
+    type Ret = (bool, i32);
 
-    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
+    fn emit(state: &i32, input: Self::Arg) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::CarryOut {
+    fn absorb(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Ret {
         let value = output.expect("tick action should succeed");
         *state = value;
         (*state < 3, value)
@@ -39,7 +39,7 @@ type TickFlow = Step<Looper, Tick>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {
-    type CarryIn = i32;
+    type Arg = i32;
 
     fn should_continue(state: &i32) -> bool {
         *state < 3

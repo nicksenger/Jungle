@@ -48,14 +48,14 @@ struct Seed;
 impl Pulse<ProgressAnimal> for Seed {
     type Action = SeedAction;
     type Aspect = Identity;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(_state: &i32, input: Self::CarryIn) -> i32 {
+    fn emit(_state: &i32, input: Self::Arg) -> i32 {
         input + 1
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::CarryOut {
+    fn absorb(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Ret {
         let value = output.expect("seed action should succeed");
         *state = value;
         value
@@ -66,14 +66,14 @@ struct Finish;
 impl Pulse<ProgressAnimal> for Finish {
     type Action = FinishAction;
     type Aspect = Identity;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
+    fn emit(state: &i32, input: Self::Arg) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::CarryOut {
+    fn absorb(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Ret {
         let value = output.expect("finish action should succeed");
         *state = value;
         value
@@ -121,7 +121,7 @@ trait StepExecutor:
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
-    A: Pulse<ProgressAnimal, Aspect = Identity, CarryIn = i32, CarryOut = i32>,
+    A: Pulse<ProgressAnimal, Aspect = Identity, Arg = i32, Ret = i32>,
     <A as Pulse<ProgressAnimal>>::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
     type Action = <A as Pulse<ProgressAnimal>>::Action;
@@ -239,14 +239,14 @@ struct BranchStepA;
 impl Pulse<BranchAnimal> for BranchStepA {
     type Action = BranchAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &i32, _input: Self::CarryIn) -> i32 {
+    fn emit(state: &i32, _input: Self::Arg) -> i32 {
         *state
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         *state = output.expect("branch step A should succeed");
     }
 }
@@ -255,14 +255,14 @@ struct BranchStepB;
 impl Pulse<BranchAnimal> for BranchStepB {
     type Action = BranchAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &i32, _input: Self::CarryIn) -> i32 {
+    fn emit(state: &i32, _input: Self::Arg) -> i32 {
         *state
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         *state = output.expect("branch step B should succeed");
     }
 }

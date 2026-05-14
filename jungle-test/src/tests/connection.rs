@@ -23,15 +23,15 @@ struct ConnectionStep7;
 impl jungle_sdk::types::Pulse<ConnectionAnimal7> for ConnectionStep7 {
     type Action = ConnectionAction7;
     type Aspect = jungle_sdk::types::Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &(), _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &(), _input: Self::Arg) -> Self::Arg {}
 
     fn absorb(
         _state: &mut (),
         output: jungle_sdk::types::ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("connection animal 7 action should succeed");
     }
 }
@@ -52,15 +52,15 @@ struct ConnectionStep9;
 impl jungle_sdk::types::Pulse<ConnectionAnimal9> for ConnectionStep9 {
     type Action = ConnectionAction9;
     type Aspect = jungle_sdk::types::Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &(), _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &(), _input: Self::Arg) -> Self::Arg {}
 
     fn absorb(
         _state: &mut (),
         output: jungle_sdk::types::ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("connection animal 9 action should succeed");
     }
 }

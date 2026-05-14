@@ -13,16 +13,16 @@ where
 {
     type Action = actions::AddOne;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
     fn emit(
         _state: &CounterState,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
     }
 
-    fn absorb(state: &mut CounterState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut CounterState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let delta = output.expect("counter add-one should succeed");
         state.value += delta;
         state.value
@@ -36,16 +36,16 @@ where
 {
     type Action = actions::AddTwo;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
     fn emit(
         _state: &CounterState,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
     }
 
-    fn absorb(state: &mut CounterState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut CounterState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let delta = output.expect("counter add-two should succeed");
         state.value += delta;
         state.value
@@ -66,17 +66,17 @@ where
 {
     type Action = actions::TimedValue;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
     fn emit(
         state: &RaceState,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
         (state.fast_ms, 1)
     }
 
-    fn absorb(_state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("fast race branch should succeed")
     }
 }
@@ -88,17 +88,17 @@ where
 {
     type Action = actions::TimedValue;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
     fn emit(
         state: &RaceState,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
         (state.slow_ms, 2)
     }
 
-    fn absorb(_state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("slow race branch should succeed")
     }
 }
@@ -110,12 +110,12 @@ where
 {
     type Action = actions::TimedValue;
     type Aspect = Identity;
-    type CarryIn = Either<i32, i32>;
-    type CarryOut = ();
+    type Arg = Either<i32, i32>;
+    type Ret = ();
 
     fn emit(
         _state: &RaceState,
-        input: Self::CarryIn,
+        input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
         let winner = match input {
             Either::Left(value) | Either::Right(value) => value,
@@ -123,7 +123,7 @@ where
         (0, winner)
     }
 
-    fn absorb(state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.winner = output.expect("winner capture should succeed");
     }
 }
@@ -135,17 +135,17 @@ where
 {
     type Action = actions::TimedValue;
     type Aspect = Identity;
-    type CarryIn = (i32, i32);
-    type CarryOut = ();
+    type Arg = (i32, i32);
+    type Ret = ();
 
     fn emit(
         _state: &RaceState,
-        input: Self::CarryIn,
+        input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
         (0, input.0 + input.1)
     }
 
-    fn absorb(state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut RaceState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.joined_sum = output.expect("join sum capture should succeed");
     }
 }
@@ -157,19 +157,19 @@ where
 {
     type Action = actions::AddOne;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
     fn emit(
         _state: &SleepCycleState,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
     }
 
     fn absorb(
         state: &mut SleepCycleState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         state.counter += output.expect("pre-sleep increment should succeed");
         state.phase += 1;
     }
@@ -182,12 +182,12 @@ where
 {
     type Action = Sleep;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
     fn emit(
         state: &SleepCycleState,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
         std::time::Duration::from_millis(state.sleep_for_ms)
     }
@@ -195,7 +195,7 @@ where
     fn absorb(
         state: &mut SleepCycleState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("scheduler sleep should resume successfully");
         state.phase += 1;
     }
@@ -208,19 +208,19 @@ where
 {
     type Action = actions::AddOne;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
     fn emit(
         _state: &SleepCycleState,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_types::Action>::In {
     }
 
     fn absorb(
         state: &mut SleepCycleState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         state.counter += output.expect("post-sleep increment should succeed");
         state.phase += 1;
     }
@@ -228,7 +228,7 @@ where
 
 pub struct SleepCycleNotComplete;
 impl LoopCondition<SleepCycleState> for SleepCycleNotComplete {
-    type CarryIn = ();
+    type Arg = ();
 
     fn should_continue(state: &SleepCycleState) -> bool {
         state.phase < 3

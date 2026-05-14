@@ -57,17 +57,17 @@ struct SelectFast;
 impl Pulse<SelectAnimal> for SelectFast {
     type Action = TimedValueAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
-    fn emit(state: &SelectJoinState, _input: Self::CarryIn) -> (u64, i32) {
+    fn emit(state: &SelectJoinState, _input: Self::Arg) -> (u64, i32) {
         (state.fast_ms, 1)
     }
 
     fn absorb(
         _state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("fast action should succeed")
     }
 }
@@ -76,17 +76,17 @@ struct SelectSlow;
 impl Pulse<SelectAnimal> for SelectSlow {
     type Action = TimedValueAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
-    fn emit(state: &SelectJoinState, _input: Self::CarryIn) -> (u64, i32) {
+    fn emit(state: &SelectJoinState, _input: Self::Arg) -> (u64, i32) {
         (state.slow_ms, 2)
     }
 
     fn absorb(
         _state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("slow action should succeed")
     }
 }
@@ -95,10 +95,10 @@ struct CaptureSelectWinner;
 impl Pulse<SelectAnimal> for CaptureSelectWinner {
     type Action = TimedValueAction;
     type Aspect = Identity;
-    type CarryIn = Either<i32, i32>;
-    type CarryOut = ();
+    type Arg = Either<i32, i32>;
+    type Ret = ();
 
-    fn emit(_state: &SelectJoinState, input: Self::CarryIn) -> (u64, i32) {
+    fn emit(_state: &SelectJoinState, input: Self::Arg) -> (u64, i32) {
         let winner = match input {
             Either::Left(value) | Either::Right(value) => value,
         };
@@ -108,7 +108,7 @@ impl Pulse<SelectAnimal> for CaptureSelectWinner {
     fn absorb(
         state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         state.winner = output.expect("winner capture should succeed");
     }
 }
@@ -130,17 +130,17 @@ struct JoinFast;
 impl Pulse<JoinAnimal> for JoinFast {
     type Action = TimedValueAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
-    fn emit(state: &SelectJoinState, _input: Self::CarryIn) -> (u64, i32) {
+    fn emit(state: &SelectJoinState, _input: Self::Arg) -> (u64, i32) {
         (state.fast_ms, 1)
     }
 
     fn absorb(
         _state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("join fast should succeed")
     }
 }
@@ -149,17 +149,17 @@ struct JoinSlow;
 impl Pulse<JoinAnimal> for JoinSlow {
     type Action = TimedValueAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
-    fn emit(state: &SelectJoinState, _input: Self::CarryIn) -> (u64, i32) {
+    fn emit(state: &SelectJoinState, _input: Self::Arg) -> (u64, i32) {
         (state.slow_ms, 2)
     }
 
     fn absorb(
         _state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("join slow should succeed")
     }
 }
@@ -168,17 +168,17 @@ struct CaptureJoinSum;
 impl Pulse<JoinAnimal> for CaptureJoinSum {
     type Action = TimedValueAction;
     type Aspect = Identity;
-    type CarryIn = (i32, i32);
-    type CarryOut = ();
+    type Arg = (i32, i32);
+    type Ret = ();
 
-    fn emit(_state: &SelectJoinState, input: Self::CarryIn) -> (u64, i32) {
+    fn emit(_state: &SelectJoinState, input: Self::Arg) -> (u64, i32) {
         (0, input.0 + input.1)
     }
 
     fn absorb(
         state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         state.joined_sum = output.expect("join sum capture should succeed");
     }
 }
@@ -200,17 +200,17 @@ struct TimeoutSleep;
 impl Pulse<TimeoutAnimal> for TimeoutSleep {
     type Action = Sleep;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
-    fn emit(state: &SelectJoinState, _input: Self::CarryIn) -> Duration {
+    fn emit(state: &SelectJoinState, _input: Self::Arg) -> Duration {
         Duration::from_millis(state.fast_ms)
     }
 
     fn absorb(
         state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("timeout sleep should succeed");
         state.winner = -1;
         -1
@@ -221,17 +221,17 @@ struct TimeoutSlow;
 impl Pulse<TimeoutAnimal> for TimeoutSlow {
     type Action = ContextTimedValueAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = i32;
+    type Arg = ();
+    type Ret = i32;
 
-    fn emit(state: &SelectJoinState, _input: Self::CarryIn) -> (u64, i32) {
+    fn emit(state: &SelectJoinState, _input: Self::Arg) -> (u64, i32) {
         (state.slow_ms, 9)
     }
 
     fn absorb(
         state: &mut SelectJoinState,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         let value = output.expect("timeout slow should succeed");
         state.winner = value;
         value

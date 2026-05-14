@@ -169,7 +169,7 @@ fn default_nervous_system() -> NervousSystem {
 
 pub struct GorillaStillGrowing;
 impl LoopCondition<State> for GorillaStillGrowing {
-    type CarryIn = ();
+    type Arg = ();
 
     fn should_continue(state: &State) -> bool {
         state.temporal.age.life_phase != LifePhase::Adult
@@ -178,7 +178,7 @@ impl LoopCondition<State> for GorillaStillGrowing {
 
 pub struct GorillaDaylightRemaining;
 impl LoopCondition<State> for GorillaDaylightRemaining {
-    type CarryIn = ();
+    type Arg = ();
 
     fn should_continue(state: &State) -> bool {
         state.temporal.perception.minutes_since_transition < GORILLA_DAY_LOOPS_PER_YEAR
@@ -225,14 +225,14 @@ pub struct GorillaAdvanceAge;
 impl Pulse<Gorilla> for GorillaAdvanceAge {
     type Action = actions::AdvanceAge;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         state.temporal.age.age_years
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let next = output.expect("gorilla age advancement should succeed");
         state.temporal.age = next;
         state.age = u32::from(state.temporal.age.age_years);
@@ -247,10 +247,10 @@ pub struct GorillaTickPerceivedTime;
 impl Pulse<Gorilla> for GorillaTickPerceivedTime {
     type Action = actions::TickPerceivedTime;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         let segment_minutes = if state.temporal.perception.minutes_since_transition % 2 == 0 {
             0
         } else {
@@ -259,7 +259,7 @@ impl Pulse<Gorilla> for GorillaTickPerceivedTime {
         (state.temporal.perception.current, segment_minutes)
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let next = output.expect("gorilla perceived-time tick should succeed");
         // Track day-loop progress as "iterations elapsed this year" and keep
         // time-of-day cycling for activity-window branch decisions.
@@ -277,14 +277,14 @@ pub struct GorillaBirthday;
 impl Pulse<Gorilla> for GorillaBirthday {
     type Action = actions::CelebrateBirthday;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         state.temporal.age.clone()
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.temporal.age = output.expect("gorilla birthday state refresh should succeed");
         state.age = u32::from(state.temporal.age.age_years);
     }
@@ -294,14 +294,14 @@ pub struct GorillaBirth;
 impl Pulse<Gorilla> for GorillaBirth {
     type Action = actions::Birth;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         state.temporal.age.clone()
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.temporal.age = output.expect("gorilla birth state refresh should succeed");
         state.age = u32::from(state.temporal.age.age_years);
     }
@@ -311,17 +311,17 @@ pub struct GorillaEvaluateActivityWindow;
 impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
     type Action = actions::EvaluateActivityWindow;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         (
             state.temporal.schedule.activity,
             state.temporal.perception.current,
         )
     }
 
-    fn absorb(_state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let _ = output.expect("gorilla activity-window evaluation should succeed");
     }
 }
@@ -330,14 +330,14 @@ pub struct GorillaPeelFruit;
 impl Pulse<Gorilla> for GorillaPeelFruit {
     type Action = actions::PeelFruit;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         (state.meal.rind.thickness_mm, state.meal.flesh.mass_g)
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let edible = output.expect("gorilla peel-fruit should succeed");
         state.meal.flesh.mass_g = edible;
     }
@@ -347,14 +347,14 @@ pub struct GorillaEat;
 impl Pulse<Gorilla> for GorillaEat {
     type Action = actions::Eat;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         state.vitals.energy
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let energy = output.expect("gorilla eat should succeed");
         state.vitals.energy = energy;
         state.vitals.is_hungry = energy < 30;
@@ -366,14 +366,14 @@ pub struct GorillaUseTool;
 impl Pulse<Gorilla> for GorillaUseTool {
     type Action = actions::UseTool;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         state.hands.left.opposable_thumb && state.hands.right.opposable_thumb
     }
 
-    fn absorb(_state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let _note = output.expect("gorilla tool-use should succeed");
     }
 }
@@ -382,17 +382,17 @@ pub struct GorillaChestBeat;
 impl Pulse<Gorilla> for GorillaChestBeat {
     type Action = actions::ChestBeat;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         (
             state.vitals.stress,
             state.hands.left.opposable_thumb && state.hands.right.opposable_thumb,
         )
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.vitals.stress = output.expect("gorilla chest-beat should succeed");
     }
 }
@@ -401,14 +401,14 @@ pub struct GorillaRest;
 impl Pulse<Gorilla> for GorillaRest {
     type Action = actions::Rest;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         state.vitals.energy
     }
 
-    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let energy = output.expect("gorilla rest should succeed");
         state.vitals.energy = energy;
         state.vitals.is_hungry = energy < 30;
@@ -420,10 +420,10 @@ pub struct GorillaMakeSound;
 impl Pulse<Gorilla> for GorillaMakeSound {
     type Action = actions::MakeSound;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &State, _input: Self::CarryIn) -> <Self::Action as Action>::In {
+    fn emit(state: &State, _input: Self::Arg) -> <Self::Action as Action>::In {
         let kind = match state.temporal.perception.current {
             PerceivedTimeOfDay::Morning => "morning call",
             PerceivedTimeOfDay::Afternoon => "contact hoot",
@@ -433,7 +433,7 @@ impl Pulse<Gorilla> for GorillaMakeSound {
         (kind.to_owned(), state.vitals.stress)
     }
 
-    fn absorb(_state: &mut State, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(_state: &mut State, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let _signal = output.expect("gorilla vocalization should succeed");
     }
 }
@@ -512,19 +512,19 @@ pub struct ProbeStep;
 impl jungle_sdk::types::Pulse<Gorilla> for ProbeStep {
     type Action = crate::probe::ProbeAction;
     type Aspect = jungle_sdk::types::Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
     fn emit(
         _state: &<Gorilla as Animal>::State,
-        _input: Self::CarryIn,
+        _input: Self::Arg,
     ) -> <Self::Action as jungle_sdk::types::Action>::In {
     }
 
     fn absorb(
         _state: &mut <Gorilla as Animal>::State,
         _output: jungle_sdk::types::ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
     }
 }
 

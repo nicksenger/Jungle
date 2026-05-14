@@ -57,12 +57,12 @@ struct LegacyStep;
 impl Pulse<LegacyAnimal> for LegacyStep {
     type Action = LegacyAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         *state = output.expect("legacy step should succeed");
     }
 }
@@ -71,12 +71,12 @@ struct ModernStep;
 impl Pulse<ModernAnimal> for ModernStep {
     type Action = ModernAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &i32, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         *state = output.expect("modern step should succeed");
     }
 }

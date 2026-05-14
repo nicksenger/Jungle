@@ -64,14 +64,14 @@ pub struct ObserveSleep;
 impl Pulse<ObserveAnimal> for ObserveSleep {
     type Action = Sleep;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &ObserveState, _input: Self::CarryIn) -> Duration {
+    fn emit(state: &ObserveState, _input: Self::Arg) -> Duration {
         Duration::from_millis(state.sleep_ms)
     }
 
-    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("sleep branch should complete");
         state.tick = state.tick.saturating_add(1);
     }
@@ -81,12 +81,12 @@ pub struct ObserveBump;
 impl Pulse<ObserveAnimal> for ObserveBump {
     type Action = BumpAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &ObserveState, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &ObserveState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("bump branch should complete");
         state.tick = state.tick.saturating_add(1);
     }
@@ -101,7 +101,7 @@ impl Condition<(ObserveState, ())> for ObserveChooseSleep {
 
 pub struct ObserveLoopForever;
 impl LoopCondition<ObserveState> for ObserveLoopForever {
-    type CarryIn = ();
+    type Arg = ();
 
     fn should_continue(_state: &ObserveState) -> bool {
         true

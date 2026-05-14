@@ -69,15 +69,15 @@ impl<In> ConditionInput for (Vec<bool>, In) {
 
 /// Input adapter used by [`While`] to decide loop continuation and forward carry input.
 pub trait LoopInput {
-    type CarryIn;
+    type Arg;
 
-    fn into_loop(self) -> (bool, Self::CarryIn);
+    fn into_loop(self) -> (bool, Self::Arg);
 }
 
 impl<In> LoopInput for (bool, In) {
-    type CarryIn = In;
+    type Arg = In;
 
-    fn into_loop(self) -> (bool, Self::CarryIn) {
+    fn into_loop(self) -> (bool, Self::Arg) {
         self
     }
 }
@@ -89,7 +89,7 @@ pub trait Condition<In> {
 
 /// Legacy predicate hook for [`While`], retained as a marker for type-level flow shape.
 pub trait LoopCondition<State> {
-    type CarryIn;
+    type Arg;
 
     fn should_continue(state: &State) -> bool;
 }

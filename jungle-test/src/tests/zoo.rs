@@ -49,12 +49,12 @@ where
 {
     type Action = A;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &T::State, _input: Self::CarryIn) -> A::In {}
+    fn emit(_state: &T::State, _input: Self::Arg) -> A::In {}
 
-    fn absorb(_state: &mut T::State, output: ActionCompletion<A>) -> Self::CarryOut {
+    fn absorb(_state: &mut T::State, output: ActionCompletion<A>) -> Self::Ret {
         output.expect("workflow action should succeed");
     }
 }
@@ -220,12 +220,12 @@ struct RunnerStepOne;
 impl Pulse<RunnerAnimal> for RunnerStepOne {
     type Action = RunnerStepOneAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &RunnerState, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &RunnerState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.0 += output.expect("runner step one should succeed");
     }
 }
@@ -234,19 +234,19 @@ struct RunnerStepTwo;
 impl Pulse<RunnerAnimal> for RunnerStepTwo {
     type Action = RunnerStepTwoAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &RunnerState, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &RunnerState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.0 += output.expect("runner step two should succeed");
     }
 }
 
 struct RunnerKeepGoing;
 impl LoopCondition<RunnerState> for RunnerKeepGoing {
-    type CarryIn = ();
+    type Arg = ();
 
     fn should_continue(state: &RunnerState) -> bool {
         state.0 < 4
@@ -465,14 +465,14 @@ where
 {
     type Action = A;
     type Aspect = Focus;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(value: &i32, _input: Self::CarryIn) -> Self::CarryIn {
+    fn emit(value: &i32, _input: Self::Arg) -> Self::Arg {
         *value
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(value: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let delta = output.expect("add i32 step should succeed");
         *value += delta;
         *value
@@ -485,7 +485,7 @@ type TigerEatTask = AddI32<Lens<ExecutorCatState, list![U0, U0]>, EatEnergy>;
 
 struct ApeKeepRunning;
 impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
-    type CarryIn = i32;
+    type Arg = i32;
 
     fn should_continue(state: &ExecutorApeState) -> bool {
         state.core.rounds < 4
@@ -494,7 +494,7 @@ impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
 
 struct TigerKeepRunning;
 impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
-    type CarryIn = i32;
+    type Arg = i32;
 
     fn should_continue(state: &ExecutorCatState) -> bool {
         state.core.energy < 15

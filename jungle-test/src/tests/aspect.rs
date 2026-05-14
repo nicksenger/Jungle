@@ -41,14 +41,14 @@ where
 {
     type Action = Sleep;
     type Aspect = Focus;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(core: &CoreState, input: Self::CarryIn) -> i32 {
+    fn emit(core: &CoreState, input: Self::Arg) -> i32 {
         core.energy + input
     }
 
-    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::CarryOut {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Ret {
         let value = output.expect("sleep should succeed");
         core.energy = value;
         value
@@ -62,14 +62,14 @@ where
 {
     type Action = Eat;
     type Aspect = Focus;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(core: &CoreState, input: Self::CarryIn) -> i32 {
+    fn emit(core: &CoreState, input: Self::Arg) -> i32 {
         core.energy + input
     }
 
-    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::CarryOut {
+    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Ret {
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
@@ -86,14 +86,14 @@ where
 {
     type Action = A;
     type Aspect = Focus;
-    type CarryIn = A::In;
-    type CarryOut = i32;
+    type Arg = A::In;
+    type Ret = i32;
 
-    fn emit(_value: &i32, input: Self::CarryIn) -> A::In {
+    fn emit(_value: &i32, input: Self::Arg) -> A::In {
         input
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::CarryOut {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Ret {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -113,14 +113,14 @@ where
 {
     type Action = A;
     type Aspect = Focus;
-    type CarryIn = A::In;
-    type CarryOut = i32;
+    type Arg = A::In;
+    type Ret = i32;
 
-    fn emit(_value: &i32, input: Self::CarryIn) -> A::In {
+    fn emit(_value: &i32, input: Self::Arg) -> A::In {
         input
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::CarryOut {
+    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Ret {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("action should succeed"),
@@ -134,14 +134,14 @@ struct GorillaSleepManual;
 impl Pulse<Gorilla> for GorillaSleepManual {
     type Action = Sleep;
     type Aspect = Identity;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(state: &GorillaState, input: Self::CarryIn) -> i32 {
+    fn emit(state: &GorillaState, input: Self::Arg) -> i32 {
         state.core.energy + input
     }
 
-    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::CarryOut {
+    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Ret {
         let value = output.expect("sleep should succeed");
         state.core.energy = value;
         state.core.age += 1;
@@ -164,7 +164,7 @@ struct GorillaLoopSequence(
 
 struct GorillaUnderAgeHundred;
 impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
-    type CarryIn = i32;
+    type Arg = i32;
 
     fn should_continue(state: &GorillaState) -> bool {
         state.core.age < 100
@@ -190,7 +190,7 @@ struct TigerLoopSequence(
 
 struct TigerUnderHundredStripes;
 impl LoopCondition<TigerState> for TigerUnderHundredStripes {
-    type CarryIn = i32;
+    type Arg = i32;
 
     fn should_continue(state: &TigerState) -> bool {
         state.core.energy < 100

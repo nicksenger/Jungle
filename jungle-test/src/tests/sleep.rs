@@ -47,12 +47,12 @@ struct AddBeforeSleep;
 impl Pulse<SleepAnimal> for AddBeforeSleep {
     type Action = AddAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &SleepState, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &SleepState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.counter += output.expect("add before sleep should succeed");
         state.phase += 1;
     }
@@ -62,14 +62,14 @@ struct SleepForStateWake;
 impl Pulse<SleepAnimal> for SleepForStateWake {
     type Action = Sleep;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(state: &SleepState, _input: Self::CarryIn) -> Duration {
+    fn emit(state: &SleepState, _input: Self::Arg) -> Duration {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("sleep should resume successfully");
         state.phase += 1;
     }
@@ -79,12 +79,12 @@ struct AddAfterSleep;
 impl Pulse<SleepAnimal> for AddAfterSleep {
     type Action = AddAction;
     type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
+    type Arg = ();
+    type Ret = ();
 
-    fn emit(_state: &SleepState, _input: Self::CarryIn) -> Self::CarryIn {}
+    fn emit(_state: &SleepState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.counter += output.expect("add after sleep should succeed");
         state.phase += 1;
     }
@@ -92,7 +92,7 @@ impl Pulse<SleepAnimal> for AddAfterSleep {
 
 struct SleepNotComplete;
 impl LoopCondition<SleepState> for SleepNotComplete {
-    type CarryIn = ();
+    type Arg = ();
 
     fn should_continue(state: &SleepState) -> bool {
         state.phase < 3

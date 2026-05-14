@@ -59,12 +59,12 @@ where
 {
     type Action = Sleep;
     type Aspect = Focus;
-    type CarryIn = Duration;
-    type CarryOut = ();
+    type Arg = Duration;
+    type Ret = ();
 
     fn emit(
         _view: &<Focus as Aspect<T::State>>::View,
-        input: Self::CarryIn,
+        input: Self::Arg,
     ) -> <Self::Action as Action>::In {
         input
     }
@@ -72,7 +72,7 @@ where
     fn absorb(
         _view: &mut <Focus as Aspect<T::State>>::View,
         output: ActionCompletion<Self::Action>,
-    ) -> Self::CarryOut {
+    ) -> Self::Ret {
         output.expect("Sleep action should be resumed by worker runtime");
     }
 }

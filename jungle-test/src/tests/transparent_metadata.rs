@@ -25,14 +25,14 @@ struct TransparentStep;
 impl Pulse<TransparentAnimal> for TransparentStep {
     type Action = TransparentAction;
     type Aspect = Identity;
-    type CarryIn = i32;
-    type CarryOut = i32;
+    type Arg = i32;
+    type Ret = i32;
 
-    fn emit(state: &i32, input: Self::CarryIn) -> i32 {
+    fn emit(state: &i32, input: Self::Arg) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<TransparentAction>) -> Self::CarryOut {
+    fn absorb(state: &mut i32, output: ActionCompletion<TransparentAction>) -> Self::Ret {
         let value = output.expect("transparent step action should succeed");
         *state = value;
         value
