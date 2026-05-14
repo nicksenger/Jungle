@@ -32,5 +32,5 @@ pub(crate) use define_action;
 
 pub(crate) async fn maybe_delay() {
     #[cfg(feature = "delay")]
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 }
