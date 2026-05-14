@@ -13,6 +13,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
+use std::sync::Arc;
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct State {
@@ -528,6 +529,61 @@ impl AnimalObservation for Gorilla {
 
 impl AnimalPerturbation for Gorilla {
     type Adapter = NoopPerturbation;
+}
+
+#[allow(dead_code)]
+fn _assert_gorilla_context_buildflow_bounds() {
+    fn assert_running<R>()
+    where
+        R: jungle_sdk::types::Running<In = (State, ())>,
+    {
+    }
+
+    fn assert_step<S>()
+    where
+        S: jungle_sdk::types::BuildFlowWithContext<
+            (Arc<crate::Zoo>, jungle_sdk::types::DynFlow<State>),
+            Output = (Arc<crate::Zoo>, jungle_sdk::types::DynFlow<State>),
+        >,
+    {
+    }
+
+    assert_step::<Step<Gorilla, GorillaBirth>>();
+    assert_step::<Step<Gorilla, GorillaEvaluateActivityWindow>>();
+    assert_step::<Step<Gorilla, GorillaTickPerceivedTime>>();
+    assert_step::<Step<Gorilla, GorillaBirthday>>();
+    assert_step::<Step<Gorilla, GorillaAdvanceAge>>();
+    assert_step::<Step<Gorilla, GorillaPeelFruit>>();
+    assert_step::<Step<Gorilla, GorillaEat>>();
+    assert_step::<Step<Gorilla, GorillaUseTool>>();
+    assert_step::<Step<Gorilla, GorillaChestBeat>>();
+    assert_step::<Step<Gorilla, GorillaRest>>();
+    assert_step::<Step<Gorilla, GorillaMakeSound>>();
+
+    fn assert_flow<F>()
+    where
+        F: jungle_sdk::types::BuildFlowWithContext<
+            (Arc<crate::Zoo>, jungle_sdk::types::DynFlow<State>),
+            Output = (Arc<crate::Zoo>, jungle_sdk::types::DynFlow<State>),
+        >,
+    {
+    }
+
+    assert_flow::<GorillaFeedFlow>();
+    assert_flow::<GorillaToolSocialFlow>();
+    assert_flow::<GorillaSimpleSocialFlow>();
+    assert_flow::<GorillaActiveFlow>();
+    assert_flow::<GorillaDayFlow>();
+    assert_flow::<GorillaYearFlow>();
+    assert_flow::<GorillaJourney>();
+
+    assert_running::<GorillaFeedFlow>();
+    assert_running::<GorillaToolSocialFlow>();
+    assert_running::<GorillaSimpleSocialFlow>();
+    assert_running::<GorillaActiveFlow>();
+    assert_running::<GorillaDayFlow>();
+    assert_running::<GorillaYearFlow>();
+    assert_running::<GorillaJourney>();
 }
 
 #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]

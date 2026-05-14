@@ -17,7 +17,7 @@ pub use error::Error;
 pub use executor::{
     BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,
     ErasedStep, ExecutableActionRequest, Executor, ExecutorError, ExecutorFlow, JungleDynFlow,
-    ManualExecutor, TypedErasedStep,
+    JungleDynFlowContext, ManualExecutor, TypedErasedStep,
 };
 use inception::*;
 pub use journey::Journey;
