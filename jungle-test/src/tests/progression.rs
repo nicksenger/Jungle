@@ -1,11 +1,11 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, AnimalActionSet, ContextExecutor, Executor, Id,
-    Identity, ManualExecutor, Pulse, Running, Step, Waiting,
+    Action, ActionCompletion, ActionRequest, AnimalActionSet, Condition, Conditional,
+    ContextExecutor, Executor, Id, Identity, ManualExecutor, Pulse, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1};
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use jungle_sdk::{Animals, Journey};
 use std::future::ready;
 use std::sync::Arc;
@@ -216,4 +216,91 @@ fn context_executor_progresses_multi_step_derived_journey() {
 
     assert!(executor.is_complete());
     assert_eq!(executor.into_state(), 36);
+}
+
+struct BranchAction;
+impl jungle_types::ActionMember for BranchAction {}
+impl Action for BranchAction {
+    type Id = Id<U2>;
+    type Dependency = ();
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        _dependency: &Self::Dependency,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input + 1))
+    }
+}
+
+struct BranchStepA;
+impl Pulse<BranchAnimal> for BranchStepA {
+    type Action = BranchAction;
+    type Aspect = Identity;
+    type CarryIn = ();
+    type CarryOut = ();
+
+    fn emit(state: &i32, _input: Self::CarryIn) -> i32 {
+        *state
+    }
+
+    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+        *state = output.expect("branch step A should succeed");
+    }
+}
+
+struct BranchStepB;
+impl Pulse<BranchAnimal> for BranchStepB {
+    type Action = BranchAction;
+    type Aspect = Identity;
+    type CarryIn = ();
+    type CarryOut = ();
+
+    fn emit(state: &i32, _input: Self::CarryIn) -> i32 {
+        *state
+    }
+
+    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
+        *state = output.expect("branch step B should succeed");
+    }
+}
+
+struct UseDerivedBranch;
+impl Condition<(i32, ())> for UseDerivedBranch {
+    fn choose((state, _): &(i32, ())) -> bool {
+        *state >= 0
+    }
+}
+
+#[derive(Journey)]
+struct DerivedBranchFlow(Step<BranchAnimal, BranchStepA>, Step<BranchAnimal, BranchStepB>);
+
+type BranchConditionalFlow =
+    Conditional<UseDerivedBranch, DerivedBranchFlow, Step<BranchAnimal, BranchStepB>>;
+
+#[derive(Journey)]
+struct BranchJourney(BranchConditionalFlow);
+
+animal!(BranchAnimal, U1, i32, BranchJourney);
+
+struct BranchContext;
+impl From<&BranchContext> for () {
+    fn from(_value: &BranchContext) -> Self {}
+}
+
+#[test]
+fn context_executor_accepts_conditional_with_derived_multistep_branch() {
+    fn assert_context_flow<F>()
+    where
+        F: jungle_types::BuildFlowWithContext<
+            (Arc<BranchContext>, jungle_types::DynFlow<i32>),
+            Output = (Arc<BranchContext>, jungle_types::DynFlow<i32>),
+        >,
+    {
+    }
+
+    assert_context_flow::<DerivedBranchFlow>();
+    assert_context_flow::<BranchJourney>();
 }

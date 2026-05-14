@@ -477,7 +477,10 @@ pub struct ProbeDayFlow(
 );
 
 #[derive(jungle_sdk::Journey)]
-pub struct ProbeActiveFlow(Step<Gorilla, ProbeStep>);
+pub struct ProbeActiveFlow(
+    Step<Gorilla, ProbeStep>,
+    Step<Gorilla, ProbeStep>,
+);
 
 #[derive(jungle_sdk::Journey)]
 pub struct ProbeYearFlow(

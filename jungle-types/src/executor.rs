@@ -17,6 +17,72 @@ type ActionRunner = Box<dyn FnOnce() -> ActionFuture>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
 
+trait SplitStateCarry<State> {
+    type Carry;
+}
+
+impl<State, Carry> SplitStateCarry<State> for (State, Carry) {
+    type Carry = Carry;
+}
+
+trait CarryInputForState<State> {
+    type Carry;
+}
+
+impl<State, T, A> CarryInputForState<State> for Step<T, A>
+where
+    T: Animal<State = State>,
+    A: Pulse<T>,
+{
+    type Carry = A::CarryIn;
+}
+
+impl<State, P, L, R> CarryInputForState<State> for Conditional<P, L, R>
+where
+    L: CarryInputForState<State>,
+    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+{
+    type Carry = <L as CarryInputForState<State>>::Carry;
+}
+
+impl<State, M, F> CarryInputForState<State> for Transparent<M, F>
+where
+    F: CarryInputForState<State>,
+{
+    type Carry = <F as CarryInputForState<State>>::Carry;
+}
+
+impl<State, L, R> CarryInputForState<State> for Select<L, R>
+where
+    L: CarryInputForState<State>,
+    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+{
+    type Carry = <L as CarryInputForState<State>>::Carry;
+}
+
+impl<State, L, R> CarryInputForState<State> for Join<L, R>
+where
+    L: CarryInputForState<State>,
+    R: CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+{
+    type Carry = <L as CarryInputForState<State>>::Carry;
+}
+
+impl<State, C, F> CarryInputForState<State> for While<C, F>
+where
+    C: LoopCondition<State>,
+{
+    type Carry = <C as LoopCondition<State>>::CarryIn;
+}
+
+impl<State, F> CarryInputForState<State> for F
+where
+    (): crate::__inception_running::FieldsInput<F>,
+    <() as crate::__inception_running::FieldsInput<F>>::In: SplitStateCarry<State>,
+{
+    type Carry = <<() as crate::__inception_running::FieldsInput<F>>::In as SplitStateCarry<State>>::Carry;
+}
+
 fn decode_controlled_input<In, F>(input: &[u8], fallback: F) -> Result<(bool, In), ExecutorError>
 where
     In: DeserializeOwned + Serialize,
@@ -1498,23 +1564,31 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
+impl<State, P, L, R> BuildFlow<DynFlow<State>> for Conditional<P, L, R>
 where
     State: Clone + 'static,
-    In: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, In)> + 'static,
-    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
-    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + CarryInputForState<State>,
+    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
+        + CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
+    <L as CarryInputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
+    P: crate::Condition<(State, <L as CarryInputForState<State>>::Carry)> + 'static,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let left = <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
-        let choose_left = Box::new(|state: &State, input: &In| {
-            <P as crate::Condition<(State, In)>>::choose(&(state.clone(), input.clone()))
-        });
-        steps.push(Box::new(ConditionalErasedFlow::<State, In>::new(
+        let choose_left = Box::new(
+            |state: &State, input: &<L as CarryInputForState<State>>::Carry| {
+                <P as crate::Condition<(State, <L as CarryInputForState<State>>::Carry)>>::choose(
+                    &(state.clone(), input.clone()),
+                )
+            },
+        );
+        steps.push(Box::new(ConditionalErasedFlow::<
+            State,
+            <L as CarryInputForState<State>>::Carry,
+        >::new(
             left,
             right,
             choose_left,
@@ -1832,21 +1906,22 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, P, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+impl<Context, State, P, L, R> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
     for Conditional<P, L, R>
 where
     Context: 'static,
     State: Clone + 'static,
-    In: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, In)> + 'static,
+    L: CarryInputForState<State>,
+    <L as CarryInputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
+    P: crate::Condition<(State, <L as CarryInputForState<State>>::Carry)> + 'static,
     L: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + Running<In = (State, In)>,
+        >,
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + Running<In = (State, In)>,
+        > + CarryInputForState<State, Carry = <L as CarryInputForState<State>>::Carry>,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -1859,14 +1934,17 @@ where
             Arc::clone(&context),
             Vec::new(),
         ));
-        let choose_left = Box::new(|state: &State, input: &In| {
-            <P as crate::Condition<(State, In)>>::choose(&(state.clone(), input.clone()))
-        });
-        steps.push(Box::new(ConditionalContextErasedFlow::<State, In>::new(
-            left,
-            right,
-            choose_left,
-        )));
+        let choose_left = Box::new(
+            |state: &State, input: &<L as CarryInputForState<State>>::Carry| {
+                <P as crate::Condition<(State, <L as CarryInputForState<State>>::Carry)>>::choose(
+                    &(state.clone(), input.clone()),
+                )
+            },
+        );
+        steps.push(Box::new(ConditionalContextErasedFlow::<
+            State,
+            <L as CarryInputForState<State>>::Carry,
+        >::new(left, right, choose_left)));
         (context, steps)
     }
 }
