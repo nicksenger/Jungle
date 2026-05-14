@@ -514,6 +514,35 @@ pub trait Running {
     }
 }
 
+impl<T> __inception_running::FieldsInput<__inception_running::Wrap<T>> for ()
+where
+    T: Fields,
+    <T as Fields>::Head: Field,
+    <<T as Fields>::Head as Field>::Content: Running,
+{
+    type In = <<<T as Fields>::Head as Field>::Content as Running>::In;
+}
+
+impl<T> Running for __inception_running::Wrap<T>
+where
+    (): __inception_running::FieldsInput<__inception_running::Wrap<T>>,
+    __inception_running::Wrap<T>: IsPrimitive<JungleRunning, Is = False>,
+    __inception_running::Wrap<T>: __inception_running::Inductive<
+        False,
+        <() as __inception_running::FieldsInput<__inception_running::Wrap<T>>>::In,
+    >,
+{
+    type In = <() as __inception_running::FieldsInput<__inception_running::Wrap<T>>>::In;
+    type Out = <__inception_running::Wrap<T> as __inception_running::Inductive<
+        False,
+        <() as __inception_running::FieldsInput<__inception_running::Wrap<T>>>::In,
+    >>::Ret;
+
+    fn run(input: Self::In) -> Self::Out {
+        <Self as __inception_running::Inductive<False, Self::In>>::run(input)
+    }
+}
+
 /// A phase that awaits an external input, then transitions back to a yielding
 /// phase.
 #[inception(property = JungleWaiting, signature(input = In, output = Out))]

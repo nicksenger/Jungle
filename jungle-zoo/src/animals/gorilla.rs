@@ -13,7 +13,6 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
-use std::sync::Arc;
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct State {
