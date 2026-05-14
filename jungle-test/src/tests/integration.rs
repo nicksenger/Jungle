@@ -2,7 +2,7 @@ use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus, Lens,
+    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus, StateLens,
     LoopCondition, Observe, Perturb, Pulse, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -135,7 +135,7 @@ impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 struct AddOneFocusedStep;
 impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
     type Action = AddOneAction;
-    type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type Aspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Arg = ();
     type Ret = ();
 
@@ -150,7 +150,7 @@ impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
 struct AddTwoFocusedStep;
 impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
     type Action = AddTwoAction;
-    type Aspect = Lens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type Aspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Arg = ();
     type Ret = ();
 
@@ -165,7 +165,7 @@ impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
 struct AddOneDeepFocusedStep;
 impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
     type Action = AddOneAction;
-    type Aspect = Lens<
+    type Aspect = StateLens<
         IntegrationState,
         list![
             jungle_sdk::typosaurus::num::consts::U1,
@@ -189,7 +189,7 @@ impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
 struct AddTwoDeepFocusedStep;
 impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type Action = AddTwoAction;
-    type Aspect = Lens<
+    type Aspect = StateLens<
         IntegrationState,
         list![
             jungle_sdk::typosaurus::num::consts::U1,

@@ -89,7 +89,7 @@ impl<State> Aspect<State> for Identity {
 }
 
 /// Focuses to a field on a state type by its type-level field index.
-pub struct Lens<State, Index>(PhantomData<fn() -> (State, Index)>);
+pub struct StateLens<State, Index>(PhantomData<fn() -> (State, Index)>);
 
 trait FieldAtMut<'a, Index, View> {
     fn at_mut(self) -> &'a mut View;
@@ -140,7 +140,7 @@ where
 }
 
 #[doc(hidden)]
-pub trait LensPath<State, Index> {
+pub trait StateLensPath<State, Index> {
     type View;
 
     fn view<'a>(state: &'a mut State) -> &'a mut Self::View;
@@ -157,7 +157,7 @@ where
 {
 }
 
-impl<State, Index> LensPath<State, Index> for ()
+impl<State, Index> StateLensPath<State, Index> for ()
 where
     Index: ScalarIndex,
     State: crate::Optic
@@ -181,40 +181,40 @@ where
     }
 }
 
-impl<State, Head, Next, Tail> LensPath<State, list::List<(Head, list::List<(Next, Tail)>)>> for ()
+impl<State, Head, Next, Tail> StateLensPath<State, list::List<(Head, list::List<(Next, Tail)>)>> for ()
 where
-    (): LensPath<State, Head>,
-    <() as LensPath<State, Head>>::View: 'static,
-    (): LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>,
+    (): StateLensPath<State, Head>,
+    <() as StateLensPath<State, Head>>::View: 'static,
+    (): StateLensPath<<() as StateLensPath<State, Head>>::View, list::List<(Next, Tail)>>,
 {
     type View =
-        <() as LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>>::View;
+        <() as StateLensPath<<() as StateLensPath<State, Head>>::View, list::List<(Next, Tail)>>>::View;
 
     fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
-        let head = <() as LensPath<State, Head>>::view(state);
-        <() as LensPath<<() as LensPath<State, Head>>::View, list::List<(Next, Tail)>>>::view(head)
+        let head = <() as StateLensPath<State, Head>>::view(state);
+        <() as StateLensPath<<() as StateLensPath<State, Head>>::View, list::List<(Next, Tail)>>>::view(head)
     }
 }
 
-impl<State, Head> LensPath<State, list::List<(Head, list::Empty)>> for ()
+impl<State, Head> StateLensPath<State, list::List<(Head, list::Empty)>> for ()
 where
-    (): LensPath<State, Head>,
+    (): StateLensPath<State, Head>,
 {
-    type View = <() as LensPath<State, Head>>::View;
+    type View = <() as StateLensPath<State, Head>>::View;
 
     fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
-        <() as LensPath<State, Head>>::view(state)
+        <() as StateLensPath<State, Head>>::view(state)
     }
 }
 
-impl<State, Index> Aspect<State> for Lens<State, Index>
+impl<State, Index> Aspect<State> for StateLens<State, Index>
 where
-    (): LensPath<State, Index>,
+    (): StateLensPath<State, Index>,
 {
-    type View = <() as LensPath<State, Index>>::View;
+    type View = <() as StateLensPath<State, Index>>::View;
 
     fn view(state: &mut State) -> &mut Self::View {
-        <() as LensPath<State, Index>>::view(state)
+        <() as StateLensPath<State, Index>>::view(state)
     }
 }
 

@@ -2,7 +2,7 @@ use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
-    Ecosystem, Identity, Lens, LoopCondition, Pulse, Step, While,
+    Ecosystem, Identity, StateLens, LoopCondition, Pulse, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -479,9 +479,9 @@ where
     }
 }
 
-type ApeRoundTask = AddI32<Lens<ExecutorApeState, list![U0, U1]>, RoundAdvance>;
-type TigerHuntTask = AddI32<Lens<ExecutorCatState, list![U0, U0]>, HuntEnergy>;
-type TigerEatTask = AddI32<Lens<ExecutorCatState, list![U0, U0]>, EatEnergy>;
+type ApeRoundTask = AddI32<StateLens<ExecutorApeState, list![U0, U1]>, RoundAdvance>;
+type TigerHuntTask = AddI32<StateLens<ExecutorCatState, list![U0, U0]>, HuntEnergy>;
+type TigerEatTask = AddI32<StateLens<ExecutorCatState, list![U0, U0]>, EatEnergy>;
 
 struct ApeKeepRunning;
 impl LoopCondition<ExecutorApeState> for ApeKeepRunning {

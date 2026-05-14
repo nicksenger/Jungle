@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, Lens,
+    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, StateLens,
     LoopCondition, Pulse, Running, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
@@ -149,11 +149,11 @@ impl Pulse<Gorilla> for GorillaSleepManual {
     }
 }
 
-type GorillaEat = AddI32<Lens<GorillaState, list![U0, U0]>, Eat>;
-type GorillaForageStep = SubI32<Lens<GorillaState, list![U0, U0]>, Forage>;
+type GorillaEat = AddI32<StateLens<GorillaState, list![U0, U0]>, Eat>;
+type GorillaForageStep = SubI32<StateLens<GorillaState, list![U0, U0]>, Forage>;
 
-type TigerEat = AddI32<Lens<TigerState, list![U1, U0]>, Eat>;
-type TigerSleep = AddI32<Lens<TigerState, list![U1, U0]>, Sleep>;
+type TigerEat = AddI32<StateLens<TigerState, list![U1, U0]>, Eat>;
+type TigerSleep = AddI32<StateLens<TigerState, list![U1, U0]>, Sleep>;
 
 #[derive(Journey)]
 struct GorillaLoopSequence(
@@ -185,7 +185,7 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 struct TigerLoopSequence(
     Conditional<TigerStripesAreEven, Step<Tiger, TigerEat>, Step<Tiger, TigerSleep>>,
     Step<Tiger, TigerSleep>,
-    Step<Tiger, AddI32<Lens<TigerState, list![U1, U0]>, Hunt>>,
+    Step<Tiger, AddI32<StateLens<TigerState, list![U1, U0]>, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
@@ -214,12 +214,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
     };
     let (gorilla_state, gorilla_request) = <Step<
         Gorilla,
-        CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, StateLens<GorillaState, U0>>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
     let (gorilla_state, gorilla_emitted) = <Step<
         Gorilla,
-        CoreEnergyStep<Sleep, Lens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, StateLens<GorillaState, U0>>,
     > as Waiting>::accept((gorilla_state, Ok(20)));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
@@ -231,13 +231,13 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6, age: 12 },
     };
     let (tiger_state, tiger_request) =
-        <Step<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Running>::run((
+        <Step<Tiger, CoreEnergyStep<Sleep, StateLens<TigerState, U1>>> as Running>::run((
             tiger_state,
             4,
         ));
     assert_eq!(tiger_request.into_input(), 10);
     let (tiger_state, tiger_emitted) =
-        <Step<Tiger, CoreEnergyStep<Sleep, Lens<TigerState, U1>>> as Waiting>::accept((
+        <Step<Tiger, CoreEnergyStep<Sleep, StateLens<TigerState, U1>>> as Waiting>::accept((
             tiger_state,
             Ok(15),
         ));

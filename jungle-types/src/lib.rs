@@ -11,7 +11,7 @@ pub use behavior::{
     AbsorbFn, AbsorbMapper, EmitFn, EmitMapper, FocusedStep, IdentityStep, PassthroughEmit,
     UnitEmit,
 };
-pub use behavior::{Action, ActionCompletion, ActionRequest, Aspect, Identity, Lens, Pulse, Step};
+pub use behavior::{Action, ActionCompletion, ActionRequest, Aspect, Identity, StateLens, Pulse, Step};
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
 pub use executor::{
