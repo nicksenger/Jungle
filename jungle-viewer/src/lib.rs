@@ -1,9 +1,9 @@
+use iced::futures::{self, Stream, StreamExt};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{Cluster, Graph, Sugiyama};
-use iced::futures::{self, Stream, StreamExt};
 use jungle_client::JungleClient;
 use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap};

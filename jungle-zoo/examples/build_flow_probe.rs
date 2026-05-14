@@ -9,7 +9,11 @@ type Eat = Step<G, jungle_zoo::animals::gorilla::GorillaEat>;
 
 type Feed = jungle_zoo::animals::gorilla::GorillaFeedFlow;
 
-fn probe<R>() where R: Running<In=(S, ())> {}
+fn probe<R>()
+where
+    R: Running<In = (S, ())>,
+{
+}
 
 fn main() {
     probe::<Birth>();

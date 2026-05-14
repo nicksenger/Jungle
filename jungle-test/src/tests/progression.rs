@@ -275,7 +275,10 @@ impl Condition<(i32, ())> for UseDerivedBranch {
 }
 
 #[derive(Journey)]
-struct DerivedBranchFlow(Step<BranchAnimal, BranchStepA>, Step<BranchAnimal, BranchStepB>);
+struct DerivedBranchFlow(
+    Step<BranchAnimal, BranchStepA>,
+    Step<BranchAnimal, BranchStepB>,
+);
 
 type BranchConditionalFlow =
     Conditional<UseDerivedBranch, DerivedBranchFlow, Step<BranchAnimal, BranchStepB>>;

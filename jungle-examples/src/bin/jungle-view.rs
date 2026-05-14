@@ -1,9 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::{JourneyStatus, SupportedAnimal, Work};
 use jungle_sdk::JungleClient;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 fn main() {
@@ -65,10 +63,7 @@ fn main() {
         std::thread::spawn({
             let db_path = db_path.clone();
             move || {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("server runtime should start");
+                let runtime = tokio::runtime::Runtime::new().expect("server runtime should start");
                 runtime.block_on(async move {
                     let _ = ServerBuilder::new()
                         .listen(listen_addr)
@@ -79,20 +74,14 @@ fn main() {
             }
         });
 
-        let setup_runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("setup runtime should start");
+        let setup_runtime = tokio::runtime::Runtime::new().expect("setup runtime should start");
         let client =
             setup_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
         let worker_client =
             setup_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
 
         std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("worker runtime should start");
+            let runtime = tokio::runtime::Runtime::new().expect("worker runtime should start");
             runtime.block_on(async move {
                 let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
                 let _ = worker.spawn().await;

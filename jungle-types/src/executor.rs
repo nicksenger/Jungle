@@ -80,7 +80,8 @@ where
     (): crate::__inception_running::FieldsInput<F>,
     <() as crate::__inception_running::FieldsInput<F>>::In: SplitStateCarry<State>,
 {
-    type Carry = <<() as crate::__inception_running::FieldsInput<F>>::In as SplitStateCarry<State>>::Carry;
+    type Carry =
+        <<() as crate::__inception_running::FieldsInput<F>>::In as SplitStateCarry<State>>::Carry;
 }
 
 fn decode_controlled_input<In, F>(input: &[u8], fallback: F) -> Result<(bool, In), ExecutorError>
@@ -1588,11 +1589,7 @@ where
         steps.push(Box::new(ConditionalErasedFlow::<
             State,
             <L as CarryInputForState<State>>::Carry,
-        >::new(
-            left,
-            right,
-            choose_left,
-        )));
+        >::new(left, right, choose_left)));
         steps
     }
 }
@@ -1915,9 +1912,9 @@ where
     <L as CarryInputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
     P: crate::Condition<(State, <L as CarryInputForState<State>>::Carry)> + 'static,
     L: BuildFlowWithContext<
-            (Arc<Context>, DynFlow<State>),
-            Output = (Arc<Context>, DynFlow<State>),
-        >,
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
