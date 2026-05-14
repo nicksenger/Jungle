@@ -60,37 +60,31 @@ fn main() {
         let db_path =
             std::env::temp_dir().join(format!("jungle-view-example-{}.redb", Uuid::new_v4()));
 
-        std::thread::spawn({
+        let live_runtime = tokio::runtime::Runtime::new().expect("live runtime should start");
+
+        let _server_task = live_runtime.spawn({
             let db_path = db_path.clone();
-            move || {
-                let runtime = tokio::runtime::Runtime::new().expect("server runtime should start");
-                runtime.block_on(async move {
-                    let _ = ServerBuilder::new()
-                        .listen(listen_addr)
-                        .redb_path(db_path)
-                        .run()
-                        .await;
-                });
+            async move {
+                let _ = ServerBuilder::new()
+                    .listen(listen_addr)
+                    .redb_path(db_path)
+                    .run()
+                    .await;
             }
         });
 
-        let setup_runtime = tokio::runtime::Runtime::new().expect("setup runtime should start");
-        let client =
-            setup_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
+        let client = live_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
         let worker_client =
-            setup_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
+            live_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
 
-        std::thread::spawn(move || {
-            let runtime = tokio::runtime::Runtime::new().expect("worker runtime should start");
-            runtime.block_on(async move {
-                let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
-                let _ = worker.spawn().await;
-            });
+        let _worker_task = live_runtime.spawn(async move {
+            let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
+            let _ = worker.spawn().await;
         });
 
         let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
             .expect("gorilla seed should serialize");
-        let journey_id = setup_runtime
+        let journey_id = live_runtime
             .block_on(client.start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed))
             .expect("start_journey gorilla should succeed");
 
