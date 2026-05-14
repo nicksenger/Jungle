@@ -480,7 +480,7 @@ fn sidebar<'a>(
         text(format!("edges: {}", model.edges.len()))
             .size(13)
             .color(jungle_text_base()),
-        text(format!("loops: {}", model.while_clusters.len()))
+        text(format!("clusters: {}", model.while_clusters.len()))
             .size(13)
             .color(jungle_text_base()),
         Space::new().height(10),
@@ -505,6 +505,9 @@ fn sidebar<'a>(
             .size(12)
             .color(jungle_text_muted()),
         text("While: clustered body + condition label")
+            .size(12)
+            .color(jungle_text_muted()),
+        text("Transparent: clustered boundary label")
             .size(12)
             .color(jungle_text_muted()),
         text("Green glow: completed in live journey")
@@ -581,7 +584,7 @@ fn graph_panel<'a>(model: &'a GraphModel, live_data: Option<&'a LiveData>) -> El
             let label = cluster_labels
                 .get(index)
                 .cloned()
-                .unwrap_or_else(|| format!("while #{index}"));
+                .unwrap_or_else(|| format!("cluster #{index}"));
             Some(
                 container(text(label).size(11).color(jungle_text_muted()))
                     .padding([4, 8])
@@ -662,7 +665,7 @@ struct GraphBuilder {
     edges: Vec<(u32, u32)>,
     clusters: Vec<Cluster>,
     cluster_labels: Vec<String>,
-    while_cluster_stack: Vec<usize>,
+    cluster_stack: Vec<usize>,
     runtime_next_id: u32,
     display_next_id: u32,
     label_occurrences: HashMap<String, u32>,
@@ -769,7 +772,7 @@ impl GraphBuilder {
                 }
             }
             JourneyAst::While { label, body } => {
-                let parent_cluster = self.while_cluster_stack.last().copied();
+                let parent_cluster = self.cluster_stack.last().copied();
                 let cluster_index = self.clusters.len();
                 let cluster = Cluster::new(Vec::new()).padding(24.0);
                 let cluster = if let Some(parent) = parent_cluster {
@@ -780,9 +783,9 @@ impl GraphBuilder {
                 self.clusters.push(cluster);
                 self.cluster_labels
                     .push(format!("while: {}", short_type_name_str(label)));
-                self.while_cluster_stack.push(cluster_index);
+                self.cluster_stack.push(cluster_index);
                 let body_flow = self.flatten(body);
-                let _ = self.while_cluster_stack.pop();
+                let _ = self.cluster_stack.pop();
 
                 for exit in &body_flow.exits {
                     for root in &body_flow.roots {
@@ -806,33 +809,40 @@ impl GraphBuilder {
                 metadata,
                 body,
             } => {
-                let merged = if metadata.trim().is_empty() {
-                    short_type_name_str(label)
+                let parent_cluster = self.cluster_stack.last().copied();
+                let cluster_index = self.clusters.len();
+                let cluster = Cluster::new(Vec::new()).padding(24.0);
+                let cluster = if let Some(parent) = parent_cluster {
+                    cluster.parent(parent)
                 } else {
-                    format!("{} :: {}", short_type_name_str(label), metadata)
+                    cluster
                 };
-                let transparent = self.push_layout_node(merged, |node| {
-                    node.is_transparent = true;
-                });
+                self.clusters.push(cluster);
 
+                let cluster_label = if metadata.trim().is_empty() {
+                    format!("transparent: {}", short_type_name_str(label))
+                } else {
+                    format!(
+                        "transparent: {} :: {}",
+                        short_type_name_str(label),
+                        metadata
+                    )
+                };
+                self.cluster_labels.push(cluster_label);
+
+                self.cluster_stack.push(cluster_index);
                 let body_flow = self.flatten(body);
-                for target in &body_flow.roots {
-                    self.edges.push((transparent, *target));
+                let _ = self.cluster_stack.pop();
+
+                let cluster_nodes = dedup(body_flow.members.clone());
+                if !cluster_nodes.is_empty() {
+                    self.clusters[cluster_index].nodes = cluster_nodes;
                 }
 
-                let mut members = vec![transparent];
-                members.extend(body_flow.members.iter().copied());
-
-                let exits = if body_flow.exits.is_empty() {
-                    vec![transparent]
-                } else {
-                    body_flow.exits
-                };
-
                 Flattened {
-                    roots: vec![transparent],
-                    exits,
-                    members,
+                    roots: body_flow.roots.clone(),
+                    exits: body_flow.exits,
+                    members: body_flow.members,
                 }
             }
             JourneyAst::Select { left, right, .. } => {
@@ -1414,5 +1424,66 @@ mod tests {
         assert_eq!(model.while_clusters[1].parent, Some(0));
         assert!(!model.while_clusters[0].nodes.is_empty());
         assert!(!model.while_clusters[1].nodes.is_empty());
+    }
+
+    #[test]
+    fn transparent_cluster_scopes_body_and_preserves_direct_sequence_edges() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "Start" },
+            JourneyAst::Transparent {
+                label: "flow::Boundary",
+                metadata: "section:gorilla/lifecycle",
+                body: Box::new(JourneyAst::Conditional {
+                    label: "flow::Gate",
+                    left: Box::new(JourneyAst::Step { label: "InL" }),
+                    right: Box::new(JourneyAst::Step { label: "InR" }),
+                }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]);
+
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+
+        let start_id = id_for("Start");
+        let gate_id = id_for("Gate");
+        let in_l_id = id_for("InL");
+        let in_r_id = id_for("InR");
+        let tail_id = id_for("Tail");
+
+        assert!(
+            model
+                .nodes
+                .iter()
+                .all(|node| !node.label.contains("Boundary")),
+            "transparent boundaries should not render as standalone nodes"
+        );
+
+        assert_eq!(model.while_clusters.len(), 1);
+        assert_eq!(
+            model.while_cluster_labels,
+            vec!["transparent: Boundary :: section:gorilla/lifecycle"]
+        );
+        let cluster = &model.while_clusters[0];
+        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
+        assert!(cluster_nodes.contains(&gate_id));
+        assert!(cluster_nodes.contains(&in_l_id));
+        assert!(cluster_nodes.contains(&in_r_id));
+        assert!(!cluster_nodes.contains(&start_id));
+        assert!(!cluster_nodes.contains(&tail_id));
+
+        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
+        assert!(edges.contains(&(start_id, gate_id)));
+        assert!(edges.contains(&(gate_id, in_l_id)));
+        assert!(edges.contains(&(gate_id, in_r_id)));
+        assert!(edges.contains(&(in_l_id, tail_id)));
+        assert!(edges.contains(&(in_r_id, tail_id)));
     }
 }
