@@ -134,6 +134,8 @@ fn rewrite_inception_fallback(stream: proc_macro2::TokenStream) -> proc_macro2::
 #[proc_macro_derive(Journey)]
 pub fn derive_journey(input: TokenStream) -> TokenStream {
     let properties = jungle_types(&[
+        "JungleRunning",
+        "JungleWaiting",
         "JungleFlow",
         "JungleDynFlow",
         "JungleJourneyAst",
@@ -146,6 +148,8 @@ pub fn derive_journey(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Flow)]
 pub fn derive_flow(input: TokenStream) -> TokenStream {
     let properties = jungle_types(&[
+        "JungleRunning",
+        "JungleWaiting",
         "JungleFlow",
         "JungleDynFlow",
         "JungleJourneyAst",

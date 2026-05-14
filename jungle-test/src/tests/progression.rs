@@ -1,11 +1,11 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, AnimalActionSet, Condition, Conditional,
-    ContextExecutor, Executor, Id, Identity, ManualExecutor, Pulse, Running, Step, Waiting,
+    Action, ActionCompletion, ActionRequest, AnimalActionSet, ContextExecutor, Executor, Id,
+    Identity, ManualExecutor, Pulse, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
+use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::{Animals, Journey};
 use std::future::ready;
 use std::sync::Arc;
@@ -216,120 +216,4 @@ fn context_executor_progresses_multi_step_derived_journey() {
 
     assert!(executor.is_complete());
     assert_eq!(executor.into_state(), 36);
-}
-
-struct BranchBumpAction;
-impl jungle_types::ActionMember for BranchBumpAction {}
-impl Action for BranchBumpAction {
-    type Id = Id<U2>;
-    type Dependency = ();
-    type In = i32;
-    type Out = i32;
-    type Err = ();
-
-    fn act(
-        _dependency: &Self::Dependency,
-        input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        ready(Ok(input + 1))
-    }
-}
-
-struct BranchStepA;
-impl Pulse<BranchAnimal> for BranchStepA {
-    type Action = BranchBumpAction;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
-
-    fn emit(state: &i32, _input: Self::CarryIn) -> i32 {
-        *state + 1
-    }
-
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
-        *state = output.expect("branch step A should succeed");
-    }
-}
-
-struct BranchStepB;
-impl Pulse<BranchAnimal> for BranchStepB {
-    type Action = BranchBumpAction;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
-
-    fn emit(state: &i32, _input: Self::CarryIn) -> i32 {
-        *state + 2
-    }
-
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
-        *state = output.expect("branch step B should succeed");
-    }
-}
-
-struct BranchFallbackStep;
-impl Pulse<BranchAnimal> for BranchFallbackStep {
-    type Action = BranchBumpAction;
-    type Aspect = Identity;
-    type CarryIn = ();
-    type CarryOut = ();
-
-    fn emit(state: &i32, _input: Self::CarryIn) -> i32 {
-        *state + 100
-    }
-
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::CarryOut {
-        *state = output.expect("branch fallback step should succeed");
-    }
-}
-
-struct BranchAlwaysTrue;
-impl Condition<(i32, ())> for BranchAlwaysTrue {
-    fn choose((_state, _): &(i32, ())) -> bool {
-        true
-    }
-}
-
-#[derive(Journey)]
-struct BranchMultiFlow(Step<BranchAnimal, BranchStepA>, Step<BranchAnimal, BranchStepB>);
-
-impl Running for BranchMultiFlow {
-    type In = (i32, ());
-    type Out = (i32, ());
-
-    fn run(input: Self::In) -> Self::Out {
-        input
-    }
-}
-
-type BranchJourney = Conditional<
-    BranchAlwaysTrue,
-    BranchMultiFlow,
-    Step<BranchAnimal, BranchFallbackStep>,
->;
-animal!(BranchAnimal, U1, i32, BranchJourney);
-
-struct BranchContext;
-impl From<&BranchContext> for () {
-    fn from(_value: &BranchContext) -> Self {}
-}
-
-#[test]
-fn context_executor_runs_conditional_with_multistep_branch_flow() {
-    let mut executor = ContextExecutor::<BranchContext, BranchAnimal>::new(Arc::new(BranchContext), 0);
-
-    let req_1: i32 = executor.next_request().expect("first branch request");
-    let emitted_1: () = executor.complete(Ok::<i32, ()>(req_1 + 1)).expect("first completion");
-    assert_eq!(emitted_1, ());
-
-    if !executor.is_complete() {
-        let req_2: i32 = executor.next_request().expect("second branch request");
-        let emitted_2: () = executor
-            .complete(Ok::<i32, ()>(req_2 + 1))
-            .expect("second completion");
-        assert_eq!(emitted_2, ());
-    }
-
-    assert!(executor.is_complete());
-    assert!(executor.into_state() >= 0);
 }

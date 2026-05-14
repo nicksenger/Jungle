@@ -394,33 +394,6 @@ pub struct GorillaToolSocialFlow(
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaSimpleSocialFlow(Step<Gorilla, GorillaMakeSound>, Step<Gorilla, GorillaRest>);
 
-impl jungle_sdk::types::Running for GorillaFeedFlow {
-    type In = (State, ());
-    type Out = (State, ());
-
-    fn run(input: Self::In) -> Self::Out {
-        input
-    }
-}
-
-impl jungle_sdk::types::Running for GorillaToolSocialFlow {
-    type In = (State, ());
-    type Out = (State, ());
-
-    fn run(input: Self::In) -> Self::Out {
-        input
-    }
-}
-
-impl jungle_sdk::types::Running for GorillaSimpleSocialFlow {
-    type In = (State, ());
-    type Out = (State, ());
-
-    fn run(input: Self::In) -> Self::Out {
-        input
-    }
-}
-
 pub type GorillaActiveFlow = Conditional<
     GorillaIsHungry,
     GorillaFeedFlow,
@@ -448,7 +421,24 @@ pub struct GorillaJourney(
 );
 
 #[derive(jungle_sdk::Journey)]
-pub struct ProbeJourney(jungle_sdk::types::Step<Gorilla, ProbeStep>);
+pub struct ProbeDayFlow(
+    Step<Gorilla, GorillaEvaluateActivityWindow>,
+    Conditional<GorillaIsActiveNow, ProbeActiveFlow, Step<Gorilla, GorillaRest>>,
+    Step<Gorilla, GorillaTickPerceivedTime>,
+);
+
+#[derive(jungle_sdk::Journey)]
+pub struct ProbeActiveFlow(
+    jungle_sdk::types::Step<Gorilla, ProbeStep>,
+    jungle_sdk::types::Step<Gorilla, ProbeStep>,
+);
+
+#[derive(jungle_sdk::Journey)]
+pub struct ProbeYearFlow(
+    Step<Gorilla, GorillaBirthday>,
+    While<GorillaDaylightRemaining, ProbeDayFlow>,
+    Step<Gorilla, GorillaAdvanceAge>,
+);
 
 pub struct Gorilla;
 impl AnimalMember for Gorilla {}
@@ -473,12 +463,17 @@ impl<A: Animal> jungle_sdk::types::Pulse<A> for ProbeStep {
     }
 }
 
+#[derive(jungle_sdk::Journey)]
+pub struct ProbeJourney(
+    Step<Gorilla, GorillaBirth>,
+    While<GorillaStillGrowing, ProbeYearFlow>,
+);
 impl Animal for Gorilla {
     type Id = Id<U0>;
     type Generation = U0;
     type State = State;
     type Seed = TemporalState;
-    type Journey = GorillaJourney;
+    type Journey = ProbeJourney;
 }
 
 impl AnimalObservation for Gorilla {
