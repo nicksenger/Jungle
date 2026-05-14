@@ -1,8 +1,4 @@
-use jungle_sdk::core::JungleWorker;
-use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::JungleClient;
 use std::path::PathBuf;
-use uuid::Uuid;
 
 fn main() {
     let mut headless = false;
@@ -56,44 +52,9 @@ fn main() {
     }
 
     if live {
-        let listen_addr = jungle_examples::reserve_local_addr();
-        let db_path =
-            std::env::temp_dir().join(format!("jungle-view-example-{}.redb", Uuid::new_v4()));
-
-        let live_runtime = tokio::runtime::Runtime::new().expect("live runtime should start");
-
-        let _server_task = live_runtime.spawn({
-            let db_path = db_path.clone();
-            async move {
-                let _ = ServerBuilder::new()
-                    .listen(listen_addr)
-                    .redb_path(db_path)
-                    .run()
-                    .await;
-            }
-        });
-
-        let client = live_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
-        let worker_client =
-            live_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
-
-        let _worker_task = live_runtime.spawn(async move {
-            let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
-            let _ = worker.spawn().await;
-        });
-
-        let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
-            .expect("gorilla seed should serialize");
-        let journey_id = live_runtime
-            .block_on(client.start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed))
-            .expect("start_journey gorilla should succeed");
-
-        viewer
-            .view_live_animal::<jungle_zoo::animals::gorilla::Gorilla, _>(
-                client.clone(),
-                journey_id,
-            )
-            .expect("jungle-view example should launch live viewer");
+        panic!(
+            "--live is temporarily unavailable for this example; run without --live to inspect the Gorilla journey graph"
+        );
     } else {
         viewer
             .view_animal::<jungle_zoo::animals::gorilla::Gorilla>()
