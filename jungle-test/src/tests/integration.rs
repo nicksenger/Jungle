@@ -2,8 +2,8 @@ use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus, StateLens,
-    LoopCondition, Observe, Perturb, Pulse, Step, While,
+    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    LoopCondition, Observe, Perturb, Pulse, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -105,10 +105,7 @@ impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.total += output.expect("first pre-focused full-state action should succeed");
         state.before_steps += 1;
     }
@@ -123,10 +120,7 @@ impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.total += output.expect("second pre-focused full-state action should succeed");
         state.before_steps += 1;
     }
@@ -177,10 +171,7 @@ impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
 
     fn emit(_state: &DeepFocusState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut DeepFocusState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.value += output.expect("first deep-focused integration action should succeed");
         state.updates += 1;
     }
@@ -201,10 +192,7 @@ impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
 
     fn emit(_state: &DeepFocusState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut DeepFocusState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.value += output.expect("second deep-focused integration action should succeed");
         state.updates += 1;
     }
@@ -219,10 +207,7 @@ impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.total += output.expect("first post-focused full-state action should succeed");
         state.after_steps += 1;
     }
@@ -237,10 +222,7 @@ impl Pulse<IntegrationAnimal> for AddTwoAfterFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.total += output.expect("second post-focused full-state action should succeed");
         state.after_steps += 1;
     }
@@ -418,6 +400,24 @@ async fn redb_client_worker_flow_runs_to_completion() {
     let _ = server_task.await;
 }
 
+#[tokio::test]
+async fn memory_client_worker_flow_runs_to_completion() {
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn(async move {
+        ServerBuilder::new()
+            .listen(listen_addr)
+            .memory()
+            .run()
+            .await
+    });
+
+    run_client_worker_flow_runs_to_completion(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
 #[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_client_worker_flow_runs_to_completion() {
@@ -464,6 +464,24 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
                 .run()
                 .await
         }
+    });
+
+    run_client_worker_streams_step_updates_end_to_end(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn memory_client_worker_streams_step_updates_end_to_end() {
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn(async move {
+        ServerBuilder::new()
+            .listen(listen_addr)
+            .memory()
+            .run()
+            .await
     });
 
     run_client_worker_streams_step_updates_end_to_end(listen_addr).await;

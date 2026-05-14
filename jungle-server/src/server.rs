@@ -66,6 +66,12 @@ impl ServerBuilder {
         self.redb(jungle_persist::redb::RedbStore::builder().path(value))
     }
 
+    #[cfg(feature = "redb")]
+    pub fn memory(mut self) -> Self {
+        self.db = self.db.kind(Kind::Memory);
+        self
+    }
+
     pub async fn build(self) -> jungle_persist::Result<Server> {
         #[cfg(all(feature = "postgres", feature = "redb"))]
         let has_configured_database = self.db.has_kind();

@@ -23,6 +23,8 @@ pub enum Kind {
     Postgres(pg::PgStoreBuilder),
     #[cfg(feature = "redb")]
     Redb(redb::RedbStoreBuilder),
+    #[cfg(feature = "redb")]
+    Memory,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -64,6 +66,11 @@ impl StoreBuilder {
         self.redb(redb::RedbStore::builder().path(value))
     }
 
+    #[cfg(feature = "redb")]
+    pub fn memory(self) -> Self {
+        self.kind(Kind::Memory)
+    }
+
     pub async fn build(self) -> Result<Box<dyn JungleStore>> {
         #[cfg(all(feature = "postgres", feature = "redb"))]
         {
@@ -74,6 +81,10 @@ impl StoreBuilder {
                 }
                 Some(Kind::Redb(builder)) => {
                     let store = builder.build()?;
+                    return Ok(Box::new(store));
+                }
+                Some(Kind::Memory) => {
+                    let store = redb::RedbStore::in_memory()?;
                     return Ok(Box::new(store));
                 }
                 None => {
@@ -102,6 +113,10 @@ impl StoreBuilder {
             match self.kind {
                 Some(Kind::Redb(builder)) => {
                     let store = builder.build()?;
+                    return Ok(Box::new(store));
+                }
+                Some(Kind::Memory) => {
+                    let store = redb::RedbStore::in_memory()?;
                     return Ok(Box::new(store));
                 }
                 None => {

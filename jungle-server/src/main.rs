@@ -34,6 +34,10 @@ struct Opt {
     #[cfg(feature = "redb")]
     #[clap(long = "redb-path")]
     redb_path: Option<PathBuf>,
+    /// use in-memory redb persistence backend
+    #[cfg(feature = "redb")]
+    #[clap(long = "memory")]
+    memory: bool,
 }
 
 impl From<Opt> for jungle_server::ServerBuilder {
@@ -62,6 +66,10 @@ impl From<Opt> for jungle_server::ServerBuilder {
         #[cfg(feature = "redb")]
         if let Some(path) = opt.redb_path {
             builder = builder.redb_path(path);
+        }
+        #[cfg(feature = "redb")]
+        if opt.memory {
+            builder = builder.memory();
         }
 
         builder

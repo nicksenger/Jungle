@@ -7,7 +7,6 @@ edition = "2021"
 default = []
 postgres = ["jungle-persist/postgres", "dep:sqlx"]
 redb = ["jungle-persist/redb"]
-memory = ["jungle-persist/memory"]
 
 [dependencies]
 jungle-persist = { path = "../jungle-persist", default-features = false }

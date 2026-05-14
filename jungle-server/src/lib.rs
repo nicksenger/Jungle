@@ -248,6 +248,12 @@ impl ServerBuilder {
         self
     }
 
+    #[cfg(feature = "redb")]
+    pub fn memory(mut self) -> Self {
+        self.db = self.db.memory();
+        self
+    }
+
     pub async fn run(self) -> Result<()> {
         let Self {
             keylog,
