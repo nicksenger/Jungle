@@ -18,7 +18,7 @@ pub type Error = PersistenceError;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
-pub enum Database {
+pub enum Kind {
     #[cfg(feature = "postgres")]
     Postgres(pg::PgStoreBuilder),
     #[cfg(feature = "redb")]
@@ -27,7 +27,7 @@ pub enum Database {
 
 #[derive(Debug, Clone, Default)]
 pub struct StoreBuilder {
-    database: Option<Database>,
+    kind: Option<Kind>,
 }
 
 impl StoreBuilder {
@@ -35,18 +35,18 @@ impl StoreBuilder {
         Self::default()
     }
 
-    pub fn database(mut self, value: Database) -> Self {
-        self.database = Some(value);
+    pub fn kind(mut self, value: Kind) -> Self {
+        self.kind = Some(value);
         self
     }
 
-    pub fn has_database(&self) -> bool {
-        self.database.is_some()
+    pub fn has_kind(&self) -> bool {
+        self.kind.is_some()
     }
 
     #[cfg(feature = "postgres")]
     pub fn postgres(self, builder: pg::PgStoreBuilder) -> Self {
-        self.database(Database::Postgres(builder))
+        self.kind(Kind::Postgres(builder))
     }
 
     #[cfg(feature = "postgres")]
@@ -56,7 +56,7 @@ impl StoreBuilder {
 
     #[cfg(feature = "redb")]
     pub fn redb(self, builder: redb::RedbStoreBuilder) -> Self {
-        self.database(Database::Redb(builder))
+        self.kind(Kind::Redb(builder))
     }
 
     #[cfg(feature = "redb")]
@@ -67,12 +67,12 @@ impl StoreBuilder {
     pub async fn build(self) -> Result<Box<dyn JungleStore>> {
         #[cfg(all(feature = "postgres", feature = "redb"))]
         {
-            match self.database {
-                Some(Database::Postgres(builder)) => {
+            match self.kind {
+                Some(Kind::Postgres(builder)) => {
                     let store = builder.build().await?;
                     return Ok(Box::new(store));
                 }
-                Some(Database::Redb(builder)) => {
+                Some(Kind::Redb(builder)) => {
                     let store = builder.build()?;
                     return Ok(Box::new(store));
                 }
@@ -85,8 +85,8 @@ impl StoreBuilder {
 
         #[cfg(all(feature = "postgres", not(feature = "redb")))]
         {
-            match self.database {
-                Some(Database::Postgres(builder)) => {
+            match self.kind {
+                Some(Kind::Postgres(builder)) => {
                     let store = builder.build().await?;
                     return Ok(Box::new(store));
                 }
@@ -99,8 +99,8 @@ impl StoreBuilder {
 
         #[cfg(all(feature = "redb", not(feature = "postgres")))]
         {
-            match self.database {
-                Some(Database::Redb(builder)) => {
+            match self.kind {
+                Some(Kind::Redb(builder)) => {
                     let store = builder.build()?;
                     return Ok(Box::new(store));
                 }

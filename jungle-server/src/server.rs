@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 #[cfg(any(feature = "postgres", feature = "redb"))]
-use jungle_persist::{Database, JungleStore, StoreBuilder};
+use jungle_persist::{JungleStore, Kind, StoreBuilder};
 use jungle_types::{BackendError, JourneyStatus, WireIn, WireOut};
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgListener;
@@ -46,7 +46,7 @@ pub struct ServerBuilder {
 impl ServerBuilder {
     #[cfg(feature = "postgres")]
     pub fn postgres(mut self, builder: jungle_persist::pg::PgStoreBuilder) -> Self {
-        self.db = self.db.database(Database::Postgres(builder));
+        self.db = self.db.kind(Kind::Postgres(builder));
         self
     }
 
@@ -57,7 +57,7 @@ impl ServerBuilder {
 
     #[cfg(feature = "redb")]
     pub fn redb(mut self, builder: jungle_persist::redb::RedbStoreBuilder) -> Self {
-        self.db = self.db.database(Database::Redb(builder));
+        self.db = self.db.kind(Kind::Redb(builder));
         self
     }
 
@@ -68,7 +68,7 @@ impl ServerBuilder {
 
     pub async fn build(self) -> jungle_persist::Result<Server> {
         #[cfg(all(feature = "postgres", feature = "redb"))]
-        let has_configured_database = self.db.has_database();
+        let has_configured_database = self.db.has_kind();
         #[cfg(all(feature = "postgres", feature = "redb"))]
         if !has_configured_database {
             info!("both `postgres` and `redb` features are enabled; defaulting to postgres");
