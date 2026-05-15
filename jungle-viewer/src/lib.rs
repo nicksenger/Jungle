@@ -3,14 +3,14 @@ use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
-use iced_sugiyama::{Cluster, Graph, Sugiyama};
+use iced_sugiyama::{Cluster, Graph, OutgoingEdgeStyle, Sugiyama};
 use jungle_client::JungleClient;
 use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -19,6 +19,9 @@ const WINDOW_HEIGHT: f32 = 900.0;
 const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-viewer";
+const DEFAULT_CLUSTER_FILL: Color = Color::TRANSPARENT;
+
+static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
 
 pub struct AnyAnimal;
 
@@ -54,6 +57,7 @@ pub enum ClusterKind {
 pub struct StepViewCtx<'a> {
     pub display_id: u32,
     pub runtime_id: Option<u32>,
+    pub successor_runtime_ids: Vec<u32>,
     pub kind: StepKind,
     pub label: &'a str,
     pub metadata: Option<&'a str>,
@@ -77,6 +81,7 @@ pub struct ClusterViewCtx<'a> {
     pub parent_cluster_id: Option<u32>,
     pub depth: usize,
     pub member_display_ids: &'a [u32],
+    pub entry_runtime_ids: Vec<u32>,
     pub member_runtime_ids: Vec<u32>,
     pub successor_runtime_ids: Vec<u32>,
     pub phase: Phase<ClusterLive>,
@@ -96,6 +101,12 @@ pub enum ClusterView<Message: Clone + 'static> {
 #[derive(Debug, Clone, Copy)]
 pub struct EdgeStyleCtx {
     pub edge_index: usize,
+    pub source_display_id: u32,
+    pub target_display_id: u32,
+    pub source_runtime_id: Option<u32>,
+    pub target_runtime_id: Option<u32>,
+    pub source_phase: Phase<RuntimeState>,
+    pub target_phase: Phase<RuntimeState>,
     pub extent: f32,
 }
 
@@ -413,6 +424,7 @@ struct LiveData {
     active_runtime_ids: BTreeSet<u32>,
     finished_runtime_ids: BTreeSet<u32>,
     failed_runtime_ids: BTreeSet<u32>,
+    runtime_update_sequence: HashMap<u32, usize>,
     latest_event_count: usize,
 }
 
@@ -420,6 +432,7 @@ struct LiveData {
 enum Message {
     AppStarted,
     LiveEvent(Result<JourneyUpdateEvent, String>),
+    ApplyLiveEvent(JourneyUpdateEvent),
     Theme(ViewerEvent<()>),
     Retry,
     CaptureView,
@@ -472,32 +485,10 @@ where
             Message::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
-                        let theme_task = self
-                            .theme
-                            .update(
-                                &mut self.theme_state,
-                                ViewerEvent::JourneyUpdate(update.clone()),
-                            )
-                            .map(Message::Theme);
-                        let data = match &mut self.state {
-                            LiveState::Loaded(data) => data,
-                            _ => {
-                                self.state = LiveState::Loaded(LiveData::default());
-                                match &mut self.state {
-                                    LiveState::Loaded(data) => data,
-                                    _ => unreachable!("state was set to loaded"),
-                                }
-                            }
-                        };
-                        if data.apply_update(update) {
-                            return Task::batch(vec![
-                                theme_task,
-                                iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(
-                                    GRAPH_WIDGET_ID,
-                                )),
-                            ]);
-                        }
-                        return theme_task;
+                        return iced_sugiyama::invalidate::<Message>(iced_sugiyama::Id::new(
+                            GRAPH_WIDGET_ID,
+                        ))
+                        .chain(Task::done(Message::ApplyLiveEvent(update)));
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -505,10 +496,37 @@ where
                 }
                 Task::none()
             }
-            Message::Theme(event) => self
-                .theme
-                .update(&mut self.theme_state, event)
-                .map(Message::Theme),
+            Message::ApplyLiveEvent(update) => {
+                let theme_task = self
+                    .theme
+                    .update(
+                        &mut self.theme_state,
+                        ViewerEvent::JourneyUpdate(update.clone()),
+                    )
+                    .map(Message::Theme);
+                let data = match &mut self.state {
+                    LiveState::Loaded(data) => data,
+                    _ => {
+                        self.state = LiveState::Loaded(LiveData::default());
+                        match &mut self.state {
+                            LiveState::Loaded(data) => data,
+                            _ => unreachable!("state was set to loaded"),
+                        }
+                    }
+                };
+                let _ = data.apply_update(update);
+                theme_task
+            }
+            Message::Theme(event) => {
+                let theme_task = self
+                    .theme
+                    .update(&mut self.theme_state, event)
+                    .map(Message::Theme);
+                Task::batch(vec![
+                    theme_task,
+                    iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(GRAPH_WIDGET_ID)),
+                ])
+            }
             Message::Retry => match &self.mode {
                 ViewMode::Live { .. } => {
                     self.live_generation = self.live_generation.saturating_add(1);
@@ -661,23 +679,82 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
 impl LiveData {
     fn apply_update(&mut self, update: JourneyUpdateEvent) -> bool {
         let mut highlight_changed = false;
-        self.latest_event_count = update.sequence_id as usize;
+        let sequence = update.sequence_id as usize;
+        self.latest_event_count = sequence;
         match update.event {
             RunnerUpdateOut::ActionInput { node_id, .. } => {
+                highlight_changed |= self.finished_runtime_ids.remove(&node_id);
+                highlight_changed |= self.failed_runtime_ids.remove(&node_id);
                 highlight_changed |= self.active_runtime_ids.insert(node_id);
+                self.runtime_update_sequence.insert(node_id, sequence);
             }
             RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
                 highlight_changed |= self.active_runtime_ids.remove(&node_id);
                 highlight_changed |= self.finished_runtime_ids.insert(node_id);
+                self.runtime_update_sequence.insert(node_id, sequence);
             }
             RunnerUpdateOut::ActionFailureOutput { node_id, .. } => {
                 highlight_changed |= self.active_runtime_ids.remove(&node_id);
                 highlight_changed |= self.failed_runtime_ids.insert(node_id);
+                self.runtime_update_sequence.insert(node_id, sequence);
             }
             RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
         }
         highlight_changed
     }
+}
+
+fn runtime_state_for_live_data(live: &LiveData, runtime_id: u32) -> RuntimeState {
+    if live.failed_runtime_ids.contains(&runtime_id) {
+        RuntimeState::Failed
+    } else if live.active_runtime_ids.contains(&runtime_id) {
+        RuntimeState::Running
+    } else if live.finished_runtime_ids.contains(&runtime_id) {
+        RuntimeState::Completed
+    } else {
+        RuntimeState::Pending
+    }
+}
+
+fn infer_condition_runtime_state(live: &LiveData, successor_runtime_ids: &[u32]) -> RuntimeState {
+    let mut newest: Option<(usize, RuntimeState)> = None;
+
+    for runtime_id in successor_runtime_ids {
+        let Some(sequence) = live.runtime_update_sequence.get(runtime_id).copied() else {
+            continue;
+        };
+        if newest
+            .map(|(best_sequence, _)| sequence > best_sequence)
+            .unwrap_or(true)
+        {
+            newest = Some((sequence, runtime_state_for_live_data(live, *runtime_id)));
+        }
+    }
+
+    newest
+        .map(|(_, state)| state)
+        .unwrap_or(RuntimeState::Pending)
+}
+
+fn node_phase_for_display(
+    live_data: Option<&LiveData>,
+    display_id: u32,
+    runtime_id: Option<u32>,
+    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
+) -> Phase<RuntimeState> {
+    let Some(live) = live_data else {
+        return Phase::Static;
+    };
+
+    let state = match runtime_id {
+        Some(id) => runtime_state_for_live_data(live, id),
+        None => condition_successor_runtime_ids
+            .get(&display_id)
+            .map(|successors| infer_condition_runtime_state(live, successors))
+            .unwrap_or(RuntimeState::Pending),
+    };
+
+    Phase::Live(state)
 }
 
 fn sidebar<'a>(
@@ -781,18 +858,29 @@ where
         Cluster(usize),
     }
 
-    let node_state = move |runtime_id: Option<u32>| -> Phase<RuntimeState> {
-        let Some(live) = live_data else {
-            return Phase::Static;
+    let mut condition_successor_runtime_ids = HashMap::<u32, Vec<u32>>::new();
+    let mut condition_successor_seen = HashMap::<u32, BTreeSet<u32>>::new();
+    for (from, to) in &model.edges {
+        let Some(source) = model.node_map.get(from) else {
+            continue;
         };
-        let state = match runtime_id {
-            Some(id) if live.failed_runtime_ids.contains(&id) => RuntimeState::Failed,
-            Some(id) if live.active_runtime_ids.contains(&id) => RuntimeState::Running,
-            Some(id) if live.finished_runtime_ids.contains(&id) => RuntimeState::Completed,
-            _ => RuntimeState::Pending,
+        if !source.is_conditional_branch {
+            continue;
+        }
+        let Some(target) = model.node_map.get(to) else {
+            continue;
         };
-        Phase::Live(state)
-    };
+        let Some(runtime_id) = target.runtime_node_id else {
+            continue;
+        };
+        let seen = condition_successor_seen.entry(*from).or_default();
+        if seen.insert(runtime_id) {
+            condition_successor_runtime_ids
+                .entry(*from)
+                .or_default()
+                .push(runtime_id);
+        }
+    }
 
     let cluster_phase = move |cluster: &ClusterInfo| -> Phase<ClusterLive> {
         if let Some(live) = live_data {
@@ -862,6 +950,22 @@ where
         }
     }
 
+    let mut cluster_entry_runtime_ids = vec![Vec::<u32>::new(); model.cluster_info.len()];
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        let mut seen = BTreeSet::new();
+        for node_id in &cluster.root_nodes {
+            let Some(node) = model.node_map.get(node_id) else {
+                continue;
+            };
+            let Some(runtime_id) = node.runtime_node_id else {
+                continue;
+            };
+            if seen.insert(runtime_id) {
+                cluster_entry_runtime_ids[index].push(runtime_id);
+            }
+        }
+    }
+
     let mut collapsed_clusters = HashSet::<usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
         let cx = ClusterViewCtx {
@@ -875,6 +979,7 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            entry_runtime_ids: cluster_entry_runtime_ids[index].clone(),
             member_runtime_ids: cluster_member_runtime_ids[index].clone(),
             successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
             phase: cluster_phase(cluster),
@@ -899,6 +1004,17 @@ where
     for entry in memberships.values_mut() {
         entry.sort_by_key(|(depth, _)| *depth);
     }
+
+    let cluster_hidden_by_collapsed_ancestor = |cluster_index: usize| -> bool {
+        let mut parent = model.cluster_info[cluster_index].parent;
+        while let Some(parent_index) = parent {
+            if collapsed_clusters.contains(&parent_index) {
+                return true;
+            }
+            parent = model.cluster_info[parent_index].parent;
+        }
+        false
+    };
 
     let owner_for_node = |node_id: u32| -> VisibleOwner {
         if let Some(candidates) = memberships.get(&node_id) {
@@ -934,10 +1050,19 @@ where
         if owner != VisibleOwner::Node(node.id) {
             continue;
         }
-        let phase = node_state(node.runtime_node_id);
+        let phase = node_phase_for_display(
+            live_data,
+            node.id,
+            node.runtime_node_id,
+            &condition_successor_runtime_ids,
+        );
         let step_ctx = StepViewCtx {
             display_id: node.id,
             runtime_id: node.runtime_node_id,
+            successor_runtime_ids: condition_successor_runtime_ids
+                .get(&node.id)
+                .cloned()
+                .unwrap_or_default(),
             kind: node.kind(),
             label: &node.label,
             metadata: node.metadata.as_deref(),
@@ -954,6 +1079,9 @@ where
         if !collapsed_clusters.contains(&index) {
             continue;
         }
+        if cluster_hidden_by_collapsed_ancestor(index) {
+            continue;
+        }
         let Some(display_id) = cluster_node_id(index) else {
             continue;
         };
@@ -968,6 +1096,7 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            entry_runtime_ids: cluster_entry_runtime_ids[index].clone(),
             member_runtime_ids: cluster_member_runtime_ids[index].clone(),
             successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
             phase: cluster_phase(cluster),
@@ -1001,6 +1130,7 @@ where
 
     let mut visible_clusters = Vec::<Cluster>::new();
     let mut visible_cluster_source_indices = Vec::<usize>::new();
+    let mut visible_cluster_fills = Vec::<Color>::new();
     let mut visible_cluster_index_by_source = HashMap::<usize, usize>::new();
     for (source_index, cluster) in model.cluster_info.iter().enumerate() {
         let cx = ClusterViewCtx {
@@ -1014,12 +1144,12 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            entry_runtime_ids: cluster_entry_runtime_ids[source_index].clone(),
             member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
             successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
             phase: cluster_phase(cluster),
         };
-        let ClusterView::Expanded { overlay, fill: _ } = theme.view_cluster(theme_state, &cx)
-        else {
+        let ClusterView::Expanded { overlay, fill } = theme.view_cluster(theme_state, &cx) else {
             continue;
         };
         let member_nodes = cluster
@@ -1041,24 +1171,24 @@ where
         }
         let visible_index = visible_clusters.len();
         visible_clusters.push(spec);
+        visible_cluster_fills.push(fill);
         let _ = overlay;
         visible_cluster_source_indices.push(source_index);
         visible_cluster_index_by_source.insert(source_index, visible_index);
     }
 
-    let edge_style = theme
-        .edge_style(
-            theme_state,
-            EdgeStyleCtx {
-                edge_index: 0,
-                extent: 1.0,
-            },
-        )
-        .unwrap_or(EdgeStyle {
-            width: 1.6,
-            start: Color::from_rgb8(64, 169, 104),
-            end: Color::from_rgb8(40, 104, 67),
-        });
+    set_cluster_fill_colors(visible_cluster_fills);
+
+    let default_edge_style = EdgeStyle {
+        width: 1.6,
+        start: Color::from_rgb8(64, 169, 104),
+        end: Color::from_rgb8(40, 104, 67),
+    };
+    let runtime_by_display_id = model
+        .node_map
+        .iter()
+        .map(|(display_id, node)| (*display_id, node.runtime_node_id))
+        .collect::<HashMap<_, _>>();
 
     let graph_widget = {
         let node_map = model.node_map.clone();
@@ -1070,15 +1200,30 @@ where
         let visible_cluster_sources = visible_cluster_source_indices.clone();
         let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids.clone();
         let cluster_successor_runtime_ids_for_nodes = cluster_successor_runtime_ids.clone();
+        let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids.clone();
+        let runtime_ids_for_edge_colors = runtime_by_display_id.clone();
+        let runtime_ids_for_edge_strokes = runtime_by_display_id.clone();
+        let condition_successors_for_nodes = condition_successor_runtime_ids.clone();
+        let condition_successors_for_edge_colors = condition_successor_runtime_ids.clone();
+        let condition_successors_for_edge_strokes = condition_successor_runtime_ids.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
                 if visible_nodes.contains(&node_id) {
                     if let Some(node) = node_map.get(&node_id) {
-                        let phase = node_state(node.runtime_node_id);
+                        let phase = node_phase_for_display(
+                            live_data,
+                            node.id,
+                            node.runtime_node_id,
+                            &condition_successors_for_nodes,
+                        );
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
                             runtime_id: node.runtime_node_id,
+                            successor_runtime_ids: condition_successors_for_nodes
+                                .get(&node.id)
+                                .cloned()
+                                .unwrap_or_default(),
                             kind: node.kind(),
                             label: &node.label,
                             metadata: node.metadata.as_deref(),
@@ -1101,8 +1246,9 @@ where
                             }),
                             depth: cluster.depth,
                             member_display_ids: &cluster.nodes,
-                            member_runtime_ids: cluster_member_runtime_ids_for_nodes
-                                [cluster_index]
+                            entry_runtime_ids: cluster_entry_runtime_ids_for_nodes[cluster_index]
+                                .clone(),
+                            member_runtime_ids: cluster_member_runtime_ids_for_nodes[cluster_index]
                                 .clone(),
                             successor_runtime_ids: cluster_successor_runtime_ids_for_nodes
                                 [cluster_index]
@@ -1120,8 +1266,84 @@ where
             },
         )
         .id(iced_sugiyama::Id::new(GRAPH_WIDGET_ID))
-        .edge_color(jungle_edge)
-        .stroke_width(edge_style.width)
+        .edge_color(move |ctx| {
+            let source_runtime_id = runtime_ids_for_edge_colors
+                .get(&ctx.edge.0)
+                .copied()
+                .flatten();
+            let target_runtime_id = runtime_ids_for_edge_colors
+                .get(&ctx.edge.1)
+                .copied()
+                .flatten();
+            let style = theme
+                .edge_style(
+                    theme_state,
+                    EdgeStyleCtx {
+                        edge_index: ctx.edge_index,
+                        source_display_id: ctx.edge.0,
+                        target_display_id: ctx.edge.1,
+                        source_runtime_id,
+                        target_runtime_id,
+                        source_phase: node_phase_for_display(
+                            live_data,
+                            ctx.edge.0,
+                            source_runtime_id,
+                            &condition_successors_for_edge_colors,
+                        ),
+                        target_phase: node_phase_for_display(
+                            live_data,
+                            ctx.edge.1,
+                            target_runtime_id,
+                            &condition_successors_for_edge_colors,
+                        ),
+                        extent: ctx.transition_progress,
+                    },
+                )
+                .unwrap_or(default_edge_style);
+            (style.start, style.end)
+        })
+        .outgoing_edge_style(move |ctx| {
+            let source_runtime_id = runtime_ids_for_edge_strokes
+                .get(&ctx.edge.0)
+                .copied()
+                .flatten();
+            let target_runtime_id = runtime_ids_for_edge_strokes
+                .get(&ctx.edge.1)
+                .copied()
+                .flatten();
+            let style = theme
+                .edge_style(
+                    theme_state,
+                    EdgeStyleCtx {
+                        edge_index: ctx.edge_index,
+                        source_display_id: ctx.edge.0,
+                        target_display_id: ctx.edge.1,
+                        source_runtime_id,
+                        target_runtime_id,
+                        source_phase: node_phase_for_display(
+                            live_data,
+                            ctx.edge.0,
+                            source_runtime_id,
+                            &condition_successors_for_edge_strokes,
+                        ),
+                        target_phase: node_phase_for_display(
+                            live_data,
+                            ctx.edge.1,
+                            target_runtime_id,
+                            &condition_successors_for_edge_strokes,
+                        ),
+                        extent: ctx.transition_progress,
+                    },
+                )
+                .unwrap_or(default_edge_style);
+            OutgoingEdgeStyle {
+                visible: true,
+                width_scale: style.width.max(0.0),
+                alpha: 1.0,
+                color_override: None,
+            }
+        })
+        .stroke_width(1.0)
         .edge_corner_radius(18.0)
         .node_size(move |node_id| {
             sizes_for_view
@@ -1146,6 +1368,7 @@ where
                     .and_then(|parent| cluster_info_for_clusters.get(parent).map(|info| info.id)),
                 depth: cluster.depth,
                 member_display_ids: &cluster.nodes,
+                entry_runtime_ids: cluster_entry_runtime_ids[source_index].clone(),
                 member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
                 successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
                 phase: cluster_phase(cluster),
@@ -1156,7 +1379,7 @@ where
                 ClusterView::Collapsed { .. } => None,
             }
         })
-        .cluster_color(loop_cluster_color)
+        .cluster_color(cluster_fill_color)
         .padding(24);
         if let Some(duration) = animation_duration {
             widget = widget.animation_duration(duration);
@@ -1252,6 +1475,7 @@ struct ClusterInfo {
     metadata: Option<String>,
     parent: Option<usize>,
     nodes: Vec<u32>,
+    root_nodes: Vec<u32>,
     depth: usize,
 }
 
@@ -1403,6 +1627,7 @@ impl GraphBuilder {
                     },
                     parent: parent_cluster,
                     nodes: Vec::new(),
+                    root_nodes: Vec::new(),
                     depth,
                 });
                 self.cluster_stack.push(cluster_index);
@@ -1420,10 +1645,11 @@ impl GraphBuilder {
                     self.clusters[cluster_index].nodes = cluster_nodes.clone();
                     self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
+                self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
 
                 Flattened {
                     roots: body_flow.roots.clone(),
-                    exits: body_flow.roots,
+                    exits: body_flow.exits,
                     members: body_flow.members,
                 }
             }
@@ -1466,6 +1692,7 @@ impl GraphBuilder {
                     },
                     parent: parent_cluster,
                     nodes: Vec::new(),
+                    root_nodes: Vec::new(),
                     depth,
                 });
 
@@ -1478,6 +1705,7 @@ impl GraphBuilder {
                     self.clusters[cluster_index].nodes = cluster_nodes.clone();
                     self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
+                self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
 
                 Flattened {
                     roots: body_flow.roots.clone(),
@@ -1777,13 +2005,6 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     }
 }
 
-fn jungle_edge(_index: usize) -> (Color, Color) {
-    (
-        Color::from_rgb8(64, 169, 104),
-        Color::from_rgb8(40, 104, 67),
-    )
-}
-
 fn app_background(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(Color::from_rgb8(8, 19, 13))),
@@ -1837,8 +2058,20 @@ fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
     }
 }
 
-fn loop_cluster_color(_index: usize) -> Color {
-    Color::from_rgba8(30, 91, 53, 0.04)
+fn set_cluster_fill_colors(colors: Vec<Color>) {
+    let store = CLUSTER_FILL_COLORS.get_or_init(|| RwLock::new(Vec::new()));
+    if let Ok(mut guard) = store.write() {
+        *guard = colors;
+    }
+}
+
+fn cluster_fill_color(index: usize) -> Color {
+    let store = CLUSTER_FILL_COLORS.get_or_init(|| RwLock::new(Vec::new()));
+    store
+        .read()
+        .ok()
+        .and_then(|colors| colors.get(index).copied())
+        .unwrap_or(DEFAULT_CLUSTER_FILL)
 }
 
 fn jungle_text_base() -> Color {
@@ -1914,15 +2147,61 @@ mod tests {
         assert!(!live.active_runtime_ids.contains(&9));
         assert!(live.finished_runtime_ids.contains(&9));
 
-        assert!(!live.apply_update(JourneyUpdateEvent {
+        assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 4,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 9,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.active_runtime_ids.contains(&9));
+        assert!(!live.finished_runtime_ids.contains(&9));
+
+        assert!(!live.apply_update(JourneyUpdateEvent {
+            sequence_id: 5,
             event: RunnerUpdateOut::SleepScheduled {
                 uuid: Uuid::nil(),
                 timer_id: Uuid::nil(),
                 wake_at_unix_ms: 1,
             },
         }));
-        assert_eq!(live.latest_event_count, 4);
+        assert_eq!(live.latest_event_count, 5);
+    }
+
+    #[test]
+    fn condition_runtime_state_tracks_latest_branch_event() {
+        let mut live = LiveData::default();
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 11,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event: RunnerUpdateOut::ActionSuccessOutput {
+                node_id: 11,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert_eq!(
+            infer_condition_runtime_state(&live, &[11, 12]),
+            RuntimeState::Completed
+        );
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 3,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 12,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert_eq!(
+            infer_condition_runtime_state(&live, &[11, 12]),
+            RuntimeState::Running
+        );
     }
 
     #[test]
@@ -2061,7 +2340,9 @@ mod tests {
         assert!(edges.contains(&(branch_id, loop_r_id)));
         assert!(edges.contains(&(loop_l_id, branch_id)));
         assert!(edges.contains(&(loop_r_id, branch_id)));
-        assert!(edges.contains(&(branch_id, join_id)));
+        assert!(edges.contains(&(loop_l_id, join_id)));
+        assert!(edges.contains(&(loop_r_id, join_id)));
+        assert!(!edges.contains(&(branch_id, join_id)));
 
         assert!(edges.contains(&(join_id, join_l_id)));
         assert!(edges.contains(&(join_id, join_r_id)));
@@ -2134,7 +2415,61 @@ mod tests {
         assert!(edges.contains(&(cond_id, in_r_id)));
         assert!(edges.contains(&(in_l_id, cond_id)));
         assert!(edges.contains(&(in_r_id, cond_id)));
-        assert!(edges.contains(&(cond_id, join_id)));
+        assert!(edges.contains(&(in_l_id, join_id)));
+        assert!(edges.contains(&(in_r_id, join_id)));
+        assert!(!edges.contains(&(cond_id, join_id)));
+    }
+
+    #[test]
+    fn while_loop_exit_edges_do_not_attach_to_loop_entry_step() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step {
+                label: "GorillaBirthday",
+            },
+            JourneyAst::While {
+                label: "flow::GorillaDaylightRemaining",
+                metadata: "",
+                body: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step {
+                        label: "EvaluateActivityWindow",
+                    },
+                    JourneyAst::Conditional {
+                        label: "flow::GorillaIsActiveNow",
+                        metadata: "",
+                        left: Box::new(JourneyAst::Step { label: "DoDay" }),
+                        right: Box::new(JourneyAst::Step { label: "RestDay" }),
+                    },
+                    JourneyAst::Step {
+                        label: "TickPerceivedTime",
+                    },
+                ])),
+            },
+            JourneyAst::Step {
+                label: "AdvanceAge",
+            },
+        ]);
+
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+
+        let birthday_id = id_for("GorillaBirthday");
+        let evaluate_id = id_for("EvaluateActivityWindow");
+        let active_now_id = id_for("GorillaIsActiveNow");
+        let tick_id = id_for("TickPerceivedTime");
+        let advance_age_id = id_for("AdvanceAge");
+
+        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
+        assert!(edges.contains(&(birthday_id, evaluate_id)));
+        assert!(edges.contains(&(evaluate_id, active_now_id)));
+        assert!(edges.contains(&(tick_id, advance_age_id)));
+        assert!(!edges.contains(&(evaluate_id, advance_age_id)));
     }
 
     #[test]
