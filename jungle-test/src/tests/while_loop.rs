@@ -2,7 +2,7 @@ use jungle_sdk::types::{
     ActionCompletion, Executor, Identity, LoopCondition, ManualExecutor, Pulse, Running, Step,
     Waiting, While,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U1};
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use jungle_sdk::Journey;
 use std::future::ready;
 
@@ -111,6 +111,87 @@ type WhileTickWithTailFlow = While<LessThanThree, TickWithTailFlow>;
 
 #[derive(Journey)]
 struct LoopWithTailJourney(WhileTickWithTailFlow, Step<LooperWithTail, TailAfterLoop>);
+
+action!(
+    UnitAction,
+    U2,
+    in = (),
+    out = (),
+    err = (),
+    act = |_dependency, _input| ready(Ok(()))
+);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct NestedState {
+    outer_round: u8,
+    inner_step: u8,
+    outer_iterations_done: u8,
+}
+
+animal!(
+    NestedLooper,
+    U2,
+    state = NestedState,
+    journey = NestedLoopJourney
+);
+
+struct InnerContinue;
+impl LoopCondition<NestedState> for InnerContinue {
+    type Arg = ();
+
+    fn should_continue(state: &NestedState) -> bool {
+        state.inner_step < 2
+    }
+}
+
+struct OuterContinue;
+impl LoopCondition<NestedState> for OuterContinue {
+    type Arg = ();
+
+    fn should_continue(state: &NestedState) -> bool {
+        state.outer_round < 3
+    }
+}
+
+struct InnerWork;
+impl Pulse<NestedLooper> for InnerWork {
+    type Action = UnitAction;
+    type StateAspect = Identity;
+    type Arg = ();
+    type Ret = ();
+
+    fn emit(_state: &NestedState, _input: Self::Arg) -> Self::Arg {}
+
+    fn absorb(state: &mut NestedState, _output: ActionCompletion<Self::Action>) -> Self::Ret {
+        state.inner_step = state.inner_step.saturating_add(1);
+    }
+}
+
+struct FinishOuterRound;
+impl Pulse<NestedLooper> for FinishOuterRound {
+    type Action = UnitAction;
+    type StateAspect = Identity;
+    type Arg = ();
+    type Ret = ();
+
+    fn emit(_state: &NestedState, _input: Self::Arg) -> Self::Arg {}
+
+    fn absorb(state: &mut NestedState, _output: ActionCompletion<Self::Action>) -> Self::Ret {
+        state.outer_iterations_done = state.outer_iterations_done.saturating_add(1);
+        state.outer_round = state.outer_round.saturating_add(1);
+        state.inner_step = 0;
+    }
+}
+
+type NestedInnerLoop = While<InnerContinue, Step<NestedLooper, InnerWork>>;
+
+#[derive(Journey)]
+struct NestedOuterBody(NestedInnerLoop, Step<NestedLooper, FinishOuterRound>);
+
+type NestedOuterLoop = While<OuterContinue, NestedOuterBody>;
+
+#[derive(Journey)]
+struct NestedLoopJourney(NestedOuterLoop);
 
 #[test]
 fn while_running_checks_state_before_iteration() {
@@ -242,4 +323,32 @@ fn executor_advances_from_terminal_while_iteration_to_trailing_step_without_spur
     assert!(loop_executor.next_request::<i32>().is_err());
     assert!(loop_executor.is_complete());
     assert_eq!(loop_executor.into_state(), 13);
+}
+
+#[test]
+fn nested_while_with_trailing_step_repeats_outer_iterations() {
+    let mut executor = Executor::<NestedLooper>::new(NestedState {
+        outer_round: 0,
+        inner_step: 0,
+        outer_iterations_done: 0,
+    });
+
+    loop {
+        let request = executor.next_request::<()>();
+        match request {
+            Ok(()) => {
+                let _emitted: () = executor
+                    .complete(Ok::<(), ()>(()))
+                    .expect("completion should advance");
+            }
+            Err(jungle_sdk::types::ExecutorError::Complete) => break,
+            Err(err) => panic!("unexpected request error: {err:?}"),
+        }
+    }
+
+    assert!(executor.is_complete());
+    let final_state = executor.into_state();
+    assert_eq!(final_state.outer_iterations_done, 3);
+    assert_eq!(final_state.outer_round, 3);
+    assert_eq!(final_state.inner_step, 0);
 }

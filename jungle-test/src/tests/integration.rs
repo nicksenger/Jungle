@@ -717,109 +717,87 @@ async fn run_gorilla_journey_progresses_past_reported_stall_and_completes_local_
         let _ = worker.spawn().await;
     });
 
-    let mut cumulative_input_count = 0_u32;
-    let mut cumulative_success_count = 0_u32;
-    let mut cumulative_failure_count = 0_u32;
-    let mut cumulative_step_updates = 0_u32;
-    const GORILLA_JOURNEY_COUNT: usize = 3;
+    let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
+        .expect("gorilla seed should serialize");
+    let journey_id = client
+        .start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed)
+        .await
+        .expect("start_journey for gorilla should succeed");
 
-    for _ in 0..GORILLA_JOURNEY_COUNT {
-        let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
-            .expect("gorilla seed should serialize");
-        let journey_id = client
-            .start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed)
-            .await
-            .expect("start_journey for gorilla should succeed");
+    let mut subscription = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("subscribe_step_updates for gorilla should succeed");
 
-        let mut subscription = client
-            .subscribe_step_updates(journey_id, None)
-            .await
-            .expect("subscribe_step_updates for gorilla should succeed");
+    let mut action_input_count = 0_u32;
+    let mut action_success_count = 0_u32;
+    let mut action_failure_count = 0_u32;
+    let mut total_step_updates = 0_u32;
+    let mut last_sequence_id: Option<u64> = None;
 
-        let mut action_input_count = 0_u32;
-        let mut action_success_count = 0_u32;
-        let mut action_failure_count = 0_u32;
-        let mut total_step_updates = 0_u32;
-        let mut last_sequence_id: Option<u64> = None;
-
-        let completion = tokio::time::timeout(Duration::from_secs(20), async {
-            loop {
-                let Some(next) = subscription.next().await else {
-                    break;
-                };
-                let update = next.expect("streamed gorilla journey update should succeed");
-                match update.event {
-                    RunnerUpdateOut::ActionInput { uuid, .. } => {
-                        assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
-                        action_input_count += 1;
-                        total_step_updates += 1;
-                    }
-                    RunnerUpdateOut::ActionSuccessOutput { uuid, .. } => {
-                        assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
-                        action_success_count += 1;
-                        total_step_updates += 1;
-                    }
-                    RunnerUpdateOut::ActionFailureOutput { uuid, .. } => {
-                        assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
-                        action_failure_count += 1;
-                        total_step_updates += 1;
-                    }
-                    RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
-                        continue;
-                    }
+    let completion = tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            let Some(next) = subscription.next().await else {
+                break;
+            };
+            let update = next.expect("streamed gorilla journey update should succeed");
+            match update.event {
+                RunnerUpdateOut::ActionInput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
+                    action_input_count += 1;
+                    total_step_updates += 1;
                 }
-                if let Some(prev) = last_sequence_id {
-                    assert!(
-                        update.sequence_id > prev,
-                        "gorilla stream sequence ids must be strictly increasing"
-                    );
+                RunnerUpdateOut::ActionSuccessOutput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
+                    action_success_count += 1;
+                    total_step_updates += 1;
                 }
-                last_sequence_id = Some(update.sequence_id);
+                RunnerUpdateOut::ActionFailureOutput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
+                    action_failure_count += 1;
+                    total_step_updates += 1;
+                }
+                RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
+                    continue;
+                }
             }
-        })
-        .await;
-
-        if completion.is_err() {
-            let status = client
-                .journey_details(journey_id)
-                .await
-                .expect("journey_details should succeed after gorilla timeout");
-            panic!(
-                "gorilla stream did not finish before timeout (status={status:?}, updates={total_step_updates}, inputs={action_input_count}, successes={action_success_count}, failures={action_failure_count})"
-            );
+            if let Some(prev) = last_sequence_id {
+                assert!(
+                    update.sequence_id > prev,
+                    "gorilla stream sequence ids must be strictly increasing"
+                );
+            }
+            last_sequence_id = Some(update.sequence_id);
         }
+    })
+    .await;
 
-        let final_status = client
+    if completion.is_err() {
+        let status = client
             .journey_details(journey_id)
             .await
-            .expect("journey_details should succeed after gorilla stream completion");
-        assert_eq!(final_status, JourneyStatus::Completed);
-        assert_eq!(
-            action_failure_count, 0,
-            "gorilla journey should not emit action failures"
+            .expect("journey_details should succeed after gorilla timeout");
+        panic!(
+            "gorilla stream did not finish before timeout (status={status:?}, updates={total_step_updates}, inputs={action_input_count}, successes={action_success_count}, failures={action_failure_count})"
         );
-        assert_eq!(
-            action_input_count, action_success_count,
-            "gorilla journey should pair each action input with an action success"
-        );
-
-        cumulative_input_count += action_input_count;
-        cumulative_success_count += action_success_count;
-        cumulative_failure_count += action_failure_count;
-        cumulative_step_updates += total_step_updates;
     }
 
+    let final_status = client
+        .journey_details(journey_id)
+        .await
+        .expect("journey_details should succeed after gorilla stream completion");
+    assert_eq!(final_status, JourneyStatus::Completed);
+    assert_eq!(
+        action_failure_count, 0,
+        "gorilla journey should not emit action failures"
+    );
     assert!(
-        cumulative_step_updates > 100,
-        "gorilla journeys should emit more than 100 cumulative step updates before completion, got {cumulative_step_updates}"
+        total_step_updates > 100,
+        "gorilla journey should emit more than 100 step updates before completion, got {total_step_updates}"
     );
     assert_eq!(
-        cumulative_failure_count, 0,
-        "gorilla journeys should not emit action failures"
-    );
-    assert_eq!(
-        cumulative_input_count, cumulative_success_count,
-        "gorilla journeys should pair each action input with an action success"
+        action_input_count, action_success_count,
+        "gorilla journey should pair each action input with an action success"
     );
 
     worker_handle.abort();
