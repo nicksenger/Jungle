@@ -1584,9 +1584,10 @@ where
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(
-                    &(state.clone(), input.clone()),
-                )
+                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(&(
+                    state.clone(),
+                    input.clone(),
+                ))
             },
         );
         steps.push(Box::new(ConditionalErasedFlow::<
@@ -1936,9 +1937,10 @@ where
         ));
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(
-                    &(state.clone(), input.clone()),
-                )
+                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(&(
+                    state.clone(),
+                    input.clone(),
+                ))
             },
         );
         steps.push(Box::new(ConditionalContextErasedFlow::<

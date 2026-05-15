@@ -64,10 +64,7 @@ impl Pulse<SelectAnimal> for SelectFast {
         (state.fast_ms, 1)
     }
 
-    fn absorb(
-        _state: &mut SelectJoinState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("fast action should succeed")
     }
 }
@@ -83,10 +80,7 @@ impl Pulse<SelectAnimal> for SelectSlow {
         (state.slow_ms, 2)
     }
 
-    fn absorb(
-        _state: &mut SelectJoinState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("slow action should succeed")
     }
 }
@@ -105,10 +99,7 @@ impl Pulse<SelectAnimal> for CaptureSelectWinner {
         (0, winner)
     }
 
-    fn absorb(
-        state: &mut SelectJoinState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.winner = output.expect("winner capture should succeed");
     }
 }
@@ -137,10 +128,7 @@ impl Pulse<JoinAnimal> for JoinFast {
         (state.fast_ms, 1)
     }
 
-    fn absorb(
-        _state: &mut SelectJoinState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("join fast should succeed")
     }
 }
@@ -156,10 +144,7 @@ impl Pulse<JoinAnimal> for JoinSlow {
         (state.slow_ms, 2)
     }
 
-    fn absorb(
-        _state: &mut SelectJoinState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("join slow should succeed")
     }
 }
@@ -175,10 +160,7 @@ impl Pulse<JoinAnimal> for CaptureJoinSum {
         (0, input.0 + input.1)
     }
 
-    fn absorb(
-        state: &mut SelectJoinState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.joined_sum = output.expect("join sum capture should succeed");
     }
 }
@@ -207,10 +189,7 @@ impl Pulse<TimeoutAnimal> for TimeoutSleep {
         Duration::from_millis(state.fast_ms)
     }
 
-    fn absorb(
-        state: &mut SelectJoinState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("timeout sleep should succeed");
         state.winner = -1;
         -1
@@ -228,10 +207,7 @@ impl Pulse<TimeoutAnimal> for TimeoutSlow {
         (state.slow_ms, 9)
     }
 
-    fn absorb(
-        state: &mut SelectJoinState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         let value = output.expect("timeout slow should succeed");
         state.winner = value;
         value

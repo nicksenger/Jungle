@@ -8,11 +8,13 @@ default = []
 server = ["dep:jungle-server"]
 pg = ["server", "jungle-server/postgres"]
 redb = ["server", "jungle-server/redb"]
+local = ["dep:jungle-local", "redb"]
 
 [dependencies]
 inception = { workspace = true }
 jungle-client = { path = "../jungle-client" }
 jungle-core = { path = "../jungle-core" }
+jungle-local = { path = "../jungle-local", optional = true }
 jungle-macros = { path = "../jungle-macros" }
 jungle-server = { path = "../jungle-server", optional = true }
 jungle-types = { path = "../jungle-types" }

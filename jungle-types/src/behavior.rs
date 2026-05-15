@@ -186,14 +186,17 @@ where
     }
 }
 
-impl<State, Head, Next, Tail> StateLensPath<State, list::List<(Head, list::List<(Next, Tail)>)>> for ()
+impl<State, Head, Next, Tail> StateLensPath<State, list::List<(Head, list::List<(Next, Tail)>)>>
+    for ()
 where
     (): StateLensPath<State, Head>,
     <() as StateLensPath<State, Head>>::View: 'static,
     (): StateLensPath<<() as StateLensPath<State, Head>>::View, list::List<(Next, Tail)>>,
 {
-    type View =
-        <() as StateLensPath<<() as StateLensPath<State, Head>>::View, list::List<(Next, Tail)>>>::View;
+    type View = <() as StateLensPath<
+        <() as StateLensPath<State, Head>>::View,
+        list::List<(Next, Tail)>,
+    >>::View;
 
     fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
         let head = <() as StateLensPath<State, Head>>::view(state);

@@ -1,14 +1,12 @@
 use iced::widget::{button, column, container, text};
 use iced::{Color, Element, Length, Task};
 use jungle_sdk::core::JungleWorker;
-use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::JungleClient;
+use jungle_sdk::{JungleClient, LocalClient};
 use jungle_viewer::{
     AnyAnimal, ClusterView, ClusterViewCtx, JunglePanelTheme, Phase, RuntimeState, StepKind,
     StepViewCtx, ViewerEvent,
 };
 use std::path::PathBuf;
-use uuid::Uuid;
 
 #[derive(Clone, Copy)]
 struct ExampleTheme;
@@ -158,26 +156,12 @@ fn main() {
     }
 
     if live {
-        let listen_addr = jungle_examples::reserve_local_addr();
-        let db_path =
-            std::env::temp_dir().join(format!("jungle-view-example-{}.redb", Uuid::new_v4()));
-
         let live_runtime = tokio::runtime::Runtime::new().expect("live runtime should start");
 
-        let _server_task = live_runtime.spawn({
-            let db_path = db_path.clone();
-            async move {
-                let _ = ServerBuilder::new()
-                    .listen(listen_addr)
-                    .redb_path(db_path)
-                    .run()
-                    .await;
-            }
-        });
-
-        let client = live_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
-        let worker_client =
-            live_runtime.block_on(jungle_examples::connect_client_with_retry(listen_addr));
+        let client = live_runtime
+            .block_on(LocalClient::builder().build())
+            .expect("local client should build");
+        let worker_client = client.clone();
 
         let _worker_task = live_runtime.spawn(async move {
             let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);

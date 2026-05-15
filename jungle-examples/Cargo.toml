@@ -8,7 +8,7 @@ default = ["zoo-delay"]
 zoo-delay = ["jungle-zoo/delay"]
 
 [dependencies]
-jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb"] }
+jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "local"] }
 jungle-zoo = { path = "../jungle-zoo" }
 jungle-viewer = { path = "../jungle-viewer" }
 iced = { version = "0.14", features = ["tokio"] }

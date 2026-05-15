@@ -138,10 +138,7 @@ impl Pulse<ReplayGateAnimal> for ReplayPreStep {
 
     fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut ReplayGateState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("pre increment should succeed");
         state.phase += 1;
     }
@@ -156,10 +153,7 @@ impl Pulse<ReplayGateAnimal> for ReplayPostStep {
 
     fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut ReplayGateState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("post increment should succeed");
         state.phase += 1;
     }
@@ -174,10 +168,7 @@ impl Pulse<ReplayGateAnimal> for ReplayGateStep {
 
     fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut ReplayGateState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("gate action should succeed");
         state.phase += 1;
     }
@@ -455,10 +446,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
 
     fn emit(_state: &ReplayTimeoutState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut ReplayTimeoutState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("pre-timeout increment should succeed");
         state.phase += 1;
     }
@@ -475,10 +463,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(
-        state: &mut ReplayTimeoutState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("timeout sleep should succeed");
         state.phase += 1;
     }
@@ -493,10 +478,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
 
     fn emit(_state: &ReplayTimeoutState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut ReplayTimeoutState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         output.expect("post-timeout increment should succeed");
         state.phase += 1;
     }

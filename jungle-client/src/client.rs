@@ -12,8 +12,8 @@ use std::fs;
 use std::io;
 use std::marker::PhantomData;
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
-use std::pin::Pin;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use thiserror::Error;
@@ -455,10 +455,10 @@ impl<J> Client<J> {
             .map_err(Self::transport_error)?;
         Ok(JourneyUpdateSubscription::from_stream(
             QuinnJourneyUpdateStream {
-            recv,
-            frame_state: SubscriptionFrameState::default(),
-            closed: false,
-        },
+                recv,
+                frame_state: SubscriptionFrameState::default(),
+                closed: false,
+            },
         ))
     }
 

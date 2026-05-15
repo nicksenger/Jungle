@@ -2560,6 +2560,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jungle-local"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "jungle-client",
+ "jungle-server",
+ "jungle-types",
+ "thiserror 1.0.69",
+ "tokio",
+ "typosaurus",
+ "uuid",
+]
+
+[[package]]
 name = "jungle-macros"
 version = "0.1.0"
 dependencies = [
@@ -2607,6 +2622,7 @@ dependencies = [
  "inception",
  "jungle-client",
  "jungle-core",
+ "jungle-local",
  "jungle-macros",
  "jungle-server",
  "jungle-types",
