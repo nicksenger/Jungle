@@ -278,7 +278,7 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         )
         .padding([4, 8])
         .style(|_theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
+            background: None,
             border: iced::border::rounded(6)
                 .color(Color::from_rgb8(54, 117, 78))
                 .width(1.0),
@@ -290,7 +290,7 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         if expanded {
             ClusterView::Expanded {
                 overlay: Some(overlay),
-                fill: Color::from_rgba8(30, 91, 53, 0.02),
+                fill: Color::from_rgba(0.0, 0.0, 0.0, 0.0),
             }
         } else {
             ClusterView::Collapsed {
@@ -302,7 +302,7 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
                 .padding([6, 10])
                 .width(Length::Shrink)
                 .style(|_theme, _status| iced::widget::button::Style {
-                    background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
+                    background: None,
                     text_color: Color::from_rgb8(145, 183, 157),
                     border: iced::border::rounded(8)
                         .color(Color::from_rgb8(54, 117, 78))
