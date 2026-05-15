@@ -1474,7 +1474,7 @@ impl GraphBuilder {
 
                 Flattened {
                     roots: body_flow.roots.clone(),
-                    exits: body_flow.roots,
+                    exits: body_flow.exits,
                     members: body_flow.members,
                 }
             }
@@ -2124,7 +2124,9 @@ mod tests {
         assert!(edges.contains(&(branch_id, loop_r_id)));
         assert!(edges.contains(&(loop_l_id, branch_id)));
         assert!(edges.contains(&(loop_r_id, branch_id)));
-        assert!(edges.contains(&(branch_id, join_id)));
+        assert!(edges.contains(&(loop_l_id, join_id)));
+        assert!(edges.contains(&(loop_r_id, join_id)));
+        assert!(!edges.contains(&(branch_id, join_id)));
 
         assert!(edges.contains(&(join_id, join_l_id)));
         assert!(edges.contains(&(join_id, join_r_id)));
@@ -2197,7 +2199,59 @@ mod tests {
         assert!(edges.contains(&(cond_id, in_r_id)));
         assert!(edges.contains(&(in_l_id, cond_id)));
         assert!(edges.contains(&(in_r_id, cond_id)));
-        assert!(edges.contains(&(cond_id, join_id)));
+        assert!(edges.contains(&(in_l_id, join_id)));
+        assert!(edges.contains(&(in_r_id, join_id)));
+        assert!(!edges.contains(&(cond_id, join_id)));
+    }
+
+    #[test]
+    fn while_loop_exit_edges_do_not_attach_to_loop_entry_step() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step {
+                label: "GorillaBirthday",
+            },
+            JourneyAst::While {
+                label: "flow::GorillaDaylightRemaining",
+                metadata: "",
+                body: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step {
+                        label: "EvaluateActivityWindow",
+                    },
+                    JourneyAst::Conditional {
+                        label: "flow::GorillaIsActiveNow",
+                        metadata: "",
+                        left: Box::new(JourneyAst::Step { label: "DoDay" }),
+                        right: Box::new(JourneyAst::Step { label: "RestDay" }),
+                    },
+                    JourneyAst::Step {
+                        label: "TickPerceivedTime",
+                    },
+                ])),
+            },
+            JourneyAst::Step { label: "AdvanceAge" },
+        ]);
+
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+
+        let birthday_id = id_for("GorillaBirthday");
+        let evaluate_id = id_for("EvaluateActivityWindow");
+        let active_now_id = id_for("GorillaIsActiveNow");
+        let tick_id = id_for("TickPerceivedTime");
+        let advance_age_id = id_for("AdvanceAge");
+
+        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
+        assert!(edges.contains(&(birthday_id, evaluate_id)));
+        assert!(edges.contains(&(evaluate_id, active_now_id)));
+        assert!(edges.contains(&(tick_id, advance_age_id)));
+        assert!(!edges.contains(&(evaluate_id, advance_age_id)));
     }
 
     #[test]
