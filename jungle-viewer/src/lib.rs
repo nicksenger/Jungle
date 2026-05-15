@@ -1101,35 +1101,11 @@ where
         start: Color::from_rgb8(64, 169, 104),
         end: Color::from_rgb8(40, 104, 67),
     };
-    let mut edge_style_by_source_display = HashMap::<u32, EdgeStyle>::new();
-    for (edge_index, (from_display, to_display)) in edges.iter().copied().enumerate() {
-        let source_runtime_id = model
-            .node_map
-            .get(&from_display)
-            .and_then(|node| node.runtime_node_id);
-        let target_runtime_id = model
-            .node_map
-            .get(&to_display)
-            .and_then(|node| node.runtime_node_id);
-        let style = theme
-            .edge_style(
-                theme_state,
-                EdgeStyleCtx {
-                    edge_index,
-                    source_display_id: from_display,
-                    target_display_id: to_display,
-                    source_runtime_id,
-                    target_runtime_id,
-                    source_phase: node_state(source_runtime_id),
-                    target_phase: node_state(target_runtime_id),
-                    extent: 1.0,
-                },
-            )
-            .unwrap_or(default_edge_style);
-        edge_style_by_source_display
-            .entry(from_display)
-            .or_insert(style);
-    }
+    let runtime_by_display_id = model
+        .node_map
+        .iter()
+        .map(|(display_id, node)| (*display_id, node.runtime_node_id))
+        .collect::<HashMap<_, _>>();
 
     let graph_widget = {
         let node_map = model.node_map.clone();
@@ -1142,7 +1118,8 @@ where
         let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids.clone();
         let cluster_successor_runtime_ids_for_nodes = cluster_successor_runtime_ids.clone();
         let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids.clone();
-        let edge_style_for_sources = edge_style_by_source_display.clone();
+        let runtime_ids_for_edge_colors = runtime_by_display_id.clone();
+        let runtime_ids_for_edge_strokes = runtime_by_display_id.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -1195,17 +1172,61 @@ where
             },
         )
         .id(iced_sugiyama::Id::new(GRAPH_WIDGET_ID))
-        .edge_color(jungle_edge)
-        .outgoing_edge_style(move |source_display_id| {
-            let style = edge_style_for_sources
-                .get(&source_display_id)
+        .edge_color(move |ctx| {
+            let source_runtime_id = runtime_ids_for_edge_colors
+                .get(&ctx.edge.0)
                 .copied()
+                .flatten();
+            let target_runtime_id = runtime_ids_for_edge_colors
+                .get(&ctx.edge.1)
+                .copied()
+                .flatten();
+            let style = theme
+                .edge_style(
+                    theme_state,
+                    EdgeStyleCtx {
+                        edge_index: ctx.edge_index,
+                        source_display_id: ctx.edge.0,
+                        target_display_id: ctx.edge.1,
+                        source_runtime_id,
+                        target_runtime_id,
+                        source_phase: node_state(source_runtime_id),
+                        target_phase: node_state(target_runtime_id),
+                        extent: ctx.transition_progress,
+                    },
+                )
+                .unwrap_or(default_edge_style);
+            (style.start, style.end)
+        })
+        .outgoing_edge_style(move |ctx| {
+            let source_runtime_id = runtime_ids_for_edge_strokes
+                .get(&ctx.edge.0)
+                .copied()
+                .flatten();
+            let target_runtime_id = runtime_ids_for_edge_strokes
+                .get(&ctx.edge.1)
+                .copied()
+                .flatten();
+            let style = theme
+                .edge_style(
+                    theme_state,
+                    EdgeStyleCtx {
+                        edge_index: ctx.edge_index,
+                        source_display_id: ctx.edge.0,
+                        target_display_id: ctx.edge.1,
+                        source_runtime_id,
+                        target_runtime_id,
+                        source_phase: node_state(source_runtime_id),
+                        target_phase: node_state(target_runtime_id),
+                        extent: ctx.transition_progress,
+                    },
+                )
                 .unwrap_or(default_edge_style);
             OutgoingEdgeStyle {
                 visible: true,
                 width_scale: style.width.max(0.0),
                 alpha: 1.0,
-                color_override: Some((style.start, style.end)),
+                color_override: None,
             }
         })
         .stroke_width(1.0)
@@ -1868,13 +1889,6 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
             end: Color::from_rgb8(40, 104, 67),
         })
     }
-}
-
-fn jungle_edge(_index: usize) -> (Color, Color) {
-    (
-        Color::from_rgb8(64, 169, 104),
-        Color::from_rgb8(40, 104, 67),
-    )
 }
 
 fn app_background(_theme: &iced::Theme) -> iced::widget::container::Style {

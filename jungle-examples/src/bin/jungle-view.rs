@@ -331,32 +331,10 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         }
     }
 
-    fn edge_style(&self, state: &Self::State, cx: EdgeStyleCtx) -> Option<EdgeStyle> {
-        let now = Instant::now();
-        let color = if let Some(runtime_id) = cx.source_runtime_id {
-            let mut guard = state.lock().expect("example theme state mutex poisoned");
-            let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
-            let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
-                from: RuntimeState::Pending,
-                to: RuntimeState::Pending,
-                started_at: now,
-            });
-            let mut phase_target = match cx.source_phase {
-                Phase::Live(target) => target,
-                Phase::Static => RuntimeState::Pending,
-            };
-            if forced_pending && !matches!(phase_target, RuntimeState::Running) {
-                phase_target = RuntimeState::Pending;
-            }
-            if visual.to != phase_target {
-                let blended = sampled_runtime_state(visual, now);
-                visual.from = blended;
-                visual.to = phase_target;
-                visual.started_at = now;
-            }
-            blend_runtime_color(*visual, now)
-        } else {
-            runtime_color(RuntimeState::Pending)
+    fn edge_style(&self, _state: &Self::State, cx: EdgeStyleCtx) -> Option<EdgeStyle> {
+        let color = match cx.source_phase {
+            Phase::Live(state) => runtime_color(state),
+            Phase::Static => runtime_color(RuntimeState::Pending),
         };
 
         Some(EdgeStyle {
