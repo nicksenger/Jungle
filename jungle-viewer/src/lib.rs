@@ -912,17 +912,15 @@ where
     };
 
     let max_node_id = model.nodes.iter().map(|node| node.id).max().unwrap_or(0);
-    let mut cluster_node_id = HashMap::<usize, u32>::new();
-    let mut next_cluster_node_id = max_node_id.saturating_add(1);
-    for index in &collapsed_clusters {
-        cluster_node_id.insert(*index, next_cluster_node_id);
-        next_cluster_node_id = next_cluster_node_id.saturating_add(1);
-    }
+    let cluster_node_id = |index: usize| -> Option<u32> {
+        let offset = u32::try_from(index).ok()?;
+        Some(max_node_id.saturating_add(1).saturating_add(offset))
+    };
 
     let owner_to_display = |owner: VisibleOwner| -> Option<u32> {
         match owner {
             VisibleOwner::Node(node_id) => Some(node_id),
-            VisibleOwner::Cluster(index) => cluster_node_id.get(&index).copied(),
+            VisibleOwner::Cluster(index) => cluster_node_id(index),
         }
     };
 
@@ -956,7 +954,7 @@ where
         if !collapsed_clusters.contains(&index) {
             continue;
         }
-        let Some(display_id) = cluster_node_id.get(&index).copied() else {
+        let Some(display_id) = cluster_node_id(index) else {
             continue;
         };
         let cx = ClusterViewCtx {
