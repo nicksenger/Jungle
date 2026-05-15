@@ -482,7 +482,9 @@ impl NodeMetadata for GorillaLifecycleMetadata {
 
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaLifecycleFlow(
+    Step<Gorilla, GorillaRest>,
     Transparent<GorillaLifecycleMetadata, GorillaYearFlow>,
+    While<GorillaDaylightRemaining, GorillaDayFlow>,
     Step<Gorilla, GorillaRest>,
 );
 
