@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(900);
+const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const ANIMATION_TICK: Duration = Duration::from_millis(16);
 
 #[derive(Clone, Copy)]
@@ -394,7 +394,7 @@ fn main() {
 
     let mut viewer = jungle_viewer::JungleViewerBuilder::new()
         .title("Jungle View Example (zoo::Gorilla)")
-        .animation_duration(Duration::from_millis(900));
+        .animation_duration(Duration::from_millis(280));
     if let Some(path) = screenshot {
         viewer = viewer.screenshot_path(path);
     }
