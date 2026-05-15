@@ -3,7 +3,7 @@ use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
-use iced_sugiyama::{Cluster, Graph, Sugiyama};
+use iced_sugiyama::{Cluster, Graph, OutgoingEdgeStyle, Sugiyama};
 use jungle_client::JungleClient;
 use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -97,6 +97,12 @@ pub enum ClusterView<Message: Clone + 'static> {
 #[derive(Debug, Clone, Copy)]
 pub struct EdgeStyleCtx {
     pub edge_index: usize,
+    pub source_display_id: u32,
+    pub target_display_id: u32,
+    pub source_runtime_id: Option<u32>,
+    pub target_runtime_id: Option<u32>,
+    pub source_phase: Phase<RuntimeState>,
+    pub target_phase: Phase<RuntimeState>,
     pub extent: f32,
 }
 
@@ -1090,19 +1096,40 @@ where
         visible_cluster_index_by_source.insert(source_index, visible_index);
     }
 
-    let edge_style = theme
-        .edge_style(
-            theme_state,
-            EdgeStyleCtx {
-                edge_index: 0,
-                extent: 1.0,
-            },
-        )
-        .unwrap_or(EdgeStyle {
-            width: 1.6,
-            start: Color::from_rgb8(64, 169, 104),
-            end: Color::from_rgb8(40, 104, 67),
-        });
+    let default_edge_style = EdgeStyle {
+        width: 1.6,
+        start: Color::from_rgb8(64, 169, 104),
+        end: Color::from_rgb8(40, 104, 67),
+    };
+    let mut edge_style_by_source_display = HashMap::<u32, EdgeStyle>::new();
+    for (edge_index, (from_display, to_display)) in edges.iter().copied().enumerate() {
+        let source_runtime_id = model
+            .node_map
+            .get(&from_display)
+            .and_then(|node| node.runtime_node_id);
+        let target_runtime_id = model
+            .node_map
+            .get(&to_display)
+            .and_then(|node| node.runtime_node_id);
+        let style = theme
+            .edge_style(
+                theme_state,
+                EdgeStyleCtx {
+                    edge_index,
+                    source_display_id: from_display,
+                    target_display_id: to_display,
+                    source_runtime_id,
+                    target_runtime_id,
+                    source_phase: node_state(source_runtime_id),
+                    target_phase: node_state(target_runtime_id),
+                    extent: 1.0,
+                },
+            )
+            .unwrap_or(default_edge_style);
+        edge_style_by_source_display
+            .entry(from_display)
+            .or_insert(style);
+    }
 
     let graph_widget = {
         let node_map = model.node_map.clone();
@@ -1115,6 +1142,7 @@ where
         let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids.clone();
         let cluster_successor_runtime_ids_for_nodes = cluster_successor_runtime_ids.clone();
         let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids.clone();
+        let edge_style_for_sources = edge_style_by_source_display.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -1168,7 +1196,19 @@ where
         )
         .id(iced_sugiyama::Id::new(GRAPH_WIDGET_ID))
         .edge_color(jungle_edge)
-        .stroke_width(edge_style.width)
+        .outgoing_edge_style(move |source_display_id| {
+            let style = edge_style_for_sources
+                .get(&source_display_id)
+                .copied()
+                .unwrap_or(default_edge_style);
+            OutgoingEdgeStyle {
+                visible: true,
+                width_scale: style.width.max(0.0),
+                alpha: 1.0,
+                color_override: Some((style.start, style.end)),
+            }
+        })
+        .stroke_width(1.0)
         .edge_corner_radius(18.0)
         .node_size(move |node_id| {
             sizes_for_view
