@@ -1070,6 +1070,8 @@ where
         let visible_nodes = visible_real_nodes.clone();
         let sizes_for_view = node_sizes.clone();
         let visible_cluster_sources = visible_cluster_source_indices.clone();
+        let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids.clone();
+        let cluster_successor_runtime_ids_for_nodes = cluster_successor_runtime_ids.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -1101,8 +1103,11 @@ where
                             }),
                             depth: cluster.depth,
                             member_display_ids: &cluster.nodes,
-                            member_runtime_ids: cluster_member_runtime_ids[cluster_index].clone(),
-                            successor_runtime_ids: cluster_successor_runtime_ids[cluster_index]
+                            member_runtime_ids: cluster_member_runtime_ids_for_nodes
+                                [cluster_index]
+                                .clone(),
+                            successor_runtime_ids: cluster_successor_runtime_ids_for_nodes
+                                [cluster_index]
                                 .clone(),
                             phase: cluster_phase(cluster),
                         };
