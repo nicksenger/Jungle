@@ -505,10 +505,18 @@ where
                 let _ = data.apply_update(update);
                 theme_task
             }
-            Message::Theme(event) => self
-                .theme
-                .update(&mut self.theme_state, event)
-                .map(Message::Theme),
+            Message::Theme(event) => {
+                let theme_task = self
+                    .theme
+                    .update(&mut self.theme_state, event)
+                    .map(Message::Theme);
+                Task::batch(vec![
+                    theme_task,
+                    iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(
+                        GRAPH_WIDGET_ID,
+                    )),
+                ])
+            }
             Message::Retry => match &self.mode {
                 ViewMode::Live { .. } => {
                     self.live_generation = self.live_generation.saturating_add(1);
@@ -664,6 +672,8 @@ impl LiveData {
         self.latest_event_count = update.sequence_id as usize;
         match update.event {
             RunnerUpdateOut::ActionInput { node_id, .. } => {
+                highlight_changed |= self.finished_runtime_ids.remove(&node_id);
+                highlight_changed |= self.failed_runtime_ids.remove(&node_id);
                 highlight_changed |= self.active_runtime_ids.insert(node_id);
             }
             RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
@@ -900,6 +910,17 @@ where
         entry.sort_by_key(|(depth, _)| *depth);
     }
 
+    let cluster_hidden_by_collapsed_ancestor = |cluster_index: usize| -> bool {
+        let mut parent = model.cluster_info[cluster_index].parent;
+        while let Some(parent_index) = parent {
+            if collapsed_clusters.contains(&parent_index) {
+                return true;
+            }
+            parent = model.cluster_info[parent_index].parent;
+        }
+        false
+    };
+
     let owner_for_node = |node_id: u32| -> VisibleOwner {
         if let Some(candidates) = memberships.get(&node_id) {
             for (_, index) in candidates {
@@ -952,6 +973,9 @@ where
 
     for (index, cluster) in model.cluster_info.iter().enumerate() {
         if !collapsed_clusters.contains(&index) {
+            continue;
+        }
+        if cluster_hidden_by_collapsed_ancestor(index) {
             continue;
         }
         let Some(display_id) = cluster_node_id(index) else {
@@ -1914,15 +1938,25 @@ mod tests {
         assert!(!live.active_runtime_ids.contains(&9));
         assert!(live.finished_runtime_ids.contains(&9));
 
-        assert!(!live.apply_update(JourneyUpdateEvent {
+        assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 4,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 9,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.active_runtime_ids.contains(&9));
+        assert!(!live.finished_runtime_ids.contains(&9));
+
+        assert!(!live.apply_update(JourneyUpdateEvent {
+            sequence_id: 5,
             event: RunnerUpdateOut::SleepScheduled {
                 uuid: Uuid::nil(),
                 timer_id: Uuid::nil(),
                 wake_at_unix_ms: 1,
             },
         }));
-        assert_eq!(live.latest_event_count, 4);
+        assert_eq!(live.latest_event_count, 5);
     }
 
     #[test]

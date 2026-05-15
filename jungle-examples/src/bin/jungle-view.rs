@@ -80,26 +80,50 @@ impl ExampleThemeState {
         true
     }
 
-    fn update_clusters_for_action_input(&mut self, runtime_id: u32) -> bool {
+    fn reset_cluster_members_to_pending(
+        &mut self,
+        cluster_id: u32,
+        except_runtime_id: u32,
+        now: Instant,
+    ) -> bool {
+        let Some(index) = self.cluster_index.get(&cluster_id) else {
+            return false;
+        };
+        let members = index.member_runtime_ids.iter().copied().collect::<Vec<_>>();
+        let mut changed = false;
+        for member_id in members {
+            if member_id == except_runtime_id {
+                continue;
+            }
+            changed |= self.update_node_state(member_id, RuntimeState::Pending, now);
+        }
+        changed
+    }
+
+    fn update_clusters_for_action_input(&mut self, runtime_id: u32, now: Instant) -> bool {
         let mut changed = false;
         let cluster_ids = self.cluster_index.keys().copied().collect::<Vec<_>>();
         for cluster_id in cluster_ids {
             let Some(index) = self.cluster_index.get(&cluster_id) else {
                 continue;
             };
-            let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) else {
-                continue;
-            };
+            let contains_member = index.member_runtime_ids.contains(&runtime_id);
+            let contains_successor = index.successor_runtime_ids.contains(&runtime_id);
 
-            if !visual.expanded && index.member_runtime_ids.contains(&runtime_id) {
-                visual.expanded = true;
-                changed = true;
-                continue;
+            let mut just_opened = false;
+            if let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) {
+                if !visual.expanded && contains_member {
+                    visual.expanded = true;
+                    changed = true;
+                    just_opened = true;
+                } else if visual.expanded && contains_successor {
+                    visual.expanded = false;
+                    changed = true;
+                }
             }
 
-            if visual.expanded && index.successor_runtime_ids.contains(&runtime_id) {
-                visual.expanded = false;
-                changed = true;
+            if just_opened {
+                changed |= self.reset_cluster_members_to_pending(cluster_id, runtime_id, now);
             }
         }
         changed
@@ -151,7 +175,7 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
             ViewerEvent::JourneyUpdate(update) => match update.event {
                 RunnerUpdateOut::ActionInput { node_id, .. } => {
                     let node_changed = guard.update_node_state(node_id, RuntimeState::Running, now);
-                    let cluster_changed = guard.update_clusters_for_action_input(node_id);
+                    let cluster_changed = guard.update_clusters_for_action_input(node_id, now);
                     should_tick = node_changed || cluster_changed;
                 }
                 RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
