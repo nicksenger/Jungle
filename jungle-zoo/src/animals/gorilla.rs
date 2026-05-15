@@ -15,6 +15,7 @@ use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
 
 const GORILLA_DAY_LOOPS_PER_YEAR: u16 = 2;
+const GORILLA_OUTER_LOOP_MIN_ITERATIONS: u8 = 21;
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct State {
@@ -172,7 +173,7 @@ impl LoopCondition<State> for GorillaStillGrowing {
     type Arg = ();
 
     fn should_continue(state: &State) -> bool {
-        state.temporal.age.life_phase != LifePhase::Adult
+        state.temporal.age.age_years < GORILLA_OUTER_LOOP_MIN_ITERATIONS
     }
 }
 
