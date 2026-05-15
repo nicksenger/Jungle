@@ -8,8 +8,8 @@ use crate::state::{
 };
 use jungle_sdk::types::{
     Action, ActionCompletion, Animal, AnimalMember, AnimalObservation, AnimalPerturbation, Animals,
-    Condition, Conditional, Id, Identified, Identity, LoopCondition, NoopObservation,
-    NoopPerturbation, Pulse, Step, While,
+    Condition, Conditional, Id, Identified, Identity, LoopCondition, NodeMetadata, NoopObservation,
+    NoopPerturbation, Pulse, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -476,10 +476,17 @@ pub struct GorillaYearFlow(
     Step<Gorilla, GorillaAdvanceAge>,
 );
 
+pub struct GorillaLifecycleMetadata;
+impl NodeMetadata for GorillaLifecycleMetadata {
+    const METADATA: &'static str = "section:gorilla/lifecycle";
+}
+
+type GorillaLifecycleFlow = Transparent<GorillaLifecycleMetadata, GorillaYearFlow>;
+
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaOuterLoopFlow(
     Step<Gorilla, GorillaEvaluateActivityWindow>,
-    GorillaYearFlow,
+    GorillaLifecycleFlow,
     Step<Gorilla, GorillaRest>,
 );
 

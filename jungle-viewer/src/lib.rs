@@ -624,7 +624,7 @@ fn live_updates_stream(config: &LiveSubscription) -> impl Stream<Item = Message>
     let client = config.client.clone();
     let journey_id = config.journey_id;
     futures::stream::once(async move {
-        match client.subscribe_step_updates(journey_id, Some(0)).await {
+        match client.subscribe_step_updates(journey_id, None).await {
             Ok(subscription) => subscription
                 .map(|event| Message::LiveEvent(event.map_err(|err| err.to_string())))
                 .left_stream(),
