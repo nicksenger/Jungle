@@ -1,11 +1,11 @@
 use iced::widget::{button, column, container, text};
 use iced::{Color, Element, Length, Task};
 use jungle_sdk::core::JungleWorker;
-use jungle_sdk::{JungleClient, LocalClient};
 use jungle_sdk::types::RunnerUpdateOut;
+use jungle_sdk::{JungleClient, LocalClient};
 use jungle_viewer::{
-    AnyAnimal, ClusterKind, ClusterView, ClusterViewCtx, EdgeStyle, EdgeStyleCtx,
-    JunglePanelTheme, Phase, RuntimeState, StepKind, StepViewCtx, ViewerEvent,
+    AnyAnimal, ClusterKind, ClusterView, ClusterViewCtx, EdgeStyle, EdgeStyleCtx, JunglePanelTheme,
+    Phase, RuntimeState, StepKind, StepViewCtx, ViewerEvent,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
+const CLUSTER_BORDER_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const ANIMATION_TICK: Duration = Duration::from_millis(16);
 
 #[derive(Clone, Copy)]
@@ -36,6 +37,14 @@ struct ClusterRuntimeIndex {
 #[derive(Debug, Clone, Copy)]
 struct ClusterVisual {
     expanded: bool,
+    border: ClusterBorderVisual,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClusterBorderVisual {
+    from: Color,
+    to: Color,
+    started_at: Instant,
 }
 
 #[derive(Debug)]
@@ -47,7 +56,7 @@ struct ExampleThemeState {
 }
 
 impl ExampleThemeState {
-    fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>) {
+    fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>, now: Instant) {
         let index = ClusterRuntimeIndex {
             kind: cx.kind,
             entry_runtime_ids: cx.entry_runtime_ids.iter().copied().collect(),
@@ -55,9 +64,16 @@ impl ExampleThemeState {
             successor_runtime_ids: cx.successor_runtime_ids.iter().copied().collect(),
         };
         self.cluster_index.insert(cx.cluster_id, index);
-        self.cluster_visuals.entry(cx.cluster_id).or_insert(ClusterVisual {
-            expanded: false,
-        });
+        self.cluster_visuals
+            .entry(cx.cluster_id)
+            .or_insert(ClusterVisual {
+                expanded: false,
+                border: ClusterBorderVisual {
+                    from: cluster_border_color_gray(),
+                    to: cluster_border_color_gray(),
+                    started_at: now,
+                },
+            });
     }
 
     fn cluster_is_expanded(&self, cluster_id: u32) -> bool {
@@ -125,10 +141,23 @@ impl ExampleThemeState {
             if let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) {
                 if !visual.expanded && contains_member {
                     visual.expanded = true;
+                    let _ = update_cluster_border_visual(
+                        &mut visual.border,
+                        cluster_border_color_gray(),
+                        cluster_border_color_running(),
+                        now,
+                    );
                     changed = true;
                     just_opened = true;
                 } else if visual.expanded && contains_successor {
                     visual.expanded = false;
+                    let current = current_cluster_border_color(visual.border, now);
+                    let _ = update_cluster_border_visual(
+                        &mut visual.border,
+                        current,
+                        cluster_border_color_completed(),
+                        now,
+                    );
                     changed = true;
                 }
             }
@@ -140,10 +169,40 @@ impl ExampleThemeState {
         changed
     }
 
+    fn has_running_cluster_animations(&self, now: Instant) -> bool {
+        self.cluster_visuals.values().any(|visual| {
+            visual.border.from != visual.border.to
+                && now.duration_since(visual.border.started_at) < CLUSTER_BORDER_ANIMATION_DURATION
+        })
+    }
+
+    fn cluster_border_color(&self, cluster_id: u32, now: Instant) -> Color {
+        self.cluster_visuals
+            .get(&cluster_id)
+            .map(|visual| current_cluster_border_color(visual.border, now))
+            .unwrap_or_else(cluster_border_color_gray)
+    }
+
+    fn settle_cluster_animations(&mut self, now: Instant) -> bool {
+        let mut changed = false;
+        for visual in self.cluster_visuals.values_mut() {
+            let border = &mut visual.border;
+            if border.from == border.to {
+                continue;
+            }
+            if now.duration_since(border.started_at) >= CLUSTER_BORDER_ANIMATION_DURATION {
+                border.from = border.to;
+                changed = true;
+            }
+        }
+        changed
+    }
+
     fn has_running_animations(&self, now: Instant) -> bool {
         self.node_visuals.values().any(|visual| {
-            visual.from != visual.to && now.duration_since(visual.started_at) < NODE_ANIMATION_DURATION
-        })
+            visual.from != visual.to
+                && now.duration_since(visual.started_at) < NODE_ANIMATION_DURATION
+        }) || self.has_running_cluster_animations(now)
     }
 
     fn settle_animations(&mut self, now: Instant) -> bool {
@@ -157,6 +216,7 @@ impl ExampleThemeState {
                 changed = true;
             }
         }
+        changed |= self.settle_cluster_animations(now);
         changed
     }
 }
@@ -282,23 +342,32 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         state: &Self::State,
         cx: &ClusterViewCtx<'_>,
     ) -> ClusterView<Self::Message> {
+        let now = Instant::now();
         let mut guard = state.lock().expect("example theme state mutex poisoned");
-        guard.register_cluster(cx);
+        guard.register_cluster(cx, now);
         let expanded = guard.cluster_is_expanded(cx.cluster_id);
+        let border_color = guard.cluster_border_color(cx.cluster_id, now);
         drop(guard);
 
         let overlay = container(
-            text(cx.label.to_string())
-                .size(11)
-                .color(Color::from_rgb8(145, 183, 157)),
+            container(text(cx.label.to_string()).size(11).color(border_color))
+                .padding([4, 8])
+                .style(move |_theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
+                    border: iced::border::rounded(6).color(border_color).width(1.0),
+                    text_color: Some(border_color),
+                    ..Default::default()
+                }),
         )
-        .padding([4, 8])
-        .style(|_theme| iced::widget::container::Style {
-            background: None,
-            border: iced::border::rounded(6)
-                .color(Color::from_rgb8(54, 117, 78))
-                .width(1.0),
-            text_color: Some(Color::from_rgb8(145, 183, 157)),
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(12)
+        .align_x(iced::alignment::Horizontal::Left)
+        .align_y(iced::alignment::Vertical::Top)
+        .style(move |_theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(Color::TRANSPARENT)),
+            border: iced::border::rounded(10).color(border_color).width(2.0),
+            text_color: Some(border_color),
             ..Default::default()
         })
         .into();
@@ -306,26 +375,20 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         if expanded {
             ClusterView::Expanded {
                 overlay: Some(overlay),
-                fill: Color::from_rgba(0.0, 0.0, 0.0, 0.0),
+                fill: Color::TRANSPARENT,
             }
         } else {
             ClusterView::Collapsed {
-                element: button(
-                    text(cx.label.to_string())
-                        .size(11)
-                        .color(Color::from_rgb8(145, 183, 157)),
-                )
-                .padding([6, 10])
-                .width(Length::Shrink)
-                .style(|_theme, _status| iced::widget::button::Style {
-                    background: None,
-                    text_color: Color::from_rgb8(145, 183, 157),
-                    border: iced::border::rounded(8)
-                        .color(Color::from_rgb8(54, 117, 78))
-                        .width(1.0),
-                    ..Default::default()
-                })
-                .into(),
+                element: button(text(cx.label.to_string()).size(11).color(border_color))
+                    .padding([6, 10])
+                    .width(Length::Shrink)
+                    .style(move |_theme, _status| iced::widget::button::Style {
+                        background: None,
+                        text_color: border_color,
+                        border: iced::border::rounded(8).color(border_color).width(1.4),
+                        ..Default::default()
+                    })
+                    .into(),
                 size: (240.0, 46.0),
             }
         }
@@ -352,6 +415,31 @@ fn sampled_runtime_state(visual: &NodeVisual, now: Instant) -> RuntimeState {
     visual.from
 }
 
+fn update_cluster_border_visual(
+    visual: &mut ClusterBorderVisual,
+    from: Color,
+    to: Color,
+    now: Instant,
+) -> bool {
+    if visual.to == to && visual.from == from {
+        return false;
+    }
+    visual.from = from;
+    visual.to = to;
+    visual.started_at = now;
+    true
+}
+
+fn current_cluster_border_color(visual: ClusterBorderVisual, now: Instant) -> Color {
+    if visual.from == visual.to {
+        return visual.to;
+    }
+    let elapsed = now.saturating_duration_since(visual.started_at);
+    let t =
+        (elapsed.as_secs_f32() / CLUSTER_BORDER_ANIMATION_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+    lerp_color(visual.from, visual.to, ease_out_cubic(t))
+}
+
 fn blend_runtime_color(visual: NodeVisual, now: Instant) -> Color {
     if visual.from == visual.to {
         return runtime_color(visual.to);
@@ -359,7 +447,11 @@ fn blend_runtime_color(visual: NodeVisual, now: Instant) -> Color {
 
     let elapsed = now.saturating_duration_since(visual.started_at);
     let t = (elapsed.as_secs_f32() / NODE_ANIMATION_DURATION.as_secs_f32()).clamp(0.0, 1.0);
-    lerp_color(runtime_color(visual.from), runtime_color(visual.to), ease_out_cubic(t))
+    lerp_color(
+        runtime_color(visual.from),
+        runtime_color(visual.to),
+        ease_out_cubic(t),
+    )
 }
 
 fn runtime_color(state: RuntimeState) -> Color {
@@ -369,6 +461,18 @@ fn runtime_color(state: RuntimeState) -> Color {
         RuntimeState::Completed => Color::from_rgb8(55, 144, 81),
         RuntimeState::Failed => Color::from_rgb8(165, 61, 61),
     }
+}
+
+fn cluster_border_color_gray() -> Color {
+    runtime_color(RuntimeState::Pending)
+}
+
+fn cluster_border_color_running() -> Color {
+    runtime_color(RuntimeState::Running)
+}
+
+fn cluster_border_color_completed() -> Color {
+    runtime_color(RuntimeState::Completed)
 }
 
 fn lerp_color(from: Color, to: Color, t: f32) -> Color {

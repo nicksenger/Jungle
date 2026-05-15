@@ -10,7 +10,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -19,6 +19,9 @@ const WINDOW_HEIGHT: f32 = 900.0;
 const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-viewer";
+const DEFAULT_CLUSTER_FILL: Color = Color::TRANSPARENT;
+
+static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
 
 pub struct AnyAnimal;
 
@@ -519,9 +522,7 @@ where
                     .map(Message::Theme);
                 Task::batch(vec![
                     theme_task,
-                    iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(
-                        GRAPH_WIDGET_ID,
-                    )),
+                    iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(GRAPH_WIDGET_ID)),
                 ])
             }
             Message::Retry => match &self.mode {
@@ -1050,6 +1051,7 @@ where
 
     let mut visible_clusters = Vec::<Cluster>::new();
     let mut visible_cluster_source_indices = Vec::<usize>::new();
+    let mut visible_cluster_fills = Vec::<Color>::new();
     let mut visible_cluster_index_by_source = HashMap::<usize, usize>::new();
     for (source_index, cluster) in model.cluster_info.iter().enumerate() {
         let cx = ClusterViewCtx {
@@ -1068,8 +1070,7 @@ where
             successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
             phase: cluster_phase(cluster),
         };
-        let ClusterView::Expanded { overlay, fill: _ } = theme.view_cluster(theme_state, &cx)
-        else {
+        let ClusterView::Expanded { overlay, fill } = theme.view_cluster(theme_state, &cx) else {
             continue;
         };
         let member_nodes = cluster
@@ -1091,10 +1092,13 @@ where
         }
         let visible_index = visible_clusters.len();
         visible_clusters.push(spec);
+        visible_cluster_fills.push(fill);
         let _ = overlay;
         visible_cluster_source_indices.push(source_index);
         visible_cluster_index_by_source.insert(source_index, visible_index);
     }
+
+    set_cluster_fill_colors(visible_cluster_fills);
 
     let default_edge_style = EdgeStyle {
         width: 1.6,
@@ -1153,8 +1157,7 @@ where
                             member_display_ids: &cluster.nodes,
                             entry_runtime_ids: cluster_entry_runtime_ids_for_nodes[cluster_index]
                                 .clone(),
-                            member_runtime_ids: cluster_member_runtime_ids_for_nodes
-                                [cluster_index]
+                            member_runtime_ids: cluster_member_runtime_ids_for_nodes[cluster_index]
                                 .clone(),
                             successor_runtime_ids: cluster_successor_runtime_ids_for_nodes
                                 [cluster_index]
@@ -1265,7 +1268,7 @@ where
                 ClusterView::Collapsed { .. } => None,
             }
         })
-        .cluster_color(loop_cluster_color)
+        .cluster_color(cluster_fill_color)
         .padding(24);
         if let Some(duration) = animation_duration {
             widget = widget.animation_duration(duration);
@@ -1944,8 +1947,20 @@ fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
     }
 }
 
-fn loop_cluster_color(_index: usize) -> Color {
-    Color::from_rgba8(30, 91, 53, 0.04)
+fn set_cluster_fill_colors(colors: Vec<Color>) {
+    let store = CLUSTER_FILL_COLORS.get_or_init(|| RwLock::new(Vec::new()));
+    if let Ok(mut guard) = store.write() {
+        *guard = colors;
+    }
+}
+
+fn cluster_fill_color(index: usize) -> Color {
+    let store = CLUSTER_FILL_COLORS.get_or_init(|| RwLock::new(Vec::new()));
+    store
+        .read()
+        .ok()
+        .and_then(|colors| colors.get(index).copied())
+        .unwrap_or(DEFAULT_CLUSTER_FILL)
 }
 
 fn jungle_text_base() -> Color {
@@ -2282,7 +2297,9 @@ mod tests {
                     },
                 ])),
             },
-            JourneyAst::Step { label: "AdvanceAge" },
+            JourneyAst::Step {
+                label: "AdvanceAge",
+            },
         ]);
 
         let model = GraphModel::from_ast(ast);
