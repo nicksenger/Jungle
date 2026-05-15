@@ -292,6 +292,7 @@ mod tests {
     mod connection;
     mod integration;
     mod migration;
+    mod optic;
     mod progression;
     mod replay;
     mod select_join;
