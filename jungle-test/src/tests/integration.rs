@@ -869,20 +869,15 @@ async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
 }
 
 #[tokio::test]
-async fn redb_gorilla_journey_progresses_past_reported_stall_and_completes() {
-    let tempdir = tempfile::tempdir().expect("temp dir should be created");
-    let db_path = tempdir.path().join("jungle.redb");
+async fn memory_gorilla_journey_progresses_past_reported_stall_and_completes() {
     let listen_addr = super::reserve_local_addr();
 
-    let server_task = tokio::spawn({
-        let db_path = db_path.clone();
-        async move {
-            ServerBuilder::new()
-                .listen(listen_addr)
-                .redb_path(db_path)
-                .run()
-                .await
-        }
+    let server_task = tokio::spawn(async move {
+        ServerBuilder::new()
+            .listen(listen_addr)
+            .memory()
+            .run()
+            .await
     });
 
     run_gorilla_journey_progresses_past_reported_stall_and_completes(listen_addr).await;
