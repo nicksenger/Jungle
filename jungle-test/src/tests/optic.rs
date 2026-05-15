@@ -120,8 +120,8 @@ fn state_lens_list_multi_index_short_flow() {
 }
 
 //
-//struct IoLensPulse;
-//impl Pulse OpticAnimal for IoLensPulse {
+//struct _LensPulse;
+//impl Pulse OpticAnimal for _LensPulse {
 //    type Action = EchoI32;
 //    type StateAspect = Identity;
 //    type Arg = i32;
@@ -136,20 +136,20 @@ fn state_lens_list_multi_index_short_flow() {
 //        out
 //    }
 //}
-//type IoLensSingle = Step<OpticAnimal, IoLens<IoLensPulse, U1>>;
-//type IoLensList = Step<OpticAnimal, IoLens<IoLensPulse, list![U0, U1]>>;
+//type _LensSingle = Step<OpticAnimal, _Lens<_LensPulse, _View<i32, U1>>>;
+//type _LensList = Step<OpticAnimal, _Lens<_LensPulse, _View<i32, list![U0, U1]>>>;
 //#[derive(Journey)]
-//struct IoLensSingleSequence(
+//struct _LensSingleSequence(
 //    Step<IoSingleAnimal, EchoRootState>,
-//    Step<IoSingleAnimal, IoLensSingle>,
+//    Step<IoSingleAnimal, _LensSingle>,
 //);
 //#[derive(Journey)]
-//struct IoLensListSequence(
+//struct _LensListSequence(
 //    Step<IoListAnimal, EchoRootState>,
-//    Step<IoListAnimal, IoLensList>,
+//    Step<IoListAnimal, _LensList>,
 //);
-//animal!(IoSingleAnimal, jungle_sdk::typosaurus::num::consts::U10, RootState, IoLensSingleSequence);
-//animal!(IoListAnimal, jungle_sdk::typosaurus::num::consts::U11, RootState, IoLensListSequence);
+//animal!(IoSingleAnimal, jungle_sdk::typosaurus::num::consts::U10, RootState, _LensSingleSequence);
+//animal!(IoListAnimal, jungle_sdk::typosaurus::num::consts::U11, RootState, _LensListSequence);
 //
 //
 //#[test]
