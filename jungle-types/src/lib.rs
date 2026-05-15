@@ -12,7 +12,7 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Effect, EffectCompletion, EffectRequest, Aspect, Identity, Pulse, StateCarrier, StateLens, Step,
+    Effect, EffectCompletion, EffectRequest, Aspect, Identity, Act, StateCarrier, StateLens, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -317,8 +317,8 @@ pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 impl<A, Left, Right> ReplaceStep<Step<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
-    Left: Pulse<A>,
-    Right: Pulse<A>,
+    Left: Act<A>,
+    Right: Act<A>,
 {
     type Output = Step<A, Right>;
 }
@@ -326,8 +326,8 @@ where
 impl<A, Left, Right> ReplaceStep<Step<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
-    Left: Pulse<A>,
-    Right: Pulse<A>,
+    Left: Act<A>,
+    Right: Act<A>,
 {
     type Output = Step<A, Left>;
 }
@@ -880,7 +880,7 @@ where
 impl<T, A> NodeMetadata for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
 {
 }
 

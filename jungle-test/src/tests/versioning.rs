@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Effect, EffectCompletion, Animal, AnimalMember, Animals as AnimalsTrait, Ecosystem, Id,
-    Identity, Observe, Pulse, Step, SupportedAnimal,
+    Identity, Observe, Act, Step, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -54,7 +54,7 @@ impl Effect for ModernEffect {
 }
 
 struct LegacyStep;
-impl Pulse<LegacyAnimal> for LegacyStep {
+impl Act<LegacyAnimal> for LegacyStep {
     type Effect = LegacyEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -68,7 +68,7 @@ impl Pulse<LegacyAnimal> for LegacyStep {
 }
 
 struct ModernStep;
-impl Pulse<ModernAnimal> for ModernStep {
+impl Act<ModernAnimal> for ModernStep {
     type Effect = ModernEffect;
     type StateAspect = Identity;
     type Arg = ();

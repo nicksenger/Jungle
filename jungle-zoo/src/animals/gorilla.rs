@@ -9,7 +9,7 @@ use crate::state::{
 use jungle_sdk::types::{
     Effect, EffectCompletion, Animal, AnimalMember, AnimalObservation, AnimalPerturbation, Animals,
     Condition, Conditional, Id, Identified, Identity, LoopCondition, NodeMetadata, NoopObservation,
-    NoopPerturbation, Pulse, Step, Transparent, While,
+    NoopPerturbation, Act, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -222,7 +222,7 @@ impl Condition<(State, ())> for GorillaCanUseTools {
 }
 
 pub struct GorillaAdvanceAge;
-impl Pulse<Gorilla> for GorillaAdvanceAge {
+impl Act<Gorilla> for GorillaAdvanceAge {
     type Effect = effects::AdvanceAge;
     type StateAspect = Identity;
     type Arg = ();
@@ -244,7 +244,7 @@ impl Pulse<Gorilla> for GorillaAdvanceAge {
 }
 
 pub struct GorillaTickPerceivedTime;
-impl Pulse<Gorilla> for GorillaTickPerceivedTime {
+impl Act<Gorilla> for GorillaTickPerceivedTime {
     type Effect = effects::TickPerceivedTime;
     type StateAspect = Identity;
     type Arg = ();
@@ -274,7 +274,7 @@ impl Pulse<Gorilla> for GorillaTickPerceivedTime {
 }
 
 pub struct GorillaBirthday;
-impl Pulse<Gorilla> for GorillaBirthday {
+impl Act<Gorilla> for GorillaBirthday {
     type Effect = effects::CelebrateBirthday;
     type StateAspect = Identity;
     type Arg = ();
@@ -291,7 +291,7 @@ impl Pulse<Gorilla> for GorillaBirthday {
 }
 
 pub struct GorillaBirth;
-impl Pulse<Gorilla> for GorillaBirth {
+impl Act<Gorilla> for GorillaBirth {
     type Effect = effects::Birth;
     type StateAspect = Identity;
     type Arg = ();
@@ -308,7 +308,7 @@ impl Pulse<Gorilla> for GorillaBirth {
 }
 
 pub struct GorillaEvaluateActivityWindow;
-impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
+impl Act<Gorilla> for GorillaEvaluateActivityWindow {
     type Effect = effects::EvaluateActivityWindow;
     type StateAspect = Identity;
     type Arg = ();
@@ -327,7 +327,7 @@ impl Pulse<Gorilla> for GorillaEvaluateActivityWindow {
 }
 
 pub struct GorillaPeelFruit;
-impl Pulse<Gorilla> for GorillaPeelFruit {
+impl Act<Gorilla> for GorillaPeelFruit {
     type Effect = effects::PeelFruit;
     type StateAspect = Identity;
     type Arg = ();
@@ -344,7 +344,7 @@ impl Pulse<Gorilla> for GorillaPeelFruit {
 }
 
 pub struct GorillaEat;
-impl Pulse<Gorilla> for GorillaEat {
+impl Act<Gorilla> for GorillaEat {
     type Effect = effects::Eat;
     type StateAspect = Identity;
     type Arg = ();
@@ -363,7 +363,7 @@ impl Pulse<Gorilla> for GorillaEat {
 }
 
 pub struct GorillaUseTool;
-impl Pulse<Gorilla> for GorillaUseTool {
+impl Act<Gorilla> for GorillaUseTool {
     type Effect = effects::UseTool;
     type StateAspect = Identity;
     type Arg = ();
@@ -379,7 +379,7 @@ impl Pulse<Gorilla> for GorillaUseTool {
 }
 
 pub struct GorillaChestBeat;
-impl Pulse<Gorilla> for GorillaChestBeat {
+impl Act<Gorilla> for GorillaChestBeat {
     type Effect = effects::ChestBeat;
     type StateAspect = Identity;
     type Arg = ();
@@ -398,7 +398,7 @@ impl Pulse<Gorilla> for GorillaChestBeat {
 }
 
 pub struct GorillaRest;
-impl Pulse<Gorilla> for GorillaRest {
+impl Act<Gorilla> for GorillaRest {
     type Effect = effects::Rest;
     type StateAspect = Identity;
     type Arg = ();
@@ -417,7 +417,7 @@ impl Pulse<Gorilla> for GorillaRest {
 }
 
 pub struct GorillaMakeSound;
-impl Pulse<Gorilla> for GorillaMakeSound {
+impl Act<Gorilla> for GorillaMakeSound {
     type Effect = effects::MakeSound;
     type StateAspect = Identity;
     type Arg = ();
@@ -516,7 +516,7 @@ pub struct Gorilla;
 impl AnimalMember for Gorilla {}
 
 pub struct ProbeStep;
-impl jungle_sdk::types::Pulse<Gorilla> for ProbeStep {
+impl jungle_sdk::types::Act<Gorilla> for ProbeStep {
     type Effect = crate::probe::ProbeEffect;
     type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();

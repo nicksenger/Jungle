@@ -1,5 +1,5 @@
 use crate::{
-    Effect, EffectCompletion, Animal, BackendError, Conditional, Join, LoopCondition, Pulse,
+    Effect, EffectCompletion, Animal, BackendError, Conditional, Join, LoopCondition, Act,
     Running, Select, Step, Transparent, While,
 };
 use inception::*;
@@ -33,7 +33,7 @@ trait ArgputForState<State> {
 impl<State, T, A> ArgputForState<State> for Step<T, A>
 where
     T: Animal<State = State>,
-    A: Pulse<T>,
+    A: Act<T>,
 {
     type Carry = A::Arg;
 }
@@ -247,14 +247,14 @@ impl<Step> TypedErasedStep<Step> {
 impl<T, A> ErasedFlow<T::State> for TypedErasedStep<Step<T, A>>
 where
     T: Animal,
-    A: Pulse<T>,
-    <A as Pulse<T>>::Effect: Effect<Dependency = ()>,
-    <<A as Pulse<T>>::Effect as Effect>::Dependency: 'static,
-    <<A as Pulse<T>>::Effect as Effect>::In: 'static,
-    <<A as Pulse<T>>::Effect as Effect>::Out: 'static,
-    <<A as Pulse<T>>::Effect as Effect>::Err: Serialize + 'static,
-    <<A as Pulse<T>>::Effect as Effect>::Out: DeserializeOwned,
-    <<A as Pulse<T>>::Effect as Effect>::Err: DeserializeOwned,
+    A: Act<T>,
+    <A as Act<T>>::Effect: Effect<Dependency = ()>,
+    <<A as Act<T>>::Effect as Effect>::Dependency: 'static,
+    <<A as Act<T>>::Effect as Effect>::In: 'static,
+    <<A as Act<T>>::Effect as Effect>::Out: 'static,
+    <<A as Act<T>>::Effect as Effect>::Err: Serialize + 'static,
+    <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
+    <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
     A::Arg: DeserializeOwned,
     A::Ret: Serialize,
 {
@@ -307,7 +307,7 @@ where
         };
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as Pulse<T>>::Effect as Effect>::act(&(), effect_input).await;
+                let completion = <<A as Act<T>>::Effect as Effect>::act(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -317,7 +317,7 @@ where
             state,
             ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as Pulse<T>>::Effect>(),
+                core::any::type_name::<<A as Act<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -336,13 +336,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: EffectCompletion<<A as Pulse<T>>::Effect> = match completion {
+        let typed_completion: EffectCompletion<<A as Act<T>>::Effect> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Pulse<T>>::Effect as Effect>::Out>(&output)
+                postcard::from_bytes::<<<A as Act<T>>::Effect as Effect>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<A as Pulse<T>>::Effect as Effect>::Err>(&error)
+                postcard::from_bytes::<<<A as Act<T>>::Effect as Effect>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -393,15 +393,15 @@ impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, 
 where
     Context: Send + Sync + 'static,
     T: Animal,
-    A: Pulse<T>,
-    <A as Pulse<T>>::Effect: Effect,
-    for<'ctx> &'ctx Context: Into<<<A as Pulse<T>>::Effect as Effect>::Dependency>,
-    <<A as Pulse<T>>::Effect as Effect>::Dependency: 'static,
-    <<A as Pulse<T>>::Effect as Effect>::In: 'static,
-    <<A as Pulse<T>>::Effect as Effect>::Out: 'static,
-    <<A as Pulse<T>>::Effect as Effect>::Err: Serialize + 'static,
-    <<A as Pulse<T>>::Effect as Effect>::Out: DeserializeOwned,
-    <<A as Pulse<T>>::Effect as Effect>::Err: DeserializeOwned,
+    A: Act<T>,
+    <A as Act<T>>::Effect: Effect,
+    for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Effect as Effect>::Dependency>,
+    <<A as Act<T>>::Effect as Effect>::Dependency: 'static,
+    <<A as Act<T>>::Effect as Effect>::In: 'static,
+    <<A as Act<T>>::Effect as Effect>::Out: 'static,
+    <<A as Act<T>>::Effect as Effect>::Err: Serialize + 'static,
+    <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
+    <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
     A::Arg: DeserializeOwned,
     A::Ret: Serialize,
 {
@@ -452,12 +452,12 @@ where
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
-        let dependency: <<A as Pulse<T>>::Effect as Effect>::Dependency =
+        let dependency: <<A as Act<T>>::Effect as Effect>::Dependency =
             self.context.as_ref().into();
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<A as Pulse<T>>::Effect as Effect>::act(&dependency, effect_input).await;
+                    <<A as Act<T>>::Effect as Effect>::act(&dependency, effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -467,7 +467,7 @@ where
             state,
             ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as Pulse<T>>::Effect>(),
+                core::any::type_name::<<A as Act<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -486,13 +486,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: EffectCompletion<<A as Pulse<T>>::Effect> = match completion {
+        let typed_completion: EffectCompletion<<A as Act<T>>::Effect> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Pulse<T>>::Effect as Effect>::Out>(&output)
+                postcard::from_bytes::<<<A as Act<T>>::Effect as Effect>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<A as Pulse<T>>::Effect as Effect>::Err>(&error)
+                postcard::from_bytes::<<<A as Act<T>>::Effect as Effect>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -1589,11 +1589,11 @@ pub trait BuildFlow<Input> {
 impl<T, A> BuildFlow<DynFlow<T::State>> for Step<T, A>
 where
     T: Animal + 'static,
-    A: Pulse<T> + 'static,
-    <A as Pulse<T>>::Effect: Effect<Dependency = ()> + 'static,
-    <<A as Pulse<T>>::Effect as Effect>::Err: Serialize,
-    <<A as Pulse<T>>::Effect as Effect>::Out: DeserializeOwned,
-    <<A as Pulse<T>>::Effect as Effect>::Err: DeserializeOwned,
+    A: Act<T> + 'static,
+    <A as Act<T>>::Effect: Effect<Dependency = ()> + 'static,
+    <<A as Act<T>>::Effect as Effect>::Err: Serialize,
+    <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
+    <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
     A::Arg: DeserializeOwned,
     A::Ret: Serialize,
 {
@@ -1755,12 +1755,12 @@ impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for 
 where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
-    A: Pulse<T> + 'static,
-    <A as Pulse<T>>::Effect: Effect + 'static,
-    for<'ctx> &'ctx Context: Into<<<A as Pulse<T>>::Effect as Effect>::Dependency>,
-    <<A as Pulse<T>>::Effect as Effect>::Err: Serialize,
-    <<A as Pulse<T>>::Effect as Effect>::Out: DeserializeOwned,
-    <<A as Pulse<T>>::Effect as Effect>::Err: DeserializeOwned,
+    A: Act<T> + 'static,
+    <A as Act<T>>::Effect: Effect + 'static,
+    for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Effect as Effect>::Dependency>,
+    <<A as Act<T>>::Effect as Effect>::Err: Serialize,
+    <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
+    <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
     A::Arg: DeserializeOwned,
     A::Ret: Serialize,
 {

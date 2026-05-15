@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Effect, EffectCompletion, EffectRequest, AnimalEffectSet, Condition, Conditional,
-    ContextExecutor, Executor, Id, Identity, ManualExecutor, Pulse, Running, Step, Waiting,
+    ContextExecutor, Executor, Id, Identity, ManualExecutor, Act, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -45,7 +45,7 @@ impl Effect for FinishEffect {
 }
 
 struct Seed;
-impl Pulse<ProgressAnimal> for Seed {
+impl Act<ProgressAnimal> for Seed {
     type Effect = SeedEffect;
     type StateAspect = Identity;
     type Arg = i32;
@@ -63,7 +63,7 @@ impl Pulse<ProgressAnimal> for Seed {
 }
 
 struct Finish;
-impl Pulse<ProgressAnimal> for Finish {
+impl Act<ProgressAnimal> for Finish {
     type Effect = FinishEffect;
     type StateAspect = Identity;
     type Arg = i32;
@@ -121,10 +121,10 @@ trait StepExecutor:
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
-    A: Pulse<ProgressAnimal, StateAspect = Identity, Arg = i32, Ret = i32>,
-    <A as Pulse<ProgressAnimal>>::Effect: Effect<Dependency = (), In = i32, Out = i32, Err = ()>,
+    A: Act<ProgressAnimal, StateAspect = Identity, Arg = i32, Ret = i32>,
+    <A as Act<ProgressAnimal>>::Effect: Effect<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
-    type Effect = <A as Pulse<ProgressAnimal>>::Effect;
+    type Effect = <A as Act<ProgressAnimal>>::Effect;
 }
 
 #[test]
@@ -236,7 +236,7 @@ impl Effect for BranchEffect {
 }
 
 struct BranchStepA;
-impl Pulse<BranchAnimal> for BranchStepA {
+impl Act<BranchAnimal> for BranchStepA {
     type Effect = BranchEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -252,7 +252,7 @@ impl Pulse<BranchAnimal> for BranchStepA {
 }
 
 struct BranchStepB;
-impl Pulse<BranchAnimal> for BranchStepB {
+impl Act<BranchAnimal> for BranchStepB {
     type Effect = BranchEffect;
     type StateAspect = Identity;
     type Arg = ();

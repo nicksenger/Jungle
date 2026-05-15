@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Pulse, Running, Step,
+    EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Act, Running, Step,
     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
@@ -18,7 +18,7 @@ effect!(
 animal!(Looper, U0, state = i32, journey = LoopJourney);
 
 struct Tick;
-impl Pulse<Looper> for Tick {
+impl Act<Looper> for Tick {
     type Effect = TickEffect;
     type StateAspect = Identity;
     type Arg = i32;
@@ -67,7 +67,7 @@ animal!(
 );
 
 struct TickWithTail;
-impl Pulse<LooperWithTail> for TickWithTail {
+impl Act<LooperWithTail> for TickWithTail {
     type Effect = TickEffect;
     type StateAspect = Identity;
     type Arg = i32;
@@ -85,7 +85,7 @@ impl Pulse<LooperWithTail> for TickWithTail {
 }
 
 struct TailAfterLoop;
-impl Pulse<LooperWithTail> for TailAfterLoop {
+impl Act<LooperWithTail> for TailAfterLoop {
     type Effect = TailEchoEffect;
     type StateAspect = Identity;
     type Arg = (bool, i32);
@@ -154,7 +154,7 @@ impl LoopCondition<NestedState> for OuterContinue {
 }
 
 struct InnerWork;
-impl Pulse<NestedLooper> for InnerWork {
+impl Act<NestedLooper> for InnerWork {
     type Effect = UnitEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -168,7 +168,7 @@ impl Pulse<NestedLooper> for InnerWork {
 }
 
 struct FinishOuterRound;
-impl Pulse<NestedLooper> for FinishOuterRound {
+impl Act<NestedLooper> for FinishOuterRound {
     type Effect = UnitEffect;
     type StateAspect = Identity;
     type Arg = ();

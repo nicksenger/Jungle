@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    EffectCompletion, Conditional, Identity, LoopCondition, Pulse, ReplaceStep, Step, TraverseStep,
+    EffectCompletion, Conditional, Identity, LoopCondition, Act, ReplaceStep, Step, TraverseStep,
     While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -41,7 +41,7 @@ effect!(
 struct TraverseAnimal;
 
 struct StepA;
-impl Pulse<TraverseAnimal> for StepA {
+impl Act<TraverseAnimal> for StepA {
     type Effect = TraverseAEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -55,7 +55,7 @@ impl Pulse<TraverseAnimal> for StepA {
 }
 
 struct StepB;
-impl Pulse<TraverseAnimal> for StepB {
+impl Act<TraverseAnimal> for StepB {
     type Effect = TraverseBEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -69,7 +69,7 @@ impl Pulse<TraverseAnimal> for StepB {
 }
 
 struct StepC;
-impl Pulse<TraverseAnimal> for StepC {
+impl Act<TraverseAnimal> for StepC {
     type Effect = TraverseCEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -83,7 +83,7 @@ impl Pulse<TraverseAnimal> for StepC {
 }
 
 struct StepD;
-impl Pulse<TraverseAnimal> for StepD {
+impl Act<TraverseAnimal> for StepD {
     type Effect = TraverseDEffect;
     type StateAspect = Identity;
     type Arg = ();

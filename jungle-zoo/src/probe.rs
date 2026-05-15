@@ -29,7 +29,7 @@ impl jungle_sdk::types::Effect for ProbeEffect {
 //}
 
 pub struct ProbeStep;
-impl jungle_sdk::types::Pulse<ProbeAnimal> for ProbeStep {
+impl jungle_sdk::types::Act<ProbeAnimal> for ProbeStep {
     type Effect = ProbeEffect;
     type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();

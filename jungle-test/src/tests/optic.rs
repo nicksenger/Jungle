@@ -1,4 +1,4 @@
-use jungle_sdk::types::{EffectCompletion, Identity, Pulse, Running, StateLens, Step, Waiting};
+use jungle_sdk::types::{EffectCompletion, Identity, Act, Running, StateLens, Step, Waiting};
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U72, U73, U74, U75};
 use jungle_sdk::Optic;
@@ -33,7 +33,7 @@ effect!(EchoPair, U74, in = (i32, i32), out = (i32, i32), err = (), act = |_d, i
 effect!(EchoRootState, U75, in = RootState, out = RootState, err = (), act = |_d, input| std::future::ready(Ok(input)));
 
 struct LensOnBranch;
-impl Pulse<OpticAnimal> for LensOnBranch {
+impl Act<OpticAnimal> for LensOnBranch {
     type Effect = EchoI32;
     type StateAspect = StateLens<RootState, U0>;
     type Arg = i32;
@@ -51,7 +51,7 @@ impl Pulse<OpticAnimal> for LensOnBranch {
 }
 
 struct LensOnLeafValue;
-impl Pulse<OpticAnimal> for LensOnLeafValue {
+impl Act<OpticAnimal> for LensOnLeafValue {
     type Effect = EchoI32;
     type StateAspect = StateLens<RootState, list![U0, U0, U0]>;
     type Arg = i32;
@@ -69,7 +69,7 @@ impl Pulse<OpticAnimal> for LensOnLeafValue {
 }
 
 struct RootStatePulse;
-impl Pulse<OpticAnimal> for RootStatePulse {
+impl Act<OpticAnimal> for RootStatePulse {
     type Effect = EchoRootState;
     type StateAspect = Identity;
     type Arg = ();
@@ -121,7 +121,7 @@ fn state_lens_list_multi_index_short_flow() {
 
 //
 //struct IoLensPulse;
-//impl Pulse OpticAnimal for IoLensPulse {
+//impl Act OpticAnimal for IoLensPulse {
 //    type Effect = EchoI32;
 //    type StateAspect = Identity;
 //    type Arg = i32;

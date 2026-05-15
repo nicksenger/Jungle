@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Observe, Pulse, Sleep, Step, While,
+    LoopCondition, Observe, Act, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
@@ -44,7 +44,7 @@ impl Effect for AddEffect {
 }
 
 struct AddBeforeSleep;
-impl Pulse<SleepAnimal> for AddBeforeSleep {
+impl Act<SleepAnimal> for AddBeforeSleep {
     type Effect = AddEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -59,7 +59,7 @@ impl Pulse<SleepAnimal> for AddBeforeSleep {
 }
 
 struct SleepForStateWake;
-impl Pulse<SleepAnimal> for SleepForStateWake {
+impl Act<SleepAnimal> for SleepForStateWake {
     type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = ();
@@ -76,7 +76,7 @@ impl Pulse<SleepAnimal> for SleepForStateWake {
 }
 
 struct AddAfterSleep;
-impl Pulse<SleepAnimal> for AddAfterSleep {
+impl Act<SleepAnimal> for AddAfterSleep {
     type Effect = AddEffect;
     type StateAspect = Identity;
     type Arg = ();

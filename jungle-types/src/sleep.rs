@@ -1,5 +1,5 @@
 use crate::{
-    Effect, EffectCompletion, EffectMember, Animal, Aspect, Id, Identity, Pulse, StateCarrier,
+    Effect, EffectCompletion, EffectMember, Animal, Aspect, Id, Identity, Act, StateCarrier,
 };
 use inception::primitive;
 use std::marker::PhantomData;
@@ -54,7 +54,7 @@ impl crate::Identified for Sleep {
 
 pub struct SleepStep<Focus = Identity>(PhantomData<fn() -> Focus>);
 
-impl<T, Focus> Pulse<T> for SleepStep<Focus>
+impl<T, Focus> Act<T> for SleepStep<Focus>
 where
     T: Animal,
     Focus: Aspect<T::State>,

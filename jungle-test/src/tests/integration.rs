@@ -3,7 +3,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Observe, Perturb, Pulse, StateLens, Step, While,
+    LoopCondition, Observe, Perturb, Act, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -97,7 +97,7 @@ impl Effect for AddTwoEffect {
 }
 
 struct AddOneBeforeFullStateStep;
-impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
+impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
     type Effect = AddOneEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -112,7 +112,7 @@ impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
 }
 
 struct AddTwoBeforeFullStateStep;
-impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
+impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
     type Effect = AddTwoEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -127,7 +127,7 @@ impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 }
 
 struct AddOneFocusedStep;
-impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
+impl Act<IntegrationAnimal> for AddOneFocusedStep {
     type Effect = AddOneEffect;
     type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Arg = ();
@@ -142,7 +142,7 @@ impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
 }
 
 struct AddTwoFocusedStep;
-impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
+impl Act<IntegrationAnimal> for AddTwoFocusedStep {
     type Effect = AddTwoEffect;
     type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Arg = ();
@@ -157,7 +157,7 @@ impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
 }
 
 struct AddOneDeepFocusedStep;
-impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
+impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
     type Effect = AddOneEffect;
     type StateAspect = StateLens<
         IntegrationState,
@@ -178,7 +178,7 @@ impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
 }
 
 struct AddTwoDeepFocusedStep;
-impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
+impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type Effect = AddTwoEffect;
     type StateAspect = StateLens<
         IntegrationState,
@@ -199,7 +199,7 @@ impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
 }
 
 struct AddOneAfterFullStateStep;
-impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
+impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
     type Effect = AddOneEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -214,7 +214,7 @@ impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
 }
 
 struct AddTwoAfterFullStateStep;
-impl Pulse<IntegrationAnimal> for AddTwoAfterFullStateStep {
+impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
     type Effect = AddTwoEffect;
     type StateAspect = Identity;
     type Arg = ();

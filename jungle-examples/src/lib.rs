@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Effect, EffectCompletion, Animal, AnimalMember, Condition, Conditional, Ecosystem, Id,
-    Identity, LoopCondition, Observe, Pulse, Sleep, Step, While,
+    Identity, LoopCondition, Observe, Act, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
 use jungle_sdk::{Animals, Journey, JungleClient, Optic};
@@ -61,7 +61,7 @@ impl Effect for BumpEffect {
 }
 
 pub struct ObserveSleep;
-impl Pulse<ObserveAnimal> for ObserveSleep {
+impl Act<ObserveAnimal> for ObserveSleep {
     type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = ();
@@ -78,7 +78,7 @@ impl Pulse<ObserveAnimal> for ObserveSleep {
 }
 
 pub struct ObserveBump;
-impl Pulse<ObserveAnimal> for ObserveBump {
+impl Act<ObserveAnimal> for ObserveBump {
     type Effect = BumpEffect;
     type StateAspect = Identity;
     type Arg = ();

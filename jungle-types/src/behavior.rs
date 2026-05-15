@@ -228,24 +228,24 @@ where
 
 /// Single step-facing contract for adapting an [`Effect`] over an [`Aspect`]
 /// of animal state.
-pub trait Pulse<T: Animal> {
+pub trait Act<T: Animal> {
     type Effect: Effect;
     type StateAspect: Aspect<T::State>;
     type Arg;
     type Ret;
 
     fn emit(
-        view: &<<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
+        view: &<<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
     ) -> <Self::Effect as Effect>::In;
 
     fn absorb(
-        view: &mut <<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
+        view: &mut <<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret;
 }
 
-/// Forward half of [`Pulse`], responsible for producing an effect request input.
+/// Forward half of [`Act`], responsible for producing an effect request input.
 pub trait Emit<T: Animal> {
     type Arg;
     type StateAspect: Aspect<T::State>;
@@ -257,7 +257,7 @@ pub trait Emit<T: Animal> {
     ) -> <Self::Effect as Effect>::In;
 }
 
-/// Backward half of [`Pulse`], responsible for consuming an effect completion.
+/// Backward half of [`Act`], responsible for consuming an effect completion.
 pub trait Absorb<T: Animal> {
     type Ret;
     type StateAspect: Aspect<T::State>;
@@ -370,10 +370,10 @@ where
     }
 }
 
-/// Combines independent [`Emit`] and [`Absorb`] implementations into [`Pulse`].
+/// Combines independent [`Emit`] and [`Absorb`] implementations into [`Act`].
 pub struct Fuse<E, A>(PhantomData<fn() -> (E, A)>);
 
-impl<T, E, A> Pulse<T> for Fuse<E, A>
+impl<T, E, A> Act<T> for Fuse<E, A>
 where
     T: Animal,
     E: Emit<T>,
@@ -385,14 +385,14 @@ where
     type Ret = <A as Absorb<T>>::Ret;
 
     fn emit(
-        view: &<<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
+        view: &<<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
     ) -> <Self::Effect as Effect>::In {
         <E as Emit<T>>::emit(view, input)
     }
 
     fn absorb(
-        view: &mut <<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
+        view: &mut <<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
         <A as Absorb<T>>::absorb(view, output)
@@ -453,7 +453,7 @@ pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
 pub struct Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
 {
     marker: PhantomData<fn() -> (T, A)>,
 }
@@ -461,7 +461,7 @@ where
 impl<T, A> Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
 {
     pub fn new() -> Self {
         Self {
@@ -474,17 +474,17 @@ where
 impl<T, A> Running for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
 {
-    type In = (T::State, <A as Pulse<T>>::Arg);
-    type Out = (T::State, EffectRequest<<A as Pulse<T>>::Effect>);
+    type In = (T::State, <A as Act<T>>::Arg);
+    type Out = (T::State, EffectRequest<<A as Act<T>>::Effect>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<A as Pulse<T>>::StateAspect as StateCarrier<T::State>>::view(&mut state);
-        let effect_input = <A as Pulse<T>>::emit(view, input);
+        let view = <<A as Act<T>>::StateAspect as StateCarrier<T::State>>::view(&mut state);
+        let effect_input = <A as Act<T>>::emit(view, input);
         (
             state,
-            EffectRequest::<<A as Pulse<T>>::Effect>::new(effect_input),
+            EffectRequest::<<A as Act<T>>::Effect>::new(effect_input),
         )
     }
 }
@@ -493,14 +493,14 @@ where
 impl<T, A> Waiting for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
 {
-    type In = (T::State, EffectCompletion<<A as Pulse<T>>::Effect>);
-    type Out = (T::State, <A as Pulse<T>>::Ret);
+    type In = (T::State, EffectCompletion<<A as Act<T>>::Effect>);
+    type Out = (T::State, <A as Act<T>>::Ret);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<A as Pulse<T>>::StateAspect as StateCarrier<T::State>>::view(&mut state);
-        let emitted = <A as Pulse<T>>::absorb(view, output);
+        let view = <<A as Act<T>>::StateAspect as StateCarrier<T::State>>::view(&mut state);
+        let emitted = <A as Act<T>>::absorb(view, output);
         (state, emitted)
     }
 }
@@ -509,17 +509,17 @@ where
 impl<T, A> FlowEffects for Step<T, A>
 where
     T: Animal,
-    <A as Pulse<T>>::Effect: EffectMember,
-    A: Pulse<T>,
+    <A as Act<T>>::Effect: EffectMember,
+    A: Act<T>,
 {
-    type List = Node<<<A as Pulse<T>>::Effect as Effect>::Id, <A as Pulse<T>>::Effect>;
+    type List = Node<<<A as Act<T>>::Effect as Effect>::Id, <A as Act<T>>::Effect>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
 impl<T, A> TraverseFlow for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
 {
     type Output = Step<T, A>;
 }
@@ -528,7 +528,7 @@ where
 impl<T, A> ReplaceFlow for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
 {
     type Output = Step<T, A>;
 }
@@ -536,7 +536,7 @@ where
 impl<T, A, Traversal> TraverseWith<Traversal> for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
     Traversal: TraverseStep<Step<T, A>>,
 {
     type Output = <Traversal as TraverseStep<Step<T, A>>>::Output;
@@ -545,7 +545,7 @@ where
 impl<T, A, Replacer> ReplaceWith<Replacer> for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
     Replacer: ReplaceStep<Step<T, A>>,
 {
     type Output = <Replacer as ReplaceStep<Step<T, A>>>::Output;
@@ -554,7 +554,7 @@ where
 impl<T, A, Replacer> ReplaceNodesWith<Replacer> for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
     Replacer: ReplaceNode<Step<T, A>>,
 {
     type Output = <Replacer as ReplaceNode<Step<T, A>>>::Output;

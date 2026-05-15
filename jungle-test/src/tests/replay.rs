@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Pulse, Sleep, Step, While,
+    LoopCondition, Act, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
 use std::net::SocketAddr;
@@ -130,7 +130,7 @@ impl Effect for ReplayGateEffect {
 }
 
 struct ReplayPreStep;
-impl Pulse<ReplayGateAnimal> for ReplayPreStep {
+impl Act<ReplayGateAnimal> for ReplayPreStep {
     type Effect = ReplayPreIncrementEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -145,7 +145,7 @@ impl Pulse<ReplayGateAnimal> for ReplayPreStep {
 }
 
 struct ReplayPostStep;
-impl Pulse<ReplayGateAnimal> for ReplayPostStep {
+impl Act<ReplayGateAnimal> for ReplayPostStep {
     type Effect = ReplayPostIncrementEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -160,7 +160,7 @@ impl Pulse<ReplayGateAnimal> for ReplayPostStep {
 }
 
 struct ReplayGateStep;
-impl Pulse<ReplayGateAnimal> for ReplayGateStep {
+impl Act<ReplayGateAnimal> for ReplayGateStep {
     type Effect = ReplayGateEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -438,7 +438,7 @@ impl Effect for ReplayTimeoutPostIncrementEffect {
 }
 
 struct ReplayTimeoutPreStep;
-impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
+impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -453,7 +453,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
 }
 
 struct ReplayTimeoutSleepStep;
-impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
+impl Act<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
     type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = ();
@@ -470,7 +470,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
 }
 
 struct ReplayTimeoutPostStep;
-impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
+impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type StateAspect = Identity;
     type Arg = ();

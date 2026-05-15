@@ -2,7 +2,7 @@ use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
     Effect, EffectCompletion, EffectSet, Animal, AnimalEffectSet, AnimalSet, AnimalStates,
-    Ecosystem, Identity, LoopCondition, Pulse, StateLens, Step, While,
+    Ecosystem, Identity, LoopCondition, Act, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -41,7 +41,7 @@ impl<T> From<&T> for SharedState {
 }
 
 struct UnitOkStep<A>(PhantomData<fn() -> A>);
-impl<T, A> Pulse<T> for UnitOkStep<A>
+impl<T, A> Act<T> for UnitOkStep<A>
 where
     T: Animal,
     A: Effect<In = ()>,
@@ -217,7 +217,7 @@ impl Effect for RunnerStepTwoEffect {
 }
 
 struct RunnerStepOne;
-impl Pulse<RunnerAnimal> for RunnerStepOne {
+impl Act<RunnerAnimal> for RunnerStepOne {
     type Effect = RunnerStepOneEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -231,7 +231,7 @@ impl Pulse<RunnerAnimal> for RunnerStepOne {
 }
 
 struct RunnerStepTwo;
-impl Pulse<RunnerAnimal> for RunnerStepTwo {
+impl Act<RunnerAnimal> for RunnerStepTwo {
     type Effect = RunnerStepTwoEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -457,7 +457,7 @@ impl Effect for RoundAdvance {
 }
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
-impl<T, Focus, A> Pulse<T> for AddI32<Focus, A>
+impl<T, Focus, A> Act<T> for AddI32<Focus, A>
 where
     T: Animal,
     Focus: jungle_sdk::types::Aspect<T::State, View = i32>,

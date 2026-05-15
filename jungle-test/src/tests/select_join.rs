@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    Effect, EffectCompletion, ContextExecutor, Either, Executor, Identity, Join, Pulse, Select,
+    Effect, EffectCompletion, ContextExecutor, Either, Executor, Identity, Join, Act, Select,
     Sleep, SleepDependency, Step,
 };
 use jungle_sdk::{Journey, Optic};
@@ -54,7 +54,7 @@ impl Effect for ContextTimedValueEffect {
 }
 
 struct SelectFast;
-impl Pulse<SelectAnimal> for SelectFast {
+impl Act<SelectAnimal> for SelectFast {
     type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -70,7 +70,7 @@ impl Pulse<SelectAnimal> for SelectFast {
 }
 
 struct SelectSlow;
-impl Pulse<SelectAnimal> for SelectSlow {
+impl Act<SelectAnimal> for SelectSlow {
     type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -86,7 +86,7 @@ impl Pulse<SelectAnimal> for SelectSlow {
 }
 
 struct CaptureSelectWinner;
-impl Pulse<SelectAnimal> for CaptureSelectWinner {
+impl Act<SelectAnimal> for CaptureSelectWinner {
     type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = Either<i32, i32>;
@@ -118,7 +118,7 @@ animal!(
 );
 
 struct JoinFast;
-impl Pulse<JoinAnimal> for JoinFast {
+impl Act<JoinAnimal> for JoinFast {
     type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -134,7 +134,7 @@ impl Pulse<JoinAnimal> for JoinFast {
 }
 
 struct JoinSlow;
-impl Pulse<JoinAnimal> for JoinSlow {
+impl Act<JoinAnimal> for JoinSlow {
     type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
@@ -150,7 +150,7 @@ impl Pulse<JoinAnimal> for JoinSlow {
 }
 
 struct CaptureJoinSum;
-impl Pulse<JoinAnimal> for CaptureJoinSum {
+impl Act<JoinAnimal> for CaptureJoinSum {
     type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = (i32, i32);
@@ -179,7 +179,7 @@ animal!(
 );
 
 struct TimeoutSleep;
-impl Pulse<TimeoutAnimal> for TimeoutSleep {
+impl Act<TimeoutAnimal> for TimeoutSleep {
     type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = ();
@@ -197,7 +197,7 @@ impl Pulse<TimeoutAnimal> for TimeoutSleep {
 }
 
 struct TimeoutSlow;
-impl Pulse<TimeoutAnimal> for TimeoutSlow {
+impl Act<TimeoutAnimal> for TimeoutSlow {
     type Effect = ContextTimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();

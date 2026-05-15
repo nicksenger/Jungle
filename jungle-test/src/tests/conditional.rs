@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    EffectCompletion, Conditional, Either, Executor, Identity, ManualExecutor, Pulse, Running,
+    EffectCompletion, Conditional, Either, Executor, Identity, ManualExecutor, Act, Running,
     Step, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
@@ -32,7 +32,7 @@ animal!(
 );
 
 struct Left;
-impl Pulse<ConditionalAnimal> for Left {
+impl Act<ConditionalAnimal> for Left {
     type Effect = LeftEffect;
     type StateAspect = Identity;
     type Arg = i32;
@@ -50,7 +50,7 @@ impl Pulse<ConditionalAnimal> for Left {
 }
 
 struct Right;
-impl Pulse<ConditionalAnimal> for Right {
+impl Act<ConditionalAnimal> for Right {
     type Effect = RightEffect;
     type StateAspect = Identity;
     type Arg = i32;
