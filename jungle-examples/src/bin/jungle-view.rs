@@ -34,8 +34,6 @@ struct ClusterRuntimeIndex {
 #[derive(Debug, Clone, Copy)]
 struct ClusterVisual {
     expanded: bool,
-    opened_once: bool,
-    closed_after_successor: bool,
 }
 
 #[derive(Debug)]
@@ -54,8 +52,6 @@ impl ExampleThemeState {
         self.cluster_index.insert(cx.cluster_id, index);
         self.cluster_visuals.entry(cx.cluster_id).or_insert(ClusterVisual {
             expanded: false,
-            opened_once: false,
-            closed_after_successor: false,
         });
     }
 
@@ -95,19 +91,14 @@ impl ExampleThemeState {
                 continue;
             };
 
-            if !visual.opened_once && index.member_runtime_ids.contains(&runtime_id) {
+            if !visual.expanded && index.member_runtime_ids.contains(&runtime_id) {
                 visual.expanded = true;
-                visual.opened_once = true;
                 changed = true;
                 continue;
             }
 
-            if visual.expanded
-                && !visual.closed_after_successor
-                && index.successor_runtime_ids.contains(&runtime_id)
-            {
+            if visual.expanded && index.successor_runtime_ids.contains(&runtime_id) {
                 visual.expanded = false;
-                visual.closed_after_successor = true;
                 changed = true;
             }
         }
