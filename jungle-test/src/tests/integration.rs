@@ -706,8 +706,11 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
     let _ = worker_handle.await;
 }
 
-async fn run_gorilla_journey_progresses_past_reported_stall_and_completes(listen_addr: SocketAddr) {
-    let client = connect_client_with_retry(listen_addr).await;
+async fn run_gorilla_journey_progresses_past_reported_stall_and_completes_local_client() {
+    let client = jungle_sdk::LocalClient::builder()
+        .build()
+        .await
+        .expect("local client should build");
     let worker = JungleWorker::new(jungle_zoo::Zoo, client.clone());
     let worker_handle = tokio::spawn(async move {
         let _ = worker.spawn().await;
@@ -869,19 +872,6 @@ async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
 }
 
 #[tokio::test]
-async fn memory_gorilla_journey_progresses_past_reported_stall_and_completes() {
-    let listen_addr = super::reserve_local_addr();
-
-    let server_task = tokio::spawn(async move {
-        ServerBuilder::new()
-            .listen(listen_addr)
-            .memory()
-            .run()
-            .await
-    });
-
-    run_gorilla_journey_progresses_past_reported_stall_and_completes(listen_addr).await;
-
-    server_task.abort();
-    let _ = server_task.await;
+async fn local_client_gorilla_journey_progresses_past_reported_stall_and_completes() {
+    run_gorilla_journey_progresses_past_reported_stall_and_completes_local_client().await;
 }
