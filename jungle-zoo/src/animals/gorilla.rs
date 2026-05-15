@@ -14,7 +14,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
 
-const GORILLA_DAY_LOOPS_PER_YEAR: u16 = 365;
+const GORILLA_DAY_LOOPS_PER_YEAR: u16 = 4;
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct State {
@@ -480,12 +480,17 @@ impl NodeMetadata for GorillaLifecycleMetadata {
     const METADATA: &'static str = "section:gorilla/lifecycle";
 }
 
-type GorillaLifecycleFlow = Transparent<GorillaLifecycleMetadata, GorillaYearFlow>;
+#[derive(jungle_sdk::Journey)]
+pub struct GorillaLifecycleFlow(
+    Transparent<GorillaLifecycleMetadata, GorillaYearFlow>,
+    Step<Gorilla, GorillaRest>,
+);
 
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaJourney(
     Step<Gorilla, GorillaBirth>,
     While<GorillaStillGrowing, GorillaLifecycleFlow>,
+    Step<Gorilla, GorillaRest>,
 );
 
 #[derive(jungle_sdk::Journey)]
