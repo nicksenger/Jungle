@@ -2396,35 +2396,38 @@ where
             Some(input) => input,
             None => serialize_input(initial_input)?,
         };
-        self.settle_without_progress()?;
-        if self.is_complete() {
-            return Err(ExecutorError::Complete);
-        }
+        loop {
+            self.settle_without_progress()?;
+            if self.is_complete() {
+                return Err(ExecutorError::Complete);
+            }
 
-        let state = self.state.take().expect("executor state is always present");
-        let node = self
-            .steps
-            .get_mut(self.cursor)
-            .expect("cursor was checked against steps len");
-        match node.request_executable(state, input) {
-            Ok((state, request)) => {
-                self.state = Some(state);
-                Ok(request)
-            }
-            Err((state, ExecutorError::Complete)) => {
-                self.state = Some(state);
-                let state = self.state.take().expect("executor state is always present");
-                let (state, completed) = node.try_complete_without_progress(state)?;
-                self.state = Some(state);
-                if completed {
-                    self.cursor += 1;
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            match node.request_executable(state, input.clone()) {
+                Ok((state, request)) => {
+                    self.state = Some(state);
+                    return Ok(request);
                 }
-                self.settle_without_progress()?;
-                Err(ExecutorError::Complete)
-            }
-            Err((state, err)) => {
-                self.state = Some(state);
-                Err(err)
+                Err((state, ExecutorError::Complete)) => {
+                    self.state = Some(state);
+                    let state = self.state.take().expect("executor state is always present");
+                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    self.state = Some(state);
+                    if completed {
+                        self.cursor += 1;
+                        continue;
+                    }
+                    self.settle_without_progress()?;
+                    return Err(ExecutorError::Complete);
+                }
+                Err((state, err)) => {
+                    self.state = Some(state);
+                    return Err(err);
+                }
             }
         }
     }
@@ -2519,35 +2522,39 @@ where
     }
 
     fn next_request_serialized(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
-        self.settle_without_progress()?;
-        if self.is_complete() {
-            return Err(ExecutorError::Complete);
-        }
+        let input = input;
+        loop {
+            self.settle_without_progress()?;
+            if self.is_complete() {
+                return Err(ExecutorError::Complete);
+            }
 
-        let state = self.state.take().expect("executor state is always present");
-        let node = self
-            .steps
-            .get_mut(self.cursor)
-            .expect("cursor was checked against steps len");
-        match node.request(state, input) {
-            Ok((state, request)) => {
-                self.state = Some(state);
-                Ok(request)
-            }
-            Err((state, ExecutorError::Complete)) => {
-                self.state = Some(state);
-                let state = self.state.take().expect("executor state is always present");
-                let (state, completed) = node.try_complete_without_progress(state)?;
-                self.state = Some(state);
-                if completed {
-                    self.cursor += 1;
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            match node.request(state, input.clone()) {
+                Ok((state, request)) => {
+                    self.state = Some(state);
+                    return Ok(request);
                 }
-                self.settle_without_progress()?;
-                Err(ExecutorError::Complete)
-            }
-            Err((state, err)) => {
-                self.state = Some(state);
-                Err(err)
+                Err((state, ExecutorError::Complete)) => {
+                    self.state = Some(state);
+                    let state = self.state.take().expect("executor state is always present");
+                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    self.state = Some(state);
+                    if completed {
+                        self.cursor += 1;
+                        continue;
+                    }
+                    self.settle_without_progress()?;
+                    return Err(ExecutorError::Complete);
+                }
+                Err((state, err)) => {
+                    self.state = Some(state);
+                    return Err(err);
+                }
             }
         }
     }
@@ -2625,35 +2632,39 @@ where
     }
 
     pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
-        self.settle_without_progress()?;
-        if self.is_complete() {
-            return Err(ExecutorError::Complete);
-        }
+        let input = input;
+        loop {
+            self.settle_without_progress()?;
+            if self.is_complete() {
+                return Err(ExecutorError::Complete);
+            }
 
-        let state = self.state.take().expect("executor state is always present");
-        let node = self
-            .steps
-            .get_mut(self.cursor)
-            .expect("cursor was checked against steps len");
-        match node.request(state, input) {
-            Ok((state, request)) => {
-                self.state = Some(state);
-                Ok(request)
-            }
-            Err((state, ExecutorError::Complete)) => {
-                self.state = Some(state);
-                let state = self.state.take().expect("executor state is always present");
-                let (state, completed) = node.try_complete_without_progress(state)?;
-                self.state = Some(state);
-                if completed {
-                    self.cursor += 1;
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            match node.request(state, input.clone()) {
+                Ok((state, request)) => {
+                    self.state = Some(state);
+                    return Ok(request);
                 }
-                self.settle_without_progress()?;
-                Err(ExecutorError::Complete)
-            }
-            Err((state, err)) => {
-                self.state = Some(state);
-                Err(err)
+                Err((state, ExecutorError::Complete)) => {
+                    self.state = Some(state);
+                    let state = self.state.take().expect("executor state is always present");
+                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    self.state = Some(state);
+                    if completed {
+                        self.cursor += 1;
+                        continue;
+                    }
+                    self.settle_without_progress()?;
+                    return Err(ExecutorError::Complete);
+                }
+                Err((state, err)) => {
+                    self.state = Some(state);
+                    return Err(err);
+                }
             }
         }
     }
@@ -2662,35 +2673,39 @@ where
         &mut self,
         input: Serialized,
     ) -> Result<ExecutableActionRequest, ExecutorError> {
-        self.settle_without_progress()?;
-        if self.is_complete() {
-            return Err(ExecutorError::Complete);
-        }
+        let input = input;
+        loop {
+            self.settle_without_progress()?;
+            if self.is_complete() {
+                return Err(ExecutorError::Complete);
+            }
 
-        let state = self.state.take().expect("executor state is always present");
-        let node = self
-            .steps
-            .get_mut(self.cursor)
-            .expect("cursor was checked against steps len");
-        match node.request_executable(state, input) {
-            Ok((state, request)) => {
-                self.state = Some(state);
-                Ok(request)
-            }
-            Err((state, ExecutorError::Complete)) => {
-                self.state = Some(state);
-                let state = self.state.take().expect("executor state is always present");
-                let (state, completed) = node.try_complete_without_progress(state)?;
-                self.state = Some(state);
-                if completed {
-                    self.cursor += 1;
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            match node.request_executable(state, input.clone()) {
+                Ok((state, request)) => {
+                    self.state = Some(state);
+                    return Ok(request);
                 }
-                self.settle_without_progress()?;
-                Err(ExecutorError::Complete)
-            }
-            Err((state, err)) => {
-                self.state = Some(state);
-                Err(err)
+                Err((state, ExecutorError::Complete)) => {
+                    self.state = Some(state);
+                    let state = self.state.take().expect("executor state is always present");
+                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    self.state = Some(state);
+                    if completed {
+                        self.cursor += 1;
+                        continue;
+                    }
+                    self.settle_without_progress()?;
+                    return Err(ExecutorError::Complete);
+                }
+                Err((state, err)) => {
+                    self.state = Some(state);
+                    return Err(err);
+                }
             }
         }
     }
