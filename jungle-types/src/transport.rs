@@ -9,17 +9,17 @@ pub enum BackendError {
 /// Transport messages sent from runners to external clients.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RunnerOut {
-    ActionInput {
+    EffectInput {
         node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
     },
-    ActionSuccessOutput {
+    EffectSuccessOutput {
         node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
     },
-    ActionFailureOutput {
+    EffectFailureOutput {
         node_id: u32,
         data: Vec<u8>,
         uuid: Uuid,
@@ -48,19 +48,19 @@ pub struct JourneyEvent {
 
 /// Lightweight event payload for journey update subscriptions.
 ///
-/// Action variants intentionally omit action payload bytes to keep subscription
+/// Effect variants intentionally omit effect payload bytes to keep subscription
 /// streams inexpensive for long-running journeys.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum RunnerUpdateOut {
-    ActionInput {
+    EffectInput {
         node_id: u32,
         uuid: Uuid,
     },
-    ActionSuccessOutput {
+    EffectSuccessOutput {
         node_id: u32,
         uuid: Uuid,
     },
-    ActionFailureOutput {
+    EffectFailureOutput {
         node_id: u32,
         uuid: Uuid,
     },

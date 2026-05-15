@@ -428,9 +428,9 @@ impl JungleServer for Server {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     let journey_id = match &history {
-                        jungle_types::RunnerOut::ActionInput { uuid, .. }
-                        | jungle_types::RunnerOut::ActionSuccessOutput { uuid, .. }
-                        | jungle_types::RunnerOut::ActionFailureOutput { uuid, .. }
+                        jungle_types::RunnerOut::EffectInput { uuid, .. }
+                        | jungle_types::RunnerOut::EffectSuccessOutput { uuid, .. }
+                        | jungle_types::RunnerOut::EffectFailureOutput { uuid, .. }
                         | jungle_types::RunnerOut::Appearance { uuid, .. }
                         | jungle_types::RunnerOut::SleepScheduled { uuid, .. }
                         | jungle_types::RunnerOut::SleepFired { uuid, .. } => *uuid,

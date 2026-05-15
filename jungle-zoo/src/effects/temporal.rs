@@ -1,4 +1,4 @@
-use super::support::{define_action, maybe_delay};
+use super::support::{define_effect, maybe_delay};
 use crate::state::{AgeState, DailyActivity, LifePhase, PerceivedTimeOfDay, TimePerception};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +43,7 @@ fn next_time_of_day(time_of_day: PerceivedTimeOfDay) -> PerceivedTimeOfDay {
     }
 }
 
-define_action!(
+define_effect!(
     AdvanceAge,
     id = 50,
     dependency = TemporalDependency,
@@ -68,7 +68,7 @@ define_action!(
     }
 );
 
-define_action!(
+define_effect!(
     TickPerceivedTime,
     id = 51,
     dependency = TemporalDependency,
@@ -95,7 +95,7 @@ define_action!(
     }
 );
 
-define_action!(
+define_effect!(
     EvaluateActivityWindow,
     id = 52,
     dependency = TemporalDependency,
@@ -124,7 +124,7 @@ define_action!(
     }
 );
 
-define_action!(
+define_effect!(
     CelebrateBirthday,
     id = 53,
     dependency = TemporalDependency,
@@ -148,7 +148,7 @@ define_action!(
     }
 );
 
-define_action!(
+define_effect!(
     Birth,
     id = 54,
     dependency = TemporalDependency,

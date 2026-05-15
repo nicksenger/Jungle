@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    AbsorbFn, AbsorbMapper, ActionCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
+    AbsorbFn, AbsorbMapper, EffectCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
     IdentityStep, ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
@@ -11,12 +11,12 @@ struct HelperState {
     pulse_count: i32,
 }
 
-action!(EchoAction, U70, in = i32, out = i32, err = (), act = |_d, input| std::future::ready(Ok(input + 1)));
-action!(PulseAction, U71, in = (), out = i32, err = (), act = |_d, _input| std::future::ready(Ok(5)));
+effect!(EchoEffect, U70, in = i32, out = i32, err = (), act = |_d, input| std::future::ready(Ok(input + 1)));
+effect!(PulseEffect, U71, in = (), out = i32, err = (), act = |_d, _input| std::future::ready(Ok(5)));
 
 struct StoreValueAbsorb;
-impl AbsorbMapper<HelperState, EchoAction, i32> for StoreValueAbsorb {
-    fn absorb(state: &mut HelperState, output: ActionCompletion<EchoAction>) -> i32 {
+impl AbsorbMapper<HelperState, EchoEffect, i32> for StoreValueAbsorb {
+    fn absorb(state: &mut HelperState, output: EffectCompletion<EchoEffect>) -> i32 {
         let value = output.expect("echo should succeed");
         state.value = value;
         value
@@ -24,8 +24,8 @@ impl AbsorbMapper<HelperState, EchoAction, i32> for StoreValueAbsorb {
 }
 
 struct CountPulseAbsorb;
-impl AbsorbMapper<HelperState, PulseAction, ()> for CountPulseAbsorb {
-    fn absorb(state: &mut HelperState, output: ActionCompletion<PulseAction>) {
+impl AbsorbMapper<HelperState, PulseEffect, ()> for CountPulseAbsorb {
+    fn absorb(state: &mut HelperState, output: EffectCompletion<PulseEffect>) {
         let value = output.expect("pulse should succeed");
         state.pulse_count += 1;
         state.value += value;
@@ -33,7 +33,7 @@ impl AbsorbMapper<HelperState, PulseAction, ()> for CountPulseAbsorb {
 }
 
 struct EmitUsingState;
-impl EmitMapper<HelperState, EchoAction, i32> for EmitUsingState {
+impl EmitMapper<HelperState, EchoEffect, i32> for EmitUsingState {
     fn emit(state: &HelperState, input: i32) -> i32 {
         state.value + input
     }
@@ -42,21 +42,21 @@ impl EmitMapper<HelperState, EchoAction, i32> for EmitUsingState {
 type PassthroughStep = FocusedStep<
     HelperAnimal,
     Identity,
-    PassthroughEmit<EchoAction, Identity>,
-    AbsorbFn<Identity, EchoAction, i32, StoreValueAbsorb>,
+    PassthroughEmit<EchoEffect, Identity>,
+    AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
 >;
 
 type UnitStep = IdentityStep<
     HelperAnimal,
-    UnitEmit<PulseAction, Identity>,
-    AbsorbFn<Identity, PulseAction, (), CountPulseAbsorb>,
+    UnitEmit<PulseEffect, Identity>,
+    AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
 >;
 
 type FunctionEmitStep = Step<
     HelperAnimal,
     Fuse<
-        EmitFn<Identity, EchoAction, i32, EmitUsingState>,
-        AbsorbFn<Identity, EchoAction, i32, StoreValueAbsorb>,
+        EmitFn<Identity, EchoEffect, i32, EmitUsingState>,
+        AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
     >,
 >;
 

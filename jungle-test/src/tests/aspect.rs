@@ -1,6 +1,6 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity,
+    Effect, EffectCompletion, Aspect, Condition, Conditional, Either, Executor, Identity,
     LoopCondition, Pulse, Running, StateLens, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
@@ -9,10 +9,10 @@ use jungle_sdk::{Journey, Optic};
 use std::future::ready;
 use std::marker::PhantomData;
 
-action!(Sleep, U0, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
-action!(Eat, U1, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
-action!(Forage, U2, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
-action!(Hunt, U3, in = (), out = i32, err = (), act = |_d, _input| ready(Ok(1)));
+effect!(Sleep, U0, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
+effect!(Eat, U1, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
+effect!(Forage, U2, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
+effect!(Hunt, U3, in = (), out = i32, err = (), act = |_d, _input| ready(Ok(1)));
 
 #[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct CoreState {
@@ -39,7 +39,7 @@ where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
 {
-    type Action = Sleep;
+    type Effect = Sleep;
     type StateAspect = Focus;
     type Arg = i32;
     type Ret = i32;
@@ -48,7 +48,7 @@ where
         core.energy + input
     }
 
-    fn absorb(core: &mut CoreState, output: ActionCompletion<Sleep>) -> Self::Ret {
+    fn absorb(core: &mut CoreState, output: EffectCompletion<Sleep>) -> Self::Ret {
         let value = output.expect("sleep should succeed");
         core.energy = value;
         value
@@ -60,7 +60,7 @@ where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
 {
-    type Action = Eat;
+    type Effect = Eat;
     type StateAspect = Focus;
     type Arg = i32;
     type Ret = i32;
@@ -69,7 +69,7 @@ where
         core.energy + input
     }
 
-    fn absorb(core: &mut CoreState, output: ActionCompletion<Eat>) -> Self::Ret {
+    fn absorb(core: &mut CoreState, output: EffectCompletion<Eat>) -> Self::Ret {
         let value = output.expect("eat should succeed");
         core.energy = value;
         value
@@ -82,9 +82,9 @@ impl<T, Focus, A> Pulse<T> for AddI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
-    A: Action<Out = i32>,
+    A: Effect<Out = i32>,
 {
-    type Action = A;
+    type Effect = A;
     type StateAspect = Focus;
     type Arg = A::In;
     type Ret = i32;
@@ -93,10 +93,10 @@ where
         input
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Ret {
+    fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Ret {
         let delta = match output {
             Ok(delta) => delta,
-            Err(_) => panic!("action should succeed"),
+            Err(_) => panic!("effect should succeed"),
         };
         *value += delta;
         *value
@@ -109,9 +109,9 @@ impl<T, Focus, A> Pulse<T> for SubI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
-    A: Action<Out = i32>,
+    A: Effect<Out = i32>,
 {
-    type Action = A;
+    type Effect = A;
     type StateAspect = Focus;
     type Arg = A::In;
     type Ret = i32;
@@ -120,10 +120,10 @@ where
         input
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<A>) -> Self::Ret {
+    fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Ret {
         let delta = match output {
             Ok(delta) => delta,
-            Err(_) => panic!("action should succeed"),
+            Err(_) => panic!("effect should succeed"),
         };
         *value -= delta;
         *value
@@ -132,7 +132,7 @@ where
 
 struct GorillaSleepManual;
 impl Pulse<Gorilla> for GorillaSleepManual {
-    type Action = Sleep;
+    type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = i32;
     type Ret = i32;
@@ -141,7 +141,7 @@ impl Pulse<Gorilla> for GorillaSleepManual {
         state.core.energy + input
     }
 
-    fn absorb(state: &mut GorillaState, output: ActionCompletion<Sleep>) -> Self::Ret {
+    fn absorb(state: &mut GorillaState, output: EffectCompletion<Sleep>) -> Self::Ret {
         let value = output.expect("sleep should succeed");
         state.core.energy = value;
         state.core.age += 1;
@@ -369,7 +369,7 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 }
 
 #[tokio::test]
-async fn executor_advances_with_executable_requests_and_dynamic_action_order() {
+async fn executor_advances_with_executable_requests_and_dynamic_effect_order() {
     let mut tiger = Executor::<Tiger>::new(TigerState {
         stripes: 98,
         core: CoreState { energy: 8, age: 4 },
@@ -382,7 +382,7 @@ async fn executor_advances_with_executable_requests_and_dynamic_action_order() {
             Err(jungle_sdk::types::ExecutorError::Complete) => break,
             Err(err) => panic!("tiger flow should execute through dynamic requests: {err}"),
         };
-        let completion = request.run().await.expect("tiger action should execute");
+        let completion = request.run().await.expect("tiger effect should execute");
         let emitted_step = tiger
             .complete_serialized(completion)
             .expect("tiger completion should process");

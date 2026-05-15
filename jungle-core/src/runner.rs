@@ -121,7 +121,7 @@ where
             let node_id = request.node_id();
             send_history(
                 tx,
-                RunnerOut::ActionInput {
+                RunnerOut::EffectInput {
                     node_id,
                     data: request.request_bytes().to_vec(),
                     uuid: journey_id,
@@ -129,7 +129,7 @@ where
             )
             .await?;
 
-            if request.action_type() == core::any::type_name::<Sleep>() {
+            if request.effect_type() == core::any::type_name::<Sleep>() {
                 let duration: std::time::Duration = request.deserialize_request()?;
                 let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
                 let wake_at_unix_ms = chrono::Utc::now()
@@ -195,7 +195,7 @@ where
         Ok(output) => {
             send_history(
                 tx,
-                RunnerOut::ActionSuccessOutput {
+                RunnerOut::EffectSuccessOutput {
                     node_id,
                     data: output.clone(),
                     uuid: journey_id,
@@ -206,7 +206,7 @@ where
         Err(error) => {
             send_history(
                 tx,
-                RunnerOut::ActionFailureOutput {
+                RunnerOut::EffectFailureOutput {
                     node_id,
                     data: error.clone(),
                     uuid: journey_id,

@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Animal, AnimalMember, Animals as AnimalsTrait, Ecosystem, Id,
+    Effect, EffectCompletion, Animal, AnimalMember, Animals as AnimalsTrait, Ecosystem, Id,
     Identity, Observe, Pulse, Step, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -11,13 +11,13 @@ use jungle_sdk::{Animals, Journey, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-struct LegacyAction;
-impl jungle_sdk::types::ActionMember for LegacyAction {}
+struct LegacyEffect;
+impl jungle_sdk::types::EffectMember for LegacyEffect {}
 
 #[derive(Clone, Copy)]
 struct LegacyDependency;
 
-impl Action for LegacyAction {
+impl Effect for LegacyEffect {
     type Id = Id<U70>;
     type Dependency = LegacyDependency;
     type In = ();
@@ -32,13 +32,13 @@ impl Action for LegacyAction {
     }
 }
 
-struct ModernAction;
-impl jungle_sdk::types::ActionMember for ModernAction {}
+struct ModernEffect;
+impl jungle_sdk::types::EffectMember for ModernEffect {}
 
 #[derive(Clone, Copy)]
 struct ModernDependency;
 
-impl Action for ModernAction {
+impl Effect for ModernEffect {
     type Id = Id<U71>;
     type Dependency = ModernDependency;
     type In = ();
@@ -55,28 +55,28 @@ impl Action for ModernAction {
 
 struct LegacyStep;
 impl Pulse<LegacyAnimal> for LegacyStep {
-    type Action = LegacyAction;
+    type Effect = LegacyEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         *state = output.expect("legacy step should succeed");
     }
 }
 
 struct ModernStep;
 impl Pulse<ModernAnimal> for ModernStep {
-    type Action = ModernAction;
+    type Effect = ModernEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         *state = output.expect("modern step should succeed");
     }
 }

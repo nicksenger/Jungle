@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Animal, AnimalMember, Condition, Conditional, Ecosystem, Id,
+    Effect, EffectCompletion, Animal, AnimalMember, Condition, Conditional, Ecosystem, Id,
     Identity, LoopCondition, Observe, Pulse, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
@@ -43,9 +43,9 @@ pub struct ObserveState {
     pub sleep_ms: u64,
 }
 
-pub struct BumpAction;
-impl jungle_sdk::types::ActionMember for BumpAction {}
-impl Action for BumpAction {
+pub struct BumpEffect;
+impl jungle_sdk::types::EffectMember for BumpEffect {}
+impl Effect for BumpEffect {
     type Id = Id<U14>;
     type Dependency = ();
     type In = ();
@@ -62,7 +62,7 @@ impl Action for BumpAction {
 
 pub struct ObserveSleep;
 impl Pulse<ObserveAnimal> for ObserveSleep {
-    type Action = Sleep;
+    type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
@@ -71,7 +71,7 @@ impl Pulse<ObserveAnimal> for ObserveSleep {
         Duration::from_millis(state.sleep_ms)
     }
 
-    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("sleep branch should complete");
         state.tick = state.tick.saturating_add(1);
     }
@@ -79,14 +79,14 @@ impl Pulse<ObserveAnimal> for ObserveSleep {
 
 pub struct ObserveBump;
 impl Pulse<ObserveAnimal> for ObserveBump {
-    type Action = BumpAction;
+    type Effect = BumpEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &ObserveState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("bump branch should complete");
         state.tick = state.tick.saturating_add(1);
     }

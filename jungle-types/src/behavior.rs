@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 
 use crate::{
-    ActionMember, Animal, FlowActions, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
+    EffectMember, Animal, FlowEffects, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
     ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
 };
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
@@ -15,20 +15,20 @@ use typosaurus::num::consts::{U0, U1};
 use typosaurus::num::{Bit, UInt, Unsigned};
 
 /// A behavior that transforms a single input into a single output.
-pub trait Action {
-    /// A type-level identifier for this Action.
+pub trait Effect {
+    /// A type-level identifier for this Effect.
     type Id;
 
-    /// The shared dependency consumed by this action.
+    /// The shared dependency consumed by this effect.
     type Dependency: Send + Sync + 'static;
 
-    /// The input type accepted by this action.
+    /// The input type accepted by this effect.
     type In: Serialize + DeserializeOwned + Send + 'static;
 
-    /// The output type produced by this action.
+    /// The output type produced by this effect.
     type Out: Serialize + DeserializeOwned + Send + 'static;
 
-    /// The error type produced by this action.
+    /// The error type produced by this effect.
     type Err: Send + 'static;
 
     /// Process one input into one output.
@@ -38,13 +38,13 @@ pub trait Action {
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> + Send;
 }
 
-/// A typed action request emitted by a yielding workflow phase.
-pub struct ActionRequest<A: Action> {
+/// A typed effect request emitted by a yielding workflow phase.
+pub struct EffectRequest<A: Effect> {
     pub input: A::In,
     marker: PhantomData<fn() -> A>,
 }
 
-impl<A: Action> ActionRequest<A> {
+impl<A: Effect> EffectRequest<A> {
     pub fn new(input: A::In) -> Self {
         Self {
             input,
@@ -67,8 +67,8 @@ impl<A: Action> ActionRequest<A> {
     }
 }
 
-/// A completed action result consumed by an awaiting workflow phase.
-pub type ActionCompletion<A> = Result<<A as Action>::Out, <A as Action>::Err>;
+/// A completed effect result consumed by an awaiting workflow phase.
+pub type EffectCompletion<A> = Result<<A as Effect>::Out, <A as Effect>::Err>;
 
 /// Projects a larger state into a focused mutable substate.
 pub trait StateCarrier<State> {
@@ -226,10 +226,10 @@ where
     }
 }
 
-/// Single step-facing contract for adapting an [`Action`] over an [`Aspect`]
+/// Single step-facing contract for adapting an [`Effect`] over an [`Aspect`]
 /// of animal state.
 pub trait Pulse<T: Animal> {
-    type Action: Action;
+    type Effect: Effect;
     type StateAspect: Aspect<T::State>;
     type Arg;
     type Ret;
@@ -237,83 +237,83 @@ pub trait Pulse<T: Animal> {
     fn emit(
         view: &<<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Action as Action>::In;
+    ) -> <Self::Effect as Effect>::In;
 
     fn absorb(
         view: &mut <<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
-        output: ActionCompletion<Self::Action>,
+        output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret;
 }
 
-/// Forward half of [`Pulse`], responsible for producing an action request input.
+/// Forward half of [`Pulse`], responsible for producing an effect request input.
 pub trait Emit<T: Animal> {
     type Arg;
     type StateAspect: Aspect<T::State>;
-    type Action: Action;
+    type Effect: Effect;
 
     fn emit(
         view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Action as Action>::In;
+    ) -> <Self::Effect as Effect>::In;
 }
 
-/// Backward half of [`Pulse`], responsible for consuming an action completion.
+/// Backward half of [`Pulse`], responsible for consuming an effect completion.
 pub trait Absorb<T: Animal> {
     type Ret;
     type StateAspect: Aspect<T::State>;
-    type Action: Action;
+    type Effect: Effect;
 
     fn absorb(
         view: &mut <Self::StateAspect as StateCarrier<T::State>>::View,
-        output: ActionCompletion<Self::Action>,
+        output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret;
 }
 
-/// Emits by forwarding carry input directly as action input.
-pub struct PassthroughEmit<A, Focus, In = <A as Action>::In>(PhantomData<fn() -> (A, Focus, In)>);
+/// Emits by forwarding carry input directly as effect input.
+pub struct PassthroughEmit<A, Focus, In = <A as Effect>::In>(PhantomData<fn() -> (A, Focus, In)>);
 
 impl<T, A, Focus, In> Emit<T> for PassthroughEmit<A, Focus, In>
 where
     T: Animal,
-    A: Action<In = In>,
+    A: Effect<In = In>,
     Focus: Aspect<T::State>,
 {
     type Arg = In;
     type StateAspect = Focus;
-    type Action = A;
+    type Effect = A;
 
     fn emit(
         _view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Action as Action>::In {
+    ) -> <Self::Effect as Effect>::In {
         input
     }
 }
 
-/// Emits canonical unit input for actions whose input type is `()`.
+/// Emits canonical unit input for effects whose input type is `()`.
 pub struct UnitEmit<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
 impl<T, A, Focus> Emit<T> for UnitEmit<A, Focus>
 where
     T: Animal,
-    A: Action<In = ()>,
+    A: Effect<In = ()>,
     Focus: Aspect<T::State>,
 {
     type Arg = ();
     type StateAspect = Focus;
-    type Action = A;
+    type Effect = A;
 
     fn emit(
         _view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         _input: Self::Arg,
-    ) -> <Self::Action as Action>::In {
+    ) -> <Self::Effect as Effect>::In {
     }
 }
 
 /// Type-level callable adapter used by [`EmitFn`].
 pub trait EmitMapper<View, A, In>
 where
-    A: Action,
+    A: Effect,
 {
     fn emit(view: &View, input: In) -> A::In;
 }
@@ -325,17 +325,17 @@ impl<T, Focus, A, In, F> Emit<T> for EmitFn<Focus, A, In, F>
 where
     T: Animal,
     Focus: Aspect<T::State>,
-    A: Action,
+    A: Effect,
     F: EmitMapper<<Focus as StateCarrier<T::State>>::View, A, In>,
 {
     type Arg = In;
     type StateAspect = Focus;
-    type Action = A;
+    type Effect = A;
 
     fn emit(
         view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Action as Action>::In {
+    ) -> <Self::Effect as Effect>::In {
         <F as EmitMapper<<Focus as StateCarrier<T::State>>::View, A, In>>::emit(view, input)
     }
 }
@@ -343,9 +343,9 @@ where
 /// Type-level callable adapter used by [`AbsorbFn`].
 pub trait AbsorbMapper<View, A, Out>
 where
-    A: Action,
+    A: Effect,
 {
-    fn absorb(view: &mut View, output: ActionCompletion<A>) -> Out;
+    fn absorb(view: &mut View, output: EffectCompletion<A>) -> Out;
 }
 
 /// Absorbs via a type-level mapper function.
@@ -355,16 +355,16 @@ impl<T, Focus, A, Out, F> Absorb<T> for AbsorbFn<Focus, A, Out, F>
 where
     T: Animal,
     Focus: Aspect<T::State>,
-    A: Action,
+    A: Effect,
     F: AbsorbMapper<<Focus as StateCarrier<T::State>>::View, A, Out>,
 {
     type Ret = Out;
     type StateAspect = Focus;
-    type Action = A;
+    type Effect = A;
 
     fn absorb(
         view: &mut <Self::StateAspect as StateCarrier<T::State>>::View,
-        output: ActionCompletion<Self::Action>,
+        output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
         <F as AbsorbMapper<<Focus as StateCarrier<T::State>>::View, A, Out>>::absorb(view, output)
     }
@@ -377,9 +377,9 @@ impl<T, E, A> Pulse<T> for Fuse<E, A>
 where
     T: Animal,
     E: Emit<T>,
-    A: Absorb<T, Action = <E as Emit<T>>::Action, StateAspect = <E as Emit<T>>::StateAspect>,
+    A: Absorb<T, Effect = <E as Emit<T>>::Effect, StateAspect = <E as Emit<T>>::StateAspect>,
 {
-    type Action = <E as Emit<T>>::Action;
+    type Effect = <E as Emit<T>>::Effect;
     type StateAspect = <E as Emit<T>>::StateAspect;
     type Arg = <E as Emit<T>>::Arg;
     type Ret = <A as Absorb<T>>::Ret;
@@ -387,13 +387,13 @@ where
     fn emit(
         view: &<<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Action as Action>::In {
+    ) -> <Self::Effect as Effect>::In {
         <E as Emit<T>>::emit(view, input)
     }
 
     fn absorb(
         view: &mut <<Self as Pulse<T>>::StateAspect as StateCarrier<T::State>>::View,
-        output: ActionCompletion<Self::Action>,
+        output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
         <A as Absorb<T>>::absorb(view, output)
     }
@@ -410,12 +410,12 @@ where
 {
     type Arg = <E as Emit<T>>::Arg;
     type StateAspect = Focus;
-    type Action = <E as Emit<T>>::Action;
+    type Effect = <E as Emit<T>>::Effect;
 
     fn emit(
         view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Action as Action>::In {
+    ) -> <Self::Effect as Effect>::In {
         <E as Emit<T>>::emit(view, input)
     }
 }
@@ -431,11 +431,11 @@ where
 {
     type Ret = <A as Absorb<T>>::Ret;
     type StateAspect = Focus;
-    type Action = <A as Absorb<T>>::Action;
+    type Effect = <A as Absorb<T>>::Effect;
 
     fn absorb(
         view: &mut <Self::StateAspect as StateCarrier<T::State>>::View,
-        output: ActionCompletion<Self::Action>,
+        output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
         <A as Absorb<T>>::absorb(view, output)
     }
@@ -448,7 +448,7 @@ pub type FocusedStep<T, Focus, E, B> =
 /// Identity-focused [`FocusedStep`].
 pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
 
-/// A primitive workflow step that adapts an [`Action`] to the
+/// A primitive workflow step that adapts an [`Effect`] to the
 /// [`Running`]/[`Waiting`] protocol.
 pub struct Step<T, A>
 where
@@ -477,14 +477,14 @@ where
     A: Pulse<T>,
 {
     type In = (T::State, <A as Pulse<T>>::Arg);
-    type Out = (T::State, ActionRequest<<A as Pulse<T>>::Action>);
+    type Out = (T::State, EffectRequest<<A as Pulse<T>>::Effect>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
         let view = <<A as Pulse<T>>::StateAspect as StateCarrier<T::State>>::view(&mut state);
-        let action_input = <A as Pulse<T>>::emit(view, input);
+        let effect_input = <A as Pulse<T>>::emit(view, input);
         (
             state,
-            ActionRequest::<<A as Pulse<T>>::Action>::new(action_input),
+            EffectRequest::<<A as Pulse<T>>::Effect>::new(effect_input),
         )
     }
 }
@@ -495,7 +495,7 @@ where
     T: Animal,
     A: Pulse<T>,
 {
-    type In = (T::State, ActionCompletion<<A as Pulse<T>>::Action>);
+    type In = (T::State, EffectCompletion<<A as Pulse<T>>::Effect>);
     type Out = (T::State, <A as Pulse<T>>::Ret);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
@@ -506,13 +506,13 @@ where
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, A> FlowActions for Step<T, A>
+impl<T, A> FlowEffects for Step<T, A>
 where
     T: Animal,
-    <A as Pulse<T>>::Action: ActionMember,
+    <A as Pulse<T>>::Effect: EffectMember,
     A: Pulse<T>,
 {
-    type List = Node<<<A as Pulse<T>>::Action as Action>::Id, <A as Pulse<T>>::Action>;
+    type List = Node<<<A as Pulse<T>>::Effect as Effect>::Id, <A as Pulse<T>>::Effect>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]

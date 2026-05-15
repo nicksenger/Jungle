@@ -2,7 +2,7 @@ use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Observe, Perturb, Pulse, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -49,10 +49,10 @@ impl From<&IntegrationZoo> for AddOneDependency {
     }
 }
 
-struct AddOneAction;
-impl jungle_sdk::types::ActionMember for AddOneAction {}
+struct AddOneEffect;
+impl jungle_sdk::types::EffectMember for AddOneEffect {}
 
-impl Action for AddOneAction {
+impl Effect for AddOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
     type Dependency = AddOneDependency;
     type In = ();
@@ -78,10 +78,10 @@ impl From<&IntegrationZoo> for AddTwoDependency {
     }
 }
 
-struct AddTwoAction;
-impl jungle_sdk::types::ActionMember for AddTwoAction {}
+struct AddTwoEffect;
+impl jungle_sdk::types::EffectMember for AddTwoEffect {}
 
-impl Action for AddTwoAction {
+impl Effect for AddTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
     type Dependency = AddTwoDependency;
     type In = ();
@@ -98,67 +98,67 @@ impl Action for AddTwoAction {
 
 struct AddOneBeforeFullStateStep;
 impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
-    type Action = AddOneAction;
+    type Effect = AddOneEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.total += output.expect("first pre-focused full-state action should succeed");
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        state.total += output.expect("first pre-focused full-state effect should succeed");
         state.before_steps += 1;
     }
 }
 
 struct AddTwoBeforeFullStateStep;
 impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
-    type Action = AddTwoAction;
+    type Effect = AddTwoEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.total += output.expect("second pre-focused full-state action should succeed");
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        state.total += output.expect("second pre-focused full-state effect should succeed");
         state.before_steps += 1;
     }
 }
 
 struct AddOneFocusedStep;
 impl Pulse<IntegrationAnimal> for AddOneFocusedStep {
-    type Action = AddOneAction;
+    type Effect = AddOneEffect;
     type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &SubFlowState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.value += output.expect("first focused integration action should succeed");
+    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        state.value += output.expect("first focused integration effect should succeed");
         state.updates += 1;
     }
 }
 
 struct AddTwoFocusedStep;
 impl Pulse<IntegrationAnimal> for AddTwoFocusedStep {
-    type Action = AddTwoAction;
+    type Effect = AddTwoEffect;
     type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &SubFlowState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut SubFlowState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.value += output.expect("second focused integration action should succeed");
+    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        state.value += output.expect("second focused integration effect should succeed");
         state.updates += 1;
     }
 }
 
 struct AddOneDeepFocusedStep;
 impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
-    type Action = AddOneAction;
+    type Effect = AddOneEffect;
     type StateAspect = StateLens<
         IntegrationState,
         list![
@@ -171,15 +171,15 @@ impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
 
     fn emit(_state: &DeepFocusState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.value += output.expect("first deep-focused integration action should succeed");
+    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        state.value += output.expect("first deep-focused integration effect should succeed");
         state.updates += 1;
     }
 }
 
 struct AddTwoDeepFocusedStep;
 impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
-    type Action = AddTwoAction;
+    type Effect = AddTwoEffect;
     type StateAspect = StateLens<
         IntegrationState,
         list![
@@ -192,38 +192,38 @@ impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
 
     fn emit(_state: &DeepFocusState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.value += output.expect("second deep-focused integration action should succeed");
+    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        state.value += output.expect("second deep-focused integration effect should succeed");
         state.updates += 1;
     }
 }
 
 struct AddOneAfterFullStateStep;
 impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
-    type Action = AddOneAction;
+    type Effect = AddOneEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.total += output.expect("first post-focused full-state action should succeed");
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        state.total += output.expect("first post-focused full-state effect should succeed");
         state.after_steps += 1;
     }
 }
 
 struct AddTwoAfterFullStateStep;
 impl Pulse<IntegrationAnimal> for AddTwoAfterFullStateStep {
-    type Action = AddTwoAction;
+    type Effect = AddTwoEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        state.total += output.expect("second post-focused full-state action should succeed");
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        state.total += output.expect("second post-focused full-state effect should succeed");
         state.after_steps += 1;
     }
 }
@@ -638,15 +638,15 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
             let update = next.expect("streamed journey update should succeed");
 
             let (sequence_id, update_journey_id) = match update.event {
-                RunnerUpdateOut::ActionInput { uuid, .. } => {
+                RunnerUpdateOut::EffectInput { uuid, .. } => {
                     started_count += 1;
                     (update.sequence_id, uuid)
                 }
-                RunnerUpdateOut::ActionSuccessOutput { uuid, .. } => {
+                RunnerUpdateOut::EffectSuccessOutput { uuid, .. } => {
                     succeeded_count += 1;
                     (update.sequence_id, uuid)
                 }
-                RunnerUpdateOut::ActionFailureOutput { uuid, .. } => {
+                RunnerUpdateOut::EffectFailureOutput { uuid, .. } => {
                     failed_count += 1;
                     (update.sequence_id, uuid)
                 }

@@ -1,12 +1,12 @@
 use jungle_sdk::types::{
-    ActionCompletion, Conditional, Executor, Identity, Join, JourneyAst, JourneyAstSource,
+    EffectCompletion, Conditional, Executor, Identity, Join, JourneyAst, JourneyAstSource,
     ManualExecutor, NodeMetadata, Pulse, Select, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U30, U31};
 use std::future::ready;
 
-action!(
-    TransparentAction,
+effect!(
+    TransparentEffect,
     U30,
     in = i32,
     out = i32,
@@ -23,7 +23,7 @@ animal!(
 
 struct TransparentStep;
 impl Pulse<TransparentAnimal> for TransparentStep {
-    type Action = TransparentAction;
+    type Effect = TransparentEffect;
     type StateAspect = Identity;
     type Arg = i32;
     type Ret = i32;
@@ -32,8 +32,8 @@ impl Pulse<TransparentAnimal> for TransparentStep {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<TransparentAction>) -> Self::Ret {
-        let value = output.expect("transparent step action should succeed");
+    fn absorb(state: &mut i32, output: EffectCompletion<TransparentEffect>) -> Self::Ret {
+        let value = output.expect("transparent step effect should succeed");
         *state = value;
         value
     }

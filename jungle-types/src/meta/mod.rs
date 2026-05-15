@@ -10,7 +10,7 @@ use typosaurus::num::{Max, Unsigned};
 use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Action, Actions, Animal, Animals, Ecosystem, FlowActions, Journey};
+use super::{Effect, Effects, Animal, Animals, Ecosystem, FlowEffects, Journey};
 use core::marker::PhantomData;
 
 /// Newtype wrapper around an Unsigned constant.
@@ -35,7 +35,7 @@ where
     type Out = <T as Equality<U>>::Out;
 }
 
-pub trait ActionMember {}
+pub trait EffectMember {}
 pub trait AnimalMember {}
 
 pub trait AllFrom<T> {}
@@ -47,42 +47,42 @@ where
 {
 }
 
-pub trait StripActionHeaders {
+pub trait StripEffectHeaders {
     type Out;
 }
-impl StripActionHeaders for list::Empty {
+impl StripEffectHeaders for list::Empty {
     type Out = list::Empty;
 }
-impl<K, Tail, TailOut> StripActionHeaders for list::List<(Node<K, ()>, Tail)>
+impl<K, Tail, TailOut> StripEffectHeaders for list::List<(Node<K, ()>, Tail)>
 where
-    Tail: StripActionHeaders<Out = TailOut>,
+    Tail: StripEffectHeaders<Out = TailOut>,
 {
     type Out = TailOut;
 }
-impl<K, Head, Tail, TailOut> StripActionHeaders for list::List<(Node<K, Head>, Tail)>
+impl<K, Head, Tail, TailOut> StripEffectHeaders for list::List<(Node<K, Head>, Tail)>
 where
-    Head: ActionMember,
-    Tail: StripActionHeaders<Out = TailOut>,
+    Head: EffectMember,
+    Tail: StripEffectHeaders<Out = TailOut>,
 {
     type Out = list::List<(Head, TailOut)>;
 }
 
-pub trait KeepActionNodes {
+pub trait KeepEffectNodes {
     type Out;
 }
-impl KeepActionNodes for list::Empty {
+impl KeepEffectNodes for list::Empty {
     type Out = list::Empty;
 }
-impl<K, Tail, TailOut> KeepActionNodes for list::List<(Node<K, ()>, Tail)>
+impl<K, Tail, TailOut> KeepEffectNodes for list::List<(Node<K, ()>, Tail)>
 where
-    Tail: KeepActionNodes<Out = TailOut>,
+    Tail: KeepEffectNodes<Out = TailOut>,
 {
     type Out = TailOut;
 }
-impl<K, Head, Tail, TailOut> KeepActionNodes for list::List<(Node<K, Head>, Tail)>
+impl<K, Head, Tail, TailOut> KeepEffectNodes for list::List<(Node<K, Head>, Tail)>
 where
-    Head: ActionMember,
-    Tail: KeepActionNodes<Out = TailOut>,
+    Head: EffectMember,
+    Tail: KeepEffectNodes<Out = TailOut>,
 {
     type Out = list::List<(Node<K, Head>, TailOut)>;
 }
@@ -107,7 +107,7 @@ where
     type Out = list::List<(Head, TailOut)>;
 }
 
-pub type ActionSet<T> = <SPFlatten<<T as Actions>::List> as StripActionHeaders>::Out;
+pub type EffectSet<T> = <SPFlatten<<T as Effects>::List> as StripEffectHeaders>::Out;
 pub type AnimalSet<T> = <SPFlatten<<T as Animals>::List> as StripAnimalHeaders>::Out;
 
 pub struct AnimalVersion<AnimalId, Generation>(PhantomData<(AnimalId, Generation)>);
@@ -241,20 +241,20 @@ pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
     WithAnimalState,
 >>::Out;
 
-pub struct WithActionDependency;
-impl<T> Mapper<T> for WithActionDependency
+pub struct WithEffectDependency;
+impl<T> Mapper<T> for WithEffectDependency
 where
-    T: Action,
+    T: Effect,
 {
-    type Out = <T as Action>::Dependency;
+    type Out = <T as Effect>::Dependency;
 }
 
-pub type AnimalActionMembers<T> =
-    <SPFlatten<<AnimalSet<T> as CollectAnimalJourneyActions>::Out> as StripActionHeaders>::Out;
+pub type AnimalEffectMembers<T> =
+    <SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out> as StripEffectHeaders>::Out;
 
-pub type AnimalActionDependencies<T> = <(AnimalActionMembers<T>, WithActionDependency) as Map<
-    <AnimalActionMembers<T> as Container>::Content,
-    WithActionDependency,
+pub type AnimalEffectDependencies<T> = <(AnimalEffectMembers<T>, WithEffectDependency) as Map<
+    <AnimalEffectMembers<T> as Container>::Content,
+    WithEffectDependency,
 >>::Out;
 
 pub trait AnimalStatesCompatible<From>: Animals {}
@@ -269,43 +269,43 @@ where
 {
 }
 
-pub trait AnimalActionDependenciesCompatible<From>: Animals {}
-impl<T, From> AnimalActionDependenciesCompatible<From> for T
+pub trait AnimalEffectDependenciesCompatible<From>: Animals {}
+impl<T, From> AnimalEffectDependenciesCompatible<From> for T
 where
     T: Animals,
     <T as Animals>::List: FlattenNodes,
     SPFlatten<<T as Animals>::List>: StripAnimalHeaders,
-    AnimalSet<T>: CollectAnimalJourneyActions,
-    <AnimalSet<T> as CollectAnimalJourneyActions>::Out: FlattenNodes,
-    SPFlatten<<AnimalSet<T> as CollectAnimalJourneyActions>::Out>: StripActionHeaders,
-    AnimalActionMembers<T>: Container,
-    (AnimalActionMembers<T>, WithActionDependency):
-        Map<<AnimalActionMembers<T> as Container>::Content, WithActionDependency>,
-    AnimalActionDependencies<T>: AllFrom<From>,
+    AnimalSet<T>: CollectAnimalJourneyEffects,
+    <AnimalSet<T> as CollectAnimalJourneyEffects>::Out: FlattenNodes,
+    SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out>: StripEffectHeaders,
+    AnimalEffectMembers<T>: Container,
+    (AnimalEffectMembers<T>, WithEffectDependency):
+        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectDependency>,
+    AnimalEffectDependencies<T>: AllFrom<From>,
 {
 }
 
-pub trait CollectAnimalJourneyActions {
+pub trait CollectAnimalJourneyEffects {
     type Out;
 }
-impl CollectAnimalJourneyActions for list::Empty {
+impl CollectAnimalJourneyEffects for list::Empty {
     type Out = list::Empty;
 }
-impl<Head, Tail, TailOut> CollectAnimalJourneyActions for list::List<(Head, Tail)>
+impl<Head, Tail, TailOut> CollectAnimalJourneyEffects for list::List<(Head, Tail)>
 where
     Head: Animal,
     <Head as Animal>::Journey: Journey,
-    <Head as Animal>::Journey: FlowActions,
-    <<Head as Animal>::Journey as FlowActions>::List: FlattenNodes,
-    SPFlatten<<<Head as Animal>::Journey as FlowActions>::List>: KeepActionNodes,
-    Tail: CollectAnimalJourneyActions<Out = TailOut>,
+    <Head as Animal>::Journey: FlowEffects,
+    <<Head as Animal>::Journey as FlowEffects>::List: FlattenNodes,
+    SPFlatten<<<Head as Animal>::Journey as FlowEffects>::List>: KeepEffectNodes,
+    Tail: CollectAnimalJourneyEffects<Out = TailOut>,
 {
     type Out = list::List<(
-        <SPFlatten<<<Head as Animal>::Journey as FlowActions>::List> as KeepActionNodes>::Out,
+        <SPFlatten<<<Head as Animal>::Journey as FlowEffects>::List> as KeepEffectNodes>::Out,
         TailOut,
     )>;
 }
 
-pub type AnimalActionSet<T> = <SPDedupNodes<
-    SPFlatten<<AnimalSet<T> as CollectAnimalJourneyActions>::Out>,
-> as StripActionHeaders>::Out;
+pub type AnimalEffectSet<T> = <SPDedupNodes<
+    SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out>,
+> as StripEffectHeaders>::Out;

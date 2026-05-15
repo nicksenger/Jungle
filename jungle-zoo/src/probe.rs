@@ -1,9 +1,9 @@
 use jungle_sdk::typosaurus::num::consts::U255;
 
-pub struct ProbeAction;
-impl jungle_sdk::types::ActionMember for ProbeAction {}
+pub struct ProbeEffect;
+impl jungle_sdk::types::EffectMember for ProbeEffect {}
 
-impl jungle_sdk::types::Action for ProbeAction {
+impl jungle_sdk::types::Effect for ProbeEffect {
     type Id = jungle_sdk::types::Id<U255>;
     type Dependency = ();
     type In = ();
@@ -18,19 +18,19 @@ impl jungle_sdk::types::Action for ProbeAction {
     }
 }
 
-//#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleActions)]
-//impl jungle_sdk::types::Actions for ProbeAction {
-//    type List = jungle_sdk::typosaurus::collections::sp::Node<U255, ProbeAction>;
+//#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleEffects)]
+//impl jungle_sdk::types::Effects for ProbeEffect {
+//    type List = jungle_sdk::typosaurus::collections::sp::Node<U255, ProbeEffect>;
 //}
 
 //#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-//impl jungle_sdk::types::Identified for ProbeAction {
+//impl jungle_sdk::types::Identified for ProbeEffect {
 //    type Id = U255;
 //}
 
 pub struct ProbeStep;
 impl jungle_sdk::types::Pulse<ProbeAnimal> for ProbeStep {
-    type Action = ProbeAction;
+    type Effect = ProbeEffect;
     type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();
     type Ret = ();
@@ -38,12 +38,12 @@ impl jungle_sdk::types::Pulse<ProbeAnimal> for ProbeStep {
     fn emit(
         _state: &<ProbeAnimal as jungle_sdk::types::Animal>::State,
         _input: Self::Arg,
-    ) -> <Self::Action as jungle_sdk::types::Action>::In {
+    ) -> <Self::Effect as jungle_sdk::types::Effect>::In {
     }
 
     fn absorb(
         _state: &mut <ProbeAnimal as jungle_sdk::types::Animal>::State,
-        _output: jungle_sdk::types::ActionCompletion<Self::Action>,
+        _output: jungle_sdk::types::EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
     }
 }

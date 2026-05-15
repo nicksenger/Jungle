@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
 
-action!(ConnectionAction7, jungle_sdk::typosaurus::num::consts::U80);
+effect!(ConnectionEffect7, jungle_sdk::typosaurus::num::consts::U80);
 
 animal!(
     ConnectionAnimal7,
@@ -21,7 +21,7 @@ animal!(
 
 struct ConnectionStep7;
 impl jungle_sdk::types::Pulse<ConnectionAnimal7> for ConnectionStep7 {
-    type Action = ConnectionAction7;
+    type Effect = ConnectionEffect7;
     type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();
     type Ret = ();
@@ -30,16 +30,16 @@ impl jungle_sdk::types::Pulse<ConnectionAnimal7> for ConnectionStep7 {
 
     fn absorb(
         _state: &mut (),
-        output: jungle_sdk::types::ActionCompletion<Self::Action>,
+        output: jungle_sdk::types::EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
-        output.expect("connection animal 7 action should succeed");
+        output.expect("connection animal 7 effect should succeed");
     }
 }
 
 #[derive(jungle_sdk::Journey)]
 struct ConnectionJourney7(jungle_sdk::types::Step<ConnectionAnimal7, ConnectionStep7>);
 
-action!(ConnectionAction9, jungle_sdk::typosaurus::num::consts::U81);
+effect!(ConnectionEffect9, jungle_sdk::typosaurus::num::consts::U81);
 
 animal!(
     ConnectionAnimal9,
@@ -50,7 +50,7 @@ animal!(
 
 struct ConnectionStep9;
 impl jungle_sdk::types::Pulse<ConnectionAnimal9> for ConnectionStep9 {
-    type Action = ConnectionAction9;
+    type Effect = ConnectionEffect9;
     type StateAspect = jungle_sdk::types::Identity;
     type Arg = ();
     type Ret = ();
@@ -59,9 +59,9 @@ impl jungle_sdk::types::Pulse<ConnectionAnimal9> for ConnectionStep9 {
 
     fn absorb(
         _state: &mut (),
-        output: jungle_sdk::types::ActionCompletion<Self::Action>,
+        output: jungle_sdk::types::EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
-        output.expect("connection animal 9 action should succeed");
+        output.expect("connection animal 9 effect should succeed");
     }
 }
 
@@ -71,7 +71,7 @@ struct ConnectionJourney9(jungle_sdk::types::Step<ConnectionAnimal9, ConnectionS
 #[tokio::test]
 async fn client_exchanges_messages_with_mock_server() {
     let journey_id = Uuid::from_u128(0x11111111111111111111111111111111);
-    let action_id = Uuid::from_u128(0x22222222222222222222222222222222);
+    let effect_id = Uuid::from_u128(0x22222222222222222222222222222222);
     let expected_work = Work::StartJourney {
         journey_id,
         animal_id: 7,
@@ -220,17 +220,17 @@ async fn client_exchanges_messages_with_mock_server() {
     }
 
     client
-        .action_input(action_id, 11, vec![4, 5])
+        .effect_input(effect_id, 11, vec![4, 5])
         .await
-        .expect("action_input should ack");
+        .expect("effect_input should ack");
     client
-        .action_success_output(action_id, 11, vec![6])
+        .effect_success_output(effect_id, 11, vec![6])
         .await
-        .expect("action_success_output should ack");
+        .expect("effect_success_output should ack");
     client
-        .action_failure_output(action_id, 11, vec![7, 8])
+        .effect_failure_output(effect_id, 11, vec![7, 8])
         .await
-        .expect("action_failure_output should ack");
+        .expect("effect_failure_output should ack");
     client
         .complete_journey(journey_id)
         .await
@@ -257,27 +257,27 @@ async fn client_exchanges_messages_with_mock_server() {
     );
     assert!(matches!(
         requests[3],
-        WireIn::HistoryEvent(RunnerOut::ActionInput {
+        WireIn::HistoryEvent(RunnerOut::EffectInput {
             node_id,
             uuid,
             ref data,
-        }) if node_id == 11 && uuid == action_id && data == &vec![4, 5]
+        }) if node_id == 11 && uuid == effect_id && data == &vec![4, 5]
     ));
     assert!(matches!(
         requests[4],
-        WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
+        WireIn::HistoryEvent(RunnerOut::EffectSuccessOutput {
             node_id,
             uuid,
             ref data,
-        }) if node_id == 11 && uuid == action_id && data == &vec![6]
+        }) if node_id == 11 && uuid == effect_id && data == &vec![6]
     ));
     assert!(matches!(
         requests[5],
-        WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
+        WireIn::HistoryEvent(RunnerOut::EffectFailureOutput {
             node_id,
             uuid,
             ref data,
-        }) if node_id == 11 && uuid == action_id && data == &vec![7, 8]
+        }) if node_id == 11 && uuid == effect_id && data == &vec![7, 8]
     ));
     assert!(matches!(requests[6], WireIn::JourneyComplete(id) if id == journey_id));
 
@@ -315,9 +315,9 @@ async fn flow_status_moves_created_to_alive_to_completed() {
     assert_eq!(created, JourneyStatus::Created);
 
     client
-        .action_input(journey_id, 9, vec![9, 9, 9])
+        .effect_input(journey_id, 9, vec![9, 9, 9])
         .await
-        .expect("action_input should succeed");
+        .expect("effect_input should succeed");
     let alive = client
         .journey_details(journey_id)
         .await
@@ -362,13 +362,13 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
         .expect("start_journey should succeed");
 
     client
-        .action_input(journey_id, 12, vec![9, 9])
+        .effect_input(journey_id, 12, vec![9, 9])
         .await
-        .expect("action_input should succeed");
+        .expect("effect_input should succeed");
     client
-        .action_success_output(journey_id, 12, vec![8])
+        .effect_success_output(journey_id, 12, vec![8])
         .await
-        .expect("action_success_output should succeed");
+        .expect("effect_success_output should succeed");
     client
         .complete_journey(journey_id)
         .await
@@ -387,7 +387,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
     assert_eq!(first.sequence_id, 0);
     assert!(matches!(
         first.event,
-        RunnerUpdateOut::ActionInput { node_id, uuid } if node_id == 12 && uuid == journey_id
+        RunnerUpdateOut::EffectInput { node_id, uuid } if node_id == 12 && uuid == journey_id
     ));
 
     let second = updates
@@ -398,7 +398,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
     assert_eq!(second.sequence_id, 1);
     assert!(matches!(
         second.event,
-        RunnerUpdateOut::ActionSuccessOutput { node_id, uuid }
+        RunnerUpdateOut::EffectSuccessOutput { node_id, uuid }
             if node_id == 12 && uuid == journey_id
     ));
 

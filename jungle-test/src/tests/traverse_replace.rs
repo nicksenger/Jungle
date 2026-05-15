@@ -1,36 +1,36 @@
 use jungle_sdk::types::{
-    ActionCompletion, Conditional, Identity, LoopCondition, Pulse, ReplaceStep, Step, TraverseStep,
+    EffectCompletion, Conditional, Identity, LoopCondition, Pulse, ReplaceStep, Step, TraverseStep,
     While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::{U20, U21, U22, U23, U24};
 
-action!(
-    TraverseAAction,
+effect!(
+    TraverseAEffect,
     U20,
     in = (),
     out = (),
     err = (),
     act = |_d, _input| std::future::ready(Ok(()))
 );
-action!(
-    TraverseBAction,
+effect!(
+    TraverseBEffect,
     U21,
     in = (),
     out = (),
     err = (),
     act = |_d, _input| std::future::ready(Ok(()))
 );
-action!(
-    TraverseCAction,
+effect!(
+    TraverseCEffect,
     U22,
     in = (),
     out = (),
     err = (),
     act = |_d, _input| std::future::ready(Ok(()))
 );
-action!(
-    TraverseDAction,
+effect!(
+    TraverseDEffect,
     U23,
     in = (),
     out = (),
@@ -42,56 +42,56 @@ struct TraverseAnimal;
 
 struct StepA;
 impl Pulse<TraverseAnimal> for StepA {
-    type Action = TraverseAAction;
+    type Effect = TraverseAEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("step A should succeed");
     }
 }
 
 struct StepB;
 impl Pulse<TraverseAnimal> for StepB {
-    type Action = TraverseBAction;
+    type Effect = TraverseBEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("step B should succeed");
     }
 }
 
 struct StepC;
 impl Pulse<TraverseAnimal> for StepC {
-    type Action = TraverseCAction;
+    type Effect = TraverseCEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("step C should succeed");
     }
 }
 
 struct StepD;
 impl Pulse<TraverseAnimal> for StepD {
-    type Action = TraverseDAction;
+    type Effect = TraverseDEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(_state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("step D should succeed");
     }
 }

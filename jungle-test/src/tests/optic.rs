@@ -1,4 +1,4 @@
-use jungle_sdk::types::{ActionCompletion, Identity, Pulse, Running, StateLens, Step, Waiting};
+use jungle_sdk::types::{EffectCompletion, Identity, Pulse, Running, StateLens, Step, Waiting};
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U72, U73, U74, U75};
 use jungle_sdk::Optic;
@@ -27,14 +27,14 @@ struct IoArg {
     right: i32,
 }
 
-action!(EchoI32, U72, in = i32, out = i32, err = (), act = |_d, input| std::future::ready(Ok(input + 1)));
-action!(SumPair, U73, in = (i32, i32), out = i32, err = (), act = |_d, input| std::future::ready(Ok(input.0 + input.1)));
-action!(EchoPair, U74, in = (i32, i32), out = (i32, i32), err = (), act = |_d, input| std::future::ready(Ok(input)));
-action!(EchoRootState, U75, in = RootState, out = RootState, err = (), act = |_d, input| std::future::ready(Ok(input)));
+effect!(EchoI32, U72, in = i32, out = i32, err = (), act = |_d, input| std::future::ready(Ok(input + 1)));
+effect!(SumPair, U73, in = (i32, i32), out = i32, err = (), act = |_d, input| std::future::ready(Ok(input.0 + input.1)));
+effect!(EchoPair, U74, in = (i32, i32), out = (i32, i32), err = (), act = |_d, input| std::future::ready(Ok(input)));
+effect!(EchoRootState, U75, in = RootState, out = RootState, err = (), act = |_d, input| std::future::ready(Ok(input)));
 
 struct LensOnBranch;
 impl Pulse<OpticAnimal> for LensOnBranch {
-    type Action = EchoI32;
+    type Effect = EchoI32;
     type StateAspect = StateLens<RootState, U0>;
     type Arg = i32;
     type Ret = i32;
@@ -43,7 +43,7 @@ impl Pulse<OpticAnimal> for LensOnBranch {
         view.leaf.value + input
     }
 
-    fn absorb(view: &mut Branch, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(view: &mut Branch, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         let out = output.expect("lens single should succeed");
         view.spare = out;
         out
@@ -52,7 +52,7 @@ impl Pulse<OpticAnimal> for LensOnBranch {
 
 struct LensOnLeafValue;
 impl Pulse<OpticAnimal> for LensOnLeafValue {
-    type Action = EchoI32;
+    type Effect = EchoI32;
     type StateAspect = StateLens<RootState, list![U0, U0, U0]>;
     type Arg = i32;
     type Ret = i32;
@@ -61,7 +61,7 @@ impl Pulse<OpticAnimal> for LensOnLeafValue {
         *view + input
     }
 
-    fn absorb(view: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         let out = output.expect("lens list should succeed");
         *view = out;
         out
@@ -70,7 +70,7 @@ impl Pulse<OpticAnimal> for LensOnLeafValue {
 
 struct RootStatePulse;
 impl Pulse<OpticAnimal> for RootStatePulse {
-    type Action = EchoRootState;
+    type Effect = EchoRootState;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = RootState;
@@ -79,7 +79,7 @@ impl Pulse<OpticAnimal> for RootStatePulse {
         view.clone()
     }
 
-    fn absorb(view: &mut RootState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         let out = output.expect("echo root should succeed");
         out
     }
@@ -120,9 +120,9 @@ fn state_lens_list_multi_index_short_flow() {
 }
 
 //
-//struct _LensPulse;
-//impl Pulse OpticAnimal for _LensPulse {
-//    type Action = EchoI32;
+//struct IoLensPulse;
+//impl Pulse OpticAnimal for IoLensPulse {
+//    type Effect = EchoI32;
 //    type StateAspect = Identity;
 //    type Arg = i32;
 //    type Ret = i32;
@@ -131,13 +131,13 @@ fn state_lens_list_multi_index_short_flow() {
 //        input
 //    }
 //
-//    fn absorb(view: &mut RootState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+//    fn absorb(view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
 //        let out = output.expect("lens list should succeed");
 //        out
 //    }
 //}
-//type _LensSingle = Step<OpticAnimal, _Lens<_LensPulse, _View<i32, U1>>>;
-//type _LensList = Step<OpticAnimal, _Lens<_LensPulse, _View<i32, list![U0, U1]>>>;
+//type _LensSingle = Step<OpticAnimal, _Lens<IoLensPulse, _View<i32, U1>>>;
+//type _LensList = Step<OpticAnimal, _Lens<IoLensPulse, _View<i32, list![U0, U1]>>>;
 //#[derive(Journey)]
 //struct _LensSingleSequence(
 //    Step<IoSingleAnimal, EchoRootState>,

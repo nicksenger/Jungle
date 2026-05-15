@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Observe, Pulse, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -26,9 +26,9 @@ impl From<&SleepZoo> for AddDependency {
     }
 }
 
-struct AddAction;
-impl jungle_sdk::types::ActionMember for AddAction {}
-impl Action for AddAction {
+struct AddEffect;
+impl jungle_sdk::types::EffectMember for AddEffect {}
+impl Effect for AddEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
     type Dependency = AddDependency;
     type In = ();
@@ -45,14 +45,14 @@ impl Action for AddAction {
 
 struct AddBeforeSleep;
 impl Pulse<SleepAnimal> for AddBeforeSleep {
-    type Action = AddAction;
+    type Effect = AddEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &SleepState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         state.counter += output.expect("add before sleep should succeed");
         state.phase += 1;
     }
@@ -60,7 +60,7 @@ impl Pulse<SleepAnimal> for AddBeforeSleep {
 
 struct SleepForStateWake;
 impl Pulse<SleepAnimal> for SleepForStateWake {
-    type Action = Sleep;
+    type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
@@ -69,7 +69,7 @@ impl Pulse<SleepAnimal> for SleepForStateWake {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("sleep should resume successfully");
         state.phase += 1;
     }
@@ -77,14 +77,14 @@ impl Pulse<SleepAnimal> for SleepForStateWake {
 
 struct AddAfterSleep;
 impl Pulse<SleepAnimal> for AddAfterSleep {
-    type Action = AddAction;
+    type Effect = AddEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &SleepState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         state.counter += output.expect("add after sleep should succeed");
         state.phase += 1;
     }
@@ -152,7 +152,7 @@ impl Ecosystem for SleepZoo {
 }
 
 #[tokio::test]
-async fn sleep_action_suspends_then_resumes_flow_to_completion() {
+async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
     let listen_addr = super::reserve_local_addr();

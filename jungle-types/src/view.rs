@@ -105,13 +105,13 @@ impl<T, A> BuildJourneyAst<Vec<JourneyAst>> for Step<T, A>
 where
     T: crate::Animal + 'static,
     A: crate::Pulse<T> + 'static,
-    <A as crate::Pulse<T>>::Action: 'static,
+    <A as crate::Pulse<T>>::Effect: 'static,
 {
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
         nodes.push(JourneyAst::Step {
-            label: core::any::type_name::<<A as crate::Pulse<T>>::Action>(),
+            label: core::any::type_name::<<A as crate::Pulse<T>>::Effect>(),
         });
         nodes
     }

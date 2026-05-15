@@ -10,16 +10,16 @@ mod tests {
             .expect("temporary udp socket should expose local address")
     }
 
-    macro_rules! action {
+    macro_rules! effect {
         (
             $name:ident,
             $id:ty,
             dependency = $dependency_ty:ty
         ) => {
             struct $name;
-            impl jungle_sdk::types::ActionMember for $name {}
+            impl jungle_sdk::types::EffectMember for $name {}
 
-            impl jungle_sdk::types::Action for $name {
+            impl jungle_sdk::types::Effect for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type Dependency = $dependency_ty;
                 type In = ();
@@ -34,8 +34,8 @@ mod tests {
                 }
             }
 
-            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleActions)]
-            impl jungle_sdk::types::Actions for $name {
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleEffects)]
+            impl jungle_sdk::types::Effects for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 
@@ -54,9 +54,9 @@ mod tests {
             act = |$dependency:ident, $input:ident| $body:expr
         ) => {
             struct $name;
-            impl jungle_sdk::types::ActionMember for $name {}
+            impl jungle_sdk::types::EffectMember for $name {}
 
-            impl jungle_sdk::types::Action for $name {
+            impl jungle_sdk::types::Effect for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type Dependency = ();
                 type In = $in;
@@ -74,9 +74,9 @@ mod tests {
 
         ($name:ident, $id:ty) => {
             struct $name;
-            impl jungle_sdk::types::ActionMember for $name {}
+            impl jungle_sdk::types::EffectMember for $name {}
 
-            impl jungle_sdk::types::Action for $name {
+            impl jungle_sdk::types::Effect for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type Dependency = ();
                 type In = ();
@@ -91,8 +91,8 @@ mod tests {
                 }
             }
 
-            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleActions)]
-            impl jungle_sdk::types::Actions for $name {
+            #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleEffects)]
+            impl jungle_sdk::types::Effects for $name {
                 type List = jungle_sdk::typosaurus::collections::sp::Node<$id, $name>;
             }
 

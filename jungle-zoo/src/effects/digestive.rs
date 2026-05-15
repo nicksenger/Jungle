@@ -1,4 +1,4 @@
-use super::support::{define_action, maybe_delay};
+use super::support::{define_effect, maybe_delay};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DigestiveDependency {
@@ -21,7 +21,7 @@ impl<T> From<&T> for DigestiveDependency {
     }
 }
 
-define_action!(
+define_effect!(
     Eat,
     id = 10,
     dependency = DigestiveDependency,
@@ -36,7 +36,7 @@ define_action!(
     }
 );
 
-define_action!(
+define_effect!(
     UseTool,
     id = 14,
     dependency = DigestiveDependency,
@@ -55,7 +55,7 @@ define_action!(
     }
 );
 
-define_action!(
+define_effect!(
     PeelFruit,
     id = 16,
     dependency = DigestiveDependency,

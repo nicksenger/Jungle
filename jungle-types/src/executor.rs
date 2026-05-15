@@ -1,5 +1,5 @@
 use crate::{
-    Action, ActionCompletion, Animal, BackendError, Conditional, Join, LoopCondition, Pulse,
+    Effect, EffectCompletion, Animal, BackendError, Conditional, Join, LoopCondition, Pulse,
     Running, Select, Step, Transparent, While,
 };
 use inception::*;
@@ -12,9 +12,9 @@ use std::sync::Arc;
 
 type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
-type ActionFuture =
+type EffectFuture =
     Pin<Box<dyn Future<Output = Result<SerializedCompletion, ExecutorError>> + Send>>;
-type ActionRunner = Box<dyn FnOnce() -> ActionFuture + Send>;
+type EffectRunner = Box<dyn FnOnce() -> EffectFuture + Send>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
 
@@ -106,23 +106,23 @@ where
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
 pub type ErasedStep<State> = dyn ErasedFlow<State> + Send;
 
-pub struct ExecutableActionRequest {
+pub struct ExecutableEffectRequest {
     node_id: u32,
-    action_type: &'static str,
+    effect_type: &'static str,
     request: Serialized,
-    runner: ActionRunner,
+    runner: EffectRunner,
 }
 
-impl ExecutableActionRequest {
+impl ExecutableEffectRequest {
     fn new(
         node_id: u32,
-        action_type: &'static str,
+        effect_type: &'static str,
         request: Serialized,
-        runner: ActionRunner,
+        runner: EffectRunner,
     ) -> Self {
         Self {
             node_id,
-            action_type,
+            effect_type,
             request,
             runner,
         }
@@ -132,8 +132,8 @@ impl ExecutableActionRequest {
         self.node_id
     }
 
-    pub fn action_type(&self) -> &'static str {
-        self.action_type
+    pub fn effect_type(&self) -> &'static str {
+        self.effect_type
     }
 
     pub fn request_bytes(&self) -> &[u8] {
@@ -165,7 +165,7 @@ pub trait ErasedFlow<State>: Send {
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest>;
+    ) -> RequestResult<State, ExecutableEffectRequest>;
 
     fn is_waiting_completion(&self) -> bool;
 
@@ -248,13 +248,13 @@ impl<T, A> ErasedFlow<T::State> for TypedErasedStep<Step<T, A>>
 where
     T: Animal,
     A: Pulse<T>,
-    <A as Pulse<T>>::Action: Action<Dependency = ()>,
-    <<A as Pulse<T>>::Action as Action>::Dependency: 'static,
-    <<A as Pulse<T>>::Action as Action>::In: 'static,
-    <<A as Pulse<T>>::Action as Action>::Out: 'static,
-    <<A as Pulse<T>>::Action as Action>::Err: Serialize + 'static,
-    <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
-    <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
+    <A as Pulse<T>>::Effect: Effect<Dependency = ()>,
+    <<A as Pulse<T>>::Effect as Effect>::Dependency: 'static,
+    <<A as Pulse<T>>::Effect as Effect>::In: 'static,
+    <<A as Pulse<T>>::Effect as Effect>::Out: 'static,
+    <<A as Pulse<T>>::Effect as Effect>::Err: Serialize + 'static,
+    <<A as Pulse<T>>::Effect as Effect>::Out: DeserializeOwned,
+    <<A as Pulse<T>>::Effect as Effect>::Err: DeserializeOwned,
     A::Arg: DeserializeOwned,
     A::Ret: Serialize,
 {
@@ -287,7 +287,7 @@ where
         &mut self,
         state: T::State,
         input: Serialized,
-    ) -> RequestResult<T::State, ExecutableActionRequest> {
+    ) -> RequestResult<T::State, ExecutableEffectRequest> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
@@ -300,14 +300,14 @@ where
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
         let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
-        let action_input = request.into_input();
-        let request = match postcard::to_allocvec(&action_input) {
+        let effect_input = request.into_input();
+        let request = match postcard::to_allocvec(&effect_input) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
-        let runner: ActionRunner = Box::new(move || {
+        let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as Pulse<T>>::Action as Action>::act(&(), action_input).await;
+                let completion = <<A as Pulse<T>>::Effect as Effect>::act(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -315,9 +315,9 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new(
+            ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as Pulse<T>>::Action>(),
+                core::any::type_name::<<A as Pulse<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -336,13 +336,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<A as Pulse<T>>::Action> = match completion {
+        let typed_completion: EffectCompletion<<A as Pulse<T>>::Effect> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Pulse<T>>::Action as Action>::Out>(&output)
+                postcard::from_bytes::<<<A as Pulse<T>>::Effect as Effect>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<A as Pulse<T>>::Action as Action>::Err>(&error)
+                postcard::from_bytes::<<<A as Pulse<T>>::Effect as Effect>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -394,14 +394,14 @@ where
     Context: Send + Sync + 'static,
     T: Animal,
     A: Pulse<T>,
-    <A as Pulse<T>>::Action: Action,
-    for<'ctx> &'ctx Context: Into<<<A as Pulse<T>>::Action as Action>::Dependency>,
-    <<A as Pulse<T>>::Action as Action>::Dependency: 'static,
-    <<A as Pulse<T>>::Action as Action>::In: 'static,
-    <<A as Pulse<T>>::Action as Action>::Out: 'static,
-    <<A as Pulse<T>>::Action as Action>::Err: Serialize + 'static,
-    <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
-    <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
+    <A as Pulse<T>>::Effect: Effect,
+    for<'ctx> &'ctx Context: Into<<<A as Pulse<T>>::Effect as Effect>::Dependency>,
+    <<A as Pulse<T>>::Effect as Effect>::Dependency: 'static,
+    <<A as Pulse<T>>::Effect as Effect>::In: 'static,
+    <<A as Pulse<T>>::Effect as Effect>::Out: 'static,
+    <<A as Pulse<T>>::Effect as Effect>::Err: Serialize + 'static,
+    <<A as Pulse<T>>::Effect as Effect>::Out: DeserializeOwned,
+    <<A as Pulse<T>>::Effect as Effect>::Err: DeserializeOwned,
     A::Arg: DeserializeOwned,
     A::Ret: Serialize,
 {
@@ -434,7 +434,7 @@ where
         &mut self,
         state: T::State,
         input: Serialized,
-    ) -> RequestResult<T::State, ExecutableActionRequest> {
+    ) -> RequestResult<T::State, ExecutableEffectRequest> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
@@ -447,17 +447,17 @@ where
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
         let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
-        let action_input = request.into_input();
-        let request = match postcard::to_allocvec(&action_input) {
+        let effect_input = request.into_input();
+        let request = match postcard::to_allocvec(&effect_input) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
-        let dependency: <<A as Pulse<T>>::Action as Action>::Dependency =
+        let dependency: <<A as Pulse<T>>::Effect as Effect>::Dependency =
             self.context.as_ref().into();
-        let runner: ActionRunner = Box::new(move || {
+        let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<A as Pulse<T>>::Action as Action>::act(&dependency, action_input).await;
+                    <<A as Pulse<T>>::Effect as Effect>::act(&dependency, effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -465,9 +465,9 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new(
+            ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as Pulse<T>>::Action>(),
+                core::any::type_name::<<A as Pulse<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -486,13 +486,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: ActionCompletion<<A as Pulse<T>>::Action> = match completion {
+        let typed_completion: EffectCompletion<<A as Pulse<T>>::Effect> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Pulse<T>>::Action as Action>::Out>(&output)
+                postcard::from_bytes::<<<A as Pulse<T>>::Effect as Effect>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<A as Pulse<T>>::Action as Action>::Err>(&error)
+                postcard::from_bytes::<<<A as Pulse<T>>::Effect as Effect>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -631,7 +631,7 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest> {
+    ) -> RequestResult<State, ExecutableEffectRequest> {
         let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
             (self.choose_left)(&state, carry)
         }) {
@@ -828,7 +828,7 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest> {
+    ) -> RequestResult<State, ExecutableEffectRequest> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
@@ -856,7 +856,7 @@ where
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
 
-        let runner: ActionRunner = Box::new(move || {
+        let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let left = left_req.run();
                 let right = right_req.run();
@@ -882,7 +882,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new(self.node_id, "jungle_types::Select", request, runner),
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner),
         ))
     }
 
@@ -974,7 +974,7 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest> {
+    ) -> RequestResult<State, ExecutableEffectRequest> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
@@ -1002,7 +1002,7 @@ where
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
 
-        let runner: ActionRunner = Box::new(move || {
+        let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let left = left_req.run();
                 let right = right_req.run();
@@ -1028,7 +1028,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new(self.node_id, "jungle_types::Select", request, runner),
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner),
         ))
     }
 
@@ -1155,7 +1155,7 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest> {
+    ) -> RequestResult<State, ExecutableEffectRequest> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
@@ -1183,7 +1183,7 @@ where
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
 
-        let runner: ActionRunner = Box::new(move || {
+        let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let (left_completion, right_completion) =
                     futures::join!(left_req.run(), right_req.run());
@@ -1200,7 +1200,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new(self.node_id, "jungle_types::Join", request, runner),
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner),
         ))
     }
 
@@ -1275,7 +1275,7 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest> {
+    ) -> RequestResult<State, ExecutableEffectRequest> {
         if self.complete {
             return Err((state, ExecutorError::Complete));
         }
@@ -1303,7 +1303,7 @@ where
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
 
-        let runner: ActionRunner = Box::new(move || {
+        let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let (left_completion, right_completion) =
                     futures::join!(left_req.run(), right_req.run());
@@ -1320,7 +1320,7 @@ where
         self.waiting_completion = true;
         Ok((
             state,
-            ExecutableActionRequest::new(self.node_id, "jungle_types::Join", request, runner),
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner),
         ))
     }
 
@@ -1462,7 +1462,7 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest> {
+    ) -> RequestResult<State, ExecutableEffectRequest> {
         let input = input;
         let mut state = state;
         loop {
@@ -1590,10 +1590,10 @@ impl<T, A> BuildFlow<DynFlow<T::State>> for Step<T, A>
 where
     T: Animal + 'static,
     A: Pulse<T> + 'static,
-    <A as Pulse<T>>::Action: Action<Dependency = ()> + 'static,
-    <<A as Pulse<T>>::Action as Action>::Err: Serialize,
-    <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
-    <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
+    <A as Pulse<T>>::Effect: Effect<Dependency = ()> + 'static,
+    <<A as Pulse<T>>::Effect as Effect>::Err: Serialize,
+    <<A as Pulse<T>>::Effect as Effect>::Out: DeserializeOwned,
+    <<A as Pulse<T>>::Effect as Effect>::Err: DeserializeOwned,
     A::Arg: DeserializeOwned,
     A::Ret: Serialize,
 {
@@ -1756,11 +1756,11 @@ where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
     A: Pulse<T> + 'static,
-    <A as Pulse<T>>::Action: Action + 'static,
-    for<'ctx> &'ctx Context: Into<<<A as Pulse<T>>::Action as Action>::Dependency>,
-    <<A as Pulse<T>>::Action as Action>::Err: Serialize,
-    <<A as Pulse<T>>::Action as Action>::Out: DeserializeOwned,
-    <<A as Pulse<T>>::Action as Action>::Err: DeserializeOwned,
+    <A as Pulse<T>>::Effect: Effect + 'static,
+    for<'ctx> &'ctx Context: Into<<<A as Pulse<T>>::Effect as Effect>::Dependency>,
+    <<A as Pulse<T>>::Effect as Effect>::Err: Serialize,
+    <<A as Pulse<T>>::Effect as Effect>::Out: DeserializeOwned,
+    <<A as Pulse<T>>::Effect as Effect>::Err: DeserializeOwned,
     A::Arg: DeserializeOwned,
     A::Ret: Serialize,
 {
@@ -1881,7 +1881,7 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest> {
+    ) -> RequestResult<State, ExecutableEffectRequest> {
         let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
             (self.choose_left)(&state, carry)
         }) {
@@ -2121,7 +2121,7 @@ where
         &mut self,
         state: State,
         input: Serialized,
-    ) -> RequestResult<State, ExecutableActionRequest> {
+    ) -> RequestResult<State, ExecutableEffectRequest> {
         let input = input;
         let mut state = state;
         loop {
@@ -2464,7 +2464,7 @@ where
     pub fn next_executable_request<Initial>(
         &mut self,
         initial_input: Initial,
-    ) -> Result<ExecutableActionRequest, ExecutorError>
+    ) -> Result<ExecutableEffectRequest, ExecutorError>
     where
         Initial: Serialize,
     {
@@ -2748,7 +2748,7 @@ where
     pub fn next_executable_request(
         &mut self,
         input: Serialized,
-    ) -> Result<ExecutableActionRequest, ExecutorError> {
+    ) -> Result<ExecutableEffectRequest, ExecutorError> {
         let input = input;
         loop {
             self.settle_without_progress()?;
@@ -2980,7 +2980,7 @@ where
     pub fn next_executable_request<Initial>(
         &mut self,
         initial_input: Initial,
-    ) -> Result<ExecutableActionRequest, ExecutorError>
+    ) -> Result<ExecutableEffectRequest, ExecutorError>
     where
         Initial: Serialize,
     {

@@ -1,4 +1,4 @@
-//! Zoo actions required by gorilla lifecycle and probe flows.
+//! Zoo effects required by gorilla lifecycle and probe flows.
 
 mod support;
 

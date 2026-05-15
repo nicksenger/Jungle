@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
     LoopCondition, Pulse, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
@@ -69,9 +69,9 @@ impl From<&ReplayGateZoo> for ReplayGateDependency {
     }
 }
 
-struct ReplayPreIncrementAction;
-impl jungle_sdk::types::ActionMember for ReplayPreIncrementAction {}
-impl Action for ReplayPreIncrementAction {
+struct ReplayPreIncrementEffect;
+impl jungle_sdk::types::EffectMember for ReplayPreIncrementEffect {}
+impl Effect for ReplayPreIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U41>;
     type Dependency = ReplayGatePreDependency;
     type In = ();
@@ -87,9 +87,9 @@ impl Action for ReplayPreIncrementAction {
     }
 }
 
-struct ReplayPostIncrementAction;
-impl jungle_sdk::types::ActionMember for ReplayPostIncrementAction {}
-impl Action for ReplayPostIncrementAction {
+struct ReplayPostIncrementEffect;
+impl jungle_sdk::types::EffectMember for ReplayPostIncrementEffect {}
+impl Effect for ReplayPostIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U42>;
     type Dependency = ReplayGatePostDependency;
     type In = ();
@@ -105,9 +105,9 @@ impl Action for ReplayPostIncrementAction {
     }
 }
 
-struct ReplayGateAction;
-impl jungle_sdk::types::ActionMember for ReplayGateAction {}
-impl Action for ReplayGateAction {
+struct ReplayGateEffect;
+impl jungle_sdk::types::EffectMember for ReplayGateEffect {}
+impl Effect for ReplayGateEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U43>;
     type Dependency = ReplayGateDependency;
     type In = ();
@@ -131,14 +131,14 @@ impl Action for ReplayGateAction {
 
 struct ReplayPreStep;
 impl Pulse<ReplayGateAnimal> for ReplayPreStep {
-    type Action = ReplayPreIncrementAction;
+    type Effect = ReplayPreIncrementEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("pre increment should succeed");
         state.phase += 1;
     }
@@ -146,14 +146,14 @@ impl Pulse<ReplayGateAnimal> for ReplayPreStep {
 
 struct ReplayPostStep;
 impl Pulse<ReplayGateAnimal> for ReplayPostStep {
-    type Action = ReplayPostIncrementAction;
+    type Effect = ReplayPostIncrementEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("post increment should succeed");
         state.phase += 1;
     }
@@ -161,15 +161,15 @@ impl Pulse<ReplayGateAnimal> for ReplayPostStep {
 
 struct ReplayGateStep;
 impl Pulse<ReplayGateAnimal> for ReplayGateStep {
-    type Action = ReplayGateAction;
+    type Effect = ReplayGateEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut ReplayGateState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        output.expect("gate action should succeed");
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        output.expect("gate effect should succeed");
         state.phase += 1;
     }
 }
@@ -398,9 +398,9 @@ impl From<&ReplayTimeoutZoo> for ReplayTimeoutPostDependency {
     }
 }
 
-struct ReplayTimeoutPreIncrementAction;
-impl jungle_sdk::types::ActionMember for ReplayTimeoutPreIncrementAction {}
-impl Action for ReplayTimeoutPreIncrementAction {
+struct ReplayTimeoutPreIncrementEffect;
+impl jungle_sdk::types::EffectMember for ReplayTimeoutPreIncrementEffect {}
+impl Effect for ReplayTimeoutPreIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U44>;
     type Dependency = ReplayTimeoutPreDependency;
     type In = ();
@@ -417,9 +417,9 @@ impl Action for ReplayTimeoutPreIncrementAction {
     }
 }
 
-struct ReplayTimeoutPostIncrementAction;
-impl jungle_sdk::types::ActionMember for ReplayTimeoutPostIncrementAction {}
-impl Action for ReplayTimeoutPostIncrementAction {
+struct ReplayTimeoutPostIncrementEffect;
+impl jungle_sdk::types::EffectMember for ReplayTimeoutPostIncrementEffect {}
+impl Effect for ReplayTimeoutPostIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U45>;
     type Dependency = ReplayTimeoutPostDependency;
     type In = ();
@@ -439,14 +439,14 @@ impl Action for ReplayTimeoutPostIncrementAction {
 
 struct ReplayTimeoutPreStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
-    type Action = ReplayTimeoutPreIncrementAction;
+    type Effect = ReplayTimeoutPreIncrementEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &ReplayTimeoutState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("pre-timeout increment should succeed");
         state.phase += 1;
     }
@@ -454,7 +454,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
 
 struct ReplayTimeoutSleepStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
-    type Action = Sleep;
+    type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
@@ -463,7 +463,7 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("timeout sleep should succeed");
         state.phase += 1;
     }
@@ -471,14 +471,14 @@ impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
 
 struct ReplayTimeoutPostStep;
 impl Pulse<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
-    type Action = ReplayTimeoutPostIncrementAction;
+    type Effect = ReplayTimeoutPostIncrementEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = ();
 
     fn emit(_state: &ReplayTimeoutState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("post-timeout increment should succeed");
         state.phase += 1;
     }

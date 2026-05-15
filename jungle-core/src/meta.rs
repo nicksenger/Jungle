@@ -1,5 +1,5 @@
 use jungle_types::{
-    AnimalActionDependenciesCompatible, AnimalStatesCompatible, AnimalVersionIdentitiesUnique,
+    AnimalEffectDependenciesCompatible, AnimalStatesCompatible, AnimalVersionIdentitiesUnique,
     Animals, Ecosystem,
 };
 
@@ -11,7 +11,7 @@ where
     <T as Ecosystem>::Animals: Animals,
     <T as Ecosystem>::Animals: AnimalVersionIdentitiesUnique,
     for<'a> <T as Ecosystem>::Animals: AnimalStatesCompatible<&'a T>,
-    for<'a> <T as Ecosystem>::Animals: AnimalActionDependenciesCompatible<&'a T>,
+    for<'a> <T as Ecosystem>::Animals: AnimalEffectDependenciesCompatible<&'a T>,
 {
     fn manifest(self) -> impl std::future::Future<Output = Result<(), jungle_types::Error>> {
         drop(self);

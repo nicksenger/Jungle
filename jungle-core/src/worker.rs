@@ -70,27 +70,27 @@ where
                     let result: Result<RunnerChannelResponse, ExecutorError> = match message {
                         RunnerChannelMessage::History(history) => {
                             let out = match history {
-                                RunnerOut::ActionInput {
+                                RunnerOut::EffectInput {
                                     node_id,
                                     data,
                                     uuid,
-                                } => client_for_transport.action_input(uuid, node_id, data).await,
-                                RunnerOut::ActionSuccessOutput {
+                                } => client_for_transport.effect_input(uuid, node_id, data).await,
+                                RunnerOut::EffectSuccessOutput {
                                     node_id,
                                     data,
                                     uuid,
                                 } => {
                                     client_for_transport
-                                        .action_success_output(uuid, node_id, data)
+                                        .effect_success_output(uuid, node_id, data)
                                         .await
                                 }
-                                RunnerOut::ActionFailureOutput {
+                                RunnerOut::EffectFailureOutput {
                                     node_id,
                                     data,
                                     uuid,
                                 } => {
                                     client_for_transport
-                                        .action_failure_output(uuid, node_id, data)
+                                        .effect_failure_output(uuid, node_id, data)
                                         .await
                                 }
                                 RunnerOut::Appearance { data, uuid } => {
@@ -539,26 +539,26 @@ where
         };
         let request_node_id = request.node_id();
         let expected_input = request.request_bytes();
-        let action_type = request.action_type();
+        let effect_type = request.effect_type();
 
-        let Some(RunnerOut::ActionInput {
+        let Some(RunnerOut::EffectInput {
             node_id,
             data,
             uuid,
         }) = history.get(index)
         else {
             return Err(ExecutorError::ClientTransport(
-                "history replay expected ActionInput event".to_string(),
+                "history replay expected EffectInput event".to_string(),
             ));
         };
         if *uuid != journey_id || *node_id != request_node_id || data.as_slice() != expected_input {
             return Err(ExecutorError::ClientTransport(
-                "history replay ActionInput mismatch".to_string(),
+                "history replay EffectInput mismatch".to_string(),
             ));
         }
         index = index.saturating_add(1);
 
-        let completion = if action_type == core::any::type_name::<Sleep>() {
+        let completion = if effect_type == core::any::type_name::<Sleep>() {
             while matches!(
                 history.get(index),
                 Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
@@ -581,7 +581,7 @@ where
             }
         } else {
             match history.get(index) {
-                Some(RunnerOut::ActionSuccessOutput {
+                Some(RunnerOut::EffectSuccessOutput {
                     node_id,
                     data,
                     uuid,
@@ -589,7 +589,7 @@ where
                     index = index.saturating_add(1);
                     Ok(data.clone())
                 }
-                Some(RunnerOut::ActionFailureOutput {
+                Some(RunnerOut::EffectFailureOutput {
                     node_id,
                     data,
                     uuid,
@@ -618,12 +618,12 @@ async fn send_recovered_completion(
     completion: &Result<Vec<u8>, Vec<u8>>,
 ) -> Result<(), ExecutorError> {
     let out = match completion {
-        Ok(data) => RunnerOut::ActionSuccessOutput {
+        Ok(data) => RunnerOut::EffectSuccessOutput {
             node_id,
             data: data.clone(),
             uuid: journey_id,
         },
-        Err(data) => RunnerOut::ActionFailureOutput {
+        Err(data) => RunnerOut::EffectFailureOutput {
             node_id,
             data: data.clone(),
             uuid: journey_id,

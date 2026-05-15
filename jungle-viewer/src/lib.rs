@@ -682,18 +682,18 @@ impl LiveData {
         let sequence = update.sequence_id as usize;
         self.latest_event_count = sequence;
         match update.event {
-            RunnerUpdateOut::ActionInput { node_id, .. } => {
+            RunnerUpdateOut::EffectInput { node_id, .. } => {
                 highlight_changed |= self.finished_runtime_ids.remove(&node_id);
                 highlight_changed |= self.failed_runtime_ids.remove(&node_id);
                 highlight_changed |= self.active_runtime_ids.insert(node_id);
                 self.runtime_update_sequence.insert(node_id, sequence);
             }
-            RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
+            RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
                 highlight_changed |= self.active_runtime_ids.remove(&node_id);
                 highlight_changed |= self.finished_runtime_ids.insert(node_id);
                 self.runtime_update_sequence.insert(node_id, sequence);
             }
-            RunnerUpdateOut::ActionFailureOutput { node_id, .. } => {
+            RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
                 highlight_changed |= self.active_runtime_ids.remove(&node_id);
                 highlight_changed |= self.failed_runtime_ids.insert(node_id);
                 self.runtime_update_sequence.insert(node_id, sequence);
@@ -809,7 +809,7 @@ fn sidebar<'a>(
 
     let legend = column![
         text("Legend").size(14).color(jungle_text_base()),
-        text("Step: action request node")
+        text("Step: effect request node")
             .size(12)
             .color(jungle_text_muted()),
         text("Conditional: branch fanout")
@@ -2122,7 +2122,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 1,
-            event: RunnerUpdateOut::ActionInput {
+            event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
             },
@@ -2131,7 +2131,7 @@ mod tests {
 
         assert!(!live.apply_update(JourneyUpdateEvent {
             sequence_id: 2,
-            event: RunnerUpdateOut::ActionInput {
+            event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
             },
@@ -2139,7 +2139,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 3,
-            event: RunnerUpdateOut::ActionSuccessOutput {
+            event: RunnerUpdateOut::EffectSuccessOutput {
                 node_id: 9,
                 uuid: Uuid::nil(),
             },
@@ -2149,7 +2149,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 4,
-            event: RunnerUpdateOut::ActionInput {
+            event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
             },
@@ -2174,14 +2174,14 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 1,
-            event: RunnerUpdateOut::ActionInput {
+            event: RunnerUpdateOut::EffectInput {
                 node_id: 11,
                 uuid: Uuid::nil(),
             },
         }));
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 2,
-            event: RunnerUpdateOut::ActionSuccessOutput {
+            event: RunnerUpdateOut::EffectSuccessOutput {
                 node_id: 11,
                 uuid: Uuid::nil(),
             },
@@ -2193,7 +2193,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 3,
-            event: RunnerUpdateOut::ActionInput {
+            event: RunnerUpdateOut::EffectInput {
                 node_id: 12,
                 uuid: Uuid::nil(),
             },

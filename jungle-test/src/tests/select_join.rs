@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    Action, ActionCompletion, ContextExecutor, Either, Executor, Identity, Join, Pulse, Select,
+    Effect, EffectCompletion, ContextExecutor, Either, Executor, Identity, Join, Pulse, Select,
     Sleep, SleepDependency, Step,
 };
 use jungle_sdk::{Journey, Optic};
@@ -13,9 +13,9 @@ struct SelectJoinState {
     joined_sum: i32,
 }
 
-struct TimedValueAction;
-impl jungle_sdk::types::ActionMember for TimedValueAction {}
-impl Action for TimedValueAction {
+struct TimedValueEffect;
+impl jungle_sdk::types::EffectMember for TimedValueEffect {}
+impl Effect for TimedValueEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U60>;
     type Dependency = ();
     type In = (u64, i32);
@@ -33,9 +33,9 @@ impl Action for TimedValueAction {
     }
 }
 
-struct ContextTimedValueAction;
-impl jungle_sdk::types::ActionMember for ContextTimedValueAction {}
-impl Action for ContextTimedValueAction {
+struct ContextTimedValueEffect;
+impl jungle_sdk::types::EffectMember for ContextTimedValueEffect {}
+impl Effect for ContextTimedValueEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U61>;
     type Dependency = SleepDependency;
     type In = (u64, i32);
@@ -55,7 +55,7 @@ impl Action for ContextTimedValueAction {
 
 struct SelectFast;
 impl Pulse<SelectAnimal> for SelectFast {
-    type Action = TimedValueAction;
+    type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
@@ -64,14 +64,14 @@ impl Pulse<SelectAnimal> for SelectFast {
         (state.fast_ms, 1)
     }
 
-    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        output.expect("fast action should succeed")
+    fn absorb(_state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        output.expect("fast effect should succeed")
     }
 }
 
 struct SelectSlow;
 impl Pulse<SelectAnimal> for SelectSlow {
-    type Action = TimedValueAction;
+    type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
@@ -80,14 +80,14 @@ impl Pulse<SelectAnimal> for SelectSlow {
         (state.slow_ms, 2)
     }
 
-    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
-        output.expect("slow action should succeed")
+    fn absorb(_state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+        output.expect("slow effect should succeed")
     }
 }
 
 struct CaptureSelectWinner;
 impl Pulse<SelectAnimal> for CaptureSelectWinner {
-    type Action = TimedValueAction;
+    type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = Either<i32, i32>;
     type Ret = ();
@@ -99,7 +99,7 @@ impl Pulse<SelectAnimal> for CaptureSelectWinner {
         (0, winner)
     }
 
-    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         state.winner = output.expect("winner capture should succeed");
     }
 }
@@ -119,7 +119,7 @@ animal!(
 
 struct JoinFast;
 impl Pulse<JoinAnimal> for JoinFast {
-    type Action = TimedValueAction;
+    type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
@@ -128,14 +128,14 @@ impl Pulse<JoinAnimal> for JoinFast {
         (state.fast_ms, 1)
     }
 
-    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(_state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("join fast should succeed")
     }
 }
 
 struct JoinSlow;
 impl Pulse<JoinAnimal> for JoinSlow {
-    type Action = TimedValueAction;
+    type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
@@ -144,14 +144,14 @@ impl Pulse<JoinAnimal> for JoinSlow {
         (state.slow_ms, 2)
     }
 
-    fn absorb(_state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(_state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("join slow should succeed")
     }
 }
 
 struct CaptureJoinSum;
 impl Pulse<JoinAnimal> for CaptureJoinSum {
-    type Action = TimedValueAction;
+    type Effect = TimedValueEffect;
     type StateAspect = Identity;
     type Arg = (i32, i32);
     type Ret = ();
@@ -160,7 +160,7 @@ impl Pulse<JoinAnimal> for CaptureJoinSum {
         (0, input.0 + input.1)
     }
 
-    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         state.joined_sum = output.expect("join sum capture should succeed");
     }
 }
@@ -180,7 +180,7 @@ animal!(
 
 struct TimeoutSleep;
 impl Pulse<TimeoutAnimal> for TimeoutSleep {
-    type Action = Sleep;
+    type Effect = Sleep;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
@@ -189,7 +189,7 @@ impl Pulse<TimeoutAnimal> for TimeoutSleep {
         Duration::from_millis(state.fast_ms)
     }
 
-    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         output.expect("timeout sleep should succeed");
         state.winner = -1;
         -1
@@ -198,7 +198,7 @@ impl Pulse<TimeoutAnimal> for TimeoutSleep {
 
 struct TimeoutSlow;
 impl Pulse<TimeoutAnimal> for TimeoutSlow {
-    type Action = ContextTimedValueAction;
+    type Effect = ContextTimedValueEffect;
     type StateAspect = Identity;
     type Arg = ();
     type Ret = i32;
@@ -207,7 +207,7 @@ impl Pulse<TimeoutAnimal> for TimeoutSlow {
         (state.slow_ms, 9)
     }
 
-    fn absorb(state: &mut SelectJoinState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
         let value = output.expect("timeout slow should succeed");
         state.winner = value;
         value
