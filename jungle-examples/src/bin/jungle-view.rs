@@ -200,15 +200,13 @@ impl ExampleThemeState {
                     changed = true;
                     just_opened = true;
                 } else if visual.expanded && contains_successor {
-                    visual.expanded = false;
                     let current = current_cluster_border_color(visual.border, now);
-                    let _ = update_cluster_border_visual(
+                    changed |= update_cluster_border_visual(
                         &mut visual.border,
                         current,
                         cluster_border_color_completed(),
                         now,
                     );
-                    changed = true;
                 }
             }
 
