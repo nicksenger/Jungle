@@ -1382,37 +1382,56 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        if self.complete {
-            return Err((state, ExecutorError::Complete));
-        }
-        let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| {
-                (self.should_continue)(&state, carry)
-            }) {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
+        let input = input;
+        let mut state = state;
+        loop {
+            if self.complete {
+                return Err((state, ExecutorError::Complete));
+            }
+            let (should_continue, branch_input) =
+                match decode_controlled_input::<In, _>(&input, |carry| {
+                    (self.should_continue)(&state, carry)
+                }) {
+                    Ok(pair) => pair,
+                    Err(err) => return Err((state, err)),
+                };
+            if !should_continue {
+                self.complete = true;
+                self.deferred_state = Some(state);
+                let state = self
+                    .deferred_state
+                    .take()
+                    .expect("deferred state was just set");
+                return Err((state, ExecutorError::Complete));
+            }
+            let branch_input = match postcard::to_allocvec(&branch_input) {
+                Ok(branch_input) => branch_input,
+                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
             };
-        if !should_continue {
-            self.complete = true;
-            self.deferred_state = Some(state);
-            let state = self
-                .deferred_state
-                .take()
-                .expect("deferred state was just set");
-            return Err((state, ExecutorError::Complete));
+
+            self.ensure_iteration_ready();
+
+            let node = self
+                .active_body
+                .get_mut(self.body_cursor)
+                .expect("body cursor always points to an active body node");
+            match node.request(state, branch_input) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    if node.is_complete() {
+                        self.body_cursor += 1;
+                        if self.body_cursor >= self.active_body.len() {
+                            self.active_body.clear();
+                            self.body_cursor = 0;
+                        }
+                        state = next_state;
+                        continue;
+                    }
+                    return Err((next_state, ExecutorError::Complete));
+                }
+                Err((next_state, err)) => return Err((next_state, err)),
+            }
         }
-        let branch_input = match postcard::to_allocvec(&branch_input) {
-            Ok(branch_input) => branch_input,
-            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
-        };
-
-        self.ensure_iteration_ready();
-
-        let node = self
-            .active_body
-            .get_mut(self.body_cursor)
-            .expect("body cursor always points to an active body node");
-        node.request(state, branch_input)
     }
 
     fn complete(
@@ -1444,37 +1463,56 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableActionRequest> {
-        if self.complete {
-            return Err((state, ExecutorError::Complete));
-        }
-        let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| {
-                (self.should_continue)(&state, carry)
-            }) {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
+        let input = input;
+        let mut state = state;
+        loop {
+            if self.complete {
+                return Err((state, ExecutorError::Complete));
+            }
+            let (should_continue, branch_input) =
+                match decode_controlled_input::<In, _>(&input, |carry| {
+                    (self.should_continue)(&state, carry)
+                }) {
+                    Ok(pair) => pair,
+                    Err(err) => return Err((state, err)),
+                };
+            if !should_continue {
+                self.complete = true;
+                self.deferred_state = Some(state);
+                let state = self
+                    .deferred_state
+                    .take()
+                    .expect("deferred state was just set");
+                return Err((state, ExecutorError::Complete));
+            }
+            let branch_input = match postcard::to_allocvec(&branch_input) {
+                Ok(branch_input) => branch_input,
+                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
             };
-        if !should_continue {
-            self.complete = true;
-            self.deferred_state = Some(state);
-            let state = self
-                .deferred_state
-                .take()
-                .expect("deferred state was just set");
-            return Err((state, ExecutorError::Complete));
+
+            self.ensure_iteration_ready();
+
+            let node = self
+                .active_body
+                .get_mut(self.body_cursor)
+                .expect("body cursor always points to an active body node");
+            match node.request_executable(state, branch_input) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    if node.is_complete() {
+                        self.body_cursor += 1;
+                        if self.body_cursor >= self.active_body.len() {
+                            self.active_body.clear();
+                            self.body_cursor = 0;
+                        }
+                        state = next_state;
+                        continue;
+                    }
+                    return Err((next_state, ExecutorError::Complete));
+                }
+                Err((next_state, err)) => return Err((next_state, err)),
+            }
         }
-        let branch_input = match postcard::to_allocvec(&branch_input) {
-            Ok(branch_input) => branch_input,
-            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
-        };
-
-        self.ensure_iteration_ready();
-
-        let node = self
-            .active_body
-            .get_mut(self.body_cursor)
-            .expect("body cursor always points to an active body node");
-        node.request_executable(state, branch_input)
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -1584,9 +1622,10 @@ where
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(
-                    &(state.clone(), input.clone()),
-                )
+                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(&(
+                    state.clone(),
+                    input.clone(),
+                ))
             },
         );
         steps.push(Box::new(ConditionalErasedFlow::<
@@ -1936,9 +1975,10 @@ where
         ));
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(
-                    &(state.clone(), input.clone()),
-                )
+                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(&(
+                    state.clone(),
+                    input.clone(),
+                ))
             },
         );
         steps.push(Box::new(ConditionalContextErasedFlow::<
@@ -2001,37 +2041,56 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        if self.complete {
-            return Err((state, ExecutorError::Complete));
-        }
-        let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| {
-                (self.should_continue)(&state, carry)
-            }) {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
+        let input = input;
+        let mut state = state;
+        loop {
+            if self.complete {
+                return Err((state, ExecutorError::Complete));
+            }
+            let (should_continue, branch_input) =
+                match decode_controlled_input::<In, _>(&input, |carry| {
+                    (self.should_continue)(&state, carry)
+                }) {
+                    Ok(pair) => pair,
+                    Err(err) => return Err((state, err)),
+                };
+            if !should_continue {
+                self.complete = true;
+                self.deferred_state = Some(state);
+                let state = self
+                    .deferred_state
+                    .take()
+                    .expect("deferred state was just set");
+                return Err((state, ExecutorError::Complete));
+            }
+            let branch_input = match postcard::to_allocvec(&branch_input) {
+                Ok(branch_input) => branch_input,
+                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
             };
-        if !should_continue {
-            self.complete = true;
-            self.deferred_state = Some(state);
-            let state = self
-                .deferred_state
-                .take()
-                .expect("deferred state was just set");
-            return Err((state, ExecutorError::Complete));
+
+            self.ensure_iteration_ready();
+
+            let node = self
+                .active_body
+                .get_mut(self.body_cursor)
+                .expect("body cursor always points to an active body node");
+            match node.request(state, branch_input) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    if node.is_complete() {
+                        self.body_cursor += 1;
+                        if self.body_cursor >= self.active_body.len() {
+                            self.active_body.clear();
+                            self.body_cursor = 0;
+                        }
+                        state = next_state;
+                        continue;
+                    }
+                    return Err((next_state, ExecutorError::Complete));
+                }
+                Err((next_state, err)) => return Err((next_state, err)),
+            }
         }
-        let branch_input = match postcard::to_allocvec(&branch_input) {
-            Ok(branch_input) => branch_input,
-            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
-        };
-
-        self.ensure_iteration_ready();
-
-        let node = self
-            .active_body
-            .get_mut(self.body_cursor)
-            .expect("body cursor always points to an active body node");
-        node.request(state, branch_input)
     }
 
     fn complete(
@@ -2063,37 +2122,56 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableActionRequest> {
-        if self.complete {
-            return Err((state, ExecutorError::Complete));
-        }
-        let (should_continue, branch_input) =
-            match decode_controlled_input::<In, _>(&input, |carry| {
-                (self.should_continue)(&state, carry)
-            }) {
-                Ok(pair) => pair,
-                Err(err) => return Err((state, err)),
+        let input = input;
+        let mut state = state;
+        loop {
+            if self.complete {
+                return Err((state, ExecutorError::Complete));
+            }
+            let (should_continue, branch_input) =
+                match decode_controlled_input::<In, _>(&input, |carry| {
+                    (self.should_continue)(&state, carry)
+                }) {
+                    Ok(pair) => pair,
+                    Err(err) => return Err((state, err)),
+                };
+            if !should_continue {
+                self.complete = true;
+                self.deferred_state = Some(state);
+                let state = self
+                    .deferred_state
+                    .take()
+                    .expect("deferred state was just set");
+                return Err((state, ExecutorError::Complete));
+            }
+            let branch_input = match postcard::to_allocvec(&branch_input) {
+                Ok(branch_input) => branch_input,
+                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
             };
-        if !should_continue {
-            self.complete = true;
-            self.deferred_state = Some(state);
-            let state = self
-                .deferred_state
-                .take()
-                .expect("deferred state was just set");
-            return Err((state, ExecutorError::Complete));
+
+            self.ensure_iteration_ready();
+
+            let node = self
+                .active_body
+                .get_mut(self.body_cursor)
+                .expect("body cursor always points to an active body node");
+            match node.request_executable(state, branch_input) {
+                Ok((next_state, request)) => return Ok((next_state, request)),
+                Err((next_state, ExecutorError::Complete)) => {
+                    if node.is_complete() {
+                        self.body_cursor += 1;
+                        if self.body_cursor >= self.active_body.len() {
+                            self.active_body.clear();
+                            self.body_cursor = 0;
+                        }
+                        state = next_state;
+                        continue;
+                    }
+                    return Err((next_state, ExecutorError::Complete));
+                }
+                Err((next_state, err)) => return Err((next_state, err)),
+            }
         }
-        let branch_input = match postcard::to_allocvec(&branch_input) {
-            Ok(branch_input) => branch_input,
-            Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
-        };
-
-        self.ensure_iteration_ready();
-
-        let node = self
-            .active_body
-            .get_mut(self.body_cursor)
-            .expect("body cursor always points to an active body node");
-        node.request_executable(state, branch_input)
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -2394,35 +2472,38 @@ where
             Some(input) => input,
             None => serialize_input(initial_input)?,
         };
-        self.settle_without_progress()?;
-        if self.is_complete() {
-            return Err(ExecutorError::Complete);
-        }
+        loop {
+            self.settle_without_progress()?;
+            if self.is_complete() {
+                return Err(ExecutorError::Complete);
+            }
 
-        let state = self.state.take().expect("executor state is always present");
-        let node = self
-            .steps
-            .get_mut(self.cursor)
-            .expect("cursor was checked against steps len");
-        match node.request_executable(state, input) {
-            Ok((state, request)) => {
-                self.state = Some(state);
-                Ok(request)
-            }
-            Err((state, ExecutorError::Complete)) => {
-                self.state = Some(state);
-                let state = self.state.take().expect("executor state is always present");
-                let (state, completed) = node.try_complete_without_progress(state)?;
-                self.state = Some(state);
-                if completed {
-                    self.cursor += 1;
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            match node.request_executable(state, input.clone()) {
+                Ok((state, request)) => {
+                    self.state = Some(state);
+                    return Ok(request);
                 }
-                self.settle_without_progress()?;
-                Err(ExecutorError::Complete)
-            }
-            Err((state, err)) => {
-                self.state = Some(state);
-                Err(err)
+                Err((state, ExecutorError::Complete)) => {
+                    self.state = Some(state);
+                    let state = self.state.take().expect("executor state is always present");
+                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    self.state = Some(state);
+                    if completed {
+                        self.cursor += 1;
+                        continue;
+                    }
+                    self.settle_without_progress()?;
+                    return Err(ExecutorError::Complete);
+                }
+                Err((state, err)) => {
+                    self.state = Some(state);
+                    return Err(err);
+                }
             }
         }
     }
@@ -2517,35 +2598,39 @@ where
     }
 
     fn next_request_serialized(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
-        self.settle_without_progress()?;
-        if self.is_complete() {
-            return Err(ExecutorError::Complete);
-        }
+        let input = input;
+        loop {
+            self.settle_without_progress()?;
+            if self.is_complete() {
+                return Err(ExecutorError::Complete);
+            }
 
-        let state = self.state.take().expect("executor state is always present");
-        let node = self
-            .steps
-            .get_mut(self.cursor)
-            .expect("cursor was checked against steps len");
-        match node.request(state, input) {
-            Ok((state, request)) => {
-                self.state = Some(state);
-                Ok(request)
-            }
-            Err((state, ExecutorError::Complete)) => {
-                self.state = Some(state);
-                let state = self.state.take().expect("executor state is always present");
-                let (state, completed) = node.try_complete_without_progress(state)?;
-                self.state = Some(state);
-                if completed {
-                    self.cursor += 1;
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            match node.request(state, input.clone()) {
+                Ok((state, request)) => {
+                    self.state = Some(state);
+                    return Ok(request);
                 }
-                self.settle_without_progress()?;
-                Err(ExecutorError::Complete)
-            }
-            Err((state, err)) => {
-                self.state = Some(state);
-                Err(err)
+                Err((state, ExecutorError::Complete)) => {
+                    self.state = Some(state);
+                    let state = self.state.take().expect("executor state is always present");
+                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    self.state = Some(state);
+                    if completed {
+                        self.cursor += 1;
+                        continue;
+                    }
+                    self.settle_without_progress()?;
+                    return Err(ExecutorError::Complete);
+                }
+                Err((state, err)) => {
+                    self.state = Some(state);
+                    return Err(err);
+                }
             }
         }
     }
@@ -2623,35 +2708,39 @@ where
     }
 
     pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
-        self.settle_without_progress()?;
-        if self.is_complete() {
-            return Err(ExecutorError::Complete);
-        }
+        let input = input;
+        loop {
+            self.settle_without_progress()?;
+            if self.is_complete() {
+                return Err(ExecutorError::Complete);
+            }
 
-        let state = self.state.take().expect("executor state is always present");
-        let node = self
-            .steps
-            .get_mut(self.cursor)
-            .expect("cursor was checked against steps len");
-        match node.request(state, input) {
-            Ok((state, request)) => {
-                self.state = Some(state);
-                Ok(request)
-            }
-            Err((state, ExecutorError::Complete)) => {
-                self.state = Some(state);
-                let state = self.state.take().expect("executor state is always present");
-                let (state, completed) = node.try_complete_without_progress(state)?;
-                self.state = Some(state);
-                if completed {
-                    self.cursor += 1;
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            match node.request(state, input.clone()) {
+                Ok((state, request)) => {
+                    self.state = Some(state);
+                    return Ok(request);
                 }
-                self.settle_without_progress()?;
-                Err(ExecutorError::Complete)
-            }
-            Err((state, err)) => {
-                self.state = Some(state);
-                Err(err)
+                Err((state, ExecutorError::Complete)) => {
+                    self.state = Some(state);
+                    let state = self.state.take().expect("executor state is always present");
+                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    self.state = Some(state);
+                    if completed {
+                        self.cursor += 1;
+                        continue;
+                    }
+                    self.settle_without_progress()?;
+                    return Err(ExecutorError::Complete);
+                }
+                Err((state, err)) => {
+                    self.state = Some(state);
+                    return Err(err);
+                }
             }
         }
     }
@@ -2660,35 +2749,39 @@ where
         &mut self,
         input: Serialized,
     ) -> Result<ExecutableActionRequest, ExecutorError> {
-        self.settle_without_progress()?;
-        if self.is_complete() {
-            return Err(ExecutorError::Complete);
-        }
+        let input = input;
+        loop {
+            self.settle_without_progress()?;
+            if self.is_complete() {
+                return Err(ExecutorError::Complete);
+            }
 
-        let state = self.state.take().expect("executor state is always present");
-        let node = self
-            .steps
-            .get_mut(self.cursor)
-            .expect("cursor was checked against steps len");
-        match node.request_executable(state, input) {
-            Ok((state, request)) => {
-                self.state = Some(state);
-                Ok(request)
-            }
-            Err((state, ExecutorError::Complete)) => {
-                self.state = Some(state);
-                let state = self.state.take().expect("executor state is always present");
-                let (state, completed) = node.try_complete_without_progress(state)?;
-                self.state = Some(state);
-                if completed {
-                    self.cursor += 1;
+            let state = self.state.take().expect("executor state is always present");
+            let node = self
+                .steps
+                .get_mut(self.cursor)
+                .expect("cursor was checked against steps len");
+            match node.request_executable(state, input.clone()) {
+                Ok((state, request)) => {
+                    self.state = Some(state);
+                    return Ok(request);
                 }
-                self.settle_without_progress()?;
-                Err(ExecutorError::Complete)
-            }
-            Err((state, err)) => {
-                self.state = Some(state);
-                Err(err)
+                Err((state, ExecutorError::Complete)) => {
+                    self.state = Some(state);
+                    let state = self.state.take().expect("executor state is always present");
+                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    self.state = Some(state);
+                    if completed {
+                        self.cursor += 1;
+                        continue;
+                    }
+                    self.settle_without_progress()?;
+                    return Err(ExecutorError::Complete);
+                }
+                Err((state, err)) => {
+                    self.state = Some(state);
+                    return Err(err);
+                }
             }
         }
     }

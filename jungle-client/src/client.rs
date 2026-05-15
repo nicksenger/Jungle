@@ -13,6 +13,7 @@ use std::io;
 use std::marker::PhantomData;
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use thiserror::Error;
@@ -48,6 +49,32 @@ pub enum StepUpdate {
 }
 
 pub struct JourneyUpdateSubscription {
+    inner: Pin<Box<dyn Stream<Item = Result<JourneyUpdateEvent, ExecutorError>> + Send + 'static>>,
+}
+
+impl JourneyUpdateSubscription {
+    pub fn from_stream<S>(stream: S) -> Self
+    where
+        S: Stream<Item = Result<JourneyUpdateEvent, ExecutorError>> + Send + 'static,
+    {
+        Self {
+            inner: Box::pin(stream),
+        }
+    }
+}
+
+impl Stream for JourneyUpdateSubscription {
+    type Item = Result<JourneyUpdateEvent, ExecutorError>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        self.inner.as_mut().poll_next(cx)
+    }
+}
+
+struct QuinnJourneyUpdateStream {
     recv: quinn::RecvStream,
     frame_state: SubscriptionFrameState,
     closed: bool,
@@ -67,7 +94,7 @@ impl Default for SubscriptionFrameState {
     }
 }
 
-impl JourneyUpdateSubscription {
+impl QuinnJourneyUpdateStream {
     fn decode_update(payload: &[u8]) -> Result<JourneyUpdateEvent, ExecutorError> {
         let response: Result<WireOut, BackendError> =
             postcard::from_bytes(payload).map_err(|err| {
@@ -84,7 +111,7 @@ impl JourneyUpdateSubscription {
     }
 }
 
-impl Stream for JourneyUpdateSubscription {
+impl Stream for QuinnJourneyUpdateStream {
     type Item = Result<JourneyUpdateEvent, ExecutorError>;
 
     fn poll_next(
@@ -160,7 +187,7 @@ impl Stream for JourneyUpdateSubscription {
                                 continue;
                             }
 
-                            let decode_result = JourneyUpdateSubscription::decode_update(payload);
+                            let decode_result = QuinnJourneyUpdateStream::decode_update(payload);
                             this.frame_state = SubscriptionFrameState::default();
                             return Poll::Ready(Some(decode_result));
                         }
@@ -426,11 +453,13 @@ impl<J> Client<J> {
             })
             .await
             .map_err(Self::transport_error)?;
-        Ok(JourneyUpdateSubscription {
-            recv,
-            frame_state: SubscriptionFrameState::default(),
-            closed: false,
-        })
+        Ok(JourneyUpdateSubscription::from_stream(
+            QuinnJourneyUpdateStream {
+                recv,
+                frame_state: SubscriptionFrameState::default(),
+                closed: false,
+            },
+        ))
     }
 
     pub(crate) async fn start_journey_by_id(

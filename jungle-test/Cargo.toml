@@ -8,9 +8,10 @@ default = []
 postgres = []
 
 [dependencies]
-jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["server", "pg", "redb"] }
+jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["server", "pg", "redb", "local"] }
 
 [dev-dependencies]
+jungle-zoo = { path = "../jungle-zoo" }
 jungle-persist = { path = "../jungle-persist", features = ["postgres"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 futures = { workspace = true }

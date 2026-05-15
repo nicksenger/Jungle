@@ -77,6 +77,8 @@ pub struct ClusterViewCtx<'a> {
     pub parent_cluster_id: Option<u32>,
     pub depth: usize,
     pub member_display_ids: &'a [u32],
+    pub member_runtime_ids: Vec<u32>,
+    pub successor_runtime_ids: Vec<u32>,
     pub phase: Phase<ClusterLive>,
 }
 
@@ -824,6 +826,42 @@ where
         }
     };
 
+    let mut cluster_member_runtime_ids = vec![Vec::<u32>::new(); model.cluster_info.len()];
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        let mut seen = BTreeSet::new();
+        for node_id in &cluster.nodes {
+            let Some(node) = model.node_map.get(node_id) else {
+                continue;
+            };
+            let Some(runtime_id) = node.runtime_node_id else {
+                continue;
+            };
+            if seen.insert(runtime_id) {
+                cluster_member_runtime_ids[index].push(runtime_id);
+            }
+        }
+    }
+
+    let mut cluster_successor_runtime_ids = vec![Vec::<u32>::new(); model.cluster_info.len()];
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
+        let mut seen = BTreeSet::new();
+        for (from, to) in &model.edges {
+            if !cluster_nodes.contains(from) || cluster_nodes.contains(to) {
+                continue;
+            }
+            let Some(node) = model.node_map.get(to) else {
+                continue;
+            };
+            let Some(runtime_id) = node.runtime_node_id else {
+                continue;
+            };
+            if seen.insert(runtime_id) {
+                cluster_successor_runtime_ids[index].push(runtime_id);
+            }
+        }
+    }
+
     let mut collapsed_clusters = HashSet::<usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
         let cx = ClusterViewCtx {
@@ -837,6 +875,8 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            member_runtime_ids: cluster_member_runtime_ids[index].clone(),
+            successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
             phase: cluster_phase(cluster),
         };
         if matches!(
@@ -872,17 +912,15 @@ where
     };
 
     let max_node_id = model.nodes.iter().map(|node| node.id).max().unwrap_or(0);
-    let mut cluster_node_id = HashMap::<usize, u32>::new();
-    let mut next_cluster_node_id = max_node_id.saturating_add(1);
-    for index in &collapsed_clusters {
-        cluster_node_id.insert(*index, next_cluster_node_id);
-        next_cluster_node_id = next_cluster_node_id.saturating_add(1);
-    }
+    let cluster_node_id = |index: usize| -> Option<u32> {
+        let offset = u32::try_from(index).ok()?;
+        Some(max_node_id.saturating_add(1).saturating_add(offset))
+    };
 
     let owner_to_display = |owner: VisibleOwner| -> Option<u32> {
         match owner {
             VisibleOwner::Node(node_id) => Some(node_id),
-            VisibleOwner::Cluster(index) => cluster_node_id.get(&index).copied(),
+            VisibleOwner::Cluster(index) => cluster_node_id(index),
         }
     };
 
@@ -916,7 +954,7 @@ where
         if !collapsed_clusters.contains(&index) {
             continue;
         }
-        let Some(display_id) = cluster_node_id.get(&index).copied() else {
+        let Some(display_id) = cluster_node_id(index) else {
             continue;
         };
         let cx = ClusterViewCtx {
@@ -930,6 +968,8 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            member_runtime_ids: cluster_member_runtime_ids[index].clone(),
+            successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
             phase: cluster_phase(cluster),
         };
         if let ClusterView::Collapsed { element, size } = theme.view_cluster(theme_state, &cx) {
@@ -974,6 +1014,8 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
+            successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
             phase: cluster_phase(cluster),
         };
         let ClusterView::Expanded { overlay, fill: _ } = theme.view_cluster(theme_state, &cx)
@@ -1026,6 +1068,8 @@ where
         let visible_nodes = visible_real_nodes.clone();
         let sizes_for_view = node_sizes.clone();
         let visible_cluster_sources = visible_cluster_source_indices.clone();
+        let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids.clone();
+        let cluster_successor_runtime_ids_for_nodes = cluster_successor_runtime_ids.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -1057,6 +1101,12 @@ where
                             }),
                             depth: cluster.depth,
                             member_display_ids: &cluster.nodes,
+                            member_runtime_ids: cluster_member_runtime_ids_for_nodes
+                                [cluster_index]
+                                .clone(),
+                            successor_runtime_ids: cluster_successor_runtime_ids_for_nodes
+                                [cluster_index]
+                                .clone(),
                             phase: cluster_phase(cluster),
                         };
                         if let ClusterView::Collapsed { element, .. } =
@@ -1096,6 +1146,8 @@ where
                     .and_then(|parent| cluster_info_for_clusters.get(parent).map(|info| info.id)),
                 depth: cluster.depth,
                 member_display_ids: &cluster.nodes,
+                member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
+                successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
                 phase: cluster_phase(cluster),
             };
             match theme.view_cluster(theme_state, &cx) {

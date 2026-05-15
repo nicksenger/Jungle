@@ -2,8 +2,8 @@ use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus, StateLens,
-    LoopCondition, Observe, Perturb, Pulse, Step, While,
+    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    LoopCondition, Observe, Perturb, Pulse, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -105,10 +105,7 @@ impl Pulse<IntegrationAnimal> for AddOneBeforeFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.total += output.expect("first pre-focused full-state action should succeed");
         state.before_steps += 1;
     }
@@ -123,10 +120,7 @@ impl Pulse<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.total += output.expect("second pre-focused full-state action should succeed");
         state.before_steps += 1;
     }
@@ -177,10 +171,7 @@ impl Pulse<IntegrationAnimal> for AddOneDeepFocusedStep {
 
     fn emit(_state: &DeepFocusState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut DeepFocusState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.value += output.expect("first deep-focused integration action should succeed");
         state.updates += 1;
     }
@@ -201,10 +192,7 @@ impl Pulse<IntegrationAnimal> for AddTwoDeepFocusedStep {
 
     fn emit(_state: &DeepFocusState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut DeepFocusState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut DeepFocusState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.value += output.expect("second deep-focused integration action should succeed");
         state.updates += 1;
     }
@@ -219,10 +207,7 @@ impl Pulse<IntegrationAnimal> for AddOneAfterFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.total += output.expect("first post-focused full-state action should succeed");
         state.after_steps += 1;
     }
@@ -237,10 +222,7 @@ impl Pulse<IntegrationAnimal> for AddTwoAfterFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: ActionCompletion<Self::Action>) -> Self::Ret {
         state.total += output.expect("second post-focused full-state action should succeed");
         state.after_steps += 1;
     }
@@ -418,6 +400,24 @@ async fn redb_client_worker_flow_runs_to_completion() {
     let _ = server_task.await;
 }
 
+#[tokio::test]
+async fn memory_client_worker_flow_runs_to_completion() {
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn(async move {
+        ServerBuilder::new()
+            .listen(listen_addr)
+            .memory()
+            .run()
+            .await
+    });
+
+    run_client_worker_flow_runs_to_completion(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
 #[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_client_worker_flow_runs_to_completion() {
@@ -464,6 +464,24 @@ async fn redb_client_worker_streams_step_updates_end_to_end() {
                 .run()
                 .await
         }
+    });
+
+    run_client_worker_streams_step_updates_end_to_end(listen_addr).await;
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
+async fn memory_client_worker_streams_step_updates_end_to_end() {
+    let listen_addr = super::reserve_local_addr();
+
+    let server_task = tokio::spawn(async move {
+        ServerBuilder::new()
+            .listen(listen_addr)
+            .memory()
+            .run()
+            .await
     });
 
     run_client_worker_streams_step_updates_end_to_end(listen_addr).await;
@@ -688,6 +706,104 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
     let _ = worker_handle.await;
 }
 
+async fn run_gorilla_journey_progresses_past_reported_stall_and_completes_local_client() {
+    let client = jungle_sdk::LocalClient::builder()
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = JungleWorker::new(jungle_zoo::Zoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
+        .expect("gorilla seed should serialize");
+    let journey_id = client
+        .start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed)
+        .await
+        .expect("start_journey for gorilla should succeed");
+
+    let mut subscription = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("subscribe_step_updates for gorilla should succeed");
+
+    let mut action_input_count = 0_u32;
+    let mut action_success_count = 0_u32;
+    let mut action_failure_count = 0_u32;
+    let mut total_step_updates = 0_u32;
+    let mut last_sequence_id: Option<u64> = None;
+
+    let completion = tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            let Some(next) = subscription.next().await else {
+                break;
+            };
+            let update = next.expect("streamed gorilla journey update should succeed");
+            match update.event {
+                RunnerUpdateOut::ActionInput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
+                    action_input_count += 1;
+                    total_step_updates += 1;
+                }
+                RunnerUpdateOut::ActionSuccessOutput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
+                    action_success_count += 1;
+                    total_step_updates += 1;
+                }
+                RunnerUpdateOut::ActionFailureOutput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "gorilla stream journey id should match");
+                    action_failure_count += 1;
+                    total_step_updates += 1;
+                }
+                RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
+                    continue;
+                }
+            }
+            if let Some(prev) = last_sequence_id {
+                assert!(
+                    update.sequence_id > prev,
+                    "gorilla stream sequence ids must be strictly increasing"
+                );
+            }
+            last_sequence_id = Some(update.sequence_id);
+        }
+    })
+    .await;
+
+    if completion.is_err() {
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .expect("journey_details should succeed after gorilla timeout");
+        panic!(
+            "gorilla stream did not finish before timeout (status={status:?}, updates={total_step_updates}, inputs={action_input_count}, successes={action_success_count}, failures={action_failure_count})"
+        );
+    }
+
+    let final_status = client
+        .journey_details(journey_id)
+        .await
+        .expect("journey_details should succeed after gorilla stream completion");
+    assert_eq!(final_status, JourneyStatus::Completed);
+    assert_eq!(
+        action_failure_count, 0,
+        "gorilla journey should not emit action failures"
+    );
+    assert!(
+        total_step_updates > 100,
+        "gorilla journey should emit more than 100 step updates before completion, got {total_step_updates}"
+    );
+    assert_eq!(
+        action_input_count, action_success_count,
+        "gorilla journey should pair each action input with an action success"
+    );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
 fn integration_seed() -> Vec<u8> {
     postcard::to_allocvec(&IntegrationState {
         total: 0,
@@ -754,4 +870,9 @@ async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client {
     }
 
     unreachable!("retry loop always returns or panics")
+}
+
+#[tokio::test]
+async fn local_client_gorilla_journey_progresses_past_reported_stall_and_completes() {
+    run_gorilla_journey_progresses_past_reported_stall_and_completes_local_client().await;
 }

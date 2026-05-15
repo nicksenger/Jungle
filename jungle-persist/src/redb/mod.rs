@@ -53,6 +53,13 @@ impl RedbStore {
         RedbStoreBuilder::default()
     }
 
+    pub fn in_memory() -> Result<RedbStore> {
+        let db = redb::Database::builder()
+            .create_with_backend(redb::backends::InMemoryBackend::new())
+            .map_err(crate::PersistenceError::RedbOpen)?;
+        Ok(RedbStore { db: Arc::new(db) })
+    }
+
     fn update_journey_status(
         &self,
         journey_id: Uuid,

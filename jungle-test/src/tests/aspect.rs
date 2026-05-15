@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity, StateLens,
-    LoopCondition, Pulse, Running, Step, Waiting, While,
+    Action, ActionCompletion, Aspect, Condition, Conditional, Either, Executor, Identity,
+    LoopCondition, Pulse, Running, StateLens, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
@@ -230,17 +230,15 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         stripes: 9,
         core: CoreState { energy: 6, age: 12 },
     };
-    let (tiger_state, tiger_request) =
-        <Step<Tiger, CoreEnergyStep<Sleep, StateLens<TigerState, U1>>> as Running>::run((
-            tiger_state,
-            4,
-        ));
+    let (tiger_state, tiger_request) = <Step<
+        Tiger,
+        CoreEnergyStep<Sleep, StateLens<TigerState, U1>>,
+    > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) =
-        <Step<Tiger, CoreEnergyStep<Sleep, StateLens<TigerState, U1>>> as Waiting>::accept((
-            tiger_state,
-            Ok(15),
-        ));
+    let (tiger_state, tiger_emitted) = <Step<
+        Tiger,
+        CoreEnergyStep<Sleep, StateLens<TigerState, U1>>,
+    > as Waiting>::accept((tiger_state, Ok(15)));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
     assert_eq!(tiger_state.core.age, 12);

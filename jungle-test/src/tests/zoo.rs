@@ -2,7 +2,7 @@ use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
     Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
-    Ecosystem, Identity, StateLens, LoopCondition, Pulse, Step, While,
+    Ecosystem, Identity, LoopCondition, Pulse, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;

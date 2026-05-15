@@ -1,11 +1,9 @@
-//! Zoo crate with structural state, actions, and action adapters.
+//! Zoo crate focused on the gorilla ecosystem and probe flows.
 
 pub mod actions;
-pub mod adapt;
 pub mod animals;
 pub mod probe;
 pub mod state;
-pub mod testing;
 
 #[derive(jungle_sdk::Animals)]
 pub struct ZooAnimals(animals::gorilla::Gorilla);
