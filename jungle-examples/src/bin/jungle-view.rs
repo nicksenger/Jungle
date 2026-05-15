@@ -50,9 +50,13 @@ struct ClusterBorderVisual {
 #[derive(Debug)]
 struct ExampleThemeState {
     node_visuals: HashMap<u32, NodeVisual>,
+    condition_visuals: HashMap<u32, NodeVisual>,
     cluster_index: HashMap<u32, ClusterRuntimeIndex>,
     cluster_visuals: HashMap<u32, ClusterVisual>,
+    condition_successor_runtime_ids: HashMap<u32, Vec<u32>>,
     force_pending_runtime_ids: HashSet<u32>,
+    runtime_update_counter: u64,
+    runtime_update_order: HashMap<u32, u64>,
 }
 
 impl ExampleThemeState {
@@ -83,6 +87,51 @@ impl ExampleThemeState {
             .unwrap_or(false)
     }
 
+    fn effective_node_target(&self, runtime_id: u32) -> RuntimeState {
+        let mut target = self
+            .node_visuals
+            .get(&runtime_id)
+            .map(|visual| visual.to)
+            .unwrap_or(RuntimeState::Pending);
+        if self.force_pending_runtime_ids.contains(&runtime_id)
+            && !matches!(target, RuntimeState::Running)
+        {
+            target = RuntimeState::Pending;
+        }
+        target
+    }
+
+    fn note_runtime_update(&mut self, runtime_id: u32) {
+        self.runtime_update_counter = self.runtime_update_counter.saturating_add(1);
+        self.runtime_update_order
+            .insert(runtime_id, self.runtime_update_counter);
+    }
+
+    fn infer_condition_target(
+        &self,
+        display_id: u32,
+        fallback_phase: Phase<RuntimeState>,
+    ) -> RuntimeState {
+        let mut newest: Option<(u64, RuntimeState)> = None;
+        if let Some(successors) = self.condition_successor_runtime_ids.get(&display_id) {
+            for runtime_id in successors {
+                let Some(order) = self.runtime_update_order.get(runtime_id).copied() else {
+                    continue;
+                };
+                let state = self.effective_node_target(*runtime_id);
+                if newest.map(|(best, _)| order > best).unwrap_or(true) {
+                    newest = Some((order, state));
+                }
+            }
+        }
+        newest
+            .map(|(_, state)| state)
+            .unwrap_or(match fallback_phase {
+                Phase::Live(state) => state,
+                Phase::Static => RuntimeState::Pending,
+            })
+    }
+
     fn update_node_state(&mut self, runtime_id: u32, to: RuntimeState, now: Instant) -> bool {
         if !matches!(to, RuntimeState::Pending) {
             self.force_pending_runtime_ids.remove(&runtime_id);
@@ -101,6 +150,7 @@ impl ExampleThemeState {
         entry.from = blended;
         entry.to = to;
         entry.started_at = now;
+        self.note_runtime_update(runtime_id);
         true
     }
 
@@ -199,15 +249,28 @@ impl ExampleThemeState {
     }
 
     fn has_running_animations(&self, now: Instant) -> bool {
-        self.node_visuals.values().any(|visual| {
-            visual.from != visual.to
-                && now.duration_since(visual.started_at) < NODE_ANIMATION_DURATION
-        }) || self.has_running_cluster_animations(now)
+        self.node_visuals
+            .values()
+            .chain(self.condition_visuals.values())
+            .any(|visual| {
+                visual.from != visual.to
+                    && now.duration_since(visual.started_at) < NODE_ANIMATION_DURATION
+            })
+            || self.has_running_cluster_animations(now)
     }
 
     fn settle_animations(&mut self, now: Instant) -> bool {
         let mut changed = false;
         for visual in self.node_visuals.values_mut() {
+            if visual.from == visual.to {
+                continue;
+            }
+            if now.duration_since(visual.started_at) >= NODE_ANIMATION_DURATION {
+                visual.from = visual.to;
+                changed = true;
+            }
+        }
+        for visual in self.condition_visuals.values_mut() {
             if visual.from == visual.to {
                 continue;
             }
@@ -228,9 +291,13 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
     fn init(&self) -> Self::State {
         Mutex::new(ExampleThemeState {
             node_visuals: HashMap::new(),
+            condition_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
             force_pending_runtime_ids: HashSet::new(),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
         })
     }
 
@@ -301,6 +368,29 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
             if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                 phase_target = RuntimeState::Pending;
             }
+            if visual.to != phase_target {
+                let blended = sampled_runtime_state(visual, now);
+                visual.from = blended;
+                visual.to = phase_target;
+                visual.started_at = now;
+            }
+            blend_runtime_color(*visual, now)
+        } else if matches!(cx.kind, StepKind::Conditional) {
+            let mut guard = state.lock().expect("example theme state mutex poisoned");
+            if !cx.successor_runtime_ids.is_empty() {
+                guard
+                    .condition_successor_runtime_ids
+                    .insert(cx.display_id, cx.successor_runtime_ids.clone());
+            }
+            let phase_target = guard.infer_condition_target(cx.display_id, cx.phase);
+            let visual = guard
+                .condition_visuals
+                .entry(cx.display_id)
+                .or_insert(NodeVisual {
+                    from: RuntimeState::Pending,
+                    to: RuntimeState::Pending,
+                    started_at: now,
+                });
             if visual.to != phase_target {
                 let blended = sampled_runtime_state(visual, now);
                 visual.from = blended;
@@ -421,8 +511,12 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
 
             (runtime_color(visual.from), runtime_color(visual.to))
         } else {
-            let pending = runtime_color(RuntimeState::Pending);
-            (pending, pending)
+            let phase_target = match cx.source_phase {
+                Phase::Live(target) => target,
+                Phase::Static => RuntimeState::Pending,
+            };
+            let color = runtime_color(phase_target);
+            (color, color)
         };
 
         let progress = cx.extent.clamp(0.0, 1.0);

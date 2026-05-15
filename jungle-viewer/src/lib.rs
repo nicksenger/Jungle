@@ -57,6 +57,7 @@ pub enum ClusterKind {
 pub struct StepViewCtx<'a> {
     pub display_id: u32,
     pub runtime_id: Option<u32>,
+    pub successor_runtime_ids: Vec<u32>,
     pub kind: StepKind,
     pub label: &'a str,
     pub metadata: Option<&'a str>,
@@ -423,6 +424,7 @@ struct LiveData {
     active_runtime_ids: BTreeSet<u32>,
     finished_runtime_ids: BTreeSet<u32>,
     failed_runtime_ids: BTreeSet<u32>,
+    runtime_update_sequence: HashMap<u32, usize>,
     latest_event_count: usize,
 }
 
@@ -677,25 +679,82 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
 impl LiveData {
     fn apply_update(&mut self, update: JourneyUpdateEvent) -> bool {
         let mut highlight_changed = false;
-        self.latest_event_count = update.sequence_id as usize;
+        let sequence = update.sequence_id as usize;
+        self.latest_event_count = sequence;
         match update.event {
             RunnerUpdateOut::ActionInput { node_id, .. } => {
                 highlight_changed |= self.finished_runtime_ids.remove(&node_id);
                 highlight_changed |= self.failed_runtime_ids.remove(&node_id);
                 highlight_changed |= self.active_runtime_ids.insert(node_id);
+                self.runtime_update_sequence.insert(node_id, sequence);
             }
             RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
                 highlight_changed |= self.active_runtime_ids.remove(&node_id);
                 highlight_changed |= self.finished_runtime_ids.insert(node_id);
+                self.runtime_update_sequence.insert(node_id, sequence);
             }
             RunnerUpdateOut::ActionFailureOutput { node_id, .. } => {
                 highlight_changed |= self.active_runtime_ids.remove(&node_id);
                 highlight_changed |= self.failed_runtime_ids.insert(node_id);
+                self.runtime_update_sequence.insert(node_id, sequence);
             }
             RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
         }
         highlight_changed
     }
+}
+
+fn runtime_state_for_live_data(live: &LiveData, runtime_id: u32) -> RuntimeState {
+    if live.failed_runtime_ids.contains(&runtime_id) {
+        RuntimeState::Failed
+    } else if live.active_runtime_ids.contains(&runtime_id) {
+        RuntimeState::Running
+    } else if live.finished_runtime_ids.contains(&runtime_id) {
+        RuntimeState::Completed
+    } else {
+        RuntimeState::Pending
+    }
+}
+
+fn infer_condition_runtime_state(live: &LiveData, successor_runtime_ids: &[u32]) -> RuntimeState {
+    let mut newest: Option<(usize, RuntimeState)> = None;
+
+    for runtime_id in successor_runtime_ids {
+        let Some(sequence) = live.runtime_update_sequence.get(runtime_id).copied() else {
+            continue;
+        };
+        if newest
+            .map(|(best_sequence, _)| sequence > best_sequence)
+            .unwrap_or(true)
+        {
+            newest = Some((sequence, runtime_state_for_live_data(live, *runtime_id)));
+        }
+    }
+
+    newest
+        .map(|(_, state)| state)
+        .unwrap_or(RuntimeState::Pending)
+}
+
+fn node_phase_for_display(
+    live_data: Option<&LiveData>,
+    display_id: u32,
+    runtime_id: Option<u32>,
+    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
+) -> Phase<RuntimeState> {
+    let Some(live) = live_data else {
+        return Phase::Static;
+    };
+
+    let state = match runtime_id {
+        Some(id) => runtime_state_for_live_data(live, id),
+        None => condition_successor_runtime_ids
+            .get(&display_id)
+            .map(|successors| infer_condition_runtime_state(live, successors))
+            .unwrap_or(RuntimeState::Pending),
+    };
+
+    Phase::Live(state)
 }
 
 fn sidebar<'a>(
@@ -799,18 +858,29 @@ where
         Cluster(usize),
     }
 
-    let node_state = move |runtime_id: Option<u32>| -> Phase<RuntimeState> {
-        let Some(live) = live_data else {
-            return Phase::Static;
+    let mut condition_successor_runtime_ids = HashMap::<u32, Vec<u32>>::new();
+    let mut condition_successor_seen = HashMap::<u32, BTreeSet<u32>>::new();
+    for (from, to) in &model.edges {
+        let Some(source) = model.node_map.get(from) else {
+            continue;
         };
-        let state = match runtime_id {
-            Some(id) if live.failed_runtime_ids.contains(&id) => RuntimeState::Failed,
-            Some(id) if live.active_runtime_ids.contains(&id) => RuntimeState::Running,
-            Some(id) if live.finished_runtime_ids.contains(&id) => RuntimeState::Completed,
-            _ => RuntimeState::Pending,
+        if !source.is_conditional_branch {
+            continue;
+        }
+        let Some(target) = model.node_map.get(to) else {
+            continue;
         };
-        Phase::Live(state)
-    };
+        let Some(runtime_id) = target.runtime_node_id else {
+            continue;
+        };
+        let seen = condition_successor_seen.entry(*from).or_default();
+        if seen.insert(runtime_id) {
+            condition_successor_runtime_ids
+                .entry(*from)
+                .or_default()
+                .push(runtime_id);
+        }
+    }
 
     let cluster_phase = move |cluster: &ClusterInfo| -> Phase<ClusterLive> {
         if let Some(live) = live_data {
@@ -980,10 +1050,19 @@ where
         if owner != VisibleOwner::Node(node.id) {
             continue;
         }
-        let phase = node_state(node.runtime_node_id);
+        let phase = node_phase_for_display(
+            live_data,
+            node.id,
+            node.runtime_node_id,
+            &condition_successor_runtime_ids,
+        );
         let step_ctx = StepViewCtx {
             display_id: node.id,
             runtime_id: node.runtime_node_id,
+            successor_runtime_ids: condition_successor_runtime_ids
+                .get(&node.id)
+                .cloned()
+                .unwrap_or_default(),
             kind: node.kind(),
             label: &node.label,
             metadata: node.metadata.as_deref(),
@@ -1124,15 +1203,27 @@ where
         let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids.clone();
         let runtime_ids_for_edge_colors = runtime_by_display_id.clone();
         let runtime_ids_for_edge_strokes = runtime_by_display_id.clone();
+        let condition_successors_for_nodes = condition_successor_runtime_ids.clone();
+        let condition_successors_for_edge_colors = condition_successor_runtime_ids.clone();
+        let condition_successors_for_edge_strokes = condition_successor_runtime_ids.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
                 if visible_nodes.contains(&node_id) {
                     if let Some(node) = node_map.get(&node_id) {
-                        let phase = node_state(node.runtime_node_id);
+                        let phase = node_phase_for_display(
+                            live_data,
+                            node.id,
+                            node.runtime_node_id,
+                            &condition_successors_for_nodes,
+                        );
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
                             runtime_id: node.runtime_node_id,
+                            successor_runtime_ids: condition_successors_for_nodes
+                                .get(&node.id)
+                                .cloned()
+                                .unwrap_or_default(),
                             kind: node.kind(),
                             label: &node.label,
                             metadata: node.metadata.as_deref(),
@@ -1193,8 +1284,18 @@ where
                         target_display_id: ctx.edge.1,
                         source_runtime_id,
                         target_runtime_id,
-                        source_phase: node_state(source_runtime_id),
-                        target_phase: node_state(target_runtime_id),
+                        source_phase: node_phase_for_display(
+                            live_data,
+                            ctx.edge.0,
+                            source_runtime_id,
+                            &condition_successors_for_edge_colors,
+                        ),
+                        target_phase: node_phase_for_display(
+                            live_data,
+                            ctx.edge.1,
+                            target_runtime_id,
+                            &condition_successors_for_edge_colors,
+                        ),
                         extent: ctx.transition_progress,
                     },
                 )
@@ -1219,8 +1320,18 @@ where
                         target_display_id: ctx.edge.1,
                         source_runtime_id,
                         target_runtime_id,
-                        source_phase: node_state(source_runtime_id),
-                        target_phase: node_state(target_runtime_id),
+                        source_phase: node_phase_for_display(
+                            live_data,
+                            ctx.edge.0,
+                            source_runtime_id,
+                            &condition_successors_for_edge_strokes,
+                        ),
+                        target_phase: node_phase_for_display(
+                            live_data,
+                            ctx.edge.1,
+                            target_runtime_id,
+                            &condition_successors_for_edge_strokes,
+                        ),
                         extent: ctx.transition_progress,
                     },
                 )
@@ -2055,6 +2166,42 @@ mod tests {
             },
         }));
         assert_eq!(live.latest_event_count, 5);
+    }
+
+    #[test]
+    fn condition_runtime_state_tracks_latest_branch_event() {
+        let mut live = LiveData::default();
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 11,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event: RunnerUpdateOut::ActionSuccessOutput {
+                node_id: 11,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert_eq!(
+            infer_condition_runtime_state(&live, &[11, 12]),
+            RuntimeState::Completed
+        );
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 3,
+            event: RunnerUpdateOut::ActionInput {
+                node_id: 12,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert_eq!(
+            infer_condition_runtime_state(&live, &[11, 12]),
+            RuntimeState::Running
+        );
     }
 
     #[test]
