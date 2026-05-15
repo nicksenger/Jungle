@@ -41,6 +41,7 @@ struct ExampleThemeState {
     node_visuals: HashMap<u32, NodeVisual>,
     cluster_index: HashMap<u32, ClusterRuntimeIndex>,
     cluster_visuals: HashMap<u32, ClusterVisual>,
+    force_pending_runtime_ids: HashSet<u32>,
 }
 
 impl ExampleThemeState {
@@ -63,6 +64,9 @@ impl ExampleThemeState {
     }
 
     fn update_node_state(&mut self, runtime_id: u32, to: RuntimeState, now: Instant) -> bool {
+        if !matches!(to, RuntimeState::Pending) {
+            self.force_pending_runtime_ids.remove(&runtime_id);
+        }
         let entry = self.node_visuals.entry(runtime_id).or_insert(NodeVisual {
             from: RuntimeState::Pending,
             to: RuntimeState::Pending,
@@ -95,6 +99,7 @@ impl ExampleThemeState {
             if member_id == except_runtime_id {
                 continue;
             }
+            self.force_pending_runtime_ids.insert(member_id);
             changed |= self.update_node_state(member_id, RuntimeState::Pending, now);
         }
         changed
@@ -159,6 +164,7 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
             node_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
         })
     }
 
@@ -215,16 +221,20 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         let now = Instant::now();
         let fill = if let Some(runtime_id) = cx.runtime_id {
             let mut guard = state.lock().expect("example theme state mutex poisoned");
+            let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
             let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
                 from: RuntimeState::Pending,
                 to: RuntimeState::Pending,
                 started_at: now,
             });
 
-            let phase_target = match cx.phase {
+            let mut phase_target = match cx.phase {
                 Phase::Live(target) => target,
                 Phase::Static => RuntimeState::Pending,
             };
+            if forced_pending && !matches!(phase_target, RuntimeState::Running) {
+                phase_target = RuntimeState::Pending;
+            }
             if visual.to != phase_target {
                 let blended = sampled_runtime_state(visual, now);
                 visual.from = blended;
