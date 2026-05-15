@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio"] }
-iced-sugiyama = { path = "../../iced-sugiyama" }
+iced = { version = "0.13", features = ["tokio"] }
+iced-sugiyama = { workspace = true, features = ["animated"] }
 jungle-client = { path = "../jungle-client" }
 jungle-types = { path = "../jungle-types" }
 image = { version = "0.25", default-features = false, features = ["png"] }

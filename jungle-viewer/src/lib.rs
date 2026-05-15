@@ -289,24 +289,23 @@ impl JungleViewerBuilder {
         let animation_easing = self.animation_easing;
         let theme = Arc::new(theme);
         iced::application(
-            move || {
-                ViewerApp::new(
-                    mode.clone(),
-                    capture.clone(),
-                    theme.clone(),
-                    animation_duration,
-                    animation_easing,
-                )
-            },
+            move |_app: &ViewerApp<T, Scope>| title.clone(),
             ViewerApp::<T, Scope>::update,
             ViewerApp::<T, Scope>::view,
         )
-        .title(move |_app: &ViewerApp<T, Scope>| title.clone())
         .subscription(ViewerApp::<T, Scope>::subscription)
         .window_size((width, height))
         .antialiasing(true)
         .default_font(Font::with_name("Iosevka"))
-        .run()
+        .run_with(move || {
+            ViewerApp::new(
+                mode.clone(),
+                capture.clone(),
+                theme.clone(),
+                animation_duration,
+                animation_easing,
+            )
+        })
     }
 }
 
@@ -517,7 +516,7 @@ where
                 }
                 ViewMode::Static { .. } => Task::none(),
             },
-            Message::CaptureView => window::latest().then(|id| match id {
+            Message::CaptureView => window::get_latest().then(|id| match id {
                 Some(id) => window::screenshot(id).map(Message::ViewCaptured),
                 None => Task::none(),
             }),
@@ -553,14 +552,14 @@ where
         match &self.mode {
             ViewMode::Live {
                 client, journey_id, ..
-            } => Subscription::run_with(
-                LiveSubscription {
+            } => {
+                let config = LiveSubscription {
                     client: client.clone(),
                     journey_id: *journey_id,
                     generation: self.live_generation,
-                },
-                live_updates_stream,
-            ),
+                };
+                Subscription::run_with_id(config.clone(), live_updates_stream(config))
+            }
             ViewMode::Static { .. } => Subscription::none(),
         }
     }
@@ -620,8 +619,8 @@ impl Hash for LiveSubscription {
     }
 }
 
-fn live_updates_stream(config: &LiveSubscription) -> impl Stream<Item = Message> {
-    let client = config.client.clone();
+fn live_updates_stream(config: LiveSubscription) -> impl Stream<Item = Message> {
+    let client = config.client;
     let journey_id = config.journey_id;
     futures::stream::once(async move {
         match client.subscribe_step_updates(journey_id, None).await {
@@ -638,7 +637,7 @@ fn live_updates_stream(config: &LiveSubscription) -> impl Stream<Item = Message>
 }
 
 fn close_latest_window() -> Task<Message> {
-    window::latest().then(|id| match id {
+    window::get_latest().then(|id| match id {
         Some(id) => window::close(id),
         None => Task::none(),
     })
@@ -648,7 +647,7 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
     let image = image::RgbaImage::from_raw(
         screenshot.size.width,
         screenshot.size.height,
-        screenshot.rgba.to_vec(),
+        screenshot.bytes.to_vec(),
     )
     .ok_or_else(|| "failed to build image buffer from screenshot".to_string())?;
 
@@ -707,7 +706,7 @@ fn sidebar<'a>(
             .size(14)
             .color(jungle_text_muted())
             .font(Font::with_name("Iosevka")),
-        Space::new().height(10),
+        Space::with_height(10),
         text(format!("nodes: {}", model.nodes.len()))
             .size(13)
             .color(jungle_text_base()),
@@ -717,7 +716,7 @@ fn sidebar<'a>(
         text(format!("clusters: {}", model.clusters.len()))
             .size(13)
             .color(jungle_text_base()),
-        Space::new().height(10),
+        Space::with_height(10),
         text(status_text).size(12).color(jungle_text_muted()),
     ]
     .spacing(2);
@@ -756,7 +755,7 @@ fn sidebar<'a>(
     ]
     .spacing(2);
 
-    container(column![info, Space::new().height(16), legend].spacing(0))
+    container(column![info, Space::with_height(16), legend].spacing(0))
         .width(320)
         .height(Length::Fill)
         .padding(16)
