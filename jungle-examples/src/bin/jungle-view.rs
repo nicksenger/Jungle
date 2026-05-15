@@ -4,8 +4,8 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::{JungleClient, LocalClient};
 use jungle_sdk::types::RunnerUpdateOut;
 use jungle_viewer::{
-    AnyAnimal, ClusterView, ClusterViewCtx, JunglePanelTheme, Phase, RuntimeState, StepKind,
-    StepViewCtx, ViewerEvent,
+    AnyAnimal, ClusterKind, ClusterView, ClusterViewCtx, JunglePanelTheme, Phase, RuntimeState,
+    StepKind, StepViewCtx, ViewerEvent,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -27,6 +27,8 @@ struct NodeVisual {
 
 #[derive(Debug, Clone)]
 struct ClusterRuntimeIndex {
+    kind: ClusterKind,
+    entry_runtime_ids: HashSet<u32>,
     member_runtime_ids: HashSet<u32>,
     successor_runtime_ids: HashSet<u32>,
 }
@@ -47,6 +49,8 @@ struct ExampleThemeState {
 impl ExampleThemeState {
     fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>) {
         let index = ClusterRuntimeIndex {
+            kind: cx.kind,
+            entry_runtime_ids: cx.entry_runtime_ids.iter().copied().collect(),
             member_runtime_ids: cx.member_runtime_ids.iter().copied().collect(),
             successor_runtime_ids: cx.successor_runtime_ids.iter().copied().collect(),
         };
@@ -113,7 +117,9 @@ impl ExampleThemeState {
                 continue;
             };
             let contains_member = index.member_runtime_ids.contains(&runtime_id);
+            let contains_entry = index.entry_runtime_ids.contains(&runtime_id);
             let contains_successor = index.successor_runtime_ids.contains(&runtime_id);
+            let is_while_cluster = matches!(index.kind, ClusterKind::While);
 
             let mut just_opened = false;
             if let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) {
@@ -127,7 +133,7 @@ impl ExampleThemeState {
                 }
             }
 
-            if just_opened {
+            if just_opened || (is_while_cluster && contains_entry) {
                 changed |= self.reset_cluster_members_to_pending(cluster_id, runtime_id, now);
             }
         }

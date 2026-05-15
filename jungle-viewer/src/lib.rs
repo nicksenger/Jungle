@@ -77,6 +77,7 @@ pub struct ClusterViewCtx<'a> {
     pub parent_cluster_id: Option<u32>,
     pub depth: usize,
     pub member_display_ids: &'a [u32],
+    pub entry_runtime_ids: Vec<u32>,
     pub member_runtime_ids: Vec<u32>,
     pub successor_runtime_ids: Vec<u32>,
     pub phase: Phase<ClusterLive>,
@@ -872,6 +873,22 @@ where
         }
     }
 
+    let mut cluster_entry_runtime_ids = vec![Vec::<u32>::new(); model.cluster_info.len()];
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        let mut seen = BTreeSet::new();
+        for node_id in &cluster.root_nodes {
+            let Some(node) = model.node_map.get(node_id) else {
+                continue;
+            };
+            let Some(runtime_id) = node.runtime_node_id else {
+                continue;
+            };
+            if seen.insert(runtime_id) {
+                cluster_entry_runtime_ids[index].push(runtime_id);
+            }
+        }
+    }
+
     let mut collapsed_clusters = HashSet::<usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
         let cx = ClusterViewCtx {
@@ -885,6 +902,7 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            entry_runtime_ids: cluster_entry_runtime_ids[index].clone(),
             member_runtime_ids: cluster_member_runtime_ids[index].clone(),
             successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
             phase: cluster_phase(cluster),
@@ -992,6 +1010,7 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            entry_runtime_ids: cluster_entry_runtime_ids[index].clone(),
             member_runtime_ids: cluster_member_runtime_ids[index].clone(),
             successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
             phase: cluster_phase(cluster),
@@ -1038,6 +1057,7 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
+            entry_runtime_ids: cluster_entry_runtime_ids[source_index].clone(),
             member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
             successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
             phase: cluster_phase(cluster),
@@ -1094,6 +1114,7 @@ where
         let visible_cluster_sources = visible_cluster_source_indices.clone();
         let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids.clone();
         let cluster_successor_runtime_ids_for_nodes = cluster_successor_runtime_ids.clone();
+        let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -1125,6 +1146,8 @@ where
                             }),
                             depth: cluster.depth,
                             member_display_ids: &cluster.nodes,
+                            entry_runtime_ids: cluster_entry_runtime_ids_for_nodes[cluster_index]
+                                .clone(),
                             member_runtime_ids: cluster_member_runtime_ids_for_nodes
                                 [cluster_index]
                                 .clone(),
@@ -1170,6 +1193,7 @@ where
                     .and_then(|parent| cluster_info_for_clusters.get(parent).map(|info| info.id)),
                 depth: cluster.depth,
                 member_display_ids: &cluster.nodes,
+                entry_runtime_ids: cluster_entry_runtime_ids[source_index].clone(),
                 member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
                 successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
                 phase: cluster_phase(cluster),
@@ -1276,6 +1300,7 @@ struct ClusterInfo {
     metadata: Option<String>,
     parent: Option<usize>,
     nodes: Vec<u32>,
+    root_nodes: Vec<u32>,
     depth: usize,
 }
 
@@ -1427,6 +1452,7 @@ impl GraphBuilder {
                     },
                     parent: parent_cluster,
                     nodes: Vec::new(),
+                    root_nodes: Vec::new(),
                     depth,
                 });
                 self.cluster_stack.push(cluster_index);
@@ -1444,6 +1470,7 @@ impl GraphBuilder {
                     self.clusters[cluster_index].nodes = cluster_nodes.clone();
                     self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
+                self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
 
                 Flattened {
                     roots: body_flow.roots.clone(),
@@ -1490,6 +1517,7 @@ impl GraphBuilder {
                     },
                     parent: parent_cluster,
                     nodes: Vec::new(),
+                    root_nodes: Vec::new(),
                     depth,
                 });
 
@@ -1502,6 +1530,7 @@ impl GraphBuilder {
                     self.clusters[cluster_index].nodes = cluster_nodes.clone();
                     self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
+                self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
 
                 Flattened {
                     roots: body_flow.roots.clone(),
