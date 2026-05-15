@@ -420,6 +420,7 @@ struct LiveData {
 enum Message {
     AppStarted,
     LiveEvent(Result<JourneyUpdateEvent, String>),
+    ApplyLiveEvent(JourneyUpdateEvent),
     Theme(ViewerEvent<()>),
     Retry,
     CaptureView,
@@ -472,38 +473,37 @@ where
             Message::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
-                        let theme_task = self
-                            .theme
-                            .update(
-                                &mut self.theme_state,
-                                ViewerEvent::JourneyUpdate(update.clone()),
-                            )
-                            .map(Message::Theme);
-                        let data = match &mut self.state {
-                            LiveState::Loaded(data) => data,
-                            _ => {
-                                self.state = LiveState::Loaded(LiveData::default());
-                                match &mut self.state {
-                                    LiveState::Loaded(data) => data,
-                                    _ => unreachable!("state was set to loaded"),
-                                }
-                            }
-                        };
-                        if data.apply_update(update) {
-                            return Task::batch(vec![
-                                theme_task,
-                                iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(
-                                    GRAPH_WIDGET_ID,
-                                )),
-                            ]);
-                        }
-                        return theme_task;
+                        return iced_sugiyama::invalidate::<Message>(iced_sugiyama::Id::new(
+                            GRAPH_WIDGET_ID,
+                        ))
+                        .chain(Task::done(Message::ApplyLiveEvent(update)));
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
                     }
                 }
                 Task::none()
+            }
+            Message::ApplyLiveEvent(update) => {
+                let theme_task = self
+                    .theme
+                    .update(
+                        &mut self.theme_state,
+                        ViewerEvent::JourneyUpdate(update.clone()),
+                    )
+                    .map(Message::Theme);
+                let data = match &mut self.state {
+                    LiveState::Loaded(data) => data,
+                    _ => {
+                        self.state = LiveState::Loaded(LiveData::default());
+                        match &mut self.state {
+                            LiveState::Loaded(data) => data,
+                            _ => unreachable!("state was set to loaded"),
+                        }
+                    }
+                };
+                let _ = data.apply_update(update);
+                theme_task
             }
             Message::Theme(event) => self
                 .theme
