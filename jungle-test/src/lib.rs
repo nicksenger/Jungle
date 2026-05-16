@@ -287,6 +287,7 @@ mod tests {
     mod aspect;
     mod conditional;
     mod connection;
+    mod effect_attr;
     mod integration;
     mod migration;
     mod optic;

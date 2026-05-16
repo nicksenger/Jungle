@@ -68,6 +68,23 @@ fn sdk_crate_path() -> Option<proc_macro2::TokenStream> {
     }
 }
 
+fn typosaurus_path() -> proc_macro2::TokenStream {
+    match crate_name("typosaurus") {
+        Ok(FoundCrate::Itself) => quote!(crate),
+        Ok(FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => {
+            if let Some(sdk_path) = sdk_crate_path() {
+                quote!(#sdk_path::typosaurus)
+            } else {
+                quote!(::typosaurus)
+            }
+        }
+    }
+}
+
 fn inception_path() -> proc_macro2::TokenStream {
     match crate_name("inception") {
         Ok(FoundCrate::Itself) => quote!(crate),
@@ -363,10 +380,7 @@ fn parse_jungle_view_attr(attrs: &[Attribute]) -> Option<Type> {
     None
 }
 
-fn nested_tlist(
-    items: &[proc_macro2::TokenStream],
-    empty: &Path,
-) -> proc_macro2::TokenStream {
+fn nested_tlist(items: &[proc_macro2::TokenStream], empty: &Path) -> proc_macro2::TokenStream {
     if items.is_empty() {
         return quote!(#empty);
     }
@@ -439,37 +453,10 @@ fn collect_ident_names(tokens: proc_macro2::TokenStream) -> HashSet<String> {
     names
 }
 
-#[proc_macro_attribute]
-pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as syn::Item);
-    let syn::Item::Impl(item_impl) = input else {
-        return syn::Error::new_spanned(
-            input,
-            "This macro can only be applied to trait implementations.",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    let ItemImpl {
-        trait_: Some(_),
-        self_ty,
-        ..
-    } = &item_impl
-    else {
-        return syn::Error::new_spanned(
-            item_impl,
-            "This macro can only be applied to trait implementations.",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    let PrimitiveAttributes { property } = match syn::parse(attr) {
-        Ok(attrs) => attrs,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
+fn self_impl_generics(
+    item_impl: &ItemImpl,
+    self_ty: &Type,
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     let self_ty_tokens = quote!(#self_ty).to_string();
     let retained_params = item_impl
         .generics
@@ -533,15 +520,106 @@ pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         quote! { where #(#retained_where_predicates),* }
     };
+    (impl_generics, impl_where_clause)
+}
 
+fn primitive_marker_impl(
+    item_impl: &ItemImpl,
+    self_ty: &Type,
+    property: &Path,
+) -> proc_macro2::TokenStream {
+    let (impl_generics, impl_where_clause) = self_impl_generics(item_impl, self_ty);
     let inception = inception_path();
     quote! {
-        #item_impl
         const _: () = {
             impl #impl_generics #inception::IsPrimitive<#property> for #self_ty #impl_where_clause {
                 type Is = #inception::True;
             }
         };
+    }
+}
+
+fn id_inner_from_meta_id(id_ty: &Type) -> Result<Type, syn::Error> {
+    let Type::Path(id_ty_path) = id_ty else {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    };
+
+    let Some(last) = id_ty_path.path.segments.last() else {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    };
+
+    if last.ident != "Id" {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    }
+
+    let syn::PathArguments::AngleBracketed(args) = &last.arguments else {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    };
+
+    if args.args.len() != 1 {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    }
+
+    let Some(syn::GenericArgument::Type(inner)) = args.args.first() else {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    };
+
+    Ok(inner.clone())
+}
+
+#[proc_macro_attribute]
+pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as syn::Item);
+    let syn::Item::Impl(item_impl) = input else {
+        return syn::Error::new_spanned(
+            input,
+            "This macro can only be applied to trait implementations.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let ItemImpl {
+        trait_: Some(_),
+        self_ty,
+        ..
+    } = &item_impl
+    else {
+        return syn::Error::new_spanned(
+            item_impl,
+            "This macro can only be applied to trait implementations.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let PrimitiveAttributes { property } = match syn::parse(attr) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    let marker = primitive_marker_impl(&item_impl, self_ty, &property);
+    quote! {
+        #item_impl
+        #marker
     }
     .into()
 }
@@ -679,74 +757,22 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
-    let self_ty_tokens = quote!(#self_ty).to_string();
-    let retained_params = item_impl
-        .generics
-        .params
-        .iter()
-        .filter(|param| match param {
-            GenericParam::Type(ty) => self_ty_tokens.contains(&ty.ident.to_string()),
-            GenericParam::Lifetime(lifetime) => {
-                self_ty_tokens.contains(&lifetime.lifetime.ident.to_string())
-            }
-            GenericParam::Const(const_param) => {
-                self_ty_tokens.contains(&const_param.ident.to_string())
-            }
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    let retained_param_names = retained_params
-        .iter()
-        .map(|param| match param {
-            GenericParam::Type(ty) => ty.ident.to_string(),
-            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
-            GenericParam::Const(const_param) => const_param.ident.to_string(),
-        })
-        .collect::<HashSet<_>>();
-    let dropped_param_names = item_impl
-        .generics
-        .params
-        .iter()
-        .map(|param| match param {
-            GenericParam::Type(ty) => ty.ident.to_string(),
-            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
-            GenericParam::Const(const_param) => const_param.ident.to_string(),
-        })
-        .filter(|name| !retained_param_names.contains(name))
-        .collect::<HashSet<_>>();
-
-    let schema_impl_generics = if retained_params.is_empty() {
-        quote! {}
-    } else {
-        quote! { <#(#retained_params),*> }
+    let id_inner = match id_inner_from_meta_id(&id_ty) {
+        Ok(id) => id,
+        Err(err) => return err.to_compile_error().into(),
     };
-    let schema_where_predicates = item_impl
-        .generics
-        .where_clause
-        .as_ref()
-        .map(|where_clause| {
-            where_clause
-                .predicates
-                .iter()
-                .filter(|pred| {
-                    let used_names = collect_ident_names(quote!(#pred));
-                    !used_names
-                        .iter()
-                        .any(|name| dropped_param_names.contains(name))
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let schema_where_clause = if schema_where_predicates.is_empty() {
-        quote! {}
-    } else {
-        quote! { where #(#schema_where_predicates),* }
-    };
+    let (schema_impl_generics, schema_where_clause) = self_impl_generics(&item_impl, self_ty);
 
     let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
+    let types = jungle_types_path();
+    let typosaurus = typosaurus_path();
+    let node_ty = quote!(#typosaurus::collections::sp::Node<#id_inner, #self_ty>);
     let effect_schema = jungle_type("EffectSchema");
     let effect_exec = jungle_type("EffectExec");
+    let effects_prop = jungle_type("JungleEffects");
+    let ident_prop = jungle_type("Ident");
+    let effects_marker = primitive_marker_impl(&item_impl, self_ty, &effects_prop);
+    let identified_marker = primitive_marker_impl(&item_impl, self_ty, &ident_prop);
 
     quote! {
         impl #schema_impl_generics #effect_schema for #self_ty #schema_where_clause {
@@ -759,6 +785,16 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #exec_impl_generics #effect_exec<#context_ty> for #self_ty #exec_where_clause {
             #effect_fn
         }
+
+        impl #schema_impl_generics #types::Effects for #self_ty #schema_where_clause {
+            type List = #node_ty;
+        }
+        #effects_marker
+
+        impl #schema_impl_generics #types::Identified for #self_ty #schema_where_clause {
+            type Id = #id_inner;
+        }
+        #identified_marker
     }
     .into()
 }
