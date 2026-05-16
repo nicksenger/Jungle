@@ -18,7 +18,6 @@ struct SleepState {
 }
 
 struct AddEffect;
-impl jungle_sdk::types::EffectMember for AddEffect {}
 impl Effect<()> for AddEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
     type In = ();

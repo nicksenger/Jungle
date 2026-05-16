@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, AnimalMember, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Id,
-    Identity, LoopCondition, Observe, Sleep, Step, While,
+    Act, Animal, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Id, Identity,
+    LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -46,14 +46,16 @@ pub struct ObserveState {
 }
 
 pub struct BumpEffect;
-impl jungle_sdk::types::EffectMember for BumpEffect {}
 impl<J> Effect<J> for BumpEffect {
     type Id = Id<U14>;
     type In = ();
     type Out = ();
     type Err = ();
 
-    fn effect(_jungle: &J, _input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(()))
     }
 }
@@ -115,7 +117,6 @@ type ObserveBody = Conditional<
 type ObserveJourney = While<ObserveLoopForever, ObserveBody>;
 
 pub struct ObserveAnimal;
-impl AnimalMember for ObserveAnimal {}
 impl Animal for ObserveAnimal {
     type Id = Id<U1>;
     type Generation = U0;
@@ -159,7 +160,6 @@ impl Ecosystem for ObserveEcosystem {
 impl From<ObserveState> for () {
     fn from(_value: ObserveState) -> Self {}
 }
-
 
 fn spawn_server_runtime(listen_addr: SocketAddr, db_path: std::path::PathBuf) {
     std::thread::spawn(move || {

@@ -1,7 +1,6 @@
 use jungle_sdk::typosaurus::num::consts::U255;
 
 pub struct ProbeEffect;
-impl jungle_sdk::types::EffectMember for ProbeEffect {}
 
 impl<J> jungle_sdk::types::Effect<J> for ProbeEffect {
     type Id = jungle_sdk::types::Id<U255>;
@@ -48,7 +47,6 @@ impl jungle_sdk::types::Act<ProbeAnimal> for ProbeStep {
 pub struct ProbeJourney(jungle_sdk::types::Step<ProbeAnimal, ProbeStep>);
 
 pub struct ProbeAnimal;
-impl jungle_sdk::types::AnimalMember for ProbeAnimal {}
 
 impl jungle_sdk::types::Animal for ProbeAnimal {
     type Id = jungle_sdk::types::Id<U255>;

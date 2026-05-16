@@ -11,7 +11,6 @@ use std::future::ready;
 use std::sync::Arc;
 
 struct SeedEffect;
-impl jungle_types::EffectMember for SeedEffect {}
 impl<J> Effect<J> for SeedEffect {
     type Id = Id<U0>;
     type In = i32;
@@ -27,7 +26,6 @@ impl<J> Effect<J> for SeedEffect {
 }
 
 struct FinishEffect;
-impl jungle_types::EffectMember for FinishEffect {}
 impl<J> Effect<J> for FinishEffect {
     type Id = Id<U1>;
     type In = i32;
@@ -214,7 +212,6 @@ fn context_executor_progresses_multi_step_derived_journey() {
 }
 
 struct BranchEffect;
-impl jungle_types::EffectMember for BranchEffect {}
 impl<J> Effect<J> for BranchEffect {
     type Id = Id<U2>;
     type In = i32;

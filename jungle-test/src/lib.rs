@@ -17,7 +17,6 @@ mod tests {
             dependency = $dependency_ty:ty
         ) => {
             struct $name;
-            impl jungle_sdk::types::EffectMember for $name {}
 
             impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -53,7 +52,6 @@ mod tests {
             effect = |$dependency:ident, $input:ident| $body:expr
         ) => {
             struct $name;
-            impl jungle_sdk::types::EffectMember for $name {}
 
             impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -72,7 +70,6 @@ mod tests {
 
         ($name:ident, $id:ty) => {
             struct $name;
-            impl jungle_sdk::types::EffectMember for $name {}
 
             impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -191,7 +188,6 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $journey:ty) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -222,7 +218,6 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $journey:ty, observe = true, perturb = true) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -253,7 +248,6 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $journey:ty, observe = true) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;

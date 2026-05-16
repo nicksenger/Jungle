@@ -7,7 +7,7 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    Act, Animal, AnimalMember, AnimalObservation, AnimalPerturbation, Animals, Condition,
+    Act, Animal, AnimalObservation, AnimalPerturbation, Animals, Condition,
     Conditional, Effect, EffectCompletion, Id, Identified, Identity, LoopCondition, NodeMetadata,
     NoopObservation, NoopPerturbation, Step, Transparent, While,
 };
@@ -523,7 +523,6 @@ pub struct ProbeYearFlow(
 );
 
 pub struct Gorilla;
-impl AnimalMember for Gorilla {}
 
 pub struct ProbeStep;
 impl jungle_sdk::types::Act<Gorilla> for ProbeStep {

@@ -38,6 +38,9 @@ where
 pub trait EffectMember {}
 pub trait AnimalMember {}
 
+impl<T> EffectMember for T where T: Effect {}
+impl<T> AnimalMember for T where T: Animal {}
+
 pub trait AllFrom<T> {}
 impl<T> AllFrom<T> for list::Empty {}
 impl<T, A, B> AllFrom<T> for list::List<(A, B)>

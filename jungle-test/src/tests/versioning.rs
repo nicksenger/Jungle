@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, AnimalMember, Animals as AnimalsTrait, Ecosystem, Effect, EffectCompletion, Id,
-    Identity, Observe, Step, SupportedAnimal,
+    Act, Animal, Animals as AnimalsTrait, Ecosystem, Effect, EffectCompletion, Id, Identity,
+    Observe, Step, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -12,7 +12,6 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 struct LegacyEffect;
-impl jungle_sdk::types::EffectMember for LegacyEffect {}
 
 impl<J> Effect<J> for LegacyEffect {
     type Id = Id<U70>;
@@ -29,7 +28,6 @@ impl<J> Effect<J> for LegacyEffect {
 }
 
 struct ModernEffect;
-impl jungle_sdk::types::EffectMember for ModernEffect {}
 
 impl<J> Effect<J> for ModernEffect {
     type Id = Id<U71>;
@@ -80,7 +78,6 @@ struct LegacyJourney(Step<LegacyAnimal, LegacyStep>);
 struct ModernJourney(Step<ModernAnimal, ModernStep>);
 
 struct LegacyAnimal;
-impl AnimalMember for LegacyAnimal {}
 impl Animal for LegacyAnimal {
     type Id = Id<U33>;
     type Generation = U0;
@@ -111,7 +108,6 @@ impl jungle_sdk::types::Identified for LegacyAnimal {
 }
 
 struct ModernAnimal;
-impl AnimalMember for ModernAnimal {}
 impl Animal for ModernAnimal {
     type Id = Id<U33>;
     type Generation = U1;
@@ -142,7 +138,6 @@ impl jungle_sdk::types::Identified for ModernAnimal {
 }
 
 struct FutureAnimal;
-impl AnimalMember for FutureAnimal {}
 impl Animal for FutureAnimal {
     type Id = Id<U33>;
     type Generation = U2;

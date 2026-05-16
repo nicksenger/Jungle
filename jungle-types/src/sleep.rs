@@ -1,5 +1,5 @@
 use crate::{
-    Act, Animal, Aspect, Effect, EffectCompletion, EffectMember, Id, Identity, StateCarrier,
+    Act, Animal, Aspect, Effect, EffectCompletion, Id, Identity, StateCarrier,
 };
 use inception::primitive;
 use std::marker::PhantomData;
@@ -13,7 +13,6 @@ pub struct SleepError {
 }
 
 pub struct Sleep;
-impl EffectMember for Sleep {}
 
 impl<J> Effect<J> for Sleep {
     type Id = Id<U65535>;

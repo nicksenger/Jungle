@@ -16,7 +16,6 @@ struct SelectJoinState {
 }
 
 struct TimedValueEffect;
-impl jungle_sdk::types::EffectMember for TimedValueEffect {}
 impl<J> Effect<J> for TimedValueEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U60>;
     type In = (u64, i32);
@@ -35,7 +34,6 @@ impl<J> Effect<J> for TimedValueEffect {
 }
 
 struct ContextTimedValueEffect;
-impl jungle_sdk::types::EffectMember for ContextTimedValueEffect {}
 impl<J> Effect<J> for ContextTimedValueEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U61>;
     type In = (u64, i32);
