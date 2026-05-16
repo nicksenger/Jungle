@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 
 use crate::{
-    Animal, EffectMember, FlowEffects, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
-    ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
+    Animal, EffectIdentity, EffectMember, FlowEffects, ReplaceFlow, ReplaceNode, ReplaceNodesWith,
+    ReplaceStep, ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
 };
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
 use typosaurus::collections::list;
@@ -241,7 +241,7 @@ pub trait Act<T: Animal> {
 
 /// Late-bound action spec that can be bound to a concrete [`Animal`] at the edge.
 pub trait ActionSpec {
-    type Effect: Effect<()>;
+    type Effect: EffectMember;
     type Input;
     type Output;
     type Act<A: Animal>;
@@ -538,7 +538,7 @@ where
     <A as Act<T>>::Effect: EffectMember,
     A: Act<T>,
 {
-    type List = Node<<<A as Act<T>>::Effect as Effect<()>>::Id, <A as Act<T>>::Effect>;
+    type List = Node<<<A as Act<T>>::Effect as EffectIdentity>::Id, <A as Act<T>>::Effect>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
@@ -590,9 +590,8 @@ where
 impl<S> FlowEffects for StepSpec<S>
 where
     S: ActionSpec,
-    S::Effect: EffectMember,
 {
-    type List = Node<<<S as ActionSpec>::Effect as Effect<()>>::Id, <S as ActionSpec>::Effect>;
+    type List = Node<<<S as ActionSpec>::Effect as EffectIdentity>::Id, <S as ActionSpec>::Effect>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]

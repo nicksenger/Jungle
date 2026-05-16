@@ -28,9 +28,9 @@ pub use meta::Id;
 pub use meta::{
     AllFrom, AnimalEffectMembers, AnimalEffectSet, AnimalEffectsCompatible, AnimalIdValue,
     AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
-    AnimalVersionIdentitiesUnique, AnimalVersions, EffectMember, EffectSet, Generations,
-    GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals, StripAnimalHeaders,
-    StripEffectHeaders, WithEffectFor,
+    AnimalVersionIdentitiesUnique, AnimalVersions, EffectIdentity, EffectMember, EffectSet,
+    Generations, GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals,
+    StripAnimalHeaders, StripEffectHeaders, WithEffectFor,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;

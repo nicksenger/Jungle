@@ -35,10 +35,19 @@ where
     type Out = <T as Equality<U>>::Out;
 }
 
-pub trait EffectMember {}
+pub trait EffectIdentity {
+    type Id;
+}
+pub trait EffectMember: EffectIdentity {}
 pub trait AnimalMember {}
 
-impl<T> EffectMember for T where T: Effect {}
+impl<T> EffectIdentity for T
+where
+    T: Effect<()>,
+{
+    type Id = <T as Effect<()>>::Id;
+}
+impl<T> EffectMember for T where T: EffectIdentity {}
 impl<T> AnimalMember for T where T: Animal {}
 
 pub trait AllFrom<T> {}
