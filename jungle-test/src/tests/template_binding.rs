@@ -509,17 +509,16 @@ trait RequiresContextBump {
 }
 
 pub struct ContextBoundTemplateEffect;
-impl EffectSchema for ContextBoundTemplateEffect {
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for ContextBoundTemplateEffect
+where
+    J: RequiresContextBump,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U53>;
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for ContextBoundTemplateEffect
-where
-    J: RequiresContextBump,
-{
     fn effect(
         jungle: &J,
         input: Self::In,
