@@ -1,11 +1,12 @@
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, Effect, EffectCompletion,
     Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor, NodeMetadata, Observe,
-    RunnerOut, Select, Step, Transparent, UStep, While,
+    ReplaceStep, RunnerOut, Select, StateLens, Step, Transparent, TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49};
-use jungle_sdk::{Animals, JungleClient};
+use jungle_sdk::typosaurus::list;
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49};
+use jungle_sdk::{Animals, JungleClient, Optic};
 use std::time::Duration;
 
 pub struct TemplateAddEffect;
@@ -678,6 +679,258 @@ async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal(
     // The flow came from composition of unbound fragments, then was bound at the edge once per animal.
     assert_eq!(alpha_inputs, vec![5, 12]);
     assert_eq!(beta_inputs, vec![23, 0]);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+struct LensLeaf {
+    value: i32,
+    noise: i32,
+}
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+struct LensBranch {
+    leaf: LensLeaf,
+    spare: i32,
+}
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+struct LensRootState {
+    branch: LensBranch,
+    committed: i32,
+}
+
+impl From<i32> for LensRootState {
+    fn from(seed: i32) -> Self {
+        Self {
+            branch: LensBranch {
+                leaf: LensLeaf { value: 4, noise: 9 },
+                spare: seed,
+            },
+            committed: 0,
+        }
+    }
+}
+
+struct LensReadSpareSpec;
+struct LensReadLeafSpec;
+struct LensCommitSpec;
+
+struct LensReadSpareAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for LensReadSpareAct<A>
+where
+    A: jungle_sdk::types::Animal<State = LensRootState>,
+{
+    type Effect = TemplateAddEffect;
+    type StateAspect = StateLens<LensRootState, list![U0, U1]>;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(view: &i32, input: Self::Input) -> i32 {
+        *view + input
+    }
+
+    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("lens spare step should succeed");
+        *view = out;
+        out
+    }
+}
+
+struct LensReadLeafAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for LensReadLeafAct<A>
+where
+    A: jungle_sdk::types::Animal<State = LensRootState>,
+{
+    type Effect = TemplateAddEffect;
+    type StateAspect = StateLens<LensRootState, list![U0, U0, U0]>;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(view: &i32, input: Self::Input) -> i32 {
+        *view + input
+    }
+
+    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("lens leaf step should succeed");
+        *view = out;
+        out
+    }
+}
+
+struct LensCommitAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for LensCommitAct<A>
+where
+    A: jungle_sdk::types::Animal<State = LensRootState>,
+{
+    type Effect = TemplateCommitEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &LensRootState, input: Self::Input) -> i32 {
+        input
+    }
+
+    fn absorb(state: &mut LensRootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("lens commit should succeed");
+        state.committed = out;
+        out
+    }
+}
+
+impl ActionSpec for LensReadSpareSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = LensReadSpareAct<A>;
+}
+
+impl ActionSpec for LensReadLeafSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = LensReadLeafAct<A>;
+}
+
+impl ActionSpec for LensCommitSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = LensCommitAct<A>;
+}
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct LensTemplate(UStep<LensReadSpareSpec>, UStep<LensCommitSpec>);
+
+struct SeenStep<T>(core::marker::PhantomData<T>);
+struct LensTraversal;
+impl<S> TraverseStep<jungle_sdk::types::StepSpec<S>> for LensTraversal
+where
+    S: ActionSpec,
+{
+    type Output = SeenStep<jungle_sdk::types::StepSpec<S>>;
+}
+
+struct LensReplacer;
+impl ReplaceStep<jungle_sdk::types::StepSpec<LensReadSpareSpec>> for LensReplacer {
+    type Output = jungle_sdk::types::StepSpec<LensReadLeafSpec>;
+}
+impl ReplaceStep<jungle_sdk::types::StepSpec<LensReadLeafSpec>> for LensReplacer {
+    type Output = jungle_sdk::types::StepSpec<LensReadSpareSpec>;
+}
+impl ReplaceStep<jungle_sdk::types::StepSpec<LensCommitSpec>> for LensReplacer {
+    type Output = jungle_sdk::types::StepSpec<LensCommitSpec>;
+}
+
+struct LensAlphaAnimal;
+impl jungle_sdk::types::Animal for LensAlphaAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U52>;
+    type Generation = U0;
+    type State = LensRootState;
+    type Seed = i32;
+    type Journey = <LensTemplate as BindAnimal<LensAlphaAnimal>>::Bound;
+}
+
+impl Observe for LensAlphaAnimal {
+    type Appearance = LensRootState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+impl jungle_sdk::types::Observable for LensAlphaAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
+}
+
+impl jungle_sdk::types::Perturbable for LensAlphaAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for LensAlphaAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<
+        jungle_sdk::typosaurus::num::consts::U52,
+        LensAlphaAnimal,
+    >;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for LensAlphaAnimal {
+    type Id = jungle_sdk::typosaurus::num::consts::U52;
+}
+
+#[derive(Animals)]
+struct LensAnimals(LensAlphaAnimal);
+
+struct LensZoo;
+impl Ecosystem for LensZoo {
+    const NAME: &'static str = "late-bound-lens-replace-zoo";
+    type Animals = LensAnimals;
+}
+
+#[test]
+fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs() {
+    type Traversed = jungle_sdk::types::Traversed<LensTemplate, LensTraversal>;
+    type ExpectedTraversed = jungle_sdk::typosaurus::list![
+        SeenStep<jungle_sdk::types::StepSpec<LensReadSpareSpec>>,
+        SeenStep<jungle_sdk::types::StepSpec<LensCommitSpec>>
+    ];
+    assert_type_eq!(Traversed, ExpectedTraversed);
+
+    type Replaced = jungle_sdk::types::Replace<LensTemplate, LensReplacer>;
+    type ExpectedReplaced = jungle_sdk::typosaurus::list![
+        jungle_sdk::types::StepSpec<LensReadLeafSpec>,
+        jungle_sdk::types::StepSpec<LensCommitSpec>
+    ];
+    assert_type_eq!(Replaced, ExpectedReplaced);
+}
+
+#[tokio::test]
+async fn template_binding_unbound_lens_template_runs_end_to_end() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-lens-replace-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(LensZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<LensAlphaAnimal>(
+            postcard::to_allocvec(&30_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: LensRootState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    // Unbound template is bound once and executes a lens-based action over `branch.spare`.
+    // With seed=30 as flow input, spare path is updated (0 + 30 + effect +1 => 31).
+    assert_eq!(appearance.branch.leaf.value, 0);
+    assert_eq!(appearance.branch.leaf.noise, 0);
+    assert_eq!(appearance.branch.spare, 31);
+    assert_eq!(appearance.committed, 31);
 
     worker_handle.abort();
     let _ = worker_handle.await;
