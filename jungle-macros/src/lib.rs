@@ -435,6 +435,38 @@ impl Parse for PrimitiveAttributes {
     }
 }
 
+struct AnimalAttributes {
+    observe: bool,
+    perturb: bool,
+}
+
+impl Parse for AnimalAttributes {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let mut observe = false;
+        let mut perturb = false;
+
+        if input.is_empty() {
+            return Ok(Self { observe, perturb });
+        }
+
+        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
+        for meta in metas {
+            match meta {
+                Meta::Path(path) if path.is_ident("observe") => observe = true,
+                Meta::Path(path) if path.is_ident("perturb") => perturb = true,
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "Unknown `animal` setting. Supported: `observe`, `perturb`.",
+                    ))
+                }
+            }
+        }
+
+        Ok(Self { observe, perturb })
+    }
+}
+
 fn collect_ident_names(tokens: proc_macro2::TokenStream) -> HashSet<String> {
     fn walk(stream: proc_macro2::TokenStream, names: &mut HashSet<String>) {
         for tt in stream {
@@ -583,6 +615,138 @@ fn id_inner_from_meta_id(id_ty: &Type) -> Result<Type, syn::Error> {
     };
 
     Ok(inner.clone())
+}
+
+fn require_trait_impl(
+    item_impl: &ItemImpl,
+    trait_name: &str,
+    macro_name: &str,
+) -> Result<(), syn::Error> {
+    let Some((_, trait_path, _)) = &item_impl.trait_ else {
+        return Err(syn::Error::new_spanned(
+            item_impl,
+            format!("`#[{macro_name}]` can only be applied to trait impls."),
+        ));
+    };
+
+    let Some(segment) = trait_path.segments.last() else {
+        return Err(syn::Error::new_spanned(
+            trait_path,
+            format!("Unable to resolve target trait for `#[{macro_name}]`."),
+        ));
+    };
+
+    if segment.ident != trait_name {
+        return Err(syn::Error::new_spanned(
+            trait_path,
+            format!("`#[{macro_name}]` must be applied to `impl {trait_name} for ...` blocks."),
+        ));
+    }
+
+    Ok(())
+}
+
+fn id_inner_from_impl(
+    item_impl: &ItemImpl,
+    macro_name: &str,
+    require_non_generic_impl: bool,
+) -> Result<Type, syn::Error> {
+    if require_non_generic_impl && !item_impl.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &item_impl.generics,
+            format!("`#[{macro_name}]` currently supports only non-generic impl blocks."),
+        ));
+    }
+
+    let Some(id_assoc) = item_impl.items.iter().find_map(|item| {
+        let ImplItem::Type(ty) = item else {
+            return None;
+        };
+        (ty.ident == "Id").then_some(ty)
+    }) else {
+        return Err(syn::Error::new_spanned(
+            item_impl,
+            "Missing associated type `Id`.",
+        ));
+    };
+
+    id_inner_from_meta_id(&id_assoc.ty)
+}
+
+fn emit_identified_animals(
+    item_impl: &ItemImpl,
+    self_ty: &Type,
+    id_inner: &Type,
+) -> proc_macro2::TokenStream {
+    let types = jungle_types_path();
+    let typosaurus = typosaurus_path();
+    let node_ty = quote!(#typosaurus::collections::sp::Node<#id_inner, #self_ty>);
+    let (impl_generics, impl_where_clause) = self_impl_generics(item_impl, self_ty);
+
+    let animals_prop = jungle_type("JungleAnimals");
+    let ident_prop = jungle_type("Ident");
+    let animals_marker = primitive_marker_impl(item_impl, self_ty, &animals_prop);
+    let identified_marker = primitive_marker_impl(item_impl, self_ty, &ident_prop);
+
+    quote! {
+        impl #impl_generics #types::Animals for #self_ty #impl_where_clause {
+            type List = #node_ty;
+        }
+        #animals_marker
+
+        impl #impl_generics #types::Identified for #self_ty #impl_where_clause {
+            type Id = #id_inner;
+        }
+        #identified_marker
+    }
+}
+
+#[proc_macro_attribute]
+pub fn animal(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attrs = match syn::parse::<AnimalAttributes>(attr) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    let item_impl = parse_macro_input!(item as ItemImpl);
+    if let Err(err) = require_trait_impl(&item_impl, "Animal", "animal") {
+        return err.into_compile_error().into();
+    }
+
+    let self_ty = &item_impl.self_ty;
+    let id_inner = match id_inner_from_impl(&item_impl, "animal", false) {
+        Ok(id) => id,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    let primitives = emit_identified_animals(&item_impl, self_ty, &id_inner);
+
+    let (impl_generics, impl_where_clause) = self_impl_generics(&item_impl, self_ty);
+    let types = jungle_types_path();
+    let observation_ty = if attrs.observe {
+        quote!(#types::ObserveObservation)
+    } else {
+        quote!(#types::NoopObservation)
+    };
+    let perturbation_ty = if attrs.perturb {
+        quote!(#types::TraitPerturbation)
+    } else {
+        quote!(#types::NoopPerturbation)
+    };
+
+    quote! {
+        #item_impl
+
+        impl #impl_generics #types::Observable for #self_ty #impl_where_clause {
+            type Observation = #observation_ty;
+        }
+
+        impl #impl_generics #types::Perturbable for #self_ty #impl_where_clause {
+            type Perturbation = #perturbation_ty;
+        }
+
+        #primitives
+    }
+    .into()
 }
 
 #[proc_macro_attribute]

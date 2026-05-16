@@ -5,21 +5,33 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::num::consts::{U30, U31};
 use std::future::ready;
 
-effect!(
-    TransparentEffect,
-    U30,
-    in = i32,
-    out = i32,
-    err = (),
-    effect = |_dependency, input| ready(Ok(input + 1))
-);
+struct TransparentEffect;
 
-animal!(
-    TransparentAnimal,
-    U31,
-    state = i32,
-    journey = TransparentJourney
-);
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
+    type Id = jungle_sdk::types::Id<U30>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _dependency: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input + 1))
+    }
+}
+
+struct TransparentAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for TransparentAnimal {
+    type Id = jungle_sdk::types::Id<U31>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = TransparentJourney;
+}
 
 struct TransparentStep;
 impl Act<TransparentAnimal> for TransparentStep {

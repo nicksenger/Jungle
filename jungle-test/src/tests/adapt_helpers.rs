@@ -11,8 +11,38 @@ struct HelperState {
     pulse_count: i32,
 }
 
-effect!(EchoEffect, U70, in = i32, out = i32, err = (), effect = |_d, input| std::future::ready(Ok(input + 1)));
-effect!(PulseEffect, U71, in = (), out = i32, err = (), effect = |_d, _input| std::future::ready(Ok(5)));
+struct EchoEffect;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
+    type Id = jungle_sdk::types::Id<U70>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(input + 1))
+    }
+}
+struct PulseEffect;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for PulseEffect {
+    type Id = jungle_sdk::types::Id<U71>;
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(5))
+    }
+}
 
 struct StoreValueAbsorb;
 impl AbsorbMapper<HelperState, EchoEffect, i32> for StoreValueAbsorb {
@@ -63,12 +93,16 @@ type FunctionEmitStep = Step<
 #[derive(Journey)]
 struct AdaptHelpersJourney(PassthroughStep, UnitStep, FunctionEmitStep);
 
-animal!(
-    HelperAnimal,
-    U0,
-    state = HelperState,
-    journey = AdaptHelpersJourney
-);
+struct HelperAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for HelperAnimal {
+    type Id = jungle_sdk::types::Id<U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = HelperState;
+    type Seed = HelperState;
+    type Journey = AdaptHelpersJourney;
+}
 
 #[test]
 fn helper_emit_absorb_adapters_work_in_flow() {

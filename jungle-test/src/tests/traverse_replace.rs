@@ -5,38 +5,70 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::{U20, U21, U22, U23, U24};
 
-effect!(
-    TraverseAEffect,
-    U20,
-    in = (),
-    out = (),
-    err = (),
-    effect = |_d, _input| std::future::ready(Ok(()))
-);
-effect!(
-    TraverseBEffect,
-    U21,
-    in = (),
-    out = (),
-    err = (),
-    effect = |_d, _input| std::future::ready(Ok(()))
-);
-effect!(
-    TraverseCEffect,
-    U22,
-    in = (),
-    out = (),
-    err = (),
-    effect = |_d, _input| std::future::ready(Ok(()))
-);
-effect!(
-    TraverseDEffect,
-    U23,
-    in = (),
-    out = (),
-    err = (),
-    effect = |_d, _input| std::future::ready(Ok(()))
-);
+struct TraverseAEffect;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for TraverseAEffect {
+    type Id = jungle_sdk::types::Id<U20>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+struct TraverseBEffect;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for TraverseBEffect {
+    type Id = jungle_sdk::types::Id<U21>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+struct TraverseCEffect;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for TraverseCEffect {
+    type Id = jungle_sdk::types::Id<U22>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+struct TraverseDEffect;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for TraverseDEffect {
+    type Id = jungle_sdk::types::Id<U23>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
 
 struct TraverseAnimal;
 

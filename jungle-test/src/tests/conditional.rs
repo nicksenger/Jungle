@@ -6,30 +6,50 @@ use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Journey;
 use std::future::ready;
 
-effect!(
-    LeftEffect,
-    U0,
-    in = i32,
-    out = i32,
-    err = (),
-    effect = |_dependency, input| ready(Ok(input + 1))
-);
+struct LeftEffect;
 
-effect!(
-    RightEffect,
-    U1,
-    in = i32,
-    out = i32,
-    err = (),
-    effect = |_dependency, input| ready(Ok(input + 2))
-);
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for LeftEffect {
+    type Id = jungle_sdk::types::Id<U0>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
 
-animal!(
-    ConditionalAnimal,
-    U0,
-    state = i32,
-    journey = ConditionalJourney
-);
+    fn effect(
+        _dependency: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input + 1))
+    }
+}
+
+struct RightEffect;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for RightEffect {
+    type Id = jungle_sdk::types::Id<U1>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _dependency: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input + 2))
+    }
+}
+
+struct ConditionalAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for ConditionalAnimal {
+    type Id = jungle_sdk::types::Id<U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = ConditionalJourney;
+}
 
 struct Left;
 impl Act<ConditionalAnimal> for Left {
