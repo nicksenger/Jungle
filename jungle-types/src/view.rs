@@ -1,5 +1,5 @@
 use crate::{
-    ActionSpec, Conditional, Join, NodeMetadata, Select, Step, StepSpec, Transparent, While,
+    ActionSpec, Conditional, Join, NodeMetadata, Scoped, Select, Step, StepSpec, Transparent, While,
 };
 use inception::*;
 
@@ -198,6 +198,19 @@ where
             body: Box::new(body),
         });
         nodes
+    }
+}
+
+#[inception::primitive(property = JungleJourneyAst)]
+impl<View, F> BuildJourneyAst<Vec<JourneyAst>> for Scoped<View, F>
+where
+    View: 'static,
+    F: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
+{
+    type Output = Vec<JourneyAst>;
+
+    fn push_ast(nodes: Vec<JourneyAst>) -> Self::Output {
+        <F as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(nodes)
     }
 }
 

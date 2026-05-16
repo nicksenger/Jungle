@@ -1,6 +1,6 @@
 use crate::{
     Act, Animal, BackendError, Conditional, EffectCompletion, EffectExec, EffectSchema, Join,
-    LoopCondition, Running, Select, Step, Transparent, While,
+    LoopCondition, Running, Scoped, Select, Step, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -48,6 +48,13 @@ where
 }
 
 impl<State, M, F> ArgputForState<State> for Transparent<M, F>
+where
+    F: ArgputForState<State>,
+{
+    type Carry = <F as ArgputForState<State>>::Carry;
+}
+
+impl<State, View, F> ArgputForState<State> for Scoped<View, F>
 where
     F: ArgputForState<State>,
 {

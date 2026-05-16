@@ -4,8 +4,9 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, DeriveInput, Expr,
-    GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl, Meta, Path, Type,
+    parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, Attribute, Data,
+    DeriveInput, Expr, Fields, GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl, Meta,
+    Path, Type,
 };
 
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
@@ -15,6 +16,17 @@ fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStrea
         .push(parse_quote!(#[inception(properties = [#(#properties),*])]));
     let generated = inception_derive_gen::State::gen(quote!(#input));
     rewrite_inception_fallback(generated).into()
+}
+
+fn derive_with_properties_input(
+    mut input: DeriveInput,
+    properties: &[Path],
+) -> proc_macro2::TokenStream {
+    input
+        .attrs
+        .push(parse_quote!(#[inception(properties = [#(#properties),*])]));
+    let generated = inception_derive_gen::State::gen(quote!(#input));
+    rewrite_inception_fallback(generated)
 }
 
 fn jungle_types_path() -> Path {
@@ -161,15 +173,76 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
-#[proc_macro_derive(FlowTemplate)]
+#[proc_macro_derive(FlowTemplate, attributes(jungle))]
 pub fn derive_flow_template(input: TokenStream) -> TokenStream {
-    let properties = jungle_types(&[
-        "JungleFlow",
-        "JungleJourneyAst",
-        "JungleTraverseFlow",
-        "JungleReplaceFlow",
-    ]);
-    derive_with_properties(input, &properties)
+    let input = parse_macro_input!(input as DeriveInput);
+    let ident = input.ident.clone();
+    let generics = input.generics.clone();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let view_ty = parse_jungle_view_attr(&input.attrs);
+    let scoped_inner_ty = if view_ty.is_some() {
+        match &input.data {
+            Data::Struct(data) => match &data.fields {
+                Fields::Named(named) if named.named.len() == 1 => {
+                    named.named.first().map(|f| f.ty.clone())
+                }
+                Fields::Unnamed(unnamed) if unnamed.unnamed.len() == 1 => {
+                    unnamed.unnamed.first().map(|f| f.ty.clone())
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    let properties = if view_ty.is_some() {
+        jungle_types(&["JungleFlow", "JungleJourneyAst", "JungleReplaceFlow"])
+    } else {
+        jungle_types(&[
+            "JungleFlow",
+            "JungleJourneyAst",
+            "JungleTraverseFlow",
+            "JungleReplaceFlow",
+        ])
+    };
+    let derived = derive_with_properties_input(input, &properties);
+    let template_scope = jungle_type("TemplateScope");
+    let root_scope = jungle_type("RootTemplateScope");
+    let scope_ty = quote!(#root_scope);
+    let scope_impl = quote! {
+        impl #impl_generics #template_scope for #ident #ty_generics #where_clause {
+            type View = #scope_ty;
+        }
+    };
+    let traverse_flow = jungle_type("TraverseFlow");
+    let scoped = jungle_type("Scoped");
+    let traverse_impl = if let (Some(view), Some(inner_ty)) = (&view_ty, &scoped_inner_ty) {
+        quote! {
+            impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
+            where
+                #inner_ty: #traverse_flow,
+            {
+                type Output = #scoped<#view, <#inner_ty as #traverse_flow>::Output>;
+            }
+        }
+    } else if view_ty.is_some() {
+        syn::Error::new_spanned(
+            &ident,
+            "FlowTemplate with `#[jungle(view = ...)]` must be a single-field struct.",
+        )
+        .to_compile_error()
+    } else {
+        quote! {}
+    };
+
+    quote! {
+        #derived
+        #scope_impl
+        #traverse_impl
+    }
+    .into()
 }
 
 #[proc_macro_derive(Animals)]
@@ -184,10 +257,97 @@ pub fn derive_effects(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
-#[proc_macro_derive(Optic)]
+#[proc_macro_derive(Optic, attributes(view, jungle_sdk))]
 pub fn derive_optic(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let ident = input.ident.clone();
+    let generics = input.generics.clone();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     let properties = jungle_types(&["JungleOptic"]);
-    derive_with_properties(input, &properties)
+    let derived = derive_with_properties_input(input.clone(), &properties);
+    let view_project = jungle_type("ViewProject");
+
+    let mut projection_impls = Vec::new();
+    if let Data::Struct(data) = &input.data {
+        match &data.fields {
+            Fields::Named(named) => {
+                for field in &named.named {
+                    if !is_view_marker(&field.attrs) {
+                        continue;
+                    }
+                    let Some(field_ident) = &field.ident else {
+                        continue;
+                    };
+                    let ty = &field.ty;
+                    projection_impls.push(quote! {
+                        impl #impl_generics #view_project<#ty> for #ident #ty_generics #where_clause {
+                            fn project_view<'a>(state: &'a mut Self) -> &'a mut #ty {
+                                &mut state.#field_ident
+                            }
+                        }
+                    });
+                }
+            }
+            Fields::Unnamed(unnamed) => {
+                for (index, field) in unnamed.unnamed.iter().enumerate() {
+                    if !is_view_marker(&field.attrs) {
+                        continue;
+                    }
+                    let idx = syn::Index::from(index);
+                    let ty = &field.ty;
+                    projection_impls.push(quote! {
+                        impl #impl_generics #view_project<#ty> for #ident #ty_generics #where_clause {
+                            fn project_view<'a>(state: &'a mut Self) -> &'a mut #ty {
+                                &mut state.#idx
+                            }
+                        }
+                    });
+                }
+            }
+            Fields::Unit => {}
+        }
+    }
+
+    quote! {
+        #derived
+        #(#projection_impls)*
+    }
+    .into()
+}
+
+fn is_view_marker(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        attr.path().is_ident("view")
+            || attr
+                .path()
+                .segments
+                .last()
+                .map(|seg| seg.ident == "view")
+                .unwrap_or(false)
+    })
+}
+
+fn parse_jungle_view_attr(attrs: &[Attribute]) -> Option<Type> {
+    for attr in attrs {
+        if !attr.path().is_ident("jungle") {
+            continue;
+        }
+        let mut result = None;
+        let _ = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("view") {
+                let value = meta.value()?;
+                let ty: Type = value.parse()?;
+                result = Some(ty);
+                return Ok(());
+            }
+            Ok(())
+        });
+        if result.is_some() {
+            return result;
+        }
+    }
+    None
 }
 
 struct PrimitiveAttributes {

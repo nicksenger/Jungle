@@ -1,4 +1,6 @@
-use jungle_sdk::types::{Act, EffectCompletion, Identity, Running, StateLens, Step, Waiting};
+use jungle_sdk::types::{
+    Act, EffectCompletion, Identity, Running, StateLens, Step, ViewProject, Waiting,
+};
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U72, U73, U74, U75};
 use jungle_sdk::Optic;
@@ -25,6 +27,19 @@ struct Branch {
 struct RootState {
     branch: Branch,
     top: i32,
+}
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+struct ViewWrapped(#[view] Leaf);
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+struct ViewRoot {
+    #[view]
+    wrapped: ViewWrapped,
 }
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -123,6 +138,21 @@ fn state_lens_list_multi_index_short_flow() {
     assert_eq!(emitted, 7);
     assert_eq!(state.branch.leaf.value, 7);
     assert_eq!(state.branch.leaf.noise, 1);
+}
+
+#[test]
+fn optic_view_marker_generates_direct_projection_impls() {
+    let mut root = ViewRoot {
+        wrapped: ViewWrapped(Leaf { value: 9, noise: 4 }),
+    };
+    let wrapped = <ViewRoot as ViewProject<ViewWrapped>>::project_view(&mut root);
+    wrapped.0.value += 1;
+
+    let leaf = <ViewWrapped as ViewProject<Leaf>>::project_view(wrapped);
+    leaf.noise += 3;
+
+    assert_eq!(root.wrapped.0.value, 10);
+    assert_eq!(root.wrapped.0.noise, 7);
 }
 
 //

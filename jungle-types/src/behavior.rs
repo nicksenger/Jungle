@@ -302,10 +302,8 @@ where
     InnerAct: Act<ScopedAnimal<A, ScopeState>>,
 {
     type Effect = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Effect;
-    type StateAspect = ComposeCarrier<
-        ScopeCarrier,
-        <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::StateAspect,
-    >;
+    type StateAspect =
+        ComposeCarrier<ScopeCarrier, <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::StateAspect>;
     type Input = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Input;
     type Output = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Output;
 
@@ -732,7 +730,7 @@ where
     type Output = <Replacer as ReplaceNode<StepSpec<S>>>::Output;
 }
 
-impl<T, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T>
+impl<T, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T, crate::RootScope>
 where
     T: Animal,
     S: ActionSpec,
@@ -744,4 +742,32 @@ where
     >,
 {
     type Output = Step<T, <S as ActionSpec>::Act<T>>;
+}
+
+impl<T, ScopeCarrier, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T, ScopeCarrier>
+where
+    T: Animal,
+    ScopeCarrier: crate::ScopedCarrierMarker,
+    ScopeCarrier: Aspect<T::State>,
+    S: ActionSpec,
+    S: ScopedActionSpec<T, <ScopeCarrier as StateCarrier<T::State>>::View, ScopeCarrier>,
+    <S as ScopedActionSpec<
+        T,
+        <ScopeCarrier as StateCarrier<T::State>>::View,
+        ScopeCarrier,
+    >>::BoundAct: Act<
+        T,
+        Input = <S as ActionSpec>::Input,
+        Output = <S as ActionSpec>::Output,
+        Effect = <S as ActionSpec>::Effect,
+    >,
+{
+    type Output = Step<
+        T,
+        <S as ScopedActionSpec<
+            T,
+            <ScopeCarrier as StateCarrier<T::State>>::View,
+            ScopeCarrier,
+        >>::BoundAct,
+    >;
 }

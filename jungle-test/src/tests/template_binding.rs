@@ -1,8 +1,8 @@
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor,
-    NodeMetadata, Observe, ReplaceStep, RunnerOut, Select, StateLens, Step, Transparent,
-    TraverseStep, UStep, While,
+    NodeMetadata, Observe, ReplaceStep, RunnerOut, Scoped, Select, StateLens, Step, Transparent,
+    TraverseFlow, TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -1048,6 +1048,10 @@ impl Ecosystem for LensZoo {
     type Animals = LensAnimals;
 }
 
+#[derive(jungle_sdk::FlowTemplate)]
+#[jungle(view = LensBranch)]
+struct ScopedLensTemplate(LensTemplate);
+
 #[test]
 fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs() {
     type Traversed = jungle_sdk::types::Traversed<LensTemplate, LensTraversal>;
@@ -1063,6 +1067,10 @@ fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs()
         jungle_sdk::types::StepSpec<LensCommitSpec>
     ];
     assert_type_eq!(Replaced, ExpectedReplaced);
+
+    type ScopedTraverse = <ScopedLensTemplate as TraverseFlow>::Output;
+    type ScopedExpected = Scoped<LensBranch, <LensTemplate as TraverseFlow>::Output>;
+    assert_type_eq!(ScopedTraverse, ScopedExpected);
 }
 
 #[tokio::test]
