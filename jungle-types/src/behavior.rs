@@ -241,7 +241,7 @@ pub trait Act<T: Animal> {
 
 /// Late-bound action spec that can be bound to a concrete [`Animal`] at the edge.
 pub trait ActionSpec {
-    type Effect: Effect<()>;
+    type Effect<J: Jungle>: Effect<J>;
     type Input;
     type Output;
     type Act<A: Animal>;
