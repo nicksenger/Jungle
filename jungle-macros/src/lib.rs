@@ -176,6 +176,7 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(FlowTemplate, attributes(jungle))]
 pub fn derive_flow_template(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    let data = input.data.clone();
     let ident = input.ident.clone();
     let generics = input.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -207,15 +208,42 @@ pub fn derive_flow_template(input: TokenStream) -> TokenStream {
         }
     };
     let traverse_flow = jungle_type("TraverseFlow");
-    let replace_flow = jungle_type("ReplaceFlow");
     let scoped = jungle_type("Scoped");
+    let list_empty: Path = parse_quote!(jungle_sdk::typosaurus::collections::list::Empty);
+    let field_types = match &data {
+        Data::Struct(data) => match &data.fields {
+            Fields::Named(named) => named
+                .named
+                .iter()
+                .map(|field| {
+                    let ty = &field.ty;
+                    quote!(#ty)
+                })
+                .collect::<Vec<_>>(),
+            Fields::Unnamed(unnamed) => unnamed
+                .unnamed
+                .iter()
+                .map(|field| {
+                    let ty = &field.ty;
+                    quote!(#ty)
+                })
+                .collect::<Vec<_>>(),
+            Fields::Unit => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    let field_traverse_outputs = field_types
+        .iter()
+        .map(|ty| quote!(<#ty as #traverse_flow>::Output))
+        .collect::<Vec<_>>();
+    let scoped_inner = nested_tlist(&field_traverse_outputs, &list_empty);
     let traverse_impl = if let Some(view) = &view_ty {
         quote! {
             impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
             where
-                Self: #replace_flow,
+                #(#field_types: #traverse_flow,)*
             {
-                type Output = #scoped<#view, <Self as #replace_flow>::Output>;
+                type Output = #scoped<#view, #scoped_inner>;
             }
         }
     } else {
@@ -333,6 +361,18 @@ fn parse_jungle_view_attr(attrs: &[Attribute]) -> Option<Type> {
         }
     }
     None
+}
+
+fn nested_tlist(
+    items: &[proc_macro2::TokenStream],
+    empty: &Path,
+) -> proc_macro2::TokenStream {
+    if items.is_empty() {
+        return quote!(#empty);
+    }
+    let head = &items[0];
+    let tail = nested_tlist(&items[1..], empty);
+    quote!(jungle_sdk::typosaurus::collections::list::List<(#head, #tail)>)
 }
 
 struct PrimitiveAttributes {

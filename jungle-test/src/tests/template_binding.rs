@@ -7,7 +7,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{
-    U0, U1, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49,
+    U0, U1, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49, U53,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::time::Duration;
@@ -1117,6 +1117,239 @@ async fn template_binding_unbound_lens_template_runs_end_to_end() {
     assert_eq!(appearance.branch.leaf.noise, 0);
     assert_eq!(appearance.branch.spare, 31);
     assert_eq!(appearance.committed, 31);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+struct NestedLensLeaf {
+    value: i32,
+    noise: i32,
+}
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+struct NestedLensBranch {
+    #[view]
+    leaf: NestedLensLeaf,
+    spare: i32,
+}
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+struct NestedLensRootState {
+    #[view]
+    branch: NestedLensBranch,
+    committed: i32,
+}
+
+impl From<i32> for NestedLensRootState {
+    fn from(seed: i32) -> Self {
+        Self {
+            branch: NestedLensBranch {
+                leaf: NestedLensLeaf::default(),
+                spare: seed,
+            },
+            committed: 0,
+        }
+    }
+}
+
+struct NestedBranchSpareSpec;
+struct NestedLeafValueSpec;
+struct NestedLeafNoiseSpec;
+
+struct NestedBranchSpareAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for NestedBranchSpareAct<A>
+where
+    A: jungle_sdk::types::Animal<State = NestedLensBranch>,
+{
+    type Effect = TemplateAddEffect;
+    type StateAspect = StateLens<NestedLensBranch, list![U1]>;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(view: &i32, input: Self::Input) -> i32 {
+        *view + input
+    }
+
+    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("nested branch spare step should succeed");
+        *view = out;
+        out
+    }
+}
+
+struct NestedLeafValueAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for NestedLeafValueAct<A>
+where
+    A: jungle_sdk::types::Animal<State = NestedLensLeaf>,
+{
+    type Effect = TemplateAddEffect;
+    type StateAspect = StateLens<NestedLensLeaf, list![U0]>;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(view: &i32, input: Self::Input) -> i32 {
+        *view + input
+    }
+
+    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("nested leaf value step should succeed");
+        *view = out;
+        out
+    }
+}
+
+struct NestedLeafNoiseAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for NestedLeafNoiseAct<A>
+where
+    A: jungle_sdk::types::Animal<State = NestedLensLeaf>,
+{
+    type Effect = TemplateAddEffect;
+    type StateAspect = StateLens<NestedLensLeaf, list![U1]>;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(view: &i32, input: Self::Input) -> i32 {
+        *view + input
+    }
+
+    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("nested leaf noise step should succeed");
+        *view = out;
+        out
+    }
+}
+
+impl ActionSpec for NestedBranchSpareSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = NestedBranchSpareAct<A>;
+}
+
+impl ActionSpec for NestedLeafValueSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = NestedLeafValueAct<A>;
+}
+
+impl ActionSpec for NestedLeafNoiseSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = NestedLeafNoiseAct<A>;
+}
+
+#[derive(jungle_sdk::FlowTemplate)]
+#[jungle(view = NestedLensLeaf)]
+struct NestedLeafScopedTemplate(UStep<NestedLeafValueSpec>, UStep<NestedLeafNoiseSpec>);
+
+#[derive(jungle_sdk::FlowTemplate)]
+#[jungle(view = NestedLensBranch)]
+struct NestedBranchScopedTemplate(
+    UStep<NestedBranchSpareSpec>,
+    NestedLeafScopedTemplate,
+    UStep<NestedBranchSpareSpec>,
+);
+
+struct NestedScopeAnimal;
+impl jungle_sdk::types::Animal for NestedScopeAnimal {
+    type Id = jungle_sdk::types::Id<U53>;
+    type Generation = U0;
+    type State = NestedLensRootState;
+    type Seed = i32;
+    type Journey = <NestedBranchScopedTemplate as BindAnimal<NestedScopeAnimal>>::Bound;
+}
+
+impl Observe for NestedScopeAnimal {
+    type Appearance = NestedLensRootState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+impl jungle_sdk::types::Observable for NestedScopeAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
+}
+
+impl jungle_sdk::types::Perturbable for NestedScopeAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for NestedScopeAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U53, NestedScopeAnimal>;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for NestedScopeAnimal {
+    type Id = U53;
+}
+
+#[derive(Animals)]
+struct NestedScopeAnimals(NestedScopeAnimal);
+
+struct NestedScopeZoo;
+impl Ecosystem for NestedScopeZoo {
+    const NAME: &'static str = "late-bound-nested-view-scoped-zoo";
+    type Animals = NestedScopeAnimals;
+}
+
+#[tokio::test]
+async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end() {
+    type LeafScopedTraverse = <NestedLeafScopedTemplate as TraverseFlow>::Output;
+    type LeafScopedExpected = Scoped<NestedLensLeaf, <NestedLeafScopedTemplate as ReplaceFlow>::Output>;
+    assert_type_eq!(LeafScopedTraverse, LeafScopedExpected);
+    type BranchScopedTraverse = <NestedBranchScopedTemplate as TraverseFlow>::Output;
+    type BranchScopedExpected = Scoped<NestedLensBranch, <NestedBranchScopedTemplate as ReplaceFlow>::Output>;
+    assert_type_eq!(BranchScopedTraverse, BranchScopedExpected);
+
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-nested-view-scoped-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(NestedScopeZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<NestedScopeAnimal>(
+            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: NestedLensRootState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    // Step chain with nested scopes (seed=3):
+    // branch spare: 3+3+1 => 7
+    // leaf value: 0+7+1 => 8
+    // leaf noise: 0+8+1 => 9
+    // branch spare: 7+9+1 => 17
+    assert_eq!(appearance.branch.spare, 17);
+    assert_eq!(appearance.branch.leaf.value, 8);
+    assert_eq!(appearance.branch.leaf.noise, 9);
+    assert_eq!(appearance.committed, 0);
 
     worker_handle.abort();
     let _ = worker_handle.await;
