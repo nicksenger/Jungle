@@ -36,14 +36,14 @@ struct LensOnBranch;
 impl Act<OpticAnimal> for LensOnBranch {
     type Effect = EchoI32;
     type StateAspect = StateLens<RootState, U0>;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(view: &Branch, input: Self::Arg) -> i32 {
+    fn emit(view: &Branch, input: Self::Input) -> i32 {
         view.leaf.value + input
     }
 
-    fn absorb(view: &mut Branch, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(view: &mut Branch, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let out = output.expect("lens single should succeed");
         view.spare = out;
         out
@@ -54,14 +54,14 @@ struct LensOnLeafValue;
 impl Act<OpticAnimal> for LensOnLeafValue {
     type Effect = EchoI32;
     type StateAspect = StateLens<RootState, list![U0, U0, U0]>;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(view: &i32, input: Self::Arg) -> i32 {
+    fn emit(view: &i32, input: Self::Input) -> i32 {
         *view + input
     }
 
-    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let out = output.expect("lens list should succeed");
         *view = out;
         out
@@ -72,14 +72,14 @@ struct RootStatePulse;
 impl Act<OpticAnimal> for RootStatePulse {
     type Effect = EchoRootState;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = RootState;
+    type Input = ();
+    type Output = RootState;
 
-    fn emit(view: &RootState, input: Self::Arg) -> RootState {
+    fn emit(view: &RootState, input: Self::Input) -> RootState {
         view.clone()
     }
 
-    fn absorb(view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let out = output.expect("echo root should succeed");
         out
     }

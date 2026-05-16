@@ -25,14 +25,14 @@ struct TransparentStep;
 impl Act<TransparentAnimal> for TransparentStep {
     type Effect = TransparentEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<TransparentEffect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<TransparentEffect>) -> Self::Output {
         let value = output.expect("transparent step effect should succeed");
         *state = value;
         value

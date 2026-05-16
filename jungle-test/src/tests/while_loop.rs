@@ -21,14 +21,14 @@ struct Tick;
 impl Act<Looper> for Tick {
     type Effect = TickEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = (bool, i32);
+    type Input = i32;
+    type Output = (bool, i32);
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<TickEffect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<TickEffect>) -> Self::Output {
         let value = output.expect("tick effect should succeed");
         *state = value;
         (*state < 3, value)
@@ -70,14 +70,14 @@ struct TickWithTail;
 impl Act<LooperWithTail> for TickWithTail {
     type Effect = TickEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = (bool, i32);
+    type Input = i32;
+    type Output = (bool, i32);
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<TickEffect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<TickEffect>) -> Self::Output {
         let value = output.expect("tick effect should succeed");
         *state = value;
         (*state < 3, value)
@@ -88,14 +88,14 @@ struct TailAfterLoop;
 impl Act<LooperWithTail> for TailAfterLoop {
     type Effect = TailEchoEffect;
     type StateAspect = Identity;
-    type Arg = (bool, i32);
-    type Ret = i32;
+    type Input = (bool, i32);
+    type Output = i32;
 
-    fn emit(_state: &i32, input: Self::Arg) -> Self::Arg {
+    fn emit(_state: &i32, input: Self::Input) -> Self::Input {
         input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<TailEchoEffect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<TailEchoEffect>) -> Self::Output {
         let (loop_should_continue, value) = output.expect("tail effect should succeed");
         *state = if loop_should_continue {
             -999
@@ -157,12 +157,12 @@ struct InnerWork;
 impl Act<NestedLooper> for InnerWork {
     type Effect = UnitEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &NestedState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &NestedState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut NestedState, _output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut NestedState, _output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.inner_step = state.inner_step.saturating_add(1);
     }
 }
@@ -171,12 +171,12 @@ struct FinishOuterRound;
 impl Act<NestedLooper> for FinishOuterRound {
     type Effect = UnitEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &NestedState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &NestedState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut NestedState, _output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut NestedState, _output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.outer_iterations_done = state.outer_iterations_done.saturating_add(1);
         state.outer_round = state.outer_round.saturating_add(1);
         state.inner_step = 0;

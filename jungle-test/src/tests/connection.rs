@@ -23,15 +23,15 @@ struct ConnectionStep7;
 impl jungle_sdk::types::Act<ConnectionAnimal7> for ConnectionStep7 {
     type Effect = ConnectionEffect7;
     type StateAspect = jungle_sdk::types::Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &(), _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
 
     fn absorb(
         _state: &mut (),
         output: jungle_sdk::types::EffectCompletion<Self::Effect>,
-    ) -> Self::Ret {
+    ) -> Self::Output {
         output.expect("connection animal 7 effect should succeed");
     }
 }
@@ -52,15 +52,15 @@ struct ConnectionStep9;
 impl jungle_sdk::types::Act<ConnectionAnimal9> for ConnectionStep9 {
     type Effect = ConnectionEffect9;
     type StateAspect = jungle_sdk::types::Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &(), _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
 
     fn absorb(
         _state: &mut (),
         output: jungle_sdk::types::EffectCompletion<Self::Effect>,
-    ) -> Self::Ret {
+    ) -> Self::Output {
         output.expect("connection animal 9 effect should succeed");
     }
 }

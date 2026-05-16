@@ -61,12 +61,12 @@ where
 {
     type Effect = Sleep;
     type StateAspect = Focus;
-    type Arg = Duration;
-    type Ret = ();
+    type Input = Duration;
+    type Output = ();
 
     fn emit(
         _view: &<Focus as StateCarrier<T::State>>::View,
-        input: Self::Arg,
+        input: Self::Input,
     ) -> <Self::Effect as Effect>::In {
         input
     }
@@ -74,7 +74,7 @@ where
     fn absorb(
         _view: &mut <Focus as StateCarrier<T::State>>::View,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Ret {
+    ) -> Self::Output {
         output.expect("Sleep effect should be resumed by worker runtime");
     }
 }

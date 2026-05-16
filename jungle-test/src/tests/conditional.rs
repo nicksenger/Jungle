@@ -35,14 +35,14 @@ struct Left;
 impl Act<ConditionalAnimal> for Left {
     type Effect = LeftEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<LeftEffect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<LeftEffect>) -> Self::Output {
         let value = output.expect("left effect should succeed");
         *state = value;
         value
@@ -53,14 +53,14 @@ struct Right;
 impl Act<ConditionalAnimal> for Right {
     type Effect = RightEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = bool;
+    type Input = i32;
+    type Output = bool;
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state - input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<RightEffect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<RightEffect>) -> Self::Output {
         let value = output.expect("right effect should succeed");
         *state = value;
         value % 2 == 0

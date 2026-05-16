@@ -64,14 +64,14 @@ pub struct ObserveSleep;
 impl Act<ObserveAnimal> for ObserveSleep {
     type Effect = Sleep;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(state: &ObserveState, _input: Self::Arg) -> Duration {
+    fn emit(state: &ObserveState, _input: Self::Input) -> Duration {
         Duration::from_millis(state.sleep_ms)
     }
 
-    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("sleep branch should complete");
         state.tick = state.tick.saturating_add(1);
     }
@@ -81,12 +81,12 @@ pub struct ObserveBump;
 impl Act<ObserveAnimal> for ObserveBump {
     type Effect = BumpEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &ObserveState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &ObserveState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("bump branch should complete");
         state.tick = state.tick.saturating_add(1);
     }

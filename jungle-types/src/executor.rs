@@ -35,7 +35,7 @@ where
     T: Animal<State = State>,
     A: Act<T>,
 {
-    type Carry = A::Arg;
+    type Carry = A::Input;
 }
 
 impl<State, P, L, R, M> ArgputForState<State> for Conditional<P, L, R, M>
@@ -255,8 +255,8 @@ where
     <<A as Act<T>>::Effect as Effect>::Err: Serialize + 'static,
     <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
     <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
-    A::Arg: DeserializeOwned,
-    A::Ret: Serialize,
+    A::Input: DeserializeOwned,
+    A::Output: Serialize,
 {
     fn request(
         &mut self,
@@ -270,7 +270,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Arg>(&input) {
+        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -295,7 +295,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Arg>(&input) {
+        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -402,8 +402,8 @@ where
     <<A as Act<T>>::Effect as Effect>::Err: Serialize + 'static,
     <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
     <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
-    A::Arg: DeserializeOwned,
-    A::Ret: Serialize,
+    A::Input: DeserializeOwned,
+    A::Output: Serialize,
 {
     fn request(
         &mut self,
@@ -417,7 +417,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Arg>(&input) {
+        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -442,7 +442,7 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Arg>(&input) {
+        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
@@ -1594,8 +1594,8 @@ where
     <<A as Act<T>>::Effect as Effect>::Err: Serialize,
     <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
     <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
-    A::Arg: DeserializeOwned,
-    A::Ret: Serialize,
+    A::Input: DeserializeOwned,
+    A::Output: Serialize,
 {
     type Output = DynFlow<T::State>;
 
@@ -1761,8 +1761,8 @@ where
     <<A as Act<T>>::Effect as Effect>::Err: Serialize,
     <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
     <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
-    A::Arg: DeserializeOwned,
-    A::Ret: Serialize,
+    A::Input: DeserializeOwned,
+    A::Output: Serialize,
 {
     type Output = (Arc<Context>, DynFlow<T::State>);
 

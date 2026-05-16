@@ -100,12 +100,12 @@ struct AddOneBeforeFullStateStep;
 impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
     type Effect = AddOneEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.total += output.expect("first pre-focused full-state effect should succeed");
         state.before_steps += 1;
     }
@@ -115,12 +115,12 @@ struct AddTwoBeforeFullStateStep;
 impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
     type Effect = AddTwoEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.total += output.expect("second pre-focused full-state effect should succeed");
         state.before_steps += 1;
     }
@@ -130,12 +130,12 @@ struct AddOneFocusedStep;
 impl Act<IntegrationAnimal> for AddOneFocusedStep {
     type Effect = AddOneEffect;
     type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &SubFlowState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &SubFlowState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.value += output.expect("first focused integration effect should succeed");
         state.updates += 1;
     }
@@ -145,12 +145,12 @@ struct AddTwoFocusedStep;
 impl Act<IntegrationAnimal> for AddTwoFocusedStep {
     type Effect = AddTwoEffect;
     type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &SubFlowState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &SubFlowState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.value += output.expect("second focused integration effect should succeed");
         state.updates += 1;
     }
@@ -166,12 +166,12 @@ impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
             jungle_sdk::typosaurus::num::consts::U0
         ],
     >;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &DeepFocusState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &DeepFocusState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.value += output.expect("first deep-focused integration effect should succeed");
         state.updates += 1;
     }
@@ -187,12 +187,12 @@ impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
             jungle_sdk::typosaurus::num::consts::U0
         ],
     >;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &DeepFocusState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &DeepFocusState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.value += output.expect("second deep-focused integration effect should succeed");
         state.updates += 1;
     }
@@ -202,12 +202,12 @@ struct AddOneAfterFullStateStep;
 impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
     type Effect = AddOneEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.total += output.expect("first post-focused full-state effect should succeed");
         state.after_steps += 1;
     }
@@ -217,12 +217,12 @@ struct AddTwoAfterFullStateStep;
 impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
     type Effect = AddTwoEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &IntegrationState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.total += output.expect("second post-focused full-state effect should succeed");
         state.after_steps += 1;
     }

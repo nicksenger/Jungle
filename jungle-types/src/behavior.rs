@@ -231,18 +231,18 @@ where
 pub trait Act<T: Animal> {
     type Effect: Effect;
     type StateAspect: Aspect<T::State>;
-    type Arg;
-    type Ret;
+    type Input;
+    type Output;
 
     fn emit(
         view: &<<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
-        input: Self::Arg,
+        input: Self::Input,
     ) -> <Self::Effect as Effect>::In;
 
     fn absorb(
         view: &mut <<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Ret;
+    ) -> Self::Output;
 }
 
 /// Forward half of [`Act`], responsible for producing an effect request input.
@@ -381,12 +381,12 @@ where
 {
     type Effect = <E as Emit<T>>::Effect;
     type StateAspect = <E as Emit<T>>::StateAspect;
-    type Arg = <E as Emit<T>>::Arg;
-    type Ret = <A as Absorb<T>>::Ret;
+    type Input = <E as Emit<T>>::Arg;
+    type Output = <A as Absorb<T>>::Ret;
 
     fn emit(
         view: &<<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
-        input: Self::Arg,
+        input: Self::Input,
     ) -> <Self::Effect as Effect>::In {
         <E as Emit<T>>::emit(view, input)
     }
@@ -394,7 +394,7 @@ where
     fn absorb(
         view: &mut <<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Ret {
+    ) -> Self::Output {
         <A as Absorb<T>>::absorb(view, output)
     }
 }
@@ -476,7 +476,7 @@ where
     T: Animal,
     A: Act<T>,
 {
-    type In = (T::State, <A as Act<T>>::Arg);
+    type In = (T::State, <A as Act<T>>::Input);
     type Out = (T::State, EffectRequest<<A as Act<T>>::Effect>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
@@ -496,7 +496,7 @@ where
     A: Act<T>,
 {
     type In = (T::State, EffectCompletion<<A as Act<T>>::Effect>);
-    type Out = (T::State, <A as Act<T>>::Ret);
+    type Out = (T::State, <A as Act<T>>::Output);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
         let view = <<A as Act<T>>::StateAspect as StateCarrier<T::State>>::view(&mut state);

@@ -32,19 +32,19 @@ pub struct ProbeStep;
 impl jungle_sdk::types::Act<ProbeAnimal> for ProbeStep {
     type Effect = ProbeEffect;
     type StateAspect = jungle_sdk::types::Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
     fn emit(
         _state: &<ProbeAnimal as jungle_sdk::types::Animal>::State,
-        _input: Self::Arg,
+        _input: Self::Input,
     ) -> <Self::Effect as jungle_sdk::types::Effect>::In {
     }
 
     fn absorb(
         _state: &mut <ProbeAnimal as jungle_sdk::types::Animal>::State,
         _output: jungle_sdk::types::EffectCompletion<Self::Effect>,
-    ) -> Self::Ret {
+    ) -> Self::Output {
     }
 }
 

@@ -133,12 +133,12 @@ struct ReplayPreStep;
 impl Act<ReplayGateAnimal> for ReplayPreStep {
     type Effect = ReplayPreIncrementEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("pre increment should succeed");
         state.phase += 1;
     }
@@ -148,12 +148,12 @@ struct ReplayPostStep;
 impl Act<ReplayGateAnimal> for ReplayPostStep {
     type Effect = ReplayPostIncrementEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("post increment should succeed");
         state.phase += 1;
     }
@@ -163,12 +163,12 @@ struct ReplayGateStep;
 impl Act<ReplayGateAnimal> for ReplayGateStep {
     type Effect = ReplayGateEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &ReplayGateState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("gate effect should succeed");
         state.phase += 1;
     }
@@ -441,12 +441,12 @@ struct ReplayTimeoutPreStep;
 impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &ReplayTimeoutState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &ReplayTimeoutState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("pre-timeout increment should succeed");
         state.phase += 1;
     }
@@ -456,14 +456,14 @@ struct ReplayTimeoutSleepStep;
 impl Act<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
     type Effect = Sleep;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(state: &ReplayTimeoutState, _input: Self::Arg) -> Duration {
+    fn emit(state: &ReplayTimeoutState, _input: Self::Input) -> Duration {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("timeout sleep should succeed");
         state.phase += 1;
     }
@@ -473,12 +473,12 @@ struct ReplayTimeoutPostStep;
 impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &ReplayTimeoutState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &ReplayTimeoutState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("post-timeout increment should succeed");
         state.phase += 1;
     }

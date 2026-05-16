@@ -48,14 +48,14 @@ struct Seed;
 impl Act<ProgressAnimal> for Seed {
     type Effect = SeedEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(_state: &i32, input: Self::Arg) -> i32 {
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + 1
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<SeedEffect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<SeedEffect>) -> Self::Output {
         let value = output.expect("seed effect should succeed");
         *state = value;
         value
@@ -66,14 +66,14 @@ struct Finish;
 impl Act<ProgressAnimal> for Finish {
     type Effect = FinishEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<FinishEffect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<FinishEffect>) -> Self::Output {
         let value = output.expect("finish effect should succeed");
         *state = value;
         value
@@ -121,7 +121,7 @@ trait StepExecutor:
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
-    A: Act<ProgressAnimal, StateAspect = Identity, Arg = i32, Ret = i32>,
+    A: Act<ProgressAnimal, StateAspect = Identity, Input = i32, Output = i32>,
     <A as Act<ProgressAnimal>>::Effect: Effect<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
     type Effect = <A as Act<ProgressAnimal>>::Effect;
@@ -239,14 +239,14 @@ struct BranchStepA;
 impl Act<BranchAnimal> for BranchStepA {
     type Effect = BranchEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(state: &i32, _input: Self::Arg) -> i32 {
+    fn emit(state: &i32, _input: Self::Input) -> i32 {
         *state
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         *state = output.expect("branch step A should succeed");
     }
 }
@@ -255,14 +255,14 @@ struct BranchStepB;
 impl Act<BranchAnimal> for BranchStepB {
     type Effect = BranchEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(state: &i32, _input: Self::Arg) -> i32 {
+    fn emit(state: &i32, _input: Self::Input) -> i32 {
         *state
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         *state = output.expect("branch step B should succeed");
     }
 }

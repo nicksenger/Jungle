@@ -44,12 +44,12 @@ struct StepA;
 impl Act<TraverseAnimal> for StepA {
     type Effect = TraverseAEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("step A should succeed");
     }
 }
@@ -58,12 +58,12 @@ struct StepB;
 impl Act<TraverseAnimal> for StepB {
     type Effect = TraverseBEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("step B should succeed");
     }
 }
@@ -72,12 +72,12 @@ struct StepC;
 impl Act<TraverseAnimal> for StepC {
     type Effect = TraverseCEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("step C should succeed");
     }
 }
@@ -86,12 +86,12 @@ struct StepD;
 impl Act<TraverseAnimal> for StepD {
     type Effect = TraverseDEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &i32, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Ret {
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("step D should succeed");
     }
 }
