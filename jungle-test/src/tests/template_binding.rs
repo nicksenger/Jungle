@@ -1,9 +1,10 @@
 use jungle_sdk::types::{
-    Act, ActionSpec, BindAnimal, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
-    ManualExecutor, RunnerOut, Step, UStep,
+    Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, Effect, EffectCompletion,
+    Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor, NodeMetadata, Observe,
+    RunnerOut, Select, Step, Transparent, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43, U44, U45, U46, U47, U48};
+use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49};
 use jungle_sdk::{Animals, JungleClient};
 use std::time::Duration;
 
@@ -502,15 +503,31 @@ async fn await_completion(client: &jungle_sdk::LocalClient, journey_id: uuid::Uu
                 .journey_details(journey_id)
                 .await
                 .expect("journey_details should succeed");
-            if status == JourneyStatus::Completed {
-                break;
+            match status {
+                JourneyStatus::Completed => break,
+                JourneyStatus::Dead | JourneyStatus::Stopped => {
+                    let history = client
+                        .journey_history(journey_id)
+                        .await
+                        .expect("journey history should be available for terminal status");
+                    panic!("journey reached terminal non-complete status {status:?}: {history:?}");
+                }
+                JourneyStatus::Created | JourneyStatus::Alive => {}
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     })
     .await;
     if completion.is_err() {
-        panic!("journey did not complete before timeout");
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .expect("journey_details should succeed after timeout");
+        let history = client
+            .journey_history(journey_id)
+            .await
+            .expect("journey history should be available after timeout");
+        panic!("journey did not complete before timeout; status={status:?}, history={history:?}");
     }
 }
 
@@ -661,6 +678,633 @@ async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal(
     // The flow came from composition of unbound fragments, then was bound at the edge once per animal.
     assert_eq!(alpha_inputs, vec![5, 12]);
     assert_eq!(beta_inputs, vec![23, 0]);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct ComplexAlphaState {
+    loops: u8,
+    shared_work: i32,
+    join_sum: i32,
+    select_winner: i32,
+    unique_alpha: i32,
+    final_value: i32,
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct ComplexBetaState {
+    iterations: u8,
+    core: i32,
+    joined: i32,
+    raced: i32,
+    unique_beta: i32,
+    done: i32,
+    beta_flag: bool,
+}
+
+pub struct ComplexTimedEffect;
+impl<J> Effect<J> for ComplexTimedEffect {
+    type Id = jungle_sdk::types::Id<U49>;
+    type In = (u64, i32);
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            std::thread::sleep(Duration::from_millis(input.0));
+            Ok(input.1)
+        }
+    }
+}
+
+trait ComplexFlowBinding: jungle_sdk::types::Animal {
+    fn inc_loop(state: &mut Self::State);
+    fn set_shared_work(state: &mut Self::State, value: i32);
+    fn set_join_sum(state: &mut Self::State, value: i32);
+    fn set_select_winner(state: &mut Self::State, value: i32);
+    fn set_unique_alpha(state: &mut Self::State, value: i32);
+    fn set_unique_beta(state: &mut Self::State, value: i32);
+    fn set_final(state: &mut Self::State, value: i32);
+    fn fast_ms() -> u64;
+    fn slow_ms() -> u64;
+}
+
+pub struct SharedMeta;
+impl NodeMetadata for SharedMeta {
+    const METADATA: &'static str = "segment:shared/transparent";
+}
+
+pub struct KeepLoopingShared;
+impl LoopCondition<ComplexAlphaState> for KeepLoopingShared {
+    type Arg = i32;
+
+    fn should_continue(state: &ComplexAlphaState) -> bool {
+        state.loops < 2
+    }
+}
+
+impl LoopCondition<ComplexBetaState> for KeepLoopingShared {
+    type Arg = i32;
+
+    fn should_continue(state: &ComplexBetaState) -> bool {
+        state.iterations < 2
+    }
+}
+
+pub struct ChooseUniqueAlpha;
+impl Condition<(ComplexAlphaState, i32)> for ChooseUniqueAlpha {
+    fn choose((_state, _): &(ComplexAlphaState, i32)) -> bool {
+        true
+    }
+}
+
+impl Condition<(ComplexBetaState, i32)> for ChooseUniqueAlpha {
+    fn choose((_state, _): &(ComplexBetaState, i32)) -> bool {
+        false
+    }
+}
+
+pub struct JoinLeftSpec;
+pub struct JoinRightSpec;
+pub struct JoinToCarrySpec;
+pub struct SelectFastSpec;
+pub struct SelectSlowSpec;
+pub struct SelectToCarrySpec;
+pub struct LoopAdvanceSpec;
+pub struct UniqueAlphaSpec;
+pub struct UniqueBetaSpec;
+pub struct FinalizeSpec;
+
+pub struct JoinLeftAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for JoinLeftAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = ComplexTimedEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
+        (A::fast_ms(), input + 1)
+    }
+
+    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("join-left effect should succeed")
+    }
+}
+
+pub struct JoinRightAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for JoinRightAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = ComplexTimedEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
+        (A::slow_ms(), input + 2)
+    }
+
+    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("join-right effect should succeed")
+    }
+}
+
+pub struct JoinToCarryAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for JoinToCarryAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = TemplateCommitEffect;
+    type StateAspect = Identity;
+    type Input = (i32, i32);
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> i32 {
+        input.0 + input.1
+    }
+
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("join-to-carry should succeed");
+        A::set_join_sum(state, value);
+        value
+    }
+}
+
+pub struct SelectFastAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for SelectFastAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = ComplexTimedEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
+        (A::fast_ms(), input + 3)
+    }
+
+    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("select-fast effect should succeed")
+    }
+}
+
+pub struct SelectSlowAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for SelectSlowAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = ComplexTimedEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
+        (A::slow_ms(), input + 4)
+    }
+
+    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("select-slow effect should succeed")
+    }
+}
+
+pub struct SelectToCarryAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for SelectToCarryAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = TemplateCommitEffect;
+    type StateAspect = Identity;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> i32 {
+        match input {
+            Either::Left(value) | Either::Right(value) => value,
+        }
+    }
+
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("select-to-carry should succeed");
+        A::set_select_winner(state, value);
+        value
+    }
+}
+
+pub struct LoopAdvanceAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for LoopAdvanceAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = TemplateAddEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> i32 {
+        input
+    }
+
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("loop-advance should succeed");
+        A::set_shared_work(state, value);
+        A::inc_loop(state);
+        value
+    }
+}
+
+pub struct UniqueAlphaAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for UniqueAlphaAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = TemplateCommitEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> i32 {
+        input + 100
+    }
+
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("unique-alpha should succeed");
+        A::set_unique_alpha(state, value);
+        value
+    }
+}
+
+pub struct UniqueBetaAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for UniqueBetaAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = TemplateCommitEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> i32 {
+        input - 100
+    }
+
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("unique-beta should succeed");
+        A::set_unique_beta(state, value);
+        value
+    }
+}
+
+pub struct FinalizeAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for FinalizeAct<A>
+where
+    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+{
+    type Effect = TemplateCommitEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> i32 {
+        input
+    }
+
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("finalize should succeed");
+        A::set_final(state, value);
+        value
+    }
+}
+
+impl ActionSpec for JoinLeftSpec {
+    type Effect = ComplexTimedEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = JoinLeftAct<A>;
+}
+
+impl ActionSpec for JoinRightSpec {
+    type Effect = ComplexTimedEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = JoinRightAct<A>;
+}
+
+impl ActionSpec for JoinToCarrySpec {
+    type Effect = TemplateCommitEffect;
+    type Input = (i32, i32);
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = JoinToCarryAct<A>;
+}
+
+impl ActionSpec for SelectFastSpec {
+    type Effect = ComplexTimedEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = SelectFastAct<A>;
+}
+
+impl ActionSpec for SelectSlowSpec {
+    type Effect = ComplexTimedEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = SelectSlowAct<A>;
+}
+
+impl ActionSpec for SelectToCarrySpec {
+    type Effect = TemplateCommitEffect;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = SelectToCarryAct<A>;
+}
+
+impl ActionSpec for LoopAdvanceSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = LoopAdvanceAct<A>;
+}
+
+impl ActionSpec for UniqueAlphaSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = UniqueAlphaAct<A>;
+}
+
+impl ActionSpec for UniqueBetaSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = UniqueBetaAct<A>;
+}
+
+impl ActionSpec for FinalizeSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = FinalizeAct<A>;
+}
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct SharedJoinBranch(
+    Join<UStep<JoinLeftSpec>, UStep<JoinRightSpec>>,
+    UStep<JoinToCarrySpec>,
+);
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct SharedSelectBranch(
+    Select<UStep<SelectFastSpec>, UStep<SelectSlowSpec>>,
+    UStep<SelectToCarrySpec>,
+);
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct SharedLoopBody(UStep<LoopAdvanceSpec>);
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct SharedComposedSegment(
+    While<KeepLoopingShared, SharedLoopBody>,
+    SharedJoinBranch,
+    SharedSelectBranch,
+);
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct LongSharedSegment(Transparent<SharedMeta, SharedComposedSegment>);
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct UniqueSegment(Conditional<ChooseUniqueAlpha, UStep<UniqueAlphaSpec>, UStep<UniqueBetaSpec>>);
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct LongMixedTemplate(LongSharedSegment, UniqueSegment, UStep<FinalizeSpec>);
+
+struct ComplexAlphaAnimal;
+impl jungle_sdk::types::Animal for ComplexAlphaAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U50>;
+    type Generation = U0;
+    type State = ComplexAlphaState;
+    type Seed = i32;
+    type Journey = <LongMixedTemplate as BindAnimal<ComplexAlphaAnimal>>::Bound;
+}
+
+impl ComplexFlowBinding for ComplexAlphaAnimal {
+    fn inc_loop(state: &mut Self::State) {
+        state.loops = state.loops.saturating_add(1);
+    }
+
+    fn set_shared_work(state: &mut Self::State, value: i32) {
+        state.shared_work = value;
+    }
+
+    fn set_join_sum(state: &mut Self::State, value: i32) {
+        state.join_sum = value;
+    }
+
+    fn set_select_winner(state: &mut Self::State, value: i32) {
+        state.select_winner = value;
+    }
+
+    fn set_unique_alpha(state: &mut Self::State, value: i32) {
+        state.unique_alpha = value;
+    }
+
+    fn set_unique_beta(_state: &mut Self::State, _value: i32) {}
+
+    fn set_final(state: &mut Self::State, value: i32) {
+        state.final_value = value;
+    }
+
+    fn fast_ms() -> u64 {
+        1
+    }
+
+    fn slow_ms() -> u64 {
+        20
+    }
+}
+
+impl Observe for ComplexAlphaAnimal {
+    type Appearance = ComplexAlphaState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+impl jungle_sdk::types::Observable for ComplexAlphaAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
+}
+
+impl jungle_sdk::types::Perturbable for ComplexAlphaAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for ComplexAlphaAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<
+        jungle_sdk::typosaurus::num::consts::U50,
+        ComplexAlphaAnimal,
+    >;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for ComplexAlphaAnimal {
+    type Id = jungle_sdk::typosaurus::num::consts::U50;
+}
+
+struct ComplexBetaAnimal;
+impl jungle_sdk::types::Animal for ComplexBetaAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U51>;
+    type Generation = U0;
+    type State = ComplexBetaState;
+    type Seed = i32;
+    type Journey = <LongMixedTemplate as BindAnimal<ComplexBetaAnimal>>::Bound;
+}
+
+impl ComplexFlowBinding for ComplexBetaAnimal {
+    fn inc_loop(state: &mut Self::State) {
+        state.iterations = state.iterations.saturating_add(1);
+    }
+
+    fn set_shared_work(state: &mut Self::State, value: i32) {
+        state.core = value;
+    }
+
+    fn set_join_sum(state: &mut Self::State, value: i32) {
+        state.joined = value;
+    }
+
+    fn set_select_winner(state: &mut Self::State, value: i32) {
+        state.raced = value;
+    }
+
+    fn set_unique_alpha(_state: &mut Self::State, _value: i32) {}
+
+    fn set_unique_beta(state: &mut Self::State, value: i32) {
+        state.unique_beta = value;
+        state.beta_flag = true;
+    }
+
+    fn set_final(state: &mut Self::State, value: i32) {
+        state.done = value;
+    }
+
+    fn fast_ms() -> u64 {
+        1
+    }
+
+    fn slow_ms() -> u64 {
+        20
+    }
+}
+
+impl Observe for ComplexBetaAnimal {
+    type Appearance = ComplexBetaState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+impl jungle_sdk::types::Observable for ComplexBetaAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
+}
+
+impl jungle_sdk::types::Perturbable for ComplexBetaAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for ComplexBetaAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<
+        jungle_sdk::typosaurus::num::consts::U51,
+        ComplexBetaAnimal,
+    >;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for ComplexBetaAnimal {
+    type Id = jungle_sdk::typosaurus::num::consts::U51;
+}
+
+#[derive(Animals)]
+struct ComplexMixedAnimals(ComplexAlphaAnimal, ComplexBetaAnimal);
+
+struct ComplexMixedZoo;
+impl Ecosystem for ComplexMixedZoo {
+    const NAME: &'static str = "late-bound-complex-mixed-zoo";
+    type Animals = ComplexMixedAnimals;
+}
+
+#[tokio::test]
+async fn template_binding_long_shared_and_unique_segments_with_different_animal_states_e2e() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-complex-mixed-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(ComplexMixedZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let alpha_id = client
+        .start_journey::<ComplexAlphaAnimal>(
+            postcard::to_allocvec(&5_i32).expect("alpha seed should serialize"),
+        )
+        .await
+        .expect("alpha journey should start");
+    let beta_id = client
+        .start_journey::<ComplexBetaAnimal>(
+            postcard::to_allocvec(&5_i32).expect("beta seed should serialize"),
+        )
+        .await
+        .expect("beta journey should start");
+
+    await_completion(&client, alpha_id).await;
+    await_completion(&client, beta_id).await;
+
+    let alpha_appearance_bytes = client
+        .animal_appearance(alpha_id)
+        .await
+        .expect("alpha appearance request should succeed")
+        .expect("alpha appearance should exist");
+    let beta_appearance_bytes = client
+        .animal_appearance(beta_id)
+        .await
+        .expect("beta appearance request should succeed")
+        .expect("beta appearance should exist");
+    let alpha: ComplexAlphaState = postcard::from_bytes(&alpha_appearance_bytes)
+        .expect("alpha appearance should deserialize");
+    let beta: ComplexBetaState =
+        postcard::from_bytes(&beta_appearance_bytes).expect("beta appearance should deserialize");
+
+    // Shared long segment assertions (Transparent + While + Join + Select).
+    assert_eq!(alpha.loops, 2);
+    assert_eq!(alpha.join_sum, 17);
+    assert_eq!(alpha.select_winner, 20);
+    assert_eq!(alpha.shared_work, 7);
+
+    assert_eq!(beta.iterations, 2);
+    assert_eq!(beta.joined, 17);
+    assert_eq!(beta.raced, 20);
+    assert_eq!(beta.core, 7);
+
+    // Unique per-animal segment assertions.
+    assert_eq!(alpha.unique_alpha, 120);
+    assert_eq!(alpha.final_value, 120);
+    assert_eq!(beta.unique_beta, -80);
+    assert_eq!(beta.done, -80);
+    assert!(beta.beta_flag);
 
     worker_handle.abort();
     let _ = worker_handle.await;
