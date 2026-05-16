@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 
 use crate::{
-    Animal, EffectMember, FlowEffects, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
-    ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
+    Animal, EffectMember, FlowEffects, Jungle, ReplaceFlow, ReplaceNode, ReplaceNodesWith,
+    ReplaceStep, ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
 };
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
 use typosaurus::collections::list;
@@ -590,9 +590,9 @@ where
 impl<S> FlowEffects for StepSpec<S>
 where
     S: ActionSpec,
-    S::Effect: EffectMember,
+    S::Effect<()>: EffectMember,
 {
-    type List = Node<<<S as ActionSpec>::Effect as Effect<()>>::Id, <S as ActionSpec>::Effect>;
+    type List = Node<<<S as ActionSpec>::Effect<()> as Effect<()>>::Id, <S as ActionSpec>::Effect<()>>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
@@ -643,7 +643,7 @@ where
         T,
         Input = <S as ActionSpec>::Input,
         Output = <S as ActionSpec>::Output,
-        Effect = <S as ActionSpec>::Effect,
+        Effect = <S as ActionSpec>::Effect<()>,
     >,
 {
     type Output = Step<T, <S as ActionSpec>::Act<T>>;

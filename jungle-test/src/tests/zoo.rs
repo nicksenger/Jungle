@@ -64,7 +64,7 @@ impl<E> ActionSpec for UnitOkSpec<E>
 where
     E: Effect<In = (), Out = (), Err = ()>,
 {
-    type Effect = E;
+    type Effect<J: jungle_sdk::types::Jungle> = E;
     type Input = ();
     type Output = ();
     type Act<A: Animal> = UnitOkStep<E>;

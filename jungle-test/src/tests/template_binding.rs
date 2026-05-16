@@ -43,14 +43,14 @@ pub struct AddOneSpec;
 pub struct CommitSpec;
 
 impl ActionSpec for AddOneSpec {
-    type Effect = TemplateAddEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = GenericAddOne<A>;
 }
 
 impl ActionSpec for CommitSpec {
-    type Effect = TemplateCommitEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = GenericCommit<A>;
@@ -788,21 +788,21 @@ where
 }
 
 impl ActionSpec for LensReadSpareSpec {
-    type Effect = TemplateAddEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = LensReadSpareAct<A>;
 }
 
 impl ActionSpec for LensReadLeafSpec {
-    type Effect = TemplateAddEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = LensReadLeafAct<A>;
 }
 
 impl ActionSpec for LensCommitSpec {
-    type Effect = TemplateCommitEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = LensCommitAct<A>;
@@ -1239,70 +1239,70 @@ where
 }
 
 impl ActionSpec for JoinLeftSpec {
-    type Effect = ComplexTimedEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = JoinLeftAct<A>;
 }
 
 impl ActionSpec for JoinRightSpec {
-    type Effect = ComplexTimedEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = JoinRightAct<A>;
 }
 
 impl ActionSpec for JoinToCarrySpec {
-    type Effect = TemplateCommitEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateCommitEffect;
     type Input = (i32, i32);
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = JoinToCarryAct<A>;
 }
 
 impl ActionSpec for SelectFastSpec {
-    type Effect = ComplexTimedEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = SelectFastAct<A>;
 }
 
 impl ActionSpec for SelectSlowSpec {
-    type Effect = ComplexTimedEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = SelectSlowAct<A>;
 }
 
 impl ActionSpec for SelectToCarrySpec {
-    type Effect = TemplateCommitEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = SelectToCarryAct<A>;
 }
 
 impl ActionSpec for LoopAdvanceSpec {
-    type Effect = TemplateAddEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = LoopAdvanceAct<A>;
 }
 
 impl ActionSpec for UniqueAlphaSpec {
-    type Effect = TemplateCommitEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = UniqueAlphaAct<A>;
 }
 
 impl ActionSpec for UniqueBetaSpec {
-    type Effect = TemplateCommitEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = UniqueBetaAct<A>;
 }
 
 impl ActionSpec for FinalizeSpec {
-    type Effect = TemplateCommitEffect;
+    type Effect<J: jungle_sdk::types::Jungle> = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
     type Act<A: jungle_sdk::types::Animal> = FinalizeAct<A>;
