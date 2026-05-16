@@ -55,20 +55,29 @@ impl From<&IntegrationZoo> for AddOneDependency {
     }
 }
 
+impl From<&()> for AddOneDependency {
+    fn from(_value: &()) -> Self {
+        Self { value: 1 }
+    }
+}
+
 struct AddOneEffect;
 impl jungle_sdk::types::EffectMember for AddOneEffect {}
 
-impl Effect for AddOneEffect {
+impl<J> Effect<J> for AddOneEffect
+where
+    for<'a> AddOneDependency: From<&'a J>,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
-    type Dependency = AddOneDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = AddOneDependency::from(jungle);
         std::future::ready(Ok(dependency.value))
     }
 }
@@ -84,20 +93,29 @@ impl From<&IntegrationZoo> for AddTwoDependency {
     }
 }
 
+impl From<&()> for AddTwoDependency {
+    fn from(_value: &()) -> Self {
+        Self { value: 2 }
+    }
+}
+
 struct AddTwoEffect;
 impl jungle_sdk::types::EffectMember for AddTwoEffect {}
 
-impl Effect for AddTwoEffect {
+impl<J> Effect<J> for AddTwoEffect
+where
+    for<'a> AddTwoDependency: From<&'a J>,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
-    type Dependency = AddTwoDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = AddTwoDependency::from(jungle);
         std::future::ready(Ok(dependency.value))
     }
 }

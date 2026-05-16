@@ -3,17 +3,13 @@ use jungle_sdk::typosaurus::num::consts::U255;
 pub struct ProbeEffect;
 impl jungle_sdk::types::EffectMember for ProbeEffect {}
 
-impl jungle_sdk::types::Effect for ProbeEffect {
+impl<J> jungle_sdk::types::Effect<J> for ProbeEffect {
     type Id = jungle_sdk::types::Id<U255>;
-    type Dependency = ();
     type In = ();
     type Out = ();
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    fn act(_jungle: &J, _input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(()))
     }
 }
@@ -87,8 +83,4 @@ pub struct ProbeZoo;
 impl jungle_sdk::types::Ecosystem for ProbeZoo {
     const NAME: &'static str = "probe-zoo";
     type Animals = ProbeZooAnimals;
-}
-
-impl From<&ProbeZoo> for () {
-    fn from(_value: &ProbeZoo) -> Self {}
 }

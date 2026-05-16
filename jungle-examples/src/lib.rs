@@ -47,17 +47,13 @@ pub struct ObserveState {
 
 pub struct BumpEffect;
 impl jungle_sdk::types::EffectMember for BumpEffect {}
-impl Effect for BumpEffect {
+impl<J> Effect<J> for BumpEffect {
     type Id = Id<U14>;
-    type Dependency = ();
     type In = ();
     type Out = ();
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    fn act(_jungle: &J, _input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(()))
     }
 }
@@ -164,9 +160,6 @@ impl From<ObserveState> for () {
     fn from(_value: ObserveState) -> Self {}
 }
 
-impl From<&ObserveEcosystem> for () {
-    fn from(_value: &ObserveEcosystem) -> Self {}
-}
 
 fn spawn_server_runtime(listen_addr: SocketAddr, db_path: std::path::PathBuf) {
     std::thread::spawn(move || {

@@ -15,12 +15,9 @@ use typosaurus::num::consts::{U0, U1};
 use typosaurus::num::{Bit, UInt, Unsigned};
 
 /// A behavior that transforms a single input into a single output.
-pub trait Effect {
+pub trait Effect<J = ()> {
     /// A type-level identifier for this Effect.
     type Id;
-
-    /// The shared dependency consumed by this effect.
-    type Dependency: Send + Sync + 'static;
 
     /// The input type accepted by this effect.
     type In: Serialize + DeserializeOwned + Send + 'static;
@@ -33,18 +30,18 @@ pub trait Effect {
 
     /// Process one input into one output.
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> + Send;
 }
 
 /// A typed effect request emitted by a yielding workflow phase.
-pub struct EffectRequest<A: Effect> {
+pub struct EffectRequest<A: Effect<J>, J = ()> {
     pub input: A::In,
-    marker: PhantomData<fn() -> A>,
+    marker: PhantomData<fn() -> (A, J)>,
 }
 
-impl<A: Effect> EffectRequest<A> {
+impl<A: Effect<J>, J> EffectRequest<A, J> {
     pub fn new(input: A::In) -> Self {
         Self {
             input,
@@ -56,19 +53,16 @@ impl<A: Effect> EffectRequest<A> {
         self.input
     }
 
-    pub fn act<'a>(
-        self,
-        dependency: &'a A::Dependency,
-    ) -> impl Future<Output = Result<A::Out, A::Err>> + 'a
+    pub fn act<'a>(self, jungle: &'a J) -> impl Future<Output = Result<A::Out, A::Err>> + 'a
     where
         A: 'a,
     {
-        A::act(dependency, self.input)
+        A::act(jungle, self.input)
     }
 }
 
 /// A completed effect result consumed by an awaiting workflow phase.
-pub type EffectCompletion<A> = Result<<A as Effect>::Out, <A as Effect>::Err>;
+pub type EffectCompletion<A, J = ()> = Result<<A as Effect<J>>::Out, <A as Effect<J>>::Err>;
 
 /// Projects a larger state into a focused mutable substate.
 pub trait StateCarrier<State> {
@@ -229,7 +223,7 @@ where
 /// Single step-facing contract for adapting an [`Effect`] over an [`Aspect`]
 /// of animal state.
 pub trait Act<T: Animal> {
-    type Effect: Effect;
+    type Effect: Effect<()>;
     type StateAspect: Aspect<T::State>;
     type Input;
     type Output;
@@ -237,7 +231,7 @@ pub trait Act<T: Animal> {
     fn emit(
         view: &<<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Input,
-    ) -> <Self::Effect as Effect>::In;
+    ) -> <Self::Effect as Effect<()>>::In;
 
     fn absorb(
         view: &mut <<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
@@ -249,19 +243,19 @@ pub trait Act<T: Animal> {
 pub trait Emit<T: Animal> {
     type Arg;
     type StateAspect: Aspect<T::State>;
-    type Effect: Effect;
+    type Effect: Effect<()>;
 
     fn emit(
         view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Effect as Effect>::In;
+    ) -> <Self::Effect as Effect<()>>::In;
 }
 
 /// Backward half of [`Act`], responsible for consuming an effect completion.
 pub trait Absorb<T: Animal> {
     type Ret;
     type StateAspect: Aspect<T::State>;
-    type Effect: Effect;
+    type Effect: Effect<()>;
 
     fn absorb(
         view: &mut <Self::StateAspect as StateCarrier<T::State>>::View,
@@ -270,12 +264,12 @@ pub trait Absorb<T: Animal> {
 }
 
 /// Emits by forwarding carry input directly as effect input.
-pub struct PassthroughEmit<A, Focus, In = <A as Effect>::In>(PhantomData<fn() -> (A, Focus, In)>);
+pub struct PassthroughEmit<A, Focus, In = <A as Effect<()>>::In>(PhantomData<fn() -> (A, Focus, In)>);
 
 impl<T, A, Focus, In> Emit<T> for PassthroughEmit<A, Focus, In>
 where
     T: Animal,
-    A: Effect<In = In>,
+    A: Effect<(), In = In>,
     Focus: Aspect<T::State>,
 {
     type Arg = In;
@@ -285,7 +279,7 @@ where
     fn emit(
         _view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Effect as Effect>::In {
+    ) -> <Self::Effect as Effect<()>>::In {
         input
     }
 }
@@ -296,7 +290,7 @@ pub struct UnitEmit<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 impl<T, A, Focus> Emit<T> for UnitEmit<A, Focus>
 where
     T: Animal,
-    A: Effect<In = ()>,
+    A: Effect<(), In = ()>,
     Focus: Aspect<T::State>,
 {
     type Arg = ();
@@ -306,14 +300,14 @@ where
     fn emit(
         _view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         _input: Self::Arg,
-    ) -> <Self::Effect as Effect>::In {
+    ) -> <Self::Effect as Effect<()>>::In {
     }
 }
 
 /// Type-level callable adapter used by [`EmitFn`].
 pub trait EmitMapper<View, A, In>
 where
-    A: Effect,
+    A: Effect<()>,
 {
     fn emit(view: &View, input: In) -> A::In;
 }
@@ -325,7 +319,7 @@ impl<T, Focus, A, In, F> Emit<T> for EmitFn<Focus, A, In, F>
 where
     T: Animal,
     Focus: Aspect<T::State>,
-    A: Effect,
+    A: Effect<()>,
     F: EmitMapper<<Focus as StateCarrier<T::State>>::View, A, In>,
 {
     type Arg = In;
@@ -335,7 +329,7 @@ where
     fn emit(
         view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Effect as Effect>::In {
+    ) -> <Self::Effect as Effect<()>>::In {
         <F as EmitMapper<<Focus as StateCarrier<T::State>>::View, A, In>>::emit(view, input)
     }
 }
@@ -343,7 +337,7 @@ where
 /// Type-level callable adapter used by [`AbsorbFn`].
 pub trait AbsorbMapper<View, A, Out>
 where
-    A: Effect,
+    A: Effect<()>,
 {
     fn absorb(view: &mut View, output: EffectCompletion<A>) -> Out;
 }
@@ -355,7 +349,7 @@ impl<T, Focus, A, Out, F> Absorb<T> for AbsorbFn<Focus, A, Out, F>
 where
     T: Animal,
     Focus: Aspect<T::State>,
-    A: Effect,
+    A: Effect<()>,
     F: AbsorbMapper<<Focus as StateCarrier<T::State>>::View, A, Out>,
 {
     type Ret = Out;
@@ -387,7 +381,7 @@ where
     fn emit(
         view: &<<Self as Act<T>>::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Input,
-    ) -> <Self::Effect as Effect>::In {
+    ) -> <Self::Effect as Effect<()>>::In {
         <E as Emit<T>>::emit(view, input)
     }
 
@@ -415,7 +409,7 @@ where
     fn emit(
         view: &<Self::StateAspect as StateCarrier<T::State>>::View,
         input: Self::Arg,
-    ) -> <Self::Effect as Effect>::In {
+    ) -> <Self::Effect as Effect<()>>::In {
         <E as Emit<T>>::emit(view, input)
     }
 }
@@ -512,7 +506,7 @@ where
     <A as Act<T>>::Effect: EffectMember,
     A: Act<T>,
 {
-    type List = Node<<<A as Act<T>>::Effect as Effect>::Id, <A as Act<T>>::Effect>;
+    type List = Node<<<A as Act<T>>::Effect as Effect<()>>::Id, <A as Act<T>>::Effect>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]

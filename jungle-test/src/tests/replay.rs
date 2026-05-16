@@ -41,6 +41,14 @@ impl From<&ReplayGateZoo> for ReplayGatePreDependency {
     }
 }
 
+impl From<&()> for ReplayGatePreDependency {
+    fn from(_value: &()) -> Self {
+        Self {
+            pre_counter: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ReplayGatePostDependency {
     post_counter: Arc<AtomicUsize>,
@@ -50,6 +58,14 @@ impl From<&ReplayGateZoo> for ReplayGatePostDependency {
     fn from(value: &ReplayGateZoo) -> Self {
         Self {
             post_counter: Arc::clone(&value.post_counter),
+        }
+    }
+}
+
+impl From<&()> for ReplayGatePostDependency {
+    fn from(_value: &()) -> Self {
+        Self {
+            post_counter: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -69,19 +85,32 @@ impl From<&ReplayGateZoo> for ReplayGateDependency {
     }
 }
 
+impl From<&()> for ReplayGateDependency {
+    fn from(_value: &()) -> Self {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        Self {
+            reached_tx: tx,
+            gate: Arc::new(Semaphore::new(0)),
+        }
+    }
+}
+
 struct ReplayPreIncrementEffect;
 impl jungle_sdk::types::EffectMember for ReplayPreIncrementEffect {}
-impl Effect for ReplayPreIncrementEffect {
+impl<J> Effect<J> for ReplayPreIncrementEffect
+where
+    for<'a> ReplayGatePreDependency: From<&'a J>,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U41>;
-    type Dependency = ReplayGatePreDependency;
     type In = ();
     type Out = ();
     type Err = ();
 
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = ReplayGatePreDependency::from(jungle);
         dependency.pre_counter.fetch_add(1, Ordering::SeqCst);
         std::future::ready(Ok(()))
     }
@@ -89,17 +118,20 @@ impl Effect for ReplayPreIncrementEffect {
 
 struct ReplayPostIncrementEffect;
 impl jungle_sdk::types::EffectMember for ReplayPostIncrementEffect {}
-impl Effect for ReplayPostIncrementEffect {
+impl<J> Effect<J> for ReplayPostIncrementEffect
+where
+    for<'a> ReplayGatePostDependency: From<&'a J>,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U42>;
-    type Dependency = ReplayGatePostDependency;
     type In = ();
     type Out = ();
     type Err = ();
 
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = ReplayGatePostDependency::from(jungle);
         dependency.post_counter.fetch_add(1, Ordering::SeqCst);
         std::future::ready(Ok(()))
     }
@@ -107,17 +139,20 @@ impl Effect for ReplayPostIncrementEffect {
 
 struct ReplayGateEffect;
 impl jungle_sdk::types::EffectMember for ReplayGateEffect {}
-impl Effect for ReplayGateEffect {
+impl<J> Effect<J> for ReplayGateEffect
+where
+    for<'a> ReplayGateDependency: From<&'a J>,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U43>;
-    type Dependency = ReplayGateDependency;
     type In = ();
     type Out = ();
     type Err = ();
 
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = ReplayGateDependency::from(jungle);
         let reached_tx = dependency.reached_tx.clone();
         let gate = Arc::clone(&dependency.gate);
         async move {
@@ -398,6 +433,15 @@ impl From<&ReplayTimeoutZoo> for ReplayTimeoutPreDependency {
     }
 }
 
+impl From<&()> for ReplayTimeoutPreDependency {
+    fn from(_value: &()) -> Self {
+        Self {
+            global_pre_counter: Arc::new(AtomicUsize::new(0)),
+            worker_pre_counter: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ReplayTimeoutPostDependency {
     global_post_counter: Arc<AtomicUsize>,
@@ -411,19 +455,30 @@ impl From<&ReplayTimeoutZoo> for ReplayTimeoutPostDependency {
     }
 }
 
+impl From<&()> for ReplayTimeoutPostDependency {
+    fn from(_value: &()) -> Self {
+        Self {
+            global_post_counter: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
 struct ReplayTimeoutPreIncrementEffect;
 impl jungle_sdk::types::EffectMember for ReplayTimeoutPreIncrementEffect {}
-impl Effect for ReplayTimeoutPreIncrementEffect {
+impl<J> Effect<J> for ReplayTimeoutPreIncrementEffect
+where
+    for<'a> ReplayTimeoutPreDependency: From<&'a J>,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U44>;
-    type Dependency = ReplayTimeoutPreDependency;
     type In = ();
     type Out = ();
     type Err = ();
 
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = ReplayTimeoutPreDependency::from(jungle);
         dependency.global_pre_counter.fetch_add(1, Ordering::SeqCst);
         dependency.worker_pre_counter.fetch_add(1, Ordering::SeqCst);
         std::future::ready(Ok(()))
@@ -432,17 +487,20 @@ impl Effect for ReplayTimeoutPreIncrementEffect {
 
 struct ReplayTimeoutPostIncrementEffect;
 impl jungle_sdk::types::EffectMember for ReplayTimeoutPostIncrementEffect {}
-impl Effect for ReplayTimeoutPostIncrementEffect {
+impl<J> Effect<J> for ReplayTimeoutPostIncrementEffect
+where
+    for<'a> ReplayTimeoutPostDependency: From<&'a J>,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U45>;
-    type Dependency = ReplayTimeoutPostDependency;
     type In = ();
     type Out = ();
     type Err = ();
 
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = ReplayTimeoutPostDependency::from(jungle);
         dependency
             .global_post_counter
             .fetch_add(1, Ordering::SeqCst);

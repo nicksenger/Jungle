@@ -17,15 +17,14 @@ impl jungle_sdk::types::EffectMember for LegacyEffect {}
 #[derive(Clone, Copy)]
 struct LegacyDependency;
 
-impl Effect for LegacyEffect {
+impl<J> Effect<J> for LegacyEffect {
     type Id = Id<U70>;
-    type Dependency = LegacyDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
     fn act(
-        _dependency: &Self::Dependency,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(10))
@@ -38,15 +37,14 @@ impl jungle_sdk::types::EffectMember for ModernEffect {}
 #[derive(Clone, Copy)]
 struct ModernDependency;
 
-impl Effect for ModernEffect {
+impl<J> Effect<J> for ModernEffect {
     type Id = Id<U71>;
-    type Dependency = ModernDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
     fn act(
-        _dependency: &Self::Dependency,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(99))

@@ -28,19 +28,28 @@ impl From<&SleepZoo> for AddDependency {
     }
 }
 
+impl From<&()> for AddDependency {
+    fn from(_value: &()) -> Self {
+        Self { value: 1 }
+    }
+}
+
 struct AddEffect;
 impl jungle_sdk::types::EffectMember for AddEffect {}
-impl Effect for AddEffect {
+impl<J> Effect<J> for AddEffect
+where
+    for<'a> AddDependency: From<&'a J>,
+{
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
-    type Dependency = AddDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
     fn act(
-        dependency: &Self::Dependency,
+        jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = AddDependency::from(jungle);
         std::future::ready(Ok(dependency.value))
     }
 }

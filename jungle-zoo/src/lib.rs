@@ -13,7 +13,3 @@ impl jungle_sdk::types::Ecosystem for Zoo {
     const NAME: &'static str = "zoo";
     type Animals = ZooAnimals;
 }
-
-impl From<&Zoo> for () {
-    fn from(_value: &Zoo) -> Self {}
-}

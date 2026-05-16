@@ -15,12 +15,6 @@ impl Default for BehavioralDependency {
     }
 }
 
-impl<T> From<&T> for BehavioralDependency {
-    fn from(_value: &T) -> Self {
-        Self::default()
-    }
-}
-
 define_effect!(
     Rest,
     id = 2,

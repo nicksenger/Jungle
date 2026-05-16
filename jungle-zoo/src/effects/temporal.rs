@@ -18,12 +18,6 @@ impl Default for TemporalDependency {
     }
 }
 
-impl<T> From<&T> for TemporalDependency {
-    fn from(_value: &T) -> Self {
-        Self::default()
-    }
-}
-
 fn classify_life_phase(age_years: u8, adolescent_age: u8, adult_age: u8) -> LifePhase {
     if age_years < adolescent_age {
         LifePhase::Child

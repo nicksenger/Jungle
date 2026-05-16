@@ -15,12 +15,6 @@ impl Default for DigestiveDependency {
     }
 }
 
-impl<T> From<&T> for DigestiveDependency {
-    fn from(_value: &T) -> Self {
-        Self::default()
-    }
-}
-
 define_effect!(
     Eat,
     id = 10,
