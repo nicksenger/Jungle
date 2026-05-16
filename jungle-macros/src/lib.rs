@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use syn::parse::{Parse, ParseStream};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, DeriveInput, Expr,
-    GenericParam, ItemImpl, Meta, Path,
+    GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl, Meta, Path, Type,
 };
 
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
@@ -357,6 +357,223 @@ pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
                 type Is = #inception::True;
             }
         };
+    }
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr_tokens = proc_macro2::TokenStream::from(attr);
+    if !attr_tokens.is_empty() {
+        return syn::Error::new_spanned(attr_tokens, "This macro does not accept arguments.")
+            .to_compile_error()
+            .into();
+    }
+
+    let item_impl = parse_macro_input!(item as ItemImpl);
+
+    let Some((_, trait_path, _)) = &item_impl.trait_ else {
+        return syn::Error::new_spanned(
+            &item_impl,
+            "This macro can only be applied to trait implementations.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let trait_ident = trait_path
+        .segments
+        .last()
+        .map(|segment| segment.ident.to_string())
+        .unwrap_or_default();
+    if trait_ident != "Effect" {
+        return syn::Error::new_spanned(trait_path, "Expected an impl for an `Effect<...>` trait.")
+            .to_compile_error()
+            .into();
+    }
+
+    let context_ty = match trait_path
+        .segments
+        .last()
+        .and_then(|segment| match &segment.arguments {
+            syn::PathArguments::AngleBracketed(args) if args.args.len() == 1 => {
+                match args.args.first() {
+                    Some(syn::GenericArgument::Type(ty)) => Some(ty.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }) {
+        Some(ty) => ty,
+        None => {
+            return syn::Error::new_spanned(
+                trait_path,
+                "Expected `Effect<Context>` with exactly one type argument.",
+            )
+            .to_compile_error()
+            .into()
+        }
+    };
+
+    let mut id_ty: Option<Type> = None;
+    let mut in_ty: Option<Type> = None;
+    let mut out_ty: Option<Type> = None;
+    let mut err_ty: Option<Type> = None;
+    let mut effect_fn: Option<ImplItemFn> = None;
+
+    for item in &item_impl.items {
+        match item {
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "Id" => {
+                id_ty = Some(ty.clone());
+            }
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "In" => {
+                in_ty = Some(ty.clone());
+            }
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "Out" => {
+                out_ty = Some(ty.clone());
+            }
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "Err" => {
+                err_ty = Some(ty.clone());
+            }
+            ImplItem::Fn(func) if func.sig.ident == "effect" => {
+                effect_fn = Some(func.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let (Some(id_ty), Some(in_ty), Some(out_ty), Some(err_ty), Some(effect_fn)) =
+        (id_ty, in_ty, out_ty, err_ty, effect_fn)
+    else {
+        return syn::Error::new_spanned(
+            &item_impl,
+            "Expected associated types `Id`, `In`, `Out`, `Err`, and method `effect`.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let self_ty = &item_impl.self_ty;
+
+    let generic_names = item_impl
+        .generics
+        .params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .collect::<HashSet<_>>();
+
+    let self_ty_names = collect_ident_names(quote!(#self_ty));
+    let context_names = collect_ident_names(quote!(#context_ty));
+    let self_generic_names = self_ty_names
+        .intersection(&generic_names)
+        .cloned()
+        .collect::<HashSet<_>>();
+    let context_only_generic_names = context_names
+        .intersection(&generic_names)
+        .filter(|name| !self_generic_names.contains(*name))
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let schema_types_tokens = quote! { #id_ty #in_ty #out_ty #err_ty };
+    let schema_type_names = collect_ident_names(schema_types_tokens);
+    if let Some(offender) = context_only_generic_names
+        .iter()
+        .find(|name| schema_type_names.contains(*name))
+    {
+        return syn::Error::new_spanned(
+            &item_impl,
+            format!(
+                "Effect schema cannot depend on context-only generic `{offender}`. Move it onto the effect type or make schema context-agnostic."
+            ),
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let self_ty_tokens = quote!(#self_ty).to_string();
+    let retained_params = item_impl
+        .generics
+        .params
+        .iter()
+        .filter(|param| match param {
+            GenericParam::Type(ty) => self_ty_tokens.contains(&ty.ident.to_string()),
+            GenericParam::Lifetime(lifetime) => {
+                self_ty_tokens.contains(&lifetime.lifetime.ident.to_string())
+            }
+            GenericParam::Const(const_param) => {
+                self_ty_tokens.contains(&const_param.ident.to_string())
+            }
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let retained_param_names = retained_params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .collect::<HashSet<_>>();
+    let dropped_param_names = item_impl
+        .generics
+        .params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .filter(|name| !retained_param_names.contains(name))
+        .collect::<HashSet<_>>();
+
+    let schema_impl_generics = if retained_params.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#(#retained_params),*> }
+    };
+    let schema_where_predicates = item_impl
+        .generics
+        .where_clause
+        .as_ref()
+        .map(|where_clause| {
+            where_clause
+                .predicates
+                .iter()
+                .filter(|pred| {
+                    let used_names = collect_ident_names(quote!(#pred));
+                    !used_names
+                        .iter()
+                        .any(|name| dropped_param_names.contains(name))
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let schema_where_clause = if schema_where_predicates.is_empty() {
+        quote! {}
+    } else {
+        quote! { where #(#schema_where_predicates),* }
+    };
+
+    let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
+    let effect_schema = jungle_type("EffectSchema");
+    let effect_exec = jungle_type("EffectExec");
+
+    quote! {
+        impl #schema_impl_generics #effect_schema for #self_ty #schema_where_clause {
+            type Id = #id_ty;
+            type In = #in_ty;
+            type Out = #out_ty;
+            type Err = #err_ty;
+        }
+
+        impl #exec_impl_generics #effect_exec<#context_ty> for #self_ty #exec_where_clause {
+            #effect_fn
+        }
     }
     .into()
 }
