@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 
 use crate::{
-    Animal, EffectMember, FlowEffects, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
+    EffectMember, Animal, FlowEffects, ReplaceFlow, ReplaceNode, ReplaceNodesWith, ReplaceStep,
     ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
 };
 use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};

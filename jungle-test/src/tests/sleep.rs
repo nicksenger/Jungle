@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
-    LoopCondition, Observe, Sleep, Step, While,
+    Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    LoopCondition, Observe, Act, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;

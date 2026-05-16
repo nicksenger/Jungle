@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    Act, ContextExecutor, Effect, EffectCompletion, Either, Executor, Identity, Join, Select,
+    Effect, EffectCompletion, ContextExecutor, Either, Executor, Identity, Join, Act, Select,
     Sleep, SleepDependency, Step,
 };
 use jungle_sdk::{Journey, Optic};
@@ -64,10 +64,7 @@ impl Act<SelectAnimal> for SelectFast {
         (state.fast_ms, 1)
     }
 
-    fn absorb(
-        _state: &mut SelectJoinState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(_state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("fast effect should succeed")
     }
 }
@@ -83,10 +80,7 @@ impl Act<SelectAnimal> for SelectSlow {
         (state.slow_ms, 2)
     }
 
-    fn absorb(
-        _state: &mut SelectJoinState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(_state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("slow effect should succeed")
     }
 }
@@ -134,10 +128,7 @@ impl Act<JoinAnimal> for JoinFast {
         (state.fast_ms, 1)
     }
 
-    fn absorb(
-        _state: &mut SelectJoinState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(_state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("join fast should succeed")
     }
 }
@@ -153,10 +144,7 @@ impl Act<JoinAnimal> for JoinSlow {
         (state.slow_ms, 2)
     }
 
-    fn absorb(
-        _state: &mut SelectJoinState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(_state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("join slow should succeed")
     }
 }

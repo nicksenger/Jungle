@@ -2,8 +2,8 @@ use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
-    LoopCondition, Observe, Perturb, StateLens, Step, While,
+    Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
+    LoopCondition, Observe, Perturb, Act, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -105,10 +105,7 @@ impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.total += output.expect("first pre-focused full-state effect should succeed");
         state.before_steps += 1;
     }
@@ -123,10 +120,7 @@ impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.total += output.expect("second pre-focused full-state effect should succeed");
         state.before_steps += 1;
     }
@@ -213,10 +207,7 @@ impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.total += output.expect("first post-focused full-state effect should succeed");
         state.after_steps += 1;
     }
@@ -231,10 +222,7 @@ impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
 
     fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        state: &mut IntegrationState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(state: &mut IntegrationState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.total += output.expect("second post-focused full-state effect should succeed");
         state.after_steps += 1;
     }
@@ -717,6 +705,7 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
     worker_handle.abort();
     let _ = worker_handle.await;
 }
+
 
 fn integration_seed() -> Vec<u8> {
     postcard::to_allocvec(&IntegrationState {

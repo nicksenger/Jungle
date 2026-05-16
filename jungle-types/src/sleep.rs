@@ -1,5 +1,5 @@
 use crate::{
-    Act, Animal, Aspect, Effect, EffectCompletion, EffectMember, Id, Identity, StateCarrier,
+    Effect, EffectCompletion, EffectMember, Animal, Aspect, Id, Identity, Act, StateCarrier,
 };
 use inception::primitive;
 use std::marker::PhantomData;

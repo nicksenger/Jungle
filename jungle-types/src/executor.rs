@@ -1,6 +1,6 @@
 use crate::{
-    Act, Animal, BackendError, Conditional, Effect, EffectCompletion, Join, LoopCondition, Running,
-    Select, Step, Transparent, While,
+    Effect, EffectCompletion, Animal, BackendError, Conditional, Join, LoopCondition, Act,
+    Running, Select, Step, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
