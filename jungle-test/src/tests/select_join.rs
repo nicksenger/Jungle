@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    Act, ContextExecutor, Effect, EffectCompletion, Either, Executor, Identity, Join, Select,
-    Sleep, Step,
+    Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
+    Join, Select, Sleep, Step,
 };
 use jungle_sdk::{Journey, Optic};
 use std::time::Duration;
@@ -16,12 +16,14 @@ struct SelectJoinState {
 }
 
 struct TimedValueEffect;
-impl<J> Effect<J> for TimedValueEffect {
+impl EffectSchema for TimedValueEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U60>;
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for TimedValueEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -34,12 +36,14 @@ impl<J> Effect<J> for TimedValueEffect {
 }
 
 struct ContextTimedValueEffect;
-impl<J> Effect<J> for ContextTimedValueEffect {
+impl EffectSchema for ContextTimedValueEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U61>;
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for ContextTimedValueEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,

@@ -2,12 +2,14 @@ use jungle_sdk::typosaurus::num::consts::U255;
 
 pub struct ProbeEffect;
 
-impl<J> jungle_sdk::types::Effect<J> for ProbeEffect {
+impl jungle_sdk::types::EffectSchema for ProbeEffect {
     type Id = jungle_sdk::types::Id<U255>;
     type In = ();
     type Out = ();
     type Err = ();
+}
 
+impl<J> jungle_sdk::types::EffectExec<J> for ProbeEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -36,7 +38,7 @@ impl jungle_sdk::types::Act<ProbeAnimal> for ProbeStep {
     fn emit(
         _state: &<ProbeAnimal as jungle_sdk::types::Animal>::State,
         _input: Self::Input,
-    ) -> <Self::Effect as jungle_sdk::types::Effect>::In {
+    ) -> <Self::Effect as jungle_sdk::types::EffectSchema>::In {
     }
 
     fn absorb(

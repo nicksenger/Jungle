@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Id, Identity,
-    LoopCondition, Observe, Sleep, Step, While,
+    Act, Animal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Id,
+    Identity, LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -46,12 +46,14 @@ pub struct ObserveState {
 }
 
 pub struct BumpEffect;
-impl<J> Effect<J> for BumpEffect {
+impl EffectSchema for BumpEffect {
     type Id = Id<U14>;
     type In = ();
     type Out = ();
     type Err = ();
+}
 
+impl<J> EffectExec<J> for BumpEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,

@@ -7,7 +7,7 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    Act, Animal, Animals, Condition, Conditional, Effect, EffectCompletion, Id, Identified,
+    Act, Animal, Animals, Condition, Conditional, EffectCompletion, EffectSchema, Id, Identified,
     Identity, LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation, Observable,
     Perturbable, Step, Transparent, While,
 };
@@ -238,7 +238,7 @@ impl Act<Gorilla> for GorillaAdvanceAge {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         state.temporal.age.age_years
     }
 
@@ -260,7 +260,7 @@ impl Act<Gorilla> for GorillaTickPerceivedTime {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         let segment_minutes = if state.temporal.perception.minutes_since_transition % 2 == 0 {
             0
         } else {
@@ -290,7 +290,7 @@ impl Act<Gorilla> for GorillaBirthday {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         state.temporal.age.clone()
     }
 
@@ -307,7 +307,7 @@ impl Act<Gorilla> for GorillaBirth {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         state.temporal.age.clone()
     }
 
@@ -324,7 +324,7 @@ impl Act<Gorilla> for GorillaEvaluateActivityWindow {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         (
             state.temporal.schedule.activity,
             state.temporal.perception.current,
@@ -343,7 +343,7 @@ impl Act<Gorilla> for GorillaPeelFruit {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         (state.meal.rind.thickness_mm, state.meal.flesh.mass_g)
     }
 
@@ -360,7 +360,7 @@ impl Act<Gorilla> for GorillaEat {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         state.vitals.energy
     }
 
@@ -379,7 +379,7 @@ impl Act<Gorilla> for GorillaUseTool {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         state.hands.left.opposable_thumb && state.hands.right.opposable_thumb
     }
 
@@ -395,7 +395,7 @@ impl Act<Gorilla> for GorillaChestBeat {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         (
             state.vitals.stress,
             state.hands.left.opposable_thumb && state.hands.right.opposable_thumb,
@@ -414,7 +414,7 @@ impl Act<Gorilla> for GorillaRest {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         state.vitals.energy
     }
 
@@ -433,7 +433,7 @@ impl Act<Gorilla> for GorillaMakeSound {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as Effect>::In {
+    fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         let kind = match state.temporal.perception.current {
             PerceivedTimeOfDay::Morning => "morning call",
             PerceivedTimeOfDay::Afternoon => "contact hoot",
@@ -534,7 +534,7 @@ impl jungle_sdk::types::Act<Gorilla> for ProbeStep {
     fn emit(
         _state: &<Gorilla as Animal>::State,
         _input: Self::Input,
-    ) -> <Self::Effect as jungle_sdk::types::Effect>::In {
+    ) -> <Self::Effect as jungle_sdk::types::EffectSchema>::In {
     }
 
     fn absorb(

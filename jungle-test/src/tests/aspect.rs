@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Act, Aspect, Condition, Conditional, Effect, EffectCompletion, Either, Executor, Identity,
-    LoopCondition, Running, StateLens, Step, Waiting, While,
+    Act, Aspect, Condition, Conditional, EffectCompletion, EffectExec, EffectSchema, Either,
+    Executor, Identity, LoopCondition, Running, StateLens, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
@@ -82,7 +82,7 @@ impl<T, Focus, A> Act<T> for AddI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
-    A: Effect<Out = i32>,
+    A: EffectSchema<Out = i32>,
 {
     type Effect = A;
     type StateAspect = Focus;
@@ -109,7 +109,7 @@ impl<T, Focus, A> Act<T> for SubI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
-    A: Effect<Out = i32>,
+    A: EffectSchema<Out = i32>,
 {
     type Effect = A;
     type StateAspect = Focus;

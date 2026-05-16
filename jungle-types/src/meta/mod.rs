@@ -10,7 +10,7 @@ use typosaurus::num::{Max, Unsigned};
 use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Animal, Animals, Ecosystem, Effect, Effects, FlowEffects, Journey};
+use super::{Animal, Animals, Ecosystem, EffectExec, EffectSchema, Effects, FlowEffects, Journey};
 use core::marker::PhantomData;
 
 /// Newtype wrapper around an Unsigned constant.
@@ -43,9 +43,9 @@ pub trait AnimalMember {}
 
 impl<T> EffectIdentity for T
 where
-    T: Effect<()>,
+    T: EffectSchema,
 {
-    type Id = <T as Effect<()>>::Id;
+    type Id = <T as EffectSchema>::Id;
 }
 impl<T> EffectMember for T where T: EffectIdentity {}
 impl<T> AnimalMember for T where T: Animal {}
@@ -268,16 +268,16 @@ where
 {
 }
 
-pub struct WithEffectFor<Context>(PhantomData<fn() -> Context>);
-impl<T, Context> Mapper<T> for WithEffectFor<Context>
+pub struct WithEffectExecFor<Context>(PhantomData<fn() -> Context>);
+impl<T, Context> Mapper<T> for WithEffectExecFor<Context>
 where
-    T: Effect<Context>,
+    T: EffectExec<Context>,
 {
     type Out = ();
 }
 
-pub trait AnimalEffectsCompatible<Context>: Animals {}
-impl<T, Context> AnimalEffectsCompatible<Context> for T
+pub trait AnimalEffectExecCompatible<Context>: Animals {}
+impl<T, Context> AnimalEffectExecCompatible<Context> for T
 where
     T: Animals,
     <T as Animals>::List: FlattenNodes,
@@ -286,8 +286,8 @@ where
     <AnimalSet<T> as CollectAnimalJourneyEffects>::Out: FlattenNodes,
     SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out>: StripEffectHeaders,
     AnimalEffectMembers<T>: Container,
-    (AnimalEffectMembers<T>, WithEffectFor<Context>):
-        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectFor<Context>>,
+    (AnimalEffectMembers<T>, WithEffectExecFor<Context>):
+        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectExecFor<Context>>,
 {
 }
 

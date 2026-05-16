@@ -18,12 +18,14 @@ mod tests {
         ) => {
             struct $name;
 
-            impl<J> jungle_sdk::types::Effect<J> for $name {
+            impl jungle_sdk::types::EffectSchema for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type In = ();
                 type Out = ();
                 type Err = ();
+            }
 
+            impl<J> jungle_sdk::types::EffectExec<J> for $name {
                 fn effect(
                     _jungle: &J,
                     _input: Self::In,
@@ -53,12 +55,14 @@ mod tests {
         ) => {
             struct $name;
 
-            impl<J> jungle_sdk::types::Effect<J> for $name {
+            impl jungle_sdk::types::EffectSchema for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type In = $in;
                 type Out = $out;
                 type Err = $err;
+            }
 
+            impl<J> jungle_sdk::types::EffectExec<J> for $name {
                 fn effect(
                     $dependency: &J,
                     $input: Self::In,
@@ -71,12 +75,14 @@ mod tests {
         ($name:ident, $id:ty) => {
             struct $name;
 
-            impl<J> jungle_sdk::types::Effect<J> for $name {
+            impl jungle_sdk::types::EffectSchema for $name {
                 type Id = jungle_sdk::types::Id<$id>;
                 type In = ();
                 type Out = ();
                 type Err = ();
+            }
 
+            impl<J> jungle_sdk::types::EffectExec<J> for $name {
                 fn effect(
                     _jungle: &J,
                     _input: Self::In,

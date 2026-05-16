@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, Animals as AnimalsTrait, Ecosystem, Effect, EffectCompletion, Id, Identity,
-    Observe, Step, SupportedAnimal,
+    Act, Animal, Animals as AnimalsTrait, Ecosystem, EffectCompletion, EffectExec, EffectSchema,
+    Id, Identity, Observe, Step, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -13,12 +13,14 @@ use std::time::Duration;
 
 struct LegacyEffect;
 
-impl<J> Effect<J> for LegacyEffect {
+impl EffectSchema for LegacyEffect {
     type Id = Id<U70>;
     type In = ();
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for LegacyEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -29,12 +31,14 @@ impl<J> Effect<J> for LegacyEffect {
 
 struct ModernEffect;
 
-impl<J> Effect<J> for ModernEffect {
+impl EffectSchema for ModernEffect {
     type Id = Id<U71>;
     type In = ();
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for ModernEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,

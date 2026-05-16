@@ -1,21 +1,26 @@
 use jungle_sdk::types::{
-    Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, Effect, EffectCompletion,
-    Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor, NodeMetadata, Observe,
-    ReplaceStep, RunnerOut, Select, StateLens, Step, Transparent, TraverseStep, UStep, While,
+    Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    EffectSchema, Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor,
+    NodeMetadata, Observe, ReplaceStep, RunnerOut, Select, StateLens, Step, Transparent,
+    TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49};
+use jungle_sdk::typosaurus::num::consts::{
+    U0, U1, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49,
+};
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::time::Duration;
 
 pub struct TemplateAddEffect;
-impl<J> Effect<J> for TemplateAddEffect {
+impl EffectSchema for TemplateAddEffect {
     type Id = jungle_sdk::types::Id<U40>;
     type In = i32;
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for TemplateAddEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -25,12 +30,14 @@ impl<J> Effect<J> for TemplateAddEffect {
 }
 
 pub struct TemplateCommitEffect;
-impl<J> Effect<J> for TemplateCommitEffect {
+impl EffectSchema for TemplateCommitEffect {
     type Id = jungle_sdk::types::Id<U41>;
     type In = i32;
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for TemplateCommitEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -502,15 +509,17 @@ trait RequiresContextBump {
 }
 
 pub struct ContextBoundTemplateEffect;
-impl<J> Effect<J> for ContextBoundTemplateEffect
-where
-    J: RequiresContextBump,
-{
+impl EffectSchema for ContextBoundTemplateEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U53>;
     type In = i32;
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for ContextBoundTemplateEffect
+where
+    J: RequiresContextBump,
+{
     fn effect(
         jungle: &J,
         input: Self::In,
@@ -605,12 +614,6 @@ impl RequiresContextBump for LocalTemplateContextZoo {
 impl RequiresContextBump for std::sync::Arc<LocalTemplateContextZoo> {
     fn context_bump(&self) -> i32 {
         11
-    }
-}
-
-impl RequiresContextBump for () {
-    fn context_bump(&self) -> i32 {
-        0
     }
 }
 
@@ -1126,12 +1129,14 @@ struct ComplexBetaState {
 }
 
 pub struct ComplexTimedEffect;
-impl<J> Effect<J> for ComplexTimedEffect {
+impl EffectSchema for ComplexTimedEffect {
     type Id = jungle_sdk::types::Id<U49>;
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for ComplexTimedEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -1704,8 +1709,8 @@ async fn template_binding_long_shared_and_unique_segments_with_different_animal_
         .await
         .expect("beta appearance request should succeed")
         .expect("beta appearance should exist");
-    let alpha: ComplexAlphaState = postcard::from_bytes(&alpha_appearance_bytes)
-        .expect("alpha appearance should deserialize");
+    let alpha: ComplexAlphaState =
+        postcard::from_bytes(&alpha_appearance_bytes).expect("alpha appearance should deserialize");
     let beta: ComplexBetaState =
         postcard::from_bytes(&beta_appearance_bytes).expect("beta appearance should deserialize");
 

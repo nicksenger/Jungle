@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Act, AnimalEffectSet, Condition, Conditional, ContextExecutor, Effect, EffectCompletion,
-    EffectRequest, Executor, Id, Identity, ManualExecutor, Running, Step, Waiting,
+    Act, AnimalEffectSet, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
+    EffectRequest, EffectSchema, Executor, Id, Identity, ManualExecutor, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -11,12 +11,14 @@ use std::future::ready;
 use std::sync::Arc;
 
 struct SeedEffect;
-impl<J> Effect<J> for SeedEffect {
+impl EffectSchema for SeedEffect {
     type Id = Id<U0>;
     type In = i32;
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for SeedEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -26,12 +28,14 @@ impl<J> Effect<J> for SeedEffect {
 }
 
 struct FinishEffect;
-impl<J> Effect<J> for FinishEffect {
+impl EffectSchema for FinishEffect {
     type Id = Id<U1>;
     type In = i32;
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for FinishEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -109,13 +113,14 @@ trait StepExecutor:
     Running<In = (i32, i32), Out = (i32, EffectRequest<Self::Effect>)>
     + Waiting<In = (i32, EffectCompletion<Self::Effect>), Out = (i32, i32)>
 {
-    type Effect: Effect<(), In = i32, Out = i32, Err = ()>;
+    type Effect: EffectSchema<In = i32, Out = i32, Err = ()>;
 }
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
     A: Act<ProgressAnimal, StateAspect = Identity, Input = i32, Output = i32>,
-    <A as Act<ProgressAnimal>>::Effect: Effect<(), In = i32, Out = i32, Err = ()>,
+    <A as Act<ProgressAnimal>>::Effect:
+        EffectSchema<In = i32, Out = i32, Err = ()> + EffectExec<()>,
 {
     type Effect = <A as Act<ProgressAnimal>>::Effect;
 }
@@ -212,12 +217,14 @@ fn context_executor_progresses_multi_step_derived_journey() {
 }
 
 struct BranchEffect;
-impl<J> Effect<J> for BranchEffect {
+impl EffectSchema for BranchEffect {
     type Id = Id<U2>;
     type In = i32;
     type Out = i32;
     type Err = ();
+}
 
+impl<J> EffectExec<J> for BranchEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,

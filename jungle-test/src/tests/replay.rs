@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, Effect, EffectCompletion,
-    Identity, JourneyStatus, LoopCondition, Sleep, UStep, While,
+    Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    EffectSchema, Identity, JourneyStatus, LoopCondition, Sleep, UStep, While,
 };
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
 use std::net::SocketAddr;
@@ -29,12 +29,14 @@ struct ReplayGateZoo {
 }
 
 struct ReplayPreIncrementEffect;
-impl Effect<()> for ReplayPreIncrementEffect {
+impl EffectSchema for ReplayPreIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U41>;
     type In = ();
     type Out = ();
     type Err = ();
+}
 
+impl EffectExec<()> for ReplayPreIncrementEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -43,12 +45,7 @@ impl Effect<()> for ReplayPreIncrementEffect {
     }
 }
 
-impl Effect<ReplayGateZoo> for ReplayPreIncrementEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U41>;
-    type In = ();
-    type Out = ();
-    type Err = ();
-
+impl EffectExec<ReplayGateZoo> for ReplayPreIncrementEffect {
     fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
@@ -59,12 +56,14 @@ impl Effect<ReplayGateZoo> for ReplayPreIncrementEffect {
 }
 
 struct ReplayPostIncrementEffect;
-impl Effect<()> for ReplayPostIncrementEffect {
+impl EffectSchema for ReplayPostIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U42>;
     type In = ();
     type Out = ();
     type Err = ();
+}
 
+impl EffectExec<()> for ReplayPostIncrementEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -73,12 +72,7 @@ impl Effect<()> for ReplayPostIncrementEffect {
     }
 }
 
-impl Effect<ReplayGateZoo> for ReplayPostIncrementEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U42>;
-    type In = ();
-    type Out = ();
-    type Err = ();
-
+impl EffectExec<ReplayGateZoo> for ReplayPostIncrementEffect {
     fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
@@ -89,12 +83,14 @@ impl Effect<ReplayGateZoo> for ReplayPostIncrementEffect {
 }
 
 struct ReplayGateEffect;
-impl Effect<()> for ReplayGateEffect {
+impl EffectSchema for ReplayGateEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U43>;
     type In = ();
     type Out = ();
     type Err = ();
+}
 
+impl EffectExec<()> for ReplayGateEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -103,12 +99,7 @@ impl Effect<()> for ReplayGateEffect {
     }
 }
 
-impl Effect<ReplayGateZoo> for ReplayGateEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U43>;
-    type In = ();
-    type Out = ();
-    type Err = ();
-
+impl EffectExec<ReplayGateZoo> for ReplayGateEffect {
     fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
@@ -221,11 +212,7 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
             Conditional<
                 ReplayPhaseIs<2>,
                 UStep<Mid>,
-                Conditional<
-                    ReplayPhaseIs<3>,
-                    UStep<Post>,
-                    UStep<Post>,
-                >,
+                Conditional<ReplayPhaseIs<3>, UStep<Post>, UStep<Post>>,
             >,
         >,
     >,
@@ -418,12 +405,14 @@ struct ReplayTimeoutZoo {
 }
 
 struct ReplayTimeoutPreIncrementEffect;
-impl Effect<()> for ReplayTimeoutPreIncrementEffect {
+impl EffectSchema for ReplayTimeoutPreIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U44>;
     type In = ();
     type Out = ();
     type Err = ();
+}
 
+impl EffectExec<()> for ReplayTimeoutPreIncrementEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -432,12 +421,7 @@ impl Effect<()> for ReplayTimeoutPreIncrementEffect {
     }
 }
 
-impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U44>;
-    type In = ();
-    type Out = ();
-    type Err = ();
-
+impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
     fn effect(
         jungle: &ReplayTimeoutZoo,
         _input: Self::In,
@@ -449,12 +433,14 @@ impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
 }
 
 struct ReplayTimeoutPostIncrementEffect;
-impl Effect<()> for ReplayTimeoutPostIncrementEffect {
+impl EffectSchema for ReplayTimeoutPostIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U45>;
     type In = ();
     type Out = ();
     type Err = ();
+}
 
+impl EffectExec<()> for ReplayTimeoutPostIncrementEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -463,12 +449,7 @@ impl Effect<()> for ReplayTimeoutPostIncrementEffect {
     }
 }
 
-impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U45>;
-    type In = ();
-    type Out = ();
-    type Err = ();
-
+impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
     fn effect(
         jungle: &ReplayTimeoutZoo,
         _input: Self::In,
@@ -490,10 +471,7 @@ where
 
     fn emit(_state: &A::State, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        state: &mut A::State,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("pre-timeout increment should succeed");
         state.phase += 1;
     }
@@ -513,10 +491,7 @@ where
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(
-        state: &mut A::State,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("timeout sleep should succeed");
         state.phase += 1;
     }
@@ -534,10 +509,7 @@ where
 
     fn emit(_state: &A::State, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        state: &mut A::State,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("post-timeout increment should succeed");
         state.phase += 1;
     }

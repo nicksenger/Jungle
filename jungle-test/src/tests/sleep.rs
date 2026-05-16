@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
-    LoopCondition, Observe, Sleep, Step, While,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
+    JourneyStatus, LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
@@ -18,28 +18,16 @@ struct SleepState {
 }
 
 struct AddEffect;
-impl Effect<()> for AddEffect {
+impl EffectSchema for AddEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
     type In = ();
     type Out = i32;
     type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(1))
-    }
 }
 
-impl Effect<SleepZoo> for AddEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
-    type In = ();
-    type Out = i32;
-    type Err = ();
-
+impl<J> EffectExec<J> for AddEffect {
     fn effect(
-        _jungle: &SleepZoo,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(1))

@@ -2,8 +2,8 @@ use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
-    LoopCondition, Observe, Perturb, StateLens, Step, While,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
+    JourneyStatus, LoopCondition, Observe, Perturb, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -46,28 +46,16 @@ struct IntegrationState {
 
 struct AddOneEffect;
 
-impl Effect<()> for AddOneEffect {
+impl EffectSchema for AddOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
     type In = ();
     type Out = i32;
     type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(1))
-    }
 }
 
-impl Effect<IntegrationZoo> for AddOneEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
-    type In = ();
-    type Out = i32;
-    type Err = ();
-
+impl<J> EffectExec<J> for AddOneEffect {
     fn effect(
-        _jungle: &IntegrationZoo,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(1))
@@ -76,28 +64,16 @@ impl Effect<IntegrationZoo> for AddOneEffect {
 
 struct AddTwoEffect;
 
-impl Effect<()> for AddTwoEffect {
+impl EffectSchema for AddTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
     type In = ();
     type Out = i32;
     type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(2))
-    }
 }
 
-impl Effect<IntegrationZoo> for AddTwoEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
-    type In = ();
-    type Out = i32;
-    type Err = ();
-
+impl<J> EffectExec<J> for AddTwoEffect {
     fn effect(
-        _jungle: &IntegrationZoo,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(2))

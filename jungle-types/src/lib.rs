@@ -12,8 +12,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, ActionSpec, Aspect, Effect, EffectCompletion, EffectRequest, Identity, StateCarrier,
-    StateLens, Step, StepSpec, UStep,
+    Act, ActionSpec, Aspect, EffectCompletion, EffectExec, EffectRequest, EffectSchema, Identity,
+    StateCarrier, StateLens, Step, StepSpec, UStep,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -26,11 +26,11 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    AllFrom, AnimalEffectMembers, AnimalEffectSet, AnimalEffectsCompatible, AnimalIdValue,
+    AllFrom, AnimalEffectExecCompatible, AnimalEffectMembers, AnimalEffectSet, AnimalIdValue,
     AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
     AnimalVersionIdentitiesUnique, AnimalVersions, EffectIdentity, EffectMember, EffectSet,
     Generations, GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals,
-    StripAnimalHeaders, StripEffectHeaders, WithEffectFor,
+    StripAnimalHeaders, StripEffectHeaders, WithEffectExecFor,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;

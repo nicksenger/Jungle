@@ -1,8 +1,8 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Act, ActionSpec, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, Effect,
-    EffectCompletion, EffectSet, Identity, LoopCondition, StateLens, Step, UStep, While,
+    Act, ActionSpec, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, EffectCompletion,
+    EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateLens, Step, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -44,8 +44,7 @@ struct UnitOkStep<A>(PhantomData<fn() -> A>);
 impl<T, A> Act<T> for UnitOkStep<A>
 where
     T: Animal,
-    A: Effect<In = ()>,
-    A: Effect<Out = (), Err = ()>,
+    A: EffectSchema<In = (), Out = (), Err = ()>,
 {
     type Effect = A;
     type StateAspect = Identity;
@@ -62,7 +61,7 @@ where
 struct UnitOkSpec<E>(PhantomData<fn() -> E>);
 impl<E> ActionSpec for UnitOkSpec<E>
 where
-    E: Effect<In = (), Out = (), Err = ()>,
+    E: EffectSchema<In = (), Out = (), Err = ()>,
 {
     type Effect = E;
     type Input = ();
@@ -196,28 +195,16 @@ impl From<RunnerState> for () {
 }
 
 struct RunnerStepOneEffect;
-impl Effect<()> for RunnerStepOneEffect {
+impl EffectSchema for RunnerStepOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
     type In = ();
     type Out = i32;
     type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(2))
-    }
 }
 
-impl Effect<RunnerZoo> for RunnerStepOneEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
-    type In = ();
-    type Out = i32;
-    type Err = ();
-
+impl<J> EffectExec<J> for RunnerStepOneEffect {
     fn effect(
-        _jungle: &RunnerZoo,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(2))
@@ -225,28 +212,16 @@ impl Effect<RunnerZoo> for RunnerStepOneEffect {
 }
 
 struct RunnerStepTwoEffect;
-impl Effect<()> for RunnerStepTwoEffect {
+impl EffectSchema for RunnerStepTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
     type In = ();
     type Out = i32;
     type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(1))
-    }
 }
 
-impl Effect<RunnerZoo> for RunnerStepTwoEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
-    type In = ();
-    type Out = i32;
-    type Err = ();
-
+impl<J> EffectExec<J> for RunnerStepTwoEffect {
     fn effect(
-        _jungle: &RunnerZoo,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(1))
@@ -356,12 +331,10 @@ fn animal_state_set() {
     #[derive(Default, serde::Serialize, serde::Deserialize)]
     struct CatState;
 
-    type StatefulGorillaJourney = <PreyWorkflowTemplate as jungle_sdk::types::BindAnimal<
-        StatefulGorilla,
-    >>::Bound;
-    type StatefulTigerJourney = <PredatorWorkflowTemplate as jungle_sdk::types::BindAnimal<
-        StatefulTiger,
-    >>::Bound;
+    type StatefulGorillaJourney =
+        <PreyWorkflowTemplate as jungle_sdk::types::BindAnimal<StatefulGorilla>>::Bound;
+    type StatefulTigerJourney =
+        <PredatorWorkflowTemplate as jungle_sdk::types::BindAnimal<StatefulTiger>>::Bound;
 
     animal!(StatefulGorilla, U0, ApeState, StatefulGorillaJourney);
     animal!(StatefulTiger, U1, CatState, StatefulTigerJourney);
@@ -399,28 +372,16 @@ struct ExecutorCatState {
 }
 
 struct EatEnergy;
-impl Effect<()> for EatEnergy {
+impl EffectSchema for EatEnergy {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
     type In = i32;
     type Out = i32;
     type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(3))
-    }
 }
 
-impl Effect<Zoo> for EatEnergy {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
-    type In = i32;
-    type Out = i32;
-    type Err = ();
-
+impl<J> EffectExec<J> for EatEnergy {
     fn effect(
-        _jungle: &Zoo,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(3))
@@ -428,28 +389,16 @@ impl Effect<Zoo> for EatEnergy {
 }
 
 struct HuntEnergy;
-impl Effect<()> for HuntEnergy {
+impl EffectSchema for HuntEnergy {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
     type In = i32;
     type Out = i32;
     type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(4))
-    }
 }
 
-impl Effect<Zoo> for HuntEnergy {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
-    type In = i32;
-    type Out = i32;
-    type Err = ();
-
+impl<J> EffectExec<J> for HuntEnergy {
     fn effect(
-        _jungle: &Zoo,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(4))
@@ -457,28 +406,16 @@ impl Effect<Zoo> for HuntEnergy {
 }
 
 struct RoundAdvance;
-impl Effect<()> for RoundAdvance {
+impl EffectSchema for RoundAdvance {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
     type In = i32;
     type Out = i32;
     type Err = ();
-
-    fn effect(
-        _jungle: &(),
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(1))
-    }
 }
 
-impl Effect<Zoo> for RoundAdvance {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
-    type In = i32;
-    type Out = i32;
-    type Err = ();
-
+impl<J> EffectExec<J> for RoundAdvance {
     fn effect(
-        _jungle: &Zoo,
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(1))
@@ -490,7 +427,7 @@ impl<T, Focus, A> Act<T> for AddI32<Focus, A>
 where
     T: Animal,
     Focus: jungle_sdk::types::Aspect<T::State, View = i32>,
-    A: Effect<In = i32, Out = i32, Err = ()>,
+    A: EffectSchema<In = i32, Out = i32, Err = ()>,
 {
     type Effect = A;
     type StateAspect = Focus;
