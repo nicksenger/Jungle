@@ -2,8 +2,8 @@ use futures::channel::oneshot;
 use futures::SinkExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    Animal, AnimalObservation, AnimalPerturbation, BuildFlowWithContext, ContextExecutor, DynFlow,
-    ExecutorError, ObservationBridge, PerturbationBridge, RunnerOut, Sleep,
+    Animal, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError, Observable,
+    ObservationBridge, Perturbable, PerturbationBridge, RunnerOut, Sleep,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -41,7 +41,7 @@ where
         mut tx: RunnerChannelTx,
     ) -> Result<A::State, ExecutorError>
     where
-        A: Animal + AnimalObservation + AnimalPerturbation,
+        A: Animal + Observable + Perturbable,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
@@ -75,11 +75,11 @@ where
         executor: &ContextExecutor<T, A>,
     ) -> Result<Option<Vec<u8>>, ExecutorError>
     where
-        A: Animal + AnimalObservation,
+        A: Animal + Observable,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
-        <<A as AnimalObservation>::Bridge as ObservationBridge<A>>::snapshot(executor.state())
+        <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(executor.state())
     }
 
     pub async fn emit_appearance(
@@ -109,7 +109,7 @@ where
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
-        A: Animal + AnimalObservation + AnimalPerturbation,
+        A: Animal + Observable + Perturbable,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
         Initial: Serialize + Clone,
@@ -161,7 +161,7 @@ where
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
-        A: Animal + AnimalObservation + AnimalPerturbation,
+        A: Animal + Observable + Perturbable,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
@@ -190,7 +190,7 @@ async fn apply_completion_and_emit_appearance<T, A>(
 ) -> Result<(), ExecutorError>
 where
     T: 'static,
-    A: Animal + AnimalObservation,
+    A: Animal + Observable,
     A::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
@@ -220,7 +220,7 @@ where
     }
     let _emitted = executor.complete_serialized(completion)?;
     if let Some(appearance) =
-        <<A as AnimalObservation>::Bridge as ObservationBridge<A>>::snapshot(executor.state())?
+        <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(executor.state())?
     {
         send_history(
             tx,
@@ -256,19 +256,19 @@ async fn process_perturbations<A, Ctx>(
     tx: &mut RunnerChannelTx,
 ) -> Result<(), ExecutorError>
 where
-    A: Animal + AnimalPerturbation,
+    A: Animal + Perturbable,
     Ctx: 'static,
     A::Journey:
         BuildFlowWithContext<(Arc<Ctx>, DynFlow<A::State>), Output = (Arc<Ctx>, DynFlow<A::State>)>,
 {
-    if !<<A as AnimalPerturbation>::Bridge as PerturbationBridge<A>>::enabled() {
+    if !<<A as Perturbable>::Perturbation as PerturbationBridge<A>>::enabled() {
         return Ok(());
     }
 
     loop {
         let (done_tx, done_rx) = oneshot::channel();
         tx.send((
-            RunnerChannelMessage::ClaimAnimalPerturbation { journey_id },
+            RunnerChannelMessage::ClaimPerturbable { journey_id },
             done_tx,
         ))
         .await
@@ -291,7 +291,7 @@ where
 
         {
             let state = executor.state_mut();
-            let applied = <<A as AnimalPerturbation>::Bridge as PerturbationBridge<A>>::apply(
+            let applied = <<A as Perturbable>::Perturbation as PerturbationBridge<A>>::apply(
                 state,
                 &claimed.data,
             )?;
@@ -302,7 +302,7 @@ where
 
         let (done_tx, done_rx) = oneshot::channel();
         tx.send((
-            RunnerChannelMessage::AckAnimalPerturbation {
+            RunnerChannelMessage::AckPerturbable {
                 journey_id,
                 perturbation_id: claimed.id,
             },

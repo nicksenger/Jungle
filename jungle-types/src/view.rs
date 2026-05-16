@@ -1,4 +1,6 @@
-use crate::{Conditional, Join, NodeMetadata, Select, Step, Transparent, While};
+use crate::{
+    ActionSpec, Conditional, Join, NodeMetadata, Scoped, Select, Step, StepSpec, Transparent, While,
+};
 use inception::*;
 
 /// Structural AST for a journey/flow graph.
@@ -118,6 +120,22 @@ where
 }
 
 #[inception::primitive(property = JungleJourneyAst)]
+impl<S> BuildJourneyAst<Vec<JourneyAst>> for StepSpec<S>
+where
+    S: ActionSpec + 'static,
+    <S as ActionSpec>::Effect: 'static,
+{
+    type Output = Vec<JourneyAst>;
+
+    fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
+        nodes.push(JourneyAst::Step {
+            label: core::any::type_name::<<S as ActionSpec>::Effect>(),
+        });
+        nodes
+    }
+}
+
+#[inception::primitive(property = JungleJourneyAst)]
 impl<P, L, R, M> BuildJourneyAst<Vec<JourneyAst>> for Conditional<P, L, R, M>
 where
     P: 'static,
@@ -180,6 +198,19 @@ where
             body: Box::new(body),
         });
         nodes
+    }
+}
+
+#[inception::primitive(property = JungleJourneyAst)]
+impl<View, F> BuildJourneyAst<Vec<JourneyAst>> for Scoped<View, F>
+where
+    View: 'static,
+    F: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
+{
+    type Output = Vec<JourneyAst>;
+
+    fn push_ast(nodes: Vec<JourneyAst>) -> Self::Output {
+        <F as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(nodes)
     }
 }
 

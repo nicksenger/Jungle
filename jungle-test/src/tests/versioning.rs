@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, AnimalMember, Animals as AnimalsTrait, Ecosystem, Effect, EffectCompletion, Id,
-    Identity, Observe, Step, SupportedAnimal,
+    Act, Animal, Animals as AnimalsTrait, Ecosystem, EffectCompletion, Id, Identity, Observe, Step,
+    SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -12,20 +12,16 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 struct LegacyEffect;
-impl jungle_sdk::types::EffectMember for LegacyEffect {}
 
-#[derive(Clone, Copy)]
-struct LegacyDependency;
-
-impl Effect for LegacyEffect {
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
     type Id = Id<U70>;
-    type Dependency = LegacyDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(10))
@@ -33,20 +29,16 @@ impl Effect for LegacyEffect {
 }
 
 struct ModernEffect;
-impl jungle_sdk::types::EffectMember for ModernEffect {}
 
-#[derive(Clone, Copy)]
-struct ModernDependency;
-
-impl Effect for ModernEffect {
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
     type Id = Id<U71>;
-    type Dependency = ModernDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(99))
@@ -88,7 +80,6 @@ struct LegacyJourney(Step<LegacyAnimal, LegacyStep>);
 struct ModernJourney(Step<ModernAnimal, ModernStep>);
 
 struct LegacyAnimal;
-impl AnimalMember for LegacyAnimal {}
 impl Animal for LegacyAnimal {
     type Id = Id<U33>;
     type Generation = U0;
@@ -96,11 +87,11 @@ impl Animal for LegacyAnimal {
     type Seed = i32;
     type Journey = LegacyJourney;
 }
-impl jungle_sdk::types::AnimalObservation for LegacyAnimal {
-    type Bridge = jungle_sdk::types::ObserveObservation;
+impl jungle_sdk::types::Observable for LegacyAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
 }
-impl jungle_sdk::types::AnimalPerturbation for LegacyAnimal {
-    type Bridge = jungle_sdk::types::NoopPerturbation;
+impl jungle_sdk::types::Perturbable for LegacyAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for LegacyAnimal {
     type Appearance = i32;
@@ -119,7 +110,6 @@ impl jungle_sdk::types::Identified for LegacyAnimal {
 }
 
 struct ModernAnimal;
-impl AnimalMember for ModernAnimal {}
 impl Animal for ModernAnimal {
     type Id = Id<U33>;
     type Generation = U1;
@@ -127,11 +117,11 @@ impl Animal for ModernAnimal {
     type Seed = i32;
     type Journey = ModernJourney;
 }
-impl jungle_sdk::types::AnimalObservation for ModernAnimal {
-    type Bridge = jungle_sdk::types::ObserveObservation;
+impl jungle_sdk::types::Observable for ModernAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
 }
-impl jungle_sdk::types::AnimalPerturbation for ModernAnimal {
-    type Bridge = jungle_sdk::types::NoopPerturbation;
+impl jungle_sdk::types::Perturbable for ModernAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for ModernAnimal {
     type Appearance = i32;
@@ -150,7 +140,6 @@ impl jungle_sdk::types::Identified for ModernAnimal {
 }
 
 struct FutureAnimal;
-impl AnimalMember for FutureAnimal {}
 impl Animal for FutureAnimal {
     type Id = Id<U33>;
     type Generation = U2;
@@ -158,11 +147,11 @@ impl Animal for FutureAnimal {
     type Seed = i32;
     type Journey = ModernJourney;
 }
-impl jungle_sdk::types::AnimalObservation for FutureAnimal {
-    type Bridge = jungle_sdk::types::ObserveObservation;
+impl jungle_sdk::types::Observable for FutureAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
 }
-impl jungle_sdk::types::AnimalPerturbation for FutureAnimal {
-    type Bridge = jungle_sdk::types::NoopPerturbation;
+impl jungle_sdk::types::Perturbable for FutureAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for FutureAnimal {
     type Appearance = i32;
@@ -187,18 +176,6 @@ struct VersionedZoo;
 impl Ecosystem for VersionedZoo {
     const NAME: &'static str = "versioned-zoo";
     type Animals = VersionedAnimals;
-}
-
-impl From<&VersionedZoo> for LegacyDependency {
-    fn from(_value: &VersionedZoo) -> Self {
-        Self
-    }
-}
-
-impl From<&VersionedZoo> for ModernDependency {
-    fn from(_value: &VersionedZoo) -> Self {
-        Self
-    }
 }
 
 #[test]

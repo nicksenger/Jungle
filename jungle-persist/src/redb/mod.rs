@@ -3,8 +3,8 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jungle_types::{
-    ClaimedAnimalPerturbation, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
-    RunnerUpdateOut, SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, RunnerUpdateOut,
+    SupportedAnimal, Work,
 };
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -505,7 +505,7 @@ impl JungleStore for RedbStore {
     async fn claim_animal_perturbation(
         &self,
         journey_id: Uuid,
-    ) -> Result<Option<ClaimedAnimalPerturbation>> {
+    ) -> Result<Option<ClaimedPerturbable>> {
         let write_tx = self.db.begin_write().map_err(|err| {
             crate::PersistenceError::Message(format!(
                 "redb claim_animal_perturbation begin failed: {err}"
@@ -576,7 +576,7 @@ impl JungleStore for RedbStore {
         let Some((sequence_id, data)) = selected else {
             return Ok(None);
         };
-        Ok(Some(ClaimedAnimalPerturbation {
+        Ok(Some(ClaimedPerturbable {
             id: sequence_id,
             data,
         }))

@@ -4,8 +4,9 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, DeriveInput, Expr,
-    GenericParam, ItemImpl, Meta, Path,
+    parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, Attribute, Data,
+    DeriveInput, Expr, Fields, GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl, Meta,
+    Path, Type,
 };
 
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
@@ -15,6 +16,17 @@ fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStrea
         .push(parse_quote!(#[inception(properties = [#(#properties),*])]));
     let generated = inception_derive_gen::State::gen(quote!(#input));
     rewrite_inception_fallback(generated).into()
+}
+
+fn derive_with_properties_input(
+    mut input: DeriveInput,
+    properties: &[Path],
+) -> proc_macro2::TokenStream {
+    input
+        .attrs
+        .push(parse_quote!(#[inception(properties = [#(#properties),*])]));
+    let generated = inception_derive_gen::State::gen(quote!(#input));
+    rewrite_inception_fallback(generated)
 }
 
 fn jungle_types_path() -> Path {
@@ -161,6 +173,91 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
+#[proc_macro_derive(FlowTemplate, attributes(jungle))]
+pub fn derive_flow_template(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let data = input.data.clone();
+    let ident = input.ident.clone();
+    let generics = input.generics.clone();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let view_ty = parse_jungle_view_attr(&input.attrs);
+    // Scoped templates provide a custom `TraverseFlow` impl (wrapping output in `Scoped`),
+    // so they must not also derive `JungleTraverseFlow` via inception.
+    let properties = if view_ty.is_some() {
+        jungle_types(&["JungleFlow", "JungleJourneyAst", "JungleReplaceFlow"])
+    } else {
+        jungle_types(&[
+            "JungleFlow",
+            "JungleJourneyAst",
+            "JungleTraverseFlow",
+            "JungleReplaceFlow",
+        ])
+    };
+    let derived = derive_with_properties_input(input, &properties);
+    let template_scope = jungle_type("TemplateScope");
+    let root_scope = jungle_type("RootTemplateScope");
+    let template_view = jungle_type("TemplateView");
+    let scope_ty = if let Some(view) = &view_ty {
+        quote!(#template_view<#view>)
+    } else {
+        quote!(#root_scope)
+    };
+    let scope_impl = quote! {
+        impl #impl_generics #template_scope for #ident #ty_generics #where_clause {
+            type View = #scope_ty;
+        }
+    };
+    let traverse_flow = jungle_type("TraverseFlow");
+    let scoped = jungle_type("Scoped");
+    let list_empty: Path = parse_quote!(jungle_sdk::typosaurus::collections::list::Empty);
+    let field_types = match &data {
+        Data::Struct(data) => match &data.fields {
+            Fields::Named(named) => named
+                .named
+                .iter()
+                .map(|field| {
+                    let ty = &field.ty;
+                    quote!(#ty)
+                })
+                .collect::<Vec<_>>(),
+            Fields::Unnamed(unnamed) => unnamed
+                .unnamed
+                .iter()
+                .map(|field| {
+                    let ty = &field.ty;
+                    quote!(#ty)
+                })
+                .collect::<Vec<_>>(),
+            Fields::Unit => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    let field_traverse_outputs = field_types
+        .iter()
+        .map(|ty| quote!(<#ty as #traverse_flow>::Output))
+        .collect::<Vec<_>>();
+    let scoped_inner = nested_tlist(&field_traverse_outputs, &list_empty);
+    let traverse_impl = if let Some(view) = &view_ty {
+        quote! {
+            impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
+            where
+                #(#field_types: #traverse_flow,)*
+            {
+                type Output = #scoped<#view, #scoped_inner>;
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    quote! {
+        #derived
+        #scope_impl
+        #traverse_impl
+    }
+    .into()
+}
+
 #[proc_macro_derive(Animals)]
 pub fn derive_animals(input: TokenStream) -> TokenStream {
     let properties = jungle_types(&["Ident", "JungleAnimals"]);
@@ -173,10 +270,109 @@ pub fn derive_effects(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
-#[proc_macro_derive(Optic)]
+#[proc_macro_derive(Optic, attributes(view, jungle_sdk))]
 pub fn derive_optic(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let ident = input.ident.clone();
+    let generics = input.generics.clone();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     let properties = jungle_types(&["JungleOptic"]);
-    derive_with_properties(input, &properties)
+    let derived = derive_with_properties_input(input.clone(), &properties);
+    let view_project = jungle_type("ViewProject");
+
+    let mut projection_impls = Vec::new();
+    if let Data::Struct(data) = &input.data {
+        match &data.fields {
+            Fields::Named(named) => {
+                for field in &named.named {
+                    if !is_view_marker(&field.attrs) {
+                        continue;
+                    }
+                    let Some(field_ident) = &field.ident else {
+                        continue;
+                    };
+                    let ty = &field.ty;
+                    projection_impls.push(quote! {
+                        impl #impl_generics #view_project<#ty> for #ident #ty_generics #where_clause {
+                            fn project_view<'a>(state: &'a mut Self) -> &'a mut #ty {
+                                &mut state.#field_ident
+                            }
+                        }
+                    });
+                }
+            }
+            Fields::Unnamed(unnamed) => {
+                for (index, field) in unnamed.unnamed.iter().enumerate() {
+                    if !is_view_marker(&field.attrs) {
+                        continue;
+                    }
+                    let idx = syn::Index::from(index);
+                    let ty = &field.ty;
+                    projection_impls.push(quote! {
+                        impl #impl_generics #view_project<#ty> for #ident #ty_generics #where_clause {
+                            fn project_view<'a>(state: &'a mut Self) -> &'a mut #ty {
+                                &mut state.#idx
+                            }
+                        }
+                    });
+                }
+            }
+            Fields::Unit => {}
+        }
+    }
+
+    quote! {
+        #derived
+        #(#projection_impls)*
+    }
+    .into()
+}
+
+fn is_view_marker(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        attr.path().is_ident("view")
+            || attr
+                .path()
+                .segments
+                .last()
+                .map(|seg| seg.ident == "view")
+                .unwrap_or(false)
+    })
+}
+
+fn parse_jungle_view_attr(attrs: &[Attribute]) -> Option<Type> {
+    for attr in attrs {
+        if !attr.path().is_ident("jungle") {
+            continue;
+        }
+        let mut result = None;
+        let _ = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("view") {
+                let value = meta.value()?;
+                let ty: Type = value.parse()?;
+                result = Some(ty);
+                return Ok(());
+            }
+            Ok(())
+        });
+        if result.is_some() {
+            return result;
+        }
+    }
+    None
+}
+
+fn nested_tlist(
+    items: &[proc_macro2::TokenStream],
+    empty: &Path,
+) -> proc_macro2::TokenStream {
+    if items.is_empty() {
+        return quote!(#empty);
+    }
+    let head = &items[0];
+    let tail = nested_tlist(&items[1..], empty);
+    quote!(jungle_sdk::typosaurus::collections::list::List<(#head, #tail)>)
 }
 
 struct PrimitiveAttributes {
@@ -346,6 +542,223 @@ pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
                 type Is = #inception::True;
             }
         };
+    }
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr_tokens = proc_macro2::TokenStream::from(attr);
+    if !attr_tokens.is_empty() {
+        return syn::Error::new_spanned(attr_tokens, "This macro does not accept arguments.")
+            .to_compile_error()
+            .into();
+    }
+
+    let item_impl = parse_macro_input!(item as ItemImpl);
+
+    let Some((_, trait_path, _)) = &item_impl.trait_ else {
+        return syn::Error::new_spanned(
+            &item_impl,
+            "This macro can only be applied to trait implementations.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let trait_ident = trait_path
+        .segments
+        .last()
+        .map(|segment| segment.ident.to_string())
+        .unwrap_or_default();
+    if trait_ident != "Effect" {
+        return syn::Error::new_spanned(trait_path, "Expected an impl for an `Effect<...>` trait.")
+            .to_compile_error()
+            .into();
+    }
+
+    let context_ty = match trait_path
+        .segments
+        .last()
+        .and_then(|segment| match &segment.arguments {
+            syn::PathArguments::AngleBracketed(args) if args.args.len() == 1 => {
+                match args.args.first() {
+                    Some(syn::GenericArgument::Type(ty)) => Some(ty.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }) {
+        Some(ty) => ty,
+        None => {
+            return syn::Error::new_spanned(
+                trait_path,
+                "Expected `Effect<Context>` with exactly one type argument.",
+            )
+            .to_compile_error()
+            .into()
+        }
+    };
+
+    let mut id_ty: Option<Type> = None;
+    let mut in_ty: Option<Type> = None;
+    let mut out_ty: Option<Type> = None;
+    let mut err_ty: Option<Type> = None;
+    let mut effect_fn: Option<ImplItemFn> = None;
+
+    for item in &item_impl.items {
+        match item {
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "Id" => {
+                id_ty = Some(ty.clone());
+            }
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "In" => {
+                in_ty = Some(ty.clone());
+            }
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "Out" => {
+                out_ty = Some(ty.clone());
+            }
+            ImplItem::Type(ImplItemType { ident, ty, .. }) if ident == "Err" => {
+                err_ty = Some(ty.clone());
+            }
+            ImplItem::Fn(func) if func.sig.ident == "effect" => {
+                effect_fn = Some(func.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let (Some(id_ty), Some(in_ty), Some(out_ty), Some(err_ty), Some(effect_fn)) =
+        (id_ty, in_ty, out_ty, err_ty, effect_fn)
+    else {
+        return syn::Error::new_spanned(
+            &item_impl,
+            "Expected associated types `Id`, `In`, `Out`, `Err`, and method `effect`.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let self_ty = &item_impl.self_ty;
+
+    let generic_names = item_impl
+        .generics
+        .params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .collect::<HashSet<_>>();
+
+    let self_ty_names = collect_ident_names(quote!(#self_ty));
+    let context_names = collect_ident_names(quote!(#context_ty));
+    let self_generic_names = self_ty_names
+        .intersection(&generic_names)
+        .cloned()
+        .collect::<HashSet<_>>();
+    let context_only_generic_names = context_names
+        .intersection(&generic_names)
+        .filter(|name| !self_generic_names.contains(*name))
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let schema_types_tokens = quote! { #id_ty #in_ty #out_ty #err_ty };
+    let schema_type_names = collect_ident_names(schema_types_tokens);
+    if let Some(offender) = context_only_generic_names
+        .iter()
+        .find(|name| schema_type_names.contains(*name))
+    {
+        return syn::Error::new_spanned(
+            &item_impl,
+            format!(
+                "Effect schema cannot depend on context-only generic `{offender}`. Move it onto the effect type or make schema context-agnostic."
+            ),
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let self_ty_tokens = quote!(#self_ty).to_string();
+    let retained_params = item_impl
+        .generics
+        .params
+        .iter()
+        .filter(|param| match param {
+            GenericParam::Type(ty) => self_ty_tokens.contains(&ty.ident.to_string()),
+            GenericParam::Lifetime(lifetime) => {
+                self_ty_tokens.contains(&lifetime.lifetime.ident.to_string())
+            }
+            GenericParam::Const(const_param) => {
+                self_ty_tokens.contains(&const_param.ident.to_string())
+            }
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let retained_param_names = retained_params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .collect::<HashSet<_>>();
+    let dropped_param_names = item_impl
+        .generics
+        .params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .filter(|name| !retained_param_names.contains(name))
+        .collect::<HashSet<_>>();
+
+    let schema_impl_generics = if retained_params.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#(#retained_params),*> }
+    };
+    let schema_where_predicates = item_impl
+        .generics
+        .where_clause
+        .as_ref()
+        .map(|where_clause| {
+            where_clause
+                .predicates
+                .iter()
+                .filter(|pred| {
+                    let used_names = collect_ident_names(quote!(#pred));
+                    !used_names
+                        .iter()
+                        .any(|name| dropped_param_names.contains(name))
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let schema_where_clause = if schema_where_predicates.is_empty() {
+        quote! {}
+    } else {
+        quote! { where #(#schema_where_predicates),* }
+    };
+
+    let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
+    let effect_schema = jungle_type("EffectSchema");
+    let effect_exec = jungle_type("EffectExec");
+
+    quote! {
+        impl #schema_impl_generics #effect_schema for #self_ty #schema_where_clause {
+            type Id = #id_ty;
+            type In = #in_ty;
+            type Out = #out_ty;
+            type Err = #err_ty;
+        }
+
+        impl #exec_impl_generics #effect_exec<#context_ty> for #self_ty #exec_where_clause {
+            #effect_fn
+        }
     }
     .into()
 }

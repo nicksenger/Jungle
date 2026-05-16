@@ -15,12 +15,6 @@ impl Default for BehavioralDependency {
     }
 }
 
-impl<T> From<&T> for BehavioralDependency {
-    fn from(_value: &T) -> Self {
-        Self::default()
-    }
-}
-
 define_effect!(
     Rest,
     id = 2,
@@ -28,7 +22,7 @@ define_effect!(
     in = u16,
     out = u16,
     err = String,
-    act = |dependency, energy| {
+    effect = |dependency, energy| {
         async move {
             maybe_delay().await;
             Ok(energy.saturating_add(dependency.sleep_recovery))
@@ -43,7 +37,7 @@ define_effect!(
     in = (String, u8),
     out = String,
     err = String,
-    act = |dependency, (kind, intensity)| {
+    effect = |dependency, (kind, intensity)| {
         async move {
             maybe_delay().await;
             let volume = intensity.saturating_add(dependency.sound_volume_bias);
@@ -59,7 +53,7 @@ define_effect!(
     in = (u8, bool),
     out = u8,
     err = String,
-    act = |_dependency, (stress, opposable_thumb)| {
+    effect = |_dependency, (stress, opposable_thumb)| {
         async move {
             maybe_delay().await;
             let rhythm = if opposable_thumb { 4 } else { 2 };

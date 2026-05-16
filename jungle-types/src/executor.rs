@@ -1,6 +1,6 @@
 use crate::{
-    Act, Animal, BackendError, Conditional, Effect, EffectCompletion, Join, LoopCondition, Running,
-    Select, Step, Transparent, While,
+    Act, Animal, BackendError, Conditional, EffectCompletion, EffectExec, EffectSchema, Join,
+    LoopCondition, Running, Scoped, Select, Step, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize as SerdeSerialize};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use typosaurus::collections::list::{self, List as TList};
 
 type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
@@ -53,6 +54,13 @@ where
     type Carry = <F as ArgputForState<State>>::Carry;
 }
 
+impl<State, View, F> ArgputForState<State> for Scoped<View, F>
+where
+    F: ArgputForState<State>,
+{
+    type Carry = <F as ArgputForState<State>>::Carry;
+}
+
 impl<State, L, R, M> ArgputForState<State> for Select<L, R, M>
 where
     L: ArgputForState<State>,
@@ -74,6 +82,17 @@ where
     C: LoopCondition<State>,
 {
     type Carry = <C as LoopCondition<State>>::Arg;
+}
+
+impl<State> ArgputForState<State> for list::Empty {
+    type Carry = ();
+}
+
+impl<State, Head, Tail> ArgputForState<State> for TList<(Head, Tail)>
+where
+    Head: ArgputForState<State>,
+{
+    type Carry = <Head as ArgputForState<State>>::Carry;
 }
 
 impl<State, F> ArgputForState<State> for F
@@ -248,13 +267,12 @@ impl<T, A> ErasedFlow<T::State> for TypedErasedStep<Step<T, A>>
 where
     T: Animal,
     A: Act<T>,
-    <A as Act<T>>::Effect: Effect<Dependency = ()>,
-    <<A as Act<T>>::Effect as Effect>::Dependency: 'static,
-    <<A as Act<T>>::Effect as Effect>::In: 'static,
-    <<A as Act<T>>::Effect as Effect>::Out: 'static,
-    <<A as Act<T>>::Effect as Effect>::Err: Serialize + 'static,
-    <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
-    <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
+    <A as Act<T>>::Effect: EffectExec<()>,
+    <<A as Act<T>>::Effect as EffectSchema>::In: 'static,
+    <<A as Act<T>>::Effect as EffectSchema>::Out: 'static,
+    <<A as Act<T>>::Effect as EffectSchema>::Err: Serialize + 'static,
+    <<A as Act<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as Act<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -307,7 +325,8 @@ where
         };
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as Act<T>>::Effect as Effect>::act(&(), effect_input).await;
+                let completion =
+                    <<A as Act<T>>::Effect as EffectExec<()>>::effect(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -338,11 +357,11 @@ where
 
         let typed_completion: EffectCompletion<<A as Act<T>>::Effect> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Act<T>>::Effect as Effect>::Out>(&output)
+                postcard::from_bytes::<<<A as Act<T>>::Effect as EffectSchema>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<A as Act<T>>::Effect as Effect>::Err>(&error)
+                postcard::from_bytes::<<<A as Act<T>>::Effect as EffectSchema>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -394,14 +413,10 @@ where
     Context: Send + Sync + 'static,
     T: Animal,
     A: Act<T>,
-    <A as Act<T>>::Effect: Effect,
-    for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Effect as Effect>::Dependency>,
-    <<A as Act<T>>::Effect as Effect>::Dependency: 'static,
-    <<A as Act<T>>::Effect as Effect>::In: 'static,
-    <<A as Act<T>>::Effect as Effect>::Out: 'static,
-    <<A as Act<T>>::Effect as Effect>::Err: Serialize + 'static,
-    <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
-    <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
+    <A as Act<T>>::Effect: EffectExec<Context>,
+    <<A as Act<T>>::Effect as EffectSchema>::In: 'static,
+    <<A as Act<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
+    <<A as Act<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -452,12 +467,14 @@ where
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
-        let dependency: <<A as Act<T>>::Effect as Effect>::Dependency =
-            self.context.as_ref().into();
+        let context = Arc::clone(&self.context);
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion =
-                    <<A as Act<T>>::Effect as Effect>::act(&dependency, effect_input).await;
+                let completion = <<A as Act<T>>::Effect as EffectExec<Context>>::effect(
+                    context.as_ref(),
+                    effect_input,
+                )
+                .await;
                 serialize_completion(completion)
             })
         });
@@ -488,11 +505,11 @@ where
 
         let typed_completion: EffectCompletion<<A as Act<T>>::Effect> = match completion {
             Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Act<T>>::Effect as Effect>::Out>(&output)
+                postcard::from_bytes::<<<A as Act<T>>::Effect as EffectSchema>::Out>(&output)
                     .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             ),
             Err(error) => Err(
-                postcard::from_bytes::<<<A as Act<T>>::Effect as Effect>::Err>(&error)
+                postcard::from_bytes::<<<A as Act<T>>::Effect as EffectSchema>::Err>(&error)
                     .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
             ),
         };
@@ -1585,15 +1602,36 @@ pub trait BuildFlow<Input> {
     }
 }
 
+impl<State> BuildFlow<DynFlow<State>> for list::Empty {
+    type Output = DynFlow<State>;
+
+    fn push_steps(steps: DynFlow<State>) -> Self::Output {
+        steps
+    }
+}
+
+impl<State, Head, Tail> BuildFlow<DynFlow<State>> for TList<(Head, Tail)>
+where
+    Head: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    Tail: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(steps: DynFlow<State>) -> Self::Output {
+        let steps = <Head as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        <Tail as BuildFlow<DynFlow<State>>>::push_steps(steps)
+    }
+}
+
 #[inception::primitive(property = crate::JungleDynFlow)]
 impl<T, A> BuildFlow<DynFlow<T::State>> for Step<T, A>
 where
     T: Animal + 'static,
     A: Act<T> + 'static,
-    <A as Act<T>>::Effect: Effect<Dependency = ()> + 'static,
-    <<A as Act<T>>::Effect as Effect>::Err: Serialize,
-    <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
-    <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
+    <A as Act<T>>::Effect: EffectExec<()> + 'static,
+    <<A as Act<T>>::Effect as EffectSchema>::Err: Serialize,
+    <<A as Act<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as Act<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -1750,17 +1788,46 @@ pub trait BuildFlowWithContext<Input> {
     }
 }
 
+impl<Context, State> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for list::Empty {
+    type Output = (Arc<Context>, DynFlow<State>);
+
+    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        input
+    }
+}
+
+impl<Context, State, Head, Tail> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for TList<(Head, Tail)>
+where
+    Head: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    Tail: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+{
+    type Output = (Arc<Context>, DynFlow<State>);
+
+    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        let input =
+            <Head as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        <Tail as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
+    }
+}
+
 #[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for Step<T, A>
 where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
     A: Act<T> + 'static,
-    <A as Act<T>>::Effect: Effect + 'static,
-    for<'ctx> &'ctx Context: Into<<<A as Act<T>>::Effect as Effect>::Dependency>,
-    <<A as Act<T>>::Effect as Effect>::Err: Serialize,
-    <<A as Act<T>>::Effect as Effect>::Out: DeserializeOwned,
-    <<A as Act<T>>::Effect as Effect>::Err: DeserializeOwned,
+    <A as Act<T>>::Effect: EffectExec<Context> + 'static,
+    <<A as Act<T>>::Effect as EffectSchema>::Out: Serialize,
+    <<A as Act<T>>::Effect as EffectSchema>::Err: Serialize,
+    <<A as Act<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as Act<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {

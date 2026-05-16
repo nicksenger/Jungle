@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, AnimalMember, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Id,
+    Act, Animal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Id,
     Identity, LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
@@ -46,16 +46,16 @@ pub struct ObserveState {
 }
 
 pub struct BumpEffect;
-impl jungle_sdk::types::EffectMember for BumpEffect {}
-impl Effect for BumpEffect {
+impl EffectSchema for BumpEffect {
     type Id = Id<U14>;
-    type Dependency = ();
     type In = ();
     type Out = ();
     type Err = ();
+}
 
-    fn act(
-        _dependency: &Self::Dependency,
+impl<J> EffectExec<J> for BumpEffect {
+    fn effect(
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(()))
@@ -119,7 +119,6 @@ type ObserveBody = Conditional<
 type ObserveJourney = While<ObserveLoopForever, ObserveBody>;
 
 pub struct ObserveAnimal;
-impl AnimalMember for ObserveAnimal {}
 impl Animal for ObserveAnimal {
     type Id = Id<U1>;
     type Generation = U0;
@@ -127,11 +126,11 @@ impl Animal for ObserveAnimal {
     type Seed = ObserveState;
     type Journey = ObserveJourney;
 }
-impl jungle_sdk::types::AnimalObservation for ObserveAnimal {
-    type Bridge = jungle_sdk::types::ObserveObservation;
+impl jungle_sdk::types::Observable for ObserveAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
 }
-impl jungle_sdk::types::AnimalPerturbation for ObserveAnimal {
-    type Bridge = jungle_sdk::types::NoopPerturbation;
+impl jungle_sdk::types::Perturbable for ObserveAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for ObserveAnimal {
     type Appearance = ObserveState;
@@ -162,10 +161,6 @@ impl Ecosystem for ObserveEcosystem {
 
 impl From<ObserveState> for () {
     fn from(_value: ObserveState) -> Self {}
-}
-
-impl From<&ObserveEcosystem> for () {
-    fn from(_value: &ObserveEcosystem) -> Self {}
 }
 
 fn spawn_server_runtime(listen_addr: SocketAddr, db_path: std::path::PathBuf) {

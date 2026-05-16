@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
 use jungle_types::{
-    Animal, AnimalIdValue, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus, OwnerWake,
-    RunnerOut, SupportedAnimal, Work,
+    Animal, AnimalIdValue, ClaimedPerturbable, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
+    SupportedAnimal, Work,
 };
 use typosaurus::num::Unsigned;
 use uuid::Uuid;
@@ -39,7 +39,7 @@ pub trait JungleClient: DynClone + Send + Sync {
     async fn claim_animal_perturbation(
         &self,
         id: Uuid,
-    ) -> Result<Option<ClaimedAnimalPerturbation>, ExecutorError>;
+    ) -> Result<Option<ClaimedPerturbable>, ExecutorError>;
     async fn ack_animal_perturbation(
         &self,
         id: Uuid,
@@ -88,10 +88,10 @@ dyn_clone::clone_trait_object!(JungleClient);
 
 pub enum RunnerChannelMessage {
     History(RunnerOut),
-    ClaimAnimalPerturbation {
+    ClaimPerturbable {
         journey_id: Uuid,
     },
-    AckAnimalPerturbation {
+    AckPerturbable {
         journey_id: Uuid,
         perturbation_id: u64,
     },
@@ -99,7 +99,7 @@ pub enum RunnerChannelMessage {
 
 pub enum RunnerChannelResponse {
     Ack,
-    ClaimedPerturbation(Option<ClaimedAnimalPerturbation>),
+    ClaimedPerturbation(Option<ClaimedPerturbable>),
 }
 
 pub type RunnerChannelTx = mpsc::Sender<(

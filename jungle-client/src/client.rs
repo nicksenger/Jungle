@@ -2,7 +2,7 @@ use crate::JungleClient;
 use async_trait::async_trait;
 use futures::Stream;
 use jungle_types::{
-    Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedAnimalPerturbation, Ecosystem,
+    Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedPerturbable, Ecosystem,
     ExecutorError, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, StripAnimalHeaders,
     SupportedAnimal, WireIn, WireOut, Work,
 };
@@ -483,7 +483,7 @@ impl<J> Client<J> {
             WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
@@ -537,7 +537,7 @@ where
             WireOut::JourneyCreated(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
@@ -567,7 +567,7 @@ where
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
@@ -589,7 +589,7 @@ where
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
@@ -615,7 +615,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
@@ -642,7 +642,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
@@ -657,14 +657,14 @@ where
     async fn claim_animal_perturbation(
         &self,
         id: Uuid,
-    ) -> Result<Option<ClaimedAnimalPerturbation>, ExecutorError> {
+    ) -> Result<Option<ClaimedPerturbable>, ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::ClaimAnimalPerturbation(id))
+            .send_wire_message(WireIn::ClaimPerturbable(id))
             .await
             .map_err(Self::transport_error)?;
 
         match response {
-            WireOut::ClaimedAnimalPerturbation(claimed) => Ok(claimed),
+            WireOut::ClaimedPerturbable(claimed) => Ok(claimed),
             WireOut::JourneyCreated(_)
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
@@ -685,7 +685,7 @@ where
         perturbation_id: u64,
     ) -> Result<(), ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::AckAnimalPerturbation {
+            .send_wire_message(WireIn::AckPerturbable {
                 journey_id: id,
                 perturbation_id,
             })
@@ -698,7 +698,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
@@ -768,7 +768,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
@@ -792,7 +792,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
@@ -816,7 +816,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
@@ -847,7 +847,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
@@ -877,7 +877,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
@@ -910,7 +910,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
@@ -943,7 +943,7 @@ where
             | WireOut::JourneyHistory(_)
             | WireOut::JourneyStatus(_)
             | WireOut::AnimalAppearance(_)
-            | WireOut::ClaimedAnimalPerturbation(_)
+            | WireOut::ClaimedPerturbable(_)
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(

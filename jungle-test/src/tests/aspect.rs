@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Act, Aspect, Condition, Conditional, Effect, EffectCompletion, Either, Executor, Identity,
-    LoopCondition, Running, StateLens, Step, Waiting, While,
+    Act, Aspect, Condition, Conditional, EffectCompletion, EffectExec, EffectSchema, Either,
+    Executor, Identity, LoopCondition, Running, StateLens, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
@@ -9,10 +9,10 @@ use jungle_sdk::{Journey, Optic};
 use std::future::ready;
 use std::marker::PhantomData;
 
-effect!(Sleep, U0, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
-effect!(Eat, U1, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
-effect!(Forage, U2, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
-effect!(Hunt, U3, in = (), out = i32, err = (), act = |_d, _input| ready(Ok(1)));
+effect!(Sleep, U0, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input + 1)));
+effect!(Eat, U1, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input + 1)));
+effect!(Forage, U2, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input - 1)));
+effect!(Hunt, U3, in = (), out = i32, err = (), effect = |_d, _input| ready(Ok(1)));
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct CoreState {
@@ -82,7 +82,7 @@ impl<T, Focus, A> Act<T> for AddI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
-    A: Effect<Out = i32>,
+    A: EffectSchema<Out = i32>,
 {
     type Effect = A;
     type StateAspect = Focus;
@@ -109,7 +109,7 @@ impl<T, Focus, A> Act<T> for SubI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
-    A: Effect<Out = i32>,
+    A: EffectSchema<Out = i32>,
 {
     type Effect = A;
     type StateAspect = Focus;
@@ -259,11 +259,11 @@ async fn executor_runs_aspected_steps() {
             .next_request()
             .expect("gorilla request should advance");
         let completion: i32 = match step % 3 {
-            0 => Eat::act(&(), request).await.expect("eat should succeed"),
-            1 => Sleep::act(&(), request)
+            0 => Eat::effect(&(), request).await.expect("eat should succeed"),
+            1 => Sleep::effect(&(), request)
                 .await
                 .expect("sleep should succeed"),
-            2 => Forage::act(&(), request)
+            2 => Forage::effect(&(), request)
                 .await
                 .expect("forage should succeed"),
             _ => unreachable!(),
@@ -298,7 +298,7 @@ async fn executor_runs_aspected_steps() {
                     Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
-                Eat::act(&(), request).await.expect("eat should succeed")
+                Eat::effect(&(), request).await.expect("eat should succeed")
             }
             1 => {
                 let request: i32 = match tiger.next_request() {
@@ -306,7 +306,7 @@ async fn executor_runs_aspected_steps() {
                     Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
-                Sleep::act(&(), request)
+                Sleep::effect(&(), request)
                     .await
                     .expect("sleep should succeed")
             }
@@ -316,7 +316,9 @@ async fn executor_runs_aspected_steps() {
                     Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
-                Hunt::act(&(), request).await.expect("hunt should succeed")
+                Hunt::effect(&(), request)
+                    .await
+                    .expect("hunt should succeed")
             }
             _ => unreachable!(),
         };

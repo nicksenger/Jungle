@@ -1,5 +1,5 @@
 use crate::{
-    Act, Animal, Aspect, Effect, EffectCompletion, EffectMember, Id, Identity, StateCarrier,
+    Act, Animal, Aspect, EffectCompletion, EffectExec, EffectSchema, Id, Identity, StateCarrier,
 };
 use inception::primitive;
 use std::marker::PhantomData;
@@ -13,26 +13,17 @@ pub struct SleepError {
 }
 
 pub struct Sleep;
-impl EffectMember for Sleep {}
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SleepDependency;
-
-impl<T> From<&T> for SleepDependency {
-    fn from(_value: &T) -> Self {
-        Self
-    }
-}
-
-impl Effect for Sleep {
+impl EffectSchema for Sleep {
     type Id = Id<U65535>;
-    type Dependency = SleepDependency;
     type In = Duration;
     type Out = ();
     type Err = SleepError;
+}
 
-    fn act(
-        _dependency: &SleepDependency,
+impl<J> EffectExec<J> for Sleep {
+    fn effect(
+        _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
@@ -67,7 +58,7 @@ where
     fn emit(
         _view: &<Focus as StateCarrier<T::State>>::View,
         input: Self::Input,
-    ) -> <Self::Effect as Effect>::In {
+    ) -> <Self::Effect as EffectSchema>::In {
         input
     }
 

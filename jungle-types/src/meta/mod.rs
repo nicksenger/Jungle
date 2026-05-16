@@ -10,7 +10,7 @@ use typosaurus::num::{Max, Unsigned};
 use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Animal, Animals, Ecosystem, Effect, Effects, FlowEffects, Journey};
+use super::{Animal, Animals, Ecosystem, EffectExec, EffectSchema, Effects, FlowEffects, Journey};
 use core::marker::PhantomData;
 
 /// Newtype wrapper around an Unsigned constant.
@@ -35,8 +35,20 @@ where
     type Out = <T as Equality<U>>::Out;
 }
 
-pub trait EffectMember {}
+pub trait EffectIdentity {
+    type Id;
+}
+pub trait EffectMember: EffectIdentity {}
 pub trait AnimalMember {}
+
+impl<T> EffectIdentity for T
+where
+    T: EffectSchema,
+{
+    type Id = <T as EffectSchema>::Id;
+}
+impl<T> EffectMember for T where T: EffectIdentity {}
+impl<T> AnimalMember for T where T: Animal {}
 
 pub trait AllFrom<T> {}
 impl<T> AllFrom<T> for list::Empty {}
@@ -241,21 +253,8 @@ pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
     WithAnimalState,
 >>::Out;
 
-pub struct WithEffectDependency;
-impl<T> Mapper<T> for WithEffectDependency
-where
-    T: Effect,
-{
-    type Out = <T as Effect>::Dependency;
-}
-
 pub type AnimalEffectMembers<T> =
     <SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out> as StripEffectHeaders>::Out;
-
-pub type AnimalEffectDependencies<T> = <(AnimalEffectMembers<T>, WithEffectDependency) as Map<
-    <AnimalEffectMembers<T> as Container>::Content,
-    WithEffectDependency,
->>::Out;
 
 pub trait AnimalStatesCompatible<From>: Animals {}
 impl<T, From> AnimalStatesCompatible<From> for T
@@ -269,8 +268,16 @@ where
 {
 }
 
-pub trait AnimalEffectDependenciesCompatible<From>: Animals {}
-impl<T, From> AnimalEffectDependenciesCompatible<From> for T
+pub struct WithEffectExecFor<Context>(PhantomData<fn() -> Context>);
+impl<T, Context> Mapper<T> for WithEffectExecFor<Context>
+where
+    T: EffectExec<Context>,
+{
+    type Out = ();
+}
+
+pub trait AnimalEffectExecCompatible<Context>: Animals {}
+impl<T, Context> AnimalEffectExecCompatible<Context> for T
 where
     T: Animals,
     <T as Animals>::List: FlattenNodes,
@@ -279,9 +286,8 @@ where
     <AnimalSet<T> as CollectAnimalJourneyEffects>::Out: FlattenNodes,
     SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out>: StripEffectHeaders,
     AnimalEffectMembers<T>: Container,
-    (AnimalEffectMembers<T>, WithEffectDependency):
-        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectDependency>,
-    AnimalEffectDependencies<T>: AllFrom<From>,
+    (AnimalEffectMembers<T>, WithEffectExecFor<Context>):
+        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectExecFor<Context>>,
 {
 }
 

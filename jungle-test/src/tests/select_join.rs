@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    Act, ContextExecutor, Effect, EffectCompletion, Either, Executor, Identity, Join, Select,
-    Sleep, SleepDependency, Step,
+    Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
+    Join, Select, Sleep, Step,
 };
 use jungle_sdk::{Journey, Optic};
 use std::time::Duration;
@@ -16,16 +16,16 @@ struct SelectJoinState {
 }
 
 struct TimedValueEffect;
-impl jungle_sdk::types::EffectMember for TimedValueEffect {}
-impl Effect for TimedValueEffect {
+impl EffectSchema for TimedValueEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U60>;
-    type Dependency = ();
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
+}
 
-    fn act(
-        _dependency: &Self::Dependency,
+impl<J> EffectExec<J> for TimedValueEffect {
+    fn effect(
+        _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
@@ -36,16 +36,16 @@ impl Effect for TimedValueEffect {
 }
 
 struct ContextTimedValueEffect;
-impl jungle_sdk::types::EffectMember for ContextTimedValueEffect {}
-impl Effect for ContextTimedValueEffect {
+impl EffectSchema for ContextTimedValueEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U61>;
-    type Dependency = SleepDependency;
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
+}
 
-    fn act(
-        _dependency: &Self::Dependency,
+impl<J> EffectExec<J> for ContextTimedValueEffect {
+    fn effect(
+        _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {

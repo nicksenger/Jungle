@@ -5,9 +5,9 @@ use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    Animal, AnimalIdValue, AnimalObservation, AnimalPerturbation, AnimalSet, Animals,
-    ArgputForState, BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError,
-    RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
+    Animal, AnimalIdValue, AnimalSet, Animals, ArgputForState, BuildFlowWithContext,
+    ContextExecutor, DynFlow, Ecosystem, ExecutorError, Observable, Perturbable, RunnerOut, Sleep,
+    StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -105,13 +105,13 @@ where
                             };
                             out.map(|_| RunnerChannelResponse::Ack)
                         }
-                        RunnerChannelMessage::ClaimAnimalPerturbation { journey_id } => {
+                        RunnerChannelMessage::ClaimPerturbable { journey_id } => {
                             client_for_transport
                                 .claim_animal_perturbation(journey_id)
                                 .await
                                 .map(RunnerChannelResponse::ClaimedPerturbation)
                         }
-                        RunnerChannelMessage::AckAnimalPerturbation {
+                        RunnerChannelMessage::AckPerturbable {
                             journey_id,
                             perturbation_id,
                         } => client_for_transport
@@ -292,7 +292,7 @@ pub trait SuspendedJourney<T>: Send {
 struct SuspendedAnimalJourney<T, A>
 where
     T: 'static,
-    A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
+    A: Animal + Observable + Perturbable + Send + Sync + 'static,
     A::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
@@ -304,7 +304,7 @@ where
 impl<T, A> SuspendedJourney<T> for SuspendedAnimalJourney<T, A>
 where
     T: Send + Sync + 'static,
-    A: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
+    A: Animal + Observable + Perturbable + Send + Sync + 'static,
     A::State: Send + 'static,
     A::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
@@ -396,7 +396,7 @@ impl<T> SupportedAnimalGenerations<T> for list::Empty {
 
 impl<T, Head, Tail> SupportedAnimalGenerations<T> for list::List<(Head, Tail)>
 where
-    Head: Animal + AnimalObservation + AnimalPerturbation + Send + Sync + 'static,
+    Head: Animal + Observable + Perturbable + Send + Sync + 'static,
     Head::Id: AnimalIdValue,
     Head::Generation: Unsigned,
     Head::Seed: Send + 'static,
@@ -547,7 +547,7 @@ async fn replay_history<T, A, Initial>(
 ) -> Result<(), ExecutorError>
 where
     T: 'static,
-    A: Animal + AnimalObservation + AnimalPerturbation,
+    A: Animal + Observable + Perturbable,
     A::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     Initial: Serialize + Clone,

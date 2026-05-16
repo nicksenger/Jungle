@@ -12,7 +12,7 @@ effect!(
     in = i32,
     out = i32,
     err = (),
-    act = |_dependency, input| ready(Ok(input + 1))
+    effect = |_dependency, input| ready(Ok(input + 1))
 );
 
 animal!(Looper, U0, state = i32, journey = LoopJourney);
@@ -56,7 +56,7 @@ effect!(
     in = (bool, i32),
     out = (bool, i32),
     err = (),
-    act = |_dependency, input| ready(Ok(input))
+    effect = |_dependency, input| ready(Ok(input))
 );
 
 animal!(
@@ -118,7 +118,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_dependency, _input| ready(Ok(()))
+    effect = |_dependency, _input| ready(Ok(()))
 );
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

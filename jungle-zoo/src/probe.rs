@@ -1,17 +1,17 @@
 use jungle_sdk::typosaurus::num::consts::U255;
 
 pub struct ProbeEffect;
-impl jungle_sdk::types::EffectMember for ProbeEffect {}
 
-impl jungle_sdk::types::Effect for ProbeEffect {
+impl jungle_sdk::types::EffectSchema for ProbeEffect {
     type Id = jungle_sdk::types::Id<U255>;
-    type Dependency = ();
     type In = ();
     type Out = ();
     type Err = ();
+}
 
-    fn act(
-        _dependency: &Self::Dependency,
+impl<J> jungle_sdk::types::EffectExec<J> for ProbeEffect {
+    fn effect(
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(()))
@@ -38,7 +38,7 @@ impl jungle_sdk::types::Act<ProbeAnimal> for ProbeStep {
     fn emit(
         _state: &<ProbeAnimal as jungle_sdk::types::Animal>::State,
         _input: Self::Input,
-    ) -> <Self::Effect as jungle_sdk::types::Effect>::In {
+    ) -> <Self::Effect as jungle_sdk::types::EffectSchema>::In {
     }
 
     fn absorb(
@@ -52,7 +52,6 @@ impl jungle_sdk::types::Act<ProbeAnimal> for ProbeStep {
 pub struct ProbeJourney(jungle_sdk::types::Step<ProbeAnimal, ProbeStep>);
 
 pub struct ProbeAnimal;
-impl jungle_sdk::types::AnimalMember for ProbeAnimal {}
 
 impl jungle_sdk::types::Animal for ProbeAnimal {
     type Id = jungle_sdk::types::Id<U255>;
@@ -62,12 +61,12 @@ impl jungle_sdk::types::Animal for ProbeAnimal {
     type Journey = ProbeJourney;
 }
 
-impl jungle_sdk::types::AnimalObservation for ProbeAnimal {
-    type Bridge = jungle_sdk::types::NoopObservation;
+impl jungle_sdk::types::Observable for ProbeAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
 }
 
-impl jungle_sdk::types::AnimalPerturbation for ProbeAnimal {
-    type Bridge = jungle_sdk::types::NoopPerturbation;
+impl jungle_sdk::types::Perturbable for ProbeAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 
 #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
@@ -87,8 +86,4 @@ pub struct ProbeZoo;
 impl jungle_sdk::types::Ecosystem for ProbeZoo {
     const NAME: &'static str = "probe-zoo";
     type Animals = ProbeZooAnimals;
-}
-
-impl From<&ProbeZoo> for () {
-    fn from(_value: &ProbeZoo) -> Self {}
 }

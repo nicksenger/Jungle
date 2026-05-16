@@ -12,7 +12,9 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, Aspect, Effect, EffectCompletion, EffectRequest, Identity, StateCarrier, StateLens, Step,
+    Act, ActionSpec, Aspect, EffectCompletion, EffectExec, EffectRequest, EffectSchema, Identity,
+    ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, StateLens, Step, StepSpec,
+    UStep,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -25,21 +27,21 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    AllFrom, AnimalEffectDependencies, AnimalEffectDependenciesCompatible, AnimalEffectSet,
-    AnimalIdValue, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
-    AnimalVersionIdentitiesUnique, AnimalVersions, EffectMember, EffectSet, Generations,
-    GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals, StripAnimalHeaders,
-    StripEffectHeaders,
+    AllFrom, AnimalEffectExecCompatible, AnimalEffectMembers, AnimalEffectSet, AnimalIdValue,
+    AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
+    AnimalVersionIdentitiesUnique, AnimalVersions, EffectIdentity, EffectMember, EffectSet,
+    Generations, GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals,
+    StripAnimalHeaders, StripEffectHeaders, WithEffectExecFor,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-pub use sleep::{Sleep, SleepDependency, SleepError, SleepStep};
+pub use sleep::{Sleep, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{
     BackendError, JourneyEvent, JourneyStatus, JourneyUpdateEvent, RunnerOut, RunnerUpdateOut,
     WireIn, WireOut, Work,
 };
-pub use transport::{ClaimedAnimalPerturbation, OwnerWake, SupportedAnimal};
+pub use transport::{ClaimedPerturbable, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
@@ -104,6 +106,25 @@ impl Property for JungleOptic {}
 pub trait Optic: Inception<JungleOptic, False> {}
 impl<T> Optic for T where T: Inception<JungleOptic, False> {}
 
+/// Direct projection contract from a scope state to a requested view type.
+pub trait ViewProject<View> {
+    fn project_view<'a>(state: &'a mut Self) -> &'a mut View;
+}
+
+/// Carrier that projects by target type via [`ViewProject`].
+pub struct ViewCarrier<View>(PhantomData<fn() -> View>);
+
+impl<State, View> StateCarrier<State> for ViewCarrier<View>
+where
+    State: ViewProject<View>,
+{
+    type View = View;
+
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+        <State as ViewProject<View>>::project_view(state)
+    }
+}
+
 /// A flow combinator that chooses either `L` or `R` at runtime.
 pub struct Conditional<P, L, R, M = NoMetadata>(PhantomData<fn() -> (P, L, R, M)>);
 
@@ -128,6 +149,9 @@ impl NodeMetadata for NoMetadata {}
 
 /// A no-op boundary wrapper used for organization and metadata anchoring.
 pub struct Transparent<M, F>(PhantomData<fn() -> (M, F)>);
+
+/// Scope wrapper used by late-bound templates to rebind subflow state.
+pub struct Scoped<View, F>(PhantomData<fn() -> (View, F)>);
 
 /// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
@@ -190,8 +214,8 @@ where
 }
 
 /// Per-animal binding that selects how appearance snapshots are produced.
-pub trait AnimalObservation: Animal + Sized {
-    type Bridge: ObservationBridge<Self>;
+pub trait Observable: Animal + Sized {
+    type Observation: ObservationBridge<Self>;
 }
 
 /// Bridge invoked by executors/runners to optionally apply perturbation payloads.
@@ -236,8 +260,8 @@ where
 }
 
 /// Per-animal binding that selects how perturbation payloads are applied.
-pub trait AnimalPerturbation: Animal + Sized {
-    type Bridge: PerturbationBridge<Self>;
+pub trait Perturbable: Animal + Sized {
+    type Perturbation: PerturbationBridge<Self>;
 }
 
 #[inception(property = Ident, types)]
@@ -302,6 +326,65 @@ pub trait ReplaceNode<Node> {
     type Output;
 }
 
+/// Binds an unbound/template flow to a concrete [`Animal`].
+pub trait BindAnimal<A: Animal> {
+    type Bound;
+}
+
+/// Per-template scope declaration used by late-bound `BindAnimal`.
+pub trait TemplateScope {
+    type View;
+}
+
+/// Default marker: bind template against root animal state.
+pub struct RootTemplateScope;
+pub struct TemplateView<View>(PhantomData<fn() -> View>);
+
+/// Internal helper selecting bind traversal from [`TemplateScope`].
+pub trait BindWithTemplateScope<A: Animal, ScopeView> {
+    type Bound;
+}
+
+/// Convenience alias for binding a flow/template to a concrete animal.
+pub type BoundFlow<F, A> = <F as BindAnimal<A>>::Bound;
+
+/// Traversal that binds `StepSpec<S>` nodes to concrete `Step<A, _>` nodes
+/// within a current scope carrier.
+pub struct RootScope;
+pub struct BindAnimalTraversal<A, Scope = RootScope>(PhantomData<fn() -> (A, Scope)>);
+
+pub(crate) trait ScopedCarrierMarker {}
+
+impl<View> ScopedCarrierMarker for ViewCarrier<View> {}
+
+impl<Outer, Inner> ScopedCarrierMarker for behavior::ComposeCarrier<Outer, Inner>
+where
+    Outer: ScopedCarrierMarker,
+    Inner: ScopedCarrierMarker,
+{
+}
+
+impl<F, A> BindWithTemplateScope<A, RootTemplateScope> for F
+where
+    A: Animal,
+    F: TraverseFlow,
+    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A, RootScope>>,
+{
+    type Bound =
+        <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
+}
+
+impl<F, A, View> BindWithTemplateScope<A, TemplateView<View>> for F
+where
+    A: Animal,
+    View: 'static,
+    F: TraverseFlow,
+    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A, RootScope>>,
+{
+    type Bound =
+        <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
+}
+
 /// Directional helper that rewrites `Step<Animal, Left>` to `Step<Animal, Right>`.
 pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
@@ -330,6 +413,30 @@ where
     Right: Act<A>,
 {
     type Output = Step<A, Left>;
+}
+
+impl<Left, Right> ReplaceStep<StepSpec<Left>> for SwapLR<Left, Right>
+where
+    Left: ActionSpec,
+    Right: ActionSpec<
+        Input = <Left as ActionSpec>::Input,
+        Output = <Left as ActionSpec>::Output,
+        Effect = <Left as ActionSpec>::Effect,
+    >,
+{
+    type Output = StepSpec<Right>;
+}
+
+impl<Left, Right> ReplaceStep<StepSpec<Right>> for SwapRL<Left, Right>
+where
+    Left: ActionSpec,
+    Right: ActionSpec<
+        Input = <Left as ActionSpec>::Input,
+        Output = <Left as ActionSpec>::Output,
+        Effect = <Left as ActionSpec>::Effect,
+    >,
+{
+    type Output = StepSpec<Left>;
 }
 
 impl<Left, Right> ReplaceNode<Left> for SwapLR<Left, Right> {
@@ -804,6 +911,72 @@ where
 }
 
 #[primitive(property = JungleRunning)]
+impl<View, F> Running for Scoped<View, F>
+where
+    F: Running,
+{
+    type In = F::In;
+    type Out = F::Out;
+
+    fn run(input: Self::In) -> Self::Out {
+        <F as Running>::run(input)
+    }
+}
+
+#[primitive(property = JungleWaiting)]
+impl<View, F> Waiting for Scoped<View, F>
+where
+    F: Waiting,
+{
+    type In = F::In;
+    type Out = F::Out;
+
+    fn accept(input: Self::In) -> Self::Out {
+        <F as Waiting>::accept(input)
+    }
+}
+
+#[primitive(property = JungleFlow)]
+impl<View, F> FlowEffects for Scoped<View, F>
+where
+    F: FlowEffects,
+{
+    type List = F::List;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<View, F> TraverseFlow for Scoped<View, F>
+where
+    F: TraverseFlow,
+{
+    type Output = Scoped<View, <F as TraverseFlow>::Output>;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<View, F> ReplaceFlow for Scoped<View, F>
+where
+    F: ReplaceFlow,
+{
+    type Output = Scoped<View, <F as ReplaceFlow>::Output>;
+}
+
+impl<View, F, Replacer> ReplaceWith<Replacer> for Scoped<View, F>
+where
+    F: ReplaceWith<Replacer>,
+{
+    type Output = Scoped<View, <F as ReplaceWith<Replacer>>::Output>;
+}
+
+impl<View, F, Replacer> ReplaceNodesWith<Replacer> for Scoped<View, F>
+where
+    F: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<Scoped<View, <F as ReplaceNodesWith<Replacer>>::Output>>,
+{
+    type Output =
+        <Replacer as ReplaceNode<Scoped<View, <F as ReplaceNodesWith<Replacer>>::Output>>>::Output;
+}
+
+#[primitive(property = JungleRunning)]
 impl<M, F> Running for Transparent<M, F>
 where
     F: Running,
@@ -914,6 +1087,53 @@ where
     M: NodeMetadata,
 {
     const METADATA: &'static str = M::METADATA;
+}
+
+impl<View, F> NodeMetadata for Scoped<View, F> {}
+
+impl<S> NodeMetadata for StepSpec<S> where S: ActionSpec {}
+
+impl<A, Scope, T, B> TraverseStep<Step<T, B>> for BindAnimalTraversal<A, Scope>
+where
+    A: Animal,
+    Scope: Aspect<A::State>,
+    T: Animal,
+    B: Act<T>,
+{
+    type Output = Step<T, B>;
+}
+
+impl<A, View, F> TraverseWith<BindAnimalTraversal<A, RootScope>> for Scoped<View, F>
+where
+    A: Animal,
+    View: 'static,
+    F: TraverseWith<BindAnimalTraversal<A, ViewCarrier<View>>>,
+{
+    type Output = <F as TraverseWith<BindAnimalTraversal<A, ViewCarrier<View>>>>::Output;
+}
+
+impl<A, ScopeCarrier, View, F> TraverseWith<BindAnimalTraversal<A, ScopeCarrier>>
+    for Scoped<View, F>
+where
+    A: Animal,
+    ScopeCarrier: ScopedCarrierMarker,
+    ScopeCarrier: Aspect<A::State>,
+    View: 'static,
+    F: TraverseWith<
+        BindAnimalTraversal<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>,
+    >,
+{
+    type Output = <F as TraverseWith<
+        BindAnimalTraversal<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>,
+    >>::Output;
+}
+
+impl<A, F> BindAnimal<A> for F
+where
+    A: Animal,
+    F: TemplateScope + BindWithTemplateScope<A, <F as TemplateScope>::View>,
+{
+    type Bound = <F as BindWithTemplateScope<A, <F as TemplateScope>::View>>::Bound;
 }
 
 #[primitive(property = JungleRunning)]

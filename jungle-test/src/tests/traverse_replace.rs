@@ -11,7 +11,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_d, _input| std::future::ready(Ok(()))
+    effect = |_d, _input| std::future::ready(Ok(()))
 );
 effect!(
     TraverseBEffect,
@@ -19,7 +19,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_d, _input| std::future::ready(Ok(()))
+    effect = |_d, _input| std::future::ready(Ok(()))
 );
 effect!(
     TraverseCEffect,
@@ -27,7 +27,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_d, _input| std::future::ready(Ok(()))
+    effect = |_d, _input| std::future::ready(Ok(()))
 );
 effect!(
     TraverseDEffect,
@@ -35,7 +35,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_d, _input| std::future::ready(Ok(()))
+    effect = |_d, _input| std::future::ready(Ok(()))
 );
 
 struct TraverseAnimal;
@@ -152,10 +152,10 @@ impl jungle_sdk::types::Animal for TraverseAnimal {
     type Journey = SourceFlow;
 }
 
-impl jungle_sdk::types::AnimalObservation for TraverseAnimal {
-    type Bridge = jungle_sdk::types::NoopObservation;
+impl jungle_sdk::types::Observable for TraverseAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
 }
 
-impl jungle_sdk::types::AnimalPerturbation for TraverseAnimal {
-    type Bridge = jungle_sdk::types::NoopPerturbation;
+impl jungle_sdk::types::Perturbable for TraverseAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }

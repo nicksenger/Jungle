@@ -2,8 +2,8 @@ use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
-    LoopCondition, Observe, Perturb, StateLens, Step, While,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
+    JourneyStatus, LoopCondition, Observe, Perturb, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -44,61 +44,39 @@ struct IntegrationState {
     after_steps: u8,
 }
 
-#[derive(Clone, Copy)]
-struct AddOneDependency {
-    value: i32,
-}
-
-impl From<&IntegrationZoo> for AddOneDependency {
-    fn from(_value: &IntegrationZoo) -> Self {
-        Self { value: 1 }
-    }
-}
-
 struct AddOneEffect;
-impl jungle_sdk::types::EffectMember for AddOneEffect {}
 
-impl Effect for AddOneEffect {
+impl EffectSchema for AddOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
-    type Dependency = AddOneDependency;
     type In = ();
     type Out = i32;
     type Err = ();
+}
 
-    fn act(
-        dependency: &Self::Dependency,
+impl<J> EffectExec<J> for AddOneEffect {
+    fn effect(
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.value))
-    }
-}
-
-#[derive(Clone, Copy)]
-struct AddTwoDependency {
-    value: i32,
-}
-
-impl From<&IntegrationZoo> for AddTwoDependency {
-    fn from(_value: &IntegrationZoo) -> Self {
-        Self { value: 2 }
+        std::future::ready(Ok(1))
     }
 }
 
 struct AddTwoEffect;
-impl jungle_sdk::types::EffectMember for AddTwoEffect {}
 
-impl Effect for AddTwoEffect {
+impl EffectSchema for AddTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
-    type Dependency = AddTwoDependency;
     type In = ();
     type Out = i32;
     type Err = ();
+}
 
-    fn act(
-        dependency: &Self::Dependency,
+impl<J> EffectExec<J> for AddTwoEffect {
+    fn effect(
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.value))
+        std::future::ready(Ok(2))
     }
 }
 

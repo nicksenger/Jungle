@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
-    BackendError, ClaimedAnimalPerturbation, JourneyStatus, JungleClient, MockServer, RunnerOut,
+    BackendError, ClaimedPerturbable, JourneyStatus, JungleClient, MockServer, RunnerOut,
     RunnerUpdateOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::net::SocketAddr;
@@ -583,15 +583,15 @@ async fn client_handles_animal_perturbation_round_trip() {
                                 data,
                             },
                         ) if id == journey_id && data == vec![1, 2, 3] => Ok(WireOut::Ack),
-                        (1, WireIn::ClaimAnimalPerturbation(id)) if id == journey_id => Ok(
-                            WireOut::ClaimedAnimalPerturbation(Some(ClaimedAnimalPerturbation {
+                        (1, WireIn::ClaimPerturbable(id)) if id == journey_id => {
+                            Ok(WireOut::ClaimedPerturbable(Some(ClaimedPerturbable {
                                 id: 4,
                                 data: vec![9, 8, 7],
-                            })),
-                        ),
+                            })))
+                        }
                         (
                             2,
-                            WireIn::AckAnimalPerturbation {
+                            WireIn::AckPerturbable {
                                 journey_id: id,
                                 perturbation_id,
                             },
@@ -644,11 +644,11 @@ async fn client_handles_animal_perturbation_round_trip() {
     ));
     assert!(matches!(
         requests[1],
-        WireIn::ClaimAnimalPerturbation(id) if id == journey_id
+        WireIn::ClaimPerturbable(id) if id == journey_id
     ));
     assert!(matches!(
         requests[2],
-        WireIn::AckAnimalPerturbation {
+        WireIn::AckPerturbable {
             journey_id: id,
             perturbation_id
         } if id == journey_id && perturbation_id == 4

@@ -280,7 +280,7 @@ impl JungleServer for Server {
                     )));
                 }
             }
-            Some(WireIn::ClaimAnimalPerturbation(journey_id)) => {
+            Some(WireIn::ClaimPerturbable(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     let claimed = self
@@ -290,7 +290,7 @@ impl JungleServer for Server {
                         .map_err(|err| {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
                         })?;
-                    WireOut::ClaimedAnimalPerturbation(claimed)
+                    WireOut::ClaimedPerturbable(claimed)
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
@@ -301,7 +301,7 @@ impl JungleServer for Server {
                     )));
                 }
             }
-            Some(WireIn::AckAnimalPerturbation {
+            Some(WireIn::AckPerturbable {
                 journey_id,
                 perturbation_id,
             }) => {

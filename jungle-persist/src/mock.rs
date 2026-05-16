@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use jungle_types::{
-    ClaimedAnimalPerturbation, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
-    SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, SupportedAnimal,
+    Work,
 };
 use uuid::Uuid;
 
@@ -20,7 +20,7 @@ type FlowAppearanceHandler = Arc<dyn Fn(Uuid) -> Result<Option<Vec<u8>>> + Send 
 type UpsertFlowAppearanceHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static>;
 type EnqueuePerturbationHandler = Arc<dyn Fn(Uuid, Vec<u8>) -> Result<()> + Send + Sync + 'static>;
 type ClaimPerturbationHandler =
-    Arc<dyn Fn(Uuid) -> Result<Option<ClaimedAnimalPerturbation>> + Send + Sync + 'static>;
+    Arc<dyn Fn(Uuid) -> Result<Option<ClaimedPerturbable>> + Send + Sync + 'static>;
 type AckPerturbationHandler = Arc<dyn Fn(Uuid, u64) -> Result<()> + Send + Sync + 'static>;
 type HeartbeatJourneyLeaseHandler =
     Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
@@ -111,7 +111,7 @@ impl JungleStore for MockStore {
     async fn claim_animal_perturbation(
         &self,
         journey_id: Uuid,
-    ) -> Result<Option<ClaimedAnimalPerturbation>> {
+    ) -> Result<Option<ClaimedPerturbable>> {
         (self.on_claim_perturbation)(journey_id)
     }
 
@@ -254,7 +254,7 @@ impl MockStoreBuilder {
 
     pub fn on_claim_perturbation<F>(mut self, f: F) -> Self
     where
-        F: Fn(Uuid) -> Result<Option<ClaimedAnimalPerturbation>> + Send + Sync + 'static,
+        F: Fn(Uuid) -> Result<Option<ClaimedPerturbable>> + Send + Sync + 'static,
     {
         self.on_claim_perturbation = Some(Arc::new(f));
         self
