@@ -3,11 +3,11 @@ use jungle_sdk::types::{
     ManualExecutor, RunnerOut, Step, UStep,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43, U44, U45, U46};
+use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43, U44, U45, U46, U47, U48};
 use jungle_sdk::{Animals, JungleClient};
 use std::time::Duration;
 
-struct TemplateAddEffect;
+pub struct TemplateAddEffect;
 impl<J> Effect<J> for TemplateAddEffect {
     type Id = jungle_sdk::types::Id<U40>;
     type In = i32;
@@ -22,7 +22,7 @@ impl<J> Effect<J> for TemplateAddEffect {
     }
 }
 
-struct TemplateCommitEffect;
+pub struct TemplateCommitEffect;
 impl<J> Effect<J> for TemplateCommitEffect {
     type Id = jungle_sdk::types::Id<U41>;
     type In = i32;
@@ -37,8 +37,8 @@ impl<J> Effect<J> for TemplateCommitEffect {
     }
 }
 
-struct AddOneSpec;
-struct CommitSpec;
+pub struct AddOneSpec;
+pub struct CommitSpec;
 
 impl ActionSpec for AddOneSpec {
     type Effect = TemplateAddEffect;
@@ -205,7 +205,7 @@ impl Act<LedgerAnimal> for LedgerCommit {
     }
 }
 
-struct GenericAddOne<A>(core::marker::PhantomData<fn() -> A>);
+pub struct GenericAddOne<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for GenericAddOne<A>
 where
     A: jungle_sdk::types::Animal<State = i32> + LateBoundPolicy,
@@ -226,7 +226,7 @@ where
     }
 }
 
-struct GenericCommit<A>(core::marker::PhantomData<fn() -> A>);
+pub struct GenericCommit<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for GenericCommit<A>
 where
     A: jungle_sdk::types::Animal<State = i32> + LateBoundPolicy,
@@ -525,4 +525,143 @@ fn decode_effect_inputs(history: &[RunnerOut]) -> Vec<i32> {
             _ => None,
         })
         .collect()
+}
+
+mod composed_templates {
+    use super::{AddOneSpec, CommitSpec};
+    use jungle_sdk::types::UStep;
+
+    // Fragment A: no Animal type appears here.
+    #[derive(jungle_sdk::FlowTemplate)]
+    pub struct IntakeStage(UStep<AddOneSpec>);
+
+    // Fragment B: no Animal type appears here.
+    #[derive(jungle_sdk::FlowTemplate)]
+    pub struct CommitStage(UStep<CommitSpec>);
+
+    // Final composition of independent unbound fragments, still no Animal type.
+    #[derive(jungle_sdk::FlowTemplate)]
+    pub struct ComposedPipeline(IntakeStage, CommitStage);
+}
+
+struct ComposedAlphaAnimal;
+impl jungle_sdk::types::Animal for ComposedAlphaAnimal {
+    type Id = jungle_sdk::types::Id<U47>;
+    type Generation = U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = <composed_templates::ComposedPipeline as BindAnimal<ComposedAlphaAnimal>>::Bound;
+}
+
+impl jungle_sdk::types::Observable for ComposedAlphaAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
+}
+
+impl jungle_sdk::types::Perturbable for ComposedAlphaAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for ComposedAlphaAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U47, ComposedAlphaAnimal>;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for ComposedAlphaAnimal {
+    type Id = U47;
+}
+
+impl LateBoundPolicy for ComposedAlphaAnimal {
+    const ADD_INPUT_DELTA: i32 = 2;
+    const COMMIT_SUBTRACT: bool = false;
+}
+
+struct ComposedBetaAnimal;
+impl jungle_sdk::types::Animal for ComposedBetaAnimal {
+    type Id = jungle_sdk::types::Id<U48>;
+    type Generation = U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = <composed_templates::ComposedPipeline as BindAnimal<ComposedBetaAnimal>>::Bound;
+}
+
+impl jungle_sdk::types::Observable for ComposedBetaAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
+}
+
+impl jungle_sdk::types::Perturbable for ComposedBetaAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for ComposedBetaAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U48, ComposedBetaAnimal>;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for ComposedBetaAnimal {
+    type Id = U48;
+}
+
+impl LateBoundPolicy for ComposedBetaAnimal {
+    const ADD_INPUT_DELTA: i32 = 20;
+    const COMMIT_SUBTRACT: bool = true;
+}
+
+#[derive(Animals)]
+struct ComposedTemplateAnimals(ComposedAlphaAnimal, ComposedBetaAnimal);
+
+struct ComposedTemplateZoo;
+impl Ecosystem for ComposedTemplateZoo {
+    const NAME: &'static str = "late-bound-composed-template-zoo";
+    type Animals = ComposedTemplateAnimals;
+}
+
+#[tokio::test]
+async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-composed-template-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(ComposedTemplateZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let alpha_id = client
+        .start_journey::<ComposedAlphaAnimal>(
+            postcard::to_allocvec(&3_i32).expect("alpha seed should serialize"),
+        )
+        .await
+        .expect("alpha journey should start");
+    let beta_id = client
+        .start_journey::<ComposedBetaAnimal>(
+            postcard::to_allocvec(&3_i32).expect("beta seed should serialize"),
+        )
+        .await
+        .expect("beta journey should start");
+
+    await_completion(&client, alpha_id).await;
+    await_completion(&client, beta_id).await;
+
+    let alpha_history = client
+        .journey_history(alpha_id)
+        .await
+        .expect("alpha history should be available");
+    let beta_history = client
+        .journey_history(beta_id)
+        .await
+        .expect("beta history should be available");
+
+    let alpha_inputs = decode_effect_inputs(&alpha_history);
+    let beta_inputs = decode_effect_inputs(&beta_history);
+
+    // The flow came from composition of unbound fragments, then was bound at the edge once per animal.
+    assert_eq!(alpha_inputs, vec![5, 12]);
+    assert_eq!(beta_inputs, vec![23, 0]);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 }
