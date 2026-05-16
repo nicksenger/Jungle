@@ -1,13 +1,13 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Act, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, Effect, EffectCompletion,
-    EffectSet, Identity, LoopCondition, StateLens, Step, While,
+    Act, ActionSpec, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, Effect,
+    EffectCompletion, EffectSet, Identity, LoopCondition, StateLens, Step, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-use jungle_sdk::{Animals, Effects, Flow, Optic};
+use jungle_sdk::{Animals, Effects, Optic};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -59,15 +59,38 @@ where
     }
 }
 
-animal!(Gorilla, U0, GorillaJourney);
-animal!(Chimpanzee, U1, ChimpanzeeJourney);
-animal!(Tiger, U2, TigerJourney);
-animal!(Jaguar, U3, JaguarJourney);
-animal!(Anaconda, U4, AnacondaJourney);
-animal!(Hippo, U5, HippoJourney);
-animal!(Elephant, U6, ElephantJourney);
+struct UnitOkSpec<E>(PhantomData<fn() -> E>);
+impl<E> ActionSpec for UnitOkSpec<E>
+where
+    E: Effect<In = (), Out = (), Err = ()>,
+{
+    type Effect = E;
+    type Input = ();
+    type Output = ();
+    type Act<A: Animal> = UnitOkStep<E>;
+}
 
-#[derive(Flow)]
+type UUnitStep<E> = UStep<UnitOkSpec<E>>;
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct PreyWorkflowTemplate(
+    UUnitStep<Eat>,
+    UUnitStep<Sleep>,
+    UUnitStep<Forage>,
+    UUnitStep<Drink>,
+    UUnitStep<Flee>,
+);
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct PredatorWorkflowTemplate(
+    UUnitStep<Eat>,
+    UUnitStep<Sleep>,
+    UUnitStep<Forage>,
+    UUnitStep<Drink>,
+    UUnitStep<Hunt>,
+);
+
+#[derive(jungle_sdk::Flow)]
 struct GorillaJourney(
     Step<Gorilla, UnitOkStep<Eat>>,
     Step<Gorilla, UnitOkStep<Sleep>>,
@@ -76,7 +99,7 @@ struct GorillaJourney(
     Step<Gorilla, UnitOkStep<Flee>>,
 );
 
-#[derive(Flow)]
+#[derive(jungle_sdk::Flow)]
 struct ChimpanzeeJourney(
     Step<Chimpanzee, UnitOkStep<Eat>>,
     Step<Chimpanzee, UnitOkStep<Sleep>>,
@@ -85,7 +108,7 @@ struct ChimpanzeeJourney(
     Step<Chimpanzee, UnitOkStep<Flee>>,
 );
 
-#[derive(Flow)]
+#[derive(jungle_sdk::Flow)]
 struct TigerJourney(
     Step<Tiger, UnitOkStep<Eat>>,
     Step<Tiger, UnitOkStep<Sleep>>,
@@ -94,7 +117,7 @@ struct TigerJourney(
     Step<Tiger, UnitOkStep<Hunt>>,
 );
 
-#[derive(Flow)]
+#[derive(jungle_sdk::Flow)]
 struct JaguarJourney(
     Step<Jaguar, UnitOkStep<Eat>>,
     Step<Jaguar, UnitOkStep<Sleep>>,
@@ -103,7 +126,7 @@ struct JaguarJourney(
     Step<Jaguar, UnitOkStep<Hunt>>,
 );
 
-#[derive(Flow)]
+#[derive(jungle_sdk::Flow)]
 struct AnacondaJourney(
     Step<Anaconda, UnitOkStep<Eat>>,
     Step<Anaconda, UnitOkStep<Sleep>>,
@@ -112,7 +135,7 @@ struct AnacondaJourney(
     Step<Anaconda, UnitOkStep<Hunt>>,
 );
 
-#[derive(Flow)]
+#[derive(jungle_sdk::Flow)]
 struct HippoJourney(
     Step<Hippo, UnitOkStep<Eat>>,
     Step<Hippo, UnitOkStep<Sleep>>,
@@ -121,7 +144,7 @@ struct HippoJourney(
     Step<Hippo, UnitOkStep<Flee>>,
 );
 
-#[derive(Flow)]
+#[derive(jungle_sdk::Flow)]
 struct ElephantJourney(
     Step<Elephant, UnitOkStep<Eat>>,
     Step<Elephant, UnitOkStep<Sleep>>,
@@ -129,6 +152,14 @@ struct ElephantJourney(
     Step<Elephant, UnitOkStep<Drink>>,
     Step<Elephant, UnitOkStep<Flee>>,
 );
+
+animal!(Gorilla, U0, GorillaJourney);
+animal!(Chimpanzee, U1, ChimpanzeeJourney);
+animal!(Tiger, U2, TigerJourney);
+animal!(Jaguar, U3, JaguarJourney);
+animal!(Anaconda, U4, AnacondaJourney);
+animal!(Hippo, U5, HippoJourney);
+animal!(Elephant, U6, ElephantJourney);
 
 #[derive(Animals)]
 struct Apes(Gorilla, Chimpanzee);
@@ -325,23 +356,12 @@ fn animal_state_set() {
     #[derive(Default, serde::Serialize, serde::Deserialize)]
     struct CatState;
 
-    #[derive(Flow)]
-    struct StatefulGorillaJourney(
-        Step<StatefulGorilla, UnitOkStep<Eat>>,
-        Step<StatefulGorilla, UnitOkStep<Sleep>>,
-        Step<StatefulGorilla, UnitOkStep<Forage>>,
-        Step<StatefulGorilla, UnitOkStep<Drink>>,
-        Step<StatefulGorilla, UnitOkStep<Flee>>,
-    );
-
-    #[derive(Flow)]
-    struct StatefulTigerJourney(
-        Step<StatefulTiger, UnitOkStep<Eat>>,
-        Step<StatefulTiger, UnitOkStep<Sleep>>,
-        Step<StatefulTiger, UnitOkStep<Forage>>,
-        Step<StatefulTiger, UnitOkStep<Drink>>,
-        Step<StatefulTiger, UnitOkStep<Hunt>>,
-    );
+    type StatefulGorillaJourney = <PreyWorkflowTemplate as jungle_sdk::types::BindAnimal<
+        StatefulGorilla,
+    >>::Bound;
+    type StatefulTigerJourney = <PredatorWorkflowTemplate as jungle_sdk::types::BindAnimal<
+        StatefulTiger,
+    >>::Bound;
 
     animal!(StatefulGorilla, U0, ApeState, StatefulGorillaJourney);
     animal!(StatefulTiger, U1, CatState, StatefulTigerJourney);
