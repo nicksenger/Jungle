@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionRequest, AnimalActionSet, Condition, Conditional,
-    ContextExecutor, Executor, Id, Identity, ManualExecutor, Pulse, Running, Step, Waiting,
+    Act, AnimalEffectSet, Condition, Conditional, ContextExecutor, Effect, EffectCompletion,
+    EffectRequest, Executor, Id, Identity, ManualExecutor, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -10,9 +10,9 @@ use jungle_sdk::{Animals, Journey};
 use std::future::ready;
 use std::sync::Arc;
 
-struct SeedAction;
-impl jungle_types::ActionMember for SeedAction {}
-impl Action for SeedAction {
+struct SeedEffect;
+impl jungle_types::EffectMember for SeedEffect {}
+impl Effect for SeedEffect {
     type Id = Id<U0>;
     type Dependency = ();
     type In = i32;
@@ -27,9 +27,9 @@ impl Action for SeedAction {
     }
 }
 
-struct FinishAction;
-impl jungle_types::ActionMember for FinishAction {}
-impl Action for FinishAction {
+struct FinishEffect;
+impl jungle_types::EffectMember for FinishEffect {}
+impl Effect for FinishEffect {
     type Id = Id<U1>;
     type Dependency = ();
     type In = i32;
@@ -45,36 +45,36 @@ impl Action for FinishAction {
 }
 
 struct Seed;
-impl Pulse<ProgressAnimal> for Seed {
-    type Action = SeedAction;
+impl Act<ProgressAnimal> for Seed {
+    type Effect = SeedEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(_state: &i32, input: Self::Arg) -> i32 {
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + 1
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<SeedAction>) -> Self::Ret {
-        let value = output.expect("seed action should succeed");
+    fn absorb(state: &mut i32, output: EffectCompletion<SeedEffect>) -> Self::Output {
+        let value = output.expect("seed effect should succeed");
         *state = value;
         value
     }
 }
 
 struct Finish;
-impl Pulse<ProgressAnimal> for Finish {
-    type Action = FinishAction;
+impl Act<ProgressAnimal> for Finish {
+    type Effect = FinishEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<FinishAction>) -> Self::Ret {
-        let value = output.expect("finish action should succeed");
+    fn absorb(state: &mut i32, output: EffectCompletion<FinishEffect>) -> Self::Output {
+        let value = output.expect("finish effect should succeed");
         *state = value;
         value
     }
@@ -101,7 +101,7 @@ impl StepHarness {
     fn progress<Step>(
         state: i32,
         input: i32,
-        completion: ActionCompletion<Step::Action>,
+        completion: EffectCompletion<Step::Effect>,
     ) -> (i32, i32)
     where
         Step: StepExecutor,
@@ -113,24 +113,24 @@ impl StepHarness {
 }
 
 trait StepExecutor:
-    Running<In = (i32, i32), Out = (i32, ActionRequest<Self::Action>)>
-    + Waiting<In = (i32, ActionCompletion<Self::Action>), Out = (i32, i32)>
+    Running<In = (i32, i32), Out = (i32, EffectRequest<Self::Effect>)>
+    + Waiting<In = (i32, EffectCompletion<Self::Effect>), Out = (i32, i32)>
 {
-    type Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>;
+    type Effect: Effect<Dependency = (), In = i32, Out = i32, Err = ()>;
 }
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
-    A: Pulse<ProgressAnimal, StateAspect = Identity, Arg = i32, Ret = i32>,
-    <A as Pulse<ProgressAnimal>>::Action: Action<Dependency = (), In = i32, Out = i32, Err = ()>,
+    A: Act<ProgressAnimal, StateAspect = Identity, Input = i32, Output = i32>,
+    <A as Act<ProgressAnimal>>::Effect: Effect<Dependency = (), In = i32, Out = i32, Err = ()>,
 {
-    type Action = <A as Pulse<ProgressAnimal>>::Action;
+    type Effect = <A as Act<ProgressAnimal>>::Effect;
 }
 
 #[test]
-fn workflow_action_set_is_extracted_from_journey_composite() {
-    type Expected = list![SeedAction, FinishAction];
-    type Extracted = AnimalActionSet<ProgressAnimals>;
+fn workflow_effect_set_is_extracted_from_journey_composite() {
+    type Expected = list![SeedEffect, FinishEffect];
+    type Extracted = AnimalEffectSet<ProgressAnimals>;
     assert_type_eq!(Extracted, Expected);
 }
 
@@ -218,9 +218,9 @@ fn context_executor_progresses_multi_step_derived_journey() {
     assert_eq!(executor.into_state(), 36);
 }
 
-struct BranchAction;
-impl jungle_types::ActionMember for BranchAction {}
-impl Action for BranchAction {
+struct BranchEffect;
+impl jungle_types::EffectMember for BranchEffect {}
+impl Effect for BranchEffect {
     type Id = Id<U2>;
     type Dependency = ();
     type In = i32;
@@ -236,33 +236,33 @@ impl Action for BranchAction {
 }
 
 struct BranchStepA;
-impl Pulse<BranchAnimal> for BranchStepA {
-    type Action = BranchAction;
+impl Act<BranchAnimal> for BranchStepA {
+    type Effect = BranchEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(state: &i32, _input: Self::Arg) -> i32 {
+    fn emit(state: &i32, _input: Self::Input) -> i32 {
         *state
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         *state = output.expect("branch step A should succeed");
     }
 }
 
 struct BranchStepB;
-impl Pulse<BranchAnimal> for BranchStepB {
-    type Action = BranchAction;
+impl Act<BranchAnimal> for BranchStepB {
+    type Effect = BranchEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(state: &i32, _input: Self::Arg) -> i32 {
+    fn emit(state: &i32, _input: Self::Input) -> i32 {
         *state
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         *state = output.expect("branch step B should succeed");
     }
 }

@@ -1,4 +1,4 @@
-macro_rules! define_action {
+macro_rules! define_effect {
     (
         $name:ident,
         id = $id:expr,
@@ -9,8 +9,8 @@ macro_rules! define_action {
         act = |$dep:ident, $in_arg:pat_param| $body:expr
     ) => {
         pub struct $name;
-        impl jungle_types::ActionMember for $name {}
-        impl jungle_types::Action for $name {
+        impl jungle_types::EffectMember for $name {}
+        impl jungle_types::Effect for $name {
             type Id = u16;
             type Dependency = $dependency;
             type In = $input;
@@ -28,7 +28,7 @@ macro_rules! define_action {
     };
 }
 
-pub(crate) use define_action;
+pub(crate) use define_effect;
 
 pub(crate) async fn maybe_delay() {
     #[cfg(feature = "delay")]

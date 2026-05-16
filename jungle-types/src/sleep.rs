@@ -1,5 +1,5 @@
 use crate::{
-    Action, ActionCompletion, ActionMember, Animal, Aspect, Id, Identity, Pulse, StateCarrier,
+    Act, Animal, Aspect, Effect, EffectCompletion, EffectMember, Id, Identity, StateCarrier,
 };
 use inception::primitive;
 use std::marker::PhantomData;
@@ -13,7 +13,7 @@ pub struct SleepError {
 }
 
 pub struct Sleep;
-impl ActionMember for Sleep {}
+impl EffectMember for Sleep {}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SleepDependency;
@@ -24,7 +24,7 @@ impl<T> From<&T> for SleepDependency {
     }
 }
 
-impl Action for Sleep {
+impl Effect for Sleep {
     type Id = Id<U65535>;
     type Dependency = SleepDependency;
     type In = Duration;
@@ -42,8 +42,8 @@ impl Action for Sleep {
     }
 }
 
-#[primitive(property = crate::JungleActions)]
-impl crate::Actions for Sleep {
+#[primitive(property = crate::JungleEffects)]
+impl crate::Effects for Sleep {
     type List = Node<U65535, Sleep>;
 }
 
@@ -54,27 +54,27 @@ impl crate::Identified for Sleep {
 
 pub struct SleepStep<Focus = Identity>(PhantomData<fn() -> Focus>);
 
-impl<T, Focus> Pulse<T> for SleepStep<Focus>
+impl<T, Focus> Act<T> for SleepStep<Focus>
 where
     T: Animal,
     Focus: Aspect<T::State>,
 {
-    type Action = Sleep;
+    type Effect = Sleep;
     type StateAspect = Focus;
-    type Arg = Duration;
-    type Ret = ();
+    type Input = Duration;
+    type Output = ();
 
     fn emit(
         _view: &<Focus as StateCarrier<T::State>>::View,
-        input: Self::Arg,
-    ) -> <Self::Action as Action>::In {
+        input: Self::Input,
+    ) -> <Self::Effect as Effect>::In {
         input
     }
 
     fn absorb(
         _view: &mut <Focus as StateCarrier<T::State>>::View,
-        output: ActionCompletion<Self::Action>,
-    ) -> Self::Ret {
-        output.expect("Sleep action should be resumed by worker runtime");
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("Sleep effect should be resumed by worker runtime");
     }
 }

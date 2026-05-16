@@ -39,9 +39,9 @@ pub struct Step {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventKind {
-    ActionInput,
-    ActionSuccessOutput,
-    ActionFailureOutput,
+    EffectInput,
+    EffectSuccessOutput,
+    EffectFailureOutput,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

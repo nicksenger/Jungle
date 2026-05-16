@@ -12,24 +12,24 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Action, ActionCompletion, ActionRequest, Aspect, Identity, Pulse, StateCarrier, StateLens, Step,
+    Act, Aspect, Effect, EffectCompletion, EffectRequest, Identity, StateCarrier, StateLens, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
 pub use executor::{
-    BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,
-    ErasedStep, ExecutableActionRequest, Executor, ExecutorError, ExecutorFlow, JungleDynFlow,
-    JungleDynFlowContext, ManualExecutor, TypedErasedStep,
+    ArgputForState, BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep,
+    DynFlow, ErasedStep, ExecutableEffectRequest, Executor, ExecutorError, ExecutorFlow,
+    JungleDynFlow, JungleDynFlowContext, ManualExecutor, TypedErasedStep,
 };
 use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    ActionMember, ActionSet, AllFrom, AnimalActionDependencies, AnimalActionDependenciesCompatible,
-    AnimalActionSet, AnimalIdValue, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible,
-    AnimalVersion, AnimalVersionIdentitiesUnique, AnimalVersions, Generations,
-    GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals, StripActionHeaders,
-    StripAnimalHeaders,
+    AllFrom, AnimalEffectDependencies, AnimalEffectDependenciesCompatible, AnimalEffectSet,
+    AnimalIdValue, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
+    AnimalVersionIdentitiesUnique, AnimalVersions, EffectMember, EffectSet, Generations,
+    GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals, StripAnimalHeaders,
+    StripEffectHeaders,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -147,10 +147,10 @@ pub trait Animal {
     type Generation;
 
     /// The state of this `Animal` at any given time.
-    type State;
+    type State: Default;
 
-    /// Serializable seed used to initialize this animal's state.
-    type Seed: Serialize + DeserializeOwned + Into<Self::State>;
+    /// Serializable seed used to initialize the first step input of this animal's journey.
+    type Seed: Serialize + DeserializeOwned;
 
     /// The fundamental behavior of this Animal.
     type Journey;
@@ -263,26 +263,26 @@ pub trait Animals {
     type List;
 }
 
-/// Any collection of [`Action`]s with a flat type-level list of members.
-#[inception(property = JungleActions, types)]
-pub trait Actions {
+/// Any collection of [`Effect`]s with a flat type-level list of members.
+#[inception(property = JungleEffects, types)]
+pub trait Effects {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as Actions>::List, <Tail as Actions>::List)>,
-        merge_variant = TList<(<Head as Actions>::List, <Tail as Actions>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Actions>::List)> where { Self: Identified }
+        merge = TList<(<Head as Effects>::List, <Tail as Effects>::List)>,
+        merge_variant = TList<(<Head as Effects>::List, <Tail as Effects>::List)>,
+        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Effects>::List)> where { Self: Identified }
     )]
     type List;
 }
 
-/// A collection of [`Action`]s extractable from an executable workflow.
+/// A collection of [`Effect`]s extractable from an executable workflow.
 #[inception(property = JungleFlow, types)]
-pub trait FlowActions {
+pub trait FlowEffects {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as FlowActions>::List, <Tail as FlowActions>::List)>,
-        merge_variant = TList<(<Head as FlowActions>::List, <Tail as FlowActions>::List)>,
-        join = TList<(Node<U0, ()>, <Fields as FlowActions>::List)>
+        merge = TList<(<Head as FlowEffects>::List, <Tail as FlowEffects>::List)>,
+        merge_variant = TList<(<Head as FlowEffects>::List, <Tail as FlowEffects>::List)>,
+        join = TList<(Node<U0, ()>, <Fields as FlowEffects>::List)>
     )]
     type List;
 }
@@ -317,8 +317,8 @@ pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 impl<A, Left, Right> ReplaceStep<Step<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
-    Left: Pulse<A>,
-    Right: Pulse<A>,
+    Left: Act<A>,
+    Right: Act<A>,
 {
     type Output = Step<A, Right>;
 }
@@ -326,8 +326,8 @@ where
 impl<A, Left, Right> ReplaceStep<Step<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
-    Left: Pulse<A>,
-    Right: Pulse<A>,
+    Left: Act<A>,
+    Right: Act<A>,
 {
     type Output = Step<A, Left>;
 }
@@ -650,10 +650,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<P, L, R, M> FlowActions for Conditional<P, L, R, M>
+impl<P, L, R, M> FlowEffects for Conditional<P, L, R, M>
 where
-    L: FlowActions,
-    R: FlowActions,
+    L: FlowEffects,
+    R: FlowEffects,
 {
     type List = TList<(L::List, R::List)>;
 }
@@ -757,9 +757,9 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<C, F, M> FlowActions for While<C, F, M>
+impl<C, F, M> FlowEffects for While<C, F, M>
 where
-    F: FlowActions,
+    F: FlowEffects,
 {
     type List = F::List;
 }
@@ -830,9 +830,9 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<M, F> FlowActions for Transparent<M, F>
+impl<M, F> FlowEffects for Transparent<M, F>
 where
-    F: FlowActions,
+    F: FlowEffects,
 {
     type List = F::List;
 }
@@ -880,7 +880,7 @@ where
 impl<T, A> NodeMetadata for Step<T, A>
 where
     T: Animal,
-    A: Pulse<T>,
+    A: Act<T>,
 {
 }
 
@@ -949,10 +949,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<L, R, M> FlowActions for Select<L, R, M>
+impl<L, R, M> FlowEffects for Select<L, R, M>
 where
-    L: FlowActions,
-    R: FlowActions,
+    L: FlowEffects,
+    R: FlowEffects,
 {
     type List = TList<(L::List, R::List)>;
 }
@@ -1044,10 +1044,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<L, R, M> FlowActions for Join<L, R, M>
+impl<L, R, M> FlowEffects for Join<L, R, M>
 where
-    L: FlowActions,
-    R: FlowActions,
+    L: FlowEffects,
+    R: FlowEffects,
 {
     type List = TList<(L::List, R::List)>;
 }

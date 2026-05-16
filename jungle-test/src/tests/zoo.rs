@@ -1,38 +1,38 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Action, ActionCompletion, ActionSet, Animal, AnimalActionSet, AnimalSet, AnimalStates,
-    Ecosystem, Identity, LoopCondition, Pulse, StateLens, Step, While,
+    Act, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, Effect, EffectCompletion,
+    EffectSet, Identity, LoopCondition, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-use jungle_sdk::{Actions, Animals, Flow, Optic};
+use jungle_sdk::{Animals, Effects, Flow, Optic};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
 
-action!(Eat, U0, dependency = SharedState);
-action!(Sleep, U1, dependency = SharedState);
-action!(Forage, U2, dependency = SharedState);
-action!(Drink, U3, dependency = SharedState);
-action!(Hunt, U4, dependency = SharedState);
-action!(Flee, U5, dependency = SharedState);
+effect!(Eat, U0, dependency = SharedState);
+effect!(Sleep, U1, dependency = SharedState);
+effect!(Forage, U2, dependency = SharedState);
+effect!(Drink, U3, dependency = SharedState);
+effect!(Hunt, U4, dependency = SharedState);
+effect!(Flee, U5, dependency = SharedState);
 
-#[derive(Actions)]
+#[derive(Effects)]
 struct BasicNeeds(Eat, Sleep, Forage, Drink);
 
-#[derive(Actions)]
+#[derive(Effects)]
 struct Predation(Hunt);
 
-#[derive(Actions)]
+#[derive(Effects)]
 struct Predator(BasicNeeds, Predation);
 
-#[derive(Actions)]
+#[derive(Effects)]
 struct Prey(BasicNeeds, Flee);
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 struct SharedState;
 impl<T> From<&T> for SharedState {
     fn from(_value: &T) -> Self {
@@ -41,21 +41,21 @@ impl<T> From<&T> for SharedState {
 }
 
 struct UnitOkStep<A>(PhantomData<fn() -> A>);
-impl<T, A> Pulse<T> for UnitOkStep<A>
+impl<T, A> Act<T> for UnitOkStep<A>
 where
     T: Animal,
-    A: Action<In = ()>,
-    A: Action<Out = (), Err = ()>,
+    A: Effect<In = ()>,
+    A: Effect<Out = (), Err = ()>,
 {
-    type Action = A;
+    type Effect = A;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &T::State, _input: Self::Arg) -> A::In {}
+    fn emit(_state: &T::State, _input: Self::Input) -> A::In {}
 
-    fn absorb(_state: &mut T::State, output: ActionCompletion<A>) -> Self::Ret {
-        output.expect("workflow action should succeed");
+    fn absorb(_state: &mut T::State, output: EffectCompletion<A>) -> Self::Output {
+        output.expect("workflow effect should succeed");
     }
 }
 
@@ -142,8 +142,8 @@ struct Predators(Cats, Anaconda);
 #[derive(Animals)]
 struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
 
-#[derive(Actions)]
-struct AllActions(Predator, Prey);
+#[derive(Effects)]
+struct AllEffects(Predator, Prey);
 
 struct Zoo;
 impl Ecosystem for Zoo {
@@ -162,7 +162,7 @@ impl From<&RunnerZoo> for RunnerDependency {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct RunnerState(i32);
 
 impl From<&RunnerZoo> for RunnerState {
@@ -171,9 +171,13 @@ impl From<&RunnerZoo> for RunnerState {
     }
 }
 
-struct RunnerStepOneAction;
-impl jungle_sdk::types::ActionMember for RunnerStepOneAction {}
-impl Action for RunnerStepOneAction {
+impl From<RunnerState> for () {
+    fn from(_value: RunnerState) -> Self {}
+}
+
+struct RunnerStepOneEffect;
+impl jungle_sdk::types::EffectMember for RunnerStepOneEffect {}
+impl Effect for RunnerStepOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
     type Dependency = RunnerDependency;
     type In = ();
@@ -199,9 +203,9 @@ impl From<&RunnerZoo> for RunnerStepTwoDependency {
     }
 }
 
-struct RunnerStepTwoAction;
-impl jungle_sdk::types::ActionMember for RunnerStepTwoAction {}
-impl Action for RunnerStepTwoAction {
+struct RunnerStepTwoEffect;
+impl jungle_sdk::types::EffectMember for RunnerStepTwoEffect {}
+impl Effect for RunnerStepTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
     type Dependency = RunnerStepTwoDependency;
     type In = ();
@@ -217,29 +221,29 @@ impl Action for RunnerStepTwoAction {
 }
 
 struct RunnerStepOne;
-impl Pulse<RunnerAnimal> for RunnerStepOne {
-    type Action = RunnerStepOneAction;
+impl Act<RunnerAnimal> for RunnerStepOne {
+    type Effect = RunnerStepOneEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &RunnerState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.0 += output.expect("runner step one should succeed");
     }
 }
 
 struct RunnerStepTwo;
-impl Pulse<RunnerAnimal> for RunnerStepTwo {
-    type Action = RunnerStepTwoAction;
+impl Act<RunnerAnimal> for RunnerStepTwo {
+    type Effect = RunnerStepTwoEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &RunnerState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut RunnerState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.0 += output.expect("runner step two should succeed");
     }
 }
@@ -286,12 +290,12 @@ impl Ecosystem for RunnerZoo {
 }
 
 #[test]
-fn composite_actions() {
+fn composite_effects() {
     type BasicList = list![Eat, Sleep, Forage, Drink];
-    assert_type_eq!(ActionSet<BasicNeeds>, BasicList);
+    assert_type_eq!(EffectSet<BasicNeeds>, BasicList);
 
     type PredatorList = list![Eat, Sleep, Forage, Drink, Hunt];
-    assert_type_eq!(ActionSet<Predator>, PredatorList);
+    assert_type_eq!(EffectSet<Predator>, PredatorList);
 }
 
 #[test]
@@ -304,19 +308,19 @@ fn composite_animals() {
 }
 
 #[test]
-fn animal_action_set() {
-    type ApeAnimalActions = list![Eat, Sleep, Forage, Drink, Flee];
-    assert_type_eq!(AnimalActionSet<Apes>, ApeAnimalActions);
+fn animal_effect_set() {
+    type ApeAnimalEffects = list![Eat, Sleep, Forage, Drink, Flee];
+    assert_type_eq!(AnimalEffectSet<Apes>, ApeAnimalEffects);
 
-    type AllAnimalActions = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
-    assert_type_eq!(AnimalActionSet<AllAnimals>, AllAnimalActions);
+    type AllAnimalEffects = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
+    assert_type_eq!(AnimalEffectSet<AllAnimals>, AllAnimalEffects);
 }
 
 #[test]
 fn animal_state_set() {
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, serde::Serialize, serde::Deserialize)]
     struct ApeState;
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Default, serde::Serialize, serde::Deserialize)]
     struct CatState;
 
     #[derive(Flow)]
@@ -353,20 +357,20 @@ fn jungle_impl() {
     let _jungle_fut = zoo.manifest();
 }
 
-#[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct CoreState {
     energy: i32,
     rounds: i32,
 }
 
-#[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ExecutorApeState {
     core: CoreState,
     bananas: i32,
     mood: i32,
 }
 
-#[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ExecutorCatState {
     core: CoreState,
     stripes: i32,
@@ -406,8 +410,8 @@ impl From<&Zoo> for RoundDependency {
 }
 
 struct EatEnergy;
-impl jungle_sdk::types::ActionMember for EatEnergy {}
-impl Action for EatEnergy {
+impl jungle_sdk::types::EffectMember for EatEnergy {}
+impl Effect for EatEnergy {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
     type Dependency = EatDependency;
     type In = i32;
@@ -423,8 +427,8 @@ impl Action for EatEnergy {
 }
 
 struct HuntEnergy;
-impl jungle_sdk::types::ActionMember for HuntEnergy {}
-impl Action for HuntEnergy {
+impl jungle_sdk::types::EffectMember for HuntEnergy {}
+impl Effect for HuntEnergy {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
     type Dependency = HuntDependency;
     type In = i32;
@@ -440,8 +444,8 @@ impl Action for HuntEnergy {
 }
 
 struct RoundAdvance;
-impl jungle_sdk::types::ActionMember for RoundAdvance {}
-impl Action for RoundAdvance {
+impl jungle_sdk::types::EffectMember for RoundAdvance {}
+impl Effect for RoundAdvance {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
     type Dependency = RoundDependency;
     type In = i32;
@@ -457,22 +461,22 @@ impl Action for RoundAdvance {
 }
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
-impl<T, Focus, A> Pulse<T> for AddI32<Focus, A>
+impl<T, Focus, A> Act<T> for AddI32<Focus, A>
 where
     T: Animal,
     Focus: jungle_sdk::types::Aspect<T::State, View = i32>,
-    A: Action<In = i32, Out = i32, Err = ()>,
+    A: Effect<In = i32, Out = i32, Err = ()>,
 {
-    type Action = A;
+    type Effect = A;
     type StateAspect = Focus;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(value: &i32, _input: Self::Arg) -> Self::Arg {
+    fn emit(value: &i32, _input: Self::Input) -> Self::Input {
         *value
     }
 
-    fn absorb(value: &mut i32, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(value: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let delta = output.expect("add i32 step should succeed");
         *value += delta;
         *value
@@ -532,7 +536,7 @@ animal!(
 );
 
 #[tokio::test]
-async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
+async fn jungle_executor_runs_effects_with_ecosystem_dependency() {
     use jungle_sdk::core::JungleExecutor;
 
     let mut gorilla = JungleExecutor::<Zoo, WorkflowGorilla>::new(
@@ -557,7 +561,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
             .deserialize_request()
             .expect("gorilla request should deserialize");
         gorilla_requests.push(request_input);
-        let completion = request.run().await.expect("gorilla action should execute");
+        let completion = request.run().await.expect("gorilla effect should execute");
         let _emitted = gorilla
             .complete_serialized(completion)
             .expect("gorilla completion should process");
@@ -590,7 +594,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
             .deserialize_request()
             .expect("tiger request should deserialize");
         tiger_requests.push(request_input);
-        let completion = request.run().await.expect("tiger action should execute");
+        let completion = request.run().await.expect("tiger effect should execute");
         let _emitted = tiger
             .complete_serialized(completion)
             .expect("tiger completion should process");
@@ -625,7 +629,7 @@ async fn jungle_executor_runs_actions_with_ecosystem_dependency() {
         let completion = request
             .run()
             .await
-            .expect("tiger odd action should execute");
+            .expect("tiger odd effect should execute");
         let _emitted = tiger_odd
             .complete_serialized(completion)
             .expect("tiger odd completion should process");
@@ -660,7 +664,7 @@ async fn jungle_executor_exposes_state_during_progression() {
             Err(jungle_sdk::types::ExecutorError::Complete) => break,
             Err(err) => panic!("gorilla request should build: {err}"),
         };
-        let completion = request.run().await.expect("gorilla action should execute");
+        let completion = request.run().await.expect("gorilla effect should execute");
         let _emitted = gorilla
             .complete_serialized(completion)
             .expect("gorilla completion should process");
@@ -683,7 +687,7 @@ async fn jungle_runner_spawns_and_completes_animal_flows() {
     let success_calls = Arc::new(AtomicUsize::new(0));
     let failure_calls = Arc::new(AtomicUsize::new(0));
     let client = MockClient::builder()
-        .on_action_input({
+        .on_effect_input({
             let input_calls = Arc::clone(&input_calls);
             move |_, _| {
                 let input_calls = Arc::clone(&input_calls);
@@ -693,7 +697,7 @@ async fn jungle_runner_spawns_and_completes_animal_flows() {
                 }
             }
         })
-        .on_action_success_output({
+        .on_effect_success_output({
             let success_calls = Arc::clone(&success_calls);
             move |_, _| {
                 let success_calls = Arc::clone(&success_calls);
@@ -703,7 +707,7 @@ async fn jungle_runner_spawns_and_completes_animal_flows() {
                 }
             }
         })
-        .on_action_failure_output({
+        .on_effect_failure_output({
             let failure_calls = Arc::clone(&failure_calls);
             move |_, _| {
                 let failure_calls = Arc::clone(&failure_calls);
@@ -783,7 +787,7 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                 }
             }
         })
-        .on_action_input({
+        .on_effect_input({
             let input_calls = Arc::clone(&input_calls);
             move |_, _| {
                 let input_calls = Arc::clone(&input_calls);
@@ -793,7 +797,7 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                 }
             }
         })
-        .on_action_success_output({
+        .on_effect_success_output({
             let success_calls = Arc::clone(&success_calls);
             move |_, _| {
                 let success_calls = Arc::clone(&success_calls);
@@ -803,7 +807,7 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
                 }
             }
         })
-        .on_action_failure_output({
+        .on_effect_failure_output({
             let failure_calls = Arc::clone(&failure_calls);
             move |_, _| {
                 let failure_calls = Arc::clone(&failure_calls);

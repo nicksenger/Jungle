@@ -856,14 +856,14 @@ where
         }
     }
 
-    async fn action_input(
+    async fn effect_input(
         &self,
         id: Uuid,
         node_id: u32,
         input: Vec<u8>,
     ) -> Result<(), ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionInput {
+            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectInput {
                 node_id,
                 data: input,
                 uuid: id,
@@ -881,22 +881,22 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_input".to_string(),
+                "unexpected non-ack response for effect_input".to_string(),
             )),
             WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_input".to_string(),
+                "unexpected non-ack response for effect_input".to_string(),
             )),
         }
     }
 
-    async fn action_success_output(
+    async fn effect_success_output(
         &self,
         id: Uuid,
         node_id: u32,
         output: Vec<u8>,
     ) -> Result<(), ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionSuccessOutput {
+            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectSuccessOutput {
                 node_id,
                 data: output,
                 uuid: id,
@@ -914,22 +914,22 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_success_output".to_string(),
+                "unexpected non-ack response for effect_success_output".to_string(),
             )),
             WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_success_output".to_string(),
+                "unexpected non-ack response for effect_success_output".to_string(),
             )),
         }
     }
 
-    async fn action_failure_output(
+    async fn effect_failure_output(
         &self,
         id: Uuid,
         node_id: u32,
         err: Vec<u8>,
     ) -> Result<(), ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::ActionFailureOutput {
+            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectFailureOutput {
                 node_id,
                 data: err,
                 uuid: id,
@@ -947,10 +947,10 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_failure_output".to_string(),
+                "unexpected non-ack response for effect_failure_output".to_string(),
             )),
             WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for action_failure_output".to_string(),
+                "unexpected non-ack response for effect_failure_output".to_string(),
             )),
         }
     }

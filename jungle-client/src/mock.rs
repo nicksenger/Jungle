@@ -78,9 +78,9 @@ pub struct MockClient {
     on_flow_complete: FlowCompleteHandler,
     on_poll_timers: PollTimersHandler,
     on_poll_work: PollStepHandler,
-    on_action_input: Handler,
-    on_action_success_output: Handler,
-    on_action_failure_output: Handler,
+    on_effect_input: Handler,
+    on_effect_success_output: Handler,
+    on_effect_failure_output: Handler,
 }
 
 impl MockClient {
@@ -106,21 +106,21 @@ impl MockClient {
             let result = match message {
                 RunnerChannelMessage::History(history) => {
                     let out = match history {
-                        RunnerOut::ActionInput {
+                        RunnerOut::EffectInput {
                             node_id,
                             data,
                             uuid,
-                        } => self.action_input(uuid, node_id, data).await,
-                        RunnerOut::ActionSuccessOutput {
+                        } => self.effect_input(uuid, node_id, data).await,
+                        RunnerOut::EffectSuccessOutput {
                             node_id,
                             data,
                             uuid,
-                        } => self.action_success_output(uuid, node_id, data).await,
-                        RunnerOut::ActionFailureOutput {
+                        } => self.effect_success_output(uuid, node_id, data).await,
+                        RunnerOut::EffectFailureOutput {
                             node_id,
                             data,
                             uuid,
-                        } => self.action_failure_output(uuid, node_id, data).await,
+                        } => self.effect_failure_output(uuid, node_id, data).await,
                         RunnerOut::Appearance { data, uuid } => {
                             self.animal_appearance_update(uuid, data).await
                         }
@@ -250,31 +250,31 @@ impl JungleClient for MockClient {
         (self.on_poll_work)(supported_animals).await
     }
 
-    async fn action_input(
+    async fn effect_input(
         &self,
         id: Uuid,
         _node_id: u32,
         input: Vec<u8>,
     ) -> Result<(), ExecutorError> {
-        (self.on_action_input)(id, input).await
+        (self.on_effect_input)(id, input).await
     }
 
-    async fn action_success_output(
+    async fn effect_success_output(
         &self,
         id: Uuid,
         _node_id: u32,
         output: Vec<u8>,
     ) -> Result<(), ExecutorError> {
-        (self.on_action_success_output)(id, output).await
+        (self.on_effect_success_output)(id, output).await
     }
 
-    async fn action_failure_output(
+    async fn effect_failure_output(
         &self,
         id: Uuid,
         _node_id: u32,
         err: Vec<u8>,
     ) -> Result<(), ExecutorError> {
-        (self.on_action_failure_output)(id, err).await
+        (self.on_effect_failure_output)(id, err).await
     }
 }
 
@@ -294,9 +294,9 @@ pub struct MockClientBuilder {
     on_flow_complete: Option<FlowCompleteHandler>,
     on_poll_timers: Option<PollTimersHandler>,
     on_poll_work: Option<PollStepHandler>,
-    on_action_input: Option<Handler>,
-    on_action_success_output: Option<Handler>,
-    on_action_failure_output: Option<Handler>,
+    on_effect_input: Option<Handler>,
+    on_effect_success_output: Option<Handler>,
+    on_effect_failure_output: Option<Handler>,
 }
 
 impl Default for MockClientBuilder {
@@ -317,9 +317,9 @@ impl Default for MockClientBuilder {
             on_flow_complete: None,
             on_poll_timers: None,
             on_poll_work: None,
-            on_action_input: None,
-            on_action_success_output: None,
-            on_action_failure_output: None,
+            on_effect_input: None,
+            on_effect_success_output: None,
+            on_effect_failure_output: None,
         }
     }
 }
@@ -473,30 +473,30 @@ impl MockClientBuilder {
         self
     }
 
-    pub fn on_action_input<F, Fut>(mut self, f: F) -> Self
+    pub fn on_effect_input<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid, Vec<u8>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
     {
-        self.on_action_input = Some(Arc::new(move |id, input| Box::pin(f(id, input))));
+        self.on_effect_input = Some(Arc::new(move |id, input| Box::pin(f(id, input))));
         self
     }
 
-    pub fn on_action_success_output<F, Fut>(mut self, f: F) -> Self
+    pub fn on_effect_success_output<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid, Vec<u8>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
     {
-        self.on_action_success_output = Some(Arc::new(move |id, output| Box::pin(f(id, output))));
+        self.on_effect_success_output = Some(Arc::new(move |id, output| Box::pin(f(id, output))));
         self
     }
 
-    pub fn on_action_failure_output<F, Fut>(mut self, f: F) -> Self
+    pub fn on_effect_failure_output<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid, Vec<u8>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
     {
-        self.on_action_failure_output = Some(Arc::new(move |id, err| Box::pin(f(id, err))));
+        self.on_effect_failure_output = Some(Arc::new(move |id, err| Box::pin(f(id, err))));
         self
     }
 
@@ -571,13 +571,13 @@ impl MockClientBuilder {
             on_poll_work: self
                 .on_poll_work
                 .unwrap_or_else(|| default_poll_work_handler.clone()),
-            on_action_input: self
-                .on_action_input
+            on_effect_input: self
+                .on_effect_input
                 .unwrap_or_else(|| default_handler.clone()),
-            on_action_success_output: self
-                .on_action_success_output
+            on_effect_success_output: self
+                .on_effect_success_output
                 .unwrap_or_else(|| default_handler.clone()),
-            on_action_failure_output: self.on_action_failure_output.unwrap_or(default_handler),
+            on_effect_failure_output: self.on_effect_failure_output.unwrap_or(default_handler),
         }
     }
 }

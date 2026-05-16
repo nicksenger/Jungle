@@ -5,6 +5,7 @@ use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, BuildFlowWithContext, ContextExecutor, DynFlow,
     ExecutorError, ObservationBridge, PerturbationBridge, RunnerOut, Sleep,
 };
+use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -49,7 +50,7 @@ where
         self.emit_appearance(journey_id, appearance, &mut tx)
             .await?;
         match self
-            .drive_until_sleep_or_complete::<A>(&mut executor, journey_id, &mut tx)
+            .drive_until_sleep_or_complete::<A, _>(&mut executor, (), journey_id, &mut tx)
             .await?
         {
             RunnerAdvance::Completed => Ok(executor.into_state()),
@@ -100,9 +101,10 @@ where
         Ok(())
     }
 
-    pub async fn drive_until_sleep_or_complete<A>(
+    pub async fn drive_until_sleep_or_complete<A, Initial>(
         &self,
         executor: &mut ContextExecutor<T, A>,
+        initial_input: Initial,
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
@@ -110,10 +112,11 @@ where
         A: Animal + AnimalObservation + AnimalPerturbation,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+        Initial: Serialize + Clone,
     {
         while !executor.is_complete() {
             process_perturbations(executor, journey_id, tx).await?;
-            let request = match executor.next_executable_request(()) {
+            let request = match executor.next_executable_request(initial_input.clone()) {
                 Ok(request) => request,
                 Err(ExecutorError::Complete) => break,
                 Err(err) => return Err(err),
@@ -121,7 +124,7 @@ where
             let node_id = request.node_id();
             send_history(
                 tx,
-                RunnerOut::ActionInput {
+                RunnerOut::EffectInput {
                     node_id,
                     data: request.request_bytes().to_vec(),
                     uuid: journey_id,
@@ -129,7 +132,7 @@ where
             )
             .await?;
 
-            if request.action_type() == core::any::type_name::<Sleep>() {
+            if request.effect_type() == core::any::type_name::<Sleep>() {
                 let duration: std::time::Duration = request.deserialize_request()?;
                 let duration_millis = i64::try_from(duration.as_millis()).unwrap_or(i64::MAX);
                 let wake_at_unix_ms = chrono::Utc::now()
@@ -173,7 +176,7 @@ where
             completion,
         )
         .await?;
-        self.drive_until_sleep_or_complete::<A>(executor, journey_id, tx)
+        self.drive_until_sleep_or_complete::<A, _>(executor, (), journey_id, tx)
             .await
     }
 }
@@ -195,7 +198,7 @@ where
         Ok(output) => {
             send_history(
                 tx,
-                RunnerOut::ActionSuccessOutput {
+                RunnerOut::EffectSuccessOutput {
                     node_id,
                     data: output.clone(),
                     uuid: journey_id,
@@ -206,7 +209,7 @@ where
         Err(error) => {
             send_history(
                 tx,
-                RunnerOut::ActionFailureOutput {
+                RunnerOut::EffectFailureOutput {
                     node_id,
                     data: error.clone(),
                     uuid: journey_id,

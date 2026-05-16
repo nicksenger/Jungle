@@ -1,6 +1,6 @@
 use crate::Jungle;
 use jungle_types::{
-    Animal, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutableActionRequest, ExecutorError,
+    Animal, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutableEffectRequest, ExecutorError,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -51,7 +51,7 @@ where
     pub fn next_executable_request<Initial>(
         &mut self,
         initial_input: Initial,
-    ) -> Result<ExecutableActionRequest, ExecutorError>
+    ) -> Result<ExecutableEffectRequest, ExecutorError>
     where
         Initial: Serialize,
     {

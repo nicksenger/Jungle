@@ -1,7 +1,7 @@
 //! Zoo crate focused on the gorilla ecosystem and probe flows.
 
-pub mod actions;
 pub mod animals;
+pub mod effects;
 pub mod probe;
 pub mod state;
 

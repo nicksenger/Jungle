@@ -167,9 +167,9 @@ pub fn derive_animals(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
-#[proc_macro_derive(Actions)]
-pub fn derive_actions(input: TokenStream) -> TokenStream {
-    let properties = jungle_types(&["Ident", "JungleActions"]);
+#[proc_macro_derive(Effects)]
+pub fn derive_effects(input: TokenStream) -> TokenStream {
+    let properties = jungle_types(&["Ident", "JungleEffects"]);
     derive_with_properties(input, &properties)
 }
 

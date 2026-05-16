@@ -1,14 +1,16 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Observe, Pulse, Sleep, Step, While,
+    Act, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
+    LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 struct SleepState {
     counter: i32,
     phase: u8,
@@ -26,9 +28,9 @@ impl From<&SleepZoo> for AddDependency {
     }
 }
 
-struct AddAction;
-impl jungle_sdk::types::ActionMember for AddAction {}
-impl Action for AddAction {
+struct AddEffect;
+impl jungle_sdk::types::EffectMember for AddEffect {}
+impl Effect for AddEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
     type Dependency = AddDependency;
     type In = ();
@@ -44,47 +46,47 @@ impl Action for AddAction {
 }
 
 struct AddBeforeSleep;
-impl Pulse<SleepAnimal> for AddBeforeSleep {
-    type Action = AddAction;
+impl Act<SleepAnimal> for AddBeforeSleep {
+    type Effect = AddEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &SleepState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &SleepState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.counter += output.expect("add before sleep should succeed");
         state.phase += 1;
     }
 }
 
 struct SleepForStateWake;
-impl Pulse<SleepAnimal> for SleepForStateWake {
-    type Action = Sleep;
+impl Act<SleepAnimal> for SleepForStateWake {
+    type Effect = Sleep;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(state: &SleepState, _input: Self::Arg) -> Duration {
+    fn emit(state: &SleepState, _input: Self::Input) -> Duration {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("sleep should resume successfully");
         state.phase += 1;
     }
 }
 
 struct AddAfterSleep;
-impl Pulse<SleepAnimal> for AddAfterSleep {
-    type Action = AddAction;
+impl Act<SleepAnimal> for AddAfterSleep {
+    type Effect = AddEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &SleepState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &SleepState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut SleepState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.counter += output.expect("add after sleep should succeed");
         state.phase += 1;
     }
@@ -151,8 +153,12 @@ impl Ecosystem for SleepZoo {
     type Animals = SleepAnimals;
 }
 
+impl From<SleepState> for () {
+    fn from(_value: SleepState) -> Self {}
+}
+
 #[tokio::test]
-async fn sleep_action_suspends_then_resumes_flow_to_completion() {
+async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
     let listen_addr = super::reserve_local_addr();

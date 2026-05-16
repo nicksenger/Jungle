@@ -6,9 +6,10 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     Animal, AnimalIdValue, AnimalObservation, AnimalPerturbation, AnimalSet, Animals,
-    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep,
-    StripAnimalHeaders, SupportedAnimal, Work,
+    ArgputForState, BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError,
+    RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
+use serde::Serialize;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -70,27 +71,27 @@ where
                     let result: Result<RunnerChannelResponse, ExecutorError> = match message {
                         RunnerChannelMessage::History(history) => {
                             let out = match history {
-                                RunnerOut::ActionInput {
+                                RunnerOut::EffectInput {
                                     node_id,
                                     data,
                                     uuid,
-                                } => client_for_transport.action_input(uuid, node_id, data).await,
-                                RunnerOut::ActionSuccessOutput {
+                                } => client_for_transport.effect_input(uuid, node_id, data).await,
+                                RunnerOut::EffectSuccessOutput {
                                     node_id,
                                     data,
                                     uuid,
                                 } => {
                                     client_for_transport
-                                        .action_success_output(uuid, node_id, data)
+                                        .effect_success_output(uuid, node_id, data)
                                         .await
                                 }
-                                RunnerOut::ActionFailureOutput {
+                                RunnerOut::EffectFailureOutput {
                                     node_id,
                                     data,
                                     uuid,
                                 } => {
                                     client_for_transport
-                                        .action_failure_output(uuid, node_id, data)
+                                        .effect_failure_output(uuid, node_id, data)
                                         .await
                                 }
                                 RunnerOut::Appearance { data, uuid } => {
@@ -401,9 +402,11 @@ where
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
     Head::Journey: BuildFlowWithContext<
-        (Arc<T>, DynFlow<Head::State>),
-        Output = (Arc<T>, DynFlow<Head::State>),
-    >,
+            (Arc<T>, DynFlow<Head::State>),
+            Output = (Arc<T>, DynFlow<Head::State>),
+        > + ArgputForState<Head::State>,
+    Head::Seed: Into<<Head::Journey as ArgputForState<Head::State>>::Carry>,
+    <Head::Journey as ArgputForState<Head::State>>::Carry: Serialize + Clone + Send,
     Tail: SupportedAnimalGenerations<T>,
     T: Send + Sync + 'static,
 {
@@ -431,14 +434,21 @@ where
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-                let state: Head::State = seed.into();
+                let initial_input: <Head::Journey as ArgputForState<Head::State>>::Carry =
+                    seed.into();
+                let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
                     .emit_appearance(journey_id, appearance, &mut tx)
                     .await?;
                 match runner
-                    .drive_until_sleep_or_complete::<Head>(&mut executor, journey_id, &mut tx)
+                    .drive_until_sleep_or_complete::<Head, _>(
+                        &mut executor,
+                        initial_input,
+                        journey_id,
+                        &mut tx,
+                    )
                     .await?
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
@@ -479,15 +489,29 @@ where
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-                let state: Head::State = seed.into();
+                let initial_input: <Head::Journey as ArgputForState<Head::State>>::Carry =
+                    seed.into();
+                let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
-                replay_history::<T, Head>(&mut executor, journey_id, &history, &mut tx).await?;
+                replay_history::<T, Head, _>(
+                    &mut executor,
+                    initial_input.clone(),
+                    journey_id,
+                    &history,
+                    &mut tx,
+                )
+                .await?;
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
                     .emit_appearance(journey_id, appearance, &mut tx)
                     .await?;
                 match runner
-                    .drive_until_sleep_or_complete::<Head>(&mut executor, journey_id, &mut tx)
+                    .drive_until_sleep_or_complete::<Head, _>(
+                        &mut executor,
+                        initial_input,
+                        journey_id,
+                        &mut tx,
+                    )
                     .await?
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
@@ -514,8 +538,9 @@ where
     }
 }
 
-async fn replay_history<T, A>(
+async fn replay_history<T, A, Initial>(
     executor: &mut ContextExecutor<T, A>,
+    initial_input: Initial,
     journey_id: Uuid,
     history: &[RunnerOut],
     tx: &mut RunnerChannelTx,
@@ -525,6 +550,7 @@ where
     A: Animal + AnimalObservation + AnimalPerturbation,
     A::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+    Initial: Serialize + Clone,
 {
     let mut index = 0usize;
     while !executor.is_complete() {
@@ -532,33 +558,33 @@ where
             break;
         }
 
-        let request = match executor.next_executable_request(()) {
+        let request = match executor.next_executable_request(initial_input.clone()) {
             Ok(request) => request,
             Err(ExecutorError::Complete) => break,
             Err(err) => return Err(err),
         };
         let request_node_id = request.node_id();
         let expected_input = request.request_bytes();
-        let action_type = request.action_type();
+        let effect_type = request.effect_type();
 
-        let Some(RunnerOut::ActionInput {
+        let Some(RunnerOut::EffectInput {
             node_id,
             data,
             uuid,
         }) = history.get(index)
         else {
             return Err(ExecutorError::ClientTransport(
-                "history replay expected ActionInput event".to_string(),
+                "history replay expected EffectInput event".to_string(),
             ));
         };
         if *uuid != journey_id || *node_id != request_node_id || data.as_slice() != expected_input {
             return Err(ExecutorError::ClientTransport(
-                "history replay ActionInput mismatch".to_string(),
+                "history replay EffectInput mismatch".to_string(),
             ));
         }
         index = index.saturating_add(1);
 
-        let completion = if action_type == core::any::type_name::<Sleep>() {
+        let completion = if effect_type == core::any::type_name::<Sleep>() {
             while matches!(
                 history.get(index),
                 Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
@@ -581,7 +607,7 @@ where
             }
         } else {
             match history.get(index) {
-                Some(RunnerOut::ActionSuccessOutput {
+                Some(RunnerOut::EffectSuccessOutput {
                     node_id,
                     data,
                     uuid,
@@ -589,7 +615,7 @@ where
                     index = index.saturating_add(1);
                     Ok(data.clone())
                 }
-                Some(RunnerOut::ActionFailureOutput {
+                Some(RunnerOut::EffectFailureOutput {
                     node_id,
                     data,
                     uuid,
@@ -618,12 +644,12 @@ async fn send_recovered_completion(
     completion: &Result<Vec<u8>, Vec<u8>>,
 ) -> Result<(), ExecutorError> {
     let out = match completion {
-        Ok(data) => RunnerOut::ActionSuccessOutput {
+        Ok(data) => RunnerOut::EffectSuccessOutput {
             node_id,
             data: data.clone(),
             uuid: journey_id,
         },
-        Err(data) => RunnerOut::ActionFailureOutput {
+        Err(data) => RunnerOut::EffectFailureOutput {
             node_id,
             data: data.clone(),
             uuid: journey_id,

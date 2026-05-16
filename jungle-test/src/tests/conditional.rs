@@ -1,13 +1,13 @@
 use jungle_sdk::types::{
-    ActionCompletion, Conditional, Either, Executor, Identity, ManualExecutor, Pulse, Running,
-    Step, Waiting,
+    Act, Conditional, EffectCompletion, Either, Executor, Identity, ManualExecutor, Running, Step,
+    Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Journey;
 use std::future::ready;
 
-action!(
-    LeftAction,
+effect!(
+    LeftEffect,
     U0,
     in = i32,
     out = i32,
@@ -15,8 +15,8 @@ action!(
     act = |_dependency, input| ready(Ok(input + 1))
 );
 
-action!(
-    RightAction,
+effect!(
+    RightEffect,
     U1,
     in = i32,
     out = i32,
@@ -32,36 +32,36 @@ animal!(
 );
 
 struct Left;
-impl Pulse<ConditionalAnimal> for Left {
-    type Action = LeftAction;
+impl Act<ConditionalAnimal> for Left {
+    type Effect = LeftEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = i32;
+    type Input = i32;
+    type Output = i32;
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<LeftAction>) -> Self::Ret {
-        let value = output.expect("left action should succeed");
+    fn absorb(state: &mut i32, output: EffectCompletion<LeftEffect>) -> Self::Output {
+        let value = output.expect("left effect should succeed");
         *state = value;
         value
     }
 }
 
 struct Right;
-impl Pulse<ConditionalAnimal> for Right {
-    type Action = RightAction;
+impl Act<ConditionalAnimal> for Right {
+    type Effect = RightEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = bool;
+    type Input = i32;
+    type Output = bool;
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state - input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<RightAction>) -> Self::Ret {
-        let value = output.expect("right action should succeed");
+    fn absorb(state: &mut i32, output: EffectCompletion<RightEffect>) -> Self::Output {
+        let value = output.expect("right effect should succeed");
         *state = value;
         value % 2 == 0
     }
@@ -157,7 +157,7 @@ fn executor_requests_and_completes_conditional_branch() {
 }
 
 #[tokio::test]
-async fn executor_executable_request_runs_without_static_action_dispatch() {
+async fn executor_executable_request_runs_without_static_effect_dispatch() {
     let mut left = Executor::<ConditionalAnimal>::new(5);
     let request = left
         .next_executable_request((true, 0i32))
@@ -166,7 +166,7 @@ async fn executor_executable_request_runs_without_static_action_dispatch() {
         .deserialize_request()
         .expect("left request should deserialize");
     assert_eq!(input, 5);
-    let completion = request.run().await.expect("left action should execute");
+    let completion = request.run().await.expect("left effect should execute");
     let _left_emitted = left
         .complete_serialized(completion)
         .expect("left completion should process");
@@ -181,7 +181,7 @@ async fn executor_executable_request_runs_without_static_action_dispatch() {
         .deserialize_request()
         .expect("right request should deserialize");
     assert_eq!(input, -2);
-    let completion = request.run().await.expect("right action should execute");
+    let completion = request.run().await.expect("right effect should execute");
     let _right_emitted = right
         .complete_serialized(completion)
         .expect("right completion should process");

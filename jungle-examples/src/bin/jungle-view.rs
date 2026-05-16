@@ -175,7 +175,7 @@ impl ExampleThemeState {
         changed
     }
 
-    fn update_clusters_for_action_input(&mut self, runtime_id: u32, now: Instant) -> bool {
+    fn update_clusters_for_effect_input(&mut self, runtime_id: u32, now: Instant) -> bool {
         let mut changed = false;
         let cluster_ids = self.cluster_index.keys().copied().collect::<Vec<_>>();
         for cluster_id in cluster_ids {
@@ -318,15 +318,15 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
 
         match event {
             ViewerEvent::JourneyUpdate(update) => match update.event {
-                RunnerUpdateOut::ActionInput { node_id, .. } => {
+                RunnerUpdateOut::EffectInput { node_id, .. } => {
                     let node_changed = guard.update_node_state(node_id, RuntimeState::Running, now);
-                    let cluster_changed = guard.update_clusters_for_action_input(node_id, now);
+                    let cluster_changed = guard.update_clusters_for_effect_input(node_id, now);
                     should_tick = node_changed || cluster_changed;
                 }
-                RunnerUpdateOut::ActionSuccessOutput { node_id, .. } => {
+                RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
                     should_tick = guard.update_node_state(node_id, RuntimeState::Completed, now);
                 }
-                RunnerUpdateOut::ActionFailureOutput { node_id, .. } => {
+                RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
                     should_tick = guard.update_node_state(node_id, RuntimeState::Failed, now);
                 }
                 RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
@@ -669,7 +669,7 @@ mod tests {
         state.register_cluster(&cx, started_at);
 
         let first_entry = started_at + Duration::from_millis(1);
-        assert!(state.update_clusters_for_action_input(18, first_entry));
+        assert!(state.update_clusters_for_effect_input(18, first_entry));
         let border = state
             .cluster_visuals
             .get(&9)
@@ -679,7 +679,7 @@ mod tests {
         assert_eq!(border.to, cluster_border_color_running());
 
         let first_exit = first_entry + Duration::from_millis(1);
-        assert!(state.update_clusters_for_action_input(32, first_exit));
+        assert!(state.update_clusters_for_effect_input(32, first_exit));
         let border = state
             .cluster_visuals
             .get(&9)
@@ -688,7 +688,7 @@ mod tests {
         assert_eq!(border.to, cluster_border_color_completed());
 
         let second_entry = first_exit + Duration::from_millis(1);
-        assert!(state.update_clusters_for_action_input(18, second_entry));
+        assert!(state.update_clusters_for_effect_input(18, second_entry));
         let border = state
             .cluster_visuals
             .get(&9)

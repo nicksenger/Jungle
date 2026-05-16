@@ -8,7 +8,8 @@ use sqlx::postgres::PgListener;
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::sleep;
+#[cfg(feature = "redb")]
+use tokio::sync::Notify;
 use tracing::info;
 #[cfg(feature = "postgres")]
 use tracing::warn;
@@ -22,6 +23,8 @@ const PG_JOURNEY_EVENTS_CHANNEL: &str = "jungle_journey_events";
 pub struct Server {
     #[cfg(any(feature = "postgres", feature = "redb"))]
     store: Arc<dyn JungleStore>,
+    #[cfg(feature = "redb")]
+    journey_update_notify: Arc<Notify>,
 }
 
 impl Server {
@@ -32,7 +35,11 @@ impl Server {
 
     #[cfg(any(feature = "postgres", feature = "redb"))]
     pub fn from_store(store: Arc<dyn JungleStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            #[cfg(feature = "redb")]
+            journey_update_notify: Arc::new(Notify::new()),
+        }
     }
 }
 
@@ -213,7 +220,15 @@ impl JungleServer for Server {
                             continue;
                         }
 
-                        sleep(Duration::from_millis(100)).await;
+                        #[cfg(feature = "redb")]
+                        {
+                            let notified = self.journey_update_notify.notified();
+                            let _ = tokio::time::timeout(Duration::from_secs(5), notified).await;
+                            continue;
+                        }
+
+                        #[cfg(not(feature = "redb"))]
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
@@ -360,6 +375,8 @@ impl JungleServer for Server {
                         .map_err(|err| {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
                         })?;
+                    #[cfg(feature = "redb")]
+                    self.journey_update_notify.notify_waiters();
                     WireOut::Ack
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
@@ -380,6 +397,8 @@ impl JungleServer for Server {
                         .map_err(|err| {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
                         })?;
+                    #[cfg(feature = "redb")]
+                    self.journey_update_notify.notify_waiters();
                     WireOut::Ack
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
@@ -414,9 +433,15 @@ impl JungleServer for Server {
             Some(WireIn::PollTimers) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let _ = self.store.poll_timers().await.map_err(|err| {
+                    let polled = self.store.poll_timers().await.map_err(|err| {
                         crate::ServerError::Backend(BackendError::Message(err.to_string()))
                     })?;
+                    #[cfg(feature = "redb")]
+                    if polled.is_some() {
+                        self.journey_update_notify.notify_waiters();
+                    }
+                    #[cfg(not(feature = "redb"))]
+                    let _ = polled;
                     WireOut::Ack
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
@@ -428,9 +453,9 @@ impl JungleServer for Server {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     let journey_id = match &history {
-                        jungle_types::RunnerOut::ActionInput { uuid, .. }
-                        | jungle_types::RunnerOut::ActionSuccessOutput { uuid, .. }
-                        | jungle_types::RunnerOut::ActionFailureOutput { uuid, .. }
+                        jungle_types::RunnerOut::EffectInput { uuid, .. }
+                        | jungle_types::RunnerOut::EffectSuccessOutput { uuid, .. }
+                        | jungle_types::RunnerOut::EffectFailureOutput { uuid, .. }
                         | jungle_types::RunnerOut::Appearance { uuid, .. }
                         | jungle_types::RunnerOut::SleepScheduled { uuid, .. }
                         | jungle_types::RunnerOut::SleepFired { uuid, .. } => *uuid,
@@ -456,6 +481,8 @@ impl JungleServer for Server {
                             self.store.append_history(event).await.map_err(|err| {
                                 crate::ServerError::Backend(BackendError::Message(err.to_string()))
                             })?;
+                            #[cfg(feature = "redb")]
+                            self.journey_update_notify.notify_waiters();
                         }
                     }
                     WireOut::Ack

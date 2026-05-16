@@ -64,19 +64,19 @@ pub trait JungleClient: DynClone + Send + Sync {
         &self,
         supported_animals: Vec<SupportedAnimal>,
     ) -> Result<Option<Work>, ExecutorError>;
-    async fn action_input(
+    async fn effect_input(
         &self,
         id: Uuid,
         node_id: u32,
         input: Vec<u8>,
     ) -> Result<(), ExecutorError>;
-    async fn action_success_output(
+    async fn effect_success_output(
         &self,
         id: Uuid,
         node_id: u32,
         output: Vec<u8>,
     ) -> Result<(), ExecutorError>;
-    async fn action_failure_output(
+    async fn effect_failure_output(
         &self,
         id: Uuid,
         node_id: u32,

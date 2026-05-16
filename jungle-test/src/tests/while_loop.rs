@@ -1,13 +1,13 @@
 use jungle_sdk::types::{
-    ActionCompletion, Executor, Identity, LoopCondition, ManualExecutor, Pulse, Running, Step,
+    Act, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, Step,
     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use jungle_sdk::Journey;
 use std::future::ready;
 
-action!(
-    TickAction,
+effect!(
+    TickEffect,
     U0,
     in = i32,
     out = i32,
@@ -18,18 +18,18 @@ action!(
 animal!(Looper, U0, state = i32, journey = LoopJourney);
 
 struct Tick;
-impl Pulse<Looper> for Tick {
-    type Action = TickAction;
+impl Act<Looper> for Tick {
+    type Effect = TickEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = (bool, i32);
+    type Input = i32;
+    type Output = (bool, i32);
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Ret {
-        let value = output.expect("tick action should succeed");
+    fn absorb(state: &mut i32, output: EffectCompletion<TickEffect>) -> Self::Output {
+        let value = output.expect("tick effect should succeed");
         *state = value;
         (*state < 3, value)
     }
@@ -50,8 +50,8 @@ type WhileTickFlow = While<LessThanThree, TickFlow>;
 #[derive(Journey)]
 struct LoopJourney(WhileTickFlow);
 
-action!(
-    TailEchoAction,
+effect!(
+    TailEchoEffect,
     U1,
     in = (bool, i32),
     out = (bool, i32),
@@ -67,36 +67,36 @@ animal!(
 );
 
 struct TickWithTail;
-impl Pulse<LooperWithTail> for TickWithTail {
-    type Action = TickAction;
+impl Act<LooperWithTail> for TickWithTail {
+    type Effect = TickEffect;
     type StateAspect = Identity;
-    type Arg = i32;
-    type Ret = (bool, i32);
+    type Input = i32;
+    type Output = (bool, i32);
 
-    fn emit(state: &i32, input: Self::Arg) -> i32 {
+    fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<TickAction>) -> Self::Ret {
-        let value = output.expect("tick action should succeed");
+    fn absorb(state: &mut i32, output: EffectCompletion<TickEffect>) -> Self::Output {
+        let value = output.expect("tick effect should succeed");
         *state = value;
         (*state < 3, value)
     }
 }
 
 struct TailAfterLoop;
-impl Pulse<LooperWithTail> for TailAfterLoop {
-    type Action = TailEchoAction;
+impl Act<LooperWithTail> for TailAfterLoop {
+    type Effect = TailEchoEffect;
     type StateAspect = Identity;
-    type Arg = (bool, i32);
-    type Ret = i32;
+    type Input = (bool, i32);
+    type Output = i32;
 
-    fn emit(_state: &i32, input: Self::Arg) -> Self::Arg {
+    fn emit(_state: &i32, input: Self::Input) -> Self::Input {
         input
     }
 
-    fn absorb(state: &mut i32, output: ActionCompletion<TailEchoAction>) -> Self::Ret {
-        let (loop_should_continue, value) = output.expect("tail action should succeed");
+    fn absorb(state: &mut i32, output: EffectCompletion<TailEchoEffect>) -> Self::Output {
+        let (loop_should_continue, value) = output.expect("tail effect should succeed");
         *state = if loop_should_continue {
             -999
         } else {
@@ -112,8 +112,8 @@ type WhileTickWithTailFlow = While<LessThanThree, TickWithTailFlow>;
 #[derive(Journey)]
 struct LoopWithTailJourney(WhileTickWithTailFlow, Step<LooperWithTail, TailAfterLoop>);
 
-action!(
-    UnitAction,
+effect!(
+    UnitEffect,
     U2,
     in = (),
     out = (),
@@ -121,7 +121,7 @@ action!(
     act = |_dependency, _input| ready(Ok(()))
 );
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct NestedState {
     outer_round: u8,
     inner_step: u8,
@@ -154,29 +154,29 @@ impl LoopCondition<NestedState> for OuterContinue {
 }
 
 struct InnerWork;
-impl Pulse<NestedLooper> for InnerWork {
-    type Action = UnitAction;
+impl Act<NestedLooper> for InnerWork {
+    type Effect = UnitEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &NestedState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &NestedState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut NestedState, _output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut NestedState, _output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.inner_step = state.inner_step.saturating_add(1);
     }
 }
 
 struct FinishOuterRound;
-impl Pulse<NestedLooper> for FinishOuterRound {
-    type Action = UnitAction;
+impl Act<NestedLooper> for FinishOuterRound {
+    type Effect = UnitEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &NestedState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &NestedState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut NestedState, _output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut NestedState, _output: EffectCompletion<Self::Effect>) -> Self::Output {
         state.outer_iterations_done = state.outer_iterations_done.saturating_add(1);
         state.outer_round = state.outer_round.saturating_add(1);
         state.inner_step = 0;

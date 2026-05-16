@@ -1,11 +1,11 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Action, ActionCompletion, Animal, AnimalMember, Condition, Conditional, Ecosystem, Id,
-    Identity, LoopCondition, Observe, Pulse, Sleep, Step, While,
+    Act, Animal, AnimalMember, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Id,
+    Identity, LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
-use jungle_sdk::{Animals, Journey, JungleClient, Optic};
+use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 use uuid::Uuid;
@@ -37,15 +37,17 @@ pub async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client
     unreachable!("retry loop always returns or panics")
 }
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 pub struct ObserveState {
     pub tick: u64,
     pub sleep_ms: u64,
 }
 
-pub struct BumpAction;
-impl jungle_sdk::types::ActionMember for BumpAction {}
-impl Action for BumpAction {
+pub struct BumpEffect;
+impl jungle_sdk::types::EffectMember for BumpEffect {}
+impl Effect for BumpEffect {
     type Id = Id<U14>;
     type Dependency = ();
     type In = ();
@@ -61,32 +63,32 @@ impl Action for BumpAction {
 }
 
 pub struct ObserveSleep;
-impl Pulse<ObserveAnimal> for ObserveSleep {
-    type Action = Sleep;
+impl Act<ObserveAnimal> for ObserveSleep {
+    type Effect = Sleep;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(state: &ObserveState, _input: Self::Arg) -> Duration {
+    fn emit(state: &ObserveState, _input: Self::Input) -> Duration {
         Duration::from_millis(state.sleep_ms)
     }
 
-    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("sleep branch should complete");
         state.tick = state.tick.saturating_add(1);
     }
 }
 
 pub struct ObserveBump;
-impl Pulse<ObserveAnimal> for ObserveBump {
-    type Action = BumpAction;
+impl Act<ObserveAnimal> for ObserveBump {
+    type Effect = BumpEffect;
     type StateAspect = Identity;
-    type Arg = ();
-    type Ret = ();
+    type Input = ();
+    type Output = ();
 
-    fn emit(_state: &ObserveState, _input: Self::Arg) -> Self::Arg {}
+    fn emit(_state: &ObserveState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ObserveState, output: ActionCompletion<Self::Action>) -> Self::Ret {
+    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("bump branch should complete");
         state.tick = state.tick.saturating_add(1);
     }
@@ -114,8 +116,7 @@ type ObserveBody = Conditional<
     Step<ObserveAnimal, ObserveBump>,
 >;
 
-#[derive(Journey)]
-pub struct ObserveJourney(While<ObserveLoopForever, ObserveBody>);
+type ObserveJourney = While<ObserveLoopForever, ObserveBody>;
 
 pub struct ObserveAnimal;
 impl AnimalMember for ObserveAnimal {}
@@ -157,6 +158,10 @@ pub struct ObserveEcosystem;
 impl Ecosystem for ObserveEcosystem {
     const NAME: &'static str = "observe-ecosystem";
     type Animals = ObserveAnimals;
+}
+
+impl From<ObserveState> for () {
+    fn from(_value: ObserveState) -> Self {}
 }
 
 impl From<&ObserveEcosystem> for () {
