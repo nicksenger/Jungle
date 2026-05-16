@@ -161,6 +161,17 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
+#[proc_macro_derive(FlowTemplate)]
+pub fn derive_flow_template(input: TokenStream) -> TokenStream {
+    let properties = jungle_types(&[
+        "JungleFlow",
+        "JungleJourneyAst",
+        "JungleTraverseFlow",
+        "JungleReplaceFlow",
+    ]);
+    derive_with_properties(input, &properties)
+}
+
 #[proc_macro_derive(Animals)]
 pub fn derive_animals(input: TokenStream) -> TokenStream {
     let properties = jungle_types(&["Ident", "JungleAnimals"]);

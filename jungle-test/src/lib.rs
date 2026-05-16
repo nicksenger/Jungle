@@ -288,6 +288,7 @@ mod tests {
     mod replay;
     mod select_join;
     mod sleep;
+    mod template_binding;
     mod transparent_metadata;
     mod traverse_replace;
     mod versioning;

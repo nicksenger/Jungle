@@ -12,7 +12,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, Aspect, Effect, EffectCompletion, EffectRequest, Identity, StateCarrier, StateLens, Step,
+    Act, ActionSpec, Aspect, Effect, EffectCompletion, EffectRequest, Identity, StateCarrier,
+    StateLens, Step, StepSpec, UStep,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -302,6 +303,17 @@ pub trait ReplaceNode<Node> {
     type Output;
 }
 
+/// Binds an unbound/template flow to a concrete [`Animal`].
+pub trait BindAnimal<A: Animal> {
+    type Bound;
+}
+
+/// Convenience alias for binding a flow/template to a concrete animal.
+pub type BoundFlow<F, A> = <F as BindAnimal<A>>::Bound;
+
+/// Traversal that binds `StepSpec<S>` nodes to concrete `Step<A, _>` nodes.
+pub struct BindAnimalTraversal<A>(PhantomData<fn() -> A>);
+
 /// Directional helper that rewrites `Step<Animal, Left>` to `Step<Animal, Right>`.
 pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
@@ -330,6 +342,30 @@ where
     Right: Act<A>,
 {
     type Output = Step<A, Left>;
+}
+
+impl<Left, Right> ReplaceStep<StepSpec<Left>> for SwapLR<Left, Right>
+where
+    Left: ActionSpec,
+    Right: ActionSpec<
+        Input = <Left as ActionSpec>::Input,
+        Output = <Left as ActionSpec>::Output,
+        Effect = <Left as ActionSpec>::Effect,
+    >,
+{
+    type Output = StepSpec<Right>;
+}
+
+impl<Left, Right> ReplaceStep<StepSpec<Right>> for SwapRL<Left, Right>
+where
+    Left: ActionSpec,
+    Right: ActionSpec<
+        Input = <Left as ActionSpec>::Input,
+        Output = <Left as ActionSpec>::Output,
+        Effect = <Left as ActionSpec>::Effect,
+    >,
+{
+    type Output = StepSpec<Left>;
 }
 
 impl<Left, Right> ReplaceNode<Left> for SwapLR<Left, Right> {
@@ -914,6 +950,26 @@ where
     M: NodeMetadata,
 {
     const METADATA: &'static str = M::METADATA;
+}
+
+impl<S> NodeMetadata for StepSpec<S> where S: ActionSpec {}
+
+impl<A, T, B> TraverseStep<Step<T, B>> for BindAnimalTraversal<A>
+where
+    A: Animal,
+    T: Animal,
+    B: Act<T>,
+{
+    type Output = Step<T, B>;
+}
+
+impl<A, F> BindAnimal<A> for F
+where
+    A: Animal,
+    F: TraverseFlow,
+    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A>>,
+{
+    type Bound = <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A>>>::Output;
 }
 
 #[primitive(property = JungleRunning)]

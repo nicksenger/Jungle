@@ -239,6 +239,14 @@ pub trait Act<T: Animal> {
     ) -> Self::Output;
 }
 
+/// Late-bound action spec that can be bound to a concrete [`Animal`] at the edge.
+pub trait ActionSpec {
+    type Effect: Effect<()>;
+    type Input;
+    type Output;
+    type Act<A: Animal>;
+}
+
 /// Forward half of [`Act`], responsible for producing an effect request input.
 pub trait Emit<T: Animal> {
     type Arg;
@@ -444,6 +452,28 @@ pub type FocusedStep<T, Focus, E, B> =
 /// Identity-focused [`FocusedStep`].
 pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
 
+/// An unbound step node that defers animal binding until flow finalization.
+pub struct StepSpec<S>
+where
+    S: ActionSpec,
+{
+    marker: PhantomData<fn() -> S>,
+}
+
+impl<S> StepSpec<S>
+where
+    S: ActionSpec,
+{
+    pub fn new() -> Self {
+        Self {
+            marker: PhantomData,
+        }
+    }
+}
+
+/// Alias used by flow templates for unbound steps.
+pub type UStep<S> = StepSpec<S>;
+
 /// A primitive workflow step that adapts an [`Effect`] to the
 /// [`Running`]/[`Waiting`] protocol.
 pub struct Step<T, A>
@@ -554,4 +584,67 @@ where
     Replacer: ReplaceNode<Step<T, A>>,
 {
     type Output = <Replacer as ReplaceNode<Step<T, A>>>::Output;
+}
+
+#[primitive(property = crate::JungleFlow)]
+impl<S> FlowEffects for StepSpec<S>
+where
+    S: ActionSpec,
+    S::Effect: EffectMember,
+{
+    type List = Node<<<S as ActionSpec>::Effect as Effect<()>>::Id, <S as ActionSpec>::Effect>;
+}
+
+#[primitive(property = crate::JungleTraverseFlow)]
+impl<S> TraverseFlow for StepSpec<S>
+where
+    S: ActionSpec,
+{
+    type Output = StepSpec<S>;
+}
+
+#[primitive(property = crate::JungleReplaceFlow)]
+impl<S> ReplaceFlow for StepSpec<S>
+where
+    S: ActionSpec,
+{
+    type Output = StepSpec<S>;
+}
+
+impl<S, Traversal> TraverseWith<Traversal> for StepSpec<S>
+where
+    S: ActionSpec,
+    Traversal: TraverseStep<StepSpec<S>>,
+{
+    type Output = <Traversal as TraverseStep<StepSpec<S>>>::Output;
+}
+
+impl<S, Replacer> ReplaceWith<Replacer> for StepSpec<S>
+where
+    S: ActionSpec,
+    Replacer: ReplaceStep<StepSpec<S>>,
+{
+    type Output = <Replacer as ReplaceStep<StepSpec<S>>>::Output;
+}
+
+impl<S, Replacer> ReplaceNodesWith<Replacer> for StepSpec<S>
+where
+    S: ActionSpec,
+    Replacer: ReplaceNode<StepSpec<S>>,
+{
+    type Output = <Replacer as ReplaceNode<StepSpec<S>>>::Output;
+}
+
+impl<T, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T>
+where
+    T: Animal,
+    S: ActionSpec,
+    <S as ActionSpec>::Act<T>: Act<
+        T,
+        Input = <S as ActionSpec>::Input,
+        Output = <S as ActionSpec>::Output,
+        Effect = <S as ActionSpec>::Effect,
+    >,
+{
+    type Output = Step<T, <S as ActionSpec>::Act<T>>;
 }
