@@ -39,7 +39,7 @@ pub use transport::{
     BackendError, JourneyEvent, JourneyStatus, JourneyUpdateEvent, RunnerOut, RunnerUpdateOut,
     WireIn, WireOut, Work,
 };
-pub use transport::{ClaimedAnimalPerturbation, OwnerWake, SupportedAnimal};
+pub use transport::{ClaimedPerturbable, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
@@ -190,8 +190,8 @@ where
 }
 
 /// Per-animal binding that selects how appearance snapshots are produced.
-pub trait AnimalObservation: Animal + Sized {
-    type Bridge: ObservationBridge<Self>;
+pub trait Observable: Animal + Sized {
+    type Observation: ObservationBridge<Self>;
 }
 
 /// Bridge invoked by executors/runners to optionally apply perturbation payloads.
@@ -236,8 +236,8 @@ where
 }
 
 /// Per-animal binding that selects how perturbation payloads are applied.
-pub trait AnimalPerturbation: Animal + Sized {
-    type Bridge: PerturbationBridge<Self>;
+pub trait Perturbable: Animal + Sized {
+    type Perturbation: PerturbationBridge<Self>;
 }
 
 #[inception(property = Ident, types)]

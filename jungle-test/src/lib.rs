@@ -17,7 +17,6 @@ mod tests {
             dependency = $dependency_ty:ty
         ) => {
             struct $name;
-            impl jungle_sdk::types::EffectMember for $name {}
 
             impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -53,7 +52,6 @@ mod tests {
             effect = |$dependency:ident, $input:ident| $body:expr
         ) => {
             struct $name;
-            impl jungle_sdk::types::EffectMember for $name {}
 
             impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -72,7 +70,6 @@ mod tests {
 
         ($name:ident, $id:ty) => {
             struct $name;
-            impl jungle_sdk::types::EffectMember for $name {}
 
             impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -112,12 +109,12 @@ mod tests {
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Bridge = jungle_sdk::types::ObserveObservation;
+            impl jungle_sdk::types::Observable for $name {
+                type Observation = jungle_sdk::types::ObserveObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Bridge = jungle_sdk::types::TraitPerturbation;
+            impl jungle_sdk::types::Perturbable for $name {
+                type Perturbation = jungle_sdk::types::TraitPerturbation;
             }
         };
 
@@ -132,12 +129,12 @@ mod tests {
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Bridge = jungle_sdk::types::NoopObservation;
+            impl jungle_sdk::types::Observable for $name {
+                type Observation = jungle_sdk::types::NoopObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Bridge = jungle_sdk::types::TraitPerturbation;
+            impl jungle_sdk::types::Perturbable for $name {
+                type Perturbation = jungle_sdk::types::TraitPerturbation;
             }
         };
 
@@ -152,12 +149,12 @@ mod tests {
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Bridge = jungle_sdk::types::ObserveObservation;
+            impl jungle_sdk::types::Observable for $name {
+                type Observation = jungle_sdk::types::ObserveObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Bridge = jungle_sdk::types::NoopPerturbation;
+            impl jungle_sdk::types::Perturbable for $name {
+                type Perturbation = jungle_sdk::types::NoopPerturbation;
             }
         };
 
@@ -172,12 +169,12 @@ mod tests {
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Bridge = jungle_sdk::types::NoopObservation;
+            impl jungle_sdk::types::Observable for $name {
+                type Observation = jungle_sdk::types::NoopObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Bridge = jungle_sdk::types::NoopPerturbation;
+            impl jungle_sdk::types::Perturbable for $name {
+                type Perturbation = jungle_sdk::types::NoopPerturbation;
             }
         };
 
@@ -191,7 +188,6 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $journey:ty) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -201,12 +197,12 @@ mod tests {
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Bridge = jungle_sdk::types::NoopObservation;
+            impl jungle_sdk::types::Observable for $name {
+                type Observation = jungle_sdk::types::NoopObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Bridge = jungle_sdk::types::NoopPerturbation;
+            impl jungle_sdk::types::Perturbable for $name {
+                type Perturbation = jungle_sdk::types::NoopPerturbation;
             }
 
             #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
@@ -222,7 +218,6 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $journey:ty, observe = true, perturb = true) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -232,12 +227,12 @@ mod tests {
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Bridge = jungle_sdk::types::ObserveObservation;
+            impl jungle_sdk::types::Observable for $name {
+                type Observation = jungle_sdk::types::ObserveObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Bridge = jungle_sdk::types::TraitPerturbation;
+            impl jungle_sdk::types::Perturbable for $name {
+                type Perturbation = jungle_sdk::types::TraitPerturbation;
             }
 
             #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
@@ -253,7 +248,6 @@ mod tests {
 
         ($name:ident, $id:ty, $state:ty, $journey:ty, observe = true) => {
             struct $name;
-            impl jungle_sdk::types::AnimalMember for $name {}
 
             impl jungle_sdk::types::Animal for $name {
                 type Id = jungle_sdk::types::Id<$id>;
@@ -263,12 +257,12 @@ mod tests {
                 type Journey = $journey;
             }
 
-            impl jungle_sdk::types::AnimalObservation for $name {
-                type Bridge = jungle_sdk::types::ObserveObservation;
+            impl jungle_sdk::types::Observable for $name {
+                type Observation = jungle_sdk::types::ObserveObservation;
             }
 
-            impl jungle_sdk::types::AnimalPerturbation for $name {
-                type Bridge = jungle_sdk::types::NoopPerturbation;
+            impl jungle_sdk::types::Perturbable for $name {
+                type Perturbation = jungle_sdk::types::NoopPerturbation;
             }
 
             #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]

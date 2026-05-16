@@ -29,7 +29,6 @@ struct ReplayGateZoo {
 }
 
 struct ReplayPreIncrementEffect;
-impl jungle_sdk::types::EffectMember for ReplayPreIncrementEffect {}
 impl Effect<()> for ReplayPreIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U41>;
     type In = ();
@@ -60,7 +59,6 @@ impl Effect<ReplayGateZoo> for ReplayPreIncrementEffect {
 }
 
 struct ReplayPostIncrementEffect;
-impl jungle_sdk::types::EffectMember for ReplayPostIncrementEffect {}
 impl Effect<()> for ReplayPostIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U42>;
     type In = ();
@@ -91,7 +89,6 @@ impl Effect<ReplayGateZoo> for ReplayPostIncrementEffect {
 }
 
 struct ReplayGateEffect;
-impl jungle_sdk::types::EffectMember for ReplayGateEffect {}
 impl Effect<()> for ReplayGateEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U43>;
     type In = ();
@@ -382,7 +379,6 @@ struct ReplayTimeoutZoo {
 }
 
 struct ReplayTimeoutPreIncrementEffect;
-impl jungle_sdk::types::EffectMember for ReplayTimeoutPreIncrementEffect {}
 impl Effect<()> for ReplayTimeoutPreIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U44>;
     type In = ();
@@ -414,7 +410,6 @@ impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
 }
 
 struct ReplayTimeoutPostIncrementEffect;
-impl jungle_sdk::types::EffectMember for ReplayTimeoutPostIncrementEffect {}
 impl Effect<()> for ReplayTimeoutPostIncrementEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U45>;
     type In = ();

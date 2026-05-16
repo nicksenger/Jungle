@@ -165,7 +165,6 @@ impl From<RunnerState> for () {
 }
 
 struct RunnerStepOneEffect;
-impl jungle_sdk::types::EffectMember for RunnerStepOneEffect {}
 impl Effect<()> for RunnerStepOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
     type In = ();
@@ -195,7 +194,6 @@ impl Effect<RunnerZoo> for RunnerStepOneEffect {
 }
 
 struct RunnerStepTwoEffect;
-impl jungle_sdk::types::EffectMember for RunnerStepTwoEffect {}
 impl Effect<()> for RunnerStepTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
     type In = ();
@@ -381,7 +379,6 @@ struct ExecutorCatState {
 }
 
 struct EatEnergy;
-impl jungle_sdk::types::EffectMember for EatEnergy {}
 impl Effect<()> for EatEnergy {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
     type In = i32;
@@ -411,7 +408,6 @@ impl Effect<Zoo> for EatEnergy {
 }
 
 struct HuntEnergy;
-impl jungle_sdk::types::EffectMember for HuntEnergy {}
 impl Effect<()> for HuntEnergy {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
     type In = i32;
@@ -441,7 +437,6 @@ impl Effect<Zoo> for HuntEnergy {
 }
 
 struct RoundAdvance;
-impl jungle_sdk::types::EffectMember for RoundAdvance {}
 impl Effect<()> for RoundAdvance {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
     type In = i32;

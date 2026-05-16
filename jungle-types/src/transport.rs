@@ -83,7 +83,7 @@ pub struct JourneyUpdateEvent {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ClaimedAnimalPerturbation {
+pub struct ClaimedPerturbable {
     pub id: u64,
     pub data: Vec<u8>,
 }
@@ -149,8 +149,8 @@ pub enum WireIn {
         journey_id: Uuid,
         data: Vec<u8>,
     },
-    ClaimAnimalPerturbation(Uuid),
-    AckAnimalPerturbation {
+    ClaimPerturbable(Uuid),
+    AckPerturbable {
         journey_id: Uuid,
         perturbation_id: u64,
     },
@@ -184,7 +184,7 @@ pub enum WireOut {
     JourneyStatus(JourneyStatus),
     JourneyUpdate(JourneyUpdateEvent),
     AnimalAppearance(Option<Vec<u8>>),
-    ClaimedAnimalPerturbation(Option<ClaimedAnimalPerturbation>),
+    ClaimedPerturbable(Option<ClaimedPerturbable>),
     OwnerWake(Option<OwnerWake>),
     NoAvailableSteps,
     PendingStep(Work),

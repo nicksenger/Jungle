@@ -9,7 +9,6 @@ macro_rules! define_effect {
         effect = |$dep:ident, $in_arg:pat_param| $body:expr
     ) => {
         pub struct $name;
-        impl jungle_types::EffectMember for $name {}
         impl<J> jungle_types::Effect<J> for $name
         where
             $dependency: Default,

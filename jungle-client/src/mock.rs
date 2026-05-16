@@ -5,8 +5,8 @@ use crate::{
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    Animal, AnimalIdValue, ClaimedAnimalPerturbation, Ecosystem, ExecutorError, JourneyStatus,
-    OwnerWake, RunnerOut, SupportedAnimal, Work,
+    Animal, AnimalIdValue, ClaimedPerturbable, Ecosystem, ExecutorError, JourneyStatus, OwnerWake,
+    RunnerOut, SupportedAnimal, Work,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -44,11 +44,7 @@ type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> FlowCompleteHandlerFuture + Send 
 type FlowAppearanceUpdateHandler =
     Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
 type ClaimPerturbationHandlerFuture = Pin<
-    Box<
-        dyn Future<Output = Result<Option<ClaimedAnimalPerturbation>, ExecutorError>>
-            + Send
-            + 'static,
-    >,
+    Box<dyn Future<Output = Result<Option<ClaimedPerturbable>, ExecutorError>> + Send + 'static>,
 >;
 type ClaimPerturbationHandler =
     Arc<dyn Fn(Uuid) -> ClaimPerturbationHandlerFuture + Send + Sync + 'static>;
@@ -128,11 +124,11 @@ impl MockClient {
                     };
                     out.map(|_| RunnerChannelResponse::Ack)
                 }
-                RunnerChannelMessage::ClaimAnimalPerturbation { journey_id } => self
+                RunnerChannelMessage::ClaimPerturbable { journey_id } => self
                     .claim_animal_perturbation(journey_id)
                     .await
                     .map(RunnerChannelResponse::ClaimedPerturbation),
-                RunnerChannelMessage::AckAnimalPerturbation {
+                RunnerChannelMessage::AckPerturbable {
                     journey_id,
                     perturbation_id,
                 } => self
@@ -201,7 +197,7 @@ impl JungleClient for MockClient {
     async fn claim_animal_perturbation(
         &self,
         id: Uuid,
-    ) -> Result<Option<ClaimedAnimalPerturbation>, ExecutorError> {
+    ) -> Result<Option<ClaimedPerturbable>, ExecutorError> {
         (self.on_claim_perturbation)(id).await
     }
 
@@ -413,9 +409,7 @@ impl MockClientBuilder {
     pub fn on_claim_perturbation<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<Option<ClaimedAnimalPerturbation>, ExecutorError>>
-            + Send
-            + 'static,
+        Fut: Future<Output = Result<Option<ClaimedPerturbable>, ExecutorError>> + Send + 'static,
     {
         self.on_claim_perturbation = Some(Arc::new(move |id| Box::pin(f(id))));
         self

@@ -264,7 +264,9 @@ pub trait Absorb<T: Animal> {
 }
 
 /// Emits by forwarding carry input directly as effect input.
-pub struct PassthroughEmit<A, Focus, In = <A as Effect<()>>::In>(PhantomData<fn() -> (A, Focus, In)>);
+pub struct PassthroughEmit<A, Focus, In = <A as Effect<()>>::In>(
+    PhantomData<fn() -> (A, Focus, In)>,
+);
 
 impl<T, A, Focus, In> Emit<T> for PassthroughEmit<A, Focus, In>
 where

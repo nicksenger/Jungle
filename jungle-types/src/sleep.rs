@@ -1,6 +1,4 @@
-use crate::{
-    Act, Animal, Aspect, Effect, EffectCompletion, EffectMember, Id, Identity, StateCarrier,
-};
+use crate::{Act, Animal, Aspect, Effect, EffectCompletion, Id, Identity, StateCarrier};
 use inception::primitive;
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -13,7 +11,6 @@ pub struct SleepError {
 }
 
 pub struct Sleep;
-impl EffectMember for Sleep {}
 
 impl<J> Effect<J> for Sleep {
     type Id = Id<U65535>;
@@ -21,7 +18,10 @@ impl<J> Effect<J> for Sleep {
     type Out = ();
     type Err = SleepError;
 
-    fn effect(_jungle: &J, input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(
+        _jungle: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             std::thread::sleep(input);
             Ok(())

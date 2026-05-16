@@ -306,7 +306,8 @@ where
         };
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as Act<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
+                let completion =
+                    <<A as Act<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });

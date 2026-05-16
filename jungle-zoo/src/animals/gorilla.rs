@@ -7,9 +7,9 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    Act, Animal, AnimalMember, AnimalObservation, AnimalPerturbation, Animals, Condition,
-    Conditional, Effect, EffectCompletion, Id, Identified, Identity, LoopCondition, NodeMetadata,
-    NoopObservation, NoopPerturbation, Step, Transparent, While,
+    Act, Animal, Animals, Condition, Conditional, Effect, EffectCompletion, Id, Identified,
+    Identity, LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation, Observable,
+    Perturbable, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -523,7 +523,6 @@ pub struct ProbeYearFlow(
 );
 
 pub struct Gorilla;
-impl AnimalMember for Gorilla {}
 
 pub struct ProbeStep;
 impl jungle_sdk::types::Act<Gorilla> for ProbeStep {
@@ -558,12 +557,12 @@ impl Animal for Gorilla {
     type Journey = GorillaJourney;
 }
 
-impl AnimalObservation for Gorilla {
-    type Bridge = NoopObservation;
+impl Observable for Gorilla {
+    type Observation = NoopObservation;
 }
 
-impl AnimalPerturbation for Gorilla {
-    type Bridge = NoopPerturbation;
+impl Perturbable for Gorilla {
+    type Perturbation = NoopPerturbation;
 }
 
 //#[allow(dead_code)]

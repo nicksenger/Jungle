@@ -45,7 +45,6 @@ struct IntegrationState {
 }
 
 struct AddOneEffect;
-impl jungle_sdk::types::EffectMember for AddOneEffect {}
 
 impl Effect<()> for AddOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
@@ -76,7 +75,6 @@ impl Effect<IntegrationZoo> for AddOneEffect {
 }
 
 struct AddTwoEffect;
-impl jungle_sdk::types::EffectMember for AddTwoEffect {}
 
 impl Effect<()> for AddTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
