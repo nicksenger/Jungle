@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Effect, EffectCompletion, Aspect, Condition, Conditional, Either, Executor, Identity,
-    LoopCondition, Act, Running, StateLens, Step, Waiting, While,
+    Act, Aspect, Condition, Conditional, Effect, EffectCompletion, Either, Executor, Identity,
+    LoopCondition, Running, StateLens, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};

@@ -6,6 +6,7 @@ use jungle_types::{
     Animal, AnimalIdValue, BackendError, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus,
     OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -24,6 +25,7 @@ pub struct LocalClient {
 pub struct LocalClientBuilder {
     namespace: String,
     backend: Option<Arc<dyn JungleServer>>,
+    db_path: Option<PathBuf>,
 }
 
 impl Default for LocalClientBuilder {
@@ -31,6 +33,7 @@ impl Default for LocalClientBuilder {
         Self {
             namespace: DEFAULT_NAMESPACE.to_string(),
             backend: None,
+            db_path: None,
         }
     }
 }
@@ -53,12 +56,21 @@ impl LocalClientBuilder {
         self
     }
 
+    pub fn db_path(mut self, value: impl Into<PathBuf>) -> Self {
+        self.db_path = Some(value.into());
+        self
+    }
+
     pub async fn build(self) -> Result<LocalClient, LocalClientError> {
         let backend = if let Some(backend) = self.backend {
             backend
         } else {
-            let server = Server::builder()
-                .memory()
+            let builder = if let Some(db_path) = self.db_path {
+                Server::builder().redb_path(db_path)
+            } else {
+                Server::builder().memory()
+            };
+            let server = builder
                 .build()
                 .await
                 .map_err(|err| LocalClientError::BuildServer(err.to_string()))?;
@@ -164,7 +176,7 @@ impl LocalClient {
 
 #[derive(Debug, Error)]
 pub enum LocalClientError {
-    #[error("failed to build in-memory local server backend: {0}")]
+    #[error("failed to build local server backend: {0}")]
     BuildServer(String),
 }
 

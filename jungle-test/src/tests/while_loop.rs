@@ -1,5 +1,5 @@
 use jungle_sdk::types::{
-    EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Act, Running, Step,
+    Act, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, Step,
     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};

@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Effect, EffectCompletion, Animal, AnimalMember, Animals as AnimalsTrait, Ecosystem, Id,
-    Identity, Observe, Act, Step, SupportedAnimal,
+    Act, Animal, AnimalMember, Animals as AnimalsTrait, Ecosystem, Effect, EffectCompletion, Id,
+    Identity, Observe, Step, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;

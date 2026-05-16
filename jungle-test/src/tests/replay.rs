@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Effect, EffectCompletion, Condition, Conditional, Ecosystem, Identity, JourneyStatus,
-    LoopCondition, Act, Sleep, Step, While,
+    Act, Condition, Conditional, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
+    LoopCondition, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
 use std::net::SocketAddr;
@@ -446,7 +446,10 @@ impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPreStep {
 
     fn emit(_state: &ReplayTimeoutState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("pre-timeout increment should succeed");
         state.phase += 1;
     }
@@ -463,7 +466,10 @@ impl Act<ReplayTimeoutAnimal> for ReplayTimeoutSleepStep {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("timeout sleep should succeed");
         state.phase += 1;
     }
@@ -478,7 +484,10 @@ impl Act<ReplayTimeoutAnimal> for ReplayTimeoutPostStep {
 
     fn emit(_state: &ReplayTimeoutState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayTimeoutState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("post-timeout increment should succeed");
         state.phase += 1;
     }

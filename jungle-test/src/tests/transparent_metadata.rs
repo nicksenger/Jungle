@@ -1,6 +1,6 @@
 use jungle_sdk::types::{
-    EffectCompletion, Conditional, Executor, Identity, Join, JourneyAst, JourneyAstSource,
-    ManualExecutor, NodeMetadata, Act, Select, Step, Transparent, While,
+    Act, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst, JourneyAstSource,
+    ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U30, U31};
 use std::future::ready;
