@@ -17,40 +17,33 @@ struct SleepState {
     sleep_for_ms: u64,
 }
 
-#[derive(Clone, Copy)]
-struct AddDependency {
-    value: i32,
-}
-
-impl From<&SleepZoo> for AddDependency {
-    fn from(_value: &SleepZoo) -> Self {
-        Self { value: 1 }
-    }
-}
-
-impl From<&()> for AddDependency {
-    fn from(_value: &()) -> Self {
-        Self { value: 1 }
-    }
-}
-
 struct AddEffect;
 impl jungle_sdk::types::EffectMember for AddEffect {}
-impl<J> Effect<J> for AddEffect
-where
-    for<'a> AddDependency: From<&'a J>,
-{
+impl Effect<()> for AddEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
     type In = ();
     type Out = i32;
     type Err = ();
 
     fn act(
-        jungle: &J,
+        _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        let dependency = AddDependency::from(jungle);
-        std::future::ready(Ok(dependency.value))
+        std::future::ready(Ok(1))
+    }
+}
+
+impl Effect<SleepZoo> for AddEffect {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        _jungle: &SleepZoo,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(1))
     }
 }
 

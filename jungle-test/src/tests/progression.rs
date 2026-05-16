@@ -87,9 +87,6 @@ animal!(ProgressAnimal, U0, i32, ProgressJourney);
 struct ProgressAnimals(ProgressAnimal);
 
 struct ProgressContext;
-impl From<&ProgressContext> for () {
-    fn from(_value: &ProgressContext) -> Self {}
-}
 
 type SeedStep = Step<ProgressAnimal, Seed>;
 type FinishStep = Step<ProgressAnimal, Finish>;
@@ -286,9 +283,6 @@ struct BranchJourney(BranchConditionalFlow);
 animal!(BranchAnimal, U1, i32, BranchJourney);
 
 struct BranchContext;
-impl From<&BranchContext> for () {
-    fn from(_value: &BranchContext) -> Self {}
-}
 
 #[test]
 fn context_executor_accepts_conditional_with_derived_multistep_branch() {

@@ -14,9 +14,6 @@ use std::time::Duration;
 struct LegacyEffect;
 impl jungle_sdk::types::EffectMember for LegacyEffect {}
 
-#[derive(Clone, Copy)]
-struct LegacyDependency;
-
 impl<J> Effect<J> for LegacyEffect {
     type Id = Id<U70>;
     type In = ();
@@ -33,9 +30,6 @@ impl<J> Effect<J> for LegacyEffect {
 
 struct ModernEffect;
 impl jungle_sdk::types::EffectMember for ModernEffect {}
-
-#[derive(Clone, Copy)]
-struct ModernDependency;
 
 impl<J> Effect<J> for ModernEffect {
     type Id = Id<U71>;
@@ -185,18 +179,6 @@ struct VersionedZoo;
 impl Ecosystem for VersionedZoo {
     const NAME: &'static str = "versioned-zoo";
     type Animals = VersionedAnimals;
-}
-
-impl From<&VersionedZoo> for LegacyDependency {
-    fn from(_value: &VersionedZoo) -> Self {
-        Self
-    }
-}
-
-impl From<&VersionedZoo> for ModernDependency {
-    fn from(_value: &VersionedZoo) -> Self {
-        Self
-    }
 }
 
 #[test]
