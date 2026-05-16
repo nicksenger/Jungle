@@ -379,11 +379,10 @@ where
     A: Animal,
     View: 'static,
     F: TraverseFlow,
-    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A, ViewCarrier<View>>>,
+    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A, RootScope>>,
 {
-    type Bound = <<F as TraverseFlow>::Output as TraverseWith<
-        BindAnimalTraversal<A, ViewCarrier<View>>,
-    >>::Output;
+    type Bound =
+        <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
 }
 
 /// Directional helper that rewrites `Step<Animal, Left>` to `Step<Animal, Right>`.
