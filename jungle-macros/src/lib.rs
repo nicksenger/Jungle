@@ -180,23 +180,8 @@ pub fn derive_flow_template(input: TokenStream) -> TokenStream {
     let generics = input.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let view_ty = parse_jungle_view_attr(&input.attrs);
-    let scoped_inner_ty = if view_ty.is_some() {
-        match &input.data {
-            Data::Struct(data) => match &data.fields {
-                Fields::Named(named) if named.named.len() == 1 => {
-                    named.named.first().map(|f| f.ty.clone())
-                }
-                Fields::Unnamed(unnamed) if unnamed.unnamed.len() == 1 => {
-                    unnamed.unnamed.first().map(|f| f.ty.clone())
-                }
-                _ => None,
-            },
-            _ => None,
-        }
-    } else {
-        None
-    };
-
+    // Scoped templates provide a custom `TraverseFlow` impl (wrapping output in `Scoped`),
+    // so they must not also derive `JungleTraverseFlow` via inception.
     let properties = if view_ty.is_some() {
         jungle_types(&["JungleFlow", "JungleJourneyAst", "JungleReplaceFlow"])
     } else {
@@ -210,29 +195,29 @@ pub fn derive_flow_template(input: TokenStream) -> TokenStream {
     let derived = derive_with_properties_input(input, &properties);
     let template_scope = jungle_type("TemplateScope");
     let root_scope = jungle_type("RootTemplateScope");
-    let scope_ty = quote!(#root_scope);
+    let template_view = jungle_type("TemplateView");
+    let scope_ty = if let Some(view) = &view_ty {
+        quote!(#template_view<#view>)
+    } else {
+        quote!(#root_scope)
+    };
     let scope_impl = quote! {
         impl #impl_generics #template_scope for #ident #ty_generics #where_clause {
             type View = #scope_ty;
         }
     };
     let traverse_flow = jungle_type("TraverseFlow");
+    let replace_flow = jungle_type("ReplaceFlow");
     let scoped = jungle_type("Scoped");
-    let traverse_impl = if let (Some(view), Some(inner_ty)) = (&view_ty, &scoped_inner_ty) {
+    let traverse_impl = if let Some(view) = &view_ty {
         quote! {
             impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
             where
-                #inner_ty: #traverse_flow,
+                Self: #replace_flow,
             {
-                type Output = #scoped<#view, <#inner_ty as #traverse_flow>::Output>;
+                type Output = #scoped<#view, <Self as #replace_flow>::Output>;
             }
         }
-    } else if view_ty.is_some() {
-        syn::Error::new_spanned(
-            &ident,
-            "FlowTemplate with `#[jungle(view = ...)]` must be a single-field struct.",
-        )
-        .to_compile_error()
     } else {
         quote! {}
     };
