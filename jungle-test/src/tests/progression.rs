@@ -12,15 +12,14 @@ use std::sync::Arc;
 
 struct SeedEffect;
 impl jungle_types::EffectMember for SeedEffect {}
-impl Effect for SeedEffect {
+impl<J> Effect<J> for SeedEffect {
     type Id = Id<U0>;
-    type Dependency = ();
     type In = i32;
     type Out = i32;
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         ready(Ok(input + 2))
@@ -29,15 +28,14 @@ impl Effect for SeedEffect {
 
 struct FinishEffect;
 impl jungle_types::EffectMember for FinishEffect {}
-impl Effect for FinishEffect {
+impl<J> Effect<J> for FinishEffect {
     type Id = Id<U1>;
-    type Dependency = ();
     type In = i32;
     type Out = i32;
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         ready(Ok(input * 3))
@@ -89,9 +87,6 @@ animal!(ProgressAnimal, U0, i32, ProgressJourney);
 struct ProgressAnimals(ProgressAnimal);
 
 struct ProgressContext;
-impl From<&ProgressContext> for () {
-    fn from(_value: &ProgressContext) -> Self {}
-}
 
 type SeedStep = Step<ProgressAnimal, Seed>;
 type FinishStep = Step<ProgressAnimal, Finish>;
@@ -116,13 +111,13 @@ trait StepExecutor:
     Running<In = (i32, i32), Out = (i32, EffectRequest<Self::Effect>)>
     + Waiting<In = (i32, EffectCompletion<Self::Effect>), Out = (i32, i32)>
 {
-    type Effect: Effect<Dependency = (), In = i32, Out = i32, Err = ()>;
+    type Effect: Effect<(), In = i32, Out = i32, Err = ()>;
 }
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
     A: Act<ProgressAnimal, StateAspect = Identity, Input = i32, Output = i32>,
-    <A as Act<ProgressAnimal>>::Effect: Effect<Dependency = (), In = i32, Out = i32, Err = ()>,
+    <A as Act<ProgressAnimal>>::Effect: Effect<(), In = i32, Out = i32, Err = ()>,
 {
     type Effect = <A as Act<ProgressAnimal>>::Effect;
 }
@@ -220,15 +215,14 @@ fn context_executor_progresses_multi_step_derived_journey() {
 
 struct BranchEffect;
 impl jungle_types::EffectMember for BranchEffect {}
-impl Effect for BranchEffect {
+impl<J> Effect<J> for BranchEffect {
     type Id = Id<U2>;
-    type Dependency = ();
     type In = i32;
     type Out = i32;
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         ready(Ok(input + 1))
@@ -289,9 +283,6 @@ struct BranchJourney(BranchConditionalFlow);
 animal!(BranchAnimal, U1, i32, BranchJourney);
 
 struct BranchContext;
-impl From<&BranchContext> for () {
-    fn from(_value: &BranchContext) -> Self {}
-}
 
 #[test]
 fn context_executor_accepts_conditional_with_derived_multistep_branch() {

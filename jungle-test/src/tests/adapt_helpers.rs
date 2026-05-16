@@ -11,8 +11,8 @@ struct HelperState {
     pulse_count: i32,
 }
 
-effect!(EchoEffect, U70, in = i32, out = i32, err = (), act = |_d, input| std::future::ready(Ok(input + 1)));
-effect!(PulseEffect, U71, in = (), out = i32, err = (), act = |_d, _input| std::future::ready(Ok(5)));
+effect!(EchoEffect, U70, in = i32, out = i32, err = (), effect = |_d, input| std::future::ready(Ok(input + 1)));
+effect!(PulseEffect, U71, in = (), out = i32, err = (), effect = |_d, _input| std::future::ready(Ok(5)));
 
 struct StoreValueAbsorb;
 impl AbsorbMapper<HelperState, EchoEffect, i32> for StoreValueAbsorb {

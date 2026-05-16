@@ -19,15 +19,14 @@ mod tests {
             struct $name;
             impl jungle_sdk::types::EffectMember for $name {}
 
-            impl jungle_sdk::types::Effect for $name {
+            impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
-                type Dependency = $dependency_ty;
                 type In = ();
                 type Out = ();
                 type Err = ();
 
-                fn act(
-                    _dependency: &Self::Dependency,
+                fn effect(
+                    _jungle: &J,
                     _input: Self::In,
                 ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
                     std::future::ready(Ok(()))
@@ -51,20 +50,19 @@ mod tests {
             in = $in:ty,
             out = $out:ty,
             err = $err:ty,
-            act = |$dependency:ident, $input:ident| $body:expr
+            effect = |$dependency:ident, $input:ident| $body:expr
         ) => {
             struct $name;
             impl jungle_sdk::types::EffectMember for $name {}
 
-            impl jungle_sdk::types::Effect for $name {
+            impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
-                type Dependency = ();
                 type In = $in;
                 type Out = $out;
                 type Err = $err;
 
-                fn act(
-                    $dependency: &Self::Dependency,
+                fn effect(
+                    $dependency: &J,
                     $input: Self::In,
                 ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
                     $body
@@ -76,15 +74,14 @@ mod tests {
             struct $name;
             impl jungle_sdk::types::EffectMember for $name {}
 
-            impl jungle_sdk::types::Effect for $name {
+            impl<J> jungle_sdk::types::Effect<J> for $name {
                 type Id = jungle_sdk::types::Id<$id>;
-                type Dependency = ();
                 type In = ();
                 type Out = ();
                 type Err = ();
 
-                fn act(
-                    _dependency: &Self::Dependency,
+                fn effect(
+                    _jungle: &J,
                     _input: Self::In,
                 ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
                     std::future::ready(Ok(()))

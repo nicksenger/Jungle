@@ -44,61 +44,65 @@ struct IntegrationState {
     after_steps: u8,
 }
 
-#[derive(Clone, Copy)]
-struct AddOneDependency {
-    value: i32,
-}
-
-impl From<&IntegrationZoo> for AddOneDependency {
-    fn from(_value: &IntegrationZoo) -> Self {
-        Self { value: 1 }
-    }
-}
-
 struct AddOneEffect;
 impl jungle_sdk::types::EffectMember for AddOneEffect {}
 
-impl Effect for AddOneEffect {
+impl Effect<()> for AddOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
-    type Dependency = AddOneDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
-    fn act(
-        dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.value))
+        std::future::ready(Ok(1))
     }
 }
 
-#[derive(Clone, Copy)]
-struct AddTwoDependency {
-    value: i32,
-}
+impl Effect<IntegrationZoo> for AddOneEffect {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
+    type In = ();
+    type Out = i32;
+    type Err = ();
 
-impl From<&IntegrationZoo> for AddTwoDependency {
-    fn from(_value: &IntegrationZoo) -> Self {
-        Self { value: 2 }
+    fn effect(
+        _jungle: &IntegrationZoo,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(1))
     }
 }
 
 struct AddTwoEffect;
 impl jungle_sdk::types::EffectMember for AddTwoEffect {}
 
-impl Effect for AddTwoEffect {
+impl Effect<()> for AddTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
-    type Dependency = AddTwoDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
-    fn act(
-        dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.value))
+        std::future::ready(Ok(2))
+    }
+}
+
+impl Effect<IntegrationZoo> for AddTwoEffect {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &IntegrationZoo,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(2))
     }
 }
 

@@ -241,21 +241,8 @@ pub type AnimalStates<T> = <(AnimalSet<T>, WithAnimalState) as Map<
     WithAnimalState,
 >>::Out;
 
-pub struct WithEffectDependency;
-impl<T> Mapper<T> for WithEffectDependency
-where
-    T: Effect,
-{
-    type Out = <T as Effect>::Dependency;
-}
-
 pub type AnimalEffectMembers<T> =
     <SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out> as StripEffectHeaders>::Out;
-
-pub type AnimalEffectDependencies<T> = <(AnimalEffectMembers<T>, WithEffectDependency) as Map<
-    <AnimalEffectMembers<T> as Container>::Content,
-    WithEffectDependency,
->>::Out;
 
 pub trait AnimalStatesCompatible<From>: Animals {}
 impl<T, From> AnimalStatesCompatible<From> for T
@@ -269,8 +256,16 @@ where
 {
 }
 
-pub trait AnimalEffectDependenciesCompatible<From>: Animals {}
-impl<T, From> AnimalEffectDependenciesCompatible<From> for T
+pub struct WithEffectFor<Context>(PhantomData<fn() -> Context>);
+impl<T, Context> Mapper<T> for WithEffectFor<Context>
+where
+    T: Effect<Context>,
+{
+    type Out = ();
+}
+
+pub trait AnimalEffectsCompatible<Context>: Animals {}
+impl<T, Context> AnimalEffectsCompatible<Context> for T
 where
     T: Animals,
     <T as Animals>::List: FlattenNodes,
@@ -279,9 +274,8 @@ where
     <AnimalSet<T> as CollectAnimalJourneyEffects>::Out: FlattenNodes,
     SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out>: StripEffectHeaders,
     AnimalEffectMembers<T>: Container,
-    (AnimalEffectMembers<T>, WithEffectDependency):
-        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectDependency>,
-    AnimalEffectDependencies<T>: AllFrom<From>,
+    (AnimalEffectMembers<T>, WithEffectFor<Context>):
+        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectFor<Context>>,
 {
 }
 

@@ -25,15 +25,15 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    AllFrom, AnimalEffectDependencies, AnimalEffectDependenciesCompatible, AnimalEffectSet,
-    AnimalIdValue, AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
+    AllFrom, AnimalEffectMembers, AnimalEffectSet, AnimalEffectsCompatible, AnimalIdValue,
+    AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
     AnimalVersionIdentitiesUnique, AnimalVersions, EffectMember, EffectSet, Generations,
     GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals, StripAnimalHeaders,
-    StripEffectHeaders,
+    StripEffectHeaders, WithEffectFor,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-pub use sleep::{Sleep, SleepDependency, SleepError, SleepStep};
+pub use sleep::{Sleep, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{
     BackendError, JourneyEvent, JourneyStatus, JourneyUpdateEvent, RunnerOut, RunnerUpdateOut,

@@ -34,8 +34,8 @@ struct Prey(BasicNeeds, Flee);
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct SharedState;
-impl<T> From<&T> for SharedState {
-    fn from(_value: &T) -> Self {
+impl From<&Zoo> for SharedState {
+    fn from(_value: &Zoo) -> Self {
         Self
     }
 }
@@ -151,17 +151,6 @@ impl Ecosystem for Zoo {
     type Animals = AllAnimals;
 }
 
-#[derive(Clone, Copy)]
-struct RunnerDependency {
-    gain: i32,
-}
-
-impl From<&RunnerZoo> for RunnerDependency {
-    fn from(_value: &RunnerZoo) -> Self {
-        Self { gain: 2 }
-    }
-}
-
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct RunnerState(i32);
 
@@ -177,46 +166,61 @@ impl From<RunnerState> for () {
 
 struct RunnerStepOneEffect;
 impl jungle_sdk::types::EffectMember for RunnerStepOneEffect {}
-impl Effect for RunnerStepOneEffect {
+impl Effect<()> for RunnerStepOneEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
-    type Dependency = RunnerDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
-    fn act(
-        dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.gain))
+        std::future::ready(Ok(2))
     }
 }
 
-#[derive(Clone, Copy)]
-struct RunnerStepTwoDependency {
-    gain: i32,
-}
+impl Effect<RunnerZoo> for RunnerStepOneEffect {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
+    type In = ();
+    type Out = i32;
+    type Err = ();
 
-impl From<&RunnerZoo> for RunnerStepTwoDependency {
-    fn from(_value: &RunnerZoo) -> Self {
-        Self { gain: 1 }
+    fn effect(
+        _jungle: &RunnerZoo,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(2))
     }
 }
 
 struct RunnerStepTwoEffect;
 impl jungle_sdk::types::EffectMember for RunnerStepTwoEffect {}
-impl Effect for RunnerStepTwoEffect {
+impl Effect<()> for RunnerStepTwoEffect {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
-    type Dependency = RunnerStepTwoDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
-    fn act(
-        dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.gain))
+        std::future::ready(Ok(1))
+    }
+}
+
+impl Effect<RunnerZoo> for RunnerStepTwoEffect {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &RunnerZoo,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(1))
     }
 }
 
@@ -376,87 +380,93 @@ struct ExecutorCatState {
     stripes: i32,
 }
 
-#[derive(Clone, Copy)]
-struct EatDependency {
-    base_gain: i32,
-}
-
-#[derive(Clone, Copy)]
-struct HuntDependency {
-    gain: i32,
-}
-
-#[derive(Clone, Copy)]
-struct RoundDependency {
-    tick: i32,
-}
-
-impl From<&Zoo> for EatDependency {
-    fn from(_value: &Zoo) -> Self {
-        Self { base_gain: 3 }
-    }
-}
-
-impl From<&Zoo> for HuntDependency {
-    fn from(_value: &Zoo) -> Self {
-        Self { gain: 4 }
-    }
-}
-
-impl From<&Zoo> for RoundDependency {
-    fn from(_value: &Zoo) -> Self {
-        Self { tick: 1 }
-    }
-}
-
 struct EatEnergy;
 impl jungle_sdk::types::EffectMember for EatEnergy {}
-impl Effect for EatEnergy {
+impl Effect<()> for EatEnergy {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
-    type Dependency = EatDependency;
     type In = i32;
     type Out = i32;
     type Err = ();
 
-    fn act(
-        dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.base_gain))
+        std::future::ready(Ok(3))
+    }
+}
+
+impl Effect<Zoo> for EatEnergy {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &Zoo,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(3))
     }
 }
 
 struct HuntEnergy;
 impl jungle_sdk::types::EffectMember for HuntEnergy {}
-impl Effect for HuntEnergy {
+impl Effect<()> for HuntEnergy {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
-    type Dependency = HuntDependency;
     type In = i32;
     type Out = i32;
     type Err = ();
 
-    fn act(
-        dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.gain))
+        std::future::ready(Ok(4))
+    }
+}
+
+impl Effect<Zoo> for HuntEnergy {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &Zoo,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(4))
     }
 }
 
 struct RoundAdvance;
 impl jungle_sdk::types::EffectMember for RoundAdvance {}
-impl Effect for RoundAdvance {
+impl Effect<()> for RoundAdvance {
     type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
-    type Dependency = RoundDependency;
     type In = i32;
     type Out = i32;
     type Err = ();
 
-    fn act(
-        dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(dependency.tick))
+        std::future::ready(Ok(1))
+    }
+}
+
+impl Effect<Zoo> for RoundAdvance {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &Zoo,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(1))
     }
 }
 

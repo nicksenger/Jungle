@@ -15,26 +15,13 @@ pub struct SleepError {
 pub struct Sleep;
 impl EffectMember for Sleep {}
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SleepDependency;
-
-impl<T> From<&T> for SleepDependency {
-    fn from(_value: &T) -> Self {
-        Self
-    }
-}
-
-impl Effect for Sleep {
+impl<J> Effect<J> for Sleep {
     type Id = Id<U65535>;
-    type Dependency = SleepDependency;
     type In = Duration;
     type Out = ();
     type Err = SleepError;
 
-    fn act(
-        _dependency: &SleepDependency,
-        input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(_jungle: &J, input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             std::thread::sleep(input);
             Ok(())

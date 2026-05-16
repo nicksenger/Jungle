@@ -6,22 +6,25 @@ macro_rules! define_effect {
         in = $input:ty,
         out = $output:ty,
         err = $error:ty,
-        act = |$dep:ident, $in_arg:pat_param| $body:expr
+        effect = |$dep:ident, $in_arg:pat_param| $body:expr
     ) => {
         pub struct $name;
         impl jungle_types::EffectMember for $name {}
-        impl jungle_types::Effect for $name {
+        impl<J> jungle_types::Effect<J> for $name
+        where
+            $dependency: Default,
+        {
             type Id = u16;
-            type Dependency = $dependency;
             type In = $input;
             type Out = $output;
             type Err = $error;
 
-            fn act(
-                $dep: &Self::Dependency,
+            fn effect(
+                _jungle: &J,
                 $in_arg: Self::In,
             ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
                 let _ = $id;
+                let $dep: $dependency = <$dependency>::default();
                 $body
             }
         }

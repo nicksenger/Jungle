@@ -14,18 +14,14 @@ use std::time::Duration;
 struct LegacyEffect;
 impl jungle_sdk::types::EffectMember for LegacyEffect {}
 
-#[derive(Clone, Copy)]
-struct LegacyDependency;
-
-impl Effect for LegacyEffect {
+impl<J> Effect<J> for LegacyEffect {
     type Id = Id<U70>;
-    type Dependency = LegacyDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(10))
@@ -35,18 +31,14 @@ impl Effect for LegacyEffect {
 struct ModernEffect;
 impl jungle_sdk::types::EffectMember for ModernEffect {}
 
-#[derive(Clone, Copy)]
-struct ModernDependency;
-
-impl Effect for ModernEffect {
+impl<J> Effect<J> for ModernEffect {
     type Id = Id<U71>;
-    type Dependency = ModernDependency;
     type In = ();
     type Out = i32;
     type Err = ();
 
-    fn act(
-        _dependency: &Self::Dependency,
+    fn effect(
+        _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(99))
@@ -187,18 +179,6 @@ struct VersionedZoo;
 impl Ecosystem for VersionedZoo {
     const NAME: &'static str = "versioned-zoo";
     type Animals = VersionedAnimals;
-}
-
-impl From<&VersionedZoo> for LegacyDependency {
-    fn from(_value: &VersionedZoo) -> Self {
-        Self
-    }
-}
-
-impl From<&VersionedZoo> for ModernDependency {
-    fn from(_value: &VersionedZoo) -> Self {
-        Self
-    }
 }
 
 #[test]

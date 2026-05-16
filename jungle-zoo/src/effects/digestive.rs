@@ -15,12 +15,6 @@ impl Default for DigestiveDependency {
     }
 }
 
-impl<T> From<&T> for DigestiveDependency {
-    fn from(_value: &T) -> Self {
-        Self::default()
-    }
-}
-
 define_effect!(
     Eat,
     id = 10,
@@ -28,7 +22,7 @@ define_effect!(
     in = u16,
     out = u16,
     err = String,
-    act = |dependency, energy| {
+    effect = |dependency, energy| {
         async move {
             maybe_delay().await;
             Ok(energy.saturating_add(u16::from(dependency.chew_efficiency)))
@@ -43,7 +37,7 @@ define_effect!(
     in = bool,
     out = String,
     err = String,
-    act = |_dependency, opposable_thumb| {
+    effect = |_dependency, opposable_thumb| {
         async move {
             maybe_delay().await;
             if opposable_thumb {
@@ -62,7 +56,7 @@ define_effect!(
     in = (u8, u16),
     out = u16,
     err = String,
-    act = |dependency, (rind_thickness_mm, flesh_mass_g)| {
+    effect = |dependency, (rind_thickness_mm, flesh_mass_g)| {
         async move {
             maybe_delay().await;
             let peel_cost = u16::from(rind_thickness_mm).saturating_mul(2);
