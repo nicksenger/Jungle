@@ -497,6 +497,161 @@ async fn template_binding_local_client_reuses_one_template_for_two_animals_end_t
     let _ = worker_handle.await;
 }
 
+trait RequiresContextBump {
+    fn context_bump(&self) -> i32;
+}
+
+pub struct ContextBoundTemplateEffect;
+impl<J> Effect<J> for ContextBoundTemplateEffect
+where
+    J: RequiresContextBump,
+{
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U53>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        jungle: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(input + jungle.context_bump()))
+    }
+}
+
+struct ContextBoundSpec;
+impl ActionSpec for ContextBoundSpec {
+    type Effect = ContextBoundTemplateEffect;
+    type Input = i32;
+    type Output = i32;
+    type Act<A: jungle_sdk::types::Animal> = ContextBoundAct<A>;
+}
+
+struct ContextBoundAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> Act<A> for ContextBoundAct<A>
+where
+    A: jungle_sdk::types::Animal<State = i32>,
+{
+    type Effect = ContextBoundTemplateEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
+        input
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("context-bound step should succeed");
+        *state = value;
+        value
+    }
+}
+
+#[derive(jungle_sdk::FlowTemplate)]
+struct ContextBoundTemplateFlow(UStep<ContextBoundSpec>);
+
+struct LocalTemplateContextAnimal;
+impl jungle_sdk::types::Animal for LocalTemplateContextAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U54>;
+    type Generation = U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = <ContextBoundTemplateFlow as BindAnimal<LocalTemplateContextAnimal>>::Bound;
+}
+
+impl jungle_sdk::types::Observable for LocalTemplateContextAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
+}
+
+impl jungle_sdk::types::Perturbable for LocalTemplateContextAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for LocalTemplateContextAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<
+        jungle_sdk::typosaurus::num::consts::U54,
+        LocalTemplateContextAnimal,
+    >;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for LocalTemplateContextAnimal {
+    type Id = jungle_sdk::typosaurus::num::consts::U54;
+}
+
+#[derive(Animals)]
+struct LocalTemplateContextAnimals(LocalTemplateContextAnimal);
+
+struct LocalTemplateContextZoo;
+impl Ecosystem for LocalTemplateContextZoo {
+    const NAME: &'static str = "late-bound-context-bound-template-zoo";
+    type Animals = LocalTemplateContextAnimals;
+}
+
+impl<'a> RequiresContextBump for &'a LocalTemplateContextZoo {
+    fn context_bump(&self) -> i32 {
+        11
+    }
+}
+
+impl RequiresContextBump for LocalTemplateContextZoo {
+    fn context_bump(&self) -> i32 {
+        11
+    }
+}
+
+impl RequiresContextBump for std::sync::Arc<LocalTemplateContextZoo> {
+    fn context_bump(&self) -> i32 {
+        11
+    }
+}
+
+impl RequiresContextBump for () {
+    fn context_bump(&self) -> i32 {
+        0
+    }
+}
+
+#[tokio::test]
+async fn template_binding_unbound_effect_with_context_bound_runs_end_to_end_with_local_client() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-context-bound-template-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(LocalTemplateContextZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<LocalTemplateContextAnimal>(
+            postcard::to_allocvec(&4_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let history = client
+        .journey_history(journey_id)
+        .await
+        .expect("journey history should be available");
+    let effect_inputs = decode_effect_inputs(&history);
+    let effect_outputs = decode_effect_success_outputs(&history);
+
+    assert_eq!(effect_inputs, vec![4]);
+    // Output proves `Effect<J>` executed against `&LocalTemplateContextZoo` and used
+    // the extra `J: RequiresContextBump` bound at runtime.
+    assert_eq!(effect_outputs, vec![15]);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
 async fn await_completion(client: &jungle_sdk::LocalClient, journey_id: uuid::Uuid) {
     let completion = tokio::time::timeout(Duration::from_secs(8), async {
         loop {
@@ -539,6 +694,19 @@ fn decode_effect_inputs(history: &[RunnerOut]) -> Vec<i32> {
             RunnerOut::EffectInput { data, .. } => Some(
                 postcard::from_bytes::<i32>(data)
                     .expect("effect input payload should deserialize to i32"),
+            ),
+            _ => None,
+        })
+        .collect()
+}
+
+fn decode_effect_success_outputs(history: &[RunnerOut]) -> Vec<i32> {
+    history
+        .iter()
+        .filter_map(|entry| match entry {
+            RunnerOut::EffectSuccessOutput { data, .. } => Some(
+                postcard::from_bytes::<i32>(data)
+                    .expect("effect output payload should deserialize to i32"),
             ),
             _ => None,
         })
