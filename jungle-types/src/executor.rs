@@ -18,7 +18,7 @@ type EffectRunner = Box<dyn FnOnce() -> EffectFuture + Send>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
 
-pub trait SplitStateCarry<State> {
+trait SplitStateCarry<State> {
     type Carry;
 }
 
@@ -26,7 +26,7 @@ impl<State, Carry> SplitStateCarry<State> for (State, Carry) {
     type Carry = Carry;
 }
 
-pub trait ArgputForState<State> {
+trait ArgputForState<State> {
     type Carry;
 }
 

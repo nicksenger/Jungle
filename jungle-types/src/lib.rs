@@ -17,9 +17,9 @@ pub use behavior::{
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
 pub use executor::{
-    ArgputForState, BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep,
-    DynFlow, ErasedStep, ExecutableEffectRequest, Executor, ExecutorError, ExecutorFlow,
-    JungleDynFlow, JungleDynFlowContext, ManualExecutor, TypedErasedStep,
+    BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,
+    ErasedStep, ExecutableEffectRequest, Executor, ExecutorError, ExecutorFlow, JungleDynFlow,
+    JungleDynFlowContext, ManualExecutor, TypedErasedStep,
 };
 use inception::*;
 pub use journey::Journey;
@@ -133,14 +133,6 @@ pub struct Transparent<M, F>(PhantomData<fn() -> (M, F)>);
 pub trait Ecosystem {
     const NAME: &'static str;
     type Animals;
-}
-
-pub trait SeedInput<Seed> {
-    fn from_seed(seed: &Seed) -> Self;
-}
-
-impl<Seed> SeedInput<Seed> for () {
-    fn from_seed(_seed: &Seed) -> Self {}
 }
 
 /// A living animal within the Jungle ecosystem.

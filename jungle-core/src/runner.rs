@@ -5,7 +5,6 @@ use jungle_types::{
     Animal, AnimalObservation, AnimalPerturbation, BuildFlowWithContext, ContextExecutor, DynFlow,
     ExecutorError, ObservationBridge, PerturbationBridge, RunnerOut, Sleep,
 };
-use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -50,7 +49,7 @@ where
         self.emit_appearance(journey_id, appearance, &mut tx)
             .await?;
         match self
-            .drive_until_sleep_or_complete::<A, _>(&mut executor, (), journey_id, &mut tx)
+            .drive_until_sleep_or_complete::<A>(&mut executor, journey_id, &mut tx)
             .await?
         {
             RunnerAdvance::Completed => Ok(executor.into_state()),
@@ -101,10 +100,9 @@ where
         Ok(())
     }
 
-    pub async fn drive_until_sleep_or_complete<A, Initial>(
+    pub async fn drive_until_sleep_or_complete<A>(
         &self,
         executor: &mut ContextExecutor<T, A>,
-        initial_input: Initial,
         journey_id: Uuid,
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
@@ -112,11 +110,10 @@ where
         A: Animal + AnimalObservation + AnimalPerturbation,
         A::Journey:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
-        Initial: Serialize + Clone,
     {
         while !executor.is_complete() {
             process_perturbations(executor, journey_id, tx).await?;
-            let request = match executor.next_executable_request(initial_input.clone()) {
+            let request = match executor.next_executable_request(()) {
                 Ok(request) => request,
                 Err(ExecutorError::Complete) => break,
                 Err(err) => return Err(err),
@@ -176,7 +173,7 @@ where
             completion,
         )
         .await?;
-        self.drive_until_sleep_or_complete::<A, _>(executor, (), journey_id, tx)
+        self.drive_until_sleep_or_complete::<A>(executor, journey_id, tx)
             .await
     }
 }
