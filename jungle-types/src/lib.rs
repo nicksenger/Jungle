@@ -136,11 +136,6 @@ pub trait Ecosystem {
     type Animals;
 }
 
-/// Marker trait for effect execution context parameters used by late-bound specs.
-pub trait Jungle {}
-
-impl<T> Jungle for T {}
-
 /// A living animal within the Jungle ecosystem.
 pub trait Animal {
     /// A type-level identifier for this Animal.
@@ -355,7 +350,7 @@ where
     Right: ActionSpec<
         Input = <Left as ActionSpec>::Input,
         Output = <Left as ActionSpec>::Output,
-        Effect<()> = <Left as ActionSpec>::Effect<()>,
+        Effect = <Left as ActionSpec>::Effect,
     >,
 {
     type Output = StepSpec<Right>;
@@ -367,7 +362,7 @@ where
     Right: ActionSpec<
         Input = <Left as ActionSpec>::Input,
         Output = <Left as ActionSpec>::Output,
-        Effect<()> = <Left as ActionSpec>::Effect<()>,
+        Effect = <Left as ActionSpec>::Effect,
     >,
 {
     type Output = StepSpec<Left>;

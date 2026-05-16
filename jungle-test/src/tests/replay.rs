@@ -233,7 +233,7 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
 
 struct ReplayPreSpec;
 impl ActionSpec for ReplayPreSpec {
-    type Effect<J: jungle_sdk::types::Jungle> = ReplayPreIncrementEffect;
+    type Effect = ReplayPreIncrementEffect;
     type Input = ();
     type Output = ();
     type Act<A: jungle_sdk::types::Animal> = ReplayPreStep;
@@ -241,7 +241,7 @@ impl ActionSpec for ReplayPreSpec {
 
 struct ReplayGateSpec;
 impl ActionSpec for ReplayGateSpec {
-    type Effect<J: jungle_sdk::types::Jungle> = ReplayGateEffect;
+    type Effect = ReplayGateEffect;
     type Input = ();
     type Output = ();
     type Act<A: jungle_sdk::types::Animal> = ReplayGateStep;
@@ -249,7 +249,7 @@ impl ActionSpec for ReplayGateSpec {
 
 struct ReplayPostSpec;
 impl ActionSpec for ReplayPostSpec {
-    type Effect<J: jungle_sdk::types::Jungle> = ReplayPostIncrementEffect;
+    type Effect = ReplayPostIncrementEffect;
     type Input = ();
     type Output = ();
     type Act<A: jungle_sdk::types::Animal> = ReplayPostStep;
@@ -545,7 +545,7 @@ where
 
 struct ReplayTimeoutPreSpec;
 impl ActionSpec for ReplayTimeoutPreSpec {
-    type Effect<J: jungle_sdk::types::Jungle> = ReplayTimeoutPreIncrementEffect;
+    type Effect = ReplayTimeoutPreIncrementEffect;
     type Input = ();
     type Output = ();
     type Act<A: jungle_sdk::types::Animal> = ReplayTimeoutPreStep;
@@ -553,7 +553,7 @@ impl ActionSpec for ReplayTimeoutPreSpec {
 
 struct ReplayTimeoutSleepSpec;
 impl ActionSpec for ReplayTimeoutSleepSpec {
-    type Effect<J: jungle_sdk::types::Jungle> = Sleep;
+    type Effect = Sleep;
     type Input = ();
     type Output = ();
     type Act<A: jungle_sdk::types::Animal> = ReplayTimeoutSleepStep;
@@ -561,7 +561,7 @@ impl ActionSpec for ReplayTimeoutSleepSpec {
 
 struct ReplayTimeoutPostSpec;
 impl ActionSpec for ReplayTimeoutPostSpec {
-    type Effect<J: jungle_sdk::types::Jungle> = ReplayTimeoutPostIncrementEffect;
+    type Effect = ReplayTimeoutPostIncrementEffect;
     type Input = ();
     type Output = ();
     type Act<A: jungle_sdk::types::Animal> = ReplayTimeoutPostStep;

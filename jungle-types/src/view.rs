@@ -123,13 +123,13 @@ where
 impl<S> BuildJourneyAst<Vec<JourneyAst>> for StepSpec<S>
 where
     S: ActionSpec + 'static,
-    <S as ActionSpec>::Effect<()>: 'static,
+    <S as ActionSpec>::Effect: 'static,
 {
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
         nodes.push(JourneyAst::Step {
-            label: core::any::type_name::<<S as ActionSpec>::Effect<()>>(),
+            label: core::any::type_name::<<S as ActionSpec>::Effect>(),
         });
         nodes
     }
