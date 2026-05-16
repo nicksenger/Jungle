@@ -316,7 +316,9 @@ async fn executor_runs_aspected_steps() {
                     Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
-                Hunt::effect(&(), request).await.expect("hunt should succeed")
+                Hunt::effect(&(), request)
+                    .await
+                    .expect("hunt should succeed")
             }
             _ => unreachable!(),
         };

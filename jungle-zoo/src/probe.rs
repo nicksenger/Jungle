@@ -8,7 +8,10 @@ impl<J> jungle_sdk::types::Effect<J> for ProbeEffect {
     type Out = ();
     type Err = ();
 
-    fn effect(_jungle: &J, _input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(()))
     }
 }
@@ -56,12 +59,12 @@ impl jungle_sdk::types::Animal for ProbeAnimal {
     type Journey = ProbeJourney;
 }
 
-impl jungle_sdk::types::AnimalObservation for ProbeAnimal {
-    type Bridge = jungle_sdk::types::NoopObservation;
+impl jungle_sdk::types::Observable for ProbeAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
 }
 
-impl jungle_sdk::types::AnimalPerturbation for ProbeAnimal {
-    type Bridge = jungle_sdk::types::NoopPerturbation;
+impl jungle_sdk::types::Perturbable for ProbeAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 
 #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]

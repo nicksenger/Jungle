@@ -3,8 +3,8 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use jungle_types::JourneyStatus;
 use jungle_types::{
-    ClaimedAnimalPerturbation, JourneyUpdateEvent, OwnerWake, RunnerOut, RunnerUpdateOut,
-    SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyUpdateEvent, OwnerWake, RunnerOut, RunnerUpdateOut, SupportedAnimal,
+    Work,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
@@ -340,7 +340,7 @@ impl JungleStore for PgStore {
     async fn claim_animal_perturbation(
         &self,
         journey_id: Uuid,
-    ) -> Result<Option<ClaimedAnimalPerturbation>> {
+    ) -> Result<Option<ClaimedPerturbable>> {
         let row = sqlx::query!(
             r#"
             WITH next_item AS (
@@ -384,7 +384,7 @@ impl JungleStore for PgStore {
             ))
         })?;
 
-        Ok(Some(ClaimedAnimalPerturbation { id, data: row.data }))
+        Ok(Some(ClaimedPerturbable { id, data: row.data }))
     }
 
     async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()> {

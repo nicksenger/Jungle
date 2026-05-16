@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use jungle_types::{
-    ClaimedAnimalPerturbation, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
-    SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, SupportedAnimal,
+    Work,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -178,7 +178,7 @@ pub trait JungleStore: DynClone + Send + Sync {
     async fn claim_animal_perturbation(
         &self,
         journey_id: Uuid,
-    ) -> Result<Option<ClaimedAnimalPerturbation>>;
+    ) -> Result<Option<ClaimedPerturbable>>;
     async fn ack_animal_perturbation(&self, journey_id: Uuid, perturbation_id: u64) -> Result<()>;
     async fn heartbeat_journey_lease(
         &self,

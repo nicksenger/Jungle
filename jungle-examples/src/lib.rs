@@ -124,11 +124,11 @@ impl Animal for ObserveAnimal {
     type Seed = ObserveState;
     type Journey = ObserveJourney;
 }
-impl jungle_sdk::types::AnimalObservation for ObserveAnimal {
-    type Bridge = jungle_sdk::types::ObserveObservation;
+impl jungle_sdk::types::Observable for ObserveAnimal {
+    type Observation = jungle_sdk::types::ObserveObservation;
 }
-impl jungle_sdk::types::AnimalPerturbation for ObserveAnimal {
-    type Bridge = jungle_sdk::types::NoopPerturbation;
+impl jungle_sdk::types::Perturbable for ObserveAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for ObserveAnimal {
     type Appearance = ObserveState;

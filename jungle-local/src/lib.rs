@@ -3,7 +3,7 @@ use futures::stream;
 use jungle_client::{JourneyUpdateSubscription, JungleClient};
 use jungle_server::{JungleServer, Server, ServerError, WireRx, WireTx};
 use jungle_types::{
-    Animal, AnimalIdValue, BackendError, ClaimedAnimalPerturbation, ExecutorError, JourneyStatus,
+    Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyStatus,
     OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::sync::Arc;
@@ -269,12 +269,10 @@ impl JungleClient for LocalClient {
     async fn claim_animal_perturbation(
         &self,
         id: Uuid,
-    ) -> Result<Option<ClaimedAnimalPerturbation>, ExecutorError> {
-        let response = self
-            .send_wire_message(WireIn::ClaimAnimalPerturbation(id))
-            .await?;
+    ) -> Result<Option<ClaimedPerturbable>, ExecutorError> {
+        let response = self.send_wire_message(WireIn::ClaimPerturbable(id)).await?;
         match response {
-            WireOut::ClaimedAnimalPerturbation(claimed) => Ok(claimed),
+            WireOut::ClaimedPerturbable(claimed) => Ok(claimed),
             _ => Err(ExecutorError::ClientTransport(
                 "unexpected response for claim_animal_perturbation".to_string(),
             )),
@@ -287,7 +285,7 @@ impl JungleClient for LocalClient {
         perturbation_id: u64,
     ) -> Result<(), ExecutorError> {
         let response = self
-            .send_wire_message(WireIn::AckAnimalPerturbation {
+            .send_wire_message(WireIn::AckPerturbable {
                 journey_id: id,
                 perturbation_id,
             })
