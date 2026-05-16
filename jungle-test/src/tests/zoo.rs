@@ -1,13 +1,13 @@
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Effect, EffectCompletion, EffectSet, Animal, AnimalEffectSet, AnimalSet, AnimalStates,
-    Ecosystem, Identity, LoopCondition, Act, StateLens, Step, While,
+    Act, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, Effect, EffectCompletion,
+    EffectSet, Identity, LoopCondition, StateLens, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-use jungle_sdk::{Effects, Animals, Flow, Optic};
+use jungle_sdk::{Animals, Effects, Flow, Optic};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

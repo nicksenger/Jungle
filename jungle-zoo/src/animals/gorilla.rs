@@ -7,9 +7,9 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    Effect, EffectCompletion, Animal, AnimalMember, AnimalObservation, AnimalPerturbation, Animals,
-    Condition, Conditional, Id, Identified, Identity, LoopCondition, NodeMetadata, NoopObservation,
-    NoopPerturbation, Act, Step, Transparent, While,
+    Act, Animal, AnimalMember, AnimalObservation, AnimalPerturbation, Animals, Condition,
+    Conditional, Effect, EffectCompletion, Id, Identified, Identity, LoopCondition, NodeMetadata,
+    NoopObservation, NoopPerturbation, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;

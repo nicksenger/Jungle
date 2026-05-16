@@ -24,6 +24,8 @@ const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("animal_perturbations");
 const ANIMAL_GENERATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("animal_generations");
+const JOURNEY_EVENT_SEQUENCE_TABLE: TableDefinition<&[u8], u64> =
+    TableDefinition::new("journey_event_sequences");
 
 const STEP_KIND_START_JOURNEY: u8 = 0;
 const STEP_KIND_RESUME_JOURNEY: u8 = 1;
@@ -214,6 +216,22 @@ impl JungleStore for RedbStore {
                         "redb create_journey insert journey failed: {err}"
                     ))
                 })?;
+
+            let mut sequences =
+                write_tx
+                    .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb create_journey open journey_event_sequences table failed: {err}"
+                        ))
+                    })?;
+            sequences
+                .insert(&journey_id.as_bytes()[..], 0_u64)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb create_journey initialize journey event sequence failed: {err}"
+                    ))
+                })?;
         }
 
         {
@@ -257,11 +275,15 @@ impl JungleStore for RedbStore {
                 "redb journey_history open events table failed: {err}"
             ))
         })?;
-        let iter = events.iter().map_err(|err| {
-            crate::PersistenceError::Message(format!(
-                "redb journey_history iterate events failed: {err}"
-            ))
-        })?;
+        let start_key = encode_event_key(journey_id, 0);
+        let end_key = encode_event_key(journey_id, u64::MAX);
+        let iter = events
+            .range(start_key.as_slice()..=end_key.as_slice())
+            .map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb journey_history range events failed: {err}"
+                ))
+            })?;
 
         let mut rows: Vec<(u64, u8, Vec<u8>)> = Vec::new();
         for entry in iter {
@@ -270,17 +292,13 @@ impl JungleStore for RedbStore {
                     "redb journey_history read events entry failed: {err}"
                 ))
             })?;
-            let (event_journey_id, sequence_id) =
+            let (_, sequence_id) =
                 decode_event_key(key.value(), "redb journey_history decode event key")?;
-            if event_journey_id != journey_id {
-                continue;
-            }
             let (kind, data) =
                 decode_event_value(value.value(), "redb journey_history decode event value")?;
             rows.push((sequence_id, kind, data));
         }
 
-        rows.sort_by_key(|(sequence_id, _, _)| *sequence_id);
         let mut history = Vec::with_capacity(rows.len());
         for (_, kind, data) in rows {
             history.push(decode_runner_out(journey_id, kind, data)?);
@@ -293,6 +311,10 @@ impl JungleStore for RedbStore {
         journey_id: Uuid,
         after_sequence_id: Option<u64>,
     ) -> Result<Vec<JourneyUpdateEvent>> {
+        if after_sequence_id == Some(u64::MAX) {
+            return Ok(Vec::new());
+        }
+
         let read_tx = self.db.begin_read().map_err(|err| {
             crate::PersistenceError::Message(format!(
                 "redb journey_events_since begin read failed: {err}"
@@ -303,11 +325,16 @@ impl JungleStore for RedbStore {
                 "redb journey_events_since open events table failed: {err}"
             ))
         })?;
-        let iter = events.iter().map_err(|err| {
-            crate::PersistenceError::Message(format!(
-                "redb journey_events_since iterate events failed: {err}"
-            ))
-        })?;
+        let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
+        let start_key = encode_event_key(journey_id, start_sequence_id);
+        let end_key = encode_event_key(journey_id, u64::MAX);
+        let iter = events
+            .range(start_key.as_slice()..=end_key.as_slice())
+            .map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb journey_events_since range events failed: {err}"
+                ))
+            })?;
 
         let mut rows: Vec<(u64, u8, Vec<u8>)> = Vec::new();
         for entry in iter {
@@ -316,13 +343,8 @@ impl JungleStore for RedbStore {
                     "redb journey_events_since read events entry failed: {err}"
                 ))
             })?;
-            let (event_journey_id, sequence_id) =
+            let (_, sequence_id) =
                 decode_event_key(key.value(), "redb journey_events_since decode event key")?;
-            if event_journey_id != journey_id
-                || after_sequence_id.is_some_and(|after| sequence_id <= after)
-            {
-                continue;
-            }
             let (kind, data) = decode_event_value(
                 value.value(),
                 "redb journey_events_since decode event value",
@@ -330,7 +352,6 @@ impl JungleStore for RedbStore {
             rows.push((sequence_id, kind, data));
         }
 
-        rows.sort_by_key(|(sequence_id, _, _)| *sequence_id);
         let mut updates = Vec::with_capacity(rows.len());
         for (sequence_id, kind, data) in rows {
             updates.push(JourneyUpdateEvent {
@@ -968,28 +989,48 @@ impl JungleStore for RedbStore {
                     "redb append_history open events table failed: {err}"
                 ))
             })?;
+            let mut sequences =
+                write_tx
+                    .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb append_history open journey_event_sequences table failed: {err}"
+                        ))
+                    })?;
 
-            let mut max_sequence: Option<u64> = None;
-            let iter = events.iter().map_err(|err| {
+            let key = &journey_id.as_bytes()[..];
+            let sequence_id = if let Some(next) = sequences.get(key).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb append_history iterate events failed: {err}"
+                    "redb append_history read journey_event_sequences failed: {err}"
                 ))
-            })?;
-            for entry in iter {
-                let (key, _) = entry.map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb append_history read events entry failed: {err}"
-                    ))
-                })?;
-                let (entry_journey_id, sequence_id) =
-                    decode_event_key(key.value(), "redb append_history decode event key")?;
-                if entry_journey_id == journey_id {
-                    max_sequence =
-                        Some(max_sequence.map_or(sequence_id, |max| max.max(sequence_id)));
+            })? {
+                next.value()
+            } else {
+                let start_key = encode_event_key(journey_id, 0);
+                let end_key = encode_event_key(journey_id, u64::MAX);
+                let iter = events
+                    .range(start_key.as_slice()..=end_key.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb append_history range events failed: {err}"
+                        ))
+                    })?;
+                let mut next_sequence = 0_u64;
+                for entry in iter {
+                    let (event_key, _) = entry.map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb append_history read events entry failed: {err}"
+                        ))
+                    })?;
+                    let (_, existing_sequence_id) = decode_event_key(
+                        event_key.value(),
+                        "redb append_history decode event key",
+                    )?;
+                    next_sequence = next_sequence.max(existing_sequence_id.saturating_add(1));
                 }
-            }
+                next_sequence
+            };
 
-            let sequence_id = max_sequence.map_or(0_u64, |max| max.saturating_add(1));
             let event_key = encode_event_key(journey_id, sequence_id);
             let event_value = encode_event_value(kind, &data);
             events
@@ -997,6 +1038,13 @@ impl JungleStore for RedbStore {
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
                         "redb append_history insert event failed: {err}"
+                    ))
+                })?;
+            sequences
+                .insert(key, sequence_id.saturating_add(1))
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb append_history write journey_event_sequences failed: {err}"
                     ))
                 })?;
         }
@@ -1190,27 +1238,45 @@ impl JungleStore for RedbStore {
                     "redb poll_timers open events table failed: {err}"
                 ))
             })?;
-            let mut max_sequence: Option<u64> = None;
-            let iter = events.iter().map_err(|err| {
+            let mut sequences =
+                write_tx
+                    .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb poll_timers open journey_event_sequences table failed: {err}"
+                        ))
+                    })?;
+            let key = &journey_id.as_bytes()[..];
+            let sequence_id = if let Some(next) = sequences.get(key).map_err(|err| {
                 crate::PersistenceError::Message(format!(
-                    "redb poll_timers iterate events failed: {err}"
+                    "redb poll_timers read journey_event_sequences failed: {err}"
                 ))
-            })?;
-            for entry in iter {
-                let (key, _) = entry.map_err(|err| {
-                    crate::PersistenceError::Message(format!(
-                        "redb poll_timers read events entry failed: {err}"
-                    ))
-                })?;
-                let (entry_journey_id, sequence_id) =
-                    decode_event_key(key.value(), "redb poll_timers decode event key")?;
-                if entry_journey_id == journey_id {
-                    max_sequence =
-                        Some(max_sequence.map_or(sequence_id, |max| max.max(sequence_id)));
+            })? {
+                next.value()
+            } else {
+                let start_key = encode_event_key(journey_id, 0);
+                let end_key = encode_event_key(journey_id, u64::MAX);
+                let iter = events
+                    .range(start_key.as_slice()..=end_key.as_slice())
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb poll_timers range events failed: {err}"
+                        ))
+                    })?;
+                let mut next_sequence = 0_u64;
+                for entry in iter {
+                    let (event_key, _) = entry.map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb poll_timers read events entry failed: {err}"
+                        ))
+                    })?;
+                    let (_, existing_sequence_id) =
+                        decode_event_key(event_key.value(), "redb poll_timers decode event key")?;
+                    next_sequence = next_sequence.max(existing_sequence_id.saturating_add(1));
                 }
-            }
+                next_sequence
+            };
 
-            let sequence_id = max_sequence.map_or(0_u64, |max| max.saturating_add(1));
             let event_key = encode_event_key(journey_id, sequence_id);
             let payload = postcard::to_allocvec(&SleepFiredEvent {
                 timer_id,
@@ -1223,6 +1289,13 @@ impl JungleStore for RedbStore {
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
                         "redb poll_timers insert sleep fired event failed: {err}"
+                    ))
+                })?;
+            sequences
+                .insert(key, sequence_id.saturating_add(1))
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb poll_timers write journey_event_sequences failed: {err}"
                     ))
                 })?;
         }

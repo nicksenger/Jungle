@@ -11,7 +11,7 @@ pub use jungle_core as core;
 pub use jungle_local as local;
 #[cfg(feature = "local")]
 pub use jungle_local::LocalClient;
-pub use jungle_macros::{sdk_primitive, Effects, Animals, Flow, Journey, Optic};
+pub use jungle_macros::{sdk_primitive, Animals, Effects, Flow, Journey, Optic};
 #[cfg(feature = "server")]
 pub use jungle_server as server;
 #[cfg(feature = "server")]

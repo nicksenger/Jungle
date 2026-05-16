@@ -1,7 +1,7 @@
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
-    Effect, EffectCompletion, EffectRequest, AnimalEffectSet, Condition, Conditional,
-    ContextExecutor, Executor, Id, Identity, ManualExecutor, Act, Running, Step, Waiting,
+    Act, AnimalEffectSet, Condition, Conditional, ContextExecutor, Effect, EffectCompletion,
+    EffectRequest, Executor, Id, Identity, ManualExecutor, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;

@@ -10,7 +10,7 @@ use typosaurus::num::{Max, Unsigned};
 use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Effect, Effects, Animal, Animals, Ecosystem, FlowEffects, Journey};
+use super::{Animal, Animals, Ecosystem, Effect, Effects, FlowEffects, Journey};
 use core::marker::PhantomData;
 
 /// Newtype wrapper around an Unsigned constant.

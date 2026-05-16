@@ -14,6 +14,8 @@ const PERTURBATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("animal_perturbations");
 const ANIMAL_GENERATIONS_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("animal_generations");
+const JOURNEY_EVENT_SEQUENCE_TABLE: TableDefinition<&[u8], u64> =
+    TableDefinition::new("journey_event_sequences");
 
 pub fn migrate_redb_v0(db: &redb::Database) -> Result<(), String> {
     let tx = db
@@ -63,6 +65,8 @@ pub fn migrate_redb_v0(db: &redb::Database) -> Result<(), String> {
         .map_err(|err| format!("redb open animal_perturbations table failed: {err}"))?;
     tx.open_table(ANIMAL_GENERATIONS_TABLE)
         .map_err(|err| format!("redb open animal_generations table failed: {err}"))?;
+    tx.open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
+        .map_err(|err| format!("redb open journey_event_sequences table failed: {err}"))?;
 
     tx.commit()
         .map_err(|err| format!("redb migration commit failed: {err}"))?;
