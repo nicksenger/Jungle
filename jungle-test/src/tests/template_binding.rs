@@ -1,8 +1,11 @@
 use jungle_sdk::types::{
-    Act, ActionSpec, BindAnimal, Effect, EffectCompletion, Identity, ManualExecutor, Step, UStep,
+    Act, ActionSpec, BindAnimal, Ecosystem, Effect, EffectCompletion, Identity, JourneyStatus,
+    ManualExecutor, RunnerOut, Step, UStep,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43, U44};
+use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43, U44, U45, U46};
+use jungle_sdk::{Animals, JungleClient};
+use std::time::Duration;
 
 struct TemplateAddEffect;
 impl<J> Effect<J> for TemplateAddEffect {
@@ -93,6 +96,11 @@ impl jungle_sdk::types::Identified for CounterAnimal {
     type Id = U42;
 }
 
+impl LateBoundPolicy for CounterAnimal {
+    const ADD_INPUT_DELTA: i32 = 1;
+    const COMMIT_SUBTRACT: bool = false;
+}
+
 struct LedgerAnimal;
 impl jungle_sdk::types::Animal for LedgerAnimal {
     type Id = jungle_sdk::types::Id<U43>;
@@ -118,6 +126,11 @@ impl jungle_sdk::types::Animals for LedgerAnimal {
 #[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
 impl jungle_sdk::types::Identified for LedgerAnimal {
     type Id = U43;
+}
+
+impl LateBoundPolicy for LedgerAnimal {
+    const ADD_INPUT_DELTA: i32 = 1;
+    const COMMIT_SUBTRACT: bool = false;
 }
 
 struct CounterAddOne;
@@ -195,7 +208,7 @@ impl Act<LedgerAnimal> for LedgerCommit {
 struct GenericAddOne<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for GenericAddOne<A>
 where
-    A: jungle_sdk::types::Animal<State = i32>,
+    A: jungle_sdk::types::Animal<State = i32> + LateBoundPolicy,
 {
     type Effect = TemplateAddEffect;
     type StateAspect = Identity;
@@ -203,7 +216,7 @@ where
     type Output = i32;
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
-        input + 1
+        input + A::ADD_INPUT_DELTA
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -216,7 +229,7 @@ where
 struct GenericCommit<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for GenericCommit<A>
 where
-    A: jungle_sdk::types::Animal<State = i32>,
+    A: jungle_sdk::types::Animal<State = i32> + LateBoundPolicy,
 {
     type Effect = TemplateCommitEffect;
     type StateAspect = Identity;
@@ -224,7 +237,11 @@ where
     type Output = i32;
 
     fn emit(state: &i32, input: Self::Input) -> i32 {
-        *state + input
+        if A::COMMIT_SUBTRACT {
+            *state - input
+        } else {
+            *state + input
+        }
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -314,6 +331,24 @@ impl jungle_sdk::types::Animal for BoundTemplateAnimal {
     type Journey = <TemplateFlow as BindAnimal<BoundTemplateAnimal>>::Bound;
 }
 
+impl jungle_sdk::types::Observable for BoundTemplateAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
+}
+
+impl jungle_sdk::types::Perturbable for BoundTemplateAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+trait LateBoundPolicy {
+    const ADD_INPUT_DELTA: i32;
+    const COMMIT_SUBTRACT: bool;
+}
+
+impl LateBoundPolicy for BoundTemplateAnimal {
+    const ADD_INPUT_DELTA: i32 = 1;
+    const COMMIT_SUBTRACT: bool = false;
+}
+
 #[test]
 fn template_binding_bound_journey_is_executor_ready() {
     let mut executor = ManualExecutor::<BoundTemplateAnimal>::new(0);
@@ -336,4 +371,158 @@ fn template_binding_bound_journey_is_executor_ready() {
         .expect("second bound completion");
     assert_eq!(out_2, 8);
     assert_eq!(executor.into_state(), 8);
+}
+
+struct LocalTemplateAlphaAnimal;
+impl jungle_sdk::types::Animal for LocalTemplateAlphaAnimal {
+    type Id = jungle_sdk::types::Id<U45>;
+    type Generation = U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = <TemplateFlow as BindAnimal<LocalTemplateAlphaAnimal>>::Bound;
+}
+
+impl jungle_sdk::types::Observable for LocalTemplateAlphaAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
+}
+
+impl jungle_sdk::types::Perturbable for LocalTemplateAlphaAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for LocalTemplateAlphaAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U45, LocalTemplateAlphaAnimal>;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for LocalTemplateAlphaAnimal {
+    type Id = U45;
+}
+
+impl LateBoundPolicy for LocalTemplateAlphaAnimal {
+    const ADD_INPUT_DELTA: i32 = 1;
+    const COMMIT_SUBTRACT: bool = false;
+}
+
+struct LocalTemplateBetaAnimal;
+impl jungle_sdk::types::Animal for LocalTemplateBetaAnimal {
+    type Id = jungle_sdk::types::Id<U46>;
+    type Generation = U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = <TemplateFlow as BindAnimal<LocalTemplateBetaAnimal>>::Bound;
+}
+
+impl jungle_sdk::types::Observable for LocalTemplateBetaAnimal {
+    type Observation = jungle_sdk::types::NoopObservation;
+}
+
+impl jungle_sdk::types::Perturbable for LocalTemplateBetaAnimal {
+    type Perturbation = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for LocalTemplateBetaAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U46, LocalTemplateBetaAnimal>;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for LocalTemplateBetaAnimal {
+    type Id = U46;
+}
+
+impl LateBoundPolicy for LocalTemplateBetaAnimal {
+    const ADD_INPUT_DELTA: i32 = 10;
+    const COMMIT_SUBTRACT: bool = true;
+}
+
+#[derive(Animals)]
+struct LocalTemplateAnimals(LocalTemplateAlphaAnimal, LocalTemplateBetaAnimal);
+
+struct LocalTemplateZoo;
+impl Ecosystem for LocalTemplateZoo {
+    const NAME: &'static str = "late-bound-local-template-zoo";
+    type Animals = LocalTemplateAnimals;
+}
+
+#[tokio::test]
+async fn template_binding_local_client_reuses_one_template_for_two_animals_end_to_end() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-local-template-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(LocalTemplateZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let alpha_id = client
+        .start_journey::<LocalTemplateAlphaAnimal>(
+            postcard::to_allocvec(&3_i32).expect("alpha seed should serialize"),
+        )
+        .await
+        .expect("alpha journey should start");
+    let beta_id = client
+        .start_journey::<LocalTemplateBetaAnimal>(
+            postcard::to_allocvec(&3_i32).expect("beta seed should serialize"),
+        )
+        .await
+        .expect("beta journey should start");
+
+    await_completion(&client, alpha_id).await;
+    await_completion(&client, beta_id).await;
+
+    let alpha_history = client
+        .journey_history(alpha_id)
+        .await
+        .expect("alpha history should be available");
+    let beta_history = client
+        .journey_history(beta_id)
+        .await
+        .expect("beta history should be available");
+
+    let alpha_inputs = decode_effect_inputs(&alpha_history);
+    let beta_inputs = decode_effect_inputs(&beta_history);
+
+    // Same bound template topology (2 steps), different behavior from animal-specific late binding.
+    assert_eq!(alpha_inputs, vec![4, 10]);
+    assert_eq!(beta_inputs, vec![13, 0]);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+async fn await_completion(client: &jungle_sdk::LocalClient, journey_id: uuid::Uuid) {
+    let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            let status = client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed");
+            if status == JourneyStatus::Completed {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    if completion.is_err() {
+        panic!("journey did not complete before timeout");
+    }
+}
+
+fn decode_effect_inputs(history: &[RunnerOut]) -> Vec<i32> {
+    history
+        .iter()
+        .filter_map(|entry| match entry {
+            RunnerOut::EffectInput { data, .. } => Some(
+                postcard::from_bytes::<i32>(data)
+                    .expect("effect input payload should deserialize to i32"),
+            ),
+            _ => None,
+        })
+        .collect()
 }

@@ -77,6 +77,17 @@ where
     type Carry = <C as LoopCondition<State>>::Arg;
 }
 
+impl<State> ArgputForState<State> for list::Empty {
+    type Carry = ();
+}
+
+impl<State, Head, Tail> ArgputForState<State> for TList<(Head, Tail)>
+where
+    Head: ArgputForState<State>,
+{
+    type Carry = <Head as ArgputForState<State>>::Carry;
+}
+
 impl<State, F> ArgputForState<State> for F
 where
     (): crate::__inception_running::FieldsInput<F>,
