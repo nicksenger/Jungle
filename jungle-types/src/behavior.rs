@@ -71,7 +71,7 @@ pub type EffectCompletion<A> = Result<<A as EffectSchema>::Out, <A as EffectSche
 pub trait StateCarrier<State> {
     type View;
 
-    fn view(state: &mut State) -> &mut Self::View;
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View;
 }
 
 /// Composes two carriers into a single projection.
@@ -80,11 +80,12 @@ pub struct ComposeCarrier<Outer, Inner>(PhantomData<fn() -> (Outer, Inner)>);
 impl<State, Outer, Inner> StateCarrier<State> for ComposeCarrier<Outer, Inner>
 where
     Outer: StateCarrier<State>,
+    <Outer as StateCarrier<State>>::View: 'static,
     Inner: StateCarrier<<Outer as StateCarrier<State>>::View>,
 {
     type View = <Inner as StateCarrier<<Outer as StateCarrier<State>>::View>>::View;
 
-    fn view(state: &mut State) -> &mut Self::View {
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
         let outer = <Outer as StateCarrier<State>>::view(state);
         <Inner as StateCarrier<<Outer as StateCarrier<State>>::View>>::view(outer)
     }
@@ -101,7 +102,7 @@ pub struct Identity;
 impl<State> StateCarrier<State> for Identity {
     type View = State;
 
-    fn view(state: &mut State) -> &mut Self::View {
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
         state
     }
 }
@@ -234,7 +235,7 @@ where
 {
     type View = <() as StateLensPath<State, Index>>::View;
 
-    fn view(state: &mut State) -> &mut Self::View {
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
         <() as StateLensPath<State, Index>>::view(state)
     }
 }
@@ -267,7 +268,7 @@ pub trait ActionSpec {
 }
 
 /// Re-binds an action spec authored for one scope to another scope.
-pub trait ScopedActionSpec<A: Animal, ScopeState> {
+pub trait ScopedActionSpec<A: Animal, ScopeState, ScopeCarrier> {
     type BoundAct: Act<A>;
 }
 
@@ -296,7 +297,7 @@ impl<A, ScopeState, ScopeCarrier, InnerAct> Act<A>
     for ScopeReboundAct<A, ScopeState, ScopeCarrier, InnerAct>
 where
     A: Animal,
-    ScopeState: Default,
+    ScopeState: Default + 'static,
     ScopeCarrier: Aspect<A::State, View = ScopeState>,
     InnerAct: Act<ScopedAnimal<A, ScopeState>>,
 {
@@ -323,11 +324,11 @@ where
     }
 }
 
-impl<S, A, ScopeState, ScopeCarrier> ScopedActionSpec<A, ScopeState> for S
+impl<S, A, ScopeState, ScopeCarrier> ScopedActionSpec<A, ScopeState, ScopeCarrier> for S
 where
     A: Animal,
     S: ActionSpec,
-    ScopeState: Default,
+    ScopeState: Default + 'static,
     ScopeCarrier: Aspect<A::State, View = ScopeState>,
     <S as ActionSpec>::Act<ScopedAnimal<A, ScopeState>>: Act<
         ScopedAnimal<A, ScopeState>,
