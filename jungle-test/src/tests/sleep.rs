@@ -25,7 +25,7 @@ impl Effect<()> for AddEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -39,7 +39,7 @@ impl Effect<SleepZoo> for AddEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &SleepZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {

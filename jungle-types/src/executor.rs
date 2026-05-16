@@ -306,7 +306,7 @@ where
         };
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as Act<T>>::Effect as Effect<()>>::act(&(), effect_input).await;
+                let completion = <<A as Act<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -459,7 +459,7 @@ where
             effect_input.clone().into();
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as Act<T>>::Effect as Effect<Context>>::act(
+                let completion = <<A as Act<T>>::Effect as Effect<Context>>::effect(
                     context.as_ref(),
                     effect_input_for_context,
                 )

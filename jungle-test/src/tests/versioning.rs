@@ -20,7 +20,7 @@ impl<J> Effect<J> for LegacyEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -37,7 +37,7 @@ impl<J> Effect<J> for ModernEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {

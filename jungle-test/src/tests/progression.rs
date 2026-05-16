@@ -18,7 +18,7 @@ impl<J> Effect<J> for SeedEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -34,7 +34,7 @@ impl<J> Effect<J> for FinishEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -221,7 +221,7 @@ impl<J> Effect<J> for BranchEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &J,
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {

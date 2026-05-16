@@ -12,7 +12,7 @@ effect!(
     in = i32,
     out = i32,
     err = (),
-    act = |_dependency, input| ready(Ok(input + 1))
+    effect = |_dependency, input| ready(Ok(input + 1))
 );
 
 effect!(
@@ -21,7 +21,7 @@ effect!(
     in = i32,
     out = i32,
     err = (),
-    act = |_dependency, input| ready(Ok(input + 2))
+    effect = |_dependency, input| ready(Ok(input + 2))
 );
 
 animal!(

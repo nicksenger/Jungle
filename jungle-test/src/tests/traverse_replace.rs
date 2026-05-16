@@ -11,7 +11,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_d, _input| std::future::ready(Ok(()))
+    effect = |_d, _input| std::future::ready(Ok(()))
 );
 effect!(
     TraverseBEffect,
@@ -19,7 +19,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_d, _input| std::future::ready(Ok(()))
+    effect = |_d, _input| std::future::ready(Ok(()))
 );
 effect!(
     TraverseCEffect,
@@ -27,7 +27,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_d, _input| std::future::ready(Ok(()))
+    effect = |_d, _input| std::future::ready(Ok(()))
 );
 effect!(
     TraverseDEffect,
@@ -35,7 +35,7 @@ effect!(
     in = (),
     out = (),
     err = (),
-    act = |_d, _input| std::future::ready(Ok(()))
+    effect = |_d, _input| std::future::ready(Ok(()))
 );
 
 struct TraverseAnimal;

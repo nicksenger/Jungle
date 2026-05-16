@@ -53,7 +53,7 @@ impl Effect<()> for AddOneEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -67,7 +67,7 @@ impl Effect<IntegrationZoo> for AddOneEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &IntegrationZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -84,7 +84,7 @@ impl Effect<()> for AddTwoEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -98,7 +98,7 @@ impl Effect<IntegrationZoo> for AddTwoEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &IntegrationZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {

@@ -25,7 +25,7 @@ mod tests {
                 type Out = ();
                 type Err = ();
 
-                fn act(
+                fn effect(
                     _jungle: &J,
                     _input: Self::In,
                 ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -50,7 +50,7 @@ mod tests {
             in = $in:ty,
             out = $out:ty,
             err = $err:ty,
-            act = |$dependency:ident, $input:ident| $body:expr
+            effect = |$dependency:ident, $input:ident| $body:expr
         ) => {
             struct $name;
             impl jungle_sdk::types::EffectMember for $name {}
@@ -61,7 +61,7 @@ mod tests {
                 type Out = $out;
                 type Err = $err;
 
-                fn act(
+                fn effect(
                     $dependency: &J,
                     $input: Self::In,
                 ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -80,7 +80,7 @@ mod tests {
                 type Out = ();
                 type Err = ();
 
-                fn act(
+                fn effect(
                     _jungle: &J,
                     _input: Self::In,
                 ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {

@@ -21,7 +21,7 @@ impl<J> Effect<J> for Sleep {
     type Out = ();
     type Err = SleepError;
 
-    fn act(_jungle: &J, input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(_jungle: &J, input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             std::thread::sleep(input);
             Ok(())

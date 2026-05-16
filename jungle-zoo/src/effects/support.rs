@@ -6,7 +6,7 @@ macro_rules! define_effect {
         in = $input:ty,
         out = $output:ty,
         err = $error:ty,
-        act = |$dep:ident, $in_arg:pat_param| $body:expr
+        effect = |$dep:ident, $in_arg:pat_param| $body:expr
     ) => {
         pub struct $name;
         impl jungle_types::EffectMember for $name {}
@@ -19,7 +19,7 @@ macro_rules! define_effect {
             type Out = $output;
             type Err = $error;
 
-            fn act(
+            fn effect(
                 _jungle: &J,
                 $in_arg: Self::In,
             ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {

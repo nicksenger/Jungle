@@ -9,10 +9,10 @@ use jungle_sdk::{Journey, Optic};
 use std::future::ready;
 use std::marker::PhantomData;
 
-effect!(Sleep, U0, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
-effect!(Eat, U1, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input + 1)));
-effect!(Forage, U2, in = i32, out = i32, err = (), act = |_d, input| ready(Ok(input - 1)));
-effect!(Hunt, U3, in = (), out = i32, err = (), act = |_d, _input| ready(Ok(1)));
+effect!(Sleep, U0, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input + 1)));
+effect!(Eat, U1, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input + 1)));
+effect!(Forage, U2, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input - 1)));
+effect!(Hunt, U3, in = (), out = i32, err = (), effect = |_d, _input| ready(Ok(1)));
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct CoreState {
@@ -259,11 +259,11 @@ async fn executor_runs_aspected_steps() {
             .next_request()
             .expect("gorilla request should advance");
         let completion: i32 = match step % 3 {
-            0 => Eat::act(&(), request).await.expect("eat should succeed"),
-            1 => Sleep::act(&(), request)
+            0 => Eat::effect(&(), request).await.expect("eat should succeed"),
+            1 => Sleep::effect(&(), request)
                 .await
                 .expect("sleep should succeed"),
-            2 => Forage::act(&(), request)
+            2 => Forage::effect(&(), request)
                 .await
                 .expect("forage should succeed"),
             _ => unreachable!(),
@@ -298,7 +298,7 @@ async fn executor_runs_aspected_steps() {
                     Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
-                Eat::act(&(), request).await.expect("eat should succeed")
+                Eat::effect(&(), request).await.expect("eat should succeed")
             }
             1 => {
                 let request: i32 = match tiger.next_request() {
@@ -306,7 +306,7 @@ async fn executor_runs_aspected_steps() {
                     Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
-                Sleep::act(&(), request)
+                Sleep::effect(&(), request)
                     .await
                     .expect("sleep should succeed")
             }
@@ -316,7 +316,7 @@ async fn executor_runs_aspected_steps() {
                     Err(jungle_sdk::types::ExecutorError::Complete) => break,
                     Err(err) => panic!("tiger request should advance: {err}"),
                 };
-                Hunt::act(&(), request).await.expect("hunt should succeed")
+                Hunt::effect(&(), request).await.expect("hunt should succeed")
             }
             _ => unreachable!(),
         };

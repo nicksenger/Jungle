@@ -33,10 +33,10 @@ struct IoArg {
     right: i32,
 }
 
-effect!(EchoI32, U72, in = i32, out = i32, err = (), act = |_d, input| std::future::ready(Ok(input + 1)));
-effect!(SumPair, U73, in = (i32, i32), out = i32, err = (), act = |_d, input| std::future::ready(Ok(input.0 + input.1)));
-effect!(EchoPair, U74, in = (i32, i32), out = (i32, i32), err = (), act = |_d, input| std::future::ready(Ok(input)));
-effect!(EchoRootState, U75, in = RootState, out = RootState, err = (), act = |_d, input| std::future::ready(Ok(input)));
+effect!(EchoI32, U72, in = i32, out = i32, err = (), effect = |_d, input| std::future::ready(Ok(input + 1)));
+effect!(SumPair, U73, in = (i32, i32), out = i32, err = (), effect = |_d, input| std::future::ready(Ok(input.0 + input.1)));
+effect!(EchoPair, U74, in = (i32, i32), out = (i32, i32), err = (), effect = |_d, input| std::future::ready(Ok(input)));
+effect!(EchoRootState, U75, in = RootState, out = RootState, err = (), effect = |_d, input| std::future::ready(Ok(input)));
 
 struct LensOnBranch;
 impl Act<OpticAnimal> for LensOnBranch {

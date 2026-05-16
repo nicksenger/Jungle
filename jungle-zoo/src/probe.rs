@@ -9,7 +9,7 @@ impl<J> jungle_sdk::types::Effect<J> for ProbeEffect {
     type Out = ();
     type Err = ();
 
-    fn act(_jungle: &J, _input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(_jungle: &J, _input: Self::In) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(()))
     }
 }

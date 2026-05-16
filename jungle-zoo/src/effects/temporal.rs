@@ -44,7 +44,7 @@ define_effect!(
     in = u8,
     out = AgeState,
     err = String,
-    act = |dependency, age_years| {
+    effect = |dependency, age_years| {
         async move {
             maybe_delay().await;
             let new_age = age_years.saturating_add(1);
@@ -69,7 +69,7 @@ define_effect!(
     in = (PerceivedTimeOfDay, u16),
     out = TimePerception,
     err = String,
-    act = |dependency, (current, minutes_since_transition)| {
+    effect = |dependency, (current, minutes_since_transition)| {
         async move {
             maybe_delay().await;
             let total = minutes_since_transition.saturating_add(dependency.minutes_per_segment);
@@ -96,7 +96,7 @@ define_effect!(
     in = (DailyActivity, PerceivedTimeOfDay),
     out = bool,
     err = String,
-    act = |_dependency, (activity, time_of_day)| {
+    effect = |_dependency, (activity, time_of_day)| {
         async move {
             maybe_delay().await;
             let is_active = match activity {
@@ -125,7 +125,7 @@ define_effect!(
     in = AgeState,
     out = AgeState,
     err = String,
-    act = |dependency, age| {
+    effect = |dependency, age| {
         async move {
             maybe_delay().await;
             let adult_age = dependency.adult_age.max(1);
@@ -149,7 +149,7 @@ define_effect!(
     in = AgeState,
     out = AgeState,
     err = String,
-    act = |dependency, age| {
+    effect = |dependency, age| {
         async move {
             maybe_delay().await;
             let adult_age = dependency.adult_age.max(1);

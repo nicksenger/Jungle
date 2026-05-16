@@ -29,7 +29,7 @@ pub trait Effect<J = ()> {
     type Err: Send + 'static;
 
     /// Process one input into one output.
-    fn act(
+    fn effect(
         jungle: &J,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> + Send;
@@ -53,11 +53,11 @@ impl<A: Effect<J>, J> EffectRequest<A, J> {
         self.input
     }
 
-    pub fn act<'a>(self, jungle: &'a J) -> impl Future<Output = Result<A::Out, A::Err>> + 'a
+    pub fn effect<'a>(self, jungle: &'a J) -> impl Future<Output = Result<A::Out, A::Err>> + 'a
     where
         A: 'a,
     {
-        A::act(jungle, self.input)
+        A::effect(jungle, self.input)
     }
 }
 

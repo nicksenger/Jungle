@@ -36,7 +36,7 @@ impl Effect<()> for ReplayPreIncrementEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -50,7 +50,7 @@ impl Effect<ReplayGateZoo> for ReplayPreIncrementEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -67,7 +67,7 @@ impl Effect<()> for ReplayPostIncrementEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -81,7 +81,7 @@ impl Effect<ReplayGateZoo> for ReplayPostIncrementEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -98,7 +98,7 @@ impl Effect<()> for ReplayGateEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -112,7 +112,7 @@ impl Effect<ReplayGateZoo> for ReplayGateEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -389,7 +389,7 @@ impl Effect<()> for ReplayTimeoutPreIncrementEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -403,7 +403,7 @@ impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         jungle: &ReplayTimeoutZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -421,7 +421,7 @@ impl Effect<()> for ReplayTimeoutPostIncrementEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -435,7 +435,7 @@ impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
     type Out = ();
     type Err = ();
 
-    fn act(
+    fn effect(
         jungle: &ReplayTimeoutZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {

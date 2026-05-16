@@ -172,7 +172,7 @@ impl Effect<()> for RunnerStepOneEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -186,7 +186,7 @@ impl Effect<RunnerZoo> for RunnerStepOneEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &RunnerZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -202,7 +202,7 @@ impl Effect<()> for RunnerStepTwoEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -216,7 +216,7 @@ impl Effect<RunnerZoo> for RunnerStepTwoEffect {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &RunnerZoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -388,7 +388,7 @@ impl Effect<()> for EatEnergy {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -402,7 +402,7 @@ impl Effect<Zoo> for EatEnergy {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &Zoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -418,7 +418,7 @@ impl Effect<()> for HuntEnergy {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -432,7 +432,7 @@ impl Effect<Zoo> for HuntEnergy {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &Zoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -448,7 +448,7 @@ impl Effect<()> for RoundAdvance {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
@@ -462,7 +462,7 @@ impl Effect<Zoo> for RoundAdvance {
     type Out = i32;
     type Err = ();
 
-    fn act(
+    fn effect(
         _jungle: &Zoo,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
