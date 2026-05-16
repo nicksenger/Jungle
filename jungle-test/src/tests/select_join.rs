@@ -5,7 +5,9 @@ use jungle_sdk::types::{
 use jungle_sdk::{Journey, Optic};
 use std::time::Duration;
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 struct SelectJoinState {
     fast_ms: u64,
     slow_ms: u64,

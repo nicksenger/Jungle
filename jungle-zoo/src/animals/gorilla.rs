@@ -55,6 +55,16 @@ impl From<TemporalState> for State {
     }
 }
 
+impl Default for State {
+    fn default() -> Self {
+        Self::from(default_temporal_seed())
+    }
+}
+
+impl From<TemporalState> for () {
+    fn from(_value: TemporalState) -> Self {}
+}
+
 //#[cfg(test)]
 //mod compile_checks {
 //    use super::*;

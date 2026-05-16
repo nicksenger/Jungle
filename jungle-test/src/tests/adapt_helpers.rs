@@ -5,7 +5,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
 use jungle_sdk::Journey;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct HelperState {
     value: i32,
     pulse_count: i32,

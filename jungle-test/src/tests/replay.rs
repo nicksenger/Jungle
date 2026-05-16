@@ -15,7 +15,7 @@ const PRE_STEPS: usize = 2;
 const POST_STEPS: usize = 2;
 const TEST_OWNER_LEASE_TTL_MS: i64 = 1_500;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ReplayGateState {
     phase: u8,
 }
@@ -247,6 +247,10 @@ impl Ecosystem for ReplayGateZoo {
     type Animals = ReplayGateAnimals;
 }
 
+impl From<ReplayGateState> for () {
+    fn from(_value: ReplayGateState) -> Self {}
+}
+
 #[tokio::test]
 async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
@@ -361,6 +365,15 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 struct ReplayTimeoutState {
     phase: u8,
     sleep_for_ms: u64,
+}
+
+impl Default for ReplayTimeoutState {
+    fn default() -> Self {
+        Self {
+            phase: 0,
+            sleep_for_ms: 4_000,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -564,6 +577,10 @@ struct ReplayTimeoutAnimals(ReplayTimeoutAnimal);
 impl Ecosystem for ReplayTimeoutZoo {
     const NAME: &'static str = "replay-timeout-zoo";
     type Animals = ReplayTimeoutAnimals;
+}
+
+impl From<ReplayTimeoutState> for () {
+    fn from(_value: ReplayTimeoutState) -> Self {}
 }
 
 #[tokio::test]

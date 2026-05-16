@@ -1119,9 +1119,9 @@ impl JungleStore for RedbStore {
             due_index
                 .insert(due_key.as_slice(), &[] as &[u8])
                 .map_err(|err| {
-                crate::PersistenceError::Message(format!(
-                    "redb schedule_sleep_timer insert timer_due_index entry failed: {err}"
-                ))
+                    crate::PersistenceError::Message(format!(
+                        "redb schedule_sleep_timer insert timer_due_index entry failed: {err}"
+                    ))
                 })?;
         }
 

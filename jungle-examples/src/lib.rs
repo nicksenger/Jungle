@@ -5,7 +5,7 @@ use jungle_sdk::types::{
     Identity, LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
-use jungle_sdk::{Animals, Journey, JungleClient, Optic};
+use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 use uuid::Uuid;
@@ -37,7 +37,9 @@ pub async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client
     unreachable!("retry loop always returns or panics")
 }
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 pub struct ObserveState {
     pub tick: u64,
     pub sleep_ms: u64,
@@ -114,8 +116,7 @@ type ObserveBody = Conditional<
     Step<ObserveAnimal, ObserveBump>,
 >;
 
-#[derive(Journey)]
-pub struct ObserveJourney(While<ObserveLoopForever, ObserveBody>);
+type ObserveJourney = While<ObserveLoopForever, ObserveBody>;
 
 pub struct ObserveAnimal;
 impl AnimalMember for ObserveAnimal {}
@@ -157,6 +158,10 @@ pub struct ObserveEcosystem;
 impl Ecosystem for ObserveEcosystem {
     const NAME: &'static str = "observe-ecosystem";
     type Animals = ObserveAnimals;
+}
+
+impl From<ObserveState> for () {
+    fn from(_value: ObserveState) -> Self {}
 }
 
 impl From<&ObserveEcosystem> for () {

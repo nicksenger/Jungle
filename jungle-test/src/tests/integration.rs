@@ -17,20 +17,26 @@ use testcontainers::runners::AsyncRunner;
 #[cfg(feature = "postgres")]
 use testcontainers_modules::postgres::Postgres;
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 struct SubFlowState {
     nested: DeepFocusState,
     value: i32,
     updates: i32,
 }
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 struct DeepFocusState {
     value: i32,
     updates: i32,
 }
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 struct IntegrationState {
     total: i32,
     focused: SubFlowState,
@@ -387,6 +393,10 @@ struct IntegrationZoo;
 impl Ecosystem for IntegrationZoo {
     const NAME: &'static str = "integration-zoo";
     type Animals = IntegrationAnimals;
+}
+
+impl From<IntegrationState> for () {
+    fn from(_value: IntegrationState) -> Self {}
 }
 
 #[tokio::test]

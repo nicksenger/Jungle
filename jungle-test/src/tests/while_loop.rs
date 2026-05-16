@@ -121,7 +121,7 @@ effect!(
     act = |_dependency, _input| ready(Ok(()))
 );
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct NestedState {
     outer_round: u8,
     inner_step: u8,

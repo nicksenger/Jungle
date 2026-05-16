@@ -8,7 +8,9 @@ use jungle_sdk::{Animals, JungleClient, Optic};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 struct SleepState {
     counter: i32,
     phase: u8,
@@ -149,6 +151,10 @@ struct SleepZoo;
 impl Ecosystem for SleepZoo {
     const NAME: &'static str = "sleep-zoo";
     type Animals = SleepAnimals;
+}
+
+impl From<SleepState> for () {
+    fn from(_value: SleepState) -> Self {}
 }
 
 #[tokio::test]

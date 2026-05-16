@@ -17,9 +17,9 @@ pub use behavior::{
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
 pub use executor::{
-    BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep, DynFlow,
-    ErasedStep, ExecutableEffectRequest, Executor, ExecutorError, ExecutorFlow, JungleDynFlow,
-    JungleDynFlowContext, ManualExecutor, TypedErasedStep,
+    ArgputForState, BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep,
+    DynFlow, ErasedStep, ExecutableEffectRequest, Executor, ExecutorError, ExecutorFlow,
+    JungleDynFlow, JungleDynFlowContext, ManualExecutor, TypedErasedStep,
 };
 use inception::*;
 pub use journey::Journey;
@@ -147,10 +147,10 @@ pub trait Animal {
     type Generation;
 
     /// The state of this `Animal` at any given time.
-    type State;
+    type State: Default;
 
-    /// Serializable seed used to initialize this animal's state.
-    type Seed: Serialize + DeserializeOwned + Into<Self::State>;
+    /// Serializable seed used to initialize the first step input of this animal's journey.
+    type Seed: Serialize + DeserializeOwned;
 
     /// The fundamental behavior of this Animal.
     type Journey;
