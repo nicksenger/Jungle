@@ -7,7 +7,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
-use jungle_sdk::{Animals, Effects, Flow, Optic};
+use jungle_sdk::{Animals, Effects, Flow, Journey, Optic};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -283,6 +283,109 @@ struct RunnerZoo;
 impl Ecosystem for RunnerZoo {
     const NAME: &'static str = "runner-zoo";
     type Animals = RunnerAnimals;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct SeededWorkerSeed {
+    initial: i32,
+}
+
+impl From<SeededWorkerSeed> for i32 {
+    fn from(value: SeededWorkerSeed) -> Self {
+        value.initial
+    }
+}
+
+impl From<&SeededWorkerSeed> for i32 {
+    fn from(value: &SeededWorkerSeed) -> Self {
+        value.initial
+    }
+}
+
+impl jungle_sdk::types::SeedInput<SeededWorkerSeed> for i32 {
+    fn from_seed(seed: &SeededWorkerSeed) -> Self {
+        Self::from(seed)
+    }
+}
+
+struct SeededWorkerEffect;
+impl jungle_sdk::types::EffectMember for SeededWorkerEffect {}
+impl Effect for SeededWorkerEffect {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U90>;
+    type Dependency = ();
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn act(
+        _dependency: &Self::Dependency,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(input))
+    }
+}
+
+struct SeededWorkerStep;
+impl Act<SeededWorkerAnimal> for SeededWorkerStep {
+    type Effect = SeededWorkerEffect;
+    type StateAspect = Identity;
+    type Input = i32;
+    type Output = ();
+
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
+        input + 7
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        *state = output.expect("seeded worker step should succeed");
+    }
+}
+
+#[derive(Journey)]
+struct SeededWorkerJourney(Step<SeededWorkerAnimal, SeededWorkerStep>);
+
+struct SeededWorkerAnimal;
+impl jungle_sdk::types::AnimalMember for SeededWorkerAnimal {}
+impl Animal for SeededWorkerAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U91>;
+    type Generation = U0;
+    type State = i32;
+    type Seed = SeededWorkerSeed;
+    type Journey = SeededWorkerJourney;
+}
+
+impl jungle_sdk::types::AnimalObservation for SeededWorkerAnimal {
+    type Bridge = jungle_sdk::types::NoopObservation;
+}
+
+impl jungle_sdk::types::AnimalPerturbation for SeededWorkerAnimal {
+    type Bridge = jungle_sdk::types::NoopPerturbation;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+impl jungle_sdk::types::Animals for SeededWorkerAnimal {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<
+        jungle_sdk::typosaurus::num::consts::U91,
+        SeededWorkerAnimal,
+    >;
+}
+
+#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+impl jungle_sdk::types::Identified for SeededWorkerAnimal {
+    type Id = jungle_sdk::typosaurus::num::consts::U91;
+}
+
+#[derive(Animals)]
+struct SeededWorkerAnimals(SeededWorkerAnimal);
+
+struct SeededWorkerZoo;
+impl Ecosystem for SeededWorkerZoo {
+    const NAME: &'static str = "seeded-worker-zoo";
+    type Animals = SeededWorkerAnimals;
+}
+
+impl From<&SeededWorkerZoo> for () {
+    fn from(_value: &SeededWorkerZoo) -> Self {}
 }
 
 #[test]
@@ -857,6 +960,103 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
     assert_eq!(success_calls.load(Ordering::Relaxed), 2);
     assert_eq!(failure_calls.load(Ordering::Relaxed), 0);
     assert_eq!(flow_complete_calls.load(Ordering::Relaxed), 1);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[tokio::test]
+async fn jungle_worker_uses_seed_input_for_first_step() {
+    use jungle_sdk::client::MockClient;
+    use jungle_sdk::core::JungleWorker;
+    use jungle_sdk::types::Work;
+    use std::time::Duration;
+
+    let input_payloads: Arc<std::sync::Mutex<Vec<Vec<u8>>>> =
+        Arc::new(std::sync::Mutex::new(vec![]));
+    let success_calls = Arc::new(AtomicUsize::new(0));
+    let flow_complete_calls = Arc::new(AtomicUsize::new(0));
+    let poll_calls = Arc::new(AtomicUsize::new(0));
+    let seed = postcard::to_allocvec(&SeededWorkerSeed { initial: 5 })
+        .expect("seeded worker seed should serialize");
+    let journey_id = Uuid::from_u128(202);
+
+    let client = MockClient::builder()
+        .on_poll_work({
+            let poll_calls = Arc::clone(&poll_calls);
+            let seed = seed.clone();
+            move |_| {
+                let poll_calls = Arc::clone(&poll_calls);
+                let seed = seed.clone();
+                async move {
+                    let idx = poll_calls.fetch_add(1, Ordering::Relaxed);
+                    if idx == 0 {
+                        Ok(Some(Work::StartJourney {
+                            journey_id,
+                            animal_id: 91,
+                            generation: 0,
+                            seed,
+                        }))
+                    } else {
+                        Ok(None)
+                    }
+                }
+            }
+        })
+        .on_effect_input({
+            let input_payloads = Arc::clone(&input_payloads);
+            move |_, payload| {
+                let input_payloads = Arc::clone(&input_payloads);
+                async move {
+                    input_payloads.lock().unwrap().push(payload);
+                    Ok(())
+                }
+            }
+        })
+        .on_effect_success_output({
+            let success_calls = Arc::clone(&success_calls);
+            move |_, _| {
+                let success_calls = Arc::clone(&success_calls);
+                async move {
+                    success_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
+        .on_flow_complete({
+            let flow_complete_calls = Arc::clone(&flow_complete_calls);
+            move |_| {
+                let flow_complete_calls = Arc::clone(&flow_complete_calls);
+                async move {
+                    flow_complete_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }
+            }
+        })
+        .build();
+
+    let worker = JungleWorker::new(SeededWorkerZoo, client);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let timed = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if success_calls.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    assert!(timed.is_ok(), "seeded worker flow should complete");
+    assert_eq!(flow_complete_calls.load(Ordering::Relaxed), 1);
+
+    let payloads = input_payloads.lock().unwrap().clone();
+    assert_eq!(payloads.len(), 1);
+    let typed_input: i32 =
+        postcard::from_bytes(&payloads[0]).expect("effect input payload should decode as i32");
+    assert_eq!(typed_input, 12);
 
     worker_handle.abort();
     let _ = worker_handle.await;

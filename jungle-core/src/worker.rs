@@ -6,9 +6,10 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     Animal, AnimalIdValue, AnimalObservation, AnimalPerturbation, AnimalSet, Animals,
-    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, RunnerOut, Sleep,
-    StripAnimalHeaders, SupportedAnimal, Work,
+    ArgputForState, BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError,
+    RunnerOut, SeedInput, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
+use serde::Serialize;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -401,9 +402,11 @@ where
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
     Head::Journey: BuildFlowWithContext<
-        (Arc<T>, DynFlow<Head::State>),
-        Output = (Arc<T>, DynFlow<Head::State>),
-    >,
+            (Arc<T>, DynFlow<Head::State>),
+            Output = (Arc<T>, DynFlow<Head::State>),
+        > + ArgputForState<Head::State>,
+    <Head::Journey as ArgputForState<Head::State>>::Carry:
+        SeedInput<Head::Seed> + Serialize + Clone + Send,
     Tail: SupportedAnimalGenerations<T>,
     T: Send + Sync + 'static,
 {
@@ -431,6 +434,10 @@ where
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                let initial_input =
+                    <<Head::Journey as ArgputForState<Head::State>>::Carry as SeedInput<
+                        Head::Seed,
+                    >>::from_seed(&seed);
                 let state: Head::State = seed.into();
                 let mut executor = runner.new_executor::<Head>(state);
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
@@ -438,7 +445,12 @@ where
                     .emit_appearance(journey_id, appearance, &mut tx)
                     .await?;
                 match runner
-                    .drive_until_sleep_or_complete::<Head>(&mut executor, journey_id, &mut tx)
+                    .drive_until_sleep_or_complete::<Head, _>(
+                        &mut executor,
+                        initial_input,
+                        journey_id,
+                        &mut tx,
+                    )
                     .await?
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
@@ -479,15 +491,31 @@ where
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                let initial_input =
+                    <<Head::Journey as ArgputForState<Head::State>>::Carry as SeedInput<
+                        Head::Seed,
+                    >>::from_seed(&seed);
                 let state: Head::State = seed.into();
                 let mut executor = runner.new_executor::<Head>(state);
-                replay_history::<T, Head>(&mut executor, journey_id, &history, &mut tx).await?;
+                replay_history::<T, Head, _>(
+                    &mut executor,
+                    initial_input.clone(),
+                    journey_id,
+                    &history,
+                    &mut tx,
+                )
+                .await?;
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
                     .emit_appearance(journey_id, appearance, &mut tx)
                     .await?;
                 match runner
-                    .drive_until_sleep_or_complete::<Head>(&mut executor, journey_id, &mut tx)
+                    .drive_until_sleep_or_complete::<Head, _>(
+                        &mut executor,
+                        initial_input,
+                        journey_id,
+                        &mut tx,
+                    )
                     .await?
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
@@ -514,8 +542,9 @@ where
     }
 }
 
-async fn replay_history<T, A>(
+async fn replay_history<T, A, Initial>(
     executor: &mut ContextExecutor<T, A>,
+    initial_input: Initial,
     journey_id: Uuid,
     history: &[RunnerOut],
     tx: &mut RunnerChannelTx,
@@ -525,6 +554,7 @@ where
     A: Animal + AnimalObservation + AnimalPerturbation,
     A::Journey:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+    Initial: Serialize + Clone,
 {
     let mut index = 0usize;
     while !executor.is_complete() {
@@ -532,7 +562,7 @@ where
             break;
         }
 
-        let request = match executor.next_executable_request(()) {
+        let request = match executor.next_executable_request(initial_input.clone()) {
             Ok(request) => request,
             Err(ExecutorError::Complete) => break,
             Err(err) => return Err(err),
