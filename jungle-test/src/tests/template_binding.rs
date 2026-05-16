@@ -2,7 +2,7 @@ use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Effect, EffectCompletion, Identity, ManualExecutor, Step, UStep,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43};
+use jungle_sdk::typosaurus::num::consts::{U0, U40, U41, U42, U43, U44};
 
 struct TemplateAddEffect;
 impl<J> Effect<J> for TemplateAddEffect {
@@ -303,4 +303,37 @@ fn template_binding_preserves_step_shape_after_binding() {
 
     assert_type_eq!(CounterBound, ExpectedCounter);
     assert_type_eq!(LedgerBound, ExpectedLedger);
+}
+
+struct BoundTemplateAnimal;
+impl jungle_sdk::types::Animal for BoundTemplateAnimal {
+    type Id = jungle_sdk::types::Id<U44>;
+    type Generation = U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = <TemplateFlow as BindAnimal<BoundTemplateAnimal>>::Bound;
+}
+
+#[test]
+fn template_binding_bound_journey_is_executor_ready() {
+    let mut executor = ManualExecutor::<BoundTemplateAnimal>::new(0);
+
+    let req_1: i32 = executor
+        .next_request_typed::<_, i32>(3)
+        .expect("first bound request");
+    assert_eq!(req_1, 4);
+    let out_1: i32 = executor
+        .complete_typed::<i32, (), i32>(Ok(6))
+        .expect("first bound completion");
+    assert_eq!(out_1, 6);
+
+    let req_2: i32 = executor
+        .next_request_typed::<_, i32>(2)
+        .expect("second bound request");
+    assert_eq!(req_2, 8);
+    let out_2: i32 = executor
+        .complete_typed::<i32, (), i32>(Ok(8))
+        .expect("second bound completion");
+    assert_eq!(out_2, 8);
+    assert_eq!(executor.into_state(), 8);
 }

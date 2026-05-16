@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize as SerdeSerialize};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use typosaurus::collections::list::{self, List as TList};
 
 type Serialized = Vec<u8>;
 type SerializedCompletion = Result<Serialized, Serialized>;
@@ -1596,6 +1597,27 @@ pub trait BuildFlow<Input> {
     }
 }
 
+impl<State> BuildFlow<DynFlow<State>> for list::Empty {
+    type Output = DynFlow<State>;
+
+    fn push_steps(steps: DynFlow<State>) -> Self::Output {
+        steps
+    }
+}
+
+impl<State, Head, Tail> BuildFlow<DynFlow<State>> for TList<(Head, Tail)>
+where
+    Head: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    Tail: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(steps: DynFlow<State>) -> Self::Output {
+        let steps = <Head as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        <Tail as BuildFlow<DynFlow<State>>>::push_steps(steps)
+    }
+}
+
 #[inception::primitive(property = crate::JungleDynFlow)]
 impl<T, A> BuildFlow<DynFlow<T::State>> for Step<T, A>
 where
@@ -1758,6 +1780,35 @@ pub trait BuildFlowWithContext<Input> {
         F: BuildFlowWithContext<Input>,
     {
         <F as BuildFlowWithContext<_>>::push_steps(input)
+    }
+}
+
+impl<Context, State> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for list::Empty {
+    type Output = (Arc<Context>, DynFlow<State>);
+
+    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        input
+    }
+}
+
+impl<Context, State, Head, Tail> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for TList<(Head, Tail)>
+where
+    Head: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    Tail: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+{
+    type Output = (Arc<Context>, DynFlow<State>);
+
+    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        let input =
+            <Head as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        <Tail as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
     }
 }
 
