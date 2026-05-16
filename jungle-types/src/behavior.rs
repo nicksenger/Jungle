@@ -74,6 +74,22 @@ pub trait StateCarrier<State> {
     fn view(state: &mut State) -> &mut Self::View;
 }
 
+/// Composes two carriers into a single projection.
+pub struct ComposeCarrier<Outer, Inner>(PhantomData<fn() -> (Outer, Inner)>);
+
+impl<State, Outer, Inner> StateCarrier<State> for ComposeCarrier<Outer, Inner>
+where
+    Outer: StateCarrier<State>,
+    Inner: StateCarrier<<Outer as StateCarrier<State>>::View>,
+{
+    type View = <Inner as StateCarrier<<Outer as StateCarrier<State>>::View>>::View;
+
+    fn view(state: &mut State) -> &mut Self::View {
+        let outer = <Outer as StateCarrier<State>>::view(state);
+        <Inner as StateCarrier<<Outer as StateCarrier<State>>::View>>::view(outer)
+    }
+}
+
 // Compatibility shim during carrier-trait migration.
 pub trait Aspect<State>: StateCarrier<State> {}
 
@@ -248,6 +264,84 @@ pub trait ActionSpec {
     type Input;
     type Output;
     type Act<A: Animal>;
+}
+
+/// Re-binds an action spec authored for one scope to another scope.
+pub trait ScopedActionSpec<A: Animal, ScopeState> {
+    type BoundAct: Act<A>;
+}
+
+/// Animal adapter that reuses identity metadata from `A` while swapping `State`.
+pub struct ScopedAnimal<A, Scope>(PhantomData<fn() -> (A, Scope)>);
+
+impl<A, Scope> Animal for ScopedAnimal<A, Scope>
+where
+    A: Animal,
+    Scope: Default,
+{
+    type Id = A::Id;
+    type Generation = A::Generation;
+    type State = Scope;
+    type Seed = A::Seed;
+    type Journey = A::Journey;
+}
+
+/// Adapts an `Act` bound to `ScopedAnimal<A, ScopeState>` to run on `A` by
+/// composing a parent scope carrier with the inner act's aspect.
+pub struct ScopeReboundAct<A, ScopeState, ScopeCarrier, InnerAct>(
+    PhantomData<fn() -> (A, ScopeState, ScopeCarrier, InnerAct)>,
+);
+
+impl<A, ScopeState, ScopeCarrier, InnerAct> Act<A>
+    for ScopeReboundAct<A, ScopeState, ScopeCarrier, InnerAct>
+where
+    A: Animal,
+    ScopeState: Default,
+    ScopeCarrier: Aspect<A::State, View = ScopeState>,
+    InnerAct: Act<ScopedAnimal<A, ScopeState>>,
+{
+    type Effect = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Effect;
+    type StateAspect = ComposeCarrier<
+        ScopeCarrier,
+        <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::StateAspect,
+    >;
+    type Input = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Input;
+    type Output = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Output;
+
+    fn emit(
+        view: &<<Self as Act<A>>::StateAspect as StateCarrier<A::State>>::View,
+        input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::emit(view, input)
+    }
+
+    fn absorb(
+        view: &mut <<Self as Act<A>>::StateAspect as StateCarrier<A::State>>::View,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::absorb(view, output)
+    }
+}
+
+impl<S, A, ScopeState, ScopeCarrier> ScopedActionSpec<A, ScopeState> for S
+where
+    A: Animal,
+    S: ActionSpec,
+    ScopeState: Default,
+    ScopeCarrier: Aspect<A::State, View = ScopeState>,
+    <S as ActionSpec>::Act<ScopedAnimal<A, ScopeState>>: Act<
+        ScopedAnimal<A, ScopeState>,
+        Input = <S as ActionSpec>::Input,
+        Output = <S as ActionSpec>::Output,
+        Effect = <S as ActionSpec>::Effect,
+    >,
+{
+    type BoundAct = ScopeReboundAct<
+        A,
+        ScopeState,
+        ScopeCarrier,
+        <S as ActionSpec>::Act<ScopedAnimal<A, ScopeState>>,
+    >;
 }
 
 /// Forward half of [`Act`], responsible for producing an effect request input.
