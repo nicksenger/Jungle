@@ -3,11 +3,12 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundFlowStep, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst,
-    JourneyAstSource, ManualExecutor, NodeMetadata, Select, Transparent, While,
+    Act, BindAnimal, BoundAct, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst,
+    JourneyAstSource, ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U30, U31};
 use std::future::ready;
+use std::marker::PhantomData;
 
 struct TransparentEffect;
 
@@ -34,11 +35,22 @@ impl Animal for TransparentAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = TransparentJourney;
+    type Journey = <TransparentFlowTemplate as BindAnimal<TransparentAnimal>>::Bound;
 }
 
-struct TransparentStep;
-impl BoundAct<TransparentAnimal> for TransparentStep {
+struct TransparentStepSpec;
+impl Act for TransparentStepSpec {
+    type Effect = TransparentEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = TransparentStep<A>;
+}
+
+struct TransparentStep<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for TransparentStep<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = TransparentEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -60,11 +72,11 @@ impl NodeMetadata for FlowSectionMetadata {
     const METADATA: &'static str = "section:checkout/preflight";
 }
 
-type BaseFlow = BoundFlowStep<TransparentAnimal, TransparentStep>;
+type BaseFlow = Step<TransparentStepSpec>;
 type TransparentFlow = Transparent<FlowSectionMetadata, BaseFlow>;
 
-#[derive(jungle_sdk::Journey)]
-struct TransparentJourney(TransparentFlow);
+#[derive(jungle_sdk::Flow)]
+struct TransparentFlowTemplate(TransparentFlow);
 
 #[test]
 fn transparent_flow_runs_as_passthrough_boundary() {
