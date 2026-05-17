@@ -132,7 +132,7 @@ pub trait Act {
 }
 
 /// Re-binds an action spec authored for one scope to another scope.
-pub trait ScopedActionSpec<A: Animal, ScopeState, ScopeCarrier> {
+pub trait ScopedAct<A: Animal, ScopeState, ScopeCarrier> {
     type BoundAct: BoundAct<A>;
 }
 
@@ -186,7 +186,7 @@ where
     }
 }
 
-impl<S, A, ScopeState, ScopeCarrier> ScopedActionSpec<A, ScopeState, ScopeCarrier> for S
+impl<S, A, ScopeState, ScopeCarrier> ScopedAct<A, ScopeState, ScopeCarrier> for S
 where
     A: Animal,
     S: Act,
@@ -608,8 +608,8 @@ where
     ScopeCarrier: crate::ScopedCarrierMarker,
     ScopeCarrier: Aspect<T::State>,
     S: Act,
-    S: ScopedActionSpec<T, <ScopeCarrier as StateCarrier<T::State>>::View, ScopeCarrier>,
-    <S as ScopedActionSpec<
+    S: ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::View, ScopeCarrier>,
+    <S as ScopedAct<
         T,
         <ScopeCarrier as StateCarrier<T::State>>::View,
         ScopeCarrier,
@@ -622,7 +622,7 @@ where
 {
     type Output = BoundFlowStep<
         T,
-        <S as ScopedActionSpec<
+        <S as ScopedAct<
             T,
             <ScopeCarrier as StateCarrier<T::State>>::View,
             ScopeCarrier,
