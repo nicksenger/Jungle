@@ -3,7 +3,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, BindAnimal, BoundAct, Ecosystem, EffectCompletion, Generations,
+    Act, Animal, BoundAct, Ecosystem, EffectCompletion, Generations,
     HighestGeneration, Id, Identity, JourneyStatus, Observe, Step, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -111,7 +111,7 @@ impl Animal for LegacyAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <LegacyFlowTemplate as BindAnimal<LegacyAnimal>>::Bound;
+    type Journey = LegacyFlowTemplate;
 }
 impl Observe for LegacyAnimal {
     type Appearance = i32;
@@ -128,7 +128,7 @@ impl Animal for ModernAnimal {
     type Generation = U1;
     type State = i32;
     type Seed = i32;
-    type Journey = <ModernFlowTemplate as BindAnimal<ModernAnimal>>::Bound;
+    type Journey = ModernFlowTemplate;
 }
 impl Observe for ModernAnimal {
     type Appearance = i32;
@@ -145,7 +145,7 @@ impl Animal for FutureAnimal {
     type Generation = U2;
     type State = i32;
     type Seed = i32;
-    type Journey = <ModernFlowTemplate as BindAnimal<FutureAnimal>>::Bound;
+    type Journey = ModernFlowTemplate;
 }
 impl Observe for FutureAnimal {
     type Appearance = i32;

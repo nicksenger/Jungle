@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BindAnimal, BoundAct, BoundFlowStep, Conditional, EffectCompletion, Either, Executor, Identity,
+    Act, BoundAct, BoundFlowStep, Conditional, EffectCompletion, Either, Executor, Identity,
     ManualExecutor, Running, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
@@ -52,7 +52,7 @@ impl Animal for ConditionalAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <ConditionalFlowTemplate as BindAnimal<ConditionalAnimal>>::Bound;
+    type Journey = ConditionalFlowTemplate;
 }
 
 struct LeftSpec;

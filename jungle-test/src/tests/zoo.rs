@@ -4,7 +4,7 @@ use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Animal, AnimalSet, AnimalStates, BindAnimal, BoundAct, BoundFlowStep, Ecosystem,
+    Act, Animal, AnimalSet, AnimalStates, BoundAct, BoundFlowStep, Ecosystem,
     EffectCompletion, EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier,
     Step, While,
 };
@@ -194,7 +194,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = <PreyWorkflowTemplate as BindAnimal<Gorilla>>::Bound;
+    type Journey = PreyWorkflowTemplate;
 }
 struct Chimpanzee;
 
@@ -204,7 +204,7 @@ impl Animal for Chimpanzee {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = <PreyWorkflowTemplate as BindAnimal<Chimpanzee>>::Bound;
+    type Journey = PreyWorkflowTemplate;
 }
 struct Tiger;
 
@@ -214,7 +214,7 @@ impl Animal for Tiger {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = <PredatorWorkflowTemplate as BindAnimal<Tiger>>::Bound;
+    type Journey = PredatorWorkflowTemplate;
 }
 struct Jaguar;
 
@@ -224,7 +224,7 @@ impl Animal for Jaguar {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = <PredatorWorkflowTemplate as BindAnimal<Jaguar>>::Bound;
+    type Journey = PredatorWorkflowTemplate;
 }
 struct Anaconda;
 
@@ -234,7 +234,7 @@ impl Animal for Anaconda {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = <PredatorWorkflowTemplate as BindAnimal<Anaconda>>::Bound;
+    type Journey = PredatorWorkflowTemplate;
 }
 struct Hippo;
 
@@ -244,7 +244,7 @@ impl Animal for Hippo {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = <PreyWorkflowTemplate as BindAnimal<Hippo>>::Bound;
+    type Journey = PreyWorkflowTemplate;
 }
 struct Elephant;
 
@@ -254,7 +254,7 @@ impl Animal for Elephant {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = <PreyWorkflowTemplate as BindAnimal<Elephant>>::Bound;
+    type Journey = PreyWorkflowTemplate;
 }
 
 #[derive(Animals)]
@@ -423,10 +423,8 @@ fn animal_state_set() {
     #[derive(Default, Serialize, Deserialize)]
     struct CatState;
 
-    type StatefulGorillaJourney =
-        <PreyWorkflowTemplate as jungle_sdk::types::BindAnimal<StatefulGorilla>>::Bound;
-    type StatefulTigerJourney =
-        <PredatorWorkflowTemplate as jungle_sdk::types::BindAnimal<StatefulTiger>>::Bound;
+    type StatefulGorillaJourney = PreyWorkflowTemplate;
+    type StatefulTigerJourney = PredatorWorkflowTemplate;
 
     struct StatefulGorilla;
 

@@ -4,7 +4,7 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BindAnimal, BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    Act, BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Identity, JourneyStatus, LoopCondition, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
@@ -250,7 +250,7 @@ impl Act for ReplayPostSpec {
 #[derive(jungle_sdk::Flow)]
 struct ReplayGateTemplate(ReplayPhaseRouterFlow<ReplayPreSpec, ReplayGateSpec, ReplayPostSpec>);
 
-type ReplayGateJourney = <ReplayGateTemplate as BindAnimal<ReplayGateAnimal>>::Bound;
+type ReplayGateJourney = ReplayGateTemplate;
 
 struct ReplayGateAnimal;
 
@@ -553,7 +553,7 @@ struct ReplayTimeoutTemplate(
     ReplayPhaseRouterFlow<ReplayTimeoutPreSpec, ReplayTimeoutSleepSpec, ReplayTimeoutPostSpec>,
 );
 
-type ReplayTimeoutJourney = <ReplayTimeoutTemplate as BindAnimal<ReplayTimeoutAnimal>>::Bound;
+type ReplayTimeoutJourney = ReplayTimeoutTemplate;
 
 struct ReplayTimeoutAnimal;
 

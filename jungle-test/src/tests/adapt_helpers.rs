@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    AbsorbFn, AbsorbMapper, Act, BindAnimal, EffectCompletion, EmitFn, EmitMapper, Fuse, Identity,
+    AbsorbFn, AbsorbMapper, Act, EffectCompletion, EmitFn, EmitMapper, Fuse, Identity,
     ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
@@ -117,7 +117,7 @@ impl Animal for HelperAnimal {
     type Generation = U0;
     type State = HelperState;
     type Seed = HelperState;
-    type Journey = <AdaptHelpersFlowTemplate as BindAnimal<HelperAnimal>>::Bound;
+    type Journey = AdaptHelpersFlowTemplate;
 }
 
 #[test]

@@ -116,7 +116,7 @@ impl Animal for CounterAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <CounterFlowTemplate as BindAnimal<CounterAnimal>>::Bound;
+    type Journey = CounterFlowTemplate;
 }
 
 impl LateBoundPolicy for CounterAnimal {
@@ -131,7 +131,7 @@ impl Animal for LedgerAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <LedgerFlowTemplate as BindAnimal<LedgerAnimal>>::Bound;
+    type Journey = LedgerFlowTemplate;
 }
 
 impl LateBoundPolicy for LedgerAnimal {
@@ -351,7 +351,7 @@ impl Animal for BoundTemplateAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <TestFlow as BindAnimal<BoundTemplateAnimal>>::Bound;
+    type Journey = TestFlow;
 }
 
 trait LateBoundPolicy {
@@ -395,7 +395,7 @@ impl Animal for LocalTemplateAlphaAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <TestFlow as BindAnimal<LocalTemplateAlphaAnimal>>::Bound;
+    type Journey = TestFlow;
 }
 
 impl LateBoundPolicy for LocalTemplateAlphaAnimal {
@@ -410,7 +410,7 @@ impl Animal for LocalTemplateBetaAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <TestFlow as BindAnimal<LocalTemplateBetaAnimal>>::Bound;
+    type Journey = TestFlow;
 }
 
 impl LateBoundPolicy for LocalTemplateBetaAnimal {
@@ -538,7 +538,7 @@ impl Animal for LocalTemplateContextAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <ContextBoundFlow as BindAnimal<LocalTemplateContextAnimal>>::Bound;
+    type Journey = ContextBoundFlow;
 }
 
 #[derive(Animals)]
@@ -691,7 +691,7 @@ impl Animal for ComposedAlphaAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <composed_templates::ComposedPipeline as BindAnimal<ComposedAlphaAnimal>>::Bound;
+    type Journey = composed_templates::ComposedPipeline;
 }
 
 impl LateBoundPolicy for ComposedAlphaAnimal {
@@ -706,7 +706,7 @@ impl Animal for ComposedBetaAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <composed_templates::ComposedPipeline as BindAnimal<ComposedBetaAnimal>>::Bound;
+    type Journey = composed_templates::ComposedPipeline;
 }
 
 impl LateBoundPolicy for ComposedBetaAnimal {
@@ -923,7 +923,7 @@ impl Animal for LensAlphaAnimal {
     type Generation = U0;
     type State = LensRootState;
     type Seed = i32;
-    type Journey = <LensFlow as BindAnimal<LensAlphaAnimal>>::Bound;
+    type Journey = LensFlow;
 }
 
 impl Observe for LensAlphaAnimal {
@@ -1160,7 +1160,7 @@ impl Animal for NestedScopeAnimal {
     type Generation = U0;
     type State = NestedLensRootState;
     type Seed = i32;
-    type Journey = <NestedBranchScopedFlow as BindAnimal<NestedScopeAnimal>>::Bound;
+    type Journey = NestedBranchScopedFlow;
 }
 
 impl Observe for NestedScopeAnimal {
@@ -1640,7 +1640,7 @@ impl Animal for ComplexAlphaAnimal {
     type Generation = U0;
     type State = ComplexAlphaState;
     type Seed = i32;
-    type Journey = <LongMixedFlow as BindAnimal<ComplexAlphaAnimal>>::Bound;
+    type Journey = LongMixedFlow;
 }
 
 impl ComplexFlowBinding for ComplexAlphaAnimal {
@@ -1694,7 +1694,7 @@ impl Animal for ComplexBetaAnimal {
     type Generation = U0;
     type State = ComplexBetaState;
     type Seed = i32;
-    type Journey = <LongMixedFlow as BindAnimal<ComplexBetaAnimal>>::Bound;
+    type Journey = LongMixedFlow;
 }
 
 impl ComplexFlowBinding for ComplexBetaAnimal {

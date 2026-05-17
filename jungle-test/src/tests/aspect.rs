@@ -4,7 +4,7 @@ use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Aspect, BindAnimal, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, EffectExec,
+    Act, Aspect, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, EffectExec,
     EffectSchema, Either, Executor, Identity, LoopCondition, Running, StateCarrier, Waiting, While,
     Step,
 };
@@ -357,7 +357,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = GorillaState;
     type Seed = GorillaState;
-    type Journey = <GorillaJourneyTemplate as BindAnimal<Gorilla>>::Bound;
+    type Journey = GorillaJourneyTemplate;
 }
 struct Tiger;
 
@@ -367,7 +367,7 @@ impl Animal for Tiger {
     type Generation = U0;
     type State = TigerState;
     type Seed = TigerState;
-    type Journey = <TigerJourneyTemplate as BindAnimal<Tiger>>::Bound;
+    type Journey = TigerJourneyTemplate;
 }
 
 #[test]

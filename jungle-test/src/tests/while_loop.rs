@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BindAnimal, BoundAct, BoundFlowStep, EffectCompletion, Executor, Identity, LoopCondition,
+    Act, BoundAct, BoundFlowStep, EffectCompletion, Executor, Identity, LoopCondition,
     ManualExecutor, Running, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
@@ -36,7 +36,7 @@ impl Animal for Looper {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <LoopFlowTemplate as BindAnimal<Looper>>::Bound;
+    type Journey = LoopFlowTemplate;
 }
 
 struct TickSpec;
@@ -108,7 +108,7 @@ impl Animal for LooperWithTail {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <LoopWithTailFlowTemplate as BindAnimal<LooperWithTail>>::Bound;
+    type Journey = LoopWithTailFlowTemplate;
 }
 
 struct TailAfterLoopSpec;
@@ -182,7 +182,7 @@ impl Animal for NestedLooper {
     type Generation = U0;
     type State = NestedState;
     type Seed = NestedState;
-    type Journey = <NestedLoopFlowTemplate as BindAnimal<NestedLooper>>::Bound;
+    type Journey = NestedLoopFlowTemplate;
 }
 
 struct InnerContinue;

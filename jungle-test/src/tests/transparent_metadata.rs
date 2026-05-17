@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BindAnimal, BoundAct, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst,
+    Act, BoundAct, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst,
     JourneyAstSource, ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U30, U31};
@@ -35,7 +35,7 @@ impl Animal for TransparentAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <TransparentFlowTemplate as BindAnimal<TransparentAnimal>>::Bound;
+    type Journey = TransparentFlowTemplate;
 }
 
 struct TransparentStepSpec;

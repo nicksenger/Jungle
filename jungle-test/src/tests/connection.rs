@@ -4,7 +4,7 @@ use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
-use jungle_sdk::types::{Act, BindAnimal, BoundAct, EffectCompletion, Identity, Step};
+use jungle_sdk::types::{Act, BoundAct, EffectCompletion, Identity, Step};
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{
     BackendError, ClaimedPerturbable, JourneyStatus, JungleClient, MockServer, RunnerOut,
@@ -42,7 +42,7 @@ impl Animal for ConnectionAnimal7 {
     type Generation = U0;
     type State = ();
     type Seed = ();
-    type Journey = <ConnectionFlowTemplate7 as BindAnimal<ConnectionAnimal7>>::Bound;
+    type Journey = ConnectionFlowTemplate7;
 }
 
 struct ConnectionStepSpec7;
@@ -98,7 +98,7 @@ impl Animal for ConnectionAnimal9 {
     type Generation = U0;
     type State = ();
     type Seed = ();
-    type Journey = <ConnectionFlowTemplate9 as BindAnimal<ConnectionAnimal9>>::Bound;
+    type Journey = ConnectionFlowTemplate9;
 }
 
 struct ConnectionStepSpec9;

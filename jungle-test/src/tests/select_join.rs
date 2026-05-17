@@ -2,7 +2,7 @@ use jungle_sdk::animal;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BindAnimal, BoundAct, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either,
+    Act, BoundAct, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either,
     Executor, Identity, Join, Select, Sleep, Step,
 };
 use jungle_sdk::typosaurus::num::consts::*;
@@ -163,7 +163,7 @@ impl Animal for SelectAnimal {
     type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = <SelectFlowTemplate as BindAnimal<SelectAnimal>>::Bound;
+    type Journey = SelectFlowTemplate;
 }
 
 struct JoinFastSpec;
@@ -267,7 +267,7 @@ impl Animal for JoinAnimal {
     type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = <JoinFlowTemplate as BindAnimal<JoinAnimal>>::Bound;
+    type Journey = JoinFlowTemplate;
 }
 
 struct TimeoutSleepSpec;
@@ -339,7 +339,7 @@ impl Animal for TimeoutAnimal {
     type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = <TimeoutFlowTemplate as BindAnimal<TimeoutAnimal>>::Bound;
+    type Journey = TimeoutFlowTemplate;
 }
 
 #[tokio::test]
