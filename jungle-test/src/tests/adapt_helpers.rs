@@ -3,11 +3,10 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    AbsorbFn, AbsorbMapper, BoundFlowStep, EffectCompletion, EmitFn, EmitMapper, FocusedStep, Fuse,
-    Identity, IdentityStep, ManualExecutor, PassthroughEmit, UnitEmit,
+    AbsorbFn, AbsorbMapper, Act, BindAnimal, EffectCompletion, EmitFn, EmitMapper, Fuse, Identity,
+    ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
-use jungle_sdk::Journey;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,29 +73,41 @@ impl EmitMapper<HelperState, EchoEffect, i32> for EmitUsingState {
     }
 }
 
-type PassthroughStep = FocusedStep<
-    HelperAnimal,
-    Identity,
-    PassthroughEmit<EchoEffect, Identity>,
-    AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
->;
+struct PassthroughSpec;
+impl Act for PassthroughSpec {
+    type Effect = EchoEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = Fuse<
+        PassthroughEmit<EchoEffect, Identity>,
+        AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
+    >;
+}
 
-type UnitStep = IdentityStep<
-    HelperAnimal,
-    UnitEmit<PulseEffect, Identity>,
-    AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
->;
+struct UnitSpec;
+impl Act for UnitSpec {
+    type Effect = PulseEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = Fuse<
+        UnitEmit<PulseEffect, Identity>,
+        AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
+    >;
+}
 
-type FunctionEmitStep = BoundFlowStep<
-    HelperAnimal,
-    Fuse<
+struct FunctionEmitSpec;
+impl Act for FunctionEmitSpec {
+    type Effect = EchoEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = Fuse<
         EmitFn<Identity, EchoEffect, i32, EmitUsingState>,
         AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
-    >,
->;
+    >;
+}
 
-#[derive(Journey)]
-struct AdaptHelpersJourney(PassthroughStep, UnitStep, FunctionEmitStep);
+#[derive(jungle_sdk::Flow)]
+struct AdaptHelpersFlowTemplate(Step<PassthroughSpec>, Step<UnitSpec>, Step<FunctionEmitSpec>);
 
 struct HelperAnimal;
 
@@ -106,7 +117,7 @@ impl Animal for HelperAnimal {
     type Generation = U0;
     type State = HelperState;
     type Seed = HelperState;
-    type Journey = AdaptHelpersJourney;
+    type Journey = <AdaptHelpersFlowTemplate as BindAnimal<HelperAnimal>>::Bound;
 }
 
 #[test]

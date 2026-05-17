@@ -3,13 +3,13 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundFlowStep, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor,
-    Running, Waiting, While,
+    Act, BindAnimal, BoundAct, BoundFlowStep, EffectCompletion, Executor, Identity, LoopCondition,
+    ManualExecutor, Running, Step, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
-use jungle_sdk::Journey;
 use serde::{Deserialize, Serialize};
 use std::future::ready;
+use std::marker::PhantomData;
 
 struct TickEffect;
 
@@ -36,11 +36,22 @@ impl Animal for Looper {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = LoopJourney;
+    type Journey = <LoopFlowTemplate as BindAnimal<Looper>>::Bound;
 }
 
-struct Tick;
-impl BoundAct<Looper> for Tick {
+struct TickSpec;
+impl Act for TickSpec {
+    type Effect = TickEffect;
+    type Input = i32;
+    type Output = (bool, i32);
+    type Bind<A: Animal> = Tick<A>;
+}
+
+struct Tick<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for Tick<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = TickEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -57,7 +68,7 @@ impl BoundAct<Looper> for Tick {
     }
 }
 
-type TickFlow = BoundFlowStep<Looper, Tick>;
+type TickFlow = BoundFlowStep<Looper, Tick<Looper>>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {
@@ -69,8 +80,8 @@ impl LoopCondition<i32> for LessThanThree {
 }
 type WhileTickFlow = While<LessThanThree, TickFlow>;
 
-#[derive(Journey)]
-struct LoopJourney(WhileTickFlow);
+#[derive(jungle_sdk::Flow)]
+struct LoopFlowTemplate(While<LessThanThree, Step<TickSpec>>);
 
 struct TailEchoEffect;
 
@@ -97,29 +108,22 @@ impl Animal for LooperWithTail {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = LoopWithTailJourney;
+    type Journey = <LoopWithTailFlowTemplate as BindAnimal<LooperWithTail>>::Bound;
 }
 
-struct TickWithTail;
-impl BoundAct<LooperWithTail> for TickWithTail {
-    type Effect = TickEffect;
-    type Aspect = Identity;
-    type Input = i32;
-    type Output = (bool, i32);
-
-    fn emit(state: &i32, input: Self::Input) -> i32 {
-        *state + input
-    }
-
-    fn absorb(state: &mut i32, output: EffectCompletion<TickEffect>) -> Self::Output {
-        let value = output.expect("tick effect should succeed");
-        *state = value;
-        (*state < 3, value)
-    }
+struct TailAfterLoopSpec;
+impl Act for TailAfterLoopSpec {
+    type Effect = TailEchoEffect;
+    type Input = (bool, i32);
+    type Output = i32;
+    type Bind<A: Animal> = TailAfterLoop<A>;
 }
 
-struct TailAfterLoop;
-impl BoundAct<LooperWithTail> for TailAfterLoop {
+struct TailAfterLoop<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for TailAfterLoop<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = TailEchoEffect;
     type Aspect = Identity;
     type Input = (bool, i32);
@@ -140,14 +144,11 @@ impl BoundAct<LooperWithTail> for TailAfterLoop {
     }
 }
 
-type TickWithTailFlow = BoundFlowStep<LooperWithTail, TickWithTail>;
+type TickWithTailFlow = BoundFlowStep<LooperWithTail, Tick<LooperWithTail>>;
 type WhileTickWithTailFlow = While<LessThanThree, TickWithTailFlow>;
 
-#[derive(Journey)]
-struct LoopWithTailJourney(
-    WhileTickWithTailFlow,
-    BoundFlowStep<LooperWithTail, TailAfterLoop>,
-);
+#[derive(jungle_sdk::Flow)]
+struct LoopWithTailFlowTemplate(While<LessThanThree, Step<TickSpec>>, Step<TailAfterLoopSpec>);
 
 struct UnitEffect;
 
@@ -181,7 +182,7 @@ impl Animal for NestedLooper {
     type Generation = U0;
     type State = NestedState;
     type Seed = NestedState;
-    type Journey = NestedLoopJourney;
+    type Journey = <NestedLoopFlowTemplate as BindAnimal<NestedLooper>>::Bound;
 }
 
 struct InnerContinue;
@@ -202,8 +203,19 @@ impl LoopCondition<NestedState> for OuterContinue {
     }
 }
 
-struct InnerWork;
-impl BoundAct<NestedLooper> for InnerWork {
+struct InnerWorkSpec;
+impl Act for InnerWorkSpec {
+    type Effect = UnitEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = InnerWork<A>;
+}
+
+struct InnerWork<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for InnerWork<A>
+where
+    A: Animal<State = NestedState>,
+{
     type Effect = UnitEffect;
     type Aspect = Identity;
     type Input = ();
@@ -216,8 +228,19 @@ impl BoundAct<NestedLooper> for InnerWork {
     }
 }
 
-struct FinishOuterRound;
-impl BoundAct<NestedLooper> for FinishOuterRound {
+struct FinishOuterRoundSpec;
+impl Act for FinishOuterRoundSpec {
+    type Effect = UnitEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = FinishOuterRound<A>;
+}
+
+struct FinishOuterRound<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for FinishOuterRound<A>
+where
+    A: Animal<State = NestedState>,
+{
     type Effect = UnitEffect;
     type Aspect = Identity;
     type Input = ();
@@ -232,18 +255,15 @@ impl BoundAct<NestedLooper> for FinishOuterRound {
     }
 }
 
-type NestedInnerLoop = While<InnerContinue, BoundFlowStep<NestedLooper, InnerWork>>;
+type NestedInnerLoop = While<InnerContinue, BoundFlowStep<NestedLooper, InnerWork<NestedLooper>>>;
 
-#[derive(Journey)]
-struct NestedOuterBody(
-    NestedInnerLoop,
-    BoundFlowStep<NestedLooper, FinishOuterRound>,
-);
+#[derive(jungle_sdk::Flow)]
+struct NestedOuterBodyTemplate(While<InnerContinue, Step<InnerWorkSpec>>, Step<FinishOuterRoundSpec>);
 
-type NestedOuterLoop = While<OuterContinue, NestedOuterBody>;
+type NestedOuterLoop = While<OuterContinue, BoundFlowStep<NestedLooper, FinishOuterRound<NestedLooper>>>;
 
-#[derive(Journey)]
-struct NestedLoopJourney(NestedOuterLoop);
+#[derive(jungle_sdk::Flow)]
+struct NestedLoopFlowTemplate(While<OuterContinue, NestedOuterBodyTemplate>);
 
 #[test]
 fn while_running_checks_state_before_iteration() {
