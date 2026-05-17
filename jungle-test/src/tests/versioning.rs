@@ -3,13 +3,14 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Animal, BoundAct, BoundFlowStep, Ecosystem, EffectCompletion, Generations, HighestGeneration,
-    Id, Identity, JourneyStatus, Observe, SupportedAnimal,
+    Act, Animal, BindAnimal, BoundAct, Ecosystem, EffectCompletion, Generations,
+    HighestGeneration, Id, Identity, JourneyStatus, Observe, Step, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U33, U70, U71};
-use jungle_sdk::{Animals, Journey, JungleClient};
+use jungle_sdk::{Animals, JungleClient};
+use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -47,8 +48,19 @@ impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
     }
 }
 
-struct LegacyStep;
-impl BoundAct<LegacyAnimal> for LegacyStep {
+struct LegacyStepSpec;
+impl Act for LegacyStepSpec {
+    type Effect = LegacyEffect;
+    type Input = i32;
+    type Output = ();
+    type Bind<A: Animal> = LegacyStep<A>;
+}
+
+struct LegacyStep<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for LegacyStep<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = LegacyEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -61,8 +73,19 @@ impl BoundAct<LegacyAnimal> for LegacyStep {
     }
 }
 
-struct ModernStep;
-impl BoundAct<ModernAnimal> for ModernStep {
+struct ModernStepSpec;
+impl Act for ModernStepSpec {
+    type Effect = ModernEffect;
+    type Input = i32;
+    type Output = ();
+    type Bind<A: Animal> = ModernStep<A>;
+}
+
+struct ModernStep<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for ModernStep<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = ModernEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -75,11 +98,11 @@ impl BoundAct<ModernAnimal> for ModernStep {
     }
 }
 
-#[derive(Journey)]
-struct LegacyJourney(BoundFlowStep<LegacyAnimal, LegacyStep>);
+#[derive(jungle_sdk::Flow)]
+struct LegacyFlowTemplate(Step<LegacyStepSpec>);
 
-#[derive(Journey)]
-struct ModernJourney(BoundFlowStep<ModernAnimal, ModernStep>);
+#[derive(jungle_sdk::Flow)]
+struct ModernFlowTemplate(Step<ModernStepSpec>);
 
 struct LegacyAnimal;
 #[animal(observe)]
@@ -88,7 +111,7 @@ impl Animal for LegacyAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = LegacyJourney;
+    type Journey = <LegacyFlowTemplate as BindAnimal<LegacyAnimal>>::Bound;
 }
 impl Observe for LegacyAnimal {
     type Appearance = i32;
@@ -105,7 +128,7 @@ impl Animal for ModernAnimal {
     type Generation = U1;
     type State = i32;
     type Seed = i32;
-    type Journey = ModernJourney;
+    type Journey = <ModernFlowTemplate as BindAnimal<ModernAnimal>>::Bound;
 }
 impl Observe for ModernAnimal {
     type Appearance = i32;
@@ -122,7 +145,7 @@ impl Animal for FutureAnimal {
     type Generation = U2;
     type State = i32;
     type Seed = i32;
-    type Journey = ModernJourney;
+    type Journey = <ModernFlowTemplate as BindAnimal<FutureAnimal>>::Bound;
 }
 impl Observe for FutureAnimal {
     type Appearance = i32;

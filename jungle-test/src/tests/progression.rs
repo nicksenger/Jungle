@@ -2,12 +2,13 @@ use jungle_sdk::animal;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    BoundAct, BoundFlowStep, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
-    EffectRequest, EffectSchema, Executor, Id, Identity, ManualExecutor, Running, Waiting,
+    Act, BindAnimal, BoundAct, BoundFlowStep, Condition, Conditional, ContextExecutor,
+    EffectCompletion, EffectExec, EffectRequest, EffectSchema, Executor, Id, Identity,
+    ManualExecutor, Running, Step, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
-use jungle_sdk::Journey;
 use std::future::ready;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 struct SeedEffect;
@@ -44,8 +45,19 @@ impl<J> EffectExec<J> for FinishEffect {
     }
 }
 
-struct Seed;
-impl BoundAct<ProgressAnimal> for Seed {
+struct SeedSpec;
+impl Act for SeedSpec {
+    type Effect = SeedEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = Seed<A>;
+}
+
+struct Seed<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for Seed<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = SeedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -62,8 +74,19 @@ impl BoundAct<ProgressAnimal> for Seed {
     }
 }
 
-struct Finish;
-impl BoundAct<ProgressAnimal> for Finish {
+struct FinishSpec;
+impl Act for FinishSpec {
+    type Effect = FinishEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = Finish<A>;
+}
+
+struct Finish<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for Finish<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = FinishEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -80,11 +103,8 @@ impl BoundAct<ProgressAnimal> for Finish {
     }
 }
 
-#[derive(Journey)]
-struct ProgressJourney(
-    BoundFlowStep<ProgressAnimal, Seed>,
-    BoundFlowStep<ProgressAnimal, Finish>,
-);
+#[derive(jungle_sdk::Flow)]
+struct ProgressFlowTemplate(Step<SeedSpec>, Step<FinishSpec>);
 
 struct ProgressAnimal;
 
@@ -94,13 +114,13 @@ impl Animal for ProgressAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = ProgressJourney;
+    type Journey = <ProgressFlowTemplate as BindAnimal<ProgressAnimal>>::Bound;
 }
 
 struct ProgressContext;
 
-type SeedStep = BoundFlowStep<ProgressAnimal, Seed>;
-type FinishStep = BoundFlowStep<ProgressAnimal, Finish>;
+type SeedStep = BoundFlowStep<ProgressAnimal, Seed<ProgressAnimal>>;
+type FinishStep = BoundFlowStep<ProgressAnimal, Finish<ProgressAnimal>>;
 
 struct StepHarness;
 impl StepHarness {
@@ -235,8 +255,19 @@ impl<J> EffectExec<J> for BranchEffect {
     }
 }
 
-struct BranchStepA;
-impl BoundAct<BranchAnimal> for BranchStepA {
+struct BranchStepASpec;
+impl Act for BranchStepASpec {
+    type Effect = BranchEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = BranchStepA<A>;
+}
+
+struct BranchStepA<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for BranchStepA<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = BranchEffect;
     type Aspect = Identity;
     type Input = ();
@@ -251,8 +282,19 @@ impl BoundAct<BranchAnimal> for BranchStepA {
     }
 }
 
-struct BranchStepB;
-impl BoundAct<BranchAnimal> for BranchStepB {
+struct BranchStepBSpec;
+impl Act for BranchStepBSpec {
+    type Effect = BranchEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = BranchStepB<A>;
+}
+
+struct BranchStepB<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for BranchStepB<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = BranchEffect;
     type Aspect = Identity;
     type Input = ();
@@ -274,17 +316,15 @@ impl Condition<(i32, ())> for UseDerivedBranch {
     }
 }
 
-#[derive(Journey)]
-struct DerivedBranchFlow(
-    BoundFlowStep<BranchAnimal, BranchStepA>,
-    BoundFlowStep<BranchAnimal, BranchStepB>,
-);
+#[derive(jungle_sdk::Flow)]
+struct DerivedBranchFlowTemplate(Step<BranchStepASpec>, Step<BranchStepBSpec>);
 
-type BranchConditionalFlow =
-    Conditional<UseDerivedBranch, DerivedBranchFlow, BoundFlowStep<BranchAnimal, BranchStepB>>;
+type DerivedBranchFlow = <DerivedBranchFlowTemplate as BindAnimal<BranchAnimal>>::Bound;
 
-#[derive(Journey)]
-struct BranchJourney(BranchConditionalFlow);
+#[derive(jungle_sdk::Flow)]
+struct BranchFlowTemplate(Conditional<UseDerivedBranch, DerivedBranchFlowTemplate, Step<BranchStepBSpec>>);
+
+type BranchJourney = <BranchFlowTemplate as BindAnimal<BranchAnimal>>::Bound;
 
 struct BranchAnimal;
 

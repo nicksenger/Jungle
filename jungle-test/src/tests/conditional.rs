@@ -3,11 +3,11 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundFlowStep, Conditional, EffectCompletion, Either, Executor, Identity,
+    Act, BindAnimal, BoundAct, BoundFlowStep, Conditional, EffectCompletion, Either, Executor, Identity,
     ManualExecutor, Running, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use jungle_sdk::Journey;
+use std::marker::PhantomData;
 use std::future::ready;
 
 struct LeftEffect;
@@ -52,11 +52,22 @@ impl Animal for ConditionalAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = ConditionalJourney;
+    type Journey = <ConditionalFlowTemplate as BindAnimal<ConditionalAnimal>>::Bound;
 }
 
-struct Left;
-impl BoundAct<ConditionalAnimal> for Left {
+struct LeftSpec;
+impl Act for LeftSpec {
+    type Effect = LeftEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = Left<A>;
+}
+
+struct Left<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for Left<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = LeftEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -73,8 +84,19 @@ impl BoundAct<ConditionalAnimal> for Left {
     }
 }
 
-struct Right;
-impl BoundAct<ConditionalAnimal> for Right {
+struct RightSpec;
+impl Act for RightSpec {
+    type Effect = RightEffect;
+    type Input = i32;
+    type Output = bool;
+    type Bind<A: Animal> = Right<A>;
+}
+
+struct Right<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for Right<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = RightEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -91,8 +113,8 @@ impl BoundAct<ConditionalAnimal> for Right {
     }
 }
 
-type LeftFlow = BoundFlowStep<ConditionalAnimal, Left>;
-type RightFlow = BoundFlowStep<ConditionalAnimal, Right>;
+type LeftFlow = jungle_sdk::types::Step<LeftSpec>;
+type RightFlow = jungle_sdk::types::Step<RightSpec>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
@@ -103,18 +125,24 @@ impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegati
 
 type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, RightFlow>;
 
-#[derive(Journey)]
-struct ConditionalJourney(ConditionalFlow);
+#[derive(jungle_sdk::Flow)]
+struct ConditionalFlowTemplate(ConditionalFlow);
+
+type BoundConditionalFlow = Conditional<
+    PreferLeftWhenStateIsNonNegative,
+    BoundFlowStep<ConditionalAnimal, Left<ConditionalAnimal>>,
+    BoundFlowStep<ConditionalAnimal, Right<ConditionalAnimal>>,
+>;
 
 #[test]
 fn conditional_run_selects_branch_from_predicate() {
-    let left = <ConditionalFlow as Running>::run((5, 3));
+    let left = <BoundConditionalFlow as Running>::run((5, 3));
     match left {
         Either::Left((_state, request)) => assert_eq!(request.into_input(), 8),
         Either::Right(_) => panic!("expected left branch"),
     }
 
-    let right = <ConditionalFlow as Running>::run((-2, 3));
+    let right = <BoundConditionalFlow as Running>::run((-2, 3));
     match right {
         Either::Left(_) => panic!("expected right branch"),
         Either::Right((_state, request)) => assert_eq!(request.into_input(), -5),
@@ -123,7 +151,7 @@ fn conditional_run_selects_branch_from_predicate() {
 
 #[test]
 fn conditional_waiting_accept_returns_either_branch_output() {
-    let left = <ConditionalFlow as Waiting>::accept(Either::Left((1, Ok(9))));
+    let left = <BoundConditionalFlow as Waiting>::accept(Either::Left((1, Ok(9))));
     match left {
         Either::Left((state, emitted)) => {
             assert_eq!(state, 9);
@@ -132,7 +160,7 @@ fn conditional_waiting_accept_returns_either_branch_output() {
         Either::Right(_) => panic!("expected left output"),
     }
 
-    let right = <ConditionalFlow as Waiting>::accept(Either::Right((1, Ok(6))));
+    let right = <BoundConditionalFlow as Waiting>::accept(Either::Right((1, Ok(6))));
     match right {
         Either::Left(_) => panic!("expected right output"),
         Either::Right((state, emitted)) => {

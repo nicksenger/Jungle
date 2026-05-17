@@ -4,12 +4,14 @@ use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
+use jungle_sdk::types::{Act, BindAnimal, BoundAct, EffectCompletion, Identity, Step};
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{
     BackendError, ClaimedPerturbable, JourneyStatus, JungleClient, MockServer, RunnerOut,
     RunnerUpdateOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::net::SocketAddr;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -40,28 +42,36 @@ impl Animal for ConnectionAnimal7 {
     type Generation = U0;
     type State = ();
     type Seed = ();
-    type Journey = ConnectionJourney7;
+    type Journey = <ConnectionFlowTemplate7 as BindAnimal<ConnectionAnimal7>>::Bound;
 }
 
-struct ConnectionStep7;
-impl jungle_sdk::types::BoundAct<ConnectionAnimal7> for ConnectionStep7 {
+struct ConnectionStepSpec7;
+impl Act for ConnectionStepSpec7 {
     type Effect = ConnectionEffect7;
-    type Aspect = jungle_sdk::types::Identity;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = ConnectionStep7<A>;
+}
+
+struct ConnectionStep7<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for ConnectionStep7<A>
+where
+    A: Animal<State = ()>,
+{
+    type Effect = ConnectionEffect7;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        _state: &mut (),
-        output: jungle_sdk::types::EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("connection animal 7 effect should succeed");
     }
 }
 
-#[derive(jungle_sdk::Journey)]
-struct ConnectionJourney7(jungle_sdk::types::BoundFlowStep<ConnectionAnimal7, ConnectionStep7>);
+#[derive(jungle_sdk::Flow)]
+struct ConnectionFlowTemplate7(Step<ConnectionStepSpec7>);
 
 struct ConnectionEffect9;
 
@@ -88,28 +98,36 @@ impl Animal for ConnectionAnimal9 {
     type Generation = U0;
     type State = ();
     type Seed = ();
-    type Journey = ConnectionJourney9;
+    type Journey = <ConnectionFlowTemplate9 as BindAnimal<ConnectionAnimal9>>::Bound;
 }
 
-struct ConnectionStep9;
-impl jungle_sdk::types::BoundAct<ConnectionAnimal9> for ConnectionStep9 {
+struct ConnectionStepSpec9;
+impl Act for ConnectionStepSpec9 {
     type Effect = ConnectionEffect9;
-    type Aspect = jungle_sdk::types::Identity;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = ConnectionStep9<A>;
+}
+
+struct ConnectionStep9<A>(PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for ConnectionStep9<A>
+where
+    A: Animal<State = ()>,
+{
+    type Effect = ConnectionEffect9;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        _state: &mut (),
-        output: jungle_sdk::types::EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("connection animal 9 effect should succeed");
     }
 }
 
-#[derive(jungle_sdk::Journey)]
-struct ConnectionJourney9(jungle_sdk::types::BoundFlowStep<ConnectionAnimal9, ConnectionStep9>);
+#[derive(jungle_sdk::Flow)]
+struct ConnectionFlowTemplate9(Step<ConnectionStepSpec9>);
 
 #[tokio::test]
 async fn client_exchanges_messages_with_mock_server() {
