@@ -4,7 +4,7 @@ use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Animal, AnimalEffectSet, AnimalSet, AnimalStates, BoundAct, BoundFlowStep, Ecosystem,
+    Act, Animal, AnimalSet, AnimalStates, BindAnimal, BoundAct, BoundFlowStep, Ecosystem,
     EffectCompletion, EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier,
     Step, While,
 };
@@ -257,7 +257,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = GorillaJourney;
+    type Journey = <PreyWorkflowTemplate as BindAnimal<Gorilla>>::Bound;
 }
 struct Chimpanzee;
 
@@ -477,15 +477,6 @@ fn composite_animals() {
 
     type PredatorList = list![Tiger, Jaguar, Anaconda];
     assert_type_eq!(AnimalSet<Predators>, PredatorList);
-}
-
-#[test]
-fn animal_effect_set() {
-    type ApeAnimalEffects = list![Eat, Sleep, Forage, Drink, Flee];
-    assert_type_eq!(AnimalEffectSet<Apes>, ApeAnimalEffects);
-
-    type AllAnimalEffects = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
-    assert_type_eq!(AnimalEffectSet<AllAnimals>, AllAnimalEffects);
 }
 
 #[test]
