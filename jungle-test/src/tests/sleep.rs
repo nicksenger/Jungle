@@ -5,7 +5,7 @@ use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
-    JourneyStatus, LoopCondition, Observe, Sleep, Step, While,
+    JourneyStatus, LoopCondition, Observe, Sleep, BoundStep, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -111,11 +111,11 @@ type SleepJourney = While<
     SleepNotComplete,
     Conditional<
         SleepPhaseZero,
-        Step<SleepAnimal, AddBeforeSleep>,
+        BoundStep<SleepAnimal, AddBeforeSleep>,
         Conditional<
             SleepPhaseOne,
-            Step<SleepAnimal, SleepForStateWake>,
-            Step<SleepAnimal, AddAfterSleep>,
+            BoundStep<SleepAnimal, SleepForStateWake>,
+            BoundStep<SleepAnimal, AddAfterSleep>,
         >,
     >,
 >;

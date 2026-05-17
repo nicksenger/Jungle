@@ -1,5 +1,5 @@
 use crate::{
-    ActionSpec, Conditional, Join, NodeMetadata, Scoped, Select, Step, StepSpec, Transparent, While,
+    ActionSpec, Conditional, Join, NodeMetadata, Scoped, Select, BoundStep, StepSpec, Transparent, While,
 };
 use inception::*;
 
@@ -103,7 +103,7 @@ pub trait BuildJourneyAst<Input> {
 }
 
 #[inception::primitive(property = JungleJourneyAst)]
-impl<T, A> BuildJourneyAst<Vec<JourneyAst>> for Step<T, A>
+impl<T, A> BuildJourneyAst<Vec<JourneyAst>> for BoundStep<T, A>
 where
     T: crate::Animal + 'static,
     A: crate::Act<T> + 'static,

@@ -4,7 +4,7 @@ use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst, JourneyAstSource,
-    ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
+    ManualExecutor, NodeMetadata, Select, BoundStep, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U30, U31};
 use std::future::ready;
@@ -60,7 +60,7 @@ impl NodeMetadata for FlowSectionMetadata {
     const METADATA: &'static str = "section:checkout/preflight";
 }
 
-type BaseFlow = Step<TransparentAnimal, TransparentStep>;
+type BaseFlow = BoundStep<TransparentAnimal, TransparentStep>;
 type TransparentFlow = Transparent<FlowSectionMetadata, BaseFlow>;
 
 #[derive(jungle_sdk::Journey)]

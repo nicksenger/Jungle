@@ -6,7 +6,7 @@ use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
-    JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, Step, While,
+    JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, BoundStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::*;
@@ -288,11 +288,11 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
 
 type MultiMatchBeforeFlow = Conditional<
     UseFirstBeforeFullStateTask,
-    Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
+    BoundStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
     Conditional<
         UseFirstBeforeFullStateTask,
-        Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
-        Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
+        BoundStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
+        BoundStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
     >,
 >;
 
@@ -300,8 +300,8 @@ type LoopBranchFlow = While<
     KeepRunning,
     Conditional<
         UseFirstBeforeFullStateTask,
-        Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
-        Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+        BoundStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
+        BoundStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
     >,
 >;
 
@@ -311,27 +311,27 @@ type IntegrationJourney = While<
         IsBeforeFocusedSubFlow,
         Conditional<
             UseFirstBeforeFullStateTask,
-            Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
-            Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+            BoundStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
+            BoundStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
         >,
         Conditional<
             IsInFocusedSubFlow,
             Conditional<
                 UseFirstFocusedTask,
-                Step<IntegrationAnimal, AddOneFocusedStep>,
-                Step<IntegrationAnimal, AddTwoFocusedStep>,
+                BoundStep<IntegrationAnimal, AddOneFocusedStep>,
+                BoundStep<IntegrationAnimal, AddTwoFocusedStep>,
             >,
             Conditional<
                 IsInDeepFocusedSubFlow,
                 Conditional<
                     UseFirstDeepFocusedTask,
-                    Step<IntegrationAnimal, AddOneDeepFocusedStep>,
-                    Step<IntegrationAnimal, AddTwoDeepFocusedStep>,
+                    BoundStep<IntegrationAnimal, AddOneDeepFocusedStep>,
+                    BoundStep<IntegrationAnimal, AddTwoDeepFocusedStep>,
                 >,
                 Conditional<
                     UseFirstAfterFullStateTask,
-                    Step<IntegrationAnimal, AddOneAfterFullStateStep>,
-                    Step<IntegrationAnimal, AddTwoAfterFullStateStep>,
+                    BoundStep<IntegrationAnimal, AddOneAfterFullStateStep>,
+                    BoundStep<IntegrationAnimal, AddTwoAfterFullStateStep>,
                 >,
             >,
         >,
@@ -737,11 +737,11 @@ fn replaced_alias_rewrites_integration_flow_steps() {
     >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
-        Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+        BoundStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
         Conditional<
             UseFirstBeforeFullStateTask,
-            Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
-            Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+            BoundStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+            BoundStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
         >,
     >;
     assert_type_eq!(Actual, Expected);
@@ -753,10 +753,10 @@ fn replaced_nodes_alias_replaces_loop_branch_section() {
         LoopBranchFlow,
         jungle_sdk::types::SwapNodeLR<
             LoopBranchFlow,
-            Step<IntegrationAnimal, AddOneAfterFullStateStep>,
+            BoundStep<IntegrationAnimal, AddOneAfterFullStateStep>,
         >,
     >;
-    type Expected = Step<IntegrationAnimal, AddOneAfterFullStateStep>;
+    type Expected = BoundStep<IntegrationAnimal, AddOneAfterFullStateStep>;
     assert_type_eq!(Actual, Expected);
 }
 

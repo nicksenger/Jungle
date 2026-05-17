@@ -49,7 +49,7 @@ impl jungle_sdk::types::Act<ProbeAnimal> for ProbeStep {
 }
 
 #[derive(jungle_sdk::Journey)]
-pub struct ProbeJourney(jungle_sdk::types::Step<ProbeAnimal, ProbeStep>);
+pub struct ProbeJourney(jungle_sdk::types::BoundStep<ProbeAnimal, ProbeStep>);
 
 pub struct ProbeAnimal;
 

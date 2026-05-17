@@ -3,7 +3,7 @@ use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     Act, AnimalEffectSet, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
-    EffectRequest, EffectSchema, Executor, Id, Identity, ManualExecutor, Running, Step, Waiting,
+    EffectRequest, EffectSchema, Executor, Id, Identity, ManualExecutor, Running, BoundStep, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -83,7 +83,7 @@ impl Act<ProgressAnimal> for Finish {
 }
 
 #[derive(Journey)]
-struct ProgressJourney(Step<ProgressAnimal, Seed>, Step<ProgressAnimal, Finish>);
+struct ProgressJourney(BoundStep<ProgressAnimal, Seed>, BoundStep<ProgressAnimal, Finish>);
 
 struct ProgressAnimal;
 
@@ -101,8 +101,8 @@ struct ProgressAnimals(ProgressAnimal);
 
 struct ProgressContext;
 
-type SeedStep = Step<ProgressAnimal, Seed>;
-type FinishStep = Step<ProgressAnimal, Finish>;
+type SeedStep = BoundStep<ProgressAnimal, Seed>;
+type FinishStep = BoundStep<ProgressAnimal, Finish>;
 
 struct StepHarness;
 impl StepHarness {
@@ -127,7 +127,7 @@ trait StepExecutor:
     type Effect: EffectSchema<In = i32, Out = i32, Err = ()>;
 }
 
-impl<A> StepExecutor for Step<ProgressAnimal, A>
+impl<A> StepExecutor for BoundStep<ProgressAnimal, A>
 where
     A: Act<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32>,
     <A as Act<ProgressAnimal>>::Effect:
@@ -285,12 +285,12 @@ impl Condition<(i32, ())> for UseDerivedBranch {
 
 #[derive(Journey)]
 struct DerivedBranchFlow(
-    Step<BranchAnimal, BranchStepA>,
-    Step<BranchAnimal, BranchStepB>,
+    BoundStep<BranchAnimal, BranchStepA>,
+    BoundStep<BranchAnimal, BranchStepB>,
 );
 
 type BranchConditionalFlow =
-    Conditional<UseDerivedBranch, DerivedBranchFlow, Step<BranchAnimal, BranchStepB>>;
+    Conditional<UseDerivedBranch, DerivedBranchFlow, BoundStep<BranchAnimal, BranchStepB>>;
 
 #[derive(Journey)]
 struct BranchJourney(BranchConditionalFlow);

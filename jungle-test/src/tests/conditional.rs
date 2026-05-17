@@ -3,8 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Conditional, EffectCompletion, Either, Executor, Identity, ManualExecutor, Running, Step,
-    Waiting,
+    Act, Conditional, EffectCompletion, Either, Executor, Identity, ManualExecutor, Running, BoundStep,     Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Journey;
@@ -91,8 +90,8 @@ impl Act<ConditionalAnimal> for Right {
     }
 }
 
-type LeftFlow = Step<ConditionalAnimal, Left>;
-type RightFlow = Step<ConditionalAnimal, Right>;
+type LeftFlow = BoundStep<ConditionalAnimal, Left>;
+type RightFlow = BoundStep<ConditionalAnimal, Right>;
 
 struct PreferLeftWhenStateIsNonNegative;
 impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {

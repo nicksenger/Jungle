@@ -13,7 +13,7 @@ pub use behavior::{
 };
 pub use behavior::{
     Act, ActionSpec, Aspect, EffectCompletion, EffectExec, EffectRequest, EffectSchema, Identity,
-    ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, Step, StepSpec, UStep,
+    ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, BoundStep, StepSpec, UStep,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -421,7 +421,7 @@ pub trait BindWithTemplateScope<A: Animal, ScopeView> {
 /// Convenience alias for binding a flow/template to a concrete animal.
 pub type BoundFlow<F, A> = <F as BindAnimal<A>>::Bound;
 
-/// Traversal that binds `StepSpec<S>` nodes to concrete `Step<A, _>` nodes
+/// Traversal that binds `StepSpec<S>` nodes to concrete `BoundStep<A, _>` nodes
 /// within a current scope carrier.
 pub struct RootScope;
 pub struct BindAnimalTraversal<A, Scope = RootScope>(PhantomData<fn() -> (A, Scope)>);
@@ -458,10 +458,10 @@ where
         <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
 }
 
-/// Directional helper that rewrites `Step<Animal, Left>` to `Step<Animal, Right>`.
+/// Directional helper that rewrites `BoundStep<Animal, Left>` to `BoundStep<Animal, Right>`.
 pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
-/// Directional helper that rewrites `Step<Animal, Right>` to `Step<Animal, Left>`.
+/// Directional helper that rewrites `BoundStep<Animal, Right>` to `BoundStep<Animal, Left>`.
 pub struct SwapRL<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
 /// Directional helper alias for node replacement from `Left` to `Right`.
@@ -470,22 +470,22 @@ pub type SwapNodeLR<Left, Right> = SwapLR<Left, Right>;
 /// Directional helper alias for node replacement from `Right` to `Left`.
 pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 
-impl<A, Left, Right> ReplaceStep<Step<A, Left>> for SwapLR<Left, Right>
+impl<A, Left, Right> ReplaceStep<BoundStep<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
     Left: Act<A>,
     Right: Act<A>,
 {
-    type Output = Step<A, Right>;
+    type Output = BoundStep<A, Right>;
 }
 
-impl<A, Left, Right> ReplaceStep<Step<A, Right>> for SwapRL<Left, Right>
+impl<A, Left, Right> ReplaceStep<BoundStep<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
     Left: Act<A>,
     Right: Act<A>,
 {
-    type Output = Step<A, Left>;
+    type Output = BoundStep<A, Left>;
 }
 
 impl<Left, Right> ReplaceStep<StepSpec<Left>> for SwapLR<Left, Right>
@@ -1123,7 +1123,7 @@ where
     >>::Output;
 }
 
-impl<T, A> NodeMetadata for Step<T, A>
+impl<T, A> NodeMetadata for BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
@@ -1166,14 +1166,14 @@ impl<View, F> NodeMetadata for Scoped<View, F> {}
 
 impl<S> NodeMetadata for StepSpec<S> where S: ActionSpec {}
 
-impl<A, Scope, T, B> TraverseStep<Step<T, B>> for BindAnimalTraversal<A, Scope>
+impl<A, Scope, T, B> TraverseStep<BoundStep<T, B>> for BindAnimalTraversal<A, Scope>
 where
     A: Animal,
     Scope: Aspect<A::State>,
     T: Animal,
     B: Act<T>,
 {
-    type Output = Step<T, B>;
+    type Output = BoundStep<T, B>;
 }
 
 impl<A, View, F> TraverseWith<BindAnimalTraversal<A, RootScope>> for Scoped<View, F>

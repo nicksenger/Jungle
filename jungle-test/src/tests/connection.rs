@@ -61,7 +61,7 @@ impl jungle_sdk::types::Act<ConnectionAnimal7> for ConnectionStep7 {
 }
 
 #[derive(jungle_sdk::Journey)]
-struct ConnectionJourney7(jungle_sdk::types::Step<ConnectionAnimal7, ConnectionStep7>);
+struct ConnectionJourney7(jungle_sdk::types::BoundStep<ConnectionAnimal7, ConnectionStep7>);
 
 struct ConnectionEffect9;
 
@@ -109,7 +109,7 @@ impl jungle_sdk::types::Act<ConnectionAnimal9> for ConnectionStep9 {
 }
 
 #[derive(jungle_sdk::Journey)]
-struct ConnectionJourney9(jungle_sdk::types::Step<ConnectionAnimal9, ConnectionStep9>);
+struct ConnectionJourney9(jungle_sdk::types::BoundStep<ConnectionAnimal9, ConnectionStep9>);
 
 #[tokio::test]
 async fn client_exchanges_messages_with_mock_server() {

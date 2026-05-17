@@ -4,7 +4,7 @@ use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Act, Animal, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id, Identity,
-    JourneyStatus, Observe, Step, SupportedAnimal,
+    JourneyStatus, Observe, BoundStep, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -76,10 +76,10 @@ impl Act<ModernAnimal> for ModernStep {
 }
 
 #[derive(Journey)]
-struct LegacyJourney(Step<LegacyAnimal, LegacyStep>);
+struct LegacyJourney(BoundStep<LegacyAnimal, LegacyStep>);
 
 #[derive(Journey)]
-struct ModernJourney(Step<ModernAnimal, ModernStep>);
+struct ModernJourney(BoundStep<ModernAnimal, ModernStep>);
 
 struct LegacyAnimal;
 #[animal(observe)]

@@ -9,7 +9,7 @@ use crate::state::{
 use jungle_sdk::types::{
     Act, Animal, Animals, Condition, Conditional, EffectCompletion, EffectSchema, Id, Identified,
     Identity, LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation, Observable,
-    Perturbable, Step, Transparent, While,
+    Perturbable, BoundStep, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -93,7 +93,7 @@ impl From<TemporalState> for () {
 //
 //    #[test]
 //    fn probe_flow_compile_contracts_hold() {
-//        assert_running::<Step<Gorilla, GorillaBirth>>();
+//        assert_running::<BoundStep<Gorilla, GorillaBirth>>();
 //        assert_running::<GorillaFeedFlow>();
 //        assert_running::<GorillaToolSocialFlow>();
 //        assert_running::<GorillaSimpleSocialFlow>();
@@ -102,8 +102,8 @@ impl From<TemporalState> for () {
 //        assert_running::<GorillaYearFlow>();
 //        assert_running::<GorillaJourney>();
 //
-//        assert_waiting::<Step<Gorilla, GorillaBirth>>();
-//        assert_flow_effects::<Step<Gorilla, GorillaBirth>>();
+//        assert_waiting::<BoundStep<Gorilla, GorillaBirth>>();
+//        assert_flow_effects::<BoundStep<Gorilla, GorillaBirth>>();
 //
 //        assert_context_flow::<GorillaFeedFlow>();
 //        assert_context_flow::<GorillaToolSocialFlow>();
@@ -451,20 +451,20 @@ impl Act<Gorilla> for GorillaMakeSound {
 
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaFeedFlow(
-    Step<Gorilla, GorillaPeelFruit>,
-    Step<Gorilla, GorillaEat>,
-    Step<Gorilla, GorillaRest>,
+    BoundStep<Gorilla, GorillaPeelFruit>,
+    BoundStep<Gorilla, GorillaEat>,
+    BoundStep<Gorilla, GorillaRest>,
 );
 
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaToolSocialFlow(
-    Step<Gorilla, GorillaUseTool>,
-    Step<Gorilla, GorillaChestBeat>,
-    Step<Gorilla, GorillaMakeSound>,
+    BoundStep<Gorilla, GorillaUseTool>,
+    BoundStep<Gorilla, GorillaChestBeat>,
+    BoundStep<Gorilla, GorillaMakeSound>,
 );
 
 #[derive(jungle_sdk::Journey)]
-pub struct GorillaSimpleSocialFlow(Step<Gorilla, GorillaMakeSound>, Step<Gorilla, GorillaRest>);
+pub struct GorillaSimpleSocialFlow(BoundStep<Gorilla, GorillaMakeSound>, BoundStep<Gorilla, GorillaRest>);
 
 pub type GorillaActiveFlow = Conditional<
     GorillaIsHungry,
@@ -474,16 +474,16 @@ pub type GorillaActiveFlow = Conditional<
 
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaDayFlow(
-    Step<Gorilla, GorillaEvaluateActivityWindow>,
-    Conditional<GorillaIsActiveNow, GorillaActiveFlow, Step<Gorilla, GorillaRest>>,
-    Step<Gorilla, GorillaTickPerceivedTime>,
+    BoundStep<Gorilla, GorillaEvaluateActivityWindow>,
+    Conditional<GorillaIsActiveNow, GorillaActiveFlow, BoundStep<Gorilla, GorillaRest>>,
+    BoundStep<Gorilla, GorillaTickPerceivedTime>,
 );
 
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaYearFlow(
-    Step<Gorilla, GorillaBirthday>,
+    BoundStep<Gorilla, GorillaBirthday>,
     While<GorillaDaylightRemaining, GorillaDayFlow>,
-    Step<Gorilla, GorillaAdvanceAge>,
+    BoundStep<Gorilla, GorillaAdvanceAge>,
 );
 
 pub struct GorillaLifecycleMetadata;
@@ -493,34 +493,34 @@ impl NodeMetadata for GorillaLifecycleMetadata {
 
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaLifecycleFlow(
-    Step<Gorilla, GorillaRest>,
+    BoundStep<Gorilla, GorillaRest>,
     Transparent<GorillaLifecycleMetadata, GorillaYearFlow>,
     While<GorillaDaylightRemaining, GorillaDayFlow>,
-    Step<Gorilla, GorillaRest>,
+    BoundStep<Gorilla, GorillaRest>,
 );
 
 #[derive(jungle_sdk::Journey)]
 pub struct GorillaJourney(
-    Step<Gorilla, GorillaBirth>,
+    BoundStep<Gorilla, GorillaBirth>,
     While<GorillaStillGrowing, GorillaLifecycleFlow>,
-    Step<Gorilla, GorillaRest>,
+    BoundStep<Gorilla, GorillaRest>,
 );
 
 #[derive(jungle_sdk::Journey)]
 pub struct ProbeDayFlow(
-    Step<Gorilla, GorillaEvaluateActivityWindow>,
-    Conditional<GorillaIsActiveNow, ProbeActiveFlow, Step<Gorilla, GorillaRest>>,
-    Step<Gorilla, GorillaTickPerceivedTime>,
+    BoundStep<Gorilla, GorillaEvaluateActivityWindow>,
+    Conditional<GorillaIsActiveNow, ProbeActiveFlow, BoundStep<Gorilla, GorillaRest>>,
+    BoundStep<Gorilla, GorillaTickPerceivedTime>,
 );
 
 #[derive(jungle_sdk::Journey)]
-pub struct ProbeActiveFlow(Step<Gorilla, ProbeStep>, Step<Gorilla, ProbeStep>);
+pub struct ProbeActiveFlow(BoundStep<Gorilla, ProbeStep>, BoundStep<Gorilla, ProbeStep>);
 
 #[derive(jungle_sdk::Journey)]
 pub struct ProbeYearFlow(
-    Step<Gorilla, GorillaBirthday>,
+    BoundStep<Gorilla, GorillaBirthday>,
     While<GorillaDaylightRemaining, ProbeDayFlow>,
-    Step<Gorilla, GorillaAdvanceAge>,
+    BoundStep<Gorilla, GorillaAdvanceAge>,
 );
 
 pub struct Gorilla;
@@ -547,7 +547,7 @@ impl jungle_sdk::types::Act<Gorilla> for ProbeStep {
 
 #[derive(jungle_sdk::Journey)]
 pub struct ProbeJourney(
-    Step<Gorilla, GorillaBirth>,
+    BoundStep<Gorilla, GorillaBirth>,
     While<GorillaStillGrowing, ProbeYearFlow>,
 );
 impl Animal for Gorilla {
@@ -583,17 +583,17 @@ impl Perturbable for Gorilla {
 //    {
 //    }
 //
-//    assert_step::<Step<Gorilla, GorillaBirth>>();
-//    assert_step::<Step<Gorilla, GorillaEvaluateActivityWindow>>();
-//    assert_step::<Step<Gorilla, GorillaTickPerceivedTime>>();
-//    assert_step::<Step<Gorilla, GorillaBirthday>>();
-//    assert_step::<Step<Gorilla, GorillaAdvanceAge>>();
-//    assert_step::<Step<Gorilla, GorillaPeelFruit>>();
-//    assert_step::<Step<Gorilla, GorillaEat>>();
-//    assert_step::<Step<Gorilla, GorillaUseTool>>();
-//    assert_step::<Step<Gorilla, GorillaChestBeat>>();
-//    assert_step::<Step<Gorilla, GorillaRest>>();
-//    assert_step::<Step<Gorilla, GorillaMakeSound>>();
+//    assert_step::<BoundStep<Gorilla, GorillaBirth>>();
+//    assert_step::<BoundStep<Gorilla, GorillaEvaluateActivityWindow>>();
+//    assert_step::<BoundStep<Gorilla, GorillaTickPerceivedTime>>();
+//    assert_step::<BoundStep<Gorilla, GorillaBirthday>>();
+//    assert_step::<BoundStep<Gorilla, GorillaAdvanceAge>>();
+//    assert_step::<BoundStep<Gorilla, GorillaPeelFruit>>();
+//    assert_step::<BoundStep<Gorilla, GorillaEat>>();
+//    assert_step::<BoundStep<Gorilla, GorillaUseTool>>();
+//    assert_step::<BoundStep<Gorilla, GorillaChestBeat>>();
+//    assert_step::<BoundStep<Gorilla, GorillaRest>>();
+//    assert_step::<BoundStep<Gorilla, GorillaMakeSound>>();
 //
 //    fn assert_flow<F>()
 //    where

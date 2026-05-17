@@ -1,8 +1,7 @@
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::{
-    Act, Animal, Conditional, EffectCompletion, Id, Identity, LoopCondition, ReplaceStep, Step,
-    TraverseStep, While,
+    Act, Animal, Conditional, EffectCompletion, Id, Identity, LoopCondition, ReplaceStep, BoundStep,     TraverseStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::{U0, U20, U21, U22, U23, U24};
@@ -141,8 +140,8 @@ impl LoopCondition<i32> for KeepLooping {
 
 type SourceFlow = Conditional<
     KeepLooping,
-    Step<TraverseAnimal, StepA>,
-    While<KeepLooping, Step<TraverseAnimal, StepB>>,
+    BoundStep<TraverseAnimal, StepA>,
+    While<KeepLooping, BoundStep<TraverseAnimal, StepB>>,
 >;
 
 struct Seen<T>(core::marker::PhantomData<T>);
@@ -152,11 +151,11 @@ impl<Step> TraverseStep<Step> for TraverseMapper {
 }
 
 struct ReplaceMapper;
-impl ReplaceStep<Step<TraverseAnimal, StepA>> for ReplaceMapper {
-    type Output = Step<TraverseAnimal, StepC>;
+impl ReplaceStep<BoundStep<TraverseAnimal, StepA>> for ReplaceMapper {
+    type Output = BoundStep<TraverseAnimal, StepC>;
 }
-impl ReplaceStep<Step<TraverseAnimal, StepB>> for ReplaceMapper {
-    type Output = Step<TraverseAnimal, StepD>;
+impl ReplaceStep<BoundStep<TraverseAnimal, StepB>> for ReplaceMapper {
+    type Output = BoundStep<TraverseAnimal, StepD>;
 }
 
 #[test]
@@ -164,16 +163,16 @@ fn traverse_and_replace_are_type_level_transformations() {
     type TraversedFlow = jungle_sdk::types::Traversed<SourceFlow, TraverseMapper>;
     type ExpectedTraversed = Conditional<
         KeepLooping,
-        Seen<Step<TraverseAnimal, StepA>>,
-        While<KeepLooping, Seen<Step<TraverseAnimal, StepB>>>,
+        Seen<BoundStep<TraverseAnimal, StepA>>,
+        While<KeepLooping, Seen<BoundStep<TraverseAnimal, StepB>>>,
     >;
     assert_type_eq!(TraversedFlow, ExpectedTraversed);
 
     type ReplacedFlow = jungle_sdk::types::Replace<SourceFlow, ReplaceMapper>;
     type ExpectedReplaced = Conditional<
         KeepLooping,
-        Step<TraverseAnimal, StepC>,
-        While<KeepLooping, Step<TraverseAnimal, StepD>>,
+        BoundStep<TraverseAnimal, StepC>,
+        While<KeepLooping, BoundStep<TraverseAnimal, StepD>>,
     >;
     assert_type_eq!(ReplacedFlow, ExpectedReplaced);
 }

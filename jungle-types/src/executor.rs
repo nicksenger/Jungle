@@ -1,6 +1,6 @@
 use crate::{
     Act, Animal, BackendError, Conditional, EffectCompletion, EffectExec, EffectSchema, Join,
-    LoopCondition, Running, Scoped, Select, Step, Transparent, While,
+    LoopCondition, Running, Scoped, Select, BoundStep, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -30,7 +30,7 @@ pub trait ArgputForState<State> {
     type Carry;
 }
 
-impl<State, T, A> ArgputForState<State> for Step<T, A>
+impl<State, T, A> ArgputForState<State> for BoundStep<T, A>
 where
     T: Animal<State = State>,
     A: Act<T>,
@@ -262,7 +262,7 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
-impl<T, A> ErasedFlow<T::State> for TypedErasedStep<Step<T, A>>
+impl<T, A> ErasedFlow<T::State> for TypedErasedStep<BoundStep<T, A>>
 where
     T: Animal,
     A: Act<T>,
@@ -291,7 +291,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
-        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
+        let (state, request) = <BoundStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -316,7 +316,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
-        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
+        let (state, request) = <BoundStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
         let request = match postcard::to_allocvec(&effect_input) {
             Ok(request) => request,
@@ -365,7 +365,7 @@ where
             ),
         };
 
-        let (state, emitted) = <Step<T, A> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <BoundStep<T, A> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -407,7 +407,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
     }
 }
 
-impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Step<T, A>>
+impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, BoundStep<T, A>>
 where
     Context: Send + Sync + 'static,
     T: Animal,
@@ -435,7 +435,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
-        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
+        let (state, request) = <BoundStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -460,7 +460,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
-        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
+        let (state, request) = <BoundStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
         let request = match postcard::to_allocvec(&effect_input) {
             Ok(request) => request,
@@ -513,7 +513,7 @@ where
             ),
         };
 
-        let (state, emitted) = <Step<T, A> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) = <BoundStep<T, A> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -1623,7 +1623,7 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<T, A> BuildFlow<DynFlow<T::State>> for Step<T, A>
+impl<T, A> BuildFlow<DynFlow<T::State>> for BoundStep<T, A>
 where
     T: Animal + 'static,
     A: Act<T> + 'static,
@@ -1637,7 +1637,7 @@ where
     type Output = DynFlow<T::State>;
 
     fn push_steps(mut steps: DynFlow<T::State>) -> Self::Output {
-        steps.push(Box::new(TypedErasedStep::<Step<T, A>>::new()));
+        steps.push(Box::new(TypedErasedStep::<BoundStep<T, A>>::new()));
         steps
     }
 }
@@ -1817,7 +1817,7 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for Step<T, A>
+impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for BoundStep<T, A>
 where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
@@ -1834,7 +1834,7 @@ where
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<T::State>)) -> Self::Output {
         steps.push(Box::new(
-            ContextualTypedErasedStep::<Context, Step<T, A>>::new(Arc::clone(&context)),
+            ContextualTypedErasedStep::<Context, BoundStep<T, A>>::new(Arc::clone(&context)),
         ));
         (context, steps)
     }

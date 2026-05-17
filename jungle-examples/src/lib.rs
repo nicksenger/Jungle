@@ -2,7 +2,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Act, Animal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Id,
-    Identity, LoopCondition, Observe, Sleep, Step, While,
+    Identity, LoopCondition, Observe, Sleep, BoundStep, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -111,8 +111,8 @@ impl LoopCondition<ObserveState> for ObserveLoopForever {
 
 type ObserveBody = Conditional<
     ObserveChooseSleep,
-    Step<ObserveAnimal, ObserveSleep>,
-    Step<ObserveAnimal, ObserveBump>,
+    BoundStep<ObserveAnimal, ObserveSleep>,
+    BoundStep<ObserveAnimal, ObserveBump>,
 >;
 
 type ObserveJourney = While<ObserveLoopForever, ObserveBody>;

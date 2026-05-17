@@ -5,7 +5,7 @@ use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, Aspect, Condition, Conditional, EffectCompletion, EffectExec, EffectSchema, Either,
-    Executor, Identity, LoopCondition, Running, StateCarrier, Step, Waiting, While,
+    Executor, Identity, LoopCondition, Running, StateCarrier, BoundStep, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::{Journey, Optic};
@@ -257,9 +257,9 @@ type TigerSleep = AddI32<TigerEnergyCarrier, Sleep>;
 
 #[derive(Journey)]
 struct GorillaLoopSequence(
-    Step<Gorilla, GorillaEat>,
-    Step<Gorilla, GorillaSleepManual>,
-    Step<Gorilla, GorillaForageStep>,
+    BoundStep<Gorilla, GorillaEat>,
+    BoundStep<Gorilla, GorillaSleepManual>,
+    BoundStep<Gorilla, GorillaForageStep>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -283,9 +283,9 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 
 #[derive(Journey)]
 struct TigerLoopSequence(
-    Conditional<TigerStripesAreEven, Step<Tiger, TigerEat>, Step<Tiger, TigerSleep>>,
-    Step<Tiger, TigerSleep>,
-    Step<Tiger, AddI32<TigerEnergyCarrier, Hunt>>,
+    Conditional<TigerStripesAreEven, BoundStep<Tiger, TigerEat>, BoundStep<Tiger, TigerSleep>>,
+    BoundStep<Tiger, TigerSleep>,
+    BoundStep<Tiger, AddI32<TigerEnergyCarrier, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
@@ -331,13 +331,13 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         bananas: 3,
     };
     let (gorilla_state, gorilla_request) =
-        <Step<Gorilla, CoreEnergyStep<Sleep, GorillaCoreCarrier>> as Running>::run((
+        <BoundStep<Gorilla, CoreEnergyStep<Sleep, GorillaCoreCarrier>> as Running>::run((
             gorilla_state,
             2,
         ));
     assert_eq!(gorilla_request.into_input(), 12);
     let (gorilla_state, gorilla_emitted) =
-        <Step<Gorilla, CoreEnergyStep<Sleep, GorillaCoreCarrier>> as Waiting>::accept((
+        <BoundStep<Gorilla, CoreEnergyStep<Sleep, GorillaCoreCarrier>> as Waiting>::accept((
             gorilla_state,
             Ok(20),
         ));
@@ -351,10 +351,10 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6, age: 12 },
     };
     let (tiger_state, tiger_request) =
-        <Step<Tiger, CoreEnergyStep<Sleep, TigerCoreCarrier>> as Running>::run((tiger_state, 4));
+        <BoundStep<Tiger, CoreEnergyStep<Sleep, TigerCoreCarrier>> as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
     let (tiger_state, tiger_emitted) =
-        <Step<Tiger, CoreEnergyStep<Sleep, TigerCoreCarrier>> as Waiting>::accept((
+        <BoundStep<Tiger, CoreEnergyStep<Sleep, TigerCoreCarrier>> as Waiting>::accept((
             tiger_state,
             Ok(15),
         ));
@@ -458,8 +458,8 @@ async fn executor_runs_aspected_steps() {
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     let even = <Conditional<
         TigerStripesAreEven,
-        Step<Tiger, TigerEat>,
-        Step<Tiger, TigerSleep>,
+        BoundStep<Tiger, TigerEat>,
+        BoundStep<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 8,
@@ -474,8 +474,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 
     let odd = <Conditional<
         TigerStripesAreEven,
-        Step<Tiger, TigerEat>,
-        Step<Tiger, TigerSleep>,
+        BoundStep<Tiger, TigerEat>,
+        BoundStep<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 9,

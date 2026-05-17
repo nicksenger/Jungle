@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, EffectCompletion, Identity, Running, StateCarrier, Step, ViewProject, Waiting,
+    Act, EffectCompletion, Identity, Running, StateCarrier, BoundStep, ViewProject, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U72, U73, U74, U75, U9};
 use jungle_sdk::Optic;
@@ -186,7 +186,7 @@ impl Animal for OpticAnimal {
     type Generation = U0;
     type State = RootState;
     type Seed = RootState;
-    type Journey = Step<OpticAnimal, LensOnBranch>;
+    type Journey = BoundStep<OpticAnimal, LensOnBranch>;
 }
 
 fn seed_state() -> RootState {
@@ -201,10 +201,10 @@ fn seed_state() -> RootState {
 
 #[test]
 fn state_lens_single_index_short_flow() {
-    let (state, request) = <Step<OpticAnimal, LensOnBranch> as Running>::run((seed_state(), 3));
+    let (state, request) = <BoundStep<OpticAnimal, LensOnBranch> as Running>::run((seed_state(), 3));
     assert_eq!(request.into_input(), 7);
 
-    let (state, emitted) = <Step<OpticAnimal, LensOnBranch> as Waiting>::accept((state, Ok(8)));
+    let (state, emitted) = <BoundStep<OpticAnimal, LensOnBranch> as Waiting>::accept((state, Ok(8)));
     assert_eq!(emitted, 8);
     assert_eq!(state.branch.spare, 8);
     assert_eq!(state.top, 99);
@@ -212,10 +212,10 @@ fn state_lens_single_index_short_flow() {
 
 #[test]
 fn state_lens_list_multi_index_short_flow() {
-    let (state, request) = <Step<OpticAnimal, LensOnLeafValue> as Running>::run((seed_state(), 2));
+    let (state, request) = <BoundStep<OpticAnimal, LensOnLeafValue> as Running>::run((seed_state(), 2));
     assert_eq!(request.into_input(), 6);
 
-    let (state, emitted) = <Step<OpticAnimal, LensOnLeafValue> as Waiting>::accept((state, Ok(7)));
+    let (state, emitted) = <BoundStep<OpticAnimal, LensOnLeafValue> as Waiting>::accept((state, Ok(7)));
     assert_eq!(emitted, 7);
     assert_eq!(state.branch.leaf.value, 7);
     assert_eq!(state.branch.leaf.noise, 1);

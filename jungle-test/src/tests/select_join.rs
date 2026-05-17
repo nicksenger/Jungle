@@ -3,8 +3,7 @@ use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
-    Join, Select, Sleep, Step,
-};
+    Join, Select, Sleep, BoundStep, };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Journey, Optic};
 use serde::{Deserialize, Serialize};
@@ -117,8 +116,8 @@ impl Act<SelectAnimal> for CaptureSelectWinner {
 
 #[derive(Journey)]
 struct SelectJourney(
-    Select<Step<SelectAnimal, SelectFast>, Step<SelectAnimal, SelectSlow>>,
-    Step<SelectAnimal, CaptureSelectWinner>,
+    Select<BoundStep<SelectAnimal, SelectFast>, BoundStep<SelectAnimal, SelectSlow>>,
+    BoundStep<SelectAnimal, CaptureSelectWinner>,
 );
 
 struct SelectAnimal;
@@ -188,8 +187,8 @@ impl Act<JoinAnimal> for CaptureJoinSum {
 
 #[derive(Journey)]
 struct JoinJourney(
-    Join<Step<JoinAnimal, JoinFast>, Step<JoinAnimal, JoinSlow>>,
-    Step<JoinAnimal, CaptureJoinSum>,
+    Join<BoundStep<JoinAnimal, JoinFast>, BoundStep<JoinAnimal, JoinSlow>>,
+    BoundStep<JoinAnimal, CaptureJoinSum>,
 );
 
 struct JoinAnimal;
@@ -239,7 +238,7 @@ impl Act<TimeoutAnimal> for TimeoutSlow {
     }
 }
 
-type TimeoutJourney = Select<Step<TimeoutAnimal, TimeoutSleep>, Step<TimeoutAnimal, TimeoutSlow>>;
+type TimeoutJourney = Select<BoundStep<TimeoutAnimal, TimeoutSleep>, BoundStep<TimeoutAnimal, TimeoutSlow>>;
 
 struct TimeoutAnimal;
 

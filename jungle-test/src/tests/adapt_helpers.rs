@@ -4,7 +4,7 @@ use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     AbsorbFn, AbsorbMapper, EffectCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
-    IdentityStep, ManualExecutor, PassthroughEmit, Step, UnitEmit,
+    IdentityStep, ManualExecutor, PassthroughEmit, BoundStep, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
 use jungle_sdk::Journey;
@@ -87,7 +87,7 @@ type UnitStep = IdentityStep<
     AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
 >;
 
-type FunctionEmitStep = Step<
+type FunctionEmitStep = BoundStep<
     HelperAnimal,
     Fuse<
         EmitFn<Identity, EchoEffect, i32, EmitUsingState>,

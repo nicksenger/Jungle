@@ -407,7 +407,7 @@ where
 
 /// Alias for an [`Fuse`] step focused by a specific [`Aspect`].
 pub type FocusedStep<T, Focus, E, B> =
-    Step<T, Fuse<FocusedEmit<Focus, E>, FocusedAbsorb<Focus, B>>>;
+    BoundStep<T, Fuse<FocusedEmit<Focus, E>, FocusedAbsorb<Focus, B>>>;
 
 /// Identity-focused [`FocusedStep`].
 pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
@@ -436,7 +436,7 @@ pub type UStep<S> = StepSpec<S>;
 
 /// A primitive workflow step that adapts an [`Effect`] to the
 /// [`Running`]/[`Waiting`] protocol.
-pub struct Step<T, A>
+pub struct BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
@@ -444,7 +444,7 @@ where
     marker: PhantomData<fn() -> (T, A)>,
 }
 
-impl<T, A> Step<T, A>
+impl<T, A> BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
@@ -457,7 +457,7 @@ where
 }
 
 #[primitive(property = crate::JungleRunning)]
-impl<T, A> Running for Step<T, A>
+impl<T, A> Running for BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
@@ -476,7 +476,7 @@ where
 }
 
 #[primitive(property = crate::JungleWaiting)]
-impl<T, A> Waiting for Step<T, A>
+impl<T, A> Waiting for BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
@@ -492,7 +492,7 @@ where
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, A> JourneyEffects for Step<T, A>
+impl<T, A> JourneyEffects for BoundStep<T, A>
 where
     T: Animal,
     <A as Act<T>>::Effect: EffectMember,
@@ -502,48 +502,48 @@ where
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
-impl<T, A> TraverseFlow for Step<T, A>
+impl<T, A> TraverseFlow for BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
 {
-    type Output = Step<T, A>;
+    type Output = BoundStep<T, A>;
 }
 
 #[primitive(property = crate::JungleReplaceFlow)]
-impl<T, A> ReplaceFlow for Step<T, A>
+impl<T, A> ReplaceFlow for BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
 {
-    type Output = Step<T, A>;
+    type Output = BoundStep<T, A>;
 }
 
-impl<T, A, Traversal> TraverseWith<Traversal> for Step<T, A>
+impl<T, A, Traversal> TraverseWith<Traversal> for BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
-    Traversal: TraverseStep<Step<T, A>>,
+    Traversal: TraverseStep<BoundStep<T, A>>,
 {
-    type Output = <Traversal as TraverseStep<Step<T, A>>>::Output;
+    type Output = <Traversal as TraverseStep<BoundStep<T, A>>>::Output;
 }
 
-impl<T, A, Replacer> ReplaceWith<Replacer> for Step<T, A>
+impl<T, A, Replacer> ReplaceWith<Replacer> for BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
-    Replacer: ReplaceStep<Step<T, A>>,
+    Replacer: ReplaceStep<BoundStep<T, A>>,
 {
-    type Output = <Replacer as ReplaceStep<Step<T, A>>>::Output;
+    type Output = <Replacer as ReplaceStep<BoundStep<T, A>>>::Output;
 }
 
-impl<T, A, Replacer> ReplaceNodesWith<Replacer> for Step<T, A>
+impl<T, A, Replacer> ReplaceNodesWith<Replacer> for BoundStep<T, A>
 where
     T: Animal,
     A: Act<T>,
-    Replacer: ReplaceNode<Step<T, A>>,
+    Replacer: ReplaceNode<BoundStep<T, A>>,
 {
-    type Output = <Replacer as ReplaceNode<Step<T, A>>>::Output;
+    type Output = <Replacer as ReplaceNode<BoundStep<T, A>>>::Output;
 }
 
 #[primitive(property = crate::JungleFlow)]
@@ -605,7 +605,7 @@ where
         Effect = <S as ActionSpec>::Effect,
     >,
 {
-    type Output = Step<T, <S as ActionSpec>::Act<T>>;
+    type Output = BoundStep<T, <S as ActionSpec>::Act<T>>;
 }
 
 impl<T, ScopeCarrier, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T, ScopeCarrier>
@@ -626,7 +626,7 @@ where
         Effect = <S as ActionSpec>::Effect,
     >,
 {
-    type Output = Step<
+    type Output = BoundStep<
         T,
         <S as ScopedActionSpec<
             T,

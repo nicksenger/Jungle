@@ -5,7 +5,7 @@ use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Either, Identity, Join, JourneyStatus, Lens, LoopCondition, ManualExecutor,
-    NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, Step, Transparent,
+    NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, BoundStep, Transparent,
     TraverseFlow, TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -73,14 +73,14 @@ struct TemplateFlow(UStep<AddOneSpec>, UStep<CommitSpec>);
 
 #[derive(jungle_sdk::Journey)]
 struct CounterJourney(
-    Step<CounterAnimal, CounterAddOne>,
-    Step<CounterAnimal, CounterCommit>,
+    BoundStep<CounterAnimal, CounterAddOne>,
+    BoundStep<CounterAnimal, CounterCommit>,
 );
 
 #[derive(jungle_sdk::Journey)]
 struct LedgerJourney(
-    Step<LedgerAnimal, LedgerAddOne>,
-    Step<LedgerAnimal, LedgerCommit>,
+    BoundStep<LedgerAnimal, LedgerAddOne>,
+    BoundStep<LedgerAnimal, LedgerCommit>,
 );
 
 struct CounterAnimal;
@@ -279,24 +279,24 @@ fn template_binding_preserves_step_shape_after_binding() {
     type CounterBound = <TemplateFlow as BindAnimal<CounterAnimal>>::Bound;
     type LedgerBound = <TemplateFlow as BindAnimal<LedgerAnimal>>::Bound;
     type ExpectedCounter = jungle_sdk::typosaurus::collections::list::List<(
-        Step<CounterAnimal, GenericAddOne<CounterAnimal>>,
+        BoundStep<CounterAnimal, GenericAddOne<CounterAnimal>>,
         jungle_sdk::typosaurus::collections::list::List<(
-            Step<CounterAnimal, GenericCommit<CounterAnimal>>,
+            BoundStep<CounterAnimal, GenericCommit<CounterAnimal>>,
             jungle_sdk::typosaurus::collections::list::Empty,
         )>,
     )>;
     type ExpectedLedger = jungle_sdk::typosaurus::collections::list::List<(
-        Step<LedgerAnimal, GenericAddOne<LedgerAnimal>>,
+        BoundStep<LedgerAnimal, GenericAddOne<LedgerAnimal>>,
         jungle_sdk::typosaurus::collections::list::List<(
-            Step<LedgerAnimal, GenericCommit<LedgerAnimal>>,
+            BoundStep<LedgerAnimal, GenericCommit<LedgerAnimal>>,
             jungle_sdk::typosaurus::collections::list::Empty,
         )>,
     )>;
 
-    let _counter_step_1: Step<CounterAnimal, CounterAddOne> = Step::new();
-    let _counter_step_2: Step<CounterAnimal, CounterCommit> = Step::new();
-    let _ledger_step_1: Step<LedgerAnimal, LedgerAddOne> = Step::new();
-    let _ledger_step_2: Step<LedgerAnimal, LedgerCommit> = Step::new();
+    let _counter_step_1: BoundStep<CounterAnimal, CounterAddOne> = BoundStep::new();
+    let _counter_step_2: BoundStep<CounterAnimal, CounterCommit> = BoundStep::new();
+    let _ledger_step_1: BoundStep<LedgerAnimal, LedgerAddOne> = BoundStep::new();
+    let _ledger_step_2: BoundStep<LedgerAnimal, LedgerCommit> = BoundStep::new();
 
     assert_type_eq!(CounterBound, ExpectedCounter);
     assert_type_eq!(LedgerBound, ExpectedLedger);
