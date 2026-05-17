@@ -69,7 +69,7 @@ impl Act for CommitSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct TemplateFlow(Step<AddOneSpec>, Step<CommitSpec>);
+struct TestFlow(Step<AddOneSpec>, Step<CommitSpec>);
 
 #[derive(jungle_sdk::Journey)]
 struct CounterJourney(
@@ -276,8 +276,8 @@ fn template_binding_executes_with_animal_specific_actions() {
 
 #[test]
 fn template_binding_preserves_step_shape_after_binding() {
-    type CounterBound = <TemplateFlow as BindAnimal<CounterAnimal>>::Bound;
-    type LedgerBound = <TemplateFlow as BindAnimal<LedgerAnimal>>::Bound;
+    type CounterBound = <TestFlow as BindAnimal<CounterAnimal>>::Bound;
+    type LedgerBound = <TestFlow as BindAnimal<LedgerAnimal>>::Bound;
     type ExpectedCounter = jungle_sdk::typosaurus::collections::list::List<(
         BoundFlowStep<CounterAnimal, GenericAddOne<CounterAnimal>>,
         jungle_sdk::typosaurus::collections::list::List<(
@@ -309,7 +309,7 @@ impl Animal for BoundTemplateAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <TemplateFlow as BindAnimal<BoundTemplateAnimal>>::Bound;
+    type Journey = <TestFlow as BindAnimal<BoundTemplateAnimal>>::Bound;
 }
 
 trait LateBoundPolicy {
@@ -353,7 +353,7 @@ impl Animal for LocalTemplateAlphaAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <TemplateFlow as BindAnimal<LocalTemplateAlphaAnimal>>::Bound;
+    type Journey = <TestFlow as BindAnimal<LocalTemplateAlphaAnimal>>::Bound;
 }
 
 impl LateBoundPolicy for LocalTemplateAlphaAnimal {
@@ -368,7 +368,7 @@ impl Animal for LocalTemplateBetaAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <TemplateFlow as BindAnimal<LocalTemplateBetaAnimal>>::Bound;
+    type Journey = <TestFlow as BindAnimal<LocalTemplateBetaAnimal>>::Bound;
 }
 
 impl LateBoundPolicy for LocalTemplateBetaAnimal {
@@ -438,9 +438,9 @@ trait RequiresContextBump {
     fn context_bump(&self) -> i32;
 }
 
-pub struct ContextBoundTemplateEffect;
+pub struct ContextBoundEffect;
 #[effect]
-impl<J> jungle_sdk::types::Effect<J> for ContextBoundTemplateEffect
+impl<J> jungle_sdk::types::Effect<J> for ContextBoundEffect
 where
     J: RequiresContextBump,
 {
@@ -459,7 +459,7 @@ where
 
 struct ContextBoundSpec;
 impl Act for ContextBoundSpec {
-    type Effect = ContextBoundTemplateEffect;
+    type Effect = ContextBoundEffect;
     type Input = i32;
     type Output = i32;
     type Bind<A: Animal> = ContextBoundAct<A>;
@@ -470,7 +470,7 @@ impl<A> BoundAct<A> for ContextBoundAct<A>
 where
     A: Animal<State = i32>,
 {
-    type Effect = ContextBoundTemplateEffect;
+    type Effect = ContextBoundEffect;
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
@@ -487,7 +487,7 @@ where
 }
 
 #[derive(jungle_sdk::Flow)]
-struct ContextBoundTemplateFlow(Step<ContextBoundSpec>);
+struct ContextBoundFlow(Step<ContextBoundSpec>);
 
 struct LocalTemplateContextAnimal;
 #[animal]
@@ -496,7 +496,7 @@ impl Animal for LocalTemplateContextAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = <ContextBoundTemplateFlow as BindAnimal<LocalTemplateContextAnimal>>::Bound;
+    type Journey = <ContextBoundFlow as BindAnimal<LocalTemplateContextAnimal>>::Bound;
 }
 
 #[derive(Animals)]
@@ -852,7 +852,7 @@ impl Act for LensCommitSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct LensTemplate(Step<LensReadSpareSpec>, Step<LensCommitSpec>);
+struct LensFlow(Step<LensReadSpareSpec>, Step<LensCommitSpec>);
 
 struct SeenStep<T>(core::marker::PhantomData<T>);
 struct LensTraversal;
@@ -881,7 +881,7 @@ impl Animal for LensAlphaAnimal {
     type Generation = U0;
     type State = LensRootState;
     type Seed = i32;
-    type Journey = <LensTemplate as BindAnimal<LensAlphaAnimal>>::Bound;
+    type Journey = <LensFlow as BindAnimal<LensAlphaAnimal>>::Bound;
 }
 
 impl Observe for LensAlphaAnimal {
@@ -903,30 +903,30 @@ impl Ecosystem for LensZoo {
 
 #[derive(jungle_sdk::Flow)]
 #[jungle(view = LensBranch)]
-struct ScopedLensTemplate(LensTemplate);
+struct ScopedLensFlow(LensFlow);
 
 #[derive(jungle_sdk::Flow)]
 #[jungle(view = LensBranch)]
-struct ScopedLensMultiField(LensTemplate, LensTemplate);
+struct ScopedLensMultiField(LensFlow, LensFlow);
 
 #[test]
 fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs() {
-    type Traversed = jungle_sdk::types::Traversed<LensTemplate, LensTraversal>;
+    type Traversed = jungle_sdk::types::Traversed<LensFlow, LensTraversal>;
     type ExpectedTraversed = jungle_sdk::typosaurus::list![
         SeenStep<jungle_sdk::types::Step<LensReadSpareSpec>>,
         SeenStep<jungle_sdk::types::Step<LensCommitSpec>>
     ];
     assert_type_eq!(Traversed, ExpectedTraversed);
 
-    type Replaced = jungle_sdk::types::Replace<LensTemplate, LensReplacer>;
+    type Replaced = jungle_sdk::types::Replace<LensFlow, LensReplacer>;
     type ExpectedReplaced = jungle_sdk::typosaurus::list![
         jungle_sdk::types::Step<LensReadLeafSpec>,
         jungle_sdk::types::Step<LensCommitSpec>
     ];
     assert_type_eq!(Replaced, ExpectedReplaced);
 
-    type ScopedTraverse = <ScopedLensTemplate as TraverseFlow>::Output;
-    type ScopedExpected = Scoped<LensBranch, <ScopedLensTemplate as ReplaceFlow>::Output>;
+    type ScopedTraverse = <ScopedLensFlow as TraverseFlow>::Output;
+    type ScopedExpected = Scoped<LensBranch, <ScopedLensFlow as ReplaceFlow>::Output>;
     assert_type_eq!(ScopedTraverse, ScopedExpected);
 
     type ScopedMultiTraverse = <ScopedLensMultiField as TraverseFlow>::Output;
@@ -1101,13 +1101,13 @@ impl Act for NestedLeafNoiseSpec {
 
 #[derive(jungle_sdk::Flow)]
 #[jungle(view = NestedLensLeaf)]
-struct NestedLeafScopedTemplate(Step<NestedLeafValueSpec>, Step<NestedLeafNoiseSpec>);
+struct NestedLeafScopedFlow(Step<NestedLeafValueSpec>, Step<NestedLeafNoiseSpec>);
 
 #[derive(jungle_sdk::Flow)]
 #[jungle(view = NestedLensBranch)]
-struct NestedBranchScopedTemplate(
+struct NestedBranchScopedFlow(
     Step<NestedBranchSpareSpec>,
-    NestedLeafScopedTemplate,
+    NestedLeafScopedFlow,
     Step<NestedBranchSpareSpec>,
 );
 
@@ -1118,7 +1118,7 @@ impl Animal for NestedScopeAnimal {
     type Generation = U0;
     type State = NestedLensRootState;
     type Seed = i32;
-    type Journey = <NestedBranchScopedTemplate as BindAnimal<NestedScopeAnimal>>::Bound;
+    type Journey = <NestedBranchScopedFlow as BindAnimal<NestedScopeAnimal>>::Bound;
 }
 
 impl Observe for NestedScopeAnimal {
@@ -1140,9 +1140,9 @@ impl Ecosystem for NestedScopeZoo {
 
 #[tokio::test]
 async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end() {
-    type LeafScopedTraverse = <NestedLeafScopedTemplate as TraverseFlow>::Output;
+    type LeafScopedTraverse = <NestedLeafScopedFlow as TraverseFlow>::Output;
     type LeafScopedExpected =
-        Scoped<NestedLensLeaf, <NestedLeafScopedTemplate as ReplaceFlow>::Output>;
+        Scoped<NestedLensLeaf, <NestedLeafScopedFlow as ReplaceFlow>::Output>;
     assert_type_eq!(LeafScopedTraverse, LeafScopedExpected);
 
     let client = jungle_sdk::LocalClient::builder()
@@ -1589,7 +1589,7 @@ struct LongSharedSegment(Transparent<SharedMeta, SharedComposedSegment>);
 struct UniqueSegment(Conditional<ChooseUniqueAlpha, Step<UniqueAlphaSpec>, Step<UniqueBetaSpec>>);
 
 #[derive(jungle_sdk::Flow)]
-struct LongMixedTemplate(LongSharedSegment, UniqueSegment, Step<FinalizeSpec>);
+struct LongMixedFlow(LongSharedSegment, UniqueSegment, Step<FinalizeSpec>);
 
 struct ComplexAlphaAnimal;
 #[animal(observe)]
@@ -1598,7 +1598,7 @@ impl Animal for ComplexAlphaAnimal {
     type Generation = U0;
     type State = ComplexAlphaState;
     type Seed = i32;
-    type Journey = <LongMixedTemplate as BindAnimal<ComplexAlphaAnimal>>::Bound;
+    type Journey = <LongMixedFlow as BindAnimal<ComplexAlphaAnimal>>::Bound;
 }
 
 impl ComplexFlowBinding for ComplexAlphaAnimal {
@@ -1652,7 +1652,7 @@ impl Animal for ComplexBetaAnimal {
     type Generation = U0;
     type State = ComplexBetaState;
     type Seed = i32;
-    type Journey = <LongMixedTemplate as BindAnimal<ComplexBetaAnimal>>::Bound;
+    type Journey = <LongMixedFlow as BindAnimal<ComplexBetaAnimal>>::Bound;
 }
 
 impl ComplexFlowBinding for ComplexBetaAnimal {
