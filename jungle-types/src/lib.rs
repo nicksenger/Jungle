@@ -384,6 +384,20 @@ pub trait JourneyEffects {
     type List;
 }
 
+// Late-bound `BindAnimal` outputs are list-shaped flows (`TList`), and providing
+// direct impls avoids pushing these through inception's reflective field path.
+impl JourneyEffects for list::Empty {
+    type List = list::Empty;
+}
+
+impl<Head, Tail> JourneyEffects for TList<(Head, Tail)>
+where
+    Head: JourneyEffects,
+    Tail: JourneyEffects,
+{
+    type List = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>;
+}
+
 /// Leaf-level hook used by [`TraverseWith`] at `Step` nodes.
 pub trait TraverseStep<Step> {
     type Output;

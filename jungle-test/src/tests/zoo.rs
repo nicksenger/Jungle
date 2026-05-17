@@ -186,69 +186,6 @@ struct PredatorWorkflowTemplate(
     UUnitStep<Hunt>,
 );
 
-#[derive(jungle_sdk::Journey)]
-struct GorillaJourney(
-    BoundFlowStep<Gorilla, UnitOkStep<Eat>>,
-    BoundFlowStep<Gorilla, UnitOkStep<Sleep>>,
-    BoundFlowStep<Gorilla, UnitOkStep<Forage>>,
-    BoundFlowStep<Gorilla, UnitOkStep<Drink>>,
-    BoundFlowStep<Gorilla, UnitOkStep<Flee>>,
-);
-
-#[derive(jungle_sdk::Journey)]
-struct ChimpanzeeJourney(
-    BoundFlowStep<Chimpanzee, UnitOkStep<Eat>>,
-    BoundFlowStep<Chimpanzee, UnitOkStep<Sleep>>,
-    BoundFlowStep<Chimpanzee, UnitOkStep<Forage>>,
-    BoundFlowStep<Chimpanzee, UnitOkStep<Drink>>,
-    BoundFlowStep<Chimpanzee, UnitOkStep<Flee>>,
-);
-
-#[derive(jungle_sdk::Journey)]
-struct TigerJourney(
-    BoundFlowStep<Tiger, UnitOkStep<Eat>>,
-    BoundFlowStep<Tiger, UnitOkStep<Sleep>>,
-    BoundFlowStep<Tiger, UnitOkStep<Forage>>,
-    BoundFlowStep<Tiger, UnitOkStep<Drink>>,
-    BoundFlowStep<Tiger, UnitOkStep<Hunt>>,
-);
-
-#[derive(jungle_sdk::Journey)]
-struct JaguarJourney(
-    BoundFlowStep<Jaguar, UnitOkStep<Eat>>,
-    BoundFlowStep<Jaguar, UnitOkStep<Sleep>>,
-    BoundFlowStep<Jaguar, UnitOkStep<Forage>>,
-    BoundFlowStep<Jaguar, UnitOkStep<Drink>>,
-    BoundFlowStep<Jaguar, UnitOkStep<Hunt>>,
-);
-
-#[derive(jungle_sdk::Journey)]
-struct AnacondaJourney(
-    BoundFlowStep<Anaconda, UnitOkStep<Eat>>,
-    BoundFlowStep<Anaconda, UnitOkStep<Sleep>>,
-    BoundFlowStep<Anaconda, UnitOkStep<Forage>>,
-    BoundFlowStep<Anaconda, UnitOkStep<Drink>>,
-    BoundFlowStep<Anaconda, UnitOkStep<Hunt>>,
-);
-
-#[derive(jungle_sdk::Journey)]
-struct HippoJourney(
-    BoundFlowStep<Hippo, UnitOkStep<Eat>>,
-    BoundFlowStep<Hippo, UnitOkStep<Sleep>>,
-    BoundFlowStep<Hippo, UnitOkStep<Forage>>,
-    BoundFlowStep<Hippo, UnitOkStep<Drink>>,
-    BoundFlowStep<Hippo, UnitOkStep<Flee>>,
-);
-
-#[derive(jungle_sdk::Journey)]
-struct ElephantJourney(
-    BoundFlowStep<Elephant, UnitOkStep<Eat>>,
-    BoundFlowStep<Elephant, UnitOkStep<Sleep>>,
-    BoundFlowStep<Elephant, UnitOkStep<Forage>>,
-    BoundFlowStep<Elephant, UnitOkStep<Drink>>,
-    BoundFlowStep<Elephant, UnitOkStep<Flee>>,
-);
-
 struct Gorilla;
 
 #[animal]
@@ -267,7 +204,7 @@ impl Animal for Chimpanzee {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = ChimpanzeeJourney;
+    type Journey = <PreyWorkflowTemplate as BindAnimal<Chimpanzee>>::Bound;
 }
 struct Tiger;
 
@@ -277,7 +214,7 @@ impl Animal for Tiger {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = TigerJourney;
+    type Journey = <PredatorWorkflowTemplate as BindAnimal<Tiger>>::Bound;
 }
 struct Jaguar;
 
@@ -287,7 +224,7 @@ impl Animal for Jaguar {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = JaguarJourney;
+    type Journey = <PredatorWorkflowTemplate as BindAnimal<Jaguar>>::Bound;
 }
 struct Anaconda;
 
@@ -297,7 +234,7 @@ impl Animal for Anaconda {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = AnacondaJourney;
+    type Journey = <PredatorWorkflowTemplate as BindAnimal<Anaconda>>::Bound;
 }
 struct Hippo;
 
@@ -307,7 +244,7 @@ impl Animal for Hippo {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = HippoJourney;
+    type Journey = <PreyWorkflowTemplate as BindAnimal<Hippo>>::Bound;
 }
 struct Elephant;
 
@@ -317,7 +254,7 @@ impl Animal for Elephant {
     type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = ElephantJourney;
+    type Journey = <PreyWorkflowTemplate as BindAnimal<Elephant>>::Bound;
 }
 
 #[derive(Animals)]
