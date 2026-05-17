@@ -48,8 +48,16 @@ impl jungle_sdk::types::BoundAct<ProbeAnimal> for ProbeStep {
     }
 }
 
-#[derive(jungle_sdk::Journey)]
-pub struct ProbeJourney(jungle_sdk::types::BoundFlowStep<ProbeAnimal, ProbeStep>);
+pub struct ProbeStepSpec;
+impl jungle_sdk::types::Act for ProbeStepSpec {
+    type Effect = ProbeEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: jungle_sdk::types::Animal> = ProbeStep;
+}
+
+#[derive(jungle_sdk::Flow)]
+pub struct ProbeJourney(jungle_sdk::types::Step<ProbeStepSpec>);
 
 pub struct ProbeAnimal;
 
@@ -58,7 +66,7 @@ impl jungle_sdk::types::Animal for ProbeAnimal {
     type Generation = jungle_sdk::typosaurus::num::consts::U0;
     type State = ();
     type Seed = ();
-    type Journey = ProbeJourney;
+    type Journey = <ProbeJourney as jungle_sdk::types::BindAnimal<ProbeAnimal>>::Bound;
 }
 
 impl jungle_sdk::types::Observable for ProbeAnimal {

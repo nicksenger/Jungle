@@ -7,9 +7,9 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    Animal, Animals, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion,
-    EffectSchema, Id, Identified, Identity, LoopCondition, NodeMetadata, NoopObservation,
-    NoopPerturbation, Observable, Perturbable, Transparent, While,
+    Act, Animal, Animals, BindAnimal, BoundAct, Condition, Conditional,
+    EffectCompletion, EffectSchema, Id, Identified, Identity, LoopCondition, NodeMetadata,
+    NoopObservation, NoopPerturbation, Observable, Perturbable, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -449,24 +449,112 @@ impl BoundAct<Gorilla> for GorillaMakeSound {
     }
 }
 
-#[derive(jungle_sdk::Journey)]
+pub struct GorillaAdvanceAgeSpec;
+impl Act for GorillaAdvanceAgeSpec {
+    type Effect = effects::AdvanceAge;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaAdvanceAge;
+}
+
+pub struct GorillaTickPerceivedTimeSpec;
+impl Act for GorillaTickPerceivedTimeSpec {
+    type Effect = effects::TickPerceivedTime;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaTickPerceivedTime;
+}
+
+pub struct GorillaBirthdaySpec;
+impl Act for GorillaBirthdaySpec {
+    type Effect = effects::CelebrateBirthday;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaBirthday;
+}
+
+pub struct GorillaBirthSpec;
+impl Act for GorillaBirthSpec {
+    type Effect = effects::Birth;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaBirth;
+}
+
+pub struct GorillaEvaluateActivityWindowSpec;
+impl Act for GorillaEvaluateActivityWindowSpec {
+    type Effect = effects::EvaluateActivityWindow;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaEvaluateActivityWindow;
+}
+
+pub struct GorillaPeelFruitSpec;
+impl Act for GorillaPeelFruitSpec {
+    type Effect = effects::PeelFruit;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaPeelFruit;
+}
+
+pub struct GorillaEatSpec;
+impl Act for GorillaEatSpec {
+    type Effect = effects::Eat;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaEat;
+}
+
+pub struct GorillaUseToolSpec;
+impl Act for GorillaUseToolSpec {
+    type Effect = effects::UseTool;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaUseTool;
+}
+
+pub struct GorillaChestBeatSpec;
+impl Act for GorillaChestBeatSpec {
+    type Effect = effects::ChestBeat;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaChestBeat;
+}
+
+pub struct GorillaRestSpec;
+impl Act for GorillaRestSpec {
+    type Effect = effects::Rest;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaRest;
+}
+
+pub struct GorillaMakeSoundSpec;
+impl Act for GorillaMakeSoundSpec {
+    type Effect = effects::MakeSound;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = GorillaMakeSound;
+}
+
+#[derive(jungle_sdk::Flow)]
 pub struct GorillaFeedFlow(
-    BoundFlowStep<Gorilla, GorillaPeelFruit>,
-    BoundFlowStep<Gorilla, GorillaEat>,
-    BoundFlowStep<Gorilla, GorillaRest>,
+    Step<GorillaPeelFruitSpec>,
+    Step<GorillaEatSpec>,
+    Step<GorillaRestSpec>,
 );
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct GorillaToolSocialFlow(
-    BoundFlowStep<Gorilla, GorillaUseTool>,
-    BoundFlowStep<Gorilla, GorillaChestBeat>,
-    BoundFlowStep<Gorilla, GorillaMakeSound>,
+    Step<GorillaUseToolSpec>,
+    Step<GorillaChestBeatSpec>,
+    Step<GorillaMakeSoundSpec>,
 );
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct GorillaSimpleSocialFlow(
-    BoundFlowStep<Gorilla, GorillaMakeSound>,
-    BoundFlowStep<Gorilla, GorillaRest>,
+    Step<GorillaMakeSoundSpec>,
+    Step<GorillaRestSpec>,
 );
 
 pub type GorillaActiveFlow = Conditional<
@@ -475,18 +563,18 @@ pub type GorillaActiveFlow = Conditional<
     Conditional<GorillaCanUseTools, GorillaToolSocialFlow, GorillaSimpleSocialFlow>,
 >;
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct GorillaDayFlow(
-    BoundFlowStep<Gorilla, GorillaEvaluateActivityWindow>,
-    Conditional<GorillaIsActiveNow, GorillaActiveFlow, BoundFlowStep<Gorilla, GorillaRest>>,
-    BoundFlowStep<Gorilla, GorillaTickPerceivedTime>,
+    Step<GorillaEvaluateActivityWindowSpec>,
+    Conditional<GorillaIsActiveNow, GorillaActiveFlow, Step<GorillaRestSpec>>,
+    Step<GorillaTickPerceivedTimeSpec>,
 );
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct GorillaYearFlow(
-    BoundFlowStep<Gorilla, GorillaBirthday>,
+    Step<GorillaBirthdaySpec>,
     While<GorillaDaylightRemaining, GorillaDayFlow>,
-    BoundFlowStep<Gorilla, GorillaAdvanceAge>,
+    Step<GorillaAdvanceAgeSpec>,
 );
 
 pub struct GorillaLifecycleMetadata;
@@ -494,39 +582,47 @@ impl NodeMetadata for GorillaLifecycleMetadata {
     const METADATA: &'static str = "section:gorilla/lifecycle";
 }
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct GorillaLifecycleFlow(
-    BoundFlowStep<Gorilla, GorillaRest>,
+    Step<GorillaRestSpec>,
     Transparent<GorillaLifecycleMetadata, GorillaYearFlow>,
     While<GorillaDaylightRemaining, GorillaDayFlow>,
-    BoundFlowStep<Gorilla, GorillaRest>,
+    Step<GorillaRestSpec>,
 );
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct GorillaJourney(
-    BoundFlowStep<Gorilla, GorillaBirth>,
+    Step<GorillaBirthSpec>,
     While<GorillaStillGrowing, GorillaLifecycleFlow>,
-    BoundFlowStep<Gorilla, GorillaRest>,
+    Step<GorillaRestSpec>,
 );
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct ProbeDayFlow(
-    BoundFlowStep<Gorilla, GorillaEvaluateActivityWindow>,
-    Conditional<GorillaIsActiveNow, ProbeActiveFlow, BoundFlowStep<Gorilla, GorillaRest>>,
-    BoundFlowStep<Gorilla, GorillaTickPerceivedTime>,
+    Step<GorillaEvaluateActivityWindowSpec>,
+    Conditional<GorillaIsActiveNow, ProbeActiveFlow, Step<GorillaRestSpec>>,
+    Step<GorillaTickPerceivedTimeSpec>,
 );
 
-#[derive(jungle_sdk::Journey)]
+pub struct ProbeStepSpec;
+impl Act for ProbeStepSpec {
+    type Effect = crate::probe::ProbeEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = ProbeStep;
+}
+
+#[derive(jungle_sdk::Flow)]
 pub struct ProbeActiveFlow(
-    BoundFlowStep<Gorilla, ProbeStep>,
-    BoundFlowStep<Gorilla, ProbeStep>,
+    Step<ProbeStepSpec>,
+    Step<ProbeStepSpec>,
 );
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct ProbeYearFlow(
-    BoundFlowStep<Gorilla, GorillaBirthday>,
+    Step<GorillaBirthdaySpec>,
     While<GorillaDaylightRemaining, ProbeDayFlow>,
-    BoundFlowStep<Gorilla, GorillaAdvanceAge>,
+    Step<GorillaAdvanceAgeSpec>,
 );
 
 pub struct Gorilla;
@@ -551,9 +647,9 @@ impl jungle_sdk::types::BoundAct<Gorilla> for ProbeStep {
     }
 }
 
-#[derive(jungle_sdk::Journey)]
+#[derive(jungle_sdk::Flow)]
 pub struct ProbeJourney(
-    BoundFlowStep<Gorilla, GorillaBirth>,
+    Step<GorillaBirthSpec>,
     While<GorillaStillGrowing, ProbeYearFlow>,
 );
 impl Animal for Gorilla {
@@ -561,7 +657,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = State;
     type Seed = TemporalState;
-    type Journey = GorillaJourney;
+    type Journey = <GorillaJourney as BindAnimal<Gorilla>>::Bound;
 }
 
 impl Observable for Gorilla {
