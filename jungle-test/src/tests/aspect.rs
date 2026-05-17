@@ -9,10 +9,70 @@ use jungle_sdk::{Journey, Optic};
 use std::future::ready;
 use std::marker::PhantomData;
 
-effect!(Sleep, U0, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input + 1)));
-effect!(Eat, U1, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input + 1)));
-effect!(Forage, U2, in = i32, out = i32, err = (), effect = |_d, input| ready(Ok(input - 1)));
-effect!(Hunt, U3, in = (), out = i32, err = (), effect = |_d, _input| ready(Ok(1)));
+struct Sleep;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for Sleep {
+    type Id = jungle_sdk::types::Id<U0>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input + 1))
+    }
+}
+struct Eat;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for Eat {
+    type Id = jungle_sdk::types::Id<U1>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input + 1))
+    }
+}
+struct Forage;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for Forage {
+    type Id = jungle_sdk::types::Id<U2>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input - 1))
+    }
+}
+struct Hunt;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for Hunt {
+    type Id = jungle_sdk::types::Id<U3>;
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(1))
+    }
+}
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct CoreState {
@@ -200,8 +260,26 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
 #[derive(Journey)]
 struct TigerJourney(While<TigerUnderHundredStripes, TigerLoopSequence>);
 
-animal!(Gorilla, U1, state = GorillaState, journey = GorillaJourney);
-animal!(Tiger, U2, state = TigerState, journey = TigerJourney);
+struct Gorilla;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for Gorilla {
+    type Id = jungle_sdk::types::Id<U1>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = GorillaState;
+    type Seed = GorillaState;
+    type Journey = GorillaJourney;
+}
+struct Tiger;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for Tiger {
+    type Id = jungle_sdk::types::Id<U2>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = TigerState;
+    type Seed = TigerState;
+    type Journey = TigerJourney;
+}
 
 #[test]
 fn aspect_step_reuses_focused_mapper_across_animals() {

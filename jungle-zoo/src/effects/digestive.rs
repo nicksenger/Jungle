@@ -1,4 +1,6 @@
-use super::support::{define_effect, maybe_delay};
+use super::support::maybe_delay;
+use jungle_sdk::types::Id;
+use jungle_sdk::typosaurus::num::consts::{U10, U14, U16};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DigestiveDependency {
@@ -15,29 +17,40 @@ impl Default for DigestiveDependency {
     }
 }
 
-define_effect!(
-    Eat,
-    id = 10,
-    dependency = DigestiveDependency,
-    in = u16,
-    out = u16,
-    err = String,
-    effect = |dependency, energy| {
+pub struct Eat;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for Eat {
+    type Id = Id<U10>;
+    type In = u16;
+    type Out = u16;
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        energy: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = DigestiveDependency::default();
         async move {
             maybe_delay().await;
             Ok(energy.saturating_add(u16::from(dependency.chew_efficiency)))
         }
     }
-);
+}
 
-define_effect!(
-    UseTool,
-    id = 14,
-    dependency = DigestiveDependency,
-    in = bool,
-    out = String,
-    err = String,
-    effect = |_dependency, opposable_thumb| {
+pub struct UseTool;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for UseTool {
+    type Id = Id<U14>;
+    type In = bool;
+    type Out = String;
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        opposable_thumb: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             maybe_delay().await;
             if opposable_thumb {
@@ -47,16 +60,22 @@ define_effect!(
             }
         }
     }
-);
+}
 
-define_effect!(
-    PeelFruit,
-    id = 16,
-    dependency = DigestiveDependency,
-    in = (u8, u16),
-    out = u16,
-    err = String,
-    effect = |dependency, (rind_thickness_mm, flesh_mass_g)| {
+pub struct PeelFruit;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for PeelFruit {
+    type Id = Id<U16>;
+    type In = (u8, u16);
+    type Out = u16;
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        (rind_thickness_mm, flesh_mass_g): Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = DigestiveDependency::default();
         async move {
             maybe_delay().await;
             let peel_cost = u16::from(rind_thickness_mm).saturating_mul(2);
@@ -66,4 +85,4 @@ define_effect!(
             Ok(edible)
         }
     }
-);
+}

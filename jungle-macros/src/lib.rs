@@ -68,6 +68,23 @@ fn sdk_crate_path() -> Option<proc_macro2::TokenStream> {
     }
 }
 
+fn typosaurus_path() -> proc_macro2::TokenStream {
+    match crate_name("typosaurus") {
+        Ok(FoundCrate::Itself) => quote!(crate),
+        Ok(FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => {
+            if let Some(sdk_path) = sdk_crate_path() {
+                quote!(#sdk_path::typosaurus)
+            } else {
+                quote!(::typosaurus)
+            }
+        }
+    }
+}
+
 fn inception_path() -> proc_macro2::TokenStream {
     match crate_name("inception") {
         Ok(FoundCrate::Itself) => quote!(crate),
@@ -363,10 +380,7 @@ fn parse_jungle_view_attr(attrs: &[Attribute]) -> Option<Type> {
     None
 }
 
-fn nested_tlist(
-    items: &[proc_macro2::TokenStream],
-    empty: &Path,
-) -> proc_macro2::TokenStream {
+fn nested_tlist(items: &[proc_macro2::TokenStream], empty: &Path) -> proc_macro2::TokenStream {
     if items.is_empty() {
         return quote!(#empty);
     }
@@ -421,6 +435,38 @@ impl Parse for PrimitiveAttributes {
     }
 }
 
+struct AnimalAttributes {
+    observe: bool,
+    perturb: bool,
+}
+
+impl Parse for AnimalAttributes {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let mut observe = false;
+        let mut perturb = false;
+
+        if input.is_empty() {
+            return Ok(Self { observe, perturb });
+        }
+
+        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
+        for meta in metas {
+            match meta {
+                Meta::Path(path) if path.is_ident("observe") => observe = true,
+                Meta::Path(path) if path.is_ident("perturb") => perturb = true,
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "Unknown `animal` setting. Supported: `observe`, `perturb`.",
+                    ))
+                }
+            }
+        }
+
+        Ok(Self { observe, perturb })
+    }
+}
+
 fn collect_ident_names(tokens: proc_macro2::TokenStream) -> HashSet<String> {
     fn walk(stream: proc_macro2::TokenStream, names: &mut HashSet<String>) {
         for tt in stream {
@@ -439,37 +485,10 @@ fn collect_ident_names(tokens: proc_macro2::TokenStream) -> HashSet<String> {
     names
 }
 
-#[proc_macro_attribute]
-pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as syn::Item);
-    let syn::Item::Impl(item_impl) = input else {
-        return syn::Error::new_spanned(
-            input,
-            "This macro can only be applied to trait implementations.",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    let ItemImpl {
-        trait_: Some(_),
-        self_ty,
-        ..
-    } = &item_impl
-    else {
-        return syn::Error::new_spanned(
-            item_impl,
-            "This macro can only be applied to trait implementations.",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    let PrimitiveAttributes { property } = match syn::parse(attr) {
-        Ok(attrs) => attrs,
-        Err(err) => return err.into_compile_error().into(),
-    };
-
+fn self_impl_generics(
+    item_impl: &ItemImpl,
+    self_ty: &Type,
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     let self_ty_tokens = quote!(#self_ty).to_string();
     let retained_params = item_impl
         .generics
@@ -533,15 +552,238 @@ pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         quote! { where #(#retained_where_predicates),* }
     };
+    (impl_generics, impl_where_clause)
+}
 
+fn primitive_marker_impl(
+    item_impl: &ItemImpl,
+    self_ty: &Type,
+    property: &Path,
+) -> proc_macro2::TokenStream {
+    let (impl_generics, impl_where_clause) = self_impl_generics(item_impl, self_ty);
     let inception = inception_path();
     quote! {
-        #item_impl
         const _: () = {
             impl #impl_generics #inception::IsPrimitive<#property> for #self_ty #impl_where_clause {
                 type Is = #inception::True;
             }
         };
+    }
+}
+
+fn id_inner_from_meta_id(id_ty: &Type) -> Result<Type, syn::Error> {
+    let Type::Path(id_ty_path) = id_ty else {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    };
+
+    let Some(last) = id_ty_path.path.segments.last() else {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    };
+
+    if last.ident != "Id" {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    }
+
+    let syn::PathArguments::AngleBracketed(args) = &last.arguments else {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    };
+
+    if args.args.len() != 1 {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    }
+
+    let Some(syn::GenericArgument::Type(inner)) = args.args.first() else {
+        return Err(syn::Error::new_spanned(
+            id_ty,
+            "Expected `type Id = Id<U...>;`.",
+        ));
+    };
+
+    Ok(inner.clone())
+}
+
+fn require_trait_impl(
+    item_impl: &ItemImpl,
+    trait_name: &str,
+    macro_name: &str,
+) -> Result<(), syn::Error> {
+    let Some((_, trait_path, _)) = &item_impl.trait_ else {
+        return Err(syn::Error::new_spanned(
+            item_impl,
+            format!("`#[{macro_name}]` can only be applied to trait impls."),
+        ));
+    };
+
+    let Some(segment) = trait_path.segments.last() else {
+        return Err(syn::Error::new_spanned(
+            trait_path,
+            format!("Unable to resolve target trait for `#[{macro_name}]`."),
+        ));
+    };
+
+    if segment.ident != trait_name {
+        return Err(syn::Error::new_spanned(
+            trait_path,
+            format!("`#[{macro_name}]` must be applied to `impl {trait_name} for ...` blocks."),
+        ));
+    }
+
+    Ok(())
+}
+
+fn id_inner_from_impl(
+    item_impl: &ItemImpl,
+    macro_name: &str,
+    require_non_generic_impl: bool,
+) -> Result<Type, syn::Error> {
+    if require_non_generic_impl && !item_impl.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &item_impl.generics,
+            format!("`#[{macro_name}]` currently supports only non-generic impl blocks."),
+        ));
+    }
+
+    let Some(id_assoc) = item_impl.items.iter().find_map(|item| {
+        let ImplItem::Type(ty) = item else {
+            return None;
+        };
+        (ty.ident == "Id").then_some(ty)
+    }) else {
+        return Err(syn::Error::new_spanned(
+            item_impl,
+            "Missing associated type `Id`.",
+        ));
+    };
+
+    id_inner_from_meta_id(&id_assoc.ty)
+}
+
+fn emit_identified_animals(
+    item_impl: &ItemImpl,
+    self_ty: &Type,
+    id_inner: &Type,
+) -> proc_macro2::TokenStream {
+    let types = jungle_types_path();
+    let typosaurus = typosaurus_path();
+    let node_ty = quote!(#typosaurus::collections::sp::Node<#id_inner, #self_ty>);
+    let (impl_generics, impl_where_clause) = self_impl_generics(item_impl, self_ty);
+
+    let animals_prop = jungle_type("JungleAnimals");
+    let ident_prop = jungle_type("Ident");
+    let animals_marker = primitive_marker_impl(item_impl, self_ty, &animals_prop);
+    let identified_marker = primitive_marker_impl(item_impl, self_ty, &ident_prop);
+
+    quote! {
+        impl #impl_generics #types::Animals for #self_ty #impl_where_clause {
+            type List = #node_ty;
+        }
+        #animals_marker
+
+        impl #impl_generics #types::Identified for #self_ty #impl_where_clause {
+            type Id = #id_inner;
+        }
+        #identified_marker
+    }
+}
+
+#[proc_macro_attribute]
+pub fn animal(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attrs = match syn::parse::<AnimalAttributes>(attr) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    let item_impl = parse_macro_input!(item as ItemImpl);
+    if let Err(err) = require_trait_impl(&item_impl, "Animal", "animal") {
+        return err.into_compile_error().into();
+    }
+
+    let self_ty = &item_impl.self_ty;
+    let id_inner = match id_inner_from_impl(&item_impl, "animal", false) {
+        Ok(id) => id,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    let primitives = emit_identified_animals(&item_impl, self_ty, &id_inner);
+
+    let (impl_generics, impl_where_clause) = self_impl_generics(&item_impl, self_ty);
+    let types = jungle_types_path();
+    let observation_ty = if attrs.observe {
+        quote!(#types::ObserveObservation)
+    } else {
+        quote!(#types::NoopObservation)
+    };
+    let perturbation_ty = if attrs.perturb {
+        quote!(#types::TraitPerturbation)
+    } else {
+        quote!(#types::NoopPerturbation)
+    };
+
+    quote! {
+        #item_impl
+
+        impl #impl_generics #types::Observable for #self_ty #impl_where_clause {
+            type Observation = #observation_ty;
+        }
+
+        impl #impl_generics #types::Perturbable for #self_ty #impl_where_clause {
+            type Perturbation = #perturbation_ty;
+        }
+
+        #primitives
+    }
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as syn::Item);
+    let syn::Item::Impl(item_impl) = input else {
+        return syn::Error::new_spanned(
+            input,
+            "This macro can only be applied to trait implementations.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let ItemImpl {
+        trait_: Some(_),
+        self_ty,
+        ..
+    } = &item_impl
+    else {
+        return syn::Error::new_spanned(
+            item_impl,
+            "This macro can only be applied to trait implementations.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let PrimitiveAttributes { property } = match syn::parse(attr) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    let marker = primitive_marker_impl(&item_impl, self_ty, &property);
+    quote! {
+        #item_impl
+        #marker
     }
     .into()
 }
@@ -679,74 +921,22 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
-    let self_ty_tokens = quote!(#self_ty).to_string();
-    let retained_params = item_impl
-        .generics
-        .params
-        .iter()
-        .filter(|param| match param {
-            GenericParam::Type(ty) => self_ty_tokens.contains(&ty.ident.to_string()),
-            GenericParam::Lifetime(lifetime) => {
-                self_ty_tokens.contains(&lifetime.lifetime.ident.to_string())
-            }
-            GenericParam::Const(const_param) => {
-                self_ty_tokens.contains(&const_param.ident.to_string())
-            }
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    let retained_param_names = retained_params
-        .iter()
-        .map(|param| match param {
-            GenericParam::Type(ty) => ty.ident.to_string(),
-            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
-            GenericParam::Const(const_param) => const_param.ident.to_string(),
-        })
-        .collect::<HashSet<_>>();
-    let dropped_param_names = item_impl
-        .generics
-        .params
-        .iter()
-        .map(|param| match param {
-            GenericParam::Type(ty) => ty.ident.to_string(),
-            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
-            GenericParam::Const(const_param) => const_param.ident.to_string(),
-        })
-        .filter(|name| !retained_param_names.contains(name))
-        .collect::<HashSet<_>>();
-
-    let schema_impl_generics = if retained_params.is_empty() {
-        quote! {}
-    } else {
-        quote! { <#(#retained_params),*> }
+    let id_inner = match id_inner_from_meta_id(&id_ty) {
+        Ok(id) => id,
+        Err(err) => return err.to_compile_error().into(),
     };
-    let schema_where_predicates = item_impl
-        .generics
-        .where_clause
-        .as_ref()
-        .map(|where_clause| {
-            where_clause
-                .predicates
-                .iter()
-                .filter(|pred| {
-                    let used_names = collect_ident_names(quote!(#pred));
-                    !used_names
-                        .iter()
-                        .any(|name| dropped_param_names.contains(name))
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let schema_where_clause = if schema_where_predicates.is_empty() {
-        quote! {}
-    } else {
-        quote! { where #(#schema_where_predicates),* }
-    };
+    let (schema_impl_generics, schema_where_clause) = self_impl_generics(&item_impl, self_ty);
 
     let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
+    let types = jungle_types_path();
+    let typosaurus = typosaurus_path();
+    let node_ty = quote!(#typosaurus::collections::sp::Node<#id_inner, #self_ty>);
     let effect_schema = jungle_type("EffectSchema");
     let effect_exec = jungle_type("EffectExec");
+    let effects_prop = jungle_type("JungleEffects");
+    let ident_prop = jungle_type("Ident");
+    let effects_marker = primitive_marker_impl(&item_impl, self_ty, &effects_prop);
+    let identified_marker = primitive_marker_impl(&item_impl, self_ty, &ident_prop);
 
     quote! {
         impl #schema_impl_generics #effect_schema for #self_ty #schema_where_clause {
@@ -759,6 +949,16 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #exec_impl_generics #effect_exec<#context_ty> for #self_ty #exec_where_clause {
             #effect_fn
         }
+
+        impl #schema_impl_generics #types::Effects for #self_ty #schema_where_clause {
+            type List = #node_ty;
+        }
+        #effects_marker
+
+        impl #schema_impl_generics #types::Identified for #self_ty #schema_where_clause {
+            type Id = #id_inner;
+        }
+        #identified_marker
     }
     .into()
 }

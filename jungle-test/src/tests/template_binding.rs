@@ -1,8 +1,8 @@
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor,
-    NodeMetadata, Observe, ReplaceStep, RunnerOut, Scoped, Select, StateLens, Step, Transparent,
-    TraverseFlow, TraverseStep, UStep, While, ReplaceFlow,
+    NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, StateLens, Step,
+    Transparent, TraverseFlow, TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -1307,7 +1307,8 @@ impl Ecosystem for NestedScopeZoo {
 #[tokio::test]
 async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end() {
     type LeafScopedTraverse = <NestedLeafScopedTemplate as TraverseFlow>::Output;
-    type LeafScopedExpected = Scoped<NestedLensLeaf, <NestedLeafScopedTemplate as ReplaceFlow>::Output>;
+    type LeafScopedExpected =
+        Scoped<NestedLensLeaf, <NestedLeafScopedTemplate as ReplaceFlow>::Output>;
     assert_type_eq!(LeafScopedTraverse, LeafScopedExpected);
 
     let client = jungle_sdk::LocalClient::builder()

@@ -10,14 +10,33 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
 
-effect!(ConnectionEffect7, jungle_sdk::typosaurus::num::consts::U80);
+struct ConnectionEffect7;
 
-animal!(
-    ConnectionAnimal7,
-    jungle_sdk::typosaurus::num::consts::U7,
-    state = (),
-    journey = ConnectionJourney7
-);
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U80>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+
+struct ConnectionAnimal7;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for ConnectionAnimal7 {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = ();
+    type Seed = ();
+    type Journey = ConnectionJourney7;
+}
 
 struct ConnectionStep7;
 impl jungle_sdk::types::Act<ConnectionAnimal7> for ConnectionStep7 {
@@ -39,14 +58,33 @@ impl jungle_sdk::types::Act<ConnectionAnimal7> for ConnectionStep7 {
 #[derive(jungle_sdk::Journey)]
 struct ConnectionJourney7(jungle_sdk::types::Step<ConnectionAnimal7, ConnectionStep7>);
 
-effect!(ConnectionEffect9, jungle_sdk::typosaurus::num::consts::U81);
+struct ConnectionEffect9;
 
-animal!(
-    ConnectionAnimal9,
-    jungle_sdk::typosaurus::num::consts::U9,
-    state = (),
-    journey = ConnectionJourney9
-);
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U81>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+
+struct ConnectionAnimal9;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for ConnectionAnimal9 {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U9>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = ();
+    type Seed = ();
+    type Journey = ConnectionJourney9;
+}
 
 struct ConnectionStep9;
 impl jungle_sdk::types::Act<ConnectionAnimal9> for ConnectionStep9 {

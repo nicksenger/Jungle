@@ -247,12 +247,16 @@ struct ReplayGateTemplate(ReplayPhaseRouterFlow<ReplayPreSpec, ReplayGateSpec, R
 
 type ReplayGateJourney = <ReplayGateTemplate as BindAnimal<ReplayGateAnimal>>::Bound;
 
-animal!(
-    ReplayGateAnimal,
-    jungle_sdk::typosaurus::num::consts::U0,
-    ReplayGateState,
-    ReplayGateJourney
-);
+struct ReplayGateAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for ReplayGateAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = ReplayGateState;
+    type Seed = ReplayGateState;
+    type Journey = ReplayGateJourney;
+}
 
 #[derive(Animals)]
 struct ReplayGateAnimals(ReplayGateAnimal);
@@ -546,12 +550,16 @@ struct ReplayTimeoutTemplate(
 
 type ReplayTimeoutJourney = <ReplayTimeoutTemplate as BindAnimal<ReplayTimeoutAnimal>>::Bound;
 
-animal!(
-    ReplayTimeoutAnimal,
-    jungle_sdk::typosaurus::num::consts::U0,
-    ReplayTimeoutState,
-    ReplayTimeoutJourney
-);
+struct ReplayTimeoutAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for ReplayTimeoutAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = ReplayTimeoutState;
+    type Seed = ReplayTimeoutState;
+    type Journey = ReplayTimeoutJourney;
+}
 
 #[derive(Animals)]
 struct ReplayTimeoutAnimals(ReplayTimeoutAnimal);

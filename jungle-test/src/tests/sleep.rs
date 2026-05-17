@@ -117,13 +117,16 @@ type SleepJourney = While<
     >,
 >;
 
-animal!(
-    SleepAnimal,
-    jungle_sdk::typosaurus::num::consts::U0,
-    SleepState,
-    SleepJourney,
-    observe = true
-);
+struct SleepAnimal;
+
+#[jungle_sdk::animal(observe)]
+impl jungle_sdk::types::Animal for SleepAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = SleepState;
+    type Seed = SleepState;
+    type Journey = SleepJourney;
+}
 
 impl Observe for SleepAnimal {
     type Appearance = SleepState;

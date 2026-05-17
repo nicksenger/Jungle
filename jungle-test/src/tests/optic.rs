@@ -48,10 +48,70 @@ struct IoArg {
     right: i32,
 }
 
-effect!(EchoI32, U72, in = i32, out = i32, err = (), effect = |_d, input| std::future::ready(Ok(input + 1)));
-effect!(SumPair, U73, in = (i32, i32), out = i32, err = (), effect = |_d, input| std::future::ready(Ok(input.0 + input.1)));
-effect!(EchoPair, U74, in = (i32, i32), out = (i32, i32), err = (), effect = |_d, input| std::future::ready(Ok(input)));
-effect!(EchoRootState, U75, in = RootState, out = RootState, err = (), effect = |_d, input| std::future::ready(Ok(input)));
+struct EchoI32;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
+    type Id = jungle_sdk::types::Id<U72>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(input + 1))
+    }
+}
+struct SumPair;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for SumPair {
+    type Id = jungle_sdk::types::Id<U73>;
+    type In = (i32, i32);
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(input.0 + input.1))
+    }
+}
+struct EchoPair;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for EchoPair {
+    type Id = jungle_sdk::types::Id<U74>;
+    type In = (i32, i32);
+    type Out = (i32, i32);
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(input))
+    }
+}
+struct EchoRootState;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
+    type Id = jungle_sdk::types::Id<U75>;
+    type In = RootState;
+    type Out = RootState;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(input))
+    }
+}
 
 struct LensOnBranch;
 impl Act<OpticAnimal> for LensOnBranch {
@@ -106,7 +166,16 @@ impl Act<OpticAnimal> for RootStatePulse {
     }
 }
 
-animal!(OpticAnimal, jungle_sdk::typosaurus::num::consts::U9, RootState, Step<OpticAnimal, LensOnBranch>);
+struct OpticAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for OpticAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U9>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = RootState;
+    type Seed = RootState;
+    type Journey = Step<OpticAnimal, LensOnBranch>;
+}
 
 fn seed_state() -> RootState {
     RootState {
@@ -184,8 +253,8 @@ fn optic_view_marker_generates_direct_projection_impls() {
 //    Step<IoListAnimal, EchoRootState>,
 //    Step<IoListAnimal, _LensList>,
 //);
-//animal!(IoSingleAnimal, jungle_sdk::typosaurus::num::consts::U10, RootState, _LensSingleSequence);
-//animal!(IoListAnimal, jungle_sdk::typosaurus::num::consts::U11, RootState, _LensListSequence);
+// TODO: add attributed `IoSingleAnimal` once lens io sequence tests are implemented.
+// TODO: add attributed `IoListAnimal` once lens io list tests are implemented.
 //
 //
 //#[test]

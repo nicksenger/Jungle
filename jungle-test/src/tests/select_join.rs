@@ -118,12 +118,16 @@ struct SelectJourney(
     Step<SelectAnimal, CaptureSelectWinner>,
 );
 
-animal!(
-    SelectAnimal,
-    jungle_sdk::typosaurus::num::consts::U0,
-    SelectJoinState,
-    SelectJourney
-);
+struct SelectAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for SelectAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = SelectJourney;
+}
 
 struct JoinFast;
 impl Act<JoinAnimal> for JoinFast {
@@ -185,12 +189,16 @@ struct JoinJourney(
     Step<JoinAnimal, CaptureJoinSum>,
 );
 
-animal!(
-    JoinAnimal,
-    jungle_sdk::typosaurus::num::consts::U1,
-    SelectJoinState,
-    JoinJourney
-);
+struct JoinAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for JoinAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = JoinJourney;
+}
 
 struct TimeoutSleep;
 impl Act<TimeoutAnimal> for TimeoutSleep {
@@ -230,12 +238,16 @@ impl Act<TimeoutAnimal> for TimeoutSlow {
 
 type TimeoutJourney = Select<Step<TimeoutAnimal, TimeoutSleep>, Step<TimeoutAnimal, TimeoutSlow>>;
 
-animal!(
-    TimeoutAnimal,
-    jungle_sdk::typosaurus::num::consts::U2,
-    SelectJoinState,
-    TimeoutJourney
-);
+struct TimeoutAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for TimeoutAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = TimeoutJourney;
+}
 
 #[tokio::test]
 async fn select_returns_first_completed_branch() {

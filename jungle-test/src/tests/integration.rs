@@ -334,14 +334,16 @@ type IntegrationJourney = While<
     >,
 >;
 
-animal!(
-    IntegrationAnimal,
-    jungle_sdk::typosaurus::num::consts::U0,
-    IntegrationState,
-    IntegrationJourney,
-    observe = true,
-    perturb = true
-);
+struct IntegrationAnimal;
+
+#[jungle_sdk::animal(observe, perturb)]
+impl jungle_sdk::types::Animal for IntegrationAnimal {
+    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = IntegrationState;
+    type Seed = IntegrationState;
+    type Journey = IntegrationJourney;
+}
 
 impl Observe for IntegrationAnimal {
     type Appearance = IntegrationState;

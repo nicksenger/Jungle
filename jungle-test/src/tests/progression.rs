@@ -83,7 +83,16 @@ impl Act<ProgressAnimal> for Finish {
 #[derive(Journey)]
 struct ProgressJourney(Step<ProgressAnimal, Seed>, Step<ProgressAnimal, Finish>);
 
-animal!(ProgressAnimal, U0, i32, ProgressJourney);
+struct ProgressAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for ProgressAnimal {
+    type Id = jungle_sdk::types::Id<U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = ProgressJourney;
+}
 
 #[derive(Animals)]
 struct ProgressAnimals(ProgressAnimal);
@@ -284,7 +293,16 @@ type BranchConditionalFlow =
 #[derive(Journey)]
 struct BranchJourney(BranchConditionalFlow);
 
-animal!(BranchAnimal, U1, i32, BranchJourney);
+struct BranchAnimal;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for BranchAnimal {
+    type Id = jungle_sdk::types::Id<U1>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = BranchJourney;
+}
 
 struct BranchContext;
 

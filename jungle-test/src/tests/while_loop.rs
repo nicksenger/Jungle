@@ -6,16 +6,33 @@ use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use jungle_sdk::Journey;
 use std::future::ready;
 
-effect!(
-    TickEffect,
-    U0,
-    in = i32,
-    out = i32,
-    err = (),
-    effect = |_dependency, input| ready(Ok(input + 1))
-);
+struct TickEffect;
 
-animal!(Looper, U0, state = i32, journey = LoopJourney);
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for TickEffect {
+    type Id = jungle_sdk::types::Id<U0>;
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _dependency: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input + 1))
+    }
+}
+
+struct Looper;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for Looper {
+    type Id = jungle_sdk::types::Id<U0>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = LoopJourney;
+}
 
 struct Tick;
 impl Act<Looper> for Tick {
@@ -50,21 +67,33 @@ type WhileTickFlow = While<LessThanThree, TickFlow>;
 #[derive(Journey)]
 struct LoopJourney(WhileTickFlow);
 
-effect!(
-    TailEchoEffect,
-    U1,
-    in = (bool, i32),
-    out = (bool, i32),
-    err = (),
-    effect = |_dependency, input| ready(Ok(input))
-);
+struct TailEchoEffect;
 
-animal!(
-    LooperWithTail,
-    U1,
-    state = i32,
-    journey = LoopWithTailJourney
-);
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for TailEchoEffect {
+    type Id = jungle_sdk::types::Id<U1>;
+    type In = (bool, i32);
+    type Out = (bool, i32);
+    type Err = ();
+
+    fn effect(
+        _dependency: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input))
+    }
+}
+
+struct LooperWithTail;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for LooperWithTail {
+    type Id = jungle_sdk::types::Id<U1>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = i32;
+    type Seed = i32;
+    type Journey = LoopWithTailJourney;
+}
 
 struct TickWithTail;
 impl Act<LooperWithTail> for TickWithTail {
@@ -112,14 +141,22 @@ type WhileTickWithTailFlow = While<LessThanThree, TickWithTailFlow>;
 #[derive(Journey)]
 struct LoopWithTailJourney(WhileTickWithTailFlow, Step<LooperWithTail, TailAfterLoop>);
 
-effect!(
-    UnitEffect,
-    U2,
-    in = (),
-    out = (),
-    err = (),
-    effect = |_dependency, _input| ready(Ok(()))
-);
+struct UnitEffect;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for UnitEffect {
+    type Id = jungle_sdk::types::Id<U2>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _dependency: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(()))
+    }
+}
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct NestedState {
@@ -128,12 +165,16 @@ struct NestedState {
     outer_iterations_done: u8,
 }
 
-animal!(
-    NestedLooper,
-    U2,
-    state = NestedState,
-    journey = NestedLoopJourney
-);
+struct NestedLooper;
+
+#[jungle_sdk::animal]
+impl jungle_sdk::types::Animal for NestedLooper {
+    type Id = jungle_sdk::types::Id<U2>;
+    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type State = NestedState;
+    type Seed = NestedState;
+    type Journey = NestedLoopJourney;
+}
 
 struct InnerContinue;
 impl LoopCondition<NestedState> for InnerContinue {
