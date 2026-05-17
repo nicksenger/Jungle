@@ -4,9 +4,9 @@ use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Animal, AnimalSet, AnimalStates, BoundAct, BoundByAnimal, BoundFlowStep,
-    Ecosystem, EffectCompletion, EffectExec, EffectSchema, EffectSet, Identity, LoopCondition,
-    StateCarrier, Step, While,
+    Act, Animal, AnimalEffectSet, AnimalSet, AnimalStates, BoundAct, BoundFlowStep, Ecosystem,
+    EffectCompletion, EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier,
+    Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -163,7 +163,7 @@ where
     type Effect = E;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = BoundByAnimal<A, UnitOkStep<E>>;
+    type Bind<A: Animal> = UnitOkStep<E>;
 }
 
 type UUnitStep<E> = Step<UnitOkSpec<E>>;
@@ -186,30 +186,68 @@ struct PredatorWorkflowTemplate(
     UUnitStep<Hunt>,
 );
 
-#[derive(jungle_sdk::Flow)]
-struct GorillaPreyHead(UUnitStep<Eat>, UUnitStep<Sleep>);
+#[derive(jungle_sdk::Journey)]
+struct GorillaJourney(
+    BoundFlowStep<Gorilla, UnitOkStep<Eat>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Sleep>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Forage>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Drink>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Flee>>,
+);
 
-#[derive(jungle_sdk::Flow)]
-struct GorillaPreyTail(UUnitStep<Forage>, UUnitStep<Drink>, UUnitStep<Flee>);
+#[derive(jungle_sdk::Journey)]
+struct ChimpanzeeJourney(
+    BoundFlowStep<Chimpanzee, UnitOkStep<Eat>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Sleep>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Forage>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Drink>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Flee>>,
+);
 
-#[derive(jungle_sdk::Flow)]
-struct GorillaPreyTemplate(GorillaPreyHead, GorillaPreyTail);
+#[derive(jungle_sdk::Journey)]
+struct TigerJourney(
+    BoundFlowStep<Tiger, UnitOkStep<Eat>>,
+    BoundFlowStep<Tiger, UnitOkStep<Sleep>>,
+    BoundFlowStep<Tiger, UnitOkStep<Forage>>,
+    BoundFlowStep<Tiger, UnitOkStep<Drink>>,
+    BoundFlowStep<Tiger, UnitOkStep<Hunt>>,
+);
 
-type GorillaJourney = <GorillaPreyTemplate as jungle_sdk::types::BindAnimal<Gorilla>>::Bound;
+#[derive(jungle_sdk::Journey)]
+struct JaguarJourney(
+    BoundFlowStep<Jaguar, UnitOkStep<Eat>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Sleep>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Forage>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Drink>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Hunt>>,
+);
 
-type ChimpanzeeJourney =
-    <PreyWorkflowTemplate as jungle_sdk::types::BindAnimal<Chimpanzee>>::Bound;
+#[derive(jungle_sdk::Journey)]
+struct AnacondaJourney(
+    BoundFlowStep<Anaconda, UnitOkStep<Eat>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Sleep>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Forage>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Drink>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Hunt>>,
+);
 
-type TigerJourney = <PredatorWorkflowTemplate as jungle_sdk::types::BindAnimal<Tiger>>::Bound;
+#[derive(jungle_sdk::Journey)]
+struct HippoJourney(
+    BoundFlowStep<Hippo, UnitOkStep<Eat>>,
+    BoundFlowStep<Hippo, UnitOkStep<Sleep>>,
+    BoundFlowStep<Hippo, UnitOkStep<Forage>>,
+    BoundFlowStep<Hippo, UnitOkStep<Drink>>,
+    BoundFlowStep<Hippo, UnitOkStep<Flee>>,
+);
 
-type JaguarJourney = <PredatorWorkflowTemplate as jungle_sdk::types::BindAnimal<Jaguar>>::Bound;
-
-type AnacondaJourney =
-    <PredatorWorkflowTemplate as jungle_sdk::types::BindAnimal<Anaconda>>::Bound;
-
-type HippoJourney = <PreyWorkflowTemplate as jungle_sdk::types::BindAnimal<Hippo>>::Bound;
-
-type ElephantJourney = <PreyWorkflowTemplate as jungle_sdk::types::BindAnimal<Elephant>>::Bound;
+#[derive(jungle_sdk::Journey)]
+struct ElephantJourney(
+    BoundFlowStep<Elephant, UnitOkStep<Eat>>,
+    BoundFlowStep<Elephant, UnitOkStep<Sleep>>,
+    BoundFlowStep<Elephant, UnitOkStep<Forage>>,
+    BoundFlowStep<Elephant, UnitOkStep<Drink>>,
+    BoundFlowStep<Elephant, UnitOkStep<Flee>>,
+);
 
 struct Gorilla;
 
@@ -282,20 +320,6 @@ impl Animal for Elephant {
     type Journey = ElephantJourney;
 }
 
-#[derive(jungle_sdk::Journey)]
-struct RuntimeAnchorJourney(BoundFlowStep<RuntimeAnchor, UnitOkStep<Eat>>);
-
-struct RuntimeAnchor;
-
-#[animal]
-impl Animal for RuntimeAnchor {
-    type Id = Id<U15>;
-    type Generation = U0;
-    type State = SharedState;
-    type Seed = SharedState;
-    type Journey = RuntimeAnchorJourney;
-}
-
 #[derive(Animals)]
 struct Apes(Gorilla, Chimpanzee);
 
@@ -308,16 +332,13 @@ struct Predators(Cats, Anaconda);
 #[derive(Animals)]
 struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
 
-#[derive(Animals)]
-struct RuntimeAnimals(RuntimeAnchor);
-
 #[derive(Effects)]
 struct AllEffects(Predator, Prey);
 
 struct Zoo;
 impl Ecosystem for Zoo {
     const NAME: &'static str = "zoo";
-    type Animals = RuntimeAnimals;
+    type Animals = AllAnimals;
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -461,7 +482,10 @@ fn composite_animals() {
 #[test]
 fn animal_effect_set() {
     type ApeAnimalEffects = list![Eat, Sleep, Forage, Drink, Flee];
-    assert_type_eq!(EffectSet<Prey>, ApeAnimalEffects);
+    assert_type_eq!(AnimalEffectSet<Apes>, ApeAnimalEffects);
+
+    type AllAnimalEffects = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
+    assert_type_eq!(AnimalEffectSet<AllAnimals>, AllAnimalEffects);
 }
 
 #[test]

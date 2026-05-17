@@ -131,37 +131,6 @@ pub trait Act {
     type Bind<A: Animal>;
 }
 
-/// Helper bound action type that keeps the bound `Animal` in the action type itself.
-///
-/// This is useful when an `Act::Bind<A>` implementation is otherwise animal-agnostic
-/// and would erase `A` from the resulting bound action type.
-pub struct BoundByAnimal<A, Inner>(PhantomData<fn() -> (A, Inner)>);
-
-impl<A, Inner> BoundAct<A> for BoundByAnimal<A, Inner>
-where
-    A: Animal,
-    Inner: BoundAct<A>,
-{
-    type Effect = <Inner as BoundAct<A>>::Effect;
-    type Aspect = <Inner as BoundAct<A>>::Aspect;
-    type Input = <Inner as BoundAct<A>>::Input;
-    type Output = <Inner as BoundAct<A>>::Output;
-
-    fn emit(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::View,
-        input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        <Inner as BoundAct<A>>::emit(view, input)
-    }
-
-    fn absorb(
-        view: &mut <<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::View,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        <Inner as BoundAct<A>>::absorb(view, output)
-    }
-}
-
 /// Re-binds an action spec authored for one scope to another scope.
 pub trait ScopedAct<A: Animal, ScopeState, ScopeCarrier> {
     type BoundAct: BoundAct<A>;
