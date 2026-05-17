@@ -34,7 +34,7 @@ pub use meta::{
     StripAnimalHeaders, StripEffectHeaders, WithEffectExecFor,
 };
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use Serialize;
 pub use sleep::{Sleep, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{
@@ -48,7 +48,7 @@ use typosaurus::num::consts::U0;
 pub use view::{BuildJourneyAst, JourneyAst, JourneyAstSource, JungleJourneyAst};
 
 /// A tagged union over two possible outputs.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Either<L, R> {
     Left(L),
     Right(R),

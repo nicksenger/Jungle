@@ -122,7 +122,7 @@ struct Predator(BasicNeeds, Predation);
 #[derive(Effects)]
 struct Prey(BasicNeeds, Flee);
 
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 struct SharedState;
 impl From<&Zoo> for SharedState {
     fn from(_value: &Zoo) -> Self {
@@ -334,7 +334,7 @@ impl Ecosystem for Zoo {
     type Animals = AllAnimals;
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct RunnerState(i32);
 
 impl From<&RunnerZoo> for RunnerState {
@@ -483,9 +483,9 @@ fn animal_effect_set() {
 
 #[test]
 fn animal_state_set() {
-    #[derive(Default, serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     struct ApeState;
-    #[derive(Default, serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     struct CatState;
 
     type StatefulGorillaJourney =
@@ -527,20 +527,20 @@ fn jungle_impl() {
     let _jungle_fut = zoo.manifest();
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct CoreState {
     energy: i32,
     rounds: i32,
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ExecutorApeState {
     core: CoreState,
     bananas: i32,
     mood: i32,
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ExecutorCatState {
     core: CoreState,
     stripes: i32,

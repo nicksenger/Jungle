@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct SleepState {
     counter: i32,

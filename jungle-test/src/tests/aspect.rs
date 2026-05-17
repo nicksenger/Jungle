@@ -74,19 +74,19 @@ impl<J> jungle_sdk::types::Effect<J> for Hunt {
     }
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct CoreState {
     energy: i32,
     age: i32,
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct GorillaState {
     core: CoreState,
     bananas: i32,
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct TigerState {
     stripes: u8,
     core: CoreState,

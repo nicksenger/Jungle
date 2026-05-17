@@ -38,7 +38,7 @@ pub async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 pub struct ObserveState {
     pub tick: u64,

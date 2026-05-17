@@ -15,7 +15,7 @@ const PRE_STEPS: usize = 2;
 const POST_STEPS: usize = 2;
 const TEST_OWNER_LEASE_TTL_MS: i64 = 1_500;
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ReplayGateState {
     phase: u8,
 }
@@ -380,7 +380,7 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
     let _ = server_task.await;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ReplayTimeoutState {
     phase: u8,
     sleep_for_ms: u64,

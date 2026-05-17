@@ -1,5 +1,5 @@
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use Serialize;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::Sub;

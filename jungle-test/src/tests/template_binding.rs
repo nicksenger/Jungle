@@ -855,7 +855,7 @@ async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal(
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct LensLeaf {
     value: i32,
@@ -863,7 +863,7 @@ struct LensLeaf {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct LensBranch {
     leaf: LensLeaf,
@@ -871,7 +871,7 @@ struct LensBranch {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct LensRootState {
     branch: LensBranch,
@@ -1123,7 +1123,7 @@ async fn template_binding_unbound_lens_template_runs_end_to_end() {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct NestedLensLeaf {
     value: i32,
@@ -1131,7 +1131,7 @@ struct NestedLensLeaf {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct NestedLensBranch {
     #[view]
@@ -1140,7 +1140,7 @@ struct NestedLensBranch {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct NestedLensRootState {
     #[view]
@@ -1352,7 +1352,7 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
     let _ = worker_handle.await;
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ComplexAlphaState {
     loops: u8,
     shared_work: i32,
@@ -1362,7 +1362,7 @@ struct ComplexAlphaState {
     final_value: i32,
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ComplexBetaState {
     iterations: u8,
     core: i32,

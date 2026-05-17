@@ -5,7 +5,7 @@ use jungle_types::{
     Animal, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError, Observable,
     ObservationBridge, Perturbable, PerturbationBridge, RunnerOut, Sleep,
 };
-use serde::Serialize;
+use Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 

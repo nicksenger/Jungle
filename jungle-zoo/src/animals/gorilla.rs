@@ -16,7 +16,7 @@ use jungle_sdk::Optic;
 
 const GORILLA_DAY_LOOPS_PER_YEAR: u16 = 4;
 
-#[derive(Optic, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct State {
     pub age: u32,
     pub vitals: VitalReadings,

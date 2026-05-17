@@ -4,7 +4,7 @@ use crate::{
 };
 use inception::*;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use Serialize;
 use serde::{Deserialize, Serialize as SerdeSerialize};
 use std::future::Future;
 use std::pin::Pin;

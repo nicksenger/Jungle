@@ -18,7 +18,7 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct SubFlowState {
     nested: DeepFocusState,
@@ -27,7 +27,7 @@ struct SubFlowState {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct DeepFocusState {
     value: i32,
@@ -35,7 +35,7 @@ struct DeepFocusState {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct IntegrationState {
     total: i32,
@@ -353,7 +353,7 @@ impl Observe for IntegrationAnimal {
     }
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct IntegrationPerturbation {
     delta: i32,
 }

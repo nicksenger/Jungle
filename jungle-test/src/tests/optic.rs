@@ -6,7 +6,7 @@ use jungle_sdk::typosaurus::num::consts::{U0, U1, U72, U73, U74, U75};
 use jungle_sdk::Optic;
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct Leaf {
     value: i32,
@@ -14,7 +14,7 @@ struct Leaf {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct Branch {
     leaf: Leaf,
@@ -22,7 +22,7 @@ struct Branch {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct RootState {
     branch: Branch,
@@ -30,19 +30,19 @@ struct RootState {
 }
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct ViewWrapped(#[view] Leaf);
 
 #[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
 )]
 struct ViewRoot {
     #[view]
     wrapped: ViewWrapped,
 }
 
-#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct IoArg {
     left: i32,
     right: i32,

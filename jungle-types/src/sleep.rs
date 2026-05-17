@@ -7,7 +7,7 @@ use std::time::Duration;
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U65535;
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SleepError {
     pub message: String,
 }
