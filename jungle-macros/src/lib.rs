@@ -6,7 +6,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, Attribute, Data,
     DeriveInput, Expr, Fields, FnArg, GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl,
-    Meta, Path, Type, TypeReference,
+    Lit, Meta, Path, Type, TypeReference,
 };
 
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
@@ -455,15 +455,24 @@ impl Parse for PrimitiveAttributes {
 struct AnimalAttributes {
     observe: bool,
     perturb: bool,
+    id: Option<usize>,
+    generation: Option<usize>,
 }
 
 impl Parse for AnimalAttributes {
     fn parse(input: ParseStream) -> Result<Self, syn::Error> {
         let mut observe = false;
         let mut perturb = false;
+        let mut id = None;
+        let mut generation = None;
 
         if input.is_empty() {
-            return Ok(Self { observe, perturb });
+            return Ok(Self {
+                observe,
+                perturb,
+                id,
+                generation,
+            });
         }
 
         let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
@@ -471,16 +480,70 @@ impl Parse for AnimalAttributes {
             match meta {
                 Meta::Path(path) if path.is_ident("observe") => observe = true,
                 Meta::Path(path) if path.is_ident("perturb") => perturb = true,
+                Meta::NameValue(nv) if nv.path.is_ident("id") => {
+                    if id.is_some() {
+                        return Err(syn::Error::new_spanned(nv.path, "Duplicate `id` setting."));
+                    }
+                    id = Some(parse_usize_expr(&nv.value, "id")?);
+                }
+                Meta::NameValue(nv) if nv.path.is_ident("generation") => {
+                    if generation.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            nv.path,
+                            "Duplicate `generation` setting.",
+                        ));
+                    }
+                    generation = Some(parse_usize_expr(&nv.value, "generation")?);
+                }
                 _ => {
                     return Err(syn::Error::new_spanned(
                         meta,
-                        "Unknown `animal` setting. Supported: `observe`, `perturb`.",
+                        "Unknown `animal` setting. Supported: `observe`, `perturb`, `id = ...`, `generation = ...`.",
                     ))
                 }
             }
         }
 
-        Ok(Self { observe, perturb })
+        Ok(Self {
+            observe,
+            perturb,
+            id,
+            generation,
+        })
+    }
+}
+
+struct EffectAttributes {
+    id: Option<usize>,
+}
+
+impl Parse for EffectAttributes {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        if input.is_empty() {
+            return Ok(Self { id: None });
+        }
+
+        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
+        let mut id = None;
+
+        for meta in metas {
+            match meta {
+                Meta::NameValue(nv) if nv.path.is_ident("id") => {
+                    if id.is_some() {
+                        return Err(syn::Error::new_spanned(nv.path, "Duplicate `id` setting."));
+                    }
+                    id = Some(parse_usize_expr(&nv.value, "id")?);
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "Unknown `effect` setting. Supported: `id = ...`.",
+                    ));
+                }
+            }
+        }
+
+        Ok(Self { id })
     }
 }
 
@@ -538,6 +601,27 @@ fn collect_ident_names(tokens: proc_macro2::TokenStream) -> HashSet<String> {
     let mut names = HashSet::new();
     walk(tokens, &mut names);
     names
+}
+
+fn parse_usize_expr(expr: &Expr, field_name: &str) -> Result<usize, syn::Error> {
+    let Expr::Lit(expr_lit) = expr else {
+        return Err(syn::Error::new_spanned(
+            expr,
+            format!("`{field_name}` must be an integer literal."),
+        ));
+    };
+    let Lit::Int(value) = &expr_lit.lit else {
+        return Err(syn::Error::new_spanned(
+            expr,
+            format!("`{field_name}` must be an integer literal."),
+        ));
+    };
+    value.base10_parse::<usize>().map_err(|_| {
+        syn::Error::new_spanned(
+            value,
+            format!("`{field_name}` must fit in usize and be non-negative."),
+        )
+    })
 }
 
 fn self_impl_generics(
@@ -830,9 +914,52 @@ pub fn animal(attr: TokenStream, item: TokenStream) -> TokenStream {
         Err(err) => return err.into_compile_error().into(),
     };
 
-    let item_impl = parse_macro_input!(item as ItemImpl);
+    let mut item_impl = parse_macro_input!(item as ItemImpl);
     if let Err(err) = require_trait_impl(&item_impl, "Animal", "animal") {
         return err.into_compile_error().into();
+    }
+
+    let has_id_assoc = item_impl
+        .items
+        .iter()
+        .any(|item| matches!(item, ImplItem::Type(ty) if ty.ident == "Id"));
+    let has_generation_assoc = item_impl
+        .items
+        .iter()
+        .any(|item| matches!(item, ImplItem::Type(ty) if ty.ident == "Generation"));
+
+    if attrs.id.is_some() && has_id_assoc {
+        return syn::Error::new_spanned(
+            &item_impl,
+            "`#[animal(id = ...)]` conflicts with manual `type Id = ...;`.",
+        )
+        .to_compile_error()
+        .into();
+    }
+    if attrs.generation.is_some() && has_generation_assoc {
+        return syn::Error::new_spanned(
+            &item_impl,
+            "`#[animal(generation = ...)]` conflicts with manual `type Generation = ...;`.",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let types = jungle_types_path();
+    let typosaurus = typosaurus_path();
+    if let Some(id) = attrs.id {
+        let u_ty = typenum_const_type(&typosaurus, id);
+        let generated_id: ImplItem = parse_quote! {
+            type Id = #types::Id<#u_ty>;
+        };
+        item_impl.items.insert(0, generated_id);
+    }
+    if let Some(generation) = attrs.generation {
+        let u_ty = typenum_const_type(&typosaurus, generation);
+        let generated_generation: ImplItem = parse_quote! {
+            type Generation = #u_ty;
+        };
+        item_impl.items.insert(0, generated_generation);
     }
 
     let self_ty = &item_impl.self_ty;
@@ -843,7 +970,6 @@ pub fn animal(attr: TokenStream, item: TokenStream) -> TokenStream {
     let primitives = emit_identified_animals(&item_impl, self_ty, &id_inner);
 
     let (impl_generics, impl_where_clause) = self_impl_generics(&item_impl, self_ty);
-    let types = jungle_types_path();
     let observation_ty = if attrs.observe {
         quote!(#types::ObserveObservation)
     } else {
@@ -912,12 +1038,10 @@ pub fn sdk_primitive(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let attr_tokens = proc_macro2::TokenStream::from(attr);
-    if !attr_tokens.is_empty() {
-        return syn::Error::new_spanned(attr_tokens, "This macro does not accept arguments.")
-            .to_compile_error()
-            .into();
-    }
+    let attrs = match syn::parse::<EffectAttributes>(attr) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
     let item_impl = parse_macro_input!(item as ItemImpl);
 
@@ -991,6 +1115,24 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
+    if attrs.id.is_some() && id_ty.is_some() {
+        return syn::Error::new_spanned(
+            &item_impl,
+            "`#[effect(id = ...)]` conflicts with manual `type Id = ...;`.",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let types = jungle_types_path();
+    let typosaurus = typosaurus_path();
+    if id_ty.is_none() {
+        if let Some(id) = attrs.id {
+            let u_ty = typenum_const_type(&typosaurus, id);
+            id_ty = Some(parse_quote!(#types::Id<#u_ty>));
+        }
+    }
+
     let (Some(id_ty), Some(in_ty), Some(out_ty), Some(err_ty), Some(effect_fn)) =
         (id_ty, in_ty, out_ty, err_ty, effect_fn)
     else {
@@ -1050,8 +1192,6 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
     let (schema_impl_generics, schema_where_clause) = self_impl_generics(&item_impl, self_ty);
 
     let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
-    let types = jungle_types_path();
-    let typosaurus = typosaurus_path();
     let node_ty = quote!(#typosaurus::collections::sp::Node<#id_inner, #self_ty>);
     let effect_schema = jungle_type("EffectSchema");
     let effect_exec = jungle_type("EffectExec");

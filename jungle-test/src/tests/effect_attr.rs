@@ -6,9 +6,8 @@ use jungle_sdk::typosaurus::num::consts::U90;
 
 struct AutoPrimitiveEffect;
 
-#[effect]
+#[effect(id = 90)]
 impl<J> jungle_sdk::types::Effect<J> for AutoPrimitiveEffect {
-    type Id = Id<U90>;
     type In = i32;
     type Out = i32;
     type Err = ();

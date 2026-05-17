@@ -2,19 +2,16 @@ use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, BoundFlowStep, Conditional, EffectCompletion, Either, Executor, ManualExecutor, Running,
     Waiting,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use std::future::ready;
 
 struct LeftEffect;
 
-#[effect]
+#[effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for LeftEffect {
-    type Id = Id<U0>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -29,9 +26,8 @@ impl<J> jungle_sdk::types::Effect<J> for LeftEffect {
 
 struct RightEffect;
 
-#[effect]
+#[effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for RightEffect {
-    type Id = Id<U1>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -46,10 +42,8 @@ impl<J> jungle_sdk::types::Effect<J> for RightEffect {
 
 struct ConditionalAnimal;
 
-#[animal]
+#[animal(id = 0, generation = 0)]
 impl Animal for ConditionalAnimal {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = ConditionalFlowTemplate;
