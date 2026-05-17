@@ -5,7 +5,7 @@ use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, BindAnimal, BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, Identity, JourneyStatus, LoopCondition, Sleep, UStep, While,
+    EffectSchema, Identity, JourneyStatus, LoopCondition, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
@@ -210,14 +210,14 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
     ReplayPhaseNotComplete,
     Conditional<
         ReplayPhaseIs<0>,
-        UStep<Pre>,
+        Step<Pre>,
         Conditional<
             ReplayPhaseIs<1>,
-            UStep<Pre>,
+            Step<Pre>,
             Conditional<
                 ReplayPhaseIs<2>,
-                UStep<Mid>,
-                Conditional<ReplayPhaseIs<3>, UStep<Post>, UStep<Post>>,
+                Step<Mid>,
+                Conditional<ReplayPhaseIs<3>, Step<Post>, Step<Post>>,
             >,
         >,
     >,

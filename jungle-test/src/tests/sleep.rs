@@ -4,7 +4,7 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Identity, JourneyStatus, LoopCondition, Observe, Sleep, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
@@ -111,11 +111,11 @@ type SleepJourney = While<
     SleepNotComplete,
     Conditional<
         SleepPhaseZero,
-        BoundStep<SleepAnimal, AddBeforeSleep>,
+        BoundFlowStep<SleepAnimal, AddBeforeSleep>,
         Conditional<
             SleepPhaseOne,
-            BoundStep<SleepAnimal, SleepForStateWake>,
-            BoundStep<SleepAnimal, AddAfterSleep>,
+            BoundFlowStep<SleepAnimal, SleepForStateWake>,
+            BoundFlowStep<SleepAnimal, AddAfterSleep>,
         >,
     >,
 >;

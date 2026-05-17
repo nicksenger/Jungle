@@ -3,10 +3,10 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BindAnimal, BoundAct, BoundStep, Condition, Conditional, Ecosystem, EffectCompletion,
+    Act, BindAnimal, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion,
     EffectExec, EffectSchema, Either, Identity, Join, JourneyStatus, Lens, LoopCondition,
     ManualExecutor, NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select,
-    Transparent, TraverseFlow, TraverseStep, UStep, While,
+    Step, Transparent, TraverseFlow, TraverseStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::*;
@@ -69,18 +69,18 @@ impl Act for CommitSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct TemplateFlow(UStep<AddOneSpec>, UStep<CommitSpec>);
+struct TemplateFlow(Step<AddOneSpec>, Step<CommitSpec>);
 
 #[derive(jungle_sdk::Journey)]
 struct CounterJourney(
-    BoundStep<CounterAnimal, CounterAddOne>,
-    BoundStep<CounterAnimal, CounterCommit>,
+    BoundFlowStep<CounterAnimal, CounterAddOne>,
+    BoundFlowStep<CounterAnimal, CounterCommit>,
 );
 
 #[derive(jungle_sdk::Journey)]
 struct LedgerJourney(
-    BoundStep<LedgerAnimal, LedgerAddOne>,
-    BoundStep<LedgerAnimal, LedgerCommit>,
+    BoundFlowStep<LedgerAnimal, LedgerAddOne>,
+    BoundFlowStep<LedgerAnimal, LedgerCommit>,
 );
 
 struct CounterAnimal;
@@ -279,24 +279,24 @@ fn template_binding_preserves_step_shape_after_binding() {
     type CounterBound = <TemplateFlow as BindAnimal<CounterAnimal>>::Bound;
     type LedgerBound = <TemplateFlow as BindAnimal<LedgerAnimal>>::Bound;
     type ExpectedCounter = jungle_sdk::typosaurus::collections::list::List<(
-        BoundStep<CounterAnimal, GenericAddOne<CounterAnimal>>,
+        BoundFlowStep<CounterAnimal, GenericAddOne<CounterAnimal>>,
         jungle_sdk::typosaurus::collections::list::List<(
-            BoundStep<CounterAnimal, GenericCommit<CounterAnimal>>,
+            BoundFlowStep<CounterAnimal, GenericCommit<CounterAnimal>>,
             jungle_sdk::typosaurus::collections::list::Empty,
         )>,
     )>;
     type ExpectedLedger = jungle_sdk::typosaurus::collections::list::List<(
-        BoundStep<LedgerAnimal, GenericAddOne<LedgerAnimal>>,
+        BoundFlowStep<LedgerAnimal, GenericAddOne<LedgerAnimal>>,
         jungle_sdk::typosaurus::collections::list::List<(
-            BoundStep<LedgerAnimal, GenericCommit<LedgerAnimal>>,
+            BoundFlowStep<LedgerAnimal, GenericCommit<LedgerAnimal>>,
             jungle_sdk::typosaurus::collections::list::Empty,
         )>,
     )>;
 
-    let _counter_step_1: BoundStep<CounterAnimal, CounterAddOne> = BoundStep::new();
-    let _counter_step_2: BoundStep<CounterAnimal, CounterCommit> = BoundStep::new();
-    let _ledger_step_1: BoundStep<LedgerAnimal, LedgerAddOne> = BoundStep::new();
-    let _ledger_step_2: BoundStep<LedgerAnimal, LedgerCommit> = BoundStep::new();
+    let _counter_step_1: BoundFlowStep<CounterAnimal, CounterAddOne> = BoundFlowStep::new();
+    let _counter_step_2: BoundFlowStep<CounterAnimal, CounterCommit> = BoundFlowStep::new();
+    let _ledger_step_1: BoundFlowStep<LedgerAnimal, LedgerAddOne> = BoundFlowStep::new();
+    let _ledger_step_2: BoundFlowStep<LedgerAnimal, LedgerCommit> = BoundFlowStep::new();
 
     assert_type_eq!(CounterBound, ExpectedCounter);
     assert_type_eq!(LedgerBound, ExpectedLedger);
@@ -487,7 +487,7 @@ where
 }
 
 #[derive(jungle_sdk::Flow)]
-struct ContextBoundTemplateFlow(UStep<ContextBoundSpec>);
+struct ContextBoundTemplateFlow(Step<ContextBoundSpec>);
 
 struct LocalTemplateContextAnimal;
 #[animal]
@@ -627,15 +627,15 @@ fn decode_effect_success_outputs(history: &[RunnerOut]) -> Vec<i32> {
 
 mod composed_templates {
     use super::{AddOneSpec, CommitSpec};
-    use jungle_sdk::types::UStep;
+    use jungle_sdk::types::Step;
 
     // Fragment A: no Animal type appears here.
     #[derive(jungle_sdk::Flow)]
-    pub struct IntakeStage(UStep<AddOneSpec>);
+    pub struct IntakeStage(Step<AddOneSpec>);
 
     // Fragment B: no Animal type appears here.
     #[derive(jungle_sdk::Flow)]
-    pub struct CommitStage(UStep<CommitSpec>);
+    pub struct CommitStage(Step<CommitSpec>);
 
     // Final composition of independent unbound fragments, still no Animal type.
     #[derive(jungle_sdk::Flow)]
@@ -852,26 +852,26 @@ impl Act for LensCommitSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct LensTemplate(UStep<LensReadSpareSpec>, UStep<LensCommitSpec>);
+struct LensTemplate(Step<LensReadSpareSpec>, Step<LensCommitSpec>);
 
 struct SeenStep<T>(core::marker::PhantomData<T>);
 struct LensTraversal;
-impl<S> TraverseStep<jungle_sdk::types::StepSpec<S>> for LensTraversal
+impl<S> TraverseStep<jungle_sdk::types::Step<S>> for LensTraversal
 where
     S: Act,
 {
-    type Output = SeenStep<jungle_sdk::types::StepSpec<S>>;
+    type Output = SeenStep<jungle_sdk::types::Step<S>>;
 }
 
 struct LensReplacer;
-impl ReplaceStep<jungle_sdk::types::StepSpec<LensReadSpareSpec>> for LensReplacer {
-    type Output = jungle_sdk::types::StepSpec<LensReadLeafSpec>;
+impl ReplaceStep<jungle_sdk::types::Step<LensReadSpareSpec>> for LensReplacer {
+    type Output = jungle_sdk::types::Step<LensReadLeafSpec>;
 }
-impl ReplaceStep<jungle_sdk::types::StepSpec<LensReadLeafSpec>> for LensReplacer {
-    type Output = jungle_sdk::types::StepSpec<LensReadSpareSpec>;
+impl ReplaceStep<jungle_sdk::types::Step<LensReadLeafSpec>> for LensReplacer {
+    type Output = jungle_sdk::types::Step<LensReadSpareSpec>;
 }
-impl ReplaceStep<jungle_sdk::types::StepSpec<LensCommitSpec>> for LensReplacer {
-    type Output = jungle_sdk::types::StepSpec<LensCommitSpec>;
+impl ReplaceStep<jungle_sdk::types::Step<LensCommitSpec>> for LensReplacer {
+    type Output = jungle_sdk::types::Step<LensCommitSpec>;
 }
 
 struct LensAlphaAnimal;
@@ -913,15 +913,15 @@ struct ScopedLensMultiField(LensTemplate, LensTemplate);
 fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs() {
     type Traversed = jungle_sdk::types::Traversed<LensTemplate, LensTraversal>;
     type ExpectedTraversed = jungle_sdk::typosaurus::list![
-        SeenStep<jungle_sdk::types::StepSpec<LensReadSpareSpec>>,
-        SeenStep<jungle_sdk::types::StepSpec<LensCommitSpec>>
+        SeenStep<jungle_sdk::types::Step<LensReadSpareSpec>>,
+        SeenStep<jungle_sdk::types::Step<LensCommitSpec>>
     ];
     assert_type_eq!(Traversed, ExpectedTraversed);
 
     type Replaced = jungle_sdk::types::Replace<LensTemplate, LensReplacer>;
     type ExpectedReplaced = jungle_sdk::typosaurus::list![
-        jungle_sdk::types::StepSpec<LensReadLeafSpec>,
-        jungle_sdk::types::StepSpec<LensCommitSpec>
+        jungle_sdk::types::Step<LensReadLeafSpec>,
+        jungle_sdk::types::Step<LensCommitSpec>
     ];
     assert_type_eq!(Replaced, ExpectedReplaced);
 
@@ -1101,14 +1101,14 @@ impl Act for NestedLeafNoiseSpec {
 
 #[derive(jungle_sdk::Flow)]
 #[jungle(view = NestedLensLeaf)]
-struct NestedLeafScopedTemplate(UStep<NestedLeafValueSpec>, UStep<NestedLeafNoiseSpec>);
+struct NestedLeafScopedTemplate(Step<NestedLeafValueSpec>, Step<NestedLeafNoiseSpec>);
 
 #[derive(jungle_sdk::Flow)]
 #[jungle(view = NestedLensBranch)]
 struct NestedBranchScopedTemplate(
-    UStep<NestedBranchSpareSpec>,
+    Step<NestedBranchSpareSpec>,
     NestedLeafScopedTemplate,
-    UStep<NestedBranchSpareSpec>,
+    Step<NestedBranchSpareSpec>,
 );
 
 struct NestedScopeAnimal;
@@ -1562,18 +1562,18 @@ impl Act for FinalizeSpec {
 
 #[derive(jungle_sdk::Flow)]
 struct SharedJoinBranch(
-    Join<UStep<JoinLeftSpec>, UStep<JoinRightSpec>>,
-    UStep<JoinToCarrySpec>,
+    Join<Step<JoinLeftSpec>, Step<JoinRightSpec>>,
+    Step<JoinToCarrySpec>,
 );
 
 #[derive(jungle_sdk::Flow)]
 struct SharedSelectBranch(
-    Select<UStep<SelectFastSpec>, UStep<SelectSlowSpec>>,
-    UStep<SelectToCarrySpec>,
+    Select<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
+    Step<SelectToCarrySpec>,
 );
 
 #[derive(jungle_sdk::Flow)]
-struct SharedLoopBody(UStep<LoopAdvanceSpec>);
+struct SharedLoopBody(Step<LoopAdvanceSpec>);
 
 #[derive(jungle_sdk::Flow)]
 struct SharedComposedSegment(
@@ -1586,10 +1586,10 @@ struct SharedComposedSegment(
 struct LongSharedSegment(Transparent<SharedMeta, SharedComposedSegment>);
 
 #[derive(jungle_sdk::Flow)]
-struct UniqueSegment(Conditional<ChooseUniqueAlpha, UStep<UniqueAlphaSpec>, UStep<UniqueBetaSpec>>);
+struct UniqueSegment(Conditional<ChooseUniqueAlpha, Step<UniqueAlphaSpec>, Step<UniqueBetaSpec>>);
 
 #[derive(jungle_sdk::Flow)]
-struct LongMixedTemplate(LongSharedSegment, UniqueSegment, UStep<FinalizeSpec>);
+struct LongMixedTemplate(LongSharedSegment, UniqueSegment, Step<FinalizeSpec>);
 
 struct ComplexAlphaAnimal;
 #[animal(observe)]

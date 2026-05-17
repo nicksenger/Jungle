@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundStep, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor,
+    BoundAct, BoundFlowStep, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor,
     Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
@@ -57,7 +57,7 @@ impl BoundAct<Looper> for Tick {
     }
 }
 
-type TickFlow = BoundStep<Looper, Tick>;
+type TickFlow = BoundFlowStep<Looper, Tick>;
 
 struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {
@@ -140,13 +140,13 @@ impl BoundAct<LooperWithTail> for TailAfterLoop {
     }
 }
 
-type TickWithTailFlow = BoundStep<LooperWithTail, TickWithTail>;
+type TickWithTailFlow = BoundFlowStep<LooperWithTail, TickWithTail>;
 type WhileTickWithTailFlow = While<LessThanThree, TickWithTailFlow>;
 
 #[derive(Journey)]
 struct LoopWithTailJourney(
     WhileTickWithTailFlow,
-    BoundStep<LooperWithTail, TailAfterLoop>,
+    BoundFlowStep<LooperWithTail, TailAfterLoop>,
 );
 
 struct UnitEffect;
@@ -232,10 +232,13 @@ impl BoundAct<NestedLooper> for FinishOuterRound {
     }
 }
 
-type NestedInnerLoop = While<InnerContinue, BoundStep<NestedLooper, InnerWork>>;
+type NestedInnerLoop = While<InnerContinue, BoundFlowStep<NestedLooper, InnerWork>>;
 
 #[derive(Journey)]
-struct NestedOuterBody(NestedInnerLoop, BoundStep<NestedLooper, FinishOuterRound>);
+struct NestedOuterBody(
+    NestedInnerLoop,
+    BoundFlowStep<NestedLooper, FinishOuterRound>,
+);
 
 type NestedOuterLoop = While<OuterContinue, NestedOuterBody>;
 

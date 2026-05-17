@@ -2,7 +2,7 @@ use jungle_sdk::animal;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundStep, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either,
+    BoundAct, BoundFlowStep, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either,
     Executor, Identity, Join, Select, Sleep,
 };
 use jungle_sdk::typosaurus::num::consts::*;
@@ -117,8 +117,8 @@ impl BoundAct<SelectAnimal> for CaptureSelectWinner {
 
 #[derive(Journey)]
 struct SelectJourney(
-    Select<BoundStep<SelectAnimal, SelectFast>, BoundStep<SelectAnimal, SelectSlow>>,
-    BoundStep<SelectAnimal, CaptureSelectWinner>,
+    Select<BoundFlowStep<SelectAnimal, SelectFast>, BoundFlowStep<SelectAnimal, SelectSlow>>,
+    BoundFlowStep<SelectAnimal, CaptureSelectWinner>,
 );
 
 struct SelectAnimal;
@@ -188,8 +188,8 @@ impl BoundAct<JoinAnimal> for CaptureJoinSum {
 
 #[derive(Journey)]
 struct JoinJourney(
-    Join<BoundStep<JoinAnimal, JoinFast>, BoundStep<JoinAnimal, JoinSlow>>,
-    BoundStep<JoinAnimal, CaptureJoinSum>,
+    Join<BoundFlowStep<JoinAnimal, JoinFast>, BoundFlowStep<JoinAnimal, JoinSlow>>,
+    BoundFlowStep<JoinAnimal, CaptureJoinSum>,
 );
 
 struct JoinAnimal;
@@ -240,7 +240,7 @@ impl BoundAct<TimeoutAnimal> for TimeoutSlow {
 }
 
 type TimeoutJourney =
-    Select<BoundStep<TimeoutAnimal, TimeoutSleep>, BoundStep<TimeoutAnimal, TimeoutSlow>>;
+    Select<BoundFlowStep<TimeoutAnimal, TimeoutSleep>, BoundFlowStep<TimeoutAnimal, TimeoutSlow>>;
 
 struct TimeoutAnimal;
 

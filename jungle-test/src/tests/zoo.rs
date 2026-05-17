@@ -4,9 +4,9 @@ use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Animal, AnimalEffectSet, AnimalSet, AnimalStates, BoundAct, BoundStep, Ecosystem,
+    Act, Animal, AnimalEffectSet, AnimalSet, AnimalStates, BoundAct, BoundFlowStep, Ecosystem,
     EffectCompletion, EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier,
-    UStep, While,
+    Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -166,7 +166,7 @@ where
     type Bind<A: Animal> = UnitOkStep<E>;
 }
 
-type UUnitStep<E> = UStep<UnitOkSpec<E>>;
+type UUnitStep<E> = Step<UnitOkSpec<E>>;
 
 #[derive(jungle_sdk::Flow)]
 struct PreyWorkflowTemplate(
@@ -188,65 +188,65 @@ struct PredatorWorkflowTemplate(
 
 #[derive(jungle_sdk::Journey)]
 struct GorillaJourney(
-    BoundStep<Gorilla, UnitOkStep<Eat>>,
-    BoundStep<Gorilla, UnitOkStep<Sleep>>,
-    BoundStep<Gorilla, UnitOkStep<Forage>>,
-    BoundStep<Gorilla, UnitOkStep<Drink>>,
-    BoundStep<Gorilla, UnitOkStep<Flee>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Eat>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Sleep>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Forage>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Drink>>,
+    BoundFlowStep<Gorilla, UnitOkStep<Flee>>,
 );
 
 #[derive(jungle_sdk::Journey)]
 struct ChimpanzeeJourney(
-    BoundStep<Chimpanzee, UnitOkStep<Eat>>,
-    BoundStep<Chimpanzee, UnitOkStep<Sleep>>,
-    BoundStep<Chimpanzee, UnitOkStep<Forage>>,
-    BoundStep<Chimpanzee, UnitOkStep<Drink>>,
-    BoundStep<Chimpanzee, UnitOkStep<Flee>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Eat>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Sleep>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Forage>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Drink>>,
+    BoundFlowStep<Chimpanzee, UnitOkStep<Flee>>,
 );
 
 #[derive(jungle_sdk::Journey)]
 struct TigerJourney(
-    BoundStep<Tiger, UnitOkStep<Eat>>,
-    BoundStep<Tiger, UnitOkStep<Sleep>>,
-    BoundStep<Tiger, UnitOkStep<Forage>>,
-    BoundStep<Tiger, UnitOkStep<Drink>>,
-    BoundStep<Tiger, UnitOkStep<Hunt>>,
+    BoundFlowStep<Tiger, UnitOkStep<Eat>>,
+    BoundFlowStep<Tiger, UnitOkStep<Sleep>>,
+    BoundFlowStep<Tiger, UnitOkStep<Forage>>,
+    BoundFlowStep<Tiger, UnitOkStep<Drink>>,
+    BoundFlowStep<Tiger, UnitOkStep<Hunt>>,
 );
 
 #[derive(jungle_sdk::Journey)]
 struct JaguarJourney(
-    BoundStep<Jaguar, UnitOkStep<Eat>>,
-    BoundStep<Jaguar, UnitOkStep<Sleep>>,
-    BoundStep<Jaguar, UnitOkStep<Forage>>,
-    BoundStep<Jaguar, UnitOkStep<Drink>>,
-    BoundStep<Jaguar, UnitOkStep<Hunt>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Eat>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Sleep>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Forage>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Drink>>,
+    BoundFlowStep<Jaguar, UnitOkStep<Hunt>>,
 );
 
 #[derive(jungle_sdk::Journey)]
 struct AnacondaJourney(
-    BoundStep<Anaconda, UnitOkStep<Eat>>,
-    BoundStep<Anaconda, UnitOkStep<Sleep>>,
-    BoundStep<Anaconda, UnitOkStep<Forage>>,
-    BoundStep<Anaconda, UnitOkStep<Drink>>,
-    BoundStep<Anaconda, UnitOkStep<Hunt>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Eat>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Sleep>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Forage>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Drink>>,
+    BoundFlowStep<Anaconda, UnitOkStep<Hunt>>,
 );
 
 #[derive(jungle_sdk::Journey)]
 struct HippoJourney(
-    BoundStep<Hippo, UnitOkStep<Eat>>,
-    BoundStep<Hippo, UnitOkStep<Sleep>>,
-    BoundStep<Hippo, UnitOkStep<Forage>>,
-    BoundStep<Hippo, UnitOkStep<Drink>>,
-    BoundStep<Hippo, UnitOkStep<Flee>>,
+    BoundFlowStep<Hippo, UnitOkStep<Eat>>,
+    BoundFlowStep<Hippo, UnitOkStep<Sleep>>,
+    BoundFlowStep<Hippo, UnitOkStep<Forage>>,
+    BoundFlowStep<Hippo, UnitOkStep<Drink>>,
+    BoundFlowStep<Hippo, UnitOkStep<Flee>>,
 );
 
 #[derive(jungle_sdk::Journey)]
 struct ElephantJourney(
-    BoundStep<Elephant, UnitOkStep<Eat>>,
-    BoundStep<Elephant, UnitOkStep<Sleep>>,
-    BoundStep<Elephant, UnitOkStep<Forage>>,
-    BoundStep<Elephant, UnitOkStep<Drink>>,
-    BoundStep<Elephant, UnitOkStep<Flee>>,
+    BoundFlowStep<Elephant, UnitOkStep<Eat>>,
+    BoundFlowStep<Elephant, UnitOkStep<Sleep>>,
+    BoundFlowStep<Elephant, UnitOkStep<Forage>>,
+    BoundFlowStep<Elephant, UnitOkStep<Drink>>,
+    BoundFlowStep<Elephant, UnitOkStep<Flee>>,
 );
 
 struct Gorilla;
@@ -436,8 +436,8 @@ type RunnerJourney = While<
     RunnerKeepGoing,
     jungle_sdk::types::Conditional<
         RunnerUseStepOne,
-        BoundStep<RunnerAnimal, RunnerStepOne>,
-        BoundStep<RunnerAnimal, RunnerStepTwo>,
+        BoundFlowStep<RunnerAnimal, RunnerStepOne>,
+        BoundFlowStep<RunnerAnimal, RunnerStepTwo>,
     >,
 >;
 
@@ -674,13 +674,13 @@ impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
     }
 }
 
-type WorkflowGorillaJourney = While<ApeKeepRunning, BoundStep<WorkflowGorilla, ApeRoundTask>>;
+type WorkflowGorillaJourney = While<ApeKeepRunning, BoundFlowStep<WorkflowGorilla, ApeRoundTask>>;
 type WorkflowTigerJourney = While<
     TigerKeepRunning,
     jungle_sdk::types::Conditional<
         TigerChooseHunt,
-        BoundStep<WorkflowTiger, TigerHuntTask>,
-        BoundStep<WorkflowTiger, TigerEatTask>,
+        BoundFlowStep<WorkflowTiger, TigerHuntTask>,
+        BoundFlowStep<WorkflowTiger, TigerEatTask>,
     >,
 >;
 

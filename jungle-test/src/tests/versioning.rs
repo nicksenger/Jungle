@@ -3,8 +3,8 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Animal, BoundAct, BoundStep, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id,
-    Identity, JourneyStatus, Observe, SupportedAnimal,
+    Animal, BoundAct, BoundFlowStep, Ecosystem, EffectCompletion, Generations, HighestGeneration,
+    Id, Identity, JourneyStatus, Observe, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -76,10 +76,10 @@ impl BoundAct<ModernAnimal> for ModernStep {
 }
 
 #[derive(Journey)]
-struct LegacyJourney(BoundStep<LegacyAnimal, LegacyStep>);
+struct LegacyJourney(BoundFlowStep<LegacyAnimal, LegacyStep>);
 
 #[derive(Journey)]
-struct ModernJourney(BoundStep<ModernAnimal, ModernStep>);
+struct ModernJourney(BoundFlowStep<ModernAnimal, ModernStep>);
 
 struct LegacyAnimal;
 #[animal(observe)]
