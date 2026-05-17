@@ -1,11 +1,12 @@
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema,
-    Identity, JourneyStatus, LoopCondition, Observe, Sleep, Step, While,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema,
+    JourneyStatus, LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -37,53 +38,6 @@ impl<J> EffectExec<J> for AddEffect {
     }
 }
 
-struct AddBeforeSleep;
-impl BoundAct<SleepAnimal> for AddBeforeSleep {
-    type Effect = AddEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &SleepState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.counter += output.expect("add before sleep should succeed");
-        state.phase += 1;
-    }
-}
-
-struct SleepForStateWake;
-impl BoundAct<SleepAnimal> for SleepForStateWake {
-    type Effect = Sleep;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(state: &SleepState, _input: Self::Input) -> Duration {
-        Duration::from_millis(state.sleep_for_ms)
-    }
-
-    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("sleep should resume successfully");
-        state.phase += 1;
-    }
-}
-
-struct AddAfterSleep;
-impl BoundAct<SleepAnimal> for AddAfterSleep {
-    type Effect = AddEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &SleepState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.counter += output.expect("add after sleep should succeed");
-        state.phase += 1;
-    }
-}
-
 struct SleepNotComplete;
 impl LoopCondition<SleepState> for SleepNotComplete {
     type Arg = ();
@@ -108,27 +62,50 @@ impl Condition<(SleepState, ())> for SleepPhaseOne {
 }
 
 struct AddBeforeSleepSpec;
+#[act]
 impl Act for AddBeforeSleepSpec {
     type Effect = AddEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddBeforeSleep;
+
+    fn emit(_state: &SleepState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.counter += output.expect("add before sleep should succeed");
+        state.phase += 1;
+    }
 }
 
 struct SleepForStateWakeSpec;
+#[act]
 impl Act for SleepForStateWakeSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = SleepForStateWake;
+
+    fn emit(state: &SleepState, _input: Self::Input) -> Duration {
+        Duration::from_millis(state.sleep_for_ms)
+    }
+
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("sleep should resume successfully");
+        state.phase += 1;
+    }
 }
 
 struct AddAfterSleepSpec;
+#[act]
 impl Act for AddAfterSleepSpec {
     type Effect = AddEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddAfterSleep;
+
+    fn emit(_state: &SleepState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.counter += output.expect("add after sleep should succeed");
+        state.phase += 1;
+    }
 }
 
 #[derive(jungle_sdk::Flow)]

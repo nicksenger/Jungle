@@ -1,14 +1,14 @@
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BoundAct, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either,
-    Executor, Identity, Join, Select, Sleep, Step,
+    Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Join,
+    Select, Sleep, Step,
 };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
-use std::marker::PhantomData;
 use std::time::Duration;
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,20 +60,9 @@ impl<J> EffectExec<J> for ContextTimedValueEffect {
 }
 
 struct SelectFastSpec;
+#[act]
 impl Act for SelectFastSpec {
     type Effect = TimedValueEffect;
-    type Input = ();
-    type Output = i32;
-    type Bind<A: Animal> = SelectFast<A>;
-}
-
-struct SelectFast<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for SelectFast<A>
-where
-    A: Animal<State = SelectJoinState>,
-{
-    type Effect = TimedValueEffect;
-    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -90,20 +79,9 @@ where
 }
 
 struct SelectSlowSpec;
+#[act]
 impl Act for SelectSlowSpec {
     type Effect = TimedValueEffect;
-    type Input = ();
-    type Output = i32;
-    type Bind<A: Animal> = SelectSlow<A>;
-}
-
-struct SelectSlow<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for SelectSlow<A>
-where
-    A: Animal<State = SelectJoinState>,
-{
-    type Effect = TimedValueEffect;
-    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -120,20 +98,9 @@ where
 }
 
 struct CaptureSelectWinnerSpec;
+#[act]
 impl Act for CaptureSelectWinnerSpec {
     type Effect = TimedValueEffect;
-    type Input = Either<i32, i32>;
-    type Output = ();
-    type Bind<A: Animal> = CaptureSelectWinner<A>;
-}
-
-struct CaptureSelectWinner<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for CaptureSelectWinner<A>
-where
-    A: Animal<State = SelectJoinState>,
-{
-    type Effect = TimedValueEffect;
-    type Aspect = Identity;
     type Input = Either<i32, i32>;
     type Output = ();
 
@@ -165,20 +132,9 @@ impl Animal for SelectAnimal {
 }
 
 struct JoinFastSpec;
+#[act]
 impl Act for JoinFastSpec {
     type Effect = TimedValueEffect;
-    type Input = ();
-    type Output = i32;
-    type Bind<A: Animal> = JoinFast<A>;
-}
-
-struct JoinFast<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for JoinFast<A>
-where
-    A: Animal<State = SelectJoinState>,
-{
-    type Effect = TimedValueEffect;
-    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -195,20 +151,9 @@ where
 }
 
 struct JoinSlowSpec;
+#[act]
 impl Act for JoinSlowSpec {
     type Effect = TimedValueEffect;
-    type Input = ();
-    type Output = i32;
-    type Bind<A: Animal> = JoinSlow<A>;
-}
-
-struct JoinSlow<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for JoinSlow<A>
-where
-    A: Animal<State = SelectJoinState>,
-{
-    type Effect = TimedValueEffect;
-    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -225,20 +170,9 @@ where
 }
 
 struct CaptureJoinSumSpec;
+#[act]
 impl Act for CaptureJoinSumSpec {
     type Effect = TimedValueEffect;
-    type Input = (i32, i32);
-    type Output = ();
-    type Bind<A: Animal> = CaptureJoinSum<A>;
-}
-
-struct CaptureJoinSum<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for CaptureJoinSum<A>
-where
-    A: Animal<State = SelectJoinState>,
-{
-    type Effect = TimedValueEffect;
-    type Aspect = Identity;
     type Input = (i32, i32);
     type Output = ();
 
@@ -267,20 +201,9 @@ impl Animal for JoinAnimal {
 }
 
 struct TimeoutSleepSpec;
+#[act]
 impl Act for TimeoutSleepSpec {
     type Effect = Sleep;
-    type Input = ();
-    type Output = i32;
-    type Bind<A: Animal> = TimeoutSleep<A>;
-}
-
-struct TimeoutSleep<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for TimeoutSleep<A>
-where
-    A: Animal<State = SelectJoinState>,
-{
-    type Effect = Sleep;
-    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -296,20 +219,9 @@ where
 }
 
 struct TimeoutSlowSpec;
+#[act]
 impl Act for TimeoutSlowSpec {
     type Effect = ContextTimedValueEffect;
-    type Input = ();
-    type Output = i32;
-    type Bind<A: Animal> = TimeoutSlow<A>;
-}
-
-struct TimeoutSlow<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for TimeoutSlow<A>
-where
-    A: Animal<State = SelectJoinState>,
-{
-    type Effect = ContextTimedValueEffect;
-    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 

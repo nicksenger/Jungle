@@ -1,3 +1,4 @@
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
@@ -8,7 +9,6 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use std::future::ready;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 struct SeedEffect;
@@ -46,20 +46,9 @@ impl<J> EffectExec<J> for FinishEffect {
 }
 
 struct SeedSpec;
+#[act]
 impl Act for SeedSpec {
     type Effect = SeedEffect;
-    type Input = i32;
-    type Output = i32;
-    type Bind<A: Animal> = Seed<A>;
-}
-
-struct Seed<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for Seed<A>
-where
-    A: Animal<State = i32>,
-{
-    type Effect = SeedEffect;
-    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -75,20 +64,9 @@ where
 }
 
 struct FinishSpec;
+#[act]
 impl Act for FinishSpec {
     type Effect = FinishEffect;
-    type Input = i32;
-    type Output = i32;
-    type Bind<A: Animal> = Finish<A>;
-}
-
-struct Finish<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for Finish<A>
-where
-    A: Animal<State = i32>,
-{
-    type Effect = FinishEffect;
-    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -117,8 +95,8 @@ impl Animal for ProgressAnimal {
 
 struct ProgressContext;
 
-type SeedStep = BoundFlowStep<ProgressAnimal, Seed<ProgressAnimal>>;
-type FinishStep = BoundFlowStep<ProgressAnimal, Finish<ProgressAnimal>>;
+type SeedStep = BoundFlowStep<ProgressAnimal, <SeedSpec as Act>::Bind<ProgressAnimal>>;
+type FinishStep = BoundFlowStep<ProgressAnimal, <FinishSpec as Act>::Bind<ProgressAnimal>>;
 
 struct StepHarness;
 impl StepHarness {
@@ -254,20 +232,9 @@ impl<J> EffectExec<J> for BranchEffect {
 }
 
 struct BranchStepASpec;
+#[act]
 impl Act for BranchStepASpec {
     type Effect = BranchEffect;
-    type Input = ();
-    type Output = ();
-    type Bind<A: Animal> = BranchStepA<A>;
-}
-
-struct BranchStepA<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for BranchStepA<A>
-where
-    A: Animal<State = i32>,
-{
-    type Effect = BranchEffect;
-    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -281,20 +248,9 @@ where
 }
 
 struct BranchStepBSpec;
+#[act]
 impl Act for BranchStepBSpec {
     type Effect = BranchEffect;
-    type Input = ();
-    type Output = ();
-    type Bind<A: Animal> = BranchStepB<A>;
-}
-
-struct BranchStepB<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for BranchStepB<A>
-where
-    A: Animal<State = i32>,
-{
-    type Effect = BranchEffect;
-    type Aspect = Identity;
     type Input = ();
     type Output = ();
 

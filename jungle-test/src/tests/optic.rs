@@ -1,3 +1,4 @@
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
@@ -126,24 +127,6 @@ impl StateCarrier<RootState> for LeafValueCarrier {
     }
 }
 
-struct LensOnBranch;
-impl BoundAct<OpticAnimal> for LensOnBranch {
-    type Effect = EchoI32;
-    type Aspect = BranchCarrier;
-    type Input = i32;
-    type Output = i32;
-
-    fn emit(view: &Branch, input: Self::Input) -> i32 {
-        view.leaf.value + input
-    }
-
-    fn absorb(view: &mut Branch, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("lens single should succeed");
-        view.spare = out;
-        out
-    }
-}
-
 struct LensOnLeafValue;
 impl BoundAct<OpticAnimal> for LensOnLeafValue {
     type Effect = EchoI32;
@@ -182,11 +165,21 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
 struct OpticAnimal;
 
 struct LensOnBranchSpec;
+#[act(aspect = BranchCarrier)]
 impl Act for LensOnBranchSpec {
     type Effect = EchoI32;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = LensOnBranch;
+
+    fn emit(view: &Branch, input: Self::Input) -> i32 {
+        view.leaf.value + input
+    }
+
+    fn absorb(view: &mut Branch, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("lens single should succeed");
+        view.spare = out;
+        out
+    }
 }
 
 #[derive(jungle_sdk::Flow)]
@@ -211,12 +204,16 @@ fn seed_state() -> RootState {
 
 #[test]
 fn state_lens_single_index_short_flow() {
-    let (state, request) =
-        <BoundFlowStep<OpticAnimal, LensOnBranch> as Running>::run((seed_state(), 3));
+    let (state, request) = <BoundFlowStep<
+        OpticAnimal,
+        <LensOnBranchSpec as Act>::Bind<OpticAnimal>,
+    > as Running>::run((seed_state(), 3));
     assert_eq!(request.into_input(), 7);
 
-    let (state, emitted) =
-        <BoundFlowStep<OpticAnimal, LensOnBranch> as Waiting>::accept((state, Ok(8)));
+    let (state, emitted) = <BoundFlowStep<
+        OpticAnimal,
+        <LensOnBranchSpec as Act>::Bind<OpticAnimal>,
+    > as Waiting>::accept((state, Ok(8)));
     assert_eq!(emitted, 8);
     assert_eq!(state.branch.spare, 8);
     assert_eq!(state.top, 99);

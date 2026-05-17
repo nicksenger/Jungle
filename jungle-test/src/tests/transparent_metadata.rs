@@ -1,14 +1,14 @@
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BoundAct, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst,
-    JourneyAstSource, ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
+    Act, Conditional, EffectCompletion, Executor, Join, JourneyAst, JourneyAstSource,
+    ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U30;
 use std::future::ready;
-use std::marker::PhantomData;
 
 struct TransparentEffect;
 
@@ -37,20 +37,9 @@ impl Animal for TransparentAnimal {
 }
 
 struct TransparentStepSpec;
+#[act]
 impl Act for TransparentStepSpec {
     type Effect = TransparentEffect;
-    type Input = i32;
-    type Output = i32;
-    type Bind<A: Animal> = TransparentStep<A>;
-}
-
-struct TransparentStep<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for TransparentStep<A>
-where
-    A: Animal<State = i32>,
-{
-    type Effect = TransparentEffect;
-    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 

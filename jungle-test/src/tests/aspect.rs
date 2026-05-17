@@ -1,3 +1,4 @@
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types as jungle_types;
@@ -231,25 +232,6 @@ where
     }
 }
 
-struct GorillaSleepManual;
-impl BoundAct<Gorilla> for GorillaSleepManual {
-    type Effect = Sleep;
-    type Aspect = Identity;
-    type Input = i32;
-    type Output = i32;
-
-    fn emit(state: &GorillaState, input: Self::Input) -> i32 {
-        state.core.energy + input
-    }
-
-    fn absorb(state: &mut GorillaState, output: EffectCompletion<Sleep>) -> Self::Output {
-        let value = output.expect("sleep should succeed");
-        state.core.energy = value;
-        state.core.age += 1;
-        value
-    }
-}
-
 type GorillaEat = AddI32<GorillaEnergyCarrier, Eat>;
 type GorillaForageStep = SubI32<GorillaEnergyCarrier, Forage>;
 
@@ -265,11 +247,22 @@ impl Act for GorillaEatSpec {
 }
 
 struct GorillaSleepManualSpec;
+#[act]
 impl Act for GorillaSleepManualSpec {
     type Effect = Sleep;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = GorillaSleepManual;
+
+    fn emit(state: &GorillaState, input: Self::Input) -> i32 {
+        state.core.energy + input
+    }
+
+    fn absorb(state: &mut GorillaState, output: EffectCompletion<Sleep>) -> Self::Output {
+        let value = output.expect("sleep should succeed");
+        state.core.energy = value;
+        state.core.age += 1;
+        value
+    }
 }
 
 struct GorillaForageSpec;

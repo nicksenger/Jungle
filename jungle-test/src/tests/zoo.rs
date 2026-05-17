@@ -1,4 +1,5 @@
 use futures::channel::mpsc;
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
@@ -310,34 +311,6 @@ impl<J> EffectExec<J> for RunnerStepTwoEffect {
     }
 }
 
-struct RunnerStepOne;
-impl BoundAct<RunnerAnimal> for RunnerStepOne {
-    type Effect = RunnerStepOneEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.0 += output.expect("runner step one should succeed");
-    }
-}
-
-struct RunnerStepTwo;
-impl BoundAct<RunnerAnimal> for RunnerStepTwo {
-    type Effect = RunnerStepTwoEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.0 += output.expect("runner step two should succeed");
-    }
-}
-
 struct RunnerKeepGoing;
 impl LoopCondition<RunnerState> for RunnerKeepGoing {
     type Arg = ();
@@ -355,19 +328,31 @@ impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
 }
 
 struct RunnerStepOneSpec;
+#[act]
 impl Act for RunnerStepOneSpec {
     type Effect = RunnerStepOneEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = RunnerStepOne;
+
+    fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.0 += output.expect("runner step one should succeed");
+    }
 }
 
 struct RunnerStepTwoSpec;
+#[act]
 impl Act for RunnerStepTwoSpec {
     type Effect = RunnerStepTwoEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = RunnerStepTwo;
+
+    fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.0 += output.expect("runner step two should succeed");
+    }
 }
 
 #[derive(jungle_sdk::Flow)]

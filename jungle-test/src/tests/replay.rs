@@ -1,11 +1,12 @@
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, Identity, JourneyStatus, LoopCondition, Sleep, Step, While,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema,
+    JourneyStatus, LoopCondition, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
@@ -120,60 +121,6 @@ impl EffectExec<ReplayGateZoo> for ReplayGateEffect {
     }
 }
 
-struct ReplayPreStep;
-impl<A> BoundAct<A> for ReplayPreStep
-where
-    A: Animal<State = ReplayGateState>,
-{
-    type Effect = ReplayPreIncrementEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &A::State, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("pre increment should succeed");
-        state.phase += 1;
-    }
-}
-
-struct ReplayPostStep;
-impl<A> BoundAct<A> for ReplayPostStep
-where
-    A: Animal<State = ReplayGateState>,
-{
-    type Effect = ReplayPostIncrementEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &A::State, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("post increment should succeed");
-        state.phase += 1;
-    }
-}
-
-struct ReplayGateStep;
-impl<A> BoundAct<A> for ReplayGateStep
-where
-    A: Animal<State = ReplayGateState>,
-{
-    type Effect = ReplayGateEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &A::State, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("gate effect should succeed");
-        state.phase += 1;
-    }
-}
-
 trait ReplayPhaseState {
     fn phase(&self) -> u8;
 }
@@ -224,27 +171,48 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
 >;
 
 struct ReplayPreSpec;
+#[act]
 impl Act for ReplayPreSpec {
     type Effect = ReplayPreIncrementEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = ReplayPreStep;
+
+    fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("pre increment should succeed");
+        state.phase += 1;
+    }
 }
 
 struct ReplayGateSpec;
+#[act]
 impl Act for ReplayGateSpec {
     type Effect = ReplayGateEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = ReplayGateStep;
+
+    fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("gate effect should succeed");
+        state.phase += 1;
+    }
 }
 
 struct ReplayPostSpec;
+#[act]
 impl Act for ReplayPostSpec {
     type Effect = ReplayPostIncrementEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = ReplayPostStep;
+
+    fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("post increment should succeed");
+        state.phase += 1;
+    }
 }
 
 #[derive(jungle_sdk::Flow)]
@@ -466,84 +434,60 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
     }
 }
 
-struct ReplayTimeoutPreStep;
-impl<A> BoundAct<A> for ReplayTimeoutPreStep
-where
-    A: Animal<State = ReplayTimeoutState>,
-{
+struct ReplayTimeoutPreSpec;
+#[act]
+impl Act for ReplayTimeoutPreSpec {
     type Effect = ReplayTimeoutPreIncrementEffect;
-    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &A::State, _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &ReplayTimeoutState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("pre-timeout increment should succeed");
         state.phase += 1;
     }
 }
 
-struct ReplayTimeoutSleepStep;
-impl<A> BoundAct<A> for ReplayTimeoutSleepStep
-where
-    A: Animal<State = ReplayTimeoutState>,
-{
+struct ReplayTimeoutSleepSpec;
+#[act]
+impl Act for ReplayTimeoutSleepSpec {
     type Effect = Sleep;
-    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
-    fn emit(state: &A::State, _input: Self::Input) -> Duration {
+    fn emit(state: &ReplayTimeoutState, _input: Self::Input) -> Duration {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("timeout sleep should succeed");
         state.phase += 1;
     }
 }
 
-struct ReplayTimeoutPostStep;
-impl<A> BoundAct<A> for ReplayTimeoutPostStep
-where
-    A: Animal<State = ReplayTimeoutState>,
-{
-    type Effect = ReplayTimeoutPostIncrementEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &A::State, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("post-timeout increment should succeed");
-        state.phase += 1;
-    }
-}
-
-struct ReplayTimeoutPreSpec;
-impl Act for ReplayTimeoutPreSpec {
-    type Effect = ReplayTimeoutPreIncrementEffect;
-    type Input = ();
-    type Output = ();
-    type Bind<A: Animal> = ReplayTimeoutPreStep;
-}
-
-struct ReplayTimeoutSleepSpec;
-impl Act for ReplayTimeoutSleepSpec {
-    type Effect = Sleep;
-    type Input = ();
-    type Output = ();
-    type Bind<A: Animal> = ReplayTimeoutSleepStep;
-}
-
 struct ReplayTimeoutPostSpec;
+#[act]
 impl Act for ReplayTimeoutPostSpec {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = ReplayTimeoutPostStep;
+
+    fn emit(_state: &ReplayTimeoutState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut ReplayTimeoutState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("post-timeout increment should succeed");
+        state.phase += 1;
+    }
 }
 
 #[derive(jungle_sdk::Flow)]

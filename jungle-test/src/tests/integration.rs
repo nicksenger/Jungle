@@ -1,13 +1,13 @@
 use futures::StreamExt;
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, Identity, JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, Step,
-    While,
+    Act, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    EffectSchema, JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::*;
@@ -97,138 +97,6 @@ impl<J> EffectExec<J> for AddTwoEffect {
     }
 }
 
-struct AddOneBeforeFullStateStep;
-impl BoundAct<IntegrationAnimal> for AddOneBeforeFullStateStep {
-    type Effect = AddOneEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(
-        state: &mut IntegrationState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.total += output.expect("first pre-focused full-state effect should succeed");
-        state.before_steps += 1;
-    }
-}
-
-struct AddTwoBeforeFullStateStep;
-impl BoundAct<IntegrationAnimal> for AddTwoBeforeFullStateStep {
-    type Effect = AddTwoEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(
-        state: &mut IntegrationState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.total += output.expect("second pre-focused full-state effect should succeed");
-        state.before_steps += 1;
-    }
-}
-
-struct AddOneFocusedStep;
-impl BoundAct<IntegrationAnimal> for AddOneFocusedStep {
-    type Effect = AddOneEffect;
-    type Aspect = IntegrationFocusedCarrier;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &SubFlowState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.value += output.expect("first focused integration effect should succeed");
-        state.updates += 1;
-    }
-}
-
-struct AddTwoFocusedStep;
-impl BoundAct<IntegrationAnimal> for AddTwoFocusedStep {
-    type Effect = AddTwoEffect;
-    type Aspect = IntegrationFocusedCarrier;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &SubFlowState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.value += output.expect("second focused integration effect should succeed");
-        state.updates += 1;
-    }
-}
-
-struct AddOneDeepFocusedStep;
-impl BoundAct<IntegrationAnimal> for AddOneDeepFocusedStep {
-    type Effect = AddOneEffect;
-    type Aspect = IntegrationDeepFocusedCarrier;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &DeepFocusState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.value += output.expect("first deep-focused integration effect should succeed");
-        state.updates += 1;
-    }
-}
-
-struct AddTwoDeepFocusedStep;
-impl BoundAct<IntegrationAnimal> for AddTwoDeepFocusedStep {
-    type Effect = AddTwoEffect;
-    type Aspect = IntegrationDeepFocusedCarrier;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &DeepFocusState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.value += output.expect("second deep-focused integration effect should succeed");
-        state.updates += 1;
-    }
-}
-
-struct AddOneAfterFullStateStep;
-impl BoundAct<IntegrationAnimal> for AddOneAfterFullStateStep {
-    type Effect = AddOneEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(
-        state: &mut IntegrationState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.total += output.expect("first post-focused full-state effect should succeed");
-        state.after_steps += 1;
-    }
-}
-
-struct AddTwoAfterFullStateStep;
-impl BoundAct<IntegrationAnimal> for AddTwoAfterFullStateStep {
-    type Effect = AddTwoEffect;
-    type Aspect = Identity;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(
-        state: &mut IntegrationState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.total += output.expect("second post-focused full-state effect should succeed");
-        state.after_steps += 1;
-    }
-}
-
 struct KeepRunning;
 impl LoopCondition<IntegrationState> for KeepRunning {
     type Arg = ();
@@ -288,76 +156,150 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
 }
 
 struct AddOneBeforeFullStateSpec;
+#[act]
 impl Act for AddOneBeforeFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddOneBeforeFullStateStep;
+
+    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut IntegrationState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        state.total += output.expect("first pre-focused full-state effect should succeed");
+        state.before_steps += 1;
+    }
 }
 
 struct AddTwoBeforeFullStateSpec;
+#[act]
 impl Act for AddTwoBeforeFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddTwoBeforeFullStateStep;
+
+    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut IntegrationState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        state.total += output.expect("second pre-focused full-state effect should succeed");
+        state.before_steps += 1;
+    }
 }
 
 struct AddOneFocusedSpec;
+#[act(aspect = IntegrationFocusedCarrier)]
 impl Act for AddOneFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddOneFocusedStep;
+
+    fn emit(_state: &SubFlowState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.value += output.expect("first focused integration effect should succeed");
+        state.updates += 1;
+    }
 }
 
 struct AddTwoFocusedSpec;
+#[act(aspect = IntegrationFocusedCarrier)]
 impl Act for AddTwoFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddTwoFocusedStep;
+
+    fn emit(_state: &SubFlowState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.value += output.expect("second focused integration effect should succeed");
+        state.updates += 1;
+    }
 }
 
 struct AddOneDeepFocusedSpec;
+#[act(aspect = IntegrationDeepFocusedCarrier)]
 impl Act for AddOneDeepFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddOneDeepFocusedStep;
+
+    fn emit(_state: &DeepFocusState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.value += output.expect("first deep-focused integration effect should succeed");
+        state.updates += 1;
+    }
 }
 
 struct AddTwoDeepFocusedSpec;
+#[act(aspect = IntegrationDeepFocusedCarrier)]
 impl Act for AddTwoDeepFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddTwoDeepFocusedStep;
+
+    fn emit(_state: &DeepFocusState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.value += output.expect("second deep-focused integration effect should succeed");
+        state.updates += 1;
+    }
 }
 
 struct AddOneAfterFullStateSpec;
+#[act]
 impl Act for AddOneAfterFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddOneAfterFullStateStep;
+
+    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut IntegrationState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        state.total += output.expect("first post-focused full-state effect should succeed");
+        state.after_steps += 1;
+    }
 }
 
 struct AddTwoAfterFullStateSpec;
+#[act]
 impl Act for AddTwoAfterFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = AddTwoAfterFullStateStep;
+
+    fn emit(_state: &IntegrationState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut IntegrationState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        state.total += output.expect("second post-focused full-state effect should succeed");
+        state.after_steps += 1;
+    }
 }
 
 type MultiMatchBeforeFlow = Conditional<
     UseFirstBeforeFullStateTask,
-    BoundFlowStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
+    BoundFlowStep<IntegrationAnimal, <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>>,
     Conditional<
         UseFirstBeforeFullStateTask,
-        BoundFlowStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
-        BoundFlowStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
     >,
 >;
 
@@ -365,8 +307,14 @@ type LoopBranchFlow = While<
     KeepRunning,
     Conditional<
         UseFirstBeforeFullStateTask,
-        BoundFlowStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
-        BoundFlowStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
     >,
 >;
 
@@ -795,15 +743,24 @@ fn integration_seed() -> Vec<u8> {
 fn replaced_alias_rewrites_integration_flow_steps() {
     type Actual = jungle_sdk::types::Replace<
         MultiMatchBeforeFlow,
-        jungle_sdk::types::SwapLR<AddOneBeforeFullStateStep, AddTwoBeforeFullStateStep>,
+        jungle_sdk::types::SwapLR<
+            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
     >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
-        BoundFlowStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+        BoundFlowStep<IntegrationAnimal, <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>>,
         Conditional<
             UseFirstBeforeFullStateTask,
-            BoundFlowStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
-            BoundFlowStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+            BoundFlowStep<
+                IntegrationAnimal,
+                <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            >,
+            BoundFlowStep<
+                IntegrationAnimal,
+                <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            >,
         >,
     >;
     assert_type_eq!(Actual, Expected);
@@ -815,10 +772,14 @@ fn replaced_nodes_alias_replaces_loop_branch_section() {
         LoopBranchFlow,
         jungle_sdk::types::SwapNodeLR<
             LoopBranchFlow,
-            BoundFlowStep<IntegrationAnimal, AddOneAfterFullStateStep>,
+            BoundFlowStep<
+                IntegrationAnimal,
+                <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            >,
         >,
     >;
-    type Expected = BoundFlowStep<IntegrationAnimal, AddOneAfterFullStateStep>;
+    type Expected =
+        BoundFlowStep<IntegrationAnimal, <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>>;
     assert_type_eq!(Actual, Expected);
 }
 
