@@ -7,9 +7,9 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    Act, Animal, Animals, BindAnimal, BoundAct, Condition, Conditional,
-    EffectCompletion, EffectSchema, Id, Identified, Identity, LoopCondition, NodeMetadata,
-    NoopObservation, NoopPerturbation, Observable, Perturbable, Step, Transparent, While,
+    Act, Animal, Animals, BoundAct, Condition, Conditional, EffectCompletion, EffectSchema, Id,
+    Identified, Identity, LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation,
+    Observable, Perturbable, Step, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -657,7 +657,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = State;
     type Seed = TemporalState;
-    type Journey = <GorillaJourney as BindAnimal<Gorilla>>::Bound;
+    type Journey = GorillaJourney;
 }
 
 impl Observable for Gorilla {

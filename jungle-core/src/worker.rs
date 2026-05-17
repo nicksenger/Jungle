@@ -5,9 +5,9 @@ use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    Animal, AnimalIdValue, AnimalSet, Animals, ArgputForState, BuildFlowWithContext,
-    ContextExecutor, DynFlow, Ecosystem, ExecutorError, Observable, Perturbable, RunnerOut, Sleep,
-    StripAnimalHeaders, SupportedAnimal, Work,
+    AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
+    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Observable,
+    Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -292,8 +292,8 @@ pub trait SuspendedJourney<T>: Send {
 struct SuspendedAnimalJourney<T, A>
 where
     T: 'static,
-    A: Animal + Observable + Perturbable + Send + Sync + 'static,
-    A::Journey:
+    A: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+    BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     journey_id: Uuid,
@@ -304,9 +304,9 @@ where
 impl<T, A> SuspendedJourney<T> for SuspendedAnimalJourney<T, A>
 where
     T: Send + Sync + 'static,
-    A: Animal + Observable + Perturbable + Send + Sync + 'static,
+    A: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
     A::State: Send + 'static,
-    A::Journey:
+    BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     fn resume<'a>(
@@ -396,17 +396,17 @@ impl<T> SupportedAnimalGenerations<T> for list::Empty {
 
 impl<T, Head, Tail> SupportedAnimalGenerations<T> for list::List<(Head, Tail)>
 where
-    Head: Animal + Observable + Perturbable + Send + Sync + 'static,
+    Head: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
     Head::Id: AnimalIdValue,
     Head::Generation: Unsigned,
     Head::Seed: Send + 'static,
     Head::State: Send + 'static,
-    Head::Journey: BuildFlowWithContext<
+    BoundAnimalJourney<Head>: BuildFlowWithContext<
             (Arc<T>, DynFlow<Head::State>),
             Output = (Arc<T>, DynFlow<Head::State>),
         > + ArgputForState<Head::State>,
-    Head::Seed: Into<<Head::Journey as ArgputForState<Head::State>>::Carry>,
-    <Head::Journey as ArgputForState<Head::State>>::Carry: Serialize + Clone + Send,
+    Head::Seed: Into<<BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry>,
+    <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry: Serialize + Clone + Send,
     Tail: SupportedAnimalGenerations<T>,
     T: Send + Sync + 'static,
 {
@@ -434,7 +434,7 @@ where
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-                let initial_input: <Head::Journey as ArgputForState<Head::State>>::Carry =
+                let initial_input: <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry =
                     seed.into();
                 let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
@@ -489,7 +489,7 @@ where
             {
                 let seed: Head::Seed = postcard::from_bytes(&seed)
                     .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-                let initial_input: <Head::Journey as ArgputForState<Head::State>>::Carry =
+                let initial_input: <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry =
                     seed.into();
                 let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
@@ -547,8 +547,8 @@ async fn replay_history<T, A, Initial>(
 ) -> Result<(), ExecutorError>
 where
     T: 'static,
-    A: Animal + Observable + Perturbable,
-    A::Journey:
+    A: BoundAnimal + Observable + Perturbable,
+    BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     Initial: Serialize + Clone,
 {

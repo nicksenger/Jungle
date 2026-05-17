@@ -11,7 +11,8 @@ use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
 use super::{
-    Animal, Animals, Ecosystem, EffectExec, EffectSchema, Effects, Journey, JourneyEffects,
+    Animal, Animals, BoundAnimal, BoundAnimalJourney, Ecosystem, EffectExec, EffectSchema,
+    Effects, Journey, JourneyEffects,
 };
 use core::marker::PhantomData;
 
@@ -301,15 +302,15 @@ impl CollectAnimalJourneyEffects for list::Empty {
 }
 impl<Head, Tail, TailOut> CollectAnimalJourneyEffects for list::List<(Head, Tail)>
 where
-    Head: Animal,
-    <Head as Animal>::Journey: Journey,
-    <Head as Animal>::Journey: JourneyEffects,
-    <<Head as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<Head as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    Head: BoundAnimal,
+    BoundAnimalJourney<Head>: Journey,
+    BoundAnimalJourney<Head>: JourneyEffects,
+    <BoundAnimalJourney<Head> as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<BoundAnimalJourney<Head> as JourneyEffects>::List>: KeepEffectNodes,
     Tail: CollectAnimalJourneyEffects<Out = TailOut>,
 {
     type Out = list::List<(
-        <SPFlatten<<<Head as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<BoundAnimalJourney<Head> as JourneyEffects>::List> as KeepEffectNodes>::Out,
         TailOut,
     )>;
 }

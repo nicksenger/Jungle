@@ -5,7 +5,7 @@ use jungle_sdk::types::{
     EffectExec, EffectSchema, Id, Identity, LoopCondition, Observe, Sleep, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
-use jungle_sdk::{Animals, JungleClient, Optic};
+use jungle_sdk::{Animals, Flow, JungleClient, Optic};
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
@@ -115,7 +115,8 @@ type ObserveBody = Conditional<
     BoundFlowStep<ObserveAnimal, ObserveBump>,
 >;
 
-type ObserveJourney = While<ObserveLoopForever, ObserveBody>;
+#[derive(Flow)]
+pub struct ObserveJourney(While<ObserveLoopForever, ObserveBody>);
 
 pub struct ObserveAnimal;
 impl Animal for ObserveAnimal {

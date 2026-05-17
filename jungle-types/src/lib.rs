@@ -249,7 +249,10 @@ pub trait Animal {
     /// Serializable seed used to initialize the first step input of this animal's journey.
     type Seed: Serialize + DeserializeOwned;
 
-    /// The fundamental behavior of this Animal.
+    /// The fundamental behavior template of this Animal.
+    ///
+    /// Framework/runtime sites bind this to the concrete animal via [`BindAnimal`]
+    /// before execution.
     type Journey;
 }
 
@@ -434,11 +437,34 @@ pub trait BindWithFlowScope<A: Animal, ScopeView> {
 
 /// Convenience alias for binding a flow/template to a concrete animal.
 pub type BoundFlow<F, A> = <F as BindAnimal<A>>::Bound;
+/// Marker for animals whose journey template can be bound to themselves.
+pub trait BoundAnimal: Animal {
+    type BoundJourney;
+}
+
+impl<A> BoundAnimal for A
+where
+    A: Animal,
+    A::Journey: BindAnimal<A>,
+{
+    type BoundJourney = BoundFlow<A::Journey, A>;
+}
+
+/// Convenience alias for an [`Animal`]'s bound journey.
+pub type BoundAnimalJourney<A> = <A as BoundAnimal>::BoundJourney;
 
 /// Traversal that binds `Step<S>` nodes to concrete `BoundFlowStep<A, _>` nodes
 /// within a current scope carrier.
 pub struct RootScope;
 pub struct BindAnimalTraversal<A, Scope = RootScope>(PhantomData<fn() -> (A, Scope)>);
+
+impl<State> StateCarrier<State> for RootScope {
+    type View = State;
+
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+        state
+    }
+}
 
 pub(crate) trait ScopedCarrierMarker {}
 

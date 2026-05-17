@@ -1,6 +1,7 @@
 use crate::{
-    Animal, BackendError, BoundAct, BoundFlowStep, Conditional, EffectCompletion, EffectExec,
-    EffectSchema, Join, LoopCondition, Running, Scoped, Select, Transparent, While,
+    Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
+    EffectCompletion, EffectExec, EffectSchema, Join, LoopCondition, Running, Scoped, Select,
+    Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -2436,8 +2437,8 @@ fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {
 
 pub struct ContextExecutor<Context, A>
 where
-    A: Animal,
-    A::Journey: BuildFlowWithContext<
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlowWithContext<
         (Arc<Context>, DynFlow<A::State>),
         Output = (Arc<Context>, DynFlow<A::State>),
     >,
@@ -2452,8 +2453,8 @@ where
 impl<Context, A> ContextExecutor<Context, A>
 where
     Context: 'static,
-    A: Animal,
-    A::Journey: BuildFlowWithContext<
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlowWithContext<
         (Arc<Context>, DynFlow<A::State>),
         Output = (Arc<Context>, DynFlow<A::State>),
     >,
@@ -2485,7 +2486,7 @@ where
     }
 
     pub fn new(context: Arc<Context>, state: A::State) -> Self {
-        let (_, mut steps) = <A::Journey as BuildFlowWithContext<(
+        let (_, mut steps) = <BoundAnimalJourney<A> as BuildFlowWithContext<(
             Arc<Context>,
             DynFlow<A::State>,
         )>>::push_steps((context, Vec::new()));
@@ -2707,8 +2708,8 @@ where
 
 pub struct ManualExecutor<A>
 where
-    A: Animal,
-    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
     steps: DynFlow<A::State>,
@@ -2717,8 +2718,8 @@ where
 
 impl<A> ManualExecutor<A>
 where
-    A: Animal,
-    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -2747,7 +2748,8 @@ where
     }
 
     pub fn new(state: A::State) -> Self {
-        let mut steps = <A::Journey as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new());
+        let mut steps =
+            <BoundAnimalJourney<A> as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new());
         assign_flow_node_ids(&mut steps);
         let mut executor = Self {
             state: Some(state),
@@ -3004,8 +3006,8 @@ where
 
 pub struct Executor<A>
 where
-    A: Animal,
-    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     manual: ManualExecutor<A>,
     last_emitted: Option<Serialized>,
@@ -3013,8 +3015,8 @@ where
 
 impl<A> Executor<A>
 where
-    A: Animal,
-    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     pub fn new(state: A::State) -> Self {
         Self {

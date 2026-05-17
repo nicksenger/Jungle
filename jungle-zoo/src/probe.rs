@@ -66,7 +66,7 @@ impl jungle_sdk::types::Animal for ProbeAnimal {
     type Generation = jungle_sdk::typosaurus::num::consts::U0;
     type State = ();
     type Seed = ();
-    type Journey = <ProbeJourney as jungle_sdk::types::BindAnimal<ProbeAnimal>>::Bound;
+    type Journey = ProbeJourney;
 }
 
 impl jungle_sdk::types::Observable for ProbeAnimal {

@@ -1,6 +1,7 @@
 use crate::Jungle;
 use jungle_types::{
-    Animal, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutableEffectRequest, ExecutorError,
+    BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow,
+    ExecutableEffectRequest, ExecutorError,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -9,8 +10,8 @@ use std::sync::Arc;
 pub struct JungleExecutor<T, A>
 where
     T: Jungle + 'static,
-    A: Animal,
-    A::Journey:
+    A: BoundAnimal,
+    BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     inner: ContextExecutor<T, A>,
@@ -19,8 +20,8 @@ where
 impl<T, A> JungleExecutor<T, A>
 where
     T: Jungle + 'static,
-    A: Animal,
-    A::Journey:
+    A: BoundAnimal,
+    BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     pub fn new(jungle: T, state: A::State) -> Self {
