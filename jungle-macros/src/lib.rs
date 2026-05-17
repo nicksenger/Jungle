@@ -102,6 +102,14 @@ fn inception_path() -> proc_macro2::TokenStream {
     }
 }
 
+fn typenum_const_type(
+    typosaurus: &proc_macro2::TokenStream,
+    index: usize,
+) -> proc_macro2::TokenStream {
+    let ident = format_ident!("U{index}");
+    quote!(#typosaurus::num::consts::#ident)
+}
+
 fn rewrite_stream_with_sdk_inception(
     stream: proc_macro2::TokenStream,
     sdk_path: &proc_macro2::TokenStream,
@@ -297,19 +305,32 @@ pub fn derive_optic(input: TokenStream) -> TokenStream {
     let properties = jungle_types(&["JungleOptic"]);
     let derived = derive_with_properties_input(input.clone(), &properties);
     let view_project = jungle_type("ViewProject");
+    let lens_index = jungle_type("LensIndex");
+    let typosaurus = typosaurus_path();
 
     let mut projection_impls = Vec::new();
+    let mut lens_index_impls = Vec::new();
     if let Data::Struct(data) = &input.data {
         match &data.fields {
             Fields::Named(named) => {
-                for field in &named.named {
-                    if !is_view_marker(&field.attrs) {
-                        continue;
-                    }
+                for (index, field) in named.named.iter().enumerate() {
                     let Some(field_ident) = &field.ident else {
                         continue;
                     };
                     let ty = &field.ty;
+                    let index_ty = typenum_const_type(&typosaurus, index);
+                    lens_index_impls.push(quote! {
+                        impl #impl_generics #lens_index<#index_ty> for #ident #ty_generics #where_clause {
+                            type View = #ty;
+
+                            fn lens_index<'a>(state: &'a mut Self) -> &'a mut #ty {
+                                &mut state.#field_ident
+                            }
+                        }
+                    });
+                    if !is_view_marker(&field.attrs) {
+                        continue;
+                    }
                     projection_impls.push(quote! {
                         impl #impl_generics #view_project<#ty> for #ident #ty_generics #where_clause {
                             fn project_view<'a>(state: &'a mut Self) -> &'a mut #ty {
@@ -321,11 +342,21 @@ pub fn derive_optic(input: TokenStream) -> TokenStream {
             }
             Fields::Unnamed(unnamed) => {
                 for (index, field) in unnamed.unnamed.iter().enumerate() {
+                    let idx = syn::Index::from(index);
+                    let ty = &field.ty;
+                    let index_ty = typenum_const_type(&typosaurus, index);
+                    lens_index_impls.push(quote! {
+                        impl #impl_generics #lens_index<#index_ty> for #ident #ty_generics #where_clause {
+                            type View = #ty;
+
+                            fn lens_index<'a>(state: &'a mut Self) -> &'a mut #ty {
+                                &mut state.#idx
+                            }
+                        }
+                    });
                     if !is_view_marker(&field.attrs) {
                         continue;
                     }
-                    let idx = syn::Index::from(index);
-                    let ty = &field.ty;
                     projection_impls.push(quote! {
                         impl #impl_generics #view_project<#ty> for #ident #ty_generics #where_clause {
                             fn project_view<'a>(state: &'a mut Self) -> &'a mut #ty {
@@ -342,6 +373,7 @@ pub fn derive_optic(input: TokenStream) -> TokenStream {
     quote! {
         #derived
         #(#projection_impls)*
+        #(#lens_index_impls)*
     }
     .into()
 }

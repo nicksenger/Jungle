@@ -44,6 +44,7 @@ pub use transport::{ClaimedPerturbable, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
+use typosaurus::num::{Bit, UInt, UTerm, Unsigned};
 pub use view::{BuildJourneyAst, JourneyAst, JourneyAstSource, JungleJourneyAst};
 
 /// A tagged union over two possible outputs.
@@ -121,6 +122,79 @@ where
 
     fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
         <State as ViewProject<View>>::project_view(state)
+    }
+}
+
+/// Index-based field projection contract used by [`Lens`].
+pub trait LensIndex<Index> {
+    type View;
+
+    fn lens_index<'a>(state: &'a mut Self) -> &'a mut Self::View;
+}
+
+/// Recursive path projection over nested optic fields.
+pub trait LensPath<Path> {
+    type View;
+
+    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View;
+}
+
+impl<State> LensPath<list::List<()>> for State {
+    type View = State;
+
+    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+        state
+    }
+}
+
+/// Marker for numeric lens indexes (`U0`, `U1`, `U2`, ...).
+pub trait LensNumber: Unsigned {}
+
+impl LensNumber for UTerm {}
+impl<U, B> LensNumber for UInt<U, B>
+where
+    U: Unsigned,
+    B: Bit,
+{
+}
+
+impl<State, Index> LensPath<Index> for State
+where
+    Index: LensNumber,
+    State: LensIndex<Index>,
+{
+    type View = <State as LensIndex<Index>>::View;
+
+    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+        <State as LensIndex<Index>>::lens_index(state)
+    }
+}
+
+impl<State, Head, Tail> LensPath<list::List<(Head, Tail)>> for State
+where
+    Head: LensNumber,
+    State: LensIndex<Head>,
+    <State as LensIndex<Head>>::View: LensPath<Tail>,
+{
+    type View = <<State as LensIndex<Head>>::View as LensPath<Tail>>::View;
+
+    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+        let inner = <State as LensIndex<Head>>::lens_index(state);
+        <<State as LensIndex<Head>>::View as LensPath<Tail>>::lens_path(inner)
+    }
+}
+
+/// Generic state carrier that projects by a type-level index or index path.
+pub struct Lens<S, P>(PhantomData<S>, PhantomData<P>);
+
+impl<State, Path> StateCarrier<State> for Lens<State, Path>
+where
+    State: LensPath<Path>,
+{
+    type View = <State as LensPath<Path>>::View;
+
+    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+        <State as LensPath<Path>>::lens_path(state)
     }
 }
 

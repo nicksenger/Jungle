@@ -7,7 +7,7 @@ use jungle_sdk::animal;
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor,
-    NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, StateCarrier, Step,
+    Lens, NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, Step,
     Transparent, TraverseFlow, TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -770,23 +770,8 @@ struct LensReadSpareSpec;
 struct LensReadLeafSpec;
 struct LensCommitSpec;
 
-struct LensRootSpareCarrier;
-impl StateCarrier<LensRootState> for LensRootSpareCarrier {
-    type View = i32;
-
-    fn view<'a>(state: &'a mut LensRootState) -> &'a mut Self::View {
-        &mut state.branch.spare
-    }
-}
-
-struct LensRootLeafValueCarrier;
-impl StateCarrier<LensRootState> for LensRootLeafValueCarrier {
-    type View = i32;
-
-    fn view<'a>(state: &'a mut LensRootState) -> &'a mut Self::View {
-        &mut state.branch.leaf.value
-    }
-}
+type LensRootSpareCarrier = Lens<LensRootState, jungle_sdk::typosaurus::list![U0, U1]>;
+type LensRootLeafValueCarrier = Lens<LensRootState, jungle_sdk::typosaurus::list![U0, U0, U0]>;
 
 struct LensReadSpareAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for LensReadSpareAct<A>
@@ -1038,32 +1023,9 @@ struct NestedBranchSpareSpec;
 struct NestedLeafValueSpec;
 struct NestedLeafNoiseSpec;
 
-struct NestedBranchSpareCarrier;
-impl StateCarrier<NestedLensBranch> for NestedBranchSpareCarrier {
-    type View = i32;
-
-    fn view<'a>(state: &'a mut NestedLensBranch) -> &'a mut Self::View {
-        &mut state.spare
-    }
-}
-
-struct NestedLeafValueCarrier;
-impl StateCarrier<NestedLensLeaf> for NestedLeafValueCarrier {
-    type View = i32;
-
-    fn view<'a>(state: &'a mut NestedLensLeaf) -> &'a mut Self::View {
-        &mut state.value
-    }
-}
-
-struct NestedLeafNoiseCarrier;
-impl StateCarrier<NestedLensLeaf> for NestedLeafNoiseCarrier {
-    type View = i32;
-
-    fn view<'a>(state: &'a mut NestedLensLeaf) -> &'a mut Self::View {
-        &mut state.noise
-    }
-}
+type NestedBranchSpareCarrier = Lens<NestedLensBranch, U1>;
+type NestedLeafValueCarrier = Lens<NestedLensLeaf, U0>;
+type NestedLeafNoiseCarrier = Lens<NestedLensLeaf, U1>;
 
 struct NestedBranchSpareAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for NestedBranchSpareAct<A>
