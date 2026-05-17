@@ -118,9 +118,6 @@ impl Act for TailAfterLoopSpec {
     }
 }
 
-type TickWithTailFlow = BoundFlowStep<LooperWithTail, <TickSpec as Act>::Bind<LooperWithTail>>;
-type WhileTickWithTailFlow = While<LessThanThree, TickWithTailFlow>;
-
 #[derive(jungle_sdk::Flow)]
 struct LoopWithTailFlowTemplate(While<LessThanThree, Step<TickSpec>>, Step<TailAfterLoopSpec>);
 
@@ -204,11 +201,6 @@ impl Act for FinishOuterRoundSpec {
         state.inner_step = 0;
     }
 }
-
-type NestedInnerLoop = While<
-    InnerContinue,
-    BoundFlowStep<NestedLooper, <InnerWorkSpec as Act>::Bind<NestedLooper>>,
->;
 
 #[derive(jungle_sdk::Flow)]
 struct NestedOuterBodyTemplate(While<InnerContinue, Step<InnerWorkSpec>>, Step<FinishOuterRoundSpec>);
