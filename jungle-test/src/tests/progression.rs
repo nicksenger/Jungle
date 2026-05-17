@@ -2,7 +2,7 @@ use jungle_sdk::animal;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    Act, AnimalEffectSet, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
+    BoundAct, AnimalEffectSet, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
     EffectRequest, EffectSchema, Executor, Id, Identity, ManualExecutor, Running, BoundStep, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -47,7 +47,7 @@ impl<J> EffectExec<J> for FinishEffect {
 }
 
 struct Seed;
-impl Act<ProgressAnimal> for Seed {
+impl BoundAct<ProgressAnimal> for Seed {
     type Effect = SeedEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -65,7 +65,7 @@ impl Act<ProgressAnimal> for Seed {
 }
 
 struct Finish;
-impl Act<ProgressAnimal> for Finish {
+impl BoundAct<ProgressAnimal> for Finish {
     type Effect = FinishEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -129,11 +129,11 @@ trait StepExecutor:
 
 impl<A> StepExecutor for BoundStep<ProgressAnimal, A>
 where
-    A: Act<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32>,
-    <A as Act<ProgressAnimal>>::Effect:
+    A: BoundAct<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32>,
+    <A as BoundAct<ProgressAnimal>>::Effect:
         EffectSchema<In = i32, Out = i32, Err = ()> + EffectExec<()>,
 {
-    type Effect = <A as Act<ProgressAnimal>>::Effect;
+    type Effect = <A as BoundAct<ProgressAnimal>>::Effect;
 }
 
 #[test]
@@ -245,7 +245,7 @@ impl<J> EffectExec<J> for BranchEffect {
 }
 
 struct BranchStepA;
-impl Act<BranchAnimal> for BranchStepA {
+impl BoundAct<BranchAnimal> for BranchStepA {
     type Effect = BranchEffect;
     type Aspect = Identity;
     type Input = ();
@@ -261,7 +261,7 @@ impl Act<BranchAnimal> for BranchStepA {
 }
 
 struct BranchStepB;
-impl Act<BranchAnimal> for BranchStepB {
+impl BoundAct<BranchAnimal> for BranchStepB {
     type Effect = BranchEffect;
     type Aspect = Identity;
     type Input = ();

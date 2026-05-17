@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, EffectCompletion, Identity, Running, StateCarrier, BoundStep, ViewProject, Waiting,
+    BoundAct, EffectCompletion, Identity, Running, StateCarrier, BoundStep, ViewProject, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U72, U73, U74, U75, U9};
 use jungle_sdk::Optic;
@@ -126,7 +126,7 @@ impl StateCarrier<RootState> for LeafValueCarrier {
 }
 
 struct LensOnBranch;
-impl Act<OpticAnimal> for LensOnBranch {
+impl BoundAct<OpticAnimal> for LensOnBranch {
     type Effect = EchoI32;
     type Aspect = BranchCarrier;
     type Input = i32;
@@ -144,7 +144,7 @@ impl Act<OpticAnimal> for LensOnBranch {
 }
 
 struct LensOnLeafValue;
-impl Act<OpticAnimal> for LensOnLeafValue {
+impl BoundAct<OpticAnimal> for LensOnLeafValue {
     type Effect = EchoI32;
     type Aspect = LeafValueCarrier;
     type Input = i32;
@@ -162,7 +162,7 @@ impl Act<OpticAnimal> for LensOnLeafValue {
 }
 
 struct RootStatePulse;
-impl Act<OpticAnimal> for RootStatePulse {
+impl BoundAct<OpticAnimal> for RootStatePulse {
     type Effect = EchoRootState;
     type Aspect = Identity;
     type Input = ();

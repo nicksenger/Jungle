@@ -4,7 +4,7 @@ use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Aspect, Condition, Conditional, EffectCompletion, EffectExec, EffectSchema, Either,
+    BoundAct, Aspect, Condition, Conditional, EffectCompletion, EffectExec, EffectSchema, Either,
     Executor, Identity, LoopCondition, Running, StateCarrier, BoundStep, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
@@ -134,7 +134,7 @@ impl StateCarrier<TigerState> for TigerEnergyCarrier {
 
 struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
-impl<T, Focus> Act<T> for CoreEnergyStep<Sleep, Focus>
+impl<T, Focus> BoundAct<T> for CoreEnergyStep<Sleep, Focus>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
@@ -155,7 +155,7 @@ where
     }
 }
 
-impl<T, Focus> Act<T> for CoreEnergyStep<Eat, Focus>
+impl<T, Focus> BoundAct<T> for CoreEnergyStep<Eat, Focus>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = CoreState>,
@@ -178,7 +178,7 @@ where
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Act<T> for AddI32<Focus, A>
+impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
@@ -205,7 +205,7 @@ where
 
 struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Act<T> for SubI32<Focus, A>
+impl<T, Focus, A> BoundAct<T> for SubI32<Focus, A>
 where
     T: jungle_types::Animal,
     Focus: Aspect<T::State, View = i32>,
@@ -231,7 +231,7 @@ where
 }
 
 struct GorillaSleepManual;
-impl Act<Gorilla> for GorillaSleepManual {
+impl BoundAct<Gorilla> for GorillaSleepManual {
     type Effect = Sleep;
     type Aspect = Identity;
     type Input = i32;

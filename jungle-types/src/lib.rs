@@ -12,7 +12,7 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, ActionSpec, Aspect, EffectCompletion, EffectExec, EffectRequest, EffectSchema, Identity,
+    BoundAct, ActionSpec, Aspect, EffectCompletion, EffectExec, EffectRequest, EffectSchema, Identity,
     ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, BoundStep, StepSpec, UStep,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
@@ -473,8 +473,8 @@ pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 impl<A, Left, Right> ReplaceStep<BoundStep<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
-    Left: Act<A>,
-    Right: Act<A>,
+    Left: BoundAct<A>,
+    Right: BoundAct<A>,
 {
     type Output = BoundStep<A, Right>;
 }
@@ -482,8 +482,8 @@ where
 impl<A, Left, Right> ReplaceStep<BoundStep<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
-    Left: Act<A>,
-    Right: Act<A>,
+    Left: BoundAct<A>,
+    Right: BoundAct<A>,
 {
     type Output = BoundStep<A, Left>;
 }
@@ -1126,7 +1126,7 @@ where
 impl<T, A> NodeMetadata for BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
 }
 
@@ -1171,7 +1171,7 @@ where
     A: Animal,
     Scope: Aspect<A::State>,
     T: Animal,
-    B: Act<T>,
+    B: BoundAct<T>,
 {
     type Output = BoundStep<T, B>;
 }

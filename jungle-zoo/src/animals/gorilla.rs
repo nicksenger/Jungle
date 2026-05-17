@@ -7,7 +7,7 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    Act, Animal, Animals, Condition, Conditional, EffectCompletion, EffectSchema, Id, Identified,
+    BoundAct, Animal, Animals, Condition, Conditional, EffectCompletion, EffectSchema, Id, Identified,
     Identity, LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation, Observable,
     Perturbable, BoundStep, Transparent, While,
 };
@@ -233,7 +233,7 @@ impl Condition<(State, ())> for GorillaCanUseTools {
 }
 
 pub struct GorillaAdvanceAge;
-impl Act<Gorilla> for GorillaAdvanceAge {
+impl BoundAct<Gorilla> for GorillaAdvanceAge {
     type Effect = effects::AdvanceAge;
     type Aspect = Identity;
     type Input = ();
@@ -255,7 +255,7 @@ impl Act<Gorilla> for GorillaAdvanceAge {
 }
 
 pub struct GorillaTickPerceivedTime;
-impl Act<Gorilla> for GorillaTickPerceivedTime {
+impl BoundAct<Gorilla> for GorillaTickPerceivedTime {
     type Effect = effects::TickPerceivedTime;
     type Aspect = Identity;
     type Input = ();
@@ -285,7 +285,7 @@ impl Act<Gorilla> for GorillaTickPerceivedTime {
 }
 
 pub struct GorillaBirthday;
-impl Act<Gorilla> for GorillaBirthday {
+impl BoundAct<Gorilla> for GorillaBirthday {
     type Effect = effects::CelebrateBirthday;
     type Aspect = Identity;
     type Input = ();
@@ -302,7 +302,7 @@ impl Act<Gorilla> for GorillaBirthday {
 }
 
 pub struct GorillaBirth;
-impl Act<Gorilla> for GorillaBirth {
+impl BoundAct<Gorilla> for GorillaBirth {
     type Effect = effects::Birth;
     type Aspect = Identity;
     type Input = ();
@@ -319,7 +319,7 @@ impl Act<Gorilla> for GorillaBirth {
 }
 
 pub struct GorillaEvaluateActivityWindow;
-impl Act<Gorilla> for GorillaEvaluateActivityWindow {
+impl BoundAct<Gorilla> for GorillaEvaluateActivityWindow {
     type Effect = effects::EvaluateActivityWindow;
     type Aspect = Identity;
     type Input = ();
@@ -338,7 +338,7 @@ impl Act<Gorilla> for GorillaEvaluateActivityWindow {
 }
 
 pub struct GorillaPeelFruit;
-impl Act<Gorilla> for GorillaPeelFruit {
+impl BoundAct<Gorilla> for GorillaPeelFruit {
     type Effect = effects::PeelFruit;
     type Aspect = Identity;
     type Input = ();
@@ -355,7 +355,7 @@ impl Act<Gorilla> for GorillaPeelFruit {
 }
 
 pub struct GorillaEat;
-impl Act<Gorilla> for GorillaEat {
+impl BoundAct<Gorilla> for GorillaEat {
     type Effect = effects::Eat;
     type Aspect = Identity;
     type Input = ();
@@ -374,7 +374,7 @@ impl Act<Gorilla> for GorillaEat {
 }
 
 pub struct GorillaUseTool;
-impl Act<Gorilla> for GorillaUseTool {
+impl BoundAct<Gorilla> for GorillaUseTool {
     type Effect = effects::UseTool;
     type Aspect = Identity;
     type Input = ();
@@ -390,7 +390,7 @@ impl Act<Gorilla> for GorillaUseTool {
 }
 
 pub struct GorillaChestBeat;
-impl Act<Gorilla> for GorillaChestBeat {
+impl BoundAct<Gorilla> for GorillaChestBeat {
     type Effect = effects::ChestBeat;
     type Aspect = Identity;
     type Input = ();
@@ -409,7 +409,7 @@ impl Act<Gorilla> for GorillaChestBeat {
 }
 
 pub struct GorillaRest;
-impl Act<Gorilla> for GorillaRest {
+impl BoundAct<Gorilla> for GorillaRest {
     type Effect = effects::Rest;
     type Aspect = Identity;
     type Input = ();
@@ -428,7 +428,7 @@ impl Act<Gorilla> for GorillaRest {
 }
 
 pub struct GorillaMakeSound;
-impl Act<Gorilla> for GorillaMakeSound {
+impl BoundAct<Gorilla> for GorillaMakeSound {
     type Effect = effects::MakeSound;
     type Aspect = Identity;
     type Input = ();
@@ -526,7 +526,7 @@ pub struct ProbeYearFlow(
 pub struct Gorilla;
 
 pub struct ProbeStep;
-impl jungle_sdk::types::Act<Gorilla> for ProbeStep {
+impl jungle_sdk::types::BoundAct<Gorilla> for ProbeStep {
     type Effect = crate::probe::ProbeEffect;
     type Aspect = jungle_sdk::types::Identity;
     type Input = ();

@@ -4,7 +4,7 @@ use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, ActionSpec, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, EffectCompletion,
+    BoundAct, ActionSpec, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, EffectCompletion,
     EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier, BoundStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -137,7 +137,7 @@ impl From<&Zoo> for SharedState {
 }
 
 struct UnitOkStep<A>(PhantomData<fn() -> A>);
-impl<T, A> Act<T> for UnitOkStep<A>
+impl<T, A> BoundAct<T> for UnitOkStep<A>
 where
     T: Animal,
     A: EffectSchema<In = (), Out = (), Err = ()>,
@@ -162,7 +162,7 @@ where
     type Effect = E;
     type Input = ();
     type Output = ();
-    type Act<A: Animal> = UnitOkStep<E>;
+    type BoundAct<A: Animal> = UnitOkStep<E>;
 }
 
 type UUnitStep<E> = UStep<UnitOkSpec<E>>;
@@ -388,7 +388,7 @@ impl<J> EffectExec<J> for RunnerStepTwoEffect {
 }
 
 struct RunnerStepOne;
-impl Act<RunnerAnimal> for RunnerStepOne {
+impl BoundAct<RunnerAnimal> for RunnerStepOne {
     type Effect = RunnerStepOneEffect;
     type Aspect = Identity;
     type Input = ();
@@ -402,7 +402,7 @@ impl Act<RunnerAnimal> for RunnerStepOne {
 }
 
 struct RunnerStepTwo;
-impl Act<RunnerAnimal> for RunnerStepTwo {
+impl BoundAct<RunnerAnimal> for RunnerStepTwo {
     type Effect = RunnerStepTwoEffect;
     type Aspect = Identity;
     type Input = ();
@@ -604,7 +604,7 @@ impl<J> EffectExec<J> for RoundAdvance {
 }
 
 struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
-impl<T, Focus, A> Act<T> for AddI32<Focus, A>
+impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
     T: Animal,
     Focus: jungle_sdk::types::Aspect<T::State, View = i32>,

@@ -1,7 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Id,
+    BoundAct, Animal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Id,
     Identity, LoopCondition, Observe, Sleep, BoundStep, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
@@ -62,7 +62,7 @@ impl<J> EffectExec<J> for BumpEffect {
 }
 
 pub struct ObserveSleep;
-impl Act<ObserveAnimal> for ObserveSleep {
+impl BoundAct<ObserveAnimal> for ObserveSleep {
     type Effect = Sleep;
     type Aspect = Identity;
     type Input = ();
@@ -79,7 +79,7 @@ impl Act<ObserveAnimal> for ObserveSleep {
 }
 
 pub struct ObserveBump;
-impl Act<ObserveAnimal> for ObserveBump {
+impl BoundAct<ObserveAnimal> for ObserveBump {
     type Effect = BumpEffect;
     type Aspect = Identity;
     type Input = ();

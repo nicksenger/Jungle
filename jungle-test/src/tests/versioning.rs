@@ -3,7 +3,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id, Identity,
+    BoundAct, Animal, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id, Identity,
     JourneyStatus, Observe, BoundStep, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -48,7 +48,7 @@ impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
 }
 
 struct LegacyStep;
-impl Act<LegacyAnimal> for LegacyStep {
+impl BoundAct<LegacyAnimal> for LegacyStep {
     type Effect = LegacyEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -62,7 +62,7 @@ impl Act<LegacyAnimal> for LegacyStep {
 }
 
 struct ModernStep;
-impl Act<ModernAnimal> for ModernStep {
+impl BoundAct<ModernAnimal> for ModernStep {
     type Effect = ModernEffect;
     type Aspect = Identity;
     type Input = i32;

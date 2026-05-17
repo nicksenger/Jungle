@@ -1,5 +1,5 @@
 use crate::{
-    Act, Animal, Aspect, EffectCompletion, EffectExec, EffectSchema, Id, Identity, StateCarrier,
+    BoundAct, Animal, Aspect, EffectCompletion, EffectExec, EffectSchema, Id, Identity, StateCarrier,
 };
 use inception::primitive;
 use serde::{Deserialize, Serialize};
@@ -46,7 +46,7 @@ impl crate::Identified for Sleep {
 
 pub struct SleepStep<Focus = Identity>(PhantomData<fn() -> Focus>);
 
-impl<T, Focus> Act<T> for SleepStep<Focus>
+impl<T, Focus> BoundAct<T> for SleepStep<Focus>
 where
     T: Animal,
     Focus: Aspect<T::State>,

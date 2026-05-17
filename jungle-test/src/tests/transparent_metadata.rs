@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst, JourneyAstSource,
+    BoundAct, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst, JourneyAstSource,
     ManualExecutor, NodeMetadata, Select, BoundStep, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U30, U31};
@@ -38,7 +38,7 @@ impl Animal for TransparentAnimal {
 }
 
 struct TransparentStep;
-impl Act<TransparentAnimal> for TransparentStep {
+impl BoundAct<TransparentAnimal> for TransparentStep {
     type Effect = TransparentEffect;
     type Aspect = Identity;
     type Input = i32;

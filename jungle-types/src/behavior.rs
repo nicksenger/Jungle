@@ -106,19 +106,19 @@ impl<State> StateCarrier<State> for Identity {
 
 /// Single step-facing contract for adapting an [`Effect`] over an [`Aspect`]
 /// of animal state.
-pub trait Act<T: Animal> {
+pub trait BoundAct<T: Animal> {
     type Effect: EffectSchema;
     type Aspect: Aspect<T::State>;
     type Input;
     type Output;
 
     fn emit(
-        view: &<<Self as Act<T>>::Aspect as StateCarrier<T::State>>::View,
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::View,
         input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In;
 
     fn absorb(
-        view: &mut <<Self as Act<T>>::Aspect as StateCarrier<T::State>>::View,
+        view: &mut <<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::View,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output;
 }
@@ -128,12 +128,12 @@ pub trait ActionSpec {
     type Effect: EffectMember;
     type Input;
     type Output;
-    type Act<A: Animal>;
+    type BoundAct<A: Animal>;
 }
 
 /// Re-binds an action spec authored for one scope to another scope.
 pub trait ScopedActionSpec<A: Animal, ScopeState, ScopeCarrier> {
-    type BoundAct: Act<A>;
+    type BoundAct: BoundAct<A>;
 }
 
 /// Animal adapter that reuses identity metadata from `A` while swapping `State`.
@@ -151,38 +151,38 @@ where
     type Journey = A::Journey;
 }
 
-/// Adapts an `Act` bound to `ScopedAnimal<A, ScopeState>` to run on `A` by
+/// Adapts an `BoundAct` bound to `ScopedAnimal<A, ScopeState>` to run on `A` by
 /// composing a parent scope carrier with the inner act's aspect.
 pub struct ScopeReboundAct<A, ScopeState, ScopeCarrier, InnerAct>(
     PhantomData<fn() -> (A, ScopeState, ScopeCarrier, InnerAct)>,
 );
 
-impl<A, ScopeState, ScopeCarrier, InnerAct> Act<A>
+impl<A, ScopeState, ScopeCarrier, InnerAct> BoundAct<A>
     for ScopeReboundAct<A, ScopeState, ScopeCarrier, InnerAct>
 where
     A: Animal,
     ScopeState: Default + 'static,
     ScopeCarrier: Aspect<A::State, View = ScopeState>,
-    InnerAct: Act<ScopedAnimal<A, ScopeState>>,
+    InnerAct: BoundAct<ScopedAnimal<A, ScopeState>>,
 {
-    type Effect = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Effect;
+    type Effect = <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::Effect;
     type Aspect =
-        ComposeCarrier<ScopeCarrier, <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Aspect>;
-    type Input = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Input;
-    type Output = <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::Output;
+        ComposeCarrier<ScopeCarrier, <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::Aspect>;
+    type Input = <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::Input;
+    type Output = <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::Output;
 
     fn emit(
-        view: &<<Self as Act<A>>::Aspect as StateCarrier<A::State>>::View,
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::View,
         input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
-        <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::emit(view, input)
+        <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::emit(view, input)
     }
 
     fn absorb(
-        view: &mut <<Self as Act<A>>::Aspect as StateCarrier<A::State>>::View,
+        view: &mut <<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::View,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        <InnerAct as Act<ScopedAnimal<A, ScopeState>>>::absorb(view, output)
+        <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::absorb(view, output)
     }
 }
 
@@ -192,7 +192,7 @@ where
     S: ActionSpec,
     ScopeState: Default + 'static,
     ScopeCarrier: Aspect<A::State, View = ScopeState>,
-    <S as ActionSpec>::Act<ScopedAnimal<A, ScopeState>>: Act<
+    <S as ActionSpec>::BoundAct<ScopedAnimal<A, ScopeState>>: BoundAct<
         ScopedAnimal<A, ScopeState>,
         Input = <S as ActionSpec>::Input,
         Output = <S as ActionSpec>::Output,
@@ -203,11 +203,11 @@ where
         A,
         ScopeState,
         ScopeCarrier,
-        <S as ActionSpec>::Act<ScopedAnimal<A, ScopeState>>,
+        <S as ActionSpec>::BoundAct<ScopedAnimal<A, ScopeState>>,
     >;
 }
 
-/// Forward half of [`Act`], responsible for producing an effect request input.
+/// Forward half of [`BoundAct`], responsible for producing an effect request input.
 pub trait Emit<T: Animal> {
     type Arg;
     type Aspect: Aspect<T::State>;
@@ -219,7 +219,7 @@ pub trait Emit<T: Animal> {
     ) -> <Self::Effect as EffectSchema>::In;
 }
 
-/// Backward half of [`Act`], responsible for consuming an effect completion.
+/// Backward half of [`BoundAct`], responsible for consuming an effect completion.
 pub trait Absorb<T: Animal> {
     type Ret;
     type Aspect: Aspect<T::State>;
@@ -334,10 +334,10 @@ where
     }
 }
 
-/// Combines independent [`Emit`] and [`Absorb`] implementations into [`Act`].
+/// Combines independent [`Emit`] and [`Absorb`] implementations into [`BoundAct`].
 pub struct Fuse<E, A>(PhantomData<fn() -> (E, A)>);
 
-impl<T, E, A> Act<T> for Fuse<E, A>
+impl<T, E, A> BoundAct<T> for Fuse<E, A>
 where
     T: Animal,
     E: Emit<T>,
@@ -349,14 +349,14 @@ where
     type Output = <A as Absorb<T>>::Ret;
 
     fn emit(
-        view: &<<Self as Act<T>>::Aspect as StateCarrier<T::State>>::View,
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::View,
         input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
         <E as Emit<T>>::emit(view, input)
     }
 
     fn absorb(
-        view: &mut <<Self as Act<T>>::Aspect as StateCarrier<T::State>>::View,
+        view: &mut <<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::View,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         <A as Absorb<T>>::absorb(view, output)
@@ -439,7 +439,7 @@ pub type UStep<S> = StepSpec<S>;
 pub struct BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
     marker: PhantomData<fn() -> (T, A)>,
 }
@@ -447,7 +447,7 @@ where
 impl<T, A> BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
     pub fn new() -> Self {
         Self {
@@ -460,17 +460,17 @@ where
 impl<T, A> Running for BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
-    type In = (T::State, <A as Act<T>>::Input);
-    type Out = (T::State, EffectRequest<<A as Act<T>>::Effect>);
+    type In = (T::State, <A as BoundAct<T>>::Input);
+    type Out = (T::State, EffectRequest<<A as BoundAct<T>>::Effect>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<A as Act<T>>::Aspect as StateCarrier<T::State>>::view(&mut state);
-        let effect_input = <A as Act<T>>::emit(view, input);
+        let view = <<A as BoundAct<T>>::Aspect as StateCarrier<T::State>>::view(&mut state);
+        let effect_input = <A as BoundAct<T>>::emit(view, input);
         (
             state,
-            EffectRequest::<<A as Act<T>>::Effect>::new(effect_input),
+            EffectRequest::<<A as BoundAct<T>>::Effect>::new(effect_input),
         )
     }
 }
@@ -479,14 +479,14 @@ where
 impl<T, A> Waiting for BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
-    type In = (T::State, EffectCompletion<<A as Act<T>>::Effect>);
-    type Out = (T::State, <A as Act<T>>::Output);
+    type In = (T::State, EffectCompletion<<A as BoundAct<T>>::Effect>);
+    type Out = (T::State, <A as BoundAct<T>>::Output);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<A as Act<T>>::Aspect as StateCarrier<T::State>>::view(&mut state);
-        let emitted = <A as Act<T>>::absorb(view, output);
+        let view = <<A as BoundAct<T>>::Aspect as StateCarrier<T::State>>::view(&mut state);
+        let emitted = <A as BoundAct<T>>::absorb(view, output);
         (state, emitted)
     }
 }
@@ -495,17 +495,17 @@ where
 impl<T, A> JourneyEffects for BoundStep<T, A>
 where
     T: Animal,
-    <A as Act<T>>::Effect: EffectMember,
-    A: Act<T>,
+    <A as BoundAct<T>>::Effect: EffectMember,
+    A: BoundAct<T>,
 {
-    type List = Node<<<A as Act<T>>::Effect as EffectIdentity>::Id, <A as Act<T>>::Effect>;
+    type List = Node<<<A as BoundAct<T>>::Effect as EffectIdentity>::Id, <A as BoundAct<T>>::Effect>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
 impl<T, A> TraverseFlow for BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
     type Output = BoundStep<T, A>;
 }
@@ -514,7 +514,7 @@ where
 impl<T, A> ReplaceFlow for BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
     type Output = BoundStep<T, A>;
 }
@@ -522,7 +522,7 @@ where
 impl<T, A, Traversal> TraverseWith<Traversal> for BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
     Traversal: TraverseStep<BoundStep<T, A>>,
 {
     type Output = <Traversal as TraverseStep<BoundStep<T, A>>>::Output;
@@ -531,7 +531,7 @@ where
 impl<T, A, Replacer> ReplaceWith<Replacer> for BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
     Replacer: ReplaceStep<BoundStep<T, A>>,
 {
     type Output = <Replacer as ReplaceStep<BoundStep<T, A>>>::Output;
@@ -540,7 +540,7 @@ where
 impl<T, A, Replacer> ReplaceNodesWith<Replacer> for BoundStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
     Replacer: ReplaceNode<BoundStep<T, A>>,
 {
     type Output = <Replacer as ReplaceNode<BoundStep<T, A>>>::Output;
@@ -598,14 +598,14 @@ impl<T, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T, crate::Ro
 where
     T: Animal,
     S: ActionSpec,
-    <S as ActionSpec>::Act<T>: Act<
+    <S as ActionSpec>::BoundAct<T>: BoundAct<
         T,
         Input = <S as ActionSpec>::Input,
         Output = <S as ActionSpec>::Output,
         Effect = <S as ActionSpec>::Effect,
     >,
 {
-    type Output = BoundStep<T, <S as ActionSpec>::Act<T>>;
+    type Output = BoundStep<T, <S as ActionSpec>::BoundAct<T>>;
 }
 
 impl<T, ScopeCarrier, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T, ScopeCarrier>
@@ -619,7 +619,7 @@ where
         T,
         <ScopeCarrier as StateCarrier<T::State>>::View,
         ScopeCarrier,
-    >>::BoundAct: Act<
+    >>::BoundAct: BoundAct<
         T,
         Input = <S as ActionSpec>::Input,
         Output = <S as ActionSpec>::Output,

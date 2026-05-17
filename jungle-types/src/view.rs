@@ -106,14 +106,14 @@ pub trait BuildJourneyAst<Input> {
 impl<T, A> BuildJourneyAst<Vec<JourneyAst>> for BoundStep<T, A>
 where
     T: crate::Animal + 'static,
-    A: crate::Act<T> + 'static,
-    <A as crate::Act<T>>::Effect: 'static,
+    A: crate::BoundAct<T> + 'static,
+    <A as crate::BoundAct<T>>::Effect: 'static,
 {
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
         nodes.push(JourneyAst::Step {
-            label: core::any::type_name::<<A as crate::Act<T>>::Effect>(),
+            label: core::any::type_name::<<A as crate::BoundAct<T>>::Effect>(),
         });
         nodes
     }

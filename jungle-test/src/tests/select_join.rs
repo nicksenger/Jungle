@@ -2,7 +2,7 @@ use jungle_sdk::animal;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
+    BoundAct, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
     Join, Select, Sleep, BoundStep, };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Journey, Optic};
@@ -58,7 +58,7 @@ impl<J> EffectExec<J> for ContextTimedValueEffect {
 }
 
 struct SelectFast;
-impl Act<SelectAnimal> for SelectFast {
+impl BoundAct<SelectAnimal> for SelectFast {
     type Effect = TimedValueEffect;
     type Aspect = Identity;
     type Input = ();
@@ -77,7 +77,7 @@ impl Act<SelectAnimal> for SelectFast {
 }
 
 struct SelectSlow;
-impl Act<SelectAnimal> for SelectSlow {
+impl BoundAct<SelectAnimal> for SelectSlow {
     type Effect = TimedValueEffect;
     type Aspect = Identity;
     type Input = ();
@@ -96,7 +96,7 @@ impl Act<SelectAnimal> for SelectSlow {
 }
 
 struct CaptureSelectWinner;
-impl Act<SelectAnimal> for CaptureSelectWinner {
+impl BoundAct<SelectAnimal> for CaptureSelectWinner {
     type Effect = TimedValueEffect;
     type Aspect = Identity;
     type Input = Either<i32, i32>;
@@ -132,7 +132,7 @@ impl Animal for SelectAnimal {
 }
 
 struct JoinFast;
-impl Act<JoinAnimal> for JoinFast {
+impl BoundAct<JoinAnimal> for JoinFast {
     type Effect = TimedValueEffect;
     type Aspect = Identity;
     type Input = ();
@@ -151,7 +151,7 @@ impl Act<JoinAnimal> for JoinFast {
 }
 
 struct JoinSlow;
-impl Act<JoinAnimal> for JoinSlow {
+impl BoundAct<JoinAnimal> for JoinSlow {
     type Effect = TimedValueEffect;
     type Aspect = Identity;
     type Input = ();
@@ -170,7 +170,7 @@ impl Act<JoinAnimal> for JoinSlow {
 }
 
 struct CaptureJoinSum;
-impl Act<JoinAnimal> for CaptureJoinSum {
+impl BoundAct<JoinAnimal> for CaptureJoinSum {
     type Effect = TimedValueEffect;
     type Aspect = Identity;
     type Input = (i32, i32);
@@ -203,7 +203,7 @@ impl Animal for JoinAnimal {
 }
 
 struct TimeoutSleep;
-impl Act<TimeoutAnimal> for TimeoutSleep {
+impl BoundAct<TimeoutAnimal> for TimeoutSleep {
     type Effect = Sleep;
     type Aspect = Identity;
     type Input = ();
@@ -221,7 +221,7 @@ impl Act<TimeoutAnimal> for TimeoutSleep {
 }
 
 struct TimeoutSlow;
-impl Act<TimeoutAnimal> for TimeoutSlow {
+impl BoundAct<TimeoutAnimal> for TimeoutSlow {
     type Effect = ContextTimedValueEffect;
     type Aspect = Identity;
     type Input = ();

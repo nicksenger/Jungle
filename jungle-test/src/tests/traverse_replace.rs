@@ -1,7 +1,7 @@
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::{
-    Act, Animal, Conditional, EffectCompletion, Id, Identity, LoopCondition, ReplaceStep, BoundStep,     TraverseStep, While,
+    BoundAct, Animal, Conditional, EffectCompletion, Id, Identity, LoopCondition, ReplaceStep, BoundStep,     TraverseStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::{U0, U20, U21, U22, U23, U24};
@@ -74,7 +74,7 @@ impl<J> jungle_sdk::types::Effect<J> for TraverseDEffect {
 struct TraverseAnimal;
 
 struct StepA;
-impl Act<TraverseAnimal> for StepA {
+impl BoundAct<TraverseAnimal> for StepA {
     type Effect = TraverseAEffect;
     type Aspect = Identity;
     type Input = ();
@@ -88,7 +88,7 @@ impl Act<TraverseAnimal> for StepA {
 }
 
 struct StepB;
-impl Act<TraverseAnimal> for StepB {
+impl BoundAct<TraverseAnimal> for StepB {
     type Effect = TraverseBEffect;
     type Aspect = Identity;
     type Input = ();
@@ -102,7 +102,7 @@ impl Act<TraverseAnimal> for StepB {
 }
 
 struct StepC;
-impl Act<TraverseAnimal> for StepC {
+impl BoundAct<TraverseAnimal> for StepC {
     type Effect = TraverseCEffect;
     type Aspect = Identity;
     type Input = ();
@@ -116,7 +116,7 @@ impl Act<TraverseAnimal> for StepC {
 }
 
 struct StepD;
-impl Act<TraverseAnimal> for StepD {
+impl BoundAct<TraverseAnimal> for StepD {
     type Effect = TraverseDEffect;
     type Aspect = Identity;
     type Input = ();

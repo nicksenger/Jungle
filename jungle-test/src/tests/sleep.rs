@@ -4,7 +4,7 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
+    BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
     JourneyStatus, LoopCondition, Observe, Sleep, BoundStep, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
@@ -38,7 +38,7 @@ impl<J> EffectExec<J> for AddEffect {
 }
 
 struct AddBeforeSleep;
-impl Act<SleepAnimal> for AddBeforeSleep {
+impl BoundAct<SleepAnimal> for AddBeforeSleep {
     type Effect = AddEffect;
     type Aspect = Identity;
     type Input = ();
@@ -53,7 +53,7 @@ impl Act<SleepAnimal> for AddBeforeSleep {
 }
 
 struct SleepForStateWake;
-impl Act<SleepAnimal> for SleepForStateWake {
+impl BoundAct<SleepAnimal> for SleepForStateWake {
     type Effect = Sleep;
     type Aspect = Identity;
     type Input = ();
@@ -70,7 +70,7 @@ impl Act<SleepAnimal> for SleepForStateWake {
 }
 
 struct AddAfterSleep;
-impl Act<SleepAnimal> for AddAfterSleep {
+impl BoundAct<SleepAnimal> for AddAfterSleep {
     type Effect = AddEffect;
     type Aspect = Identity;
     type Input = ();

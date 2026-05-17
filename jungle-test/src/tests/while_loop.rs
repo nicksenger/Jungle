@@ -3,7 +3,7 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, BoundStep,     Waiting, While,
+    BoundAct, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, BoundStep,     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use jungle_sdk::Journey;
@@ -39,7 +39,7 @@ impl Animal for Looper {
 }
 
 struct Tick;
-impl Act<Looper> for Tick {
+impl BoundAct<Looper> for Tick {
     type Effect = TickEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -100,7 +100,7 @@ impl Animal for LooperWithTail {
 }
 
 struct TickWithTail;
-impl Act<LooperWithTail> for TickWithTail {
+impl BoundAct<LooperWithTail> for TickWithTail {
     type Effect = TickEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -118,7 +118,7 @@ impl Act<LooperWithTail> for TickWithTail {
 }
 
 struct TailAfterLoop;
-impl Act<LooperWithTail> for TailAfterLoop {
+impl BoundAct<LooperWithTail> for TailAfterLoop {
     type Effect = TailEchoEffect;
     type Aspect = Identity;
     type Input = (bool, i32);
@@ -199,7 +199,7 @@ impl LoopCondition<NestedState> for OuterContinue {
 }
 
 struct InnerWork;
-impl Act<NestedLooper> for InnerWork {
+impl BoundAct<NestedLooper> for InnerWork {
     type Effect = UnitEffect;
     type Aspect = Identity;
     type Input = ();
@@ -213,7 +213,7 @@ impl Act<NestedLooper> for InnerWork {
 }
 
 struct FinishOuterRound;
-impl Act<NestedLooper> for FinishOuterRound {
+impl BoundAct<NestedLooper> for FinishOuterRound {
     type Effect = UnitEffect;
     type Aspect = Identity;
     type Input = ();

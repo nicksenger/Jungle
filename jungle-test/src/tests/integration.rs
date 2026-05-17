@@ -5,7 +5,7 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
+    BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
     JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, BoundStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -97,7 +97,7 @@ impl<J> EffectExec<J> for AddTwoEffect {
 }
 
 struct AddOneBeforeFullStateStep;
-impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
+impl BoundAct<IntegrationAnimal> for AddOneBeforeFullStateStep {
     type Effect = AddOneEffect;
     type Aspect = Identity;
     type Input = ();
@@ -115,7 +115,7 @@ impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
 }
 
 struct AddTwoBeforeFullStateStep;
-impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
+impl BoundAct<IntegrationAnimal> for AddTwoBeforeFullStateStep {
     type Effect = AddTwoEffect;
     type Aspect = Identity;
     type Input = ();
@@ -133,7 +133,7 @@ impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 }
 
 struct AddOneFocusedStep;
-impl Act<IntegrationAnimal> for AddOneFocusedStep {
+impl BoundAct<IntegrationAnimal> for AddOneFocusedStep {
     type Effect = AddOneEffect;
     type Aspect = IntegrationFocusedCarrier;
     type Input = ();
@@ -148,7 +148,7 @@ impl Act<IntegrationAnimal> for AddOneFocusedStep {
 }
 
 struct AddTwoFocusedStep;
-impl Act<IntegrationAnimal> for AddTwoFocusedStep {
+impl BoundAct<IntegrationAnimal> for AddTwoFocusedStep {
     type Effect = AddTwoEffect;
     type Aspect = IntegrationFocusedCarrier;
     type Input = ();
@@ -163,7 +163,7 @@ impl Act<IntegrationAnimal> for AddTwoFocusedStep {
 }
 
 struct AddOneDeepFocusedStep;
-impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
+impl BoundAct<IntegrationAnimal> for AddOneDeepFocusedStep {
     type Effect = AddOneEffect;
     type Aspect = IntegrationDeepFocusedCarrier;
     type Input = ();
@@ -178,7 +178,7 @@ impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
 }
 
 struct AddTwoDeepFocusedStep;
-impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
+impl BoundAct<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type Effect = AddTwoEffect;
     type Aspect = IntegrationDeepFocusedCarrier;
     type Input = ();
@@ -193,7 +193,7 @@ impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
 }
 
 struct AddOneAfterFullStateStep;
-impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
+impl BoundAct<IntegrationAnimal> for AddOneAfterFullStateStep {
     type Effect = AddOneEffect;
     type Aspect = Identity;
     type Input = ();
@@ -211,7 +211,7 @@ impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
 }
 
 struct AddTwoAfterFullStateStep;
-impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
+impl BoundAct<IntegrationAnimal> for AddTwoAfterFullStateStep {
     type Effect = AddTwoEffect;
     type Aspect = Identity;
     type Input = ();
