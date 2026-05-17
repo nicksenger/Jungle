@@ -71,17 +71,43 @@ impl Act for CommitSpec {
 #[derive(jungle_sdk::Flow)]
 struct TestFlow(Step<AddOneSpec>, Step<CommitSpec>);
 
-#[derive(jungle_sdk::Journey)]
-struct CounterJourney(
-    BoundFlowStep<CounterAnimal, CounterAddOne>,
-    BoundFlowStep<CounterAnimal, CounterCommit>,
-);
+struct CounterAddOneSpec;
+impl Act for CounterAddOneSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = CounterAddOne<A>;
+}
 
-#[derive(jungle_sdk::Journey)]
-struct LedgerJourney(
-    BoundFlowStep<LedgerAnimal, LedgerAddOne>,
-    BoundFlowStep<LedgerAnimal, LedgerCommit>,
-);
+struct CounterCommitSpec;
+impl Act for CounterCommitSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = CounterCommit<A>;
+}
+
+#[derive(jungle_sdk::Flow)]
+struct CounterFlowTemplate(Step<CounterAddOneSpec>, Step<CounterCommitSpec>);
+
+struct LedgerAddOneSpec;
+impl Act for LedgerAddOneSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = LedgerAddOne<A>;
+}
+
+struct LedgerCommitSpec;
+impl Act for LedgerCommitSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = LedgerCommit<A>;
+}
+
+#[derive(jungle_sdk::Flow)]
+struct LedgerFlowTemplate(Step<LedgerAddOneSpec>, Step<LedgerCommitSpec>);
 
 struct CounterAnimal;
 #[animal]
@@ -90,7 +116,7 @@ impl Animal for CounterAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = CounterJourney;
+    type Journey = <CounterFlowTemplate as BindAnimal<CounterAnimal>>::Bound;
 }
 
 impl LateBoundPolicy for CounterAnimal {
@@ -105,7 +131,7 @@ impl Animal for LedgerAnimal {
     type Generation = U0;
     type State = i32;
     type Seed = i32;
-    type Journey = LedgerJourney;
+    type Journey = <LedgerFlowTemplate as BindAnimal<LedgerAnimal>>::Bound;
 }
 
 impl LateBoundPolicy for LedgerAnimal {
@@ -113,8 +139,11 @@ impl LateBoundPolicy for LedgerAnimal {
     const COMMIT_SUBTRACT: bool = false;
 }
 
-struct CounterAddOne;
-impl BoundAct<CounterAnimal> for CounterAddOne {
+struct CounterAddOne<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for CounterAddOne<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -131,8 +160,11 @@ impl BoundAct<CounterAnimal> for CounterAddOne {
     }
 }
 
-struct LedgerAddOne;
-impl BoundAct<LedgerAnimal> for LedgerAddOne {
+struct LedgerAddOne<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for LedgerAddOne<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = TemplateAddEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -149,8 +181,11 @@ impl BoundAct<LedgerAnimal> for LedgerAddOne {
     }
 }
 
-struct CounterCommit;
-impl BoundAct<CounterAnimal> for CounterCommit {
+struct CounterCommit<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for CounterCommit<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -167,8 +202,11 @@ impl BoundAct<CounterAnimal> for CounterCommit {
     }
 }
 
-struct LedgerCommit;
-impl BoundAct<LedgerAnimal> for LedgerCommit {
+struct LedgerCommit<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for LedgerCommit<A>
+where
+    A: Animal<State = i32>,
+{
     type Effect = TemplateCommitEffect;
     type Aspect = Identity;
     type Input = i32;
@@ -293,10 +331,14 @@ fn template_binding_preserves_step_shape_after_binding() {
         )>,
     )>;
 
-    let _counter_step_1: BoundFlowStep<CounterAnimal, CounterAddOne> = BoundFlowStep::new();
-    let _counter_step_2: BoundFlowStep<CounterAnimal, CounterCommit> = BoundFlowStep::new();
-    let _ledger_step_1: BoundFlowStep<LedgerAnimal, LedgerAddOne> = BoundFlowStep::new();
-    let _ledger_step_2: BoundFlowStep<LedgerAnimal, LedgerCommit> = BoundFlowStep::new();
+    let _counter_step_1: BoundFlowStep<CounterAnimal, CounterAddOne<CounterAnimal>> =
+        BoundFlowStep::new();
+    let _counter_step_2: BoundFlowStep<CounterAnimal, CounterCommit<CounterAnimal>> =
+        BoundFlowStep::new();
+    let _ledger_step_1: BoundFlowStep<LedgerAnimal, LedgerAddOne<LedgerAnimal>> =
+        BoundFlowStep::new();
+    let _ledger_step_2: BoundFlowStep<LedgerAnimal, LedgerCommit<LedgerAnimal>> =
+        BoundFlowStep::new();
 
     assert_type_eq!(CounterBound, ExpectedCounter);
     assert_type_eq!(LedgerBound, ExpectedLedger);

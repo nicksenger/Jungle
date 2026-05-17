@@ -260,8 +260,6 @@ type NestedInnerLoop = While<InnerContinue, BoundFlowStep<NestedLooper, InnerWor
 #[derive(jungle_sdk::Flow)]
 struct NestedOuterBodyTemplate(While<InnerContinue, Step<InnerWorkSpec>>, Step<FinishOuterRoundSpec>);
 
-type NestedOuterLoop = While<OuterContinue, BoundFlowStep<NestedLooper, FinishOuterRound<NestedLooper>>>;
-
 #[derive(jungle_sdk::Flow)]
 struct NestedLoopFlowTemplate(While<OuterContinue, NestedOuterBodyTemplate>);
 

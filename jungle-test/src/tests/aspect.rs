@@ -4,11 +4,12 @@ use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Aspect, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, EffectExec,
+    Act, Aspect, BindAnimal, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, EffectExec,
     EffectSchema, Either, Executor, Identity, LoopCondition, Running, StateCarrier, Waiting, While,
+    Step,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
-use jungle_sdk::{Journey, Optic};
+use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 use std::future::ready;
 use std::marker::PhantomData;
@@ -255,11 +256,35 @@ type GorillaForageStep = SubI32<GorillaEnergyCarrier, Forage>;
 type TigerEat = AddI32<TigerEnergyCarrier, Eat>;
 type TigerSleep = AddI32<TigerEnergyCarrier, Sleep>;
 
-#[derive(Journey)]
-struct GorillaLoopSequence(
-    BoundFlowStep<Gorilla, GorillaEat>,
-    BoundFlowStep<Gorilla, GorillaSleepManual>,
-    BoundFlowStep<Gorilla, GorillaForageStep>,
+struct GorillaEatSpec;
+impl Act for GorillaEatSpec {
+    type Effect = Eat;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = AddI32<GorillaEnergyCarrier, Eat>;
+}
+
+struct GorillaSleepManualSpec;
+impl Act for GorillaSleepManualSpec {
+    type Effect = Sleep;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = GorillaSleepManual;
+}
+
+struct GorillaForageSpec;
+impl Act for GorillaForageSpec {
+    type Effect = Forage;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = SubI32<GorillaEnergyCarrier, Forage>;
+}
+
+#[derive(jungle_sdk::Flow)]
+struct GorillaLoopTemplate(
+    Step<GorillaEatSpec>,
+    Step<GorillaSleepManualSpec>,
+    Step<GorillaForageSpec>,
 );
 
 struct GorillaUnderAgeHundred;
@@ -271,8 +296,8 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     }
 }
 
-#[derive(Journey)]
-struct GorillaJourney(While<GorillaUnderAgeHundred, GorillaLoopSequence>);
+#[derive(jungle_sdk::Flow)]
+struct GorillaJourneyTemplate(While<GorillaUnderAgeHundred, GorillaLoopTemplate>);
 
 struct TigerStripesAreEven;
 impl Condition<(TigerState, i32)> for TigerStripesAreEven {
@@ -281,15 +306,35 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     }
 }
 
-#[derive(Journey)]
-struct TigerLoopSequence(
-    Conditional<
-        TigerStripesAreEven,
-        BoundFlowStep<Tiger, TigerEat>,
-        BoundFlowStep<Tiger, TigerSleep>,
-    >,
-    BoundFlowStep<Tiger, TigerSleep>,
-    BoundFlowStep<Tiger, AddI32<TigerEnergyCarrier, Hunt>>,
+struct TigerEatSpec;
+impl Act for TigerEatSpec {
+    type Effect = Eat;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = AddI32<TigerEnergyCarrier, Eat>;
+}
+
+struct TigerSleepSpec;
+impl Act for TigerSleepSpec {
+    type Effect = Sleep;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = AddI32<TigerEnergyCarrier, Sleep>;
+}
+
+struct TigerHuntSpec;
+impl Act for TigerHuntSpec {
+    type Effect = Hunt;
+    type Input = ();
+    type Output = i32;
+    type Bind<A: Animal> = AddI32<TigerEnergyCarrier, Hunt>;
+}
+
+#[derive(jungle_sdk::Flow)]
+struct TigerLoopTemplate(
+    Conditional<TigerStripesAreEven, Step<TigerEatSpec>, Step<TigerSleepSpec>>,
+    Step<TigerSleepSpec>,
+    Step<TigerHuntSpec>,
 );
 
 struct TigerUnderHundredStripes;
@@ -301,8 +346,8 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     }
 }
 
-#[derive(Journey)]
-struct TigerJourney(While<TigerUnderHundredStripes, TigerLoopSequence>);
+#[derive(jungle_sdk::Flow)]
+struct TigerJourneyTemplate(While<TigerUnderHundredStripes, TigerLoopTemplate>);
 
 struct Gorilla;
 
@@ -312,7 +357,7 @@ impl Animal for Gorilla {
     type Generation = U0;
     type State = GorillaState;
     type Seed = GorillaState;
-    type Journey = GorillaJourney;
+    type Journey = <GorillaJourneyTemplate as BindAnimal<Gorilla>>::Bound;
 }
 struct Tiger;
 
@@ -322,7 +367,7 @@ impl Animal for Tiger {
     type Generation = U0;
     type State = TigerState;
     type Seed = TigerState;
-    type Journey = TigerJourney;
+    type Journey = <TigerJourneyTemplate as BindAnimal<Tiger>>::Bound;
 }
 
 #[test]
