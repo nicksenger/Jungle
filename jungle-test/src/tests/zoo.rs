@@ -10,9 +10,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{
-    U0, U1, U10, U13, U14, U15, U2, U3, U4, U5, U7,
-};
+use jungle_sdk::typosaurus::num::consts::{U10, U13, U14, U15, U7};
 use jungle_sdk::{Animals, Effects, Optic};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -22,9 +20,8 @@ use uuid::Uuid;
 
 struct Eat;
 
-#[effect]
+#[effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
-    type Id = Id<U0>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -38,9 +35,8 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
 }
 struct Sleep;
 
-#[effect]
+#[effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for Sleep {
-    type Id = Id<U1>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -54,9 +50,8 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
 }
 struct Forage;
 
-#[effect]
+#[effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Forage {
-    type Id = Id<U2>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -70,9 +65,8 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
 }
 struct Drink;
 
-#[effect]
+#[effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for Drink {
-    type Id = Id<U3>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -86,9 +80,8 @@ impl<J> jungle_sdk::types::Effect<J> for Drink {
 }
 struct Hunt;
 
-#[effect]
+#[effect(id = 4)]
 impl<J> jungle_sdk::types::Effect<J> for Hunt {
-    type Id = Id<U4>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -102,9 +95,8 @@ impl<J> jungle_sdk::types::Effect<J> for Hunt {
 }
 struct Flee;
 
-#[effect]
+#[effect(id = 5)]
 impl<J> jungle_sdk::types::Effect<J> for Flee {
-    type Id = Id<U5>;
     type In = ();
     type Out = ();
     type Err = ();

@@ -9,16 +9,15 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U33, U70, U71};
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U33};
 use jungle_sdk::{Animals, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
 
 struct LegacyEffect;
 
-#[effect]
+#[effect(id = 70)]
 impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
-    type Id = Id<U70>;
     type In = ();
     type Out = i32;
     type Err = ();
@@ -33,9 +32,8 @@ impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
 
 struct ModernEffect;
 
-#[effect]
+#[effect(id = 71)]
 impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
-    type Id = Id<U71>;
     type In = ();
     type Out = i32;
     type Err = ();

@@ -4,9 +4,7 @@ use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{Act, EffectCompletion, Step};
-use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{
     BackendError, ClaimedPerturbable, JourneyStatus, JungleClient, MockServer, RunnerOut,
     RunnerUpdateOut, SupportedAnimal, WireIn, WireOut, Work,
@@ -19,9 +17,8 @@ use uuid::Uuid;
 
 struct ConnectionEffect7;
 
-#[effect]
+#[effect(id = 80)]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
-    type Id = Id<U80>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -62,9 +59,8 @@ struct ConnectionFlowTemplate7(Step<ConnectionStepSpec7>);
 
 struct ConnectionEffect9;
 
-#[effect]
+#[effect(id = 81)]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
-    type Id = Id<U81>;
     type In = ();
     type Out = ();
     type Err = ();

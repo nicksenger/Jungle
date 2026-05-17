@@ -1,6 +1,4 @@
 use super::support::maybe_delay;
-use jungle_sdk::types::Id;
-use jungle_sdk::typosaurus::num::consts::{U2, U3, U5};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BehavioralDependency {
@@ -19,9 +17,8 @@ impl Default for BehavioralDependency {
 
 pub struct Rest;
 
-#[jungle_sdk::effect]
+#[jungle_sdk::effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Rest {
-    type Id = Id<U2>;
     type In = u16;
     type Out = u16;
     type Err = String;
@@ -40,9 +37,8 @@ impl<J> jungle_sdk::types::Effect<J> for Rest {
 
 pub struct MakeSound;
 
-#[jungle_sdk::effect]
+#[jungle_sdk::effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for MakeSound {
-    type Id = Id<U3>;
     type In = (String, u8);
     type Out = String;
     type Err = String;
@@ -62,9 +58,8 @@ impl<J> jungle_sdk::types::Effect<J> for MakeSound {
 
 pub struct ChestBeat;
 
-#[jungle_sdk::effect]
+#[jungle_sdk::effect(id = 5)]
 impl<J> jungle_sdk::types::Effect<J> for ChestBeat {
-    type Id = Id<U5>;
     type In = (u8, bool);
     type Out = u8;
     type Err = String;

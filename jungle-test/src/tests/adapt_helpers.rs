@@ -1,12 +1,10 @@
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     AbsorbFn, AbsorbMapper, Act, EffectCompletion, EmitFn, EmitMapper, Fuse, Identity,
     ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
-use jungle_sdk::typosaurus::num::consts::{U70, U71};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,9 +15,8 @@ struct HelperState {
 
 struct EchoEffect;
 
-#[effect]
+#[effect(id = 70)]
 impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
-    type Id = Id<U70>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -33,9 +30,8 @@ impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
 }
 struct PulseEffect;
 
-#[effect]
+#[effect(id = 71)]
 impl<J> jungle_sdk::types::Effect<J> for PulseEffect {
-    type Id = Id<U71>;
     type In = ();
     type Out = i32;
     type Err = ();

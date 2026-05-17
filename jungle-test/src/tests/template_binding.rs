@@ -471,12 +471,11 @@ trait RequiresContextBump {
 }
 
 pub struct ContextBoundEffect;
-#[effect]
+#[effect(id = 53)]
 impl<J> jungle_sdk::types::Effect<J> for ContextBoundEffect
 where
     J: RequiresContextBump,
 {
-    type Id = Id<U53>;
     type In = i32;
     type Out = i32;
     type Err = ();

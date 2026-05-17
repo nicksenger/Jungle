@@ -3,13 +3,11 @@ use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, Aspect, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, EffectExec,
     EffectSchema, Either, Executor, Identity, LoopCondition, Running, StateCarrier, Waiting, While,
     Step,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 use std::future::ready;
@@ -17,9 +15,8 @@ use std::marker::PhantomData;
 
 struct Sleep;
 
-#[effect]
+#[effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for Sleep {
-    type Id = Id<U0>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -33,9 +30,8 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
 }
 struct Eat;
 
-#[effect]
+#[effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
-    type Id = Id<U1>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -49,9 +45,8 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
 }
 struct Forage;
 
-#[effect]
+#[effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Forage {
-    type Id = Id<U2>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -65,9 +60,8 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
 }
 struct Hunt;
 
-#[effect]
+#[effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for Hunt {
-    type Id = Id<U3>;
     type In = ();
     type Out = i32;
     type Err = ();

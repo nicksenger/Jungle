@@ -1,12 +1,10 @@
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, BoundAct, BoundFlowStep, EffectCompletion, Identity, Running, StateCarrier, Step,
     ViewProject, Waiting,
 };
-use jungle_sdk::typosaurus::num::consts::{U72, U73, U74, U75};
 use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 
@@ -45,9 +43,8 @@ struct IoArg {
 
 struct EchoI32;
 
-#[effect]
+#[effect(id = 72)]
 impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
-    type Id = Id<U72>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -61,9 +58,8 @@ impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
 }
 struct SumPair;
 
-#[effect]
+#[effect(id = 73)]
 impl<J> jungle_sdk::types::Effect<J> for SumPair {
-    type Id = Id<U73>;
     type In = (i32, i32);
     type Out = i32;
     type Err = ();
@@ -77,9 +73,8 @@ impl<J> jungle_sdk::types::Effect<J> for SumPair {
 }
 struct EchoPair;
 
-#[effect]
+#[effect(id = 74)]
 impl<J> jungle_sdk::types::Effect<J> for EchoPair {
-    type Id = Id<U74>;
     type In = (i32, i32);
     type Out = (i32, i32);
     type Err = ();
@@ -93,9 +88,8 @@ impl<J> jungle_sdk::types::Effect<J> for EchoPair {
 }
 struct EchoRootState;
 
-#[effect]
+#[effect(id = 75)]
 impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
-    type Id = Id<U75>;
     type In = RootState;
     type Out = RootState;
     type Err = ();

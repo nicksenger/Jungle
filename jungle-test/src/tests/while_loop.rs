@@ -2,20 +2,17 @@ use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, BoundFlowStep, EffectCompletion, Executor, LoopCondition, ManualExecutor, Running, Step,
     Waiting, While,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use serde::{Deserialize, Serialize};
 use std::future::ready;
 
 struct TickEffect;
 
-#[effect]
+#[effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for TickEffect {
-    type Id = Id<U0>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -72,9 +69,8 @@ struct LoopFlowTemplate(While<LessThanThree, Step<TickSpec>>);
 
 struct TailEchoEffect;
 
-#[effect]
+#[effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for TailEchoEffect {
-    type Id = Id<U1>;
     type In = (bool, i32);
     type Out = (bool, i32);
     type Err = ();
@@ -123,9 +119,8 @@ struct LoopWithTailFlowTemplate(While<LessThanThree, Step<TickSpec>>, Step<TailA
 
 struct UnitEffect;
 
-#[effect]
+#[effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for UnitEffect {
-    type Id = Id<U2>;
     type In = ();
     type Out = ();
     type Err = ();
