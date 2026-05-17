@@ -1,13 +1,13 @@
+use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BoundAct, BoundFlowStep, Conditional, EffectCompletion, Either, Executor, Identity,
-    ManualExecutor, Running, Waiting,
+    Act, BoundFlowStep, Conditional, EffectCompletion, Either, Executor, ManualExecutor, Running,
+    Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
-use std::marker::PhantomData;
 use std::future::ready;
 
 struct LeftEffect;
@@ -56,20 +56,9 @@ impl Animal for ConditionalAnimal {
 }
 
 struct LeftSpec;
+#[act]
 impl Act for LeftSpec {
     type Effect = LeftEffect;
-    type Input = i32;
-    type Output = i32;
-    type Bind<A: Animal> = Left<A>;
-}
-
-struct Left<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for Left<A>
-where
-    A: Animal<State = i32>,
-{
-    type Effect = LeftEffect;
-    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -85,20 +74,9 @@ where
 }
 
 struct RightSpec;
+#[act]
 impl Act for RightSpec {
     type Effect = RightEffect;
-    type Input = i32;
-    type Output = bool;
-    type Bind<A: Animal> = Right<A>;
-}
-
-struct Right<A>(PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for Right<A>
-where
-    A: Animal<State = i32>,
-{
-    type Effect = RightEffect;
-    type Aspect = Identity;
     type Input = i32;
     type Output = bool;
 
@@ -130,8 +108,8 @@ struct ConditionalFlowTemplate(ConditionalFlow);
 
 type BoundConditionalFlow = Conditional<
     PreferLeftWhenStateIsNonNegative,
-    BoundFlowStep<ConditionalAnimal, Left<ConditionalAnimal>>,
-    BoundFlowStep<ConditionalAnimal, Right<ConditionalAnimal>>,
+    BoundFlowStep<ConditionalAnimal, <LeftSpec as Act>::Bind<ConditionalAnimal>>,
+    BoundFlowStep<ConditionalAnimal, <RightSpec as Act>::Bind<ConditionalAnimal>>,
 >;
 
 #[test]

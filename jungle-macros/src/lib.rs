@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use syn::parse::{Parse, ParseStream};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, Attribute, Data,
-    DeriveInput, Expr, Fields, GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl, Meta,
-    Path, Type,
+    DeriveInput, Expr, Fields, FnArg, GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl,
+    Meta, Path, Type, TypeReference,
 };
 
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
@@ -484,6 +484,44 @@ impl Parse for AnimalAttributes {
     }
 }
 
+struct ActAttributes {
+    aspect: Option<Type>,
+}
+
+impl Parse for ActAttributes {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        if input.is_empty() {
+            return Ok(Self { aspect: None });
+        }
+
+        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
+        let mut aspect = None;
+
+        for meta in metas {
+            match meta {
+                Meta::NameValue(nv) if nv.path.is_ident("aspect") => {
+                    if aspect.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            nv.path,
+                            "Duplicate `aspect` setting.",
+                        ));
+                    }
+                    let ty: Type = syn::parse2(quote!(#nv.value))?;
+                    aspect = Some(ty);
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "Unknown `act` setting. Supported: `aspect = ...`.",
+                    ));
+                }
+            }
+        }
+
+        Ok(Self { aspect })
+    }
+}
+
 fn collect_ident_names(tokens: proc_macro2::TokenStream) -> HashSet<String> {
     fn walk(stream: proc_macro2::TokenStream, names: &mut HashSet<String>) {
         for tt in stream {
@@ -661,6 +699,73 @@ fn require_trait_impl(
     }
 
     Ok(())
+}
+
+fn view_ty_from_bound_method(
+    func: &ImplItemFn,
+    method_name: &str,
+    expect_mut: bool,
+) -> Result<Type, syn::Error> {
+    if func.sig.inputs.len() != 2 {
+        return Err(syn::Error::new_spanned(
+            &func.sig,
+            format!("`{method_name}` must accept exactly two arguments."),
+        ));
+    }
+
+    let Some(FnArg::Typed(first_arg)) = func.sig.inputs.first() else {
+        return Err(syn::Error::new_spanned(
+            &func.sig,
+            format!("`{method_name}` must use typed arguments."),
+        ));
+    };
+
+    let Type::Reference(TypeReference {
+        mutability, elem, ..
+    }) = first_arg.ty.as_ref()
+    else {
+        return Err(syn::Error::new_spanned(
+            &first_arg.ty,
+            format!("First `{method_name}` argument must be a reference."),
+        ));
+    };
+
+    if expect_mut && mutability.is_none() {
+        return Err(syn::Error::new_spanned(
+            &first_arg.ty,
+            format!("First `{method_name}` argument must be `&mut`."),
+        ));
+    }
+    if !expect_mut && mutability.is_some() {
+        return Err(syn::Error::new_spanned(
+            &first_arg.ty,
+            format!("First `{method_name}` argument must be `&` (not `&mut`)."),
+        ));
+    }
+
+    Ok((**elem).clone())
+}
+
+fn type_tokens_match(a: &Type, b: &Type) -> bool {
+    quote!(#a).to_string() == quote!(#b).to_string()
+}
+
+fn self_type_ident(self_ty: &Type) -> Result<syn::Ident, syn::Error> {
+    let Type::Path(tp) = self_ty else {
+        return Err(syn::Error::new_spanned(
+            self_ty,
+            "`#[act]` requires a concrete type path for `impl Act for ...`.",
+        ));
+    };
+
+    let Some(last) = tp.path.segments.last() else {
+        return Err(syn::Error::new_spanned(
+            self_ty,
+            "Unable to determine type name for `#[act]`.",
+        ));
+    };
+
+    Ok(last.ident.clone())
 }
 
 fn id_inner_from_impl(
@@ -976,6 +1081,127 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
             type Id = #id_inner;
         }
         #identified_marker
+    }
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attrs = match syn::parse::<ActAttributes>(attr) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    let item_impl = parse_macro_input!(item as ItemImpl);
+    if let Err(err) = require_trait_impl(&item_impl, "Act", "act") {
+        return err.into_compile_error().into();
+    }
+
+    if !item_impl.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &item_impl.generics,
+            "`#[act]` currently supports only non-generic impl blocks.",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let mut effect_assoc: Option<ImplItemType> = None;
+    let mut input_assoc: Option<ImplItemType> = None;
+    let mut output_assoc: Option<ImplItemType> = None;
+    let mut emit_fn: Option<ImplItemFn> = None;
+    let mut absorb_fn: Option<ImplItemFn> = None;
+
+    for item in &item_impl.items {
+        match item {
+            ImplItem::Type(ty) if ty.ident == "Effect" => effect_assoc = Some(ty.clone()),
+            ImplItem::Type(ty) if ty.ident == "Input" => input_assoc = Some(ty.clone()),
+            ImplItem::Type(ty) if ty.ident == "Output" => output_assoc = Some(ty.clone()),
+            ImplItem::Type(ty) if ty.ident == "Bind" => {
+                return syn::Error::new_spanned(
+                    ty,
+                    "`#[act]` generates `type Bind<...>`; remove manual `Bind` from this impl.",
+                )
+                .to_compile_error()
+                .into();
+            }
+            ImplItem::Fn(func) if func.sig.ident == "emit" => emit_fn = Some(func.clone()),
+            ImplItem::Fn(func) if func.sig.ident == "absorb" => absorb_fn = Some(func.clone()),
+            _ => {}
+        }
+    }
+
+    let (Some(effect_assoc), Some(input_assoc), Some(output_assoc), Some(emit_fn), Some(absorb_fn)) =
+        (effect_assoc, input_assoc, output_assoc, emit_fn, absorb_fn)
+    else {
+        return syn::Error::new_spanned(
+            &item_impl,
+            "Expected `type Effect`, `type Input`, `type Output`, and methods `emit` + `absorb`.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let emit_view_ty = match view_ty_from_bound_method(&emit_fn, "emit", false) {
+        Ok(ty) => ty,
+        Err(err) => return err.to_compile_error().into(),
+    };
+    let absorb_view_ty = match view_ty_from_bound_method(&absorb_fn, "absorb", true) {
+        Ok(ty) => ty,
+        Err(err) => return err.to_compile_error().into(),
+    };
+    if !type_tokens_match(&emit_view_ty, &absorb_view_ty) {
+        return syn::Error::new_spanned(
+            &absorb_fn.sig,
+            "`emit` and `absorb` must operate on the same view type.",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let self_ty = &item_impl.self_ty;
+    let self_ident = match self_type_ident(self_ty) {
+        Ok(ident) => ident,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    let bound_ident = format_ident!("__JungleActBound{self_ident}");
+    let types = jungle_types_path();
+    let default_aspect: Type = parse_quote!(#types::Identity);
+    let aspect_ty = attrs.aspect.unwrap_or(default_aspect);
+
+    let bind_assoc: ImplItem = parse_quote! {
+        type Bind<A: #types::Animal> = #bound_ident<A>;
+    };
+    let effect_ty = effect_assoc.ty.clone();
+    let input_ty = input_assoc.ty.clone();
+    let output_ty = output_assoc.ty.clone();
+
+    let mut generated_act_impl = item_impl.clone();
+    generated_act_impl.items = vec![
+        ImplItem::Type(effect_assoc.clone()),
+        ImplItem::Type(input_assoc.clone()),
+        ImplItem::Type(output_assoc.clone()),
+        bind_assoc,
+    ];
+
+    quote! {
+        #generated_act_impl
+
+        struct #bound_ident<A>(::core::marker::PhantomData<fn() -> A>);
+
+        impl<A> #types::BoundAct<A> for #bound_ident<A>
+        where
+            A: #types::Animal,
+            #aspect_ty: #types::Aspect<<A as #types::Animal>::State, View = #emit_view_ty>,
+        {
+            type Effect = #effect_ty;
+            type Aspect = #aspect_ty;
+            type Input = #input_ty;
+            type Output = #output_ty;
+
+            #emit_fn
+            #absorb_fn
+        }
     }
     .into()
 }
