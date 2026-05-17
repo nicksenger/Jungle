@@ -1,14 +1,14 @@
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use serde::{Deserialize, Serialize};
-use jungle_sdk::effect;
 use jungle_sdk::animal;
+use jungle_sdk::effect;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, Step,
     Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use jungle_sdk::Journey;
+use serde::{Deserialize, Serialize};
 use std::future::ready;
 
 struct TickEffect;

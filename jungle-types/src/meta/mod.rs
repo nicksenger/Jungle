@@ -10,7 +10,9 @@ use typosaurus::num::{Max, Unsigned};
 use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
-use super::{Animal, Animals, Ecosystem, EffectExec, EffectSchema, Effects, FlowEffects, Journey};
+use super::{
+    Animal, Animals, Ecosystem, EffectExec, EffectSchema, Effects, Journey, JourneyEffects,
+};
 use core::marker::PhantomData;
 
 /// Newtype wrapper around an Unsigned constant.
@@ -301,13 +303,13 @@ impl<Head, Tail, TailOut> CollectAnimalJourneyEffects for list::List<(Head, Tail
 where
     Head: Animal,
     <Head as Animal>::Journey: Journey,
-    <Head as Animal>::Journey: FlowEffects,
-    <<Head as Animal>::Journey as FlowEffects>::List: FlattenNodes,
-    SPFlatten<<<Head as Animal>::Journey as FlowEffects>::List>: KeepEffectNodes,
+    <Head as Animal>::Journey: JourneyEffects,
+    <<Head as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<Head as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
     Tail: CollectAnimalJourneyEffects<Out = TailOut>,
 {
     type Out = list::List<(
-        <SPFlatten<<<Head as Animal>::Journey as FlowEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<<Head as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
         TailOut,
     )>;
 }

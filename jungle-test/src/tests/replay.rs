@@ -1,15 +1,15 @@
-use jungle_sdk::typosaurus::num::consts::*;
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use serde::{Deserialize, Serialize};
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Identity, JourneyStatus, LoopCondition, Sleep, UStep, While,
 };
+use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

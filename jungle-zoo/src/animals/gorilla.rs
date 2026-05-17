@@ -69,7 +69,7 @@ impl From<TemporalState> for () {
 //#[cfg(test)]
 //mod compile_checks {
 //    use super::*;
-//    use jungle_sdk::types::{BuildFlowWithContext, DynFlow, FlowEffects, Running, Waiting};
+//    use jungle_sdk::types::{BuildFlowWithContext, DynFlow, JourneyEffects, Running, Waiting};
 //    use std::sync::Arc;
 //
 //    #[allow(dead_code)]
@@ -79,7 +79,7 @@ impl From<TemporalState> for () {
 //    fn assert_waiting<F: Waiting>() {}
 //
 //    #[allow(dead_code)]
-//    fn assert_flow_effects<F: FlowEffects>() {}
+//    fn assert_flow_effects<F: JourneyEffects>() {}
 //
 //    #[allow(dead_code)]
 //    fn assert_context_flow<F>()

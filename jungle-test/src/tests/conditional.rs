@@ -1,7 +1,7 @@
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use jungle_sdk::effect;
 use jungle_sdk::animal;
+use jungle_sdk::effect;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, Conditional, EffectCompletion, Either, Executor, Identity, ManualExecutor, Running, Step,
     Waiting,

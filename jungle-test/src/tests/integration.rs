@@ -1,17 +1,17 @@
-use jungle_sdk::typosaurus::num::consts::*;
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use serde::{Deserialize, Serialize};
-use jungle_sdk::animal;
 use futures::StreamExt;
+use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
     JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
+use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -21,26 +21,20 @@ use testcontainers::runners::AsyncRunner;
 #[cfg(feature = "postgres")]
 use testcontainers_modules::postgres::Postgres;
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct SubFlowState {
     nested: DeepFocusState,
     value: i32,
     updates: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct DeepFocusState {
     value: i32,
     updates: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct IntegrationState {
     total: i32,
     focused: SubFlowState,

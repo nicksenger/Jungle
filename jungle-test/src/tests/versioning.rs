@@ -1,11 +1,10 @@
-use jungle_sdk::effect;
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Act, Animal, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id, Identity,
-    JourneyStatus, Observe, Step,
-    SupportedAnimal,
+    JourneyStatus, Observe, Step, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;

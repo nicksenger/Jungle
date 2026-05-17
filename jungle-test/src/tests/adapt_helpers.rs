@@ -1,14 +1,14 @@
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use serde::{Deserialize, Serialize};
-use jungle_sdk::effect;
 use jungle_sdk::animal;
+use jungle_sdk::effect;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     AbsorbFn, AbsorbMapper, EffectCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
     IdentityStep, ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
 use jungle_sdk::Journey;
+use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct HelperState {

@@ -1,21 +1,19 @@
-use jungle_sdk::typosaurus::num::consts::*;
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use serde::{Deserialize, Serialize};
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
     JourneyStatus, LoopCondition, Observe, Sleep, Step, While,
 };
+use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, Optic};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct SleepState {
     counter: i32,
     phase: u8,

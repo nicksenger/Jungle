@@ -183,21 +183,6 @@ pub fn derive_journey(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
-#[proc_macro_derive(Flow)]
-pub fn derive_flow(input: TokenStream) -> TokenStream {
-    let properties = jungle_types(&[
-        "JungleRunning",
-        "JungleWaiting",
-        "JungleFlow",
-        "JungleDynFlow",
-        "JungleDynFlowContext",
-        "JungleJourneyAst",
-        "JungleTraverseFlow",
-        "JungleReplaceFlow",
-    ]);
-    derive_with_properties(input, &properties)
-}
-
 #[proc_macro_derive(FlowTemplate, attributes(jungle))]
 pub fn derive_flow_template(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

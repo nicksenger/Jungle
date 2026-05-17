@@ -374,12 +374,12 @@ pub trait Effects {
 
 /// A collection of [`Effect`]s extractable from an executable workflow.
 #[inception(property = JungleFlow, types)]
-pub trait FlowEffects {
+pub trait JourneyEffects {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as FlowEffects>::List, <Tail as FlowEffects>::List)>,
-        merge_variant = TList<(<Head as FlowEffects>::List, <Tail as FlowEffects>::List)>,
-        join = TList<(Node<U0, ()>, <Fields as FlowEffects>::List)>
+        merge = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>,
+        merge_variant = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>,
+        join = TList<(Node<U0, ()>, <Fields as JourneyEffects>::List)>
     )]
     type List;
 }
@@ -830,10 +830,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<P, L, R, M> FlowEffects for Conditional<P, L, R, M>
+impl<P, L, R, M> JourneyEffects for Conditional<P, L, R, M>
 where
-    L: FlowEffects,
-    R: FlowEffects,
+    L: JourneyEffects,
+    R: JourneyEffects,
 {
     type List = TList<(L::List, R::List)>;
 }
@@ -937,9 +937,9 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<C, F, M> FlowEffects for While<C, F, M>
+impl<C, F, M> JourneyEffects for While<C, F, M>
 where
-    F: FlowEffects,
+    F: JourneyEffects,
 {
     type List = F::List;
 }
@@ -1010,9 +1010,9 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<View, F> FlowEffects for Scoped<View, F>
+impl<View, F> JourneyEffects for Scoped<View, F>
 where
-    F: FlowEffects,
+    F: JourneyEffects,
 {
     type List = F::List;
 }
@@ -1076,9 +1076,9 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<M, F> FlowEffects for Transparent<M, F>
+impl<M, F> JourneyEffects for Transparent<M, F>
 where
-    F: FlowEffects,
+    F: JourneyEffects,
 {
     type List = F::List;
 }
@@ -1242,10 +1242,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<L, R, M> FlowEffects for Select<L, R, M>
+impl<L, R, M> JourneyEffects for Select<L, R, M>
 where
-    L: FlowEffects,
-    R: FlowEffects,
+    L: JourneyEffects,
+    R: JourneyEffects,
 {
     type List = TList<(L::List, R::List)>;
 }
@@ -1337,10 +1337,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<L, R, M> FlowEffects for Join<L, R, M>
+impl<L, R, M> JourneyEffects for Join<L, R, M>
 where
-    L: FlowEffects,
-    R: FlowEffects,
+    L: JourneyEffects,
+    R: JourneyEffects,
 {
     type List = TList<(L::List, R::List)>;
 }

@@ -4,8 +4,9 @@ use std::future::Future;
 use std::marker::PhantomData;
 
 use crate::{
-    Animal, EffectIdentity, EffectMember, FlowEffects, ReplaceFlow, ReplaceNode, ReplaceNodesWith,
-    ReplaceStep, ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
+    Animal, EffectIdentity, EffectMember, JourneyEffects, ReplaceFlow, ReplaceNode,
+    ReplaceNodesWith, ReplaceStep, ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith,
+    Waiting,
 };
 use inception::primitive;
 use typosaurus::collections::sp::Node;
@@ -491,7 +492,7 @@ where
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<T, A> FlowEffects for Step<T, A>
+impl<T, A> JourneyEffects for Step<T, A>
 where
     T: Animal,
     <A as Act<T>>::Effect: EffectMember,
@@ -546,7 +547,7 @@ where
 }
 
 #[primitive(property = crate::JungleFlow)]
-impl<S> FlowEffects for StepSpec<S>
+impl<S> JourneyEffects for StepSpec<S>
 where
     S: ActionSpec,
 {

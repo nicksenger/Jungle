@@ -1,10 +1,10 @@
-use jungle_sdk::typosaurus::num::consts::*;
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use jungle_sdk::effect;
-use jungle_sdk::animal;
 use futures::StreamExt;
+use jungle_sdk::animal;
+use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
+use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{
     BackendError, ClaimedPerturbable, JourneyStatus, JungleClient, MockServer, RunnerOut,
     RunnerUpdateOut, SupportedAnimal, WireIn, WireOut, Work,

@@ -1,20 +1,20 @@
-use jungle_sdk::typosaurus::num::consts::*;
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use serde::{Deserialize, Serialize};
-use jungle_sdk::effect;
 use jungle_sdk::animal;
+use jungle_sdk::effect;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor,
-    Lens, NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, Step,
-    Transparent, TraverseFlow, TraverseStep, UStep, While,
+    EffectSchema, Either, Identity, Join, JourneyStatus, Lens, LoopCondition, ManualExecutor,
+    NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, Step, Transparent,
+    TraverseFlow, TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
+use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::typosaurus::num::consts::{
     U0, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49, U53,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub struct TemplateAddEffect;
@@ -730,25 +730,19 @@ async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal(
     let _ = worker_handle.await;
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct LensLeaf {
     value: i32,
     noise: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct LensBranch {
     leaf: LensLeaf,
     spare: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct LensRootState {
     branch: LensBranch,
     committed: i32,
@@ -981,26 +975,20 @@ async fn template_binding_unbound_lens_template_runs_end_to_end() {
     let _ = worker_handle.await;
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct NestedLensLeaf {
     value: i32,
     noise: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct NestedLensBranch {
     #[view]
     leaf: NestedLensLeaf,
     spare: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct NestedLensRootState {
     #[view]
     branch: NestedLensBranch,

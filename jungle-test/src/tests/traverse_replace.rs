@@ -1,5 +1,5 @@
-use jungle_sdk::effect;
 use jungle_sdk::animal;
+use jungle_sdk::effect;
 use jungle_sdk::types::{
     Act, Animal, Conditional, EffectCompletion, Id, Identity, LoopCondition, ReplaceStep, Step,
     TraverseStep, While,

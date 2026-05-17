@@ -1,18 +1,16 @@
-use jungle_sdk::typosaurus::num::consts::*;
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use serde::{Deserialize, Serialize};
 use jungle_sdk::animal;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
     Join, Select, Sleep, Step,
 };
+use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Journey, Optic};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct SelectJoinState {
     fast_ms: u64,
     slow_ms: u64,

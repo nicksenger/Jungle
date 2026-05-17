@@ -38,9 +38,7 @@ pub async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client
     unreachable!("retry loop always returns or panics")
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObserveState {
     pub tick: u64,
     pub sleep_ms: u64,

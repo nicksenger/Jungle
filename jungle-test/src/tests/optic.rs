@@ -1,46 +1,36 @@
-use jungle_sdk::types::Id;
-use jungle_sdk::types::Animal;
-use serde::{Deserialize, Serialize};
-use jungle_sdk::effect;
 use jungle_sdk::animal;
+use jungle_sdk::effect;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, EffectCompletion, Identity, Running, StateCarrier, Step, ViewProject, Waiting,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U9, U72, U73, U74, U75};
+use jungle_sdk::typosaurus::num::consts::{U0, U72, U73, U74, U75, U9};
 use jungle_sdk::Optic;
+use serde::{Deserialize, Serialize};
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Leaf {
     value: i32,
     noise: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Branch {
     leaf: Leaf,
     spare: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct RootState {
     branch: Branch,
     top: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ViewWrapped(#[view] Leaf);
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ViewRoot {
     #[view]
     wrapped: ViewWrapped,

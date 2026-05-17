@@ -1,6 +1,6 @@
-use jungle_sdk::types::Animal;
 use jungle_sdk::animal;
 use jungle_sdk::types as jungle_types;
+use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     Act, AnimalEffectSet, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
     EffectRequest, EffectSchema, Executor, Id, Identity, ManualExecutor, Running, Step, Waiting,
