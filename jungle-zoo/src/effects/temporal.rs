@@ -1,5 +1,7 @@
-use super::support::{define_effect, maybe_delay};
+use super::support::maybe_delay;
 use crate::state::{AgeState, DailyActivity, LifePhase, PerceivedTimeOfDay, TimePerception};
+use jungle_sdk::types::Id;
+use jungle_sdk::typosaurus::num::consts::{U50, U51, U52, U53, U54};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TemporalDependency {
@@ -37,20 +39,25 @@ fn next_time_of_day(time_of_day: PerceivedTimeOfDay) -> PerceivedTimeOfDay {
     }
 }
 
-define_effect!(
-    AdvanceAge,
-    id = 50,
-    dependency = TemporalDependency,
-    in = u8,
-    out = AgeState,
-    err = String,
-    effect = |dependency, age_years| {
+pub struct AdvanceAge;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for AdvanceAge {
+    type Id = Id<U50>;
+    type In = u8;
+    type Out = AgeState;
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        age_years: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = TemporalDependency::default();
         async move {
             maybe_delay().await;
             let new_age = age_years.saturating_add(1);
             let adult_age = dependency.adult_age.max(1);
-            let growth_percent =
-                ((u16::from(new_age) * 100) / u16::from(adult_age)).min(100) as u8;
+            let growth_percent = ((u16::from(new_age) * 100) / u16::from(adult_age)).min(100) as u8;
             let life_phase =
                 classify_life_phase(new_age, dependency.adolescent_age, dependency.adult_age);
             Ok(AgeState {
@@ -60,16 +67,22 @@ define_effect!(
             })
         }
     }
-);
+}
 
-define_effect!(
-    TickPerceivedTime,
-    id = 51,
-    dependency = TemporalDependency,
-    in = (PerceivedTimeOfDay, u16),
-    out = TimePerception,
-    err = String,
-    effect = |dependency, (current, minutes_since_transition)| {
+pub struct TickPerceivedTime;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for TickPerceivedTime {
+    type Id = Id<U51>;
+    type In = (PerceivedTimeOfDay, u16);
+    type Out = TimePerception;
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        (current, minutes_since_transition): Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = TemporalDependency::default();
         async move {
             maybe_delay().await;
             let total = minutes_since_transition.saturating_add(dependency.minutes_per_segment);
@@ -87,16 +100,21 @@ define_effect!(
             Ok(next)
         }
     }
-);
+}
 
-define_effect!(
-    EvaluateActivityWindow,
-    id = 52,
-    dependency = TemporalDependency,
-    in = (DailyActivity, PerceivedTimeOfDay),
-    out = bool,
-    err = String,
-    effect = |_dependency, (activity, time_of_day)| {
+pub struct EvaluateActivityWindow;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for EvaluateActivityWindow {
+    type Id = Id<U52>;
+    type In = (DailyActivity, PerceivedTimeOfDay);
+    type Out = bool;
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        (activity, time_of_day): Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             maybe_delay().await;
             let is_active = match activity {
@@ -116,23 +134,32 @@ define_effect!(
             Ok(is_active)
         }
     }
-);
+}
 
-define_effect!(
-    CelebrateBirthday,
-    id = 53,
-    dependency = TemporalDependency,
-    in = AgeState,
-    out = AgeState,
-    err = String,
-    effect = |dependency, age| {
+pub struct CelebrateBirthday;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for CelebrateBirthday {
+    type Id = Id<U53>;
+    type In = AgeState;
+    type Out = AgeState;
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        age: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = TemporalDependency::default();
         async move {
             maybe_delay().await;
             let adult_age = dependency.adult_age.max(1);
             let growth_percent =
                 ((u16::from(age.age_years) * 100) / u16::from(adult_age)).min(100) as u8;
-            let life_phase =
-                classify_life_phase(age.age_years, dependency.adolescent_age, dependency.adult_age);
+            let life_phase = classify_life_phase(
+                age.age_years,
+                dependency.adolescent_age,
+                dependency.adult_age,
+            );
             Ok(AgeState {
                 age_years: age.age_years,
                 life_phase,
@@ -140,23 +167,32 @@ define_effect!(
             })
         }
     }
-);
+}
 
-define_effect!(
-    Birth,
-    id = 54,
-    dependency = TemporalDependency,
-    in = AgeState,
-    out = AgeState,
-    err = String,
-    effect = |dependency, age| {
+pub struct Birth;
+
+#[jungle_sdk::effect]
+impl<J> jungle_sdk::types::Effect<J> for Birth {
+    type Id = Id<U54>;
+    type In = AgeState;
+    type Out = AgeState;
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        age: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        let dependency = TemporalDependency::default();
         async move {
             maybe_delay().await;
             let adult_age = dependency.adult_age.max(1);
             let growth_percent =
                 ((u16::from(age.age_years) * 100) / u16::from(adult_age)).min(100) as u8;
-            let life_phase =
-                classify_life_phase(age.age_years, dependency.adolescent_age, dependency.adult_age);
+            let life_phase = classify_life_phase(
+                age.age_years,
+                dependency.adolescent_age,
+                dependency.adult_age,
+            );
             Ok(AgeState {
                 age_years: age.age_years,
                 life_phase,
@@ -164,4 +200,4 @@ define_effect!(
             })
         }
     }
-);
+}
