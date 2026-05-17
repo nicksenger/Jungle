@@ -8,7 +8,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U33, U70, U71};
+use jungle_sdk::typosaurus::num::consts::{U0, U1, U33, U70, U71};
 use jungle_sdk::{Animals, JungleClient};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
@@ -105,10 +105,8 @@ struct LegacyFlowTemplate(Step<LegacyStepSpec>);
 struct ModernFlowTemplate(Step<ModernStepSpec>);
 
 struct LegacyAnimal;
-#[animal(observe)]
+#[animal(observe, id = 33, generation = 0)]
 impl Animal for LegacyAnimal {
-    type Id = Id<U33>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = LegacyFlowTemplate;
@@ -122,10 +120,8 @@ impl Observe for LegacyAnimal {
 }
 
 struct ModernAnimal;
-#[animal(observe)]
+#[animal(observe, id = 33, generation = 1)]
 impl Animal for ModernAnimal {
-    type Id = Id<U33>;
-    type Generation = U1;
     type State = i32;
     type Seed = i32;
     type Journey = ModernFlowTemplate;
@@ -139,10 +135,8 @@ impl Observe for ModernAnimal {
 }
 
 struct FutureAnimal;
-#[animal(observe)]
+#[animal(observe, id = 33, generation = 2)]
 impl Animal for FutureAnimal {
-    type Id = Id<U33>;
-    type Generation = U2;
     type State = i32;
     type Seed = i32;
     type Journey = ModernFlowTemplate;

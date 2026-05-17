@@ -30,10 +30,8 @@ impl<J> jungle_sdk::types::Effect<J> for TickEffect {
 
 struct Looper;
 
-#[animal]
+#[animal(id = 0, generation = 0)]
 impl Animal for Looper {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = LoopFlowTemplate;
@@ -91,10 +89,8 @@ impl<J> jungle_sdk::types::Effect<J> for TailEchoEffect {
 
 struct LooperWithTail;
 
-#[animal]
+#[animal(id = 1, generation = 0)]
 impl Animal for LooperWithTail {
-    type Id = Id<U1>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = LoopWithTailFlowTemplate;
@@ -154,10 +150,8 @@ struct NestedState {
 
 struct NestedLooper;
 
-#[animal]
+#[animal(id = 2, generation = 0)]
 impl Animal for NestedLooper {
-    type Id = Id<U2>;
-    type Generation = U0;
     type State = NestedState;
     type Seed = NestedState;
     type Journey = NestedLoopFlowTemplate;
