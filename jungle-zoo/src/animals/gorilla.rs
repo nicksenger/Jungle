@@ -13,6 +13,7 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
+use serde::{Deserialize, Serialize};
 
 const GORILLA_DAY_LOOPS_PER_YEAR: u16 = 4;
 

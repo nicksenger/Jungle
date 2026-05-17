@@ -3,7 +3,7 @@ use jungle_types::{
     Animal, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutableEffectRequest, ExecutorError,
 };
 use serde::de::DeserializeOwned;
-use Serialize;
+use serde::Serialize;
 use std::sync::Arc;
 
 pub struct JungleExecutor<T, A>

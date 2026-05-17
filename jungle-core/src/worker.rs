@@ -9,7 +9,7 @@ use jungle_types::{
     ContextExecutor, DynFlow, Ecosystem, ExecutorError, Observable, Perturbable, RunnerOut, Sleep,
     StripAnimalHeaders, SupportedAnimal, Work,
 };
-use Serialize;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;

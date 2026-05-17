@@ -34,7 +34,7 @@ pub use meta::{
     StripAnimalHeaders, StripEffectHeaders, WithEffectExecFor,
 };
 use serde::de::DeserializeOwned;
-use Serialize;
+use serde::{Deserialize, Serialize};
 pub use sleep::{Sleep, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{

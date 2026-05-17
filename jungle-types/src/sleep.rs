@@ -2,6 +2,7 @@ use crate::{
     Act, Animal, Aspect, EffectCompletion, EffectExec, EffectSchema, Id, Identity, StateCarrier,
 };
 use inception::primitive;
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::time::Duration;
 use typosaurus::collections::sp::Node;

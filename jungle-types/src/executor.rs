@@ -4,8 +4,7 @@ use crate::{
 };
 use inception::*;
 use serde::de::DeserializeOwned;
-use Serialize;
-use serde::{Deserialize, Serialize as SerdeSerialize};
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -725,13 +724,13 @@ where
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
-#[derive(Debug, Clone, Deserialize, SerdeSerialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 enum SelectCompletionEnvelope {
     Left(SerializedCompletion),
     Right(SerializedCompletion),
 }
 
-#[derive(Debug, Clone, Deserialize, SerdeSerialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct SelectRequestEnvelope {
     left: Serialized,
     right: Serialized,
@@ -1069,13 +1068,13 @@ where
     }
 }
 
-#[derive(Debug, Clone, Deserialize, SerdeSerialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct JoinCompletionEnvelope {
     left: SerializedCompletion,
     right: SerializedCompletion,
 }
 
-#[derive(Debug, Clone, Deserialize, SerdeSerialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct JoinRequestEnvelope {
     left: Serialized,
     right: Serialized,
