@@ -8,10 +8,9 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
-    JourneyStatus, LoopCondition, Observe, Perturb, StateLens, Step, While,
+    JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::list;
 use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -47,6 +46,24 @@ struct IntegrationState {
     focused: SubFlowState,
     before_steps: u8,
     after_steps: u8,
+}
+
+struct IntegrationFocusedCarrier;
+impl StateCarrier<IntegrationState> for IntegrationFocusedCarrier {
+    type View = SubFlowState;
+
+    fn view<'a>(state: &'a mut IntegrationState) -> &'a mut Self::View {
+        &mut state.focused
+    }
+}
+
+struct IntegrationDeepFocusedCarrier;
+impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
+    type View = DeepFocusState;
+
+    fn view<'a>(state: &'a mut IntegrationState) -> &'a mut Self::View {
+        &mut state.focused.nested
+    }
 }
 
 struct AddOneEffect;
@@ -124,7 +141,7 @@ impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 struct AddOneFocusedStep;
 impl Act<IntegrationAnimal> for AddOneFocusedStep {
     type Effect = AddOneEffect;
-    type StateAspect = StateLens<IntegrationState, list![U1]>;
+    type StateAspect = IntegrationFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -139,7 +156,7 @@ impl Act<IntegrationAnimal> for AddOneFocusedStep {
 struct AddTwoFocusedStep;
 impl Act<IntegrationAnimal> for AddTwoFocusedStep {
     type Effect = AddTwoEffect;
-    type StateAspect = StateLens<IntegrationState, list![U1]>;
+    type StateAspect = IntegrationFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -154,13 +171,7 @@ impl Act<IntegrationAnimal> for AddTwoFocusedStep {
 struct AddOneDeepFocusedStep;
 impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
     type Effect = AddOneEffect;
-    type StateAspect = StateLens<
-        IntegrationState,
-        list![
-            U1,
-            U0
-        ],
-    >;
+    type StateAspect = IntegrationDeepFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -175,13 +186,7 @@ impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
 struct AddTwoDeepFocusedStep;
 impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type Effect = AddTwoEffect;
-    type StateAspect = StateLens<
-        IntegrationState,
-        list![
-            U1,
-            U0
-        ],
-    >;
+    type StateAspect = IntegrationDeepFocusedCarrier;
     type Input = ();
     type Output = ();
 

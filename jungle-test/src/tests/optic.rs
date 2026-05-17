@@ -4,9 +4,8 @@ use serde::{Deserialize, Serialize};
 use jungle_sdk::effect;
 use jungle_sdk::animal;
 use jungle_sdk::types::{
-    Act, EffectCompletion, Identity, Running, StateLens, Step, ViewProject, Waiting,
+    Act, EffectCompletion, Identity, Running, StateCarrier, Step, ViewProject, Waiting,
 };
-use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U9, U72, U73, U74, U75};
 use jungle_sdk::Optic;
 
@@ -118,10 +117,28 @@ impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
     }
 }
 
+struct BranchCarrier;
+impl StateCarrier<RootState> for BranchCarrier {
+    type View = Branch;
+
+    fn view<'a>(state: &'a mut RootState) -> &'a mut Self::View {
+        &mut state.branch
+    }
+}
+
+struct LeafValueCarrier;
+impl StateCarrier<RootState> for LeafValueCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut RootState) -> &'a mut Self::View {
+        &mut state.branch.leaf.value
+    }
+}
+
 struct LensOnBranch;
 impl Act<OpticAnimal> for LensOnBranch {
     type Effect = EchoI32;
-    type StateAspect = StateLens<RootState, U0>;
+    type StateAspect = BranchCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -139,7 +156,7 @@ impl Act<OpticAnimal> for LensOnBranch {
 struct LensOnLeafValue;
 impl Act<OpticAnimal> for LensOnLeafValue {
     type Effect = EchoI32;
-    type StateAspect = StateLens<RootState, list![U0, U0, U0]>;
+    type StateAspect = LeafValueCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -228,46 +245,3 @@ fn optic_view_marker_generates_direct_projection_impls() {
     assert_eq!(root.wrapped.0.value, 10);
     assert_eq!(root.wrapped.0.noise, 7);
 }
-
-//
-//struct IoLensPulse;
-//impl Act OpticAnimal for IoLensPulse {
-//    type Effect = EchoI32;
-//    type StateAspect = Identity;
-//    type Arg = i32;
-//    type Ret = i32;
-//
-//    fn emit(view: &RootState, input: Self::Arg) -> i32 {
-//        input
-//    }
-//
-//    fn absorb(view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Ret {
-//        let out = output.expect("lens list should succeed");
-//        out
-//    }
-//}
-//type _LensSingle = Step<OpticAnimal, _Lens<IoLensPulse, _View<i32, U1>>>;
-//type _LensList = Step<OpticAnimal, _Lens<IoLensPulse, _View<i32, list![U0, U1]>>>;
-//#[derive(Journey)]
-//struct _LensSingleSequence(
-//    Step<IoSingleAnimal, EchoRootState>,
-//    Step<IoSingleAnimal, _LensSingle>,
-//);
-//#[derive(Journey)]
-//struct _LensListSequence(
-//    Step<IoListAnimal, EchoRootState>,
-//    Step<IoListAnimal, _LensList>,
-//);
-// TODO: add attributed `IoSingleAnimal` once lens io sequence tests are implemented.
-// TODO: add attributed `IoListAnimal` once lens io list tests are implemented.
-//
-//
-//#[test]
-//fn io_single_lens_flow() {
-//    // Assert that list lens returns RootState.top
-//}
-//
-//#[test]
-//fn io_list_lens_flow() {
-//    // Assert that list lens returns RootState.branch.spare
-//}

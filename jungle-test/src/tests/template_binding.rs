@@ -7,13 +7,12 @@ use jungle_sdk::animal;
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor,
-    NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, StateLens, Step,
+    NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, StateCarrier, Step,
     Transparent, TraverseFlow, TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{
-    U0, U1, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49, U53,
+    U0, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49, U53,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
 use std::time::Duration;
@@ -771,13 +770,31 @@ struct LensReadSpareSpec;
 struct LensReadLeafSpec;
 struct LensCommitSpec;
 
+struct LensRootSpareCarrier;
+impl StateCarrier<LensRootState> for LensRootSpareCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut LensRootState) -> &'a mut Self::View {
+        &mut state.branch.spare
+    }
+}
+
+struct LensRootLeafValueCarrier;
+impl StateCarrier<LensRootState> for LensRootLeafValueCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut LensRootState) -> &'a mut Self::View {
+        &mut state.branch.leaf.value
+    }
+}
+
 struct LensReadSpareAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for LensReadSpareAct<A>
 where
     A: Animal<State = LensRootState>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = StateLens<LensRootState, list![U0, U1]>;
+    type StateAspect = LensRootSpareCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -798,7 +815,7 @@ where
     A: Animal<State = LensRootState>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = StateLens<LensRootState, list![U0, U0, U0]>;
+    type StateAspect = LensRootLeafValueCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -1021,13 +1038,40 @@ struct NestedBranchSpareSpec;
 struct NestedLeafValueSpec;
 struct NestedLeafNoiseSpec;
 
+struct NestedBranchSpareCarrier;
+impl StateCarrier<NestedLensBranch> for NestedBranchSpareCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut NestedLensBranch) -> &'a mut Self::View {
+        &mut state.spare
+    }
+}
+
+struct NestedLeafValueCarrier;
+impl StateCarrier<NestedLensLeaf> for NestedLeafValueCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut NestedLensLeaf) -> &'a mut Self::View {
+        &mut state.value
+    }
+}
+
+struct NestedLeafNoiseCarrier;
+impl StateCarrier<NestedLensLeaf> for NestedLeafNoiseCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut NestedLensLeaf) -> &'a mut Self::View {
+        &mut state.noise
+    }
+}
+
 struct NestedBranchSpareAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for NestedBranchSpareAct<A>
 where
     A: Animal<State = NestedLensBranch>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = StateLens<NestedLensBranch, list![U1]>;
+    type StateAspect = NestedBranchSpareCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -1048,7 +1092,7 @@ where
     A: Animal<State = NestedLensLeaf>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = StateLens<NestedLensLeaf, list![U0]>;
+    type StateAspect = NestedLeafValueCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -1069,7 +1113,7 @@ where
     A: Animal<State = NestedLensLeaf>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = StateLens<NestedLensLeaf, list![U1]>;
+    type StateAspect = NestedLeafNoiseCarrier;
     type Input = i32;
     type Output = i32;
 

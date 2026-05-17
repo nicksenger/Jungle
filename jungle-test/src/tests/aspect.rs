@@ -6,9 +6,8 @@ use jungle_sdk::animal;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Act, Aspect, Condition, Conditional, EffectCompletion, EffectExec, EffectSchema, Either,
-    Executor, Identity, LoopCondition, Running, StateLens, Step, Waiting, While,
+    Executor, Identity, LoopCondition, Running, StateCarrier, Step, Waiting, While,
 };
-use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::{Journey, Optic};
 use std::future::ready;
@@ -95,6 +94,42 @@ struct GorillaState {
 struct TigerState {
     stripes: u8,
     core: CoreState,
+}
+
+struct GorillaCoreCarrier;
+impl StateCarrier<GorillaState> for GorillaCoreCarrier {
+    type View = CoreState;
+
+    fn view<'a>(state: &'a mut GorillaState) -> &'a mut Self::View {
+        &mut state.core
+    }
+}
+
+struct TigerCoreCarrier;
+impl StateCarrier<TigerState> for TigerCoreCarrier {
+    type View = CoreState;
+
+    fn view<'a>(state: &'a mut TigerState) -> &'a mut Self::View {
+        &mut state.core
+    }
+}
+
+struct GorillaEnergyCarrier;
+impl StateCarrier<GorillaState> for GorillaEnergyCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut GorillaState) -> &'a mut Self::View {
+        &mut state.core.energy
+    }
+}
+
+struct TigerEnergyCarrier;
+impl StateCarrier<TigerState> for TigerEnergyCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut TigerState) -> &'a mut Self::View {
+        &mut state.core.energy
+    }
 }
 
 struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
@@ -214,11 +249,11 @@ impl Act<Gorilla> for GorillaSleepManual {
     }
 }
 
-type GorillaEat = AddI32<StateLens<GorillaState, list![U0, U0]>, Eat>;
-type GorillaForageStep = SubI32<StateLens<GorillaState, list![U0, U0]>, Forage>;
+type GorillaEat = AddI32<GorillaEnergyCarrier, Eat>;
+type GorillaForageStep = SubI32<GorillaEnergyCarrier, Forage>;
 
-type TigerEat = AddI32<StateLens<TigerState, list![U1, U0]>, Eat>;
-type TigerSleep = AddI32<StateLens<TigerState, list![U1, U0]>, Sleep>;
+type TigerEat = AddI32<TigerEnergyCarrier, Eat>;
+type TigerSleep = AddI32<TigerEnergyCarrier, Sleep>;
 
 #[derive(Journey)]
 struct GorillaLoopSequence(
@@ -250,7 +285,7 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 struct TigerLoopSequence(
     Conditional<TigerStripesAreEven, Step<Tiger, TigerEat>, Step<Tiger, TigerSleep>>,
     Step<Tiger, TigerSleep>,
-    Step<Tiger, AddI32<StateLens<TigerState, list![U1, U0]>, Hunt>>,
+    Step<Tiger, AddI32<TigerEnergyCarrier, Hunt>>,
 );
 
 struct TigerUnderHundredStripes;
@@ -297,12 +332,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
     };
     let (gorilla_state, gorilla_request) = <Step<
         Gorilla,
-        CoreEnergyStep<Sleep, StateLens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, GorillaCoreCarrier>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
     let (gorilla_state, gorilla_emitted) = <Step<
         Gorilla,
-        CoreEnergyStep<Sleep, StateLens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, GorillaCoreCarrier>,
     > as Waiting>::accept((gorilla_state, Ok(20)));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
@@ -315,12 +350,12 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
     };
     let (tiger_state, tiger_request) = <Step<
         Tiger,
-        CoreEnergyStep<Sleep, StateLens<TigerState, U1>>,
+        CoreEnergyStep<Sleep, TigerCoreCarrier>,
     > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
     let (tiger_state, tiger_emitted) = <Step<
         Tiger,
-        CoreEnergyStep<Sleep, StateLens<TigerState, U1>>,
+        CoreEnergyStep<Sleep, TigerCoreCarrier>,
     > as Waiting>::accept((tiger_state, Ok(15)));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);

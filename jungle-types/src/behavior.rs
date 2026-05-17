@@ -2,17 +2,13 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::ops::Sub;
 
 use crate::{
     Animal, EffectIdentity, EffectMember, FlowEffects, ReplaceFlow, ReplaceNode, ReplaceNodesWith,
     ReplaceStep, ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith, Waiting,
 };
-use inception::{primitive, Access, Field, Inception as InceptionTy, VariantHeader};
-use typosaurus::collections::list;
+use inception::primitive;
 use typosaurus::collections::sp::Node;
-use typosaurus::num::consts::{U0, U1};
-use typosaurus::num::{Bit, UInt, Unsigned};
 
 /// Canonical, context-agnostic effect contract used by flow shape and wire schema.
 pub trait EffectSchema {
@@ -104,139 +100,6 @@ impl<State> StateCarrier<State> for Identity {
 
     fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
         state
-    }
-}
-
-/// Focuses to a field on a state type by its type-level field index.
-pub struct StateLens<State, Index>(PhantomData<fn() -> (State, Index)>);
-
-trait FieldAtMut<'a, Index, View> {
-    fn at_mut(self) -> &'a mut View;
-}
-
-impl<'a, Head, Tail, View> FieldAtMut<'a, U0, View> for inception::List<(Head, Tail)>
-where
-    View: 'a,
-    Head: Access<Out = &'a mut View>,
-{
-    fn at_mut(self) -> &'a mut View {
-        self.0 .0.access()
-    }
-}
-
-impl<'a, Head, Tail, U, B, View> FieldAtMut<'a, UInt<U, B>, View> for inception::List<(Head, Tail)>
-where
-    U: Unsigned,
-    B: Bit,
-    UInt<U, B>: Sub<U1>,
-    Tail: FieldAtMut<'a, <UInt<U, B> as Sub<U1>>::Output, View>,
-{
-    fn at_mut(self) -> &'a mut View {
-        self.0 .1.at_mut()
-    }
-}
-
-#[doc(hidden)]
-pub trait FieldContentAt<Index> {
-    type Content;
-}
-
-impl<Head, Tail> FieldContentAt<U0> for inception::List<(Head, Tail)>
-where
-    Head: Field,
-{
-    type Content = <Head as Field>::Content;
-}
-
-impl<Head, Tail, U, B> FieldContentAt<UInt<U, B>> for inception::List<(Head, Tail)>
-where
-    U: Unsigned,
-    B: Bit,
-    UInt<U, B>: Sub<U1>,
-    Tail: FieldContentAt<<UInt<U, B> as Sub<U1>>::Output>,
-{
-    type Content = <Tail as FieldContentAt<<UInt<U, B> as Sub<U1>>::Output>>::Content;
-}
-
-#[doc(hidden)]
-pub trait StateLensPath<State, Index> {
-    type View;
-
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View;
-}
-
-trait ScalarIndex {}
-
-impl ScalarIndex for U0 {}
-
-impl<U, B> ScalarIndex for UInt<U, B>
-where
-    U: Unsigned,
-    B: Bit,
-{
-}
-
-impl<State, Index> StateLensPath<State, Index> for ()
-where
-    Index: ScalarIndex,
-    State: crate::Optic
-        + InceptionTy<crate::JungleOptic, inception::False>
-        + inception::DataType<Ty = inception::StructTy<inception::True>>,
-    <State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields: FieldContentAt<Index>,
-    for<'a> <State as InceptionTy<crate::JungleOptic, inception::False>>::MutFields<'a>: FieldAtMut<
-        'a,
-        Index,
-        <<State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields as FieldContentAt<Index>>::Content,
-    >,
-{
-    type View =
-        <<State as InceptionTy<crate::JungleOptic, inception::False>>::TyFields as FieldContentAt<Index>>::Content;
-
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
-        let mut header = VariantHeader;
-        let fields =
-            <State as InceptionTy<crate::JungleOptic, inception::False>>::fields_mut(state, &mut header);
-        fields.at_mut()
-    }
-}
-
-impl<State, Head, Next, Tail> StateLensPath<State, list::List<(Head, list::List<(Next, Tail)>)>>
-    for ()
-where
-    (): StateLensPath<State, Head>,
-    <() as StateLensPath<State, Head>>::View: 'static,
-    (): StateLensPath<<() as StateLensPath<State, Head>>::View, list::List<(Next, Tail)>>,
-{
-    type View = <() as StateLensPath<
-        <() as StateLensPath<State, Head>>::View,
-        list::List<(Next, Tail)>,
-    >>::View;
-
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
-        let head = <() as StateLensPath<State, Head>>::view(state);
-        <() as StateLensPath<<() as StateLensPath<State, Head>>::View, list::List<(Next, Tail)>>>::view(head)
-    }
-}
-
-impl<State, Head> StateLensPath<State, list::List<(Head, list::Empty)>> for ()
-where
-    (): StateLensPath<State, Head>,
-{
-    type View = <() as StateLensPath<State, Head>>::View;
-
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
-        <() as StateLensPath<State, Head>>::view(state)
-    }
-}
-
-impl<State, Index> StateCarrier<State> for StateLens<State, Index>
-where
-    (): StateLensPath<State, Index>,
-{
-    type View = <() as StateLensPath<State, Index>>::View;
-
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
-        <() as StateLensPath<State, Index>>::view(state)
     }
 }
 

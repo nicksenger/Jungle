@@ -13,8 +13,7 @@ pub use behavior::{
 };
 pub use behavior::{
     Act, ActionSpec, Aspect, EffectCompletion, EffectExec, EffectRequest, EffectSchema, Identity,
-    ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, StateLens, Step, StepSpec,
-    UStep,
+    ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, Step, StepSpec, UStep,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;

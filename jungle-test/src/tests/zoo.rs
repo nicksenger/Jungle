@@ -6,7 +6,7 @@ use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
     Act, ActionSpec, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, EffectCompletion,
-    EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateLens, Step, UStep, While,
+    EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier, Step, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -626,9 +626,27 @@ where
     }
 }
 
-type ApeRoundTask = AddI32<StateLens<ExecutorApeState, list![U0, U1]>, RoundAdvance>;
-type TigerHuntTask = AddI32<StateLens<ExecutorCatState, list![U0, U0]>, HuntEnergy>;
-type TigerEatTask = AddI32<StateLens<ExecutorCatState, list![U0, U0]>, EatEnergy>;
+struct ApeRoundCarrier;
+impl StateCarrier<ExecutorApeState> for ApeRoundCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut ExecutorApeState) -> &'a mut Self::View {
+        &mut state.core.rounds
+    }
+}
+
+struct TigerEnergyCarrier;
+impl StateCarrier<ExecutorCatState> for TigerEnergyCarrier {
+    type View = i32;
+
+    fn view<'a>(state: &'a mut ExecutorCatState) -> &'a mut Self::View {
+        &mut state.core.energy
+    }
+}
+
+type ApeRoundTask = AddI32<ApeRoundCarrier, RoundAdvance>;
+type TigerHuntTask = AddI32<TigerEnergyCarrier, HuntEnergy>;
+type TigerEatTask = AddI32<TigerEnergyCarrier, EatEnergy>;
 
 struct ApeKeepRunning;
 impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
