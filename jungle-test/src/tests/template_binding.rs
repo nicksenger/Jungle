@@ -68,7 +68,7 @@ impl Act for CommitSpec {
     type Bind<A: Animal> = GenericCommit<A>;
 }
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct TemplateFlow(UStep<AddOneSpec>, UStep<CommitSpec>);
 
 #[derive(jungle_sdk::Journey)]
@@ -486,7 +486,7 @@ where
     }
 }
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct ContextBoundTemplateFlow(UStep<ContextBoundSpec>);
 
 struct LocalTemplateContextAnimal;
@@ -630,15 +630,15 @@ mod composed_templates {
     use jungle_sdk::types::UStep;
 
     // Fragment A: no Animal type appears here.
-    #[derive(jungle_sdk::FlowTemplate)]
+    #[derive(jungle_sdk::Flow)]
     pub struct IntakeStage(UStep<AddOneSpec>);
 
     // Fragment B: no Animal type appears here.
-    #[derive(jungle_sdk::FlowTemplate)]
+    #[derive(jungle_sdk::Flow)]
     pub struct CommitStage(UStep<CommitSpec>);
 
     // Final composition of independent unbound fragments, still no Animal type.
-    #[derive(jungle_sdk::FlowTemplate)]
+    #[derive(jungle_sdk::Flow)]
     pub struct ComposedPipeline(IntakeStage, CommitStage);
 }
 
@@ -851,7 +851,7 @@ impl Act for LensCommitSpec {
     type Bind<A: Animal> = LensCommitAct<A>;
 }
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct LensTemplate(UStep<LensReadSpareSpec>, UStep<LensCommitSpec>);
 
 struct SeenStep<T>(core::marker::PhantomData<T>);
@@ -901,11 +901,11 @@ impl Ecosystem for LensZoo {
     type Animals = LensAnimals;
 }
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 #[jungle(view = LensBranch)]
 struct ScopedLensTemplate(LensTemplate);
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 #[jungle(view = LensBranch)]
 struct ScopedLensMultiField(LensTemplate, LensTemplate);
 
@@ -1099,11 +1099,11 @@ impl Act for NestedLeafNoiseSpec {
     type Bind<A: Animal> = NestedLeafNoiseAct<A>;
 }
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 #[jungle(view = NestedLensLeaf)]
 struct NestedLeafScopedTemplate(UStep<NestedLeafValueSpec>, UStep<NestedLeafNoiseSpec>);
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 #[jungle(view = NestedLensBranch)]
 struct NestedBranchScopedTemplate(
     UStep<NestedBranchSpareSpec>,
@@ -1560,35 +1560,35 @@ impl Act for FinalizeSpec {
     type Bind<A: Animal> = FinalizeAct<A>;
 }
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct SharedJoinBranch(
     Join<UStep<JoinLeftSpec>, UStep<JoinRightSpec>>,
     UStep<JoinToCarrySpec>,
 );
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct SharedSelectBranch(
     Select<UStep<SelectFastSpec>, UStep<SelectSlowSpec>>,
     UStep<SelectToCarrySpec>,
 );
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct SharedLoopBody(UStep<LoopAdvanceSpec>);
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct SharedComposedSegment(
     While<KeepLoopingShared, SharedLoopBody>,
     SharedJoinBranch,
     SharedSelectBranch,
 );
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct LongSharedSegment(Transparent<SharedMeta, SharedComposedSegment>);
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct UniqueSegment(Conditional<ChooseUniqueAlpha, UStep<UniqueAlphaSpec>, UStep<UniqueBetaSpec>>);
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct LongMixedTemplate(LongSharedSegment, UniqueSegment, UStep<FinalizeSpec>);
 
 struct ComplexAlphaAnimal;

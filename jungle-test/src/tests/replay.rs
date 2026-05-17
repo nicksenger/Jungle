@@ -247,7 +247,7 @@ impl Act for ReplayPostSpec {
     type Bind<A: Animal> = ReplayPostStep;
 }
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct ReplayGateTemplate(ReplayPhaseRouterFlow<ReplayPreSpec, ReplayGateSpec, ReplayPostSpec>);
 
 type ReplayGateJourney = <ReplayGateTemplate as BindAnimal<ReplayGateAnimal>>::Bound;
@@ -548,7 +548,7 @@ impl Act for ReplayTimeoutPostSpec {
     type Bind<A: Animal> = ReplayTimeoutPostStep;
 }
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct ReplayTimeoutTemplate(
     ReplayPhaseRouterFlow<ReplayTimeoutPreSpec, ReplayTimeoutSleepSpec, ReplayTimeoutPostSpec>,
 );

@@ -168,7 +168,7 @@ where
 
 type UUnitStep<E> = UStep<UnitOkSpec<E>>;
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct PreyWorkflowTemplate(
     UUnitStep<Eat>,
     UUnitStep<Sleep>,
@@ -177,7 +177,7 @@ struct PreyWorkflowTemplate(
     UUnitStep<Flee>,
 );
 
-#[derive(jungle_sdk::FlowTemplate)]
+#[derive(jungle_sdk::Flow)]
 struct PredatorWorkflowTemplate(
     UUnitStep<Eat>,
     UUnitStep<Sleep>,
