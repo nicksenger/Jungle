@@ -12,7 +12,7 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, Aspect, BoundAct, BoundFlowStep, EffectCompletion, EffectExec, EffectRequest,
+    Act, Aspect, BoundAct, BoundByAnimal, BoundFlowStep, EffectCompletion, EffectExec, EffectRequest,
     EffectSchema, Identity, ScopeReboundAct, ScopedAct, ScopedAnimal, StateCarrier, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
