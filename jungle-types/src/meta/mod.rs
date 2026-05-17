@@ -3,7 +3,7 @@ use typosaurus::cmp::Equality;
 use typosaurus::cmp::IsEqual;
 use typosaurus::collections::{
     list,
-    sp::{FlattenNodes, Node, SPDedupNodes, SPFlatten},
+    sp::{FlattenNodes, Node, SPFlatten},
     Container,
 };
 use typosaurus::num::{Max, Unsigned};
@@ -313,7 +313,3 @@ where
         TailOut,
     )>;
 }
-
-pub type AnimalEffectSet<T> = <SPDedupNodes<
-    SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out>,
-> as StripEffectHeaders>::Out;

@@ -26,7 +26,7 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    AllFrom, AnimalEffectExecCompatible, AnimalEffectMembers, AnimalEffectSet, AnimalIdValue,
+    AllFrom, AnimalEffectExecCompatible, AnimalEffectMembers, AnimalIdValue,
     AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
     AnimalVersionIdentitiesUnique, AnimalVersions, EffectIdentity, EffectMember, EffectSet,
     Generations, GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals,

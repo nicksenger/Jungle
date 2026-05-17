@@ -2,14 +2,11 @@ use jungle_sdk::animal;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    AnimalEffectSet, BoundAct, BoundFlowStep, Condition, Conditional, ContextExecutor,
-    EffectCompletion, EffectExec, EffectRequest, EffectSchema, Executor, Id, Identity,
-    ManualExecutor, Running, Waiting,
+    BoundAct, BoundFlowStep, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
+    EffectRequest, EffectSchema, Executor, Id, Identity, ManualExecutor, Running, Waiting,
 };
-use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
-use jungle_sdk::{Animals, Journey};
+use jungle_sdk::Journey;
 use std::future::ready;
 use std::sync::Arc;
 
@@ -100,9 +97,6 @@ impl Animal for ProgressAnimal {
     type Journey = ProgressJourney;
 }
 
-#[derive(Animals)]
-struct ProgressAnimals(ProgressAnimal);
-
 struct ProgressContext;
 
 type SeedStep = BoundFlowStep<ProgressAnimal, Seed>;
@@ -138,13 +132,6 @@ where
         EffectSchema<In = i32, Out = i32, Err = ()> + EffectExec<()>,
 {
     type Effect = <A as BoundAct<ProgressAnimal>>::Effect;
-}
-
-#[test]
-fn workflow_effect_set_is_extracted_from_journey_composite() {
-    type Expected = list![SeedEffect, FinishEffect];
-    type Extracted = AnimalEffectSet<ProgressAnimals>;
-    assert_type_eq!(Extracted, Expected);
 }
 
 #[test]
