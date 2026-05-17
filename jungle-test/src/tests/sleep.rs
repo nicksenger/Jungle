@@ -4,8 +4,8 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, Identity, JourneyStatus, LoopCondition, Observe, Sleep, While,
+    Act, BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema,
+    Identity, JourneyStatus, LoopCondition, Observe, Sleep, Step, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, Optic};
@@ -107,18 +107,41 @@ impl Condition<(SleepState, ())> for SleepPhaseOne {
     }
 }
 
-type SleepJourney = While<
-    SleepNotComplete,
-    Conditional<
-        SleepPhaseZero,
-        BoundFlowStep<SleepAnimal, AddBeforeSleep>,
+struct AddBeforeSleepSpec;
+impl Act for AddBeforeSleepSpec {
+    type Effect = AddEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddBeforeSleep;
+}
+
+struct SleepForStateWakeSpec;
+impl Act for SleepForStateWakeSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = SleepForStateWake;
+}
+
+struct AddAfterSleepSpec;
+impl Act for AddAfterSleepSpec {
+    type Effect = AddEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddAfterSleep;
+}
+
+#[derive(jungle_sdk::Flow)]
+struct SleepJourneyTemplate(
+    While<
+        SleepNotComplete,
         Conditional<
-            SleepPhaseOne,
-            BoundFlowStep<SleepAnimal, SleepForStateWake>,
-            BoundFlowStep<SleepAnimal, AddAfterSleep>,
+            SleepPhaseZero,
+            Step<AddBeforeSleepSpec>,
+            Conditional<SleepPhaseOne, Step<SleepForStateWakeSpec>, Step<AddAfterSleepSpec>>,
         >,
     >,
->;
+);
 
 struct SleepAnimal;
 
@@ -128,7 +151,7 @@ impl Animal for SleepAnimal {
     type Generation = U0;
     type State = SleepState;
     type Seed = SleepState;
-    type Journey = SleepJourney;
+    type Journey = SleepJourneyTemplate;
 }
 
 impl Observe for SleepAnimal {

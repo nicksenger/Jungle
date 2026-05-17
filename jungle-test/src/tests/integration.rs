@@ -5,8 +5,9 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, Identity, JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, While,
+    Act, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    EffectSchema, Identity, JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, Step,
+    While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::*;
@@ -286,6 +287,70 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
     }
 }
 
+struct AddOneBeforeFullStateSpec;
+impl Act for AddOneBeforeFullStateSpec {
+    type Effect = AddOneEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddOneBeforeFullStateStep;
+}
+
+struct AddTwoBeforeFullStateSpec;
+impl Act for AddTwoBeforeFullStateSpec {
+    type Effect = AddTwoEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddTwoBeforeFullStateStep;
+}
+
+struct AddOneFocusedSpec;
+impl Act for AddOneFocusedSpec {
+    type Effect = AddOneEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddOneFocusedStep;
+}
+
+struct AddTwoFocusedSpec;
+impl Act for AddTwoFocusedSpec {
+    type Effect = AddTwoEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddTwoFocusedStep;
+}
+
+struct AddOneDeepFocusedSpec;
+impl Act for AddOneDeepFocusedSpec {
+    type Effect = AddOneEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddOneDeepFocusedStep;
+}
+
+struct AddTwoDeepFocusedSpec;
+impl Act for AddTwoDeepFocusedSpec {
+    type Effect = AddTwoEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddTwoDeepFocusedStep;
+}
+
+struct AddOneAfterFullStateSpec;
+impl Act for AddOneAfterFullStateSpec {
+    type Effect = AddOneEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddOneAfterFullStateStep;
+}
+
+struct AddTwoAfterFullStateSpec;
+impl Act for AddTwoAfterFullStateSpec {
+    type Effect = AddTwoEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = AddTwoAfterFullStateStep;
+}
+
 type MultiMatchBeforeFlow = Conditional<
     UseFirstBeforeFullStateTask,
     BoundFlowStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
@@ -305,38 +370,37 @@ type LoopBranchFlow = While<
     >,
 >;
 
-type IntegrationJourney = While<
-    KeepRunning,
-    Conditional<
-        IsBeforeFocusedSubFlow,
+#[derive(jungle_sdk::Flow)]
+struct IntegrationJourneyTemplate(
+    While<
+        KeepRunning,
         Conditional<
-            UseFirstBeforeFullStateTask,
-            BoundFlowStep<IntegrationAnimal, AddOneBeforeFullStateStep>,
-            BoundFlowStep<IntegrationAnimal, AddTwoBeforeFullStateStep>,
-        >,
-        Conditional<
-            IsInFocusedSubFlow,
+            IsBeforeFocusedSubFlow,
             Conditional<
-                UseFirstFocusedTask,
-                BoundFlowStep<IntegrationAnimal, AddOneFocusedStep>,
-                BoundFlowStep<IntegrationAnimal, AddTwoFocusedStep>,
+                UseFirstBeforeFullStateTask,
+                Step<AddOneBeforeFullStateSpec>,
+                Step<AddTwoBeforeFullStateSpec>,
             >,
             Conditional<
-                IsInDeepFocusedSubFlow,
+                IsInFocusedSubFlow,
+                Conditional<UseFirstFocusedTask, Step<AddOneFocusedSpec>, Step<AddTwoFocusedSpec>>,
                 Conditional<
-                    UseFirstDeepFocusedTask,
-                    BoundFlowStep<IntegrationAnimal, AddOneDeepFocusedStep>,
-                    BoundFlowStep<IntegrationAnimal, AddTwoDeepFocusedStep>,
-                >,
-                Conditional<
-                    UseFirstAfterFullStateTask,
-                    BoundFlowStep<IntegrationAnimal, AddOneAfterFullStateStep>,
-                    BoundFlowStep<IntegrationAnimal, AddTwoAfterFullStateStep>,
+                    IsInDeepFocusedSubFlow,
+                    Conditional<
+                        UseFirstDeepFocusedTask,
+                        Step<AddOneDeepFocusedSpec>,
+                        Step<AddTwoDeepFocusedSpec>,
+                    >,
+                    Conditional<
+                        UseFirstAfterFullStateTask,
+                        Step<AddOneAfterFullStateSpec>,
+                        Step<AddTwoAfterFullStateSpec>,
+                    >,
                 >,
             >,
         >,
     >,
->;
+);
 
 struct IntegrationAnimal;
 
@@ -346,7 +410,7 @@ impl Animal for IntegrationAnimal {
     type Generation = U0;
     type State = IntegrationState;
     type Seed = IntegrationState;
-    type Journey = IntegrationJourney;
+    type Journey = IntegrationJourneyTemplate;
 }
 
 impl Observe for IntegrationAnimal {

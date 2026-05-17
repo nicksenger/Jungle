@@ -4,9 +4,8 @@ use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Animal, AnimalSet, AnimalStates, BoundAct, BoundFlowStep, Ecosystem,
-    EffectCompletion, EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier,
-    Step, While,
+    Act, Animal, AnimalSet, AnimalStates, BoundAct, Ecosystem, EffectCompletion, EffectExec,
+    EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -369,14 +368,29 @@ impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
     }
 }
 
-type RunnerJourney = While<
-    RunnerKeepGoing,
-    jungle_sdk::types::Conditional<
-        RunnerUseStepOne,
-        BoundFlowStep<RunnerAnimal, RunnerStepOne>,
-        BoundFlowStep<RunnerAnimal, RunnerStepTwo>,
+struct RunnerStepOneSpec;
+impl Act for RunnerStepOneSpec {
+    type Effect = RunnerStepOneEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = RunnerStepOne;
+}
+
+struct RunnerStepTwoSpec;
+impl Act for RunnerStepTwoSpec {
+    type Effect = RunnerStepTwoEffect;
+    type Input = ();
+    type Output = ();
+    type Bind<A: Animal> = RunnerStepTwo;
+}
+
+#[derive(jungle_sdk::Flow)]
+struct RunnerJourneyTemplate(
+    While<
+        RunnerKeepGoing,
+        jungle_sdk::types::Conditional<RunnerUseStepOne, Step<RunnerStepOneSpec>, Step<RunnerStepTwoSpec>>,
     >,
->;
+);
 
 struct RunnerAnimal;
 
@@ -386,7 +400,7 @@ impl Animal for RunnerAnimal {
     type Generation = U0;
     type State = RunnerState;
     type Seed = RunnerState;
-    type Journey = RunnerJourney;
+    type Journey = RunnerJourneyTemplate;
 }
 
 #[derive(Animals)]
@@ -575,6 +589,30 @@ type ApeRoundTask = AddI32<ApeRoundCarrier, RoundAdvance>;
 type TigerHuntTask = AddI32<TigerEnergyCarrier, HuntEnergy>;
 type TigerEatTask = AddI32<TigerEnergyCarrier, EatEnergy>;
 
+struct ApeRoundTaskSpec;
+impl Act for ApeRoundTaskSpec {
+    type Effect = RoundAdvance;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = ApeRoundTask;
+}
+
+struct TigerHuntTaskSpec;
+impl Act for TigerHuntTaskSpec {
+    type Effect = HuntEnergy;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = TigerHuntTask;
+}
+
+struct TigerEatTaskSpec;
+impl Act for TigerEatTaskSpec {
+    type Effect = EatEnergy;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = TigerEatTask;
+}
+
 struct ApeKeepRunning;
 impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
     type Arg = i32;
@@ -600,15 +638,16 @@ impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
     }
 }
 
-type WorkflowGorillaJourney = While<ApeKeepRunning, BoundFlowStep<WorkflowGorilla, ApeRoundTask>>;
-type WorkflowTigerJourney = While<
-    TigerKeepRunning,
-    jungle_sdk::types::Conditional<
-        TigerChooseHunt,
-        BoundFlowStep<WorkflowTiger, TigerHuntTask>,
-        BoundFlowStep<WorkflowTiger, TigerEatTask>,
+#[derive(jungle_sdk::Flow)]
+struct WorkflowGorillaJourneyTemplate(While<ApeKeepRunning, Step<ApeRoundTaskSpec>>);
+
+#[derive(jungle_sdk::Flow)]
+struct WorkflowTigerJourneyTemplate(
+    While<
+        TigerKeepRunning,
+        jungle_sdk::types::Conditional<TigerChooseHunt, Step<TigerHuntTaskSpec>, Step<TigerEatTaskSpec>>,
     >,
->;
+);
 
 struct WorkflowGorilla;
 
@@ -618,7 +657,7 @@ impl Animal for WorkflowGorilla {
     type Generation = U0;
     type State = ExecutorApeState;
     type Seed = ExecutorApeState;
-    type Journey = WorkflowGorillaJourney;
+    type Journey = WorkflowGorillaJourneyTemplate;
 }
 struct WorkflowTiger;
 
@@ -628,7 +667,7 @@ impl Animal for WorkflowTiger {
     type Generation = U0;
     type State = ExecutorCatState;
     type Seed = ExecutorCatState;
-    type Journey = WorkflowTigerJourney;
+    type Journey = WorkflowTigerJourneyTemplate;
 }
 
 #[tokio::test]

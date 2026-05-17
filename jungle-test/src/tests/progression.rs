@@ -324,7 +324,7 @@ type DerivedBranchFlow = jungle_types::BoundFlow<DerivedBranchFlowTemplate, Bran
 #[derive(jungle_sdk::Flow)]
 struct BranchFlowTemplate(Conditional<UseDerivedBranch, DerivedBranchFlowTemplate, Step<BranchStepBSpec>>);
 
-type BranchJourney = jungle_types::BoundFlow<BranchFlowTemplate, BranchAnimal>;
+type BranchBoundFlow = jungle_types::BoundFlow<BranchFlowTemplate, BranchAnimal>;
 
 struct BranchAnimal;
 
@@ -351,5 +351,5 @@ fn context_executor_accepts_conditional_with_derived_multistep_branch() {
     }
 
     assert_context_flow::<DerivedBranchFlow>();
-    assert_context_flow::<BranchJourney>();
+    assert_context_flow::<BranchBoundFlow>();
 }

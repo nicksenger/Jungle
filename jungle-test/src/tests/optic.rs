@@ -3,8 +3,8 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, BoundFlowStep, EffectCompletion, Identity, Running, StateCarrier, ViewProject,
-    Waiting,
+    Act, BoundAct, BoundFlowStep, EffectCompletion, Identity, Running, StateCarrier, Step,
+    ViewProject, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U72, U73, U74, U75, U9};
 use jungle_sdk::Optic;
@@ -181,13 +181,24 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
 
 struct OpticAnimal;
 
+struct LensOnBranchSpec;
+impl Act for LensOnBranchSpec {
+    type Effect = EchoI32;
+    type Input = i32;
+    type Output = i32;
+    type Bind<A: Animal> = LensOnBranch;
+}
+
+#[derive(jungle_sdk::Flow)]
+struct OpticJourneyTemplate(Step<LensOnBranchSpec>);
+
 #[animal]
 impl Animal for OpticAnimal {
     type Id = Id<U9>;
     type Generation = U0;
     type State = RootState;
     type Seed = RootState;
-    type Journey = BoundFlowStep<OpticAnimal, LensOnBranch>;
+    type Journey = OpticJourneyTemplate;
 }
 
 fn seed_state() -> RootState {
