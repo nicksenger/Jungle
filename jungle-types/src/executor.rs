@@ -1,6 +1,6 @@
 use crate::{
-    BoundAct, Animal, BackendError, Conditional, EffectCompletion, EffectExec, EffectSchema, Join,
-    LoopCondition, Running, Scoped, Select, BoundStep, Transparent, While,
+    Animal, BackendError, BoundAct, BoundStep, Conditional, EffectCompletion, EffectExec,
+    EffectSchema, Join, LoopCondition, Running, Scoped, Select, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -355,17 +355,18 @@ where
         }
 
         let typed_completion: EffectCompletion<<A as BoundAct<T>>::Effect> = match completion {
-            Ok(output) => Ok(
-                postcard::from_bytes::<<<A as BoundAct<T>>::Effect as EffectSchema>::Out>(&output)
-                    .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
-            ),
-            Err(error) => Err(
-                postcard::from_bytes::<<<A as BoundAct<T>>::Effect as EffectSchema>::Err>(&error)
-                    .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
-            ),
+            Ok(output) => Ok(postcard::from_bytes::<
+                <<A as BoundAct<T>>::Effect as EffectSchema>::Out,
+            >(&output)
+            .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
+            Err(error) => Err(postcard::from_bytes::<
+                <<A as BoundAct<T>>::Effect as EffectSchema>::Err,
+            >(&error)
+            .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, emitted) = <BoundStep<T, A> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) =
+            <BoundStep<T, A> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -503,17 +504,18 @@ where
         }
 
         let typed_completion: EffectCompletion<<A as BoundAct<T>>::Effect> = match completion {
-            Ok(output) => Ok(
-                postcard::from_bytes::<<<A as BoundAct<T>>::Effect as EffectSchema>::Out>(&output)
-                    .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
-            ),
-            Err(error) => Err(
-                postcard::from_bytes::<<<A as BoundAct<T>>::Effect as EffectSchema>::Err>(&error)
-                    .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
-            ),
+            Ok(output) => Ok(postcard::from_bytes::<
+                <<A as BoundAct<T>>::Effect as EffectSchema>::Out,
+            >(&output)
+            .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
+            Err(error) => Err(postcard::from_bytes::<
+                <<A as BoundAct<T>>::Effect as EffectSchema>::Err,
+            >(&error)
+            .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, emitted) = <BoundStep<T, A> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) =
+            <BoundStep<T, A> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -1833,9 +1835,10 @@ where
     type Output = (Arc<Context>, DynFlow<T::State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<T::State>)) -> Self::Output {
-        steps.push(Box::new(
-            ContextualTypedErasedStep::<Context, BoundStep<T, A>>::new(Arc::clone(&context)),
-        ));
+        steps.push(Box::new(ContextualTypedErasedStep::<
+            Context,
+            BoundStep<T, A>,
+        >::new(Arc::clone(&context))));
         (context, steps)
     }
 }

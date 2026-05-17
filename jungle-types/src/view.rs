@@ -1,5 +1,5 @@
 use crate::{
-    ActionSpec, Conditional, Join, NodeMetadata, Scoped, Select, BoundStep, StepSpec, Transparent, While,
+    Act, BoundStep, Conditional, Join, NodeMetadata, Scoped, Select, StepSpec, Transparent, While,
 };
 use inception::*;
 
@@ -122,14 +122,14 @@ where
 #[inception::primitive(property = JungleJourneyAst)]
 impl<S> BuildJourneyAst<Vec<JourneyAst>> for StepSpec<S>
 where
-    S: ActionSpec + 'static,
-    <S as ActionSpec>::Effect: 'static,
+    S: Act + 'static,
+    <S as Act>::Effect: 'static,
 {
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
         nodes.push(JourneyAst::Step {
-            label: core::any::type_name::<<S as ActionSpec>::Effect>(),
+            label: core::any::type_name::<<S as Act>::Effect>(),
         });
         nodes
     }

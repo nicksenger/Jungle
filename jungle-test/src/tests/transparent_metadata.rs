@@ -3,8 +3,8 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst, JourneyAstSource,
-    ManualExecutor, NodeMetadata, Select, BoundStep, Transparent, While,
+    BoundAct, BoundStep, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst,
+    JourneyAstSource, ManualExecutor, NodeMetadata, Select, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U30, U31};
 use std::future::ready;

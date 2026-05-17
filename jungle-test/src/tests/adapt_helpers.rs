@@ -3,8 +3,8 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    AbsorbFn, AbsorbMapper, EffectCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
-    IdentityStep, ManualExecutor, PassthroughEmit, BoundStep, UnitEmit,
+    AbsorbFn, AbsorbMapper, BoundStep, EffectCompletion, EmitFn, EmitMapper, FocusedStep, Fuse,
+    Identity, IdentityStep, ManualExecutor, PassthroughEmit, UnitEmit,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
 use jungle_sdk::Journey;

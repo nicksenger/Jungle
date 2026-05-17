@@ -4,7 +4,7 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    Act, BindAnimal, BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Identity, JourneyStatus, LoopCondition, Sleep, UStep, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
@@ -224,27 +224,27 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
 >;
 
 struct ReplayPreSpec;
-impl ActionSpec for ReplayPreSpec {
+impl Act for ReplayPreSpec {
     type Effect = ReplayPreIncrementEffect;
     type Input = ();
     type Output = ();
-    type BoundAct<A: Animal> = ReplayPreStep;
+    type Bind<A: Animal> = ReplayPreStep;
 }
 
 struct ReplayGateSpec;
-impl ActionSpec for ReplayGateSpec {
+impl Act for ReplayGateSpec {
     type Effect = ReplayGateEffect;
     type Input = ();
     type Output = ();
-    type BoundAct<A: Animal> = ReplayGateStep;
+    type Bind<A: Animal> = ReplayGateStep;
 }
 
 struct ReplayPostSpec;
-impl ActionSpec for ReplayPostSpec {
+impl Act for ReplayPostSpec {
     type Effect = ReplayPostIncrementEffect;
     type Input = ();
     type Output = ();
-    type BoundAct<A: Animal> = ReplayPostStep;
+    type Bind<A: Animal> = ReplayPostStep;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -525,27 +525,27 @@ where
 }
 
 struct ReplayTimeoutPreSpec;
-impl ActionSpec for ReplayTimeoutPreSpec {
+impl Act for ReplayTimeoutPreSpec {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type Input = ();
     type Output = ();
-    type BoundAct<A: Animal> = ReplayTimeoutPreStep;
+    type Bind<A: Animal> = ReplayTimeoutPreStep;
 }
 
 struct ReplayTimeoutSleepSpec;
-impl ActionSpec for ReplayTimeoutSleepSpec {
+impl Act for ReplayTimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
-    type BoundAct<A: Animal> = ReplayTimeoutSleepStep;
+    type Bind<A: Animal> = ReplayTimeoutSleepStep;
 }
 
 struct ReplayTimeoutPostSpec;
-impl ActionSpec for ReplayTimeoutPostSpec {
+impl Act for ReplayTimeoutPostSpec {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type Input = ();
     type Output = ();
-    type BoundAct<A: Animal> = ReplayTimeoutPostStep;
+    type Bind<A: Animal> = ReplayTimeoutPostStep;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]

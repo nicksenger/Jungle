@@ -5,8 +5,8 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
-    JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, BoundStep, While,
+    BoundAct, BoundStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    EffectSchema, Identity, JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::*;

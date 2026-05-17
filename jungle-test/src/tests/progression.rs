@@ -2,8 +2,9 @@ use jungle_sdk::animal;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    BoundAct, AnimalEffectSet, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
-    EffectRequest, EffectSchema, Executor, Id, Identity, ManualExecutor, Running, BoundStep, Waiting,
+    AnimalEffectSet, BoundAct, BoundStep, Condition, Conditional, ContextExecutor,
+    EffectCompletion, EffectExec, EffectRequest, EffectSchema, Executor, Id, Identity,
+    ManualExecutor, Running, Waiting,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -83,7 +84,10 @@ impl BoundAct<ProgressAnimal> for Finish {
 }
 
 #[derive(Journey)]
-struct ProgressJourney(BoundStep<ProgressAnimal, Seed>, BoundStep<ProgressAnimal, Finish>);
+struct ProgressJourney(
+    BoundStep<ProgressAnimal, Seed>,
+    BoundStep<ProgressAnimal, Finish>,
+);
 
 struct ProgressAnimal;
 

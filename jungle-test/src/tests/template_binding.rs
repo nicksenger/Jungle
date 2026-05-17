@@ -3,10 +3,10 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, Either, Identity, Join, JourneyStatus, Lens, LoopCondition, ManualExecutor,
-    NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, BoundStep, Transparent,
-    TraverseFlow, TraverseStep, UStep, While,
+    Act, BindAnimal, BoundAct, BoundStep, Condition, Conditional, Ecosystem, EffectCompletion,
+    EffectExec, EffectSchema, Either, Identity, Join, JourneyStatus, Lens, LoopCondition,
+    ManualExecutor, NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select,
+    Transparent, TraverseFlow, TraverseStep, UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::*;
@@ -54,18 +54,18 @@ impl<J> EffectExec<J> for TemplateCommitEffect {
 pub struct AddOneSpec;
 pub struct CommitSpec;
 
-impl ActionSpec for AddOneSpec {
+impl Act for AddOneSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = GenericAddOne<A>;
+    type Bind<A: Animal> = GenericAddOne<A>;
 }
 
-impl ActionSpec for CommitSpec {
+impl Act for CommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = GenericCommit<A>;
+    type Bind<A: Animal> = GenericCommit<A>;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -458,11 +458,11 @@ where
 }
 
 struct ContextBoundSpec;
-impl ActionSpec for ContextBoundSpec {
+impl Act for ContextBoundSpec {
     type Effect = ContextBoundTemplateEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = ContextBoundAct<A>;
+    type Bind<A: Animal> = ContextBoundAct<A>;
 }
 
 struct ContextBoundAct<A>(core::marker::PhantomData<fn() -> A>);
@@ -830,25 +830,25 @@ where
     }
 }
 
-impl ActionSpec for LensReadSpareSpec {
+impl Act for LensReadSpareSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = LensReadSpareAct<A>;
+    type Bind<A: Animal> = LensReadSpareAct<A>;
 }
 
-impl ActionSpec for LensReadLeafSpec {
+impl Act for LensReadLeafSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = LensReadLeafAct<A>;
+    type Bind<A: Animal> = LensReadLeafAct<A>;
 }
 
-impl ActionSpec for LensCommitSpec {
+impl Act for LensCommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = LensCommitAct<A>;
+    type Bind<A: Animal> = LensCommitAct<A>;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -858,7 +858,7 @@ struct SeenStep<T>(core::marker::PhantomData<T>);
 struct LensTraversal;
 impl<S> TraverseStep<jungle_sdk::types::StepSpec<S>> for LensTraversal
 where
-    S: ActionSpec,
+    S: Act,
 {
     type Output = SeenStep<jungle_sdk::types::StepSpec<S>>;
 }
@@ -1078,25 +1078,25 @@ where
     }
 }
 
-impl ActionSpec for NestedBranchSpareSpec {
+impl Act for NestedBranchSpareSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = NestedBranchSpareAct<A>;
+    type Bind<A: Animal> = NestedBranchSpareAct<A>;
 }
 
-impl ActionSpec for NestedLeafValueSpec {
+impl Act for NestedLeafValueSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = NestedLeafValueAct<A>;
+    type Bind<A: Animal> = NestedLeafValueAct<A>;
 }
 
-impl ActionSpec for NestedLeafNoiseSpec {
+impl Act for NestedLeafNoiseSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = NestedLeafNoiseAct<A>;
+    type Bind<A: Animal> = NestedLeafNoiseAct<A>;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -1490,74 +1490,74 @@ where
     }
 }
 
-impl ActionSpec for JoinLeftSpec {
+impl Act for JoinLeftSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = JoinLeftAct<A>;
+    type Bind<A: Animal> = JoinLeftAct<A>;
 }
 
-impl ActionSpec for JoinRightSpec {
+impl Act for JoinRightSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = JoinRightAct<A>;
+    type Bind<A: Animal> = JoinRightAct<A>;
 }
 
-impl ActionSpec for JoinToCarrySpec {
+impl Act for JoinToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = (i32, i32);
     type Output = i32;
-    type BoundAct<A: Animal> = JoinToCarryAct<A>;
+    type Bind<A: Animal> = JoinToCarryAct<A>;
 }
 
-impl ActionSpec for SelectFastSpec {
+impl Act for SelectFastSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = SelectFastAct<A>;
+    type Bind<A: Animal> = SelectFastAct<A>;
 }
 
-impl ActionSpec for SelectSlowSpec {
+impl Act for SelectSlowSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = SelectSlowAct<A>;
+    type Bind<A: Animal> = SelectSlowAct<A>;
 }
 
-impl ActionSpec for SelectToCarrySpec {
+impl Act for SelectToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
-    type BoundAct<A: Animal> = SelectToCarryAct<A>;
+    type Bind<A: Animal> = SelectToCarryAct<A>;
 }
 
-impl ActionSpec for LoopAdvanceSpec {
+impl Act for LoopAdvanceSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = LoopAdvanceAct<A>;
+    type Bind<A: Animal> = LoopAdvanceAct<A>;
 }
 
-impl ActionSpec for UniqueAlphaSpec {
+impl Act for UniqueAlphaSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = UniqueAlphaAct<A>;
+    type Bind<A: Animal> = UniqueAlphaAct<A>;
 }
 
-impl ActionSpec for UniqueBetaSpec {
+impl Act for UniqueBetaSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = UniqueBetaAct<A>;
+    type Bind<A: Animal> = UniqueBetaAct<A>;
 }
 
-impl ActionSpec for FinalizeSpec {
+impl Act for FinalizeSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type BoundAct<A: Animal> = FinalizeAct<A>;
+    type Bind<A: Animal> = FinalizeAct<A>;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]

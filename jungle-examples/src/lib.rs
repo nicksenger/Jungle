@@ -1,8 +1,8 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    BoundAct, Animal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Id,
-    Identity, LoopCondition, Observe, Sleep, BoundStep, While,
+    Animal, BoundAct, BoundStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    EffectSchema, Id, Identity, LoopCondition, Observe, Sleep, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
 use jungle_sdk::{Animals, JungleClient, Optic};

@@ -2,8 +2,9 @@ use jungle_sdk::animal;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
-    Join, Select, Sleep, BoundStep, };
+    BoundAct, BoundStep, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either,
+    Executor, Identity, Join, Select, Sleep,
+};
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Journey, Optic};
 use serde::{Deserialize, Serialize};
@@ -238,7 +239,8 @@ impl BoundAct<TimeoutAnimal> for TimeoutSlow {
     }
 }
 
-type TimeoutJourney = Select<BoundStep<TimeoutAnimal, TimeoutSleep>, BoundStep<TimeoutAnimal, TimeoutSlow>>;
+type TimeoutJourney =
+    Select<BoundStep<TimeoutAnimal, TimeoutSleep>, BoundStep<TimeoutAnimal, TimeoutSlow>>;
 
 struct TimeoutAnimal;
 

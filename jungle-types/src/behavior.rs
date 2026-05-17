@@ -124,11 +124,11 @@ pub trait BoundAct<T: Animal> {
 }
 
 /// Late-bound action spec that can be bound to a concrete [`Animal`] at the edge.
-pub trait ActionSpec {
+pub trait Act {
     type Effect: EffectMember;
     type Input;
     type Output;
-    type BoundAct<A: Animal>;
+    type Bind<A: Animal>;
 }
 
 /// Re-binds an action spec authored for one scope to another scope.
@@ -189,22 +189,18 @@ where
 impl<S, A, ScopeState, ScopeCarrier> ScopedActionSpec<A, ScopeState, ScopeCarrier> for S
 where
     A: Animal,
-    S: ActionSpec,
+    S: Act,
     ScopeState: Default + 'static,
     ScopeCarrier: Aspect<A::State, View = ScopeState>,
-    <S as ActionSpec>::BoundAct<ScopedAnimal<A, ScopeState>>: BoundAct<
+    <S as Act>::Bind<ScopedAnimal<A, ScopeState>>: BoundAct<
         ScopedAnimal<A, ScopeState>,
-        Input = <S as ActionSpec>::Input,
-        Output = <S as ActionSpec>::Output,
-        Effect = <S as ActionSpec>::Effect,
+        Input = <S as Act>::Input,
+        Output = <S as Act>::Output,
+        Effect = <S as Act>::Effect,
     >,
 {
-    type BoundAct = ScopeReboundAct<
-        A,
-        ScopeState,
-        ScopeCarrier,
-        <S as ActionSpec>::BoundAct<ScopedAnimal<A, ScopeState>>,
-    >;
+    type BoundAct =
+        ScopeReboundAct<A, ScopeState, ScopeCarrier, <S as Act>::Bind<ScopedAnimal<A, ScopeState>>>;
 }
 
 /// Forward half of [`BoundAct`], responsible for producing an effect request input.
@@ -415,14 +411,14 @@ pub type IdentityStep<T, E, B> = FocusedStep<T, Identity, E, B>;
 /// An unbound step node that defers animal binding until flow finalization.
 pub struct StepSpec<S>
 where
-    S: ActionSpec,
+    S: Act,
 {
     marker: PhantomData<fn() -> S>,
 }
 
 impl<S> StepSpec<S>
 where
-    S: ActionSpec,
+    S: Act,
 {
     pub fn new() -> Self {
         Self {
@@ -498,7 +494,8 @@ where
     <A as BoundAct<T>>::Effect: EffectMember,
     A: BoundAct<T>,
 {
-    type List = Node<<<A as BoundAct<T>>::Effect as EffectIdentity>::Id, <A as BoundAct<T>>::Effect>;
+    type List =
+        Node<<<A as BoundAct<T>>::Effect as EffectIdentity>::Id, <A as BoundAct<T>>::Effect>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
@@ -549,15 +546,15 @@ where
 #[primitive(property = crate::JungleFlow)]
 impl<S> JourneyEffects for StepSpec<S>
 where
-    S: ActionSpec,
+    S: Act,
 {
-    type List = Node<<<S as ActionSpec>::Effect as EffectIdentity>::Id, <S as ActionSpec>::Effect>;
+    type List = Node<<<S as Act>::Effect as EffectIdentity>::Id, <S as Act>::Effect>;
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
 impl<S> TraverseFlow for StepSpec<S>
 where
-    S: ActionSpec,
+    S: Act,
 {
     type Output = StepSpec<S>;
 }
@@ -565,14 +562,14 @@ where
 #[primitive(property = crate::JungleReplaceFlow)]
 impl<S> ReplaceFlow for StepSpec<S>
 where
-    S: ActionSpec,
+    S: Act,
 {
     type Output = StepSpec<S>;
 }
 
 impl<S, Traversal> TraverseWith<Traversal> for StepSpec<S>
 where
-    S: ActionSpec,
+    S: Act,
     Traversal: TraverseStep<StepSpec<S>>,
 {
     type Output = <Traversal as TraverseStep<StepSpec<S>>>::Output;
@@ -580,7 +577,7 @@ where
 
 impl<S, Replacer> ReplaceWith<Replacer> for StepSpec<S>
 where
-    S: ActionSpec,
+    S: Act,
     Replacer: ReplaceStep<StepSpec<S>>,
 {
     type Output = <Replacer as ReplaceStep<StepSpec<S>>>::Output;
@@ -588,7 +585,7 @@ where
 
 impl<S, Replacer> ReplaceNodesWith<Replacer> for StepSpec<S>
 where
-    S: ActionSpec,
+    S: Act,
     Replacer: ReplaceNode<StepSpec<S>>,
 {
     type Output = <Replacer as ReplaceNode<StepSpec<S>>>::Output;
@@ -597,15 +594,15 @@ where
 impl<T, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T, crate::RootScope>
 where
     T: Animal,
-    S: ActionSpec,
-    <S as ActionSpec>::BoundAct<T>: BoundAct<
+    S: Act,
+    <S as Act>::Bind<T>: BoundAct<
         T,
-        Input = <S as ActionSpec>::Input,
-        Output = <S as ActionSpec>::Output,
-        Effect = <S as ActionSpec>::Effect,
+        Input = <S as Act>::Input,
+        Output = <S as Act>::Output,
+        Effect = <S as Act>::Effect,
     >,
 {
-    type Output = BoundStep<T, <S as ActionSpec>::BoundAct<T>>;
+    type Output = BoundStep<T, <S as Act>::Bind<T>>;
 }
 
 impl<T, ScopeCarrier, S> TraverseStep<StepSpec<S>> for crate::BindAnimalTraversal<T, ScopeCarrier>
@@ -613,7 +610,7 @@ where
     T: Animal,
     ScopeCarrier: crate::ScopedCarrierMarker,
     ScopeCarrier: Aspect<T::State>,
-    S: ActionSpec,
+    S: Act,
     S: ScopedActionSpec<T, <ScopeCarrier as StateCarrier<T::State>>::View, ScopeCarrier>,
     <S as ScopedActionSpec<
         T,
@@ -621,9 +618,9 @@ where
         ScopeCarrier,
     >>::BoundAct: BoundAct<
         T,
-        Input = <S as ActionSpec>::Input,
-        Output = <S as ActionSpec>::Output,
-        Effect = <S as ActionSpec>::Effect,
+        Input = <S as Act>::Input,
+        Output = <S as Act>::Output,
+        Effect = <S as Act>::Effect,
     >,
 {
     type Output = BoundStep<

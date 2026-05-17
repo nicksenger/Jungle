@@ -1,5 +1,6 @@
 use crate::{
-    BoundAct, Animal, Aspect, EffectCompletion, EffectExec, EffectSchema, Id, Identity, StateCarrier,
+    Animal, Aspect, BoundAct, EffectCompletion, EffectExec, EffectSchema, Id, Identity,
+    StateCarrier,
 };
 use inception::primitive;
 use serde::{Deserialize, Serialize};

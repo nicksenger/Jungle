@@ -3,8 +3,8 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    BoundAct, Animal, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id, Identity,
-    JourneyStatus, Observe, BoundStep, SupportedAnimal,
+    Animal, BoundAct, BoundStep, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id,
+    Identity, JourneyStatus, Observe, SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;

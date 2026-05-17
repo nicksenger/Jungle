@@ -3,7 +3,8 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, Conditional, EffectCompletion, Either, Executor, Identity, ManualExecutor, Running, BoundStep,     Waiting,
+    BoundAct, BoundStep, Conditional, EffectCompletion, Either, Executor, Identity, ManualExecutor,
+    Running, Waiting,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::Journey;

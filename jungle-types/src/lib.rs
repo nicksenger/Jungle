@@ -12,8 +12,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    BoundAct, ActionSpec, Aspect, EffectCompletion, EffectExec, EffectRequest, EffectSchema, Identity,
-    ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, BoundStep, StepSpec, UStep,
+    Act, Aspect, BoundAct, BoundStep, EffectCompletion, EffectExec, EffectRequest, EffectSchema,
+    Identity, ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, StepSpec, UStep,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -490,11 +490,11 @@ where
 
 impl<Left, Right> ReplaceStep<StepSpec<Left>> for SwapLR<Left, Right>
 where
-    Left: ActionSpec,
-    Right: ActionSpec<
-        Input = <Left as ActionSpec>::Input,
-        Output = <Left as ActionSpec>::Output,
-        Effect = <Left as ActionSpec>::Effect,
+    Left: Act,
+    Right: Act<
+        Input = <Left as Act>::Input,
+        Output = <Left as Act>::Output,
+        Effect = <Left as Act>::Effect,
     >,
 {
     type Output = StepSpec<Right>;
@@ -502,11 +502,11 @@ where
 
 impl<Left, Right> ReplaceStep<StepSpec<Right>> for SwapRL<Left, Right>
 where
-    Left: ActionSpec,
-    Right: ActionSpec<
-        Input = <Left as ActionSpec>::Input,
-        Output = <Left as ActionSpec>::Output,
-        Effect = <Left as ActionSpec>::Effect,
+    Left: Act,
+    Right: Act<
+        Input = <Left as Act>::Input,
+        Output = <Left as Act>::Output,
+        Effect = <Left as Act>::Effect,
     >,
 {
     type Output = StepSpec<Left>;
@@ -1164,7 +1164,7 @@ where
 
 impl<View, F> NodeMetadata for Scoped<View, F> {}
 
-impl<S> NodeMetadata for StepSpec<S> where S: ActionSpec {}
+impl<S> NodeMetadata for StepSpec<S> where S: Act {}
 
 impl<A, Scope, T, B> TraverseStep<BoundStep<T, B>> for BindAnimalTraversal<A, Scope>
 where

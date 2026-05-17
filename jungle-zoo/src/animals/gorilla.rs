@@ -7,9 +7,9 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    BoundAct, Animal, Animals, Condition, Conditional, EffectCompletion, EffectSchema, Id, Identified,
-    Identity, LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation, Observable,
-    Perturbable, BoundStep, Transparent, While,
+    Animal, Animals, BoundAct, BoundStep, Condition, Conditional, EffectCompletion, EffectSchema,
+    Id, Identified, Identity, LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation,
+    Observable, Perturbable, Transparent, While,
 };
 use jungle_sdk::typosaurus::num::consts::U0;
 use jungle_sdk::Optic;
@@ -464,7 +464,10 @@ pub struct GorillaToolSocialFlow(
 );
 
 #[derive(jungle_sdk::Journey)]
-pub struct GorillaSimpleSocialFlow(BoundStep<Gorilla, GorillaMakeSound>, BoundStep<Gorilla, GorillaRest>);
+pub struct GorillaSimpleSocialFlow(
+    BoundStep<Gorilla, GorillaMakeSound>,
+    BoundStep<Gorilla, GorillaRest>,
+);
 
 pub type GorillaActiveFlow = Conditional<
     GorillaIsHungry,

@@ -4,8 +4,9 @@ use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, ActionSpec, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, EffectCompletion,
-    EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier, BoundStep, UStep, While,
+    Act, Animal, AnimalEffectSet, AnimalSet, AnimalStates, BoundAct, BoundStep, Ecosystem,
+    EffectCompletion, EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier,
+    UStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
@@ -155,14 +156,14 @@ where
 }
 
 struct UnitOkSpec<E>(PhantomData<fn() -> E>);
-impl<E> ActionSpec for UnitOkSpec<E>
+impl<E> Act for UnitOkSpec<E>
 where
     E: EffectSchema<In = (), Out = (), Err = ()>,
 {
     type Effect = E;
     type Input = ();
     type Output = ();
-    type BoundAct<A: Animal> = UnitOkStep<E>;
+    type Bind<A: Animal> = UnitOkStep<E>;
 }
 
 type UUnitStep<E> = UStep<UnitOkSpec<E>>;

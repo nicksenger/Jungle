@@ -1,7 +1,8 @@
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::{
-    BoundAct, Animal, Conditional, EffectCompletion, Id, Identity, LoopCondition, ReplaceStep, BoundStep,     TraverseStep, While,
+    Animal, BoundAct, BoundStep, Conditional, EffectCompletion, Id, Identity, LoopCondition,
+    ReplaceStep, TraverseStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::{U0, U20, U21, U22, U23, U24};

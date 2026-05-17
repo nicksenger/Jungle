@@ -3,7 +3,8 @@ use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, BoundStep,     Waiting, While,
+    BoundAct, BoundStep, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor,
+    Running, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use jungle_sdk::Journey;
@@ -143,7 +144,10 @@ type TickWithTailFlow = BoundStep<LooperWithTail, TickWithTail>;
 type WhileTickWithTailFlow = While<LessThanThree, TickWithTailFlow>;
 
 #[derive(Journey)]
-struct LoopWithTailJourney(WhileTickWithTailFlow, BoundStep<LooperWithTail, TailAfterLoop>);
+struct LoopWithTailJourney(
+    WhileTickWithTailFlow,
+    BoundStep<LooperWithTail, TailAfterLoop>,
+);
 
 struct UnitEffect;
 

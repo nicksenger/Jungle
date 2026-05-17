@@ -4,8 +4,8 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
-    JourneyStatus, LoopCondition, Observe, Sleep, BoundStep, While,
+    BoundAct, BoundStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    EffectSchema, Identity, JourneyStatus, LoopCondition, Observe, Sleep, While,
 };
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, Optic};

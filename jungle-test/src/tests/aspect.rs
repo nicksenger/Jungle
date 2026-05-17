@@ -4,8 +4,8 @@ use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    BoundAct, Aspect, Condition, Conditional, EffectCompletion, EffectExec, EffectSchema, Either,
-    Executor, Identity, LoopCondition, Running, StateCarrier, BoundStep, Waiting, While,
+    Aspect, BoundAct, BoundStep, Condition, Conditional, EffectCompletion, EffectExec,
+    EffectSchema, Either, Executor, Identity, LoopCondition, Running, StateCarrier, Waiting, While,
 };
 use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
 use jungle_sdk::{Journey, Optic};
@@ -330,17 +330,15 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) =
-        <BoundStep<Gorilla, CoreEnergyStep<Sleep, GorillaCoreCarrier>> as Running>::run((
-            gorilla_state,
-            2,
-        ));
+    let (gorilla_state, gorilla_request) = <BoundStep<
+        Gorilla,
+        CoreEnergyStep<Sleep, GorillaCoreCarrier>,
+    > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
-    let (gorilla_state, gorilla_emitted) =
-        <BoundStep<Gorilla, CoreEnergyStep<Sleep, GorillaCoreCarrier>> as Waiting>::accept((
-            gorilla_state,
-            Ok(20),
-        ));
+    let (gorilla_state, gorilla_emitted) = <BoundStep<
+        Gorilla,
+        CoreEnergyStep<Sleep, GorillaCoreCarrier>,
+    > as Waiting>::accept((gorilla_state, Ok(20)));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
     assert_eq!(gorilla_state.core.age, 25);
@@ -351,7 +349,10 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         core: CoreState { energy: 6, age: 12 },
     };
     let (tiger_state, tiger_request) =
-        <BoundStep<Tiger, CoreEnergyStep<Sleep, TigerCoreCarrier>> as Running>::run((tiger_state, 4));
+        <BoundStep<Tiger, CoreEnergyStep<Sleep, TigerCoreCarrier>> as Running>::run((
+            tiger_state,
+            4,
+        ));
     assert_eq!(tiger_request.into_input(), 10);
     let (tiger_state, tiger_emitted) =
         <BoundStep<Tiger, CoreEnergyStep<Sleep, TigerCoreCarrier>> as Waiting>::accept((
