@@ -405,16 +405,16 @@ pub trait BindAnimal<A: Animal> {
 }
 
 /// Per-template scope declaration used by late-bound `BindAnimal`.
-pub trait TemplateScope {
+pub trait FlowScope {
     type View;
 }
 
 /// Default marker: bind template against root animal state.
-pub struct RootTemplateScope;
-pub struct TemplateView<View>(PhantomData<fn() -> View>);
+pub struct RootFlowScope;
+pub struct FlowView<View>(PhantomData<fn() -> View>);
 
-/// Internal helper selecting bind traversal from [`TemplateScope`].
-pub trait BindWithTemplateScope<A: Animal, ScopeView> {
+/// Internal helper selecting bind traversal from [`FlowScope`].
+pub trait BindWithFlowScope<A: Animal, ScopeView> {
     type Bound;
 }
 
@@ -437,7 +437,7 @@ where
 {
 }
 
-impl<F, A> BindWithTemplateScope<A, RootTemplateScope> for F
+impl<F, A> BindWithFlowScope<A, RootFlowScope> for F
 where
     A: Animal,
     F: TraverseFlow,
@@ -447,7 +447,7 @@ where
         <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
 }
 
-impl<F, A, View> BindWithTemplateScope<A, TemplateView<View>> for F
+impl<F, A, View> BindWithFlowScope<A, FlowView<View>> for F
 where
     A: Animal,
     View: 'static,
@@ -1204,9 +1204,9 @@ where
 impl<A, F> BindAnimal<A> for F
 where
     A: Animal,
-    F: TemplateScope + BindWithTemplateScope<A, <F as TemplateScope>::View>,
+    F: FlowScope + BindWithFlowScope<A, <F as FlowScope>::View>,
 {
-    type Bound = <F as BindWithTemplateScope<A, <F as TemplateScope>::View>>::Bound;
+    type Bound = <F as BindWithFlowScope<A, <F as FlowScope>::View>>::Bound;
 }
 
 #[primitive(property = JungleRunning)]

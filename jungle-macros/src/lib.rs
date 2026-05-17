@@ -204,9 +204,9 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
         ])
     };
     let derived = derive_with_properties_input(input, &properties);
-    let template_scope = jungle_type("TemplateScope");
-    let root_scope = jungle_type("RootTemplateScope");
-    let template_view = jungle_type("TemplateView");
+    let template_scope = jungle_type("FlowScope");
+    let root_scope = jungle_type("RootFlowScope");
+    let template_view = jungle_type("FlowView");
     let scope_ty = if let Some(view) = &view_ty {
         quote!(#template_view<#view>)
     } else {
