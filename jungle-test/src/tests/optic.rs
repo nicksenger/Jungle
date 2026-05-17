@@ -138,7 +138,7 @@ impl StateCarrier<RootState> for LeafValueCarrier {
 struct LensOnBranch;
 impl Act<OpticAnimal> for LensOnBranch {
     type Effect = EchoI32;
-    type StateAspect = BranchCarrier;
+    type Aspect = BranchCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -156,7 +156,7 @@ impl Act<OpticAnimal> for LensOnBranch {
 struct LensOnLeafValue;
 impl Act<OpticAnimal> for LensOnLeafValue {
     type Effect = EchoI32;
-    type StateAspect = LeafValueCarrier;
+    type Aspect = LeafValueCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -174,7 +174,7 @@ impl Act<OpticAnimal> for LensOnLeafValue {
 struct RootStatePulse;
 impl Act<OpticAnimal> for RootStatePulse {
     type Effect = EchoRootState;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = RootState;
 

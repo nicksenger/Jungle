@@ -46,7 +46,7 @@ impl Animal for ConnectionAnimal7 {
 struct ConnectionStep7;
 impl jungle_sdk::types::Act<ConnectionAnimal7> for ConnectionStep7 {
     type Effect = ConnectionEffect7;
-    type StateAspect = jungle_sdk::types::Identity;
+    type Aspect = jungle_sdk::types::Identity;
     type Input = ();
     type Output = ();
 
@@ -94,7 +94,7 @@ impl Animal for ConnectionAnimal9 {
 struct ConnectionStep9;
 impl jungle_sdk::types::Act<ConnectionAnimal9> for ConnectionStep9 {
     type Effect = ConnectionEffect9;
-    type StateAspect = jungle_sdk::types::Identity;
+    type Aspect = jungle_sdk::types::Identity;
     type Input = ();
     type Output = ();
 

@@ -66,7 +66,7 @@ impl<J> EffectExec<J> for BumpEffect {
 pub struct ObserveSleep;
 impl Act<ObserveAnimal> for ObserveSleep {
     type Effect = Sleep;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -83,7 +83,7 @@ impl Act<ObserveAnimal> for ObserveSleep {
 pub struct ObserveBump;
 impl Act<ObserveAnimal> for ObserveBump {
     type Effect = BumpEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 

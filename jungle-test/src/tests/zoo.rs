@@ -143,7 +143,7 @@ where
     A: EffectSchema<In = (), Out = (), Err = ()>,
 {
     type Effect = A;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -390,7 +390,7 @@ impl<J> EffectExec<J> for RunnerStepTwoEffect {
 struct RunnerStepOne;
 impl Act<RunnerAnimal> for RunnerStepOne {
     type Effect = RunnerStepOneEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -404,7 +404,7 @@ impl Act<RunnerAnimal> for RunnerStepOne {
 struct RunnerStepTwo;
 impl Act<RunnerAnimal> for RunnerStepTwo {
     type Effect = RunnerStepTwoEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -611,7 +611,7 @@ where
     A: EffectSchema<In = i32, Out = i32, Err = ()>,
 {
     type Effect = A;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = i32;
     type Output = i32;
 

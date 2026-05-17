@@ -126,7 +126,7 @@ where
     A: Animal<State = ReplayGateState>,
 {
     type Effect = ReplayPreIncrementEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -144,7 +144,7 @@ where
     A: Animal<State = ReplayGateState>,
 {
     type Effect = ReplayPostIncrementEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -162,7 +162,7 @@ where
     A: Animal<State = ReplayGateState>,
 {
     type Effect = ReplayGateEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -474,7 +474,7 @@ where
     A: Animal<State = ReplayTimeoutState>,
 {
     type Effect = ReplayTimeoutPreIncrementEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -492,7 +492,7 @@ where
     A: Animal<State = ReplayTimeoutState>,
 {
     type Effect = Sleep;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -512,7 +512,7 @@ where
     A: Animal<State = ReplayTimeoutState>,
 {
     type Effect = ReplayTimeoutPostIncrementEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 

@@ -77,7 +77,7 @@ struct TraverseAnimal;
 struct StepA;
 impl Act<TraverseAnimal> for StepA {
     type Effect = TraverseAEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -91,7 +91,7 @@ impl Act<TraverseAnimal> for StepA {
 struct StepB;
 impl Act<TraverseAnimal> for StepB {
     type Effect = TraverseBEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -105,7 +105,7 @@ impl Act<TraverseAnimal> for StepB {
 struct StepC;
 impl Act<TraverseAnimal> for StepC {
     type Effect = TraverseCEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -119,7 +119,7 @@ impl Act<TraverseAnimal> for StepC {
 struct StepD;
 impl Act<TraverseAnimal> for StepD {
     type Effect = TraverseDEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 

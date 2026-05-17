@@ -42,7 +42,7 @@ impl Animal for Looper {
 struct Tick;
 impl Act<Looper> for Tick {
     type Effect = TickEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = (bool, i32);
 
@@ -103,7 +103,7 @@ impl Animal for LooperWithTail {
 struct TickWithTail;
 impl Act<LooperWithTail> for TickWithTail {
     type Effect = TickEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = (bool, i32);
 
@@ -121,7 +121,7 @@ impl Act<LooperWithTail> for TickWithTail {
 struct TailAfterLoop;
 impl Act<LooperWithTail> for TailAfterLoop {
     type Effect = TailEchoEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = (bool, i32);
     type Output = i32;
 
@@ -202,7 +202,7 @@ impl LoopCondition<NestedState> for OuterContinue {
 struct InnerWork;
 impl Act<NestedLooper> for InnerWork {
     type Effect = UnitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -216,7 +216,7 @@ impl Act<NestedLooper> for InnerWork {
 struct FinishOuterRound;
 impl Act<NestedLooper> for FinishOuterRound {
     type Effect = UnitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 

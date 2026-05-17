@@ -40,7 +40,7 @@ impl Animal for TransparentAnimal {
 struct TransparentStep;
 impl Act<TransparentAnimal> for TransparentStep {
     type Effect = TransparentEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 

@@ -31,7 +31,7 @@ impl<J> jungle_sdk::types::EffectExec<J> for ProbeEffect {
 pub struct ProbeStep;
 impl jungle_sdk::types::Act<ProbeAnimal> for ProbeStep {
     type Effect = ProbeEffect;
-    type StateAspect = jungle_sdk::types::Identity;
+    type Aspect = jungle_sdk::types::Identity;
     type Input = ();
     type Output = ();
 

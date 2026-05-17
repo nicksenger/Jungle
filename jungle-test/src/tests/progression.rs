@@ -49,7 +49,7 @@ impl<J> EffectExec<J> for FinishEffect {
 struct Seed;
 impl Act<ProgressAnimal> for Seed {
     type Effect = SeedEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -67,7 +67,7 @@ impl Act<ProgressAnimal> for Seed {
 struct Finish;
 impl Act<ProgressAnimal> for Finish {
     type Effect = FinishEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -129,7 +129,7 @@ trait StepExecutor:
 
 impl<A> StepExecutor for Step<ProgressAnimal, A>
 where
-    A: Act<ProgressAnimal, StateAspect = Identity, Input = i32, Output = i32>,
+    A: Act<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32>,
     <A as Act<ProgressAnimal>>::Effect:
         EffectSchema<In = i32, Out = i32, Err = ()> + EffectExec<()>,
 {
@@ -247,7 +247,7 @@ impl<J> EffectExec<J> for BranchEffect {
 struct BranchStepA;
 impl Act<BranchAnimal> for BranchStepA {
     type Effect = BranchEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -263,7 +263,7 @@ impl Act<BranchAnimal> for BranchStepA {
 struct BranchStepB;
 impl Act<BranchAnimal> for BranchStepB {
     type Effect = BranchEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 

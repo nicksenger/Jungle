@@ -42,7 +42,7 @@ impl<J> EffectExec<J> for AddEffect {
 struct AddBeforeSleep;
 impl Act<SleepAnimal> for AddBeforeSleep {
     type Effect = AddEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -57,7 +57,7 @@ impl Act<SleepAnimal> for AddBeforeSleep {
 struct SleepForStateWake;
 impl Act<SleepAnimal> for SleepForStateWake {
     type Effect = Sleep;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -74,7 +74,7 @@ impl Act<SleepAnimal> for SleepForStateWake {
 struct AddAfterSleep;
 impl Act<SleepAnimal> for AddAfterSleep {
     type Effect = AddEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 

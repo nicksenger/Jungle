@@ -235,7 +235,7 @@ impl Condition<(State, ())> for GorillaCanUseTools {
 pub struct GorillaAdvanceAge;
 impl Act<Gorilla> for GorillaAdvanceAge {
     type Effect = effects::AdvanceAge;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -257,7 +257,7 @@ impl Act<Gorilla> for GorillaAdvanceAge {
 pub struct GorillaTickPerceivedTime;
 impl Act<Gorilla> for GorillaTickPerceivedTime {
     type Effect = effects::TickPerceivedTime;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -287,7 +287,7 @@ impl Act<Gorilla> for GorillaTickPerceivedTime {
 pub struct GorillaBirthday;
 impl Act<Gorilla> for GorillaBirthday {
     type Effect = effects::CelebrateBirthday;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -304,7 +304,7 @@ impl Act<Gorilla> for GorillaBirthday {
 pub struct GorillaBirth;
 impl Act<Gorilla> for GorillaBirth {
     type Effect = effects::Birth;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -321,7 +321,7 @@ impl Act<Gorilla> for GorillaBirth {
 pub struct GorillaEvaluateActivityWindow;
 impl Act<Gorilla> for GorillaEvaluateActivityWindow {
     type Effect = effects::EvaluateActivityWindow;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -340,7 +340,7 @@ impl Act<Gorilla> for GorillaEvaluateActivityWindow {
 pub struct GorillaPeelFruit;
 impl Act<Gorilla> for GorillaPeelFruit {
     type Effect = effects::PeelFruit;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -357,7 +357,7 @@ impl Act<Gorilla> for GorillaPeelFruit {
 pub struct GorillaEat;
 impl Act<Gorilla> for GorillaEat {
     type Effect = effects::Eat;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -376,7 +376,7 @@ impl Act<Gorilla> for GorillaEat {
 pub struct GorillaUseTool;
 impl Act<Gorilla> for GorillaUseTool {
     type Effect = effects::UseTool;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -392,7 +392,7 @@ impl Act<Gorilla> for GorillaUseTool {
 pub struct GorillaChestBeat;
 impl Act<Gorilla> for GorillaChestBeat {
     type Effect = effects::ChestBeat;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -411,7 +411,7 @@ impl Act<Gorilla> for GorillaChestBeat {
 pub struct GorillaRest;
 impl Act<Gorilla> for GorillaRest {
     type Effect = effects::Rest;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -430,7 +430,7 @@ impl Act<Gorilla> for GorillaRest {
 pub struct GorillaMakeSound;
 impl Act<Gorilla> for GorillaMakeSound {
     type Effect = effects::MakeSound;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -528,7 +528,7 @@ pub struct Gorilla;
 pub struct ProbeStep;
 impl jungle_sdk::types::Act<Gorilla> for ProbeStep {
     type Effect = crate::probe::ProbeEffect;
-    type StateAspect = jungle_sdk::types::Identity;
+    type Aspect = jungle_sdk::types::Identity;
     type Input = ();
     type Output = ();
 

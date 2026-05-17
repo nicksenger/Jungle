@@ -105,7 +105,7 @@ impl<J> EffectExec<J> for AddTwoEffect {
 struct AddOneBeforeFullStateStep;
 impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
     type Effect = AddOneEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -123,7 +123,7 @@ impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
 struct AddTwoBeforeFullStateStep;
 impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
     type Effect = AddTwoEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -141,7 +141,7 @@ impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 struct AddOneFocusedStep;
 impl Act<IntegrationAnimal> for AddOneFocusedStep {
     type Effect = AddOneEffect;
-    type StateAspect = IntegrationFocusedCarrier;
+    type Aspect = IntegrationFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -156,7 +156,7 @@ impl Act<IntegrationAnimal> for AddOneFocusedStep {
 struct AddTwoFocusedStep;
 impl Act<IntegrationAnimal> for AddTwoFocusedStep {
     type Effect = AddTwoEffect;
-    type StateAspect = IntegrationFocusedCarrier;
+    type Aspect = IntegrationFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -171,7 +171,7 @@ impl Act<IntegrationAnimal> for AddTwoFocusedStep {
 struct AddOneDeepFocusedStep;
 impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
     type Effect = AddOneEffect;
-    type StateAspect = IntegrationDeepFocusedCarrier;
+    type Aspect = IntegrationDeepFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -186,7 +186,7 @@ impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
 struct AddTwoDeepFocusedStep;
 impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type Effect = AddTwoEffect;
-    type StateAspect = IntegrationDeepFocusedCarrier;
+    type Aspect = IntegrationDeepFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -201,7 +201,7 @@ impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
 struct AddOneAfterFullStateStep;
 impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
     type Effect = AddOneEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -219,7 +219,7 @@ impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
 struct AddTwoAfterFullStateStep;
 impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
     type Effect = AddTwoEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 

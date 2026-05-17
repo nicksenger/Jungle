@@ -116,7 +116,7 @@ impl LateBoundPolicy for LedgerAnimal {
 struct CounterAddOne;
 impl Act<CounterAnimal> for CounterAddOne {
     type Effect = TemplateAddEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -134,7 +134,7 @@ impl Act<CounterAnimal> for CounterAddOne {
 struct LedgerAddOne;
 impl Act<LedgerAnimal> for LedgerAddOne {
     type Effect = TemplateAddEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -152,7 +152,7 @@ impl Act<LedgerAnimal> for LedgerAddOne {
 struct CounterCommit;
 impl Act<CounterAnimal> for CounterCommit {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -170,7 +170,7 @@ impl Act<CounterAnimal> for CounterCommit {
 struct LedgerCommit;
 impl Act<LedgerAnimal> for LedgerCommit {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -191,7 +191,7 @@ where
     A: Animal<State = i32> + LateBoundPolicy,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -212,7 +212,7 @@ where
     A: Animal<State = i32> + LateBoundPolicy,
 {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -471,7 +471,7 @@ where
     A: Animal<State = i32>,
 {
     type Effect = ContextBoundTemplateEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -794,7 +794,7 @@ where
     A: Animal<State = LensRootState>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = LensRootSpareCarrier;
+    type Aspect = LensRootSpareCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -815,7 +815,7 @@ where
     A: Animal<State = LensRootState>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = LensRootLeafValueCarrier;
+    type Aspect = LensRootLeafValueCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -836,7 +836,7 @@ where
     A: Animal<State = LensRootState>,
 {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -1071,7 +1071,7 @@ where
     A: Animal<State = NestedLensBranch>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = NestedBranchSpareCarrier;
+    type Aspect = NestedBranchSpareCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -1092,7 +1092,7 @@ where
     A: Animal<State = NestedLensLeaf>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = NestedLeafValueCarrier;
+    type Aspect = NestedLeafValueCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -1113,7 +1113,7 @@ where
     A: Animal<State = NestedLensLeaf>,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = NestedLeafNoiseCarrier;
+    type Aspect = NestedLeafNoiseCarrier;
     type Input = i32;
     type Output = i32;
 
@@ -1341,7 +1341,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = ComplexTimedEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -1360,7 +1360,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = ComplexTimedEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -1379,7 +1379,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = (i32, i32);
     type Output = i32;
 
@@ -1400,7 +1400,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = ComplexTimedEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -1419,7 +1419,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = ComplexTimedEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -1438,7 +1438,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = Either<i32, i32>;
     type Output = i32;
 
@@ -1461,7 +1461,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateAddEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -1483,7 +1483,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -1504,7 +1504,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -1525,7 +1525,7 @@ where
     A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 

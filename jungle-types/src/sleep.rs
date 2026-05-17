@@ -52,7 +52,7 @@ where
     Focus: Aspect<T::State>,
 {
     type Effect = Sleep;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = Duration;
     type Output = ();
 

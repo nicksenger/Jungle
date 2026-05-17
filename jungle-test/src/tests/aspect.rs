@@ -140,7 +140,7 @@ where
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Effect = Sleep;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = i32;
     type Output = i32;
 
@@ -161,7 +161,7 @@ where
     Focus: Aspect<T::State, View = CoreState>,
 {
     type Effect = Eat;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = i32;
     type Output = i32;
 
@@ -185,7 +185,7 @@ where
     A: EffectSchema<Out = i32>,
 {
     type Effect = A;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = A::In;
     type Output = i32;
 
@@ -212,7 +212,7 @@ where
     A: EffectSchema<Out = i32>,
 {
     type Effect = A;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = A::In;
     type Output = i32;
 
@@ -233,7 +233,7 @@ where
 struct GorillaSleepManual;
 impl Act<Gorilla> for GorillaSleepManual {
     type Effect = Sleep;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 

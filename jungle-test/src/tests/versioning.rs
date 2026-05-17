@@ -51,7 +51,7 @@ impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
 struct LegacyStep;
 impl Act<LegacyAnimal> for LegacyStep {
     type Effect = LegacyEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = ();
 
@@ -65,7 +65,7 @@ impl Act<LegacyAnimal> for LegacyStep {
 struct ModernStep;
 impl Act<ModernAnimal> for ModernStep {
     type Effect = ModernEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = ();
 

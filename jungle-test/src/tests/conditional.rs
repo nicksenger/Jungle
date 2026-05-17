@@ -58,7 +58,7 @@ impl Animal for ConditionalAnimal {
 struct Left;
 impl Act<ConditionalAnimal> for Left {
     type Effect = LeftEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -76,7 +76,7 @@ impl Act<ConditionalAnimal> for Left {
 struct Right;
 impl Act<ConditionalAnimal> for Right {
     type Effect = RightEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = i32;
     type Output = bool;
 

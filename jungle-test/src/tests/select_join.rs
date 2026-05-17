@@ -63,7 +63,7 @@ impl<J> EffectExec<J> for ContextTimedValueEffect {
 struct SelectFast;
 impl Act<SelectAnimal> for SelectFast {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -82,7 +82,7 @@ impl Act<SelectAnimal> for SelectFast {
 struct SelectSlow;
 impl Act<SelectAnimal> for SelectSlow {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -101,7 +101,7 @@ impl Act<SelectAnimal> for SelectSlow {
 struct CaptureSelectWinner;
 impl Act<SelectAnimal> for CaptureSelectWinner {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = Either<i32, i32>;
     type Output = ();
 
@@ -137,7 +137,7 @@ impl Animal for SelectAnimal {
 struct JoinFast;
 impl Act<JoinAnimal> for JoinFast {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -156,7 +156,7 @@ impl Act<JoinAnimal> for JoinFast {
 struct JoinSlow;
 impl Act<JoinAnimal> for JoinSlow {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -175,7 +175,7 @@ impl Act<JoinAnimal> for JoinSlow {
 struct CaptureJoinSum;
 impl Act<JoinAnimal> for CaptureJoinSum {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = (i32, i32);
     type Output = ();
 
@@ -208,7 +208,7 @@ impl Animal for JoinAnimal {
 struct TimeoutSleep;
 impl Act<TimeoutAnimal> for TimeoutSleep {
     type Effect = Sleep;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -226,7 +226,7 @@ impl Act<TimeoutAnimal> for TimeoutSleep {
 struct TimeoutSlow;
 impl Act<TimeoutAnimal> for TimeoutSlow {
     type Effect = ContextTimedValueEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = i32;
 
