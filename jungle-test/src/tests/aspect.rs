@@ -351,20 +351,16 @@ struct TigerJourneyTemplate(While<TigerUnderHundredStripes, TigerLoopTemplate>);
 
 struct Gorilla;
 
-#[animal]
+#[animal(id = 1, generation = 0)]
 impl Animal for Gorilla {
-    type Id = Id<U1>;
-    type Generation = U0;
     type State = GorillaState;
     type Seed = GorillaState;
     type Journey = GorillaJourneyTemplate;
 }
 struct Tiger;
 
-#[animal]
+#[animal(id = 2, generation = 0)]
 impl Animal for Tiger {
-    type Id = Id<U2>;
-    type Generation = U0;
     type State = TigerState;
     type Seed = TigerState;
     type Journey = TigerJourneyTemplate;

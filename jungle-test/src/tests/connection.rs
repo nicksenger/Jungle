@@ -36,10 +36,8 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
 
 struct ConnectionAnimal7;
 
-#[animal]
+#[animal(id = 7, generation = 0)]
 impl Animal for ConnectionAnimal7 {
-    type Id = Id<U7>;
-    type Generation = U0;
     type State = ();
     type Seed = ();
     type Journey = ConnectionFlowTemplate7;
@@ -81,10 +79,8 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
 
 struct ConnectionAnimal9;
 
-#[animal]
+#[animal(id = 9, generation = 0)]
 impl Animal for ConnectionAnimal9 {
-    type Id = Id<U9>;
-    type Generation = U0;
     type State = ();
     type Seed = ();
     type Journey = ConnectionFlowTemplate9;

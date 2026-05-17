@@ -404,10 +404,8 @@ struct IntegrationJourneyTemplate(
 
 struct IntegrationAnimal;
 
-#[animal(observe, perturb)]
+#[animal(observe, perturb, id = 0, generation = 0)]
 impl Animal for IntegrationAnimal {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = IntegrationState;
     type Seed = IntegrationState;
     type Journey = IntegrationJourneyTemplate;

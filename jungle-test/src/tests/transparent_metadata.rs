@@ -6,7 +6,7 @@ use jungle_sdk::types::{
     Act, BoundAct, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst,
     JourneyAstSource, ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U30, U31};
+use jungle_sdk::typosaurus::num::consts::U30;
 use std::future::ready;
 use std::marker::PhantomData;
 
@@ -29,10 +29,8 @@ impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
 
 struct TransparentAnimal;
 
-#[animal]
+#[animal(id = 31, generation = 0)]
 impl Animal for TransparentAnimal {
-    type Id = Id<U31>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = TransparentFlowTemplate;

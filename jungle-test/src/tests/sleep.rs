@@ -145,10 +145,8 @@ struct SleepJourneyTemplate(
 
 struct SleepAnimal;
 
-#[animal(observe)]
+#[animal(observe, id = 0, generation = 0)]
 impl Animal for SleepAnimal {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = SleepState;
     type Seed = SleepState;
     type Journey = SleepJourneyTemplate;

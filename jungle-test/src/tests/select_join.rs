@@ -157,10 +157,8 @@ struct SelectFlowTemplate(
 
 struct SelectAnimal;
 
-#[animal]
+#[animal(id = 0, generation = 0)]
 impl Animal for SelectAnimal {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
     type Journey = SelectFlowTemplate;
@@ -261,10 +259,8 @@ struct JoinFlowTemplate(
 
 struct JoinAnimal;
 
-#[animal]
+#[animal(id = 1, generation = 0)]
 impl Animal for JoinAnimal {
-    type Id = Id<U1>;
-    type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
     type Journey = JoinFlowTemplate;
@@ -333,10 +329,8 @@ struct TimeoutFlowTemplate(Select<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>
 
 struct TimeoutAnimal;
 
-#[animal]
+#[animal(id = 2, generation = 0)]
 impl Animal for TimeoutAnimal {
-    type Id = Id<U2>;
-    type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
     type Journey = TimeoutFlowTemplate;

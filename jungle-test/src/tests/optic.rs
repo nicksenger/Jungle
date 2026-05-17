@@ -6,7 +6,7 @@ use jungle_sdk::types::{
     Act, BoundAct, BoundFlowStep, EffectCompletion, Identity, Running, StateCarrier, Step,
     ViewProject, Waiting,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U72, U73, U74, U75, U9};
+use jungle_sdk::typosaurus::num::consts::{U72, U73, U74, U75};
 use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 
@@ -192,10 +192,8 @@ impl Act for LensOnBranchSpec {
 #[derive(jungle_sdk::Flow)]
 struct OpticJourneyTemplate(Step<LensOnBranchSpec>);
 
-#[animal]
+#[animal(id = 9, generation = 0)]
 impl Animal for OpticAnimal {
-    type Id = Id<U9>;
-    type Generation = U0;
     type State = RootState;
     type Seed = RootState;
     type Journey = OpticJourneyTemplate;

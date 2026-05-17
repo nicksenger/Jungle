@@ -5,7 +5,7 @@ use jungle_sdk::types::{
     ReplaceStep, TraverseStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::{U0, U20, U21, U22, U23, U24};
+use jungle_sdk::typosaurus::num::consts::{U20, U21, U22, U23};
 
 struct TraverseAEffect;
 
@@ -178,10 +178,8 @@ fn traverse_and_replace_are_type_level_transformations() {
     assert_type_eq!(ReplacedFlow, ExpectedReplaced);
 }
 
-#[animal]
+#[animal(id = 24, generation = 0)]
 impl Animal for TraverseAnimal {
-    type Id = Id<U24>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = SourceFlow;

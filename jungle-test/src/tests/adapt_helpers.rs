@@ -6,7 +6,7 @@ use jungle_sdk::types::{
     AbsorbFn, AbsorbMapper, Act, EffectCompletion, EmitFn, EmitMapper, Fuse, Identity,
     ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
+use jungle_sdk::typosaurus::num::consts::{U70, U71};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,10 +111,8 @@ struct AdaptHelpersFlowTemplate(Step<PassthroughSpec>, Step<UnitSpec>, Step<Func
 
 struct HelperAnimal;
 
-#[animal]
+#[animal(id = 0, generation = 0)]
 impl Animal for HelperAnimal {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = HelperState;
     type Seed = HelperState;
     type Journey = AdaptHelpersFlowTemplate;

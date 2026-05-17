@@ -10,7 +10,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::typosaurus::num::consts::{
-    U0, U1, U10, U11, U12, U13, U14, U15, U16, U2, U3, U4, U5, U6, U7,
+    U0, U1, U10, U13, U14, U15, U2, U3, U4, U5, U7,
 };
 use jungle_sdk::{Animals, Effects, Optic};
 use serde::{Deserialize, Serialize};
@@ -187,70 +187,56 @@ struct PredatorWorkflowTemplate(
 
 struct Gorilla;
 
-#[animal]
+#[animal(id = 0, generation = 0)]
 impl Animal for Gorilla {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
     type Journey = PreyWorkflowTemplate;
 }
 struct Chimpanzee;
 
-#[animal]
+#[animal(id = 1, generation = 0)]
 impl Animal for Chimpanzee {
-    type Id = Id<U1>;
-    type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
     type Journey = PreyWorkflowTemplate;
 }
 struct Tiger;
 
-#[animal]
+#[animal(id = 2, generation = 0)]
 impl Animal for Tiger {
-    type Id = Id<U2>;
-    type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
     type Journey = PredatorWorkflowTemplate;
 }
 struct Jaguar;
 
-#[animal]
+#[animal(id = 3, generation = 0)]
 impl Animal for Jaguar {
-    type Id = Id<U3>;
-    type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
     type Journey = PredatorWorkflowTemplate;
 }
 struct Anaconda;
 
-#[animal]
+#[animal(id = 4, generation = 0)]
 impl Animal for Anaconda {
-    type Id = Id<U4>;
-    type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
     type Journey = PredatorWorkflowTemplate;
 }
 struct Hippo;
 
-#[animal]
+#[animal(id = 5, generation = 0)]
 impl Animal for Hippo {
-    type Id = Id<U5>;
-    type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
     type Journey = PreyWorkflowTemplate;
 }
 struct Elephant;
 
-#[animal]
+#[animal(id = 6, generation = 0)]
 impl Animal for Elephant {
-    type Id = Id<U6>;
-    type Generation = U0;
     type State = SharedState;
     type Seed = SharedState;
     type Journey = PreyWorkflowTemplate;
@@ -394,10 +380,8 @@ struct RunnerJourneyTemplate(
 
 struct RunnerAnimal;
 
-#[animal]
+#[animal(id = 16, generation = 0)]
 impl Animal for RunnerAnimal {
-    type Id = Id<U16>;
-    type Generation = U0;
     type State = RunnerState;
     type Seed = RunnerState;
     type Journey = RunnerJourneyTemplate;
@@ -442,20 +426,16 @@ fn animal_state_set() {
 
     struct StatefulGorilla;
 
-    #[animal]
+    #[animal(id = 0, generation = 0)]
     impl Animal for StatefulGorilla {
-        type Id = Id<U0>;
-        type Generation = U0;
         type State = ApeState;
         type Seed = ApeState;
         type Journey = StatefulGorillaJourney;
     }
     struct StatefulTiger;
 
-    #[animal]
+    #[animal(id = 1, generation = 0)]
     impl Animal for StatefulTiger {
-        type Id = Id<U1>;
-        type Generation = U0;
         type State = CatState;
         type Seed = CatState;
         type Journey = StatefulTigerJourney;
@@ -651,20 +631,16 @@ struct WorkflowTigerJourneyTemplate(
 
 struct WorkflowGorilla;
 
-#[animal]
+#[animal(id = 11, generation = 0)]
 impl Animal for WorkflowGorilla {
-    type Id = Id<U11>;
-    type Generation = U0;
     type State = ExecutorApeState;
     type Seed = ExecutorApeState;
     type Journey = WorkflowGorillaJourneyTemplate;
 }
 struct WorkflowTiger;
 
-#[animal]
+#[animal(id = 12, generation = 0)]
 impl Animal for WorkflowTiger {
-    type Id = Id<U12>;
-    type Generation = U0;
     type State = ExecutorCatState;
     type Seed = ExecutorCatState;
     type Journey = WorkflowTigerJourneyTemplate;

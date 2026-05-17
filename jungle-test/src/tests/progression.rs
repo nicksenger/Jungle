@@ -108,10 +108,8 @@ struct ProgressFlowTemplate(Step<SeedSpec>, Step<FinishSpec>);
 
 struct ProgressAnimal;
 
-#[animal]
+#[animal(id = 0, generation = 0)]
 impl Animal for ProgressAnimal {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = ProgressFlowTemplate;
@@ -328,10 +326,8 @@ type BranchBoundFlow = jungle_types::BoundFlow<BranchFlowTemplate, BranchAnimal>
 
 struct BranchAnimal;
 
-#[animal]
+#[animal(id = 1, generation = 0)]
 impl Animal for BranchAnimal {
-    type Id = Id<U1>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = BranchFlowTemplate;

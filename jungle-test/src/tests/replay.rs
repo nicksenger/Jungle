@@ -254,10 +254,8 @@ type ReplayGateJourney = ReplayGateTemplate;
 
 struct ReplayGateAnimal;
 
-#[animal]
+#[animal(id = 0, generation = 0)]
 impl Animal for ReplayGateAnimal {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = ReplayGateState;
     type Seed = ReplayGateState;
     type Journey = ReplayGateJourney;
@@ -557,10 +555,8 @@ type ReplayTimeoutJourney = ReplayTimeoutTemplate;
 
 struct ReplayTimeoutAnimal;
 
-#[animal]
+#[animal(id = 0, generation = 0)]
 impl Animal for ReplayTimeoutAnimal {
-    type Id = Id<U0>;
-    type Generation = U0;
     type State = ReplayTimeoutState;
     type Seed = ReplayTimeoutState;
     type Journey = ReplayTimeoutJourney;

@@ -11,7 +11,7 @@ use jungle_sdk::types::{
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::typosaurus::num::consts::{
-    U0, U40, U41, U42, U43, U44, U45, U46, U47, U48, U49, U53,
+    U0, U40, U41, U49, U53,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
 use serde::{Deserialize, Serialize};
@@ -110,10 +110,8 @@ impl Act for LedgerCommitSpec {
 struct LedgerFlowTemplate(Step<LedgerAddOneSpec>, Step<LedgerCommitSpec>);
 
 struct CounterAnimal;
-#[animal]
+#[animal(id = 42, generation = 0)]
 impl Animal for CounterAnimal {
-    type Id = Id<U42>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = CounterFlowTemplate;
@@ -125,10 +123,8 @@ impl LateBoundPolicy for CounterAnimal {
 }
 
 struct LedgerAnimal;
-#[animal]
+#[animal(id = 43, generation = 0)]
 impl Animal for LedgerAnimal {
-    type Id = Id<U43>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = LedgerFlowTemplate;
@@ -345,10 +341,8 @@ fn template_binding_preserves_step_shape_after_binding() {
 }
 
 struct BoundTemplateAnimal;
-#[animal]
+#[animal(id = 44, generation = 0)]
 impl Animal for BoundTemplateAnimal {
-    type Id = Id<U44>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = TestFlow;
@@ -389,10 +383,8 @@ fn template_binding_bound_journey_is_executor_ready() {
 }
 
 struct LocalTemplateAlphaAnimal;
-#[animal]
+#[animal(id = 45, generation = 0)]
 impl Animal for LocalTemplateAlphaAnimal {
-    type Id = Id<U45>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = TestFlow;
@@ -404,10 +396,8 @@ impl LateBoundPolicy for LocalTemplateAlphaAnimal {
 }
 
 struct LocalTemplateBetaAnimal;
-#[animal]
+#[animal(id = 46, generation = 0)]
 impl Animal for LocalTemplateBetaAnimal {
-    type Id = Id<U46>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = TestFlow;
@@ -532,10 +522,8 @@ where
 struct ContextBoundFlow(Step<ContextBoundSpec>);
 
 struct LocalTemplateContextAnimal;
-#[animal]
+#[animal(id = 54, generation = 0)]
 impl Animal for LocalTemplateContextAnimal {
-    type Id = Id<U54>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = ContextBoundFlow;
@@ -685,10 +673,8 @@ mod composed_templates {
 }
 
 struct ComposedAlphaAnimal;
-#[animal]
+#[animal(id = 47, generation = 0)]
 impl Animal for ComposedAlphaAnimal {
-    type Id = Id<U47>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = composed_templates::ComposedPipeline;
@@ -700,10 +686,8 @@ impl LateBoundPolicy for ComposedAlphaAnimal {
 }
 
 struct ComposedBetaAnimal;
-#[animal]
+#[animal(id = 48, generation = 0)]
 impl Animal for ComposedBetaAnimal {
-    type Id = Id<U48>;
-    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = composed_templates::ComposedPipeline;
@@ -917,10 +901,8 @@ impl ReplaceStep<jungle_sdk::types::Step<LensCommitSpec>> for LensReplacer {
 }
 
 struct LensAlphaAnimal;
-#[animal(observe)]
+#[animal(observe, id = 52, generation = 0)]
 impl Animal for LensAlphaAnimal {
-    type Id = Id<U52>;
-    type Generation = U0;
     type State = LensRootState;
     type Seed = i32;
     type Journey = LensFlow;
@@ -1154,10 +1136,8 @@ struct NestedBranchScopedFlow(
 );
 
 struct NestedScopeAnimal;
-#[animal(observe)]
+#[animal(observe, id = 53, generation = 0)]
 impl Animal for NestedScopeAnimal {
-    type Id = Id<U53>;
-    type Generation = U0;
     type State = NestedLensRootState;
     type Seed = i32;
     type Journey = NestedBranchScopedFlow;
@@ -1633,10 +1613,8 @@ struct UniqueSegment(Conditional<ChooseUniqueAlpha, Step<UniqueAlphaSpec>, Step<
 struct LongMixedFlow(LongSharedSegment, UniqueSegment, Step<FinalizeSpec>);
 
 struct ComplexAlphaAnimal;
-#[animal(observe)]
+#[animal(observe, id = 50, generation = 0)]
 impl Animal for ComplexAlphaAnimal {
-    type Id = Id<U50>;
-    type Generation = U0;
     type State = ComplexAlphaState;
     type Seed = i32;
     type Journey = LongMixedFlow;
@@ -1687,10 +1665,8 @@ impl Observe for ComplexAlphaAnimal {
 }
 
 struct ComplexBetaAnimal;
-#[animal(observe)]
+#[animal(observe, id = 51, generation = 0)]
 impl Animal for ComplexBetaAnimal {
-    type Id = Id<U51>;
-    type Generation = U0;
     type State = ComplexBetaState;
     type Seed = i32;
     type Journey = LongMixedFlow;
