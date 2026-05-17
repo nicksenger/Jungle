@@ -29,11 +29,11 @@ struct RootState {
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ViewWrapped(#[view] Leaf);
+struct ViewWrapped(#[focus] Leaf);
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ViewRoot {
-    #[view]
+    #[focus]
     wrapped: ViewWrapped,
 }
 

@@ -190,10 +190,10 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     let ident = input.ident.clone();
     let generics = input.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let view_ty = parse_jungle_view_attr(&input.attrs);
+    let focus_ty = parse_jungle_focus_attr(&input.attrs);
     // Scoped templates provide a custom `TraverseFlow` impl (wrapping output in `Scoped`),
     // so they must not also derive `JungleTraverseFlow` via inception.
-    let properties = if view_ty.is_some() {
+    let properties = if focus_ty.is_some() {
         jungle_types(&["JungleFlow", "JungleJourneyAst", "JungleReplaceFlow"])
     } else {
         jungle_types(&[
@@ -207,8 +207,8 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     let template_scope = jungle_type("FlowScope");
     let root_scope = jungle_type("RootFlowScope");
     let template_view = jungle_type("FlowView");
-    let scope_ty = if let Some(view) = &view_ty {
-        quote!(#template_view<#view>)
+    let scope_ty = if let Some(focus) = &focus_ty {
+        quote!(#template_view<#focus>)
     } else {
         quote!(#root_scope)
     };
@@ -247,13 +247,13 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
         .map(|ty| quote!(<#ty as #traverse_flow>::Output))
         .collect::<Vec<_>>();
     let scoped_inner = nested_tlist(&field_traverse_outputs, &list_empty);
-    let traverse_impl = if let Some(view) = &view_ty {
+    let traverse_impl = if let Some(focus) = &focus_ty {
         quote! {
             impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
             where
                 #(#field_types: #traverse_flow,)*
             {
-                type Output = #scoped<#view, #scoped_inner>;
+                type Output = #scoped<#focus, #scoped_inner>;
             }
         }
     } else {
@@ -280,7 +280,7 @@ pub fn derive_effects(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
-#[proc_macro_derive(Optic, attributes(view, jungle_sdk))]
+#[proc_macro_derive(Optic, attributes(focus, jungle_sdk))]
 pub fn derive_optic(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let ident = input.ident.clone();
@@ -313,7 +313,7 @@ pub fn derive_optic(input: TokenStream) -> TokenStream {
                             }
                         }
                     });
-                    if !is_view_marker(&field.attrs) {
+                    if !is_focus_marker(&field.attrs) {
                         continue;
                     }
                     projection_impls.push(quote! {
@@ -339,7 +339,7 @@ pub fn derive_optic(input: TokenStream) -> TokenStream {
                             }
                         }
                     });
-                    if !is_view_marker(&field.attrs) {
+                    if !is_focus_marker(&field.attrs) {
                         continue;
                     }
                     projection_impls.push(quote! {
@@ -363,26 +363,26 @@ pub fn derive_optic(input: TokenStream) -> TokenStream {
     .into()
 }
 
-fn is_view_marker(attrs: &[Attribute]) -> bool {
+fn is_focus_marker(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
-        attr.path().is_ident("view")
+        attr.path().is_ident("focus")
             || attr
                 .path()
                 .segments
                 .last()
-                .map(|seg| seg.ident == "view")
+                .map(|seg| seg.ident == "focus")
                 .unwrap_or(false)
     })
 }
 
-fn parse_jungle_view_attr(attrs: &[Attribute]) -> Option<Type> {
+fn parse_jungle_focus_attr(attrs: &[Attribute]) -> Option<Type> {
     for attr in attrs {
         if !attr.path().is_ident("jungle") {
             continue;
         }
         let mut result = None;
         let _ = attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("view") {
+            if meta.path.is_ident("focus") {
                 let value = meta.value()?;
                 let ty: Type = value.parse()?;
                 result = Some(ty);

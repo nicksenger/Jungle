@@ -944,11 +944,11 @@ impl Ecosystem for LensZoo {
 }
 
 #[derive(jungle_sdk::Flow)]
-#[jungle(view = LensBranch)]
+#[jungle(focus = LensBranch)]
 struct ScopedLensFlow(LensFlow);
 
 #[derive(jungle_sdk::Flow)]
-#[jungle(view = LensBranch)]
+#[jungle(focus = LensBranch)]
 struct ScopedLensMultiField(LensFlow, LensFlow);
 
 #[test]
@@ -1025,14 +1025,14 @@ struct NestedLensLeaf {
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct NestedLensBranch {
-    #[view]
+    #[focus]
     leaf: NestedLensLeaf,
     spare: i32,
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct NestedLensRootState {
-    #[view]
+    #[focus]
     branch: NestedLensBranch,
     committed: i32,
 }
@@ -1142,11 +1142,11 @@ impl Act for NestedLeafNoiseSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-#[jungle(view = NestedLensLeaf)]
+#[jungle(focus = NestedLensLeaf)]
 struct NestedLeafScopedFlow(Step<NestedLeafValueSpec>, Step<NestedLeafNoiseSpec>);
 
 #[derive(jungle_sdk::Flow)]
-#[jungle(view = NestedLensBranch)]
+#[jungle(focus = NestedLensBranch)]
 struct NestedBranchScopedFlow(
     Step<NestedBranchSpareSpec>,
     NestedLeafScopedFlow,
@@ -1183,8 +1183,7 @@ impl Ecosystem for NestedScopeZoo {
 #[tokio::test]
 async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end() {
     type LeafScopedTraverse = <NestedLeafScopedFlow as TraverseFlow>::Output;
-    type LeafScopedExpected =
-        Scoped<NestedLensLeaf, <NestedLeafScopedFlow as ReplaceFlow>::Output>;
+    type LeafScopedExpected = Scoped<NestedLensLeaf, <NestedLeafScopedFlow as ReplaceFlow>::Output>;
     assert_type_eq!(LeafScopedTraverse, LeafScopedExpected);
 
     let client = jungle_sdk::LocalClient::builder()
