@@ -1,7 +1,10 @@
+use jungle_sdk::effect;
+use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, Animals as AnimalsTrait, Ecosystem, EffectCompletion, Id, Identity, Observe, Step,
+    Act, Animal, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id, Identity,
+    JourneyStatus, Observe, Step,
     SupportedAnimal,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -13,7 +16,7 @@ use std::time::Duration;
 
 struct LegacyEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
     type Id = Id<U70>;
     type In = ();
@@ -30,7 +33,7 @@ impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
 
 struct ModernEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
     type Id = Id<U71>;
     type In = ();
@@ -80,18 +83,13 @@ struct LegacyJourney(Step<LegacyAnimal, LegacyStep>);
 struct ModernJourney(Step<ModernAnimal, ModernStep>);
 
 struct LegacyAnimal;
+#[animal(observe)]
 impl Animal for LegacyAnimal {
     type Id = Id<U33>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = LegacyJourney;
-}
-impl jungle_sdk::types::Observable for LegacyAnimal {
-    type Observation = jungle_sdk::types::ObserveObservation;
-}
-impl jungle_sdk::types::Perturbable for LegacyAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for LegacyAnimal {
     type Appearance = i32;
@@ -100,28 +98,15 @@ impl Observe for LegacyAnimal {
         *state
     }
 }
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl AnimalsTrait for LegacyAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U33, LegacyAnimal>;
-}
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for LegacyAnimal {
-    type Id = U33;
-}
 
 struct ModernAnimal;
+#[animal(observe)]
 impl Animal for ModernAnimal {
     type Id = Id<U33>;
     type Generation = U1;
     type State = i32;
     type Seed = i32;
     type Journey = ModernJourney;
-}
-impl jungle_sdk::types::Observable for ModernAnimal {
-    type Observation = jungle_sdk::types::ObserveObservation;
-}
-impl jungle_sdk::types::Perturbable for ModernAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 impl Observe for ModernAnimal {
     type Appearance = i32;
@@ -130,16 +115,9 @@ impl Observe for ModernAnimal {
         *state
     }
 }
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl AnimalsTrait for ModernAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U33, ModernAnimal>;
-}
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ModernAnimal {
-    type Id = U33;
-}
 
 struct FutureAnimal;
+#[animal(observe)]
 impl Animal for FutureAnimal {
     type Id = Id<U33>;
     type Generation = U2;
@@ -147,26 +125,12 @@ impl Animal for FutureAnimal {
     type Seed = i32;
     type Journey = ModernJourney;
 }
-impl jungle_sdk::types::Observable for FutureAnimal {
-    type Observation = jungle_sdk::types::ObserveObservation;
-}
-impl jungle_sdk::types::Perturbable for FutureAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
 impl Observe for FutureAnimal {
     type Appearance = i32;
 
     fn observe(state: &Self::State) -> Self::Appearance {
         *state
     }
-}
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl AnimalsTrait for FutureAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U33, FutureAnimal>;
-}
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for FutureAnimal {
-    type Id = U33;
 }
 
 #[derive(Animals)]
@@ -181,14 +145,14 @@ impl Ecosystem for VersionedZoo {
 #[test]
 fn generations_helper_collects_all_generations_for_animal_id() {
     type Expected = list![U1, U0];
-    type Actual = jungle_sdk::types::Generations<VersionedZoo, Id<U33>>;
+    type Actual = Generations<VersionedZoo, Id<U33>>;
     assert_type_eq!(Actual, Expected);
 }
 
 #[test]
 fn highest_generation_helper_picks_latest_for_animal_id() {
     type Expected = U1;
-    type Actual = jungle_sdk::types::HighestGeneration<VersionedZoo, Id<U33>>;
+    type Actual = HighestGeneration<VersionedZoo, Id<U33>>;
     assert_type_eq!(Actual, Expected);
 }
 
@@ -247,7 +211,7 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
                 .journey_details(journey_id)
                 .await
                 .expect("journey_details should succeed");
-            if status == jungle_sdk::types::JourneyStatus::Completed {
+            if status == JourneyStatus::Completed {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(25)).await;

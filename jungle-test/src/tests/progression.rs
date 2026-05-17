@@ -1,3 +1,5 @@
+use jungle_sdk::types::Animal;
+use jungle_sdk::animal;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::{
     Act, AnimalEffectSet, Condition, Conditional, ContextExecutor, EffectCompletion, EffectExec,
@@ -85,10 +87,10 @@ struct ProgressJourney(Step<ProgressAnimal, Seed>, Step<ProgressAnimal, Finish>)
 
 struct ProgressAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for ProgressAnimal {
-    type Id = jungle_sdk::types::Id<U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for ProgressAnimal {
+    type Id = Id<U0>;
+    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = ProgressJourney;
@@ -295,10 +297,10 @@ struct BranchJourney(BranchConditionalFlow);
 
 struct BranchAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for BranchAnimal {
-    type Id = jungle_sdk::types::Id<U1>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for BranchAnimal {
+    type Id = Id<U1>;
+    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = BranchJourney;

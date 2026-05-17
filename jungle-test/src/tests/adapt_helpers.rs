@@ -1,3 +1,8 @@
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use serde::{Deserialize, Serialize};
+use jungle_sdk::effect;
+use jungle_sdk::animal;
 use jungle_sdk::types::{
     AbsorbFn, AbsorbMapper, EffectCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
     IdentityStep, ManualExecutor, PassthroughEmit, Step, UnitEmit,
@@ -13,9 +18,9 @@ struct HelperState {
 
 struct EchoEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
-    type Id = jungle_sdk::types::Id<U70>;
+    type Id = Id<U70>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -29,9 +34,9 @@ impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
 }
 struct PulseEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for PulseEffect {
-    type Id = jungle_sdk::types::Id<U71>;
+    type Id = Id<U71>;
     type In = ();
     type Out = i32;
     type Err = ();
@@ -95,10 +100,10 @@ struct AdaptHelpersJourney(PassthroughStep, UnitStep, FunctionEmitStep);
 
 struct HelperAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for HelperAnimal {
-    type Id = jungle_sdk::types::Id<U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for HelperAnimal {
+    type Id = Id<U0>;
+    type Generation = U0;
     type State = HelperState;
     type Seed = HelperState;
     type Journey = AdaptHelpersJourney;

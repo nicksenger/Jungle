@@ -1,3 +1,9 @@
+use jungle_sdk::typosaurus::num::consts::*;
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use serde::{Deserialize, Serialize};
+use jungle_sdk::effect;
+use jungle_sdk::animal;
 use jungle_sdk::types::{
     Act, ActionSpec, BindAnimal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, Either, Identity, Join, JourneyStatus, LoopCondition, ManualExecutor,
@@ -14,7 +20,7 @@ use std::time::Duration;
 
 pub struct TemplateAddEffect;
 impl EffectSchema for TemplateAddEffect {
-    type Id = jungle_sdk::types::Id<U40>;
+    type Id = Id<U40>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -31,7 +37,7 @@ impl<J> EffectExec<J> for TemplateAddEffect {
 
 pub struct TemplateCommitEffect;
 impl EffectSchema for TemplateCommitEffect {
-    type Id = jungle_sdk::types::Id<U41>;
+    type Id = Id<U41>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -53,14 +59,14 @@ impl ActionSpec for AddOneSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = GenericAddOne<A>;
+    type Act<A: Animal> = GenericAddOne<A>;
 }
 
 impl ActionSpec for CommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = GenericCommit<A>;
+    type Act<A: Animal> = GenericCommit<A>;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -79,30 +85,13 @@ struct LedgerJourney(
 );
 
 struct CounterAnimal;
-impl jungle_sdk::types::Animal for CounterAnimal {
-    type Id = jungle_sdk::types::Id<U42>;
+#[animal]
+impl Animal for CounterAnimal {
+    type Id = Id<U42>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = CounterJourney;
-}
-
-impl jungle_sdk::types::Observable for CounterAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for CounterAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for CounterAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U42, CounterAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for CounterAnimal {
-    type Id = U42;
 }
 
 impl LateBoundPolicy for CounterAnimal {
@@ -111,30 +100,13 @@ impl LateBoundPolicy for CounterAnimal {
 }
 
 struct LedgerAnimal;
-impl jungle_sdk::types::Animal for LedgerAnimal {
-    type Id = jungle_sdk::types::Id<U43>;
+#[animal]
+impl Animal for LedgerAnimal {
+    type Id = Id<U43>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = LedgerJourney;
-}
-
-impl jungle_sdk::types::Observable for LedgerAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for LedgerAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for LedgerAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U43, LedgerAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for LedgerAnimal {
-    type Id = U43;
 }
 
 impl LateBoundPolicy for LedgerAnimal {
@@ -217,7 +189,7 @@ impl Act<LedgerAnimal> for LedgerCommit {
 pub struct GenericAddOne<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for GenericAddOne<A>
 where
-    A: jungle_sdk::types::Animal<State = i32> + LateBoundPolicy,
+    A: Animal<State = i32> + LateBoundPolicy,
 {
     type Effect = TemplateAddEffect;
     type StateAspect = Identity;
@@ -238,7 +210,7 @@ where
 pub struct GenericCommit<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for GenericCommit<A>
 where
-    A: jungle_sdk::types::Animal<State = i32> + LateBoundPolicy,
+    A: Animal<State = i32> + LateBoundPolicy,
 {
     type Effect = TemplateCommitEffect;
     type StateAspect = Identity;
@@ -332,20 +304,13 @@ fn template_binding_preserves_step_shape_after_binding() {
 }
 
 struct BoundTemplateAnimal;
-impl jungle_sdk::types::Animal for BoundTemplateAnimal {
-    type Id = jungle_sdk::types::Id<U44>;
+#[animal]
+impl Animal for BoundTemplateAnimal {
+    type Id = Id<U44>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = <TemplateFlow as BindAnimal<BoundTemplateAnimal>>::Bound;
-}
-
-impl jungle_sdk::types::Observable for BoundTemplateAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for BoundTemplateAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 
 trait LateBoundPolicy {
@@ -383,30 +348,13 @@ fn template_binding_bound_journey_is_executor_ready() {
 }
 
 struct LocalTemplateAlphaAnimal;
-impl jungle_sdk::types::Animal for LocalTemplateAlphaAnimal {
-    type Id = jungle_sdk::types::Id<U45>;
+#[animal]
+impl Animal for LocalTemplateAlphaAnimal {
+    type Id = Id<U45>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = <TemplateFlow as BindAnimal<LocalTemplateAlphaAnimal>>::Bound;
-}
-
-impl jungle_sdk::types::Observable for LocalTemplateAlphaAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for LocalTemplateAlphaAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for LocalTemplateAlphaAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U45, LocalTemplateAlphaAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for LocalTemplateAlphaAnimal {
-    type Id = U45;
 }
 
 impl LateBoundPolicy for LocalTemplateAlphaAnimal {
@@ -415,30 +363,13 @@ impl LateBoundPolicy for LocalTemplateAlphaAnimal {
 }
 
 struct LocalTemplateBetaAnimal;
-impl jungle_sdk::types::Animal for LocalTemplateBetaAnimal {
-    type Id = jungle_sdk::types::Id<U46>;
+#[animal]
+impl Animal for LocalTemplateBetaAnimal {
+    type Id = Id<U46>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = <TemplateFlow as BindAnimal<LocalTemplateBetaAnimal>>::Bound;
-}
-
-impl jungle_sdk::types::Observable for LocalTemplateBetaAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for LocalTemplateBetaAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for LocalTemplateBetaAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U46, LocalTemplateBetaAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for LocalTemplateBetaAnimal {
-    type Id = U46;
 }
 
 impl LateBoundPolicy for LocalTemplateBetaAnimal {
@@ -509,12 +440,12 @@ trait RequiresContextBump {
 }
 
 pub struct ContextBoundTemplateEffect;
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for ContextBoundTemplateEffect
 where
     J: RequiresContextBump,
 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U53>;
+    type Id = Id<U53>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -532,13 +463,13 @@ impl ActionSpec for ContextBoundSpec {
     type Effect = ContextBoundTemplateEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = ContextBoundAct<A>;
+    type Act<A: Animal> = ContextBoundAct<A>;
 }
 
 struct ContextBoundAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for ContextBoundAct<A>
 where
-    A: jungle_sdk::types::Animal<State = i32>,
+    A: Animal<State = i32>,
 {
     type Effect = ContextBoundTemplateEffect;
     type StateAspect = Identity;
@@ -560,33 +491,13 @@ where
 struct ContextBoundTemplateFlow(UStep<ContextBoundSpec>);
 
 struct LocalTemplateContextAnimal;
-impl jungle_sdk::types::Animal for LocalTemplateContextAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U54>;
+#[animal]
+impl Animal for LocalTemplateContextAnimal {
+    type Id = Id<U54>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = <ContextBoundTemplateFlow as BindAnimal<LocalTemplateContextAnimal>>::Bound;
-}
-
-impl jungle_sdk::types::Observable for LocalTemplateContextAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for LocalTemplateContextAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for LocalTemplateContextAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<
-        jungle_sdk::typosaurus::num::consts::U54,
-        LocalTemplateContextAnimal,
-    >;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for LocalTemplateContextAnimal {
-    type Id = jungle_sdk::typosaurus::num::consts::U54;
 }
 
 #[derive(Animals)]
@@ -733,30 +644,13 @@ mod composed_templates {
 }
 
 struct ComposedAlphaAnimal;
-impl jungle_sdk::types::Animal for ComposedAlphaAnimal {
-    type Id = jungle_sdk::types::Id<U47>;
+#[animal]
+impl Animal for ComposedAlphaAnimal {
+    type Id = Id<U47>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = <composed_templates::ComposedPipeline as BindAnimal<ComposedAlphaAnimal>>::Bound;
-}
-
-impl jungle_sdk::types::Observable for ComposedAlphaAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for ComposedAlphaAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for ComposedAlphaAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U47, ComposedAlphaAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ComposedAlphaAnimal {
-    type Id = U47;
 }
 
 impl LateBoundPolicy for ComposedAlphaAnimal {
@@ -765,30 +659,13 @@ impl LateBoundPolicy for ComposedAlphaAnimal {
 }
 
 struct ComposedBetaAnimal;
-impl jungle_sdk::types::Animal for ComposedBetaAnimal {
-    type Id = jungle_sdk::types::Id<U48>;
+#[animal]
+impl Animal for ComposedBetaAnimal {
+    type Id = Id<U48>;
     type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = <composed_templates::ComposedPipeline as BindAnimal<ComposedBetaAnimal>>::Bound;
-}
-
-impl jungle_sdk::types::Observable for ComposedBetaAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for ComposedBetaAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for ComposedBetaAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U48, ComposedBetaAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ComposedBetaAnimal {
-    type Id = U48;
 }
 
 impl LateBoundPolicy for ComposedBetaAnimal {
@@ -897,7 +774,7 @@ struct LensCommitSpec;
 struct LensReadSpareAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for LensReadSpareAct<A>
 where
-    A: jungle_sdk::types::Animal<State = LensRootState>,
+    A: Animal<State = LensRootState>,
 {
     type Effect = TemplateAddEffect;
     type StateAspect = StateLens<LensRootState, list![U0, U1]>;
@@ -918,7 +795,7 @@ where
 struct LensReadLeafAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for LensReadLeafAct<A>
 where
-    A: jungle_sdk::types::Animal<State = LensRootState>,
+    A: Animal<State = LensRootState>,
 {
     type Effect = TemplateAddEffect;
     type StateAspect = StateLens<LensRootState, list![U0, U0, U0]>;
@@ -939,7 +816,7 @@ where
 struct LensCommitAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for LensCommitAct<A>
 where
-    A: jungle_sdk::types::Animal<State = LensRootState>,
+    A: Animal<State = LensRootState>,
 {
     type Effect = TemplateCommitEffect;
     type StateAspect = Identity;
@@ -961,21 +838,21 @@ impl ActionSpec for LensReadSpareSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = LensReadSpareAct<A>;
+    type Act<A: Animal> = LensReadSpareAct<A>;
 }
 
 impl ActionSpec for LensReadLeafSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = LensReadLeafAct<A>;
+    type Act<A: Animal> = LensReadLeafAct<A>;
 }
 
 impl ActionSpec for LensCommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = LensCommitAct<A>;
+    type Act<A: Animal> = LensCommitAct<A>;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -1002,8 +879,9 @@ impl ReplaceStep<jungle_sdk::types::StepSpec<LensCommitSpec>> for LensReplacer {
 }
 
 struct LensAlphaAnimal;
-impl jungle_sdk::types::Animal for LensAlphaAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U52>;
+#[animal(observe)]
+impl Animal for LensAlphaAnimal {
+    type Id = Id<U52>;
     type Generation = U0;
     type State = LensRootState;
     type Seed = i32;
@@ -1016,27 +894,6 @@ impl Observe for LensAlphaAnimal {
     fn observe(state: &Self::State) -> Self::Appearance {
         *state
     }
-}
-
-impl jungle_sdk::types::Observable for LensAlphaAnimal {
-    type Observation = jungle_sdk::types::ObserveObservation;
-}
-
-impl jungle_sdk::types::Perturbable for LensAlphaAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for LensAlphaAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<
-        jungle_sdk::typosaurus::num::consts::U52,
-        LensAlphaAnimal,
-    >;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for LensAlphaAnimal {
-    type Id = jungle_sdk::typosaurus::num::consts::U52;
 }
 
 #[derive(Animals)]
@@ -1167,7 +1024,7 @@ struct NestedLeafNoiseSpec;
 struct NestedBranchSpareAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for NestedBranchSpareAct<A>
 where
-    A: jungle_sdk::types::Animal<State = NestedLensBranch>,
+    A: Animal<State = NestedLensBranch>,
 {
     type Effect = TemplateAddEffect;
     type StateAspect = StateLens<NestedLensBranch, list![U1]>;
@@ -1188,7 +1045,7 @@ where
 struct NestedLeafValueAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for NestedLeafValueAct<A>
 where
-    A: jungle_sdk::types::Animal<State = NestedLensLeaf>,
+    A: Animal<State = NestedLensLeaf>,
 {
     type Effect = TemplateAddEffect;
     type StateAspect = StateLens<NestedLensLeaf, list![U0]>;
@@ -1209,7 +1066,7 @@ where
 struct NestedLeafNoiseAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for NestedLeafNoiseAct<A>
 where
-    A: jungle_sdk::types::Animal<State = NestedLensLeaf>,
+    A: Animal<State = NestedLensLeaf>,
 {
     type Effect = TemplateAddEffect;
     type StateAspect = StateLens<NestedLensLeaf, list![U1]>;
@@ -1231,21 +1088,21 @@ impl ActionSpec for NestedBranchSpareSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = NestedBranchSpareAct<A>;
+    type Act<A: Animal> = NestedBranchSpareAct<A>;
 }
 
 impl ActionSpec for NestedLeafValueSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = NestedLeafValueAct<A>;
+    type Act<A: Animal> = NestedLeafValueAct<A>;
 }
 
 impl ActionSpec for NestedLeafNoiseSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = NestedLeafNoiseAct<A>;
+    type Act<A: Animal> = NestedLeafNoiseAct<A>;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -1261,8 +1118,9 @@ struct NestedBranchScopedTemplate(
 );
 
 struct NestedScopeAnimal;
-impl jungle_sdk::types::Animal for NestedScopeAnimal {
-    type Id = jungle_sdk::types::Id<U53>;
+#[animal(observe)]
+impl Animal for NestedScopeAnimal {
+    type Id = Id<U53>;
     type Generation = U0;
     type State = NestedLensRootState;
     type Seed = i32;
@@ -1275,24 +1133,6 @@ impl Observe for NestedScopeAnimal {
     fn observe(state: &Self::State) -> Self::Appearance {
         *state
     }
-}
-
-impl jungle_sdk::types::Observable for NestedScopeAnimal {
-    type Observation = jungle_sdk::types::ObserveObservation;
-}
-
-impl jungle_sdk::types::Perturbable for NestedScopeAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for NestedScopeAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U53, NestedScopeAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for NestedScopeAnimal {
-    type Id = U53;
 }
 
 #[derive(Animals)]
@@ -1375,7 +1215,7 @@ struct ComplexBetaState {
 
 pub struct ComplexTimedEffect;
 impl EffectSchema for ComplexTimedEffect {
-    type Id = jungle_sdk::types::Id<U49>;
+    type Id = Id<U49>;
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
@@ -1393,7 +1233,7 @@ impl<J> EffectExec<J> for ComplexTimedEffect {
     }
 }
 
-trait ComplexFlowBinding: jungle_sdk::types::Animal {
+trait ComplexFlowBinding: Animal {
     fn inc_loop(state: &mut Self::State);
     fn set_shared_work(state: &mut Self::State, value: i32);
     fn set_join_sum(state: &mut Self::State, value: i32);
@@ -1454,7 +1294,7 @@ pub struct FinalizeSpec;
 pub struct JoinLeftAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for JoinLeftAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = ComplexTimedEffect;
     type StateAspect = Identity;
@@ -1473,7 +1313,7 @@ where
 pub struct JoinRightAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for JoinRightAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = ComplexTimedEffect;
     type StateAspect = Identity;
@@ -1492,7 +1332,7 @@ where
 pub struct JoinToCarryAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for JoinToCarryAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
     type StateAspect = Identity;
@@ -1513,7 +1353,7 @@ where
 pub struct SelectFastAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for SelectFastAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = ComplexTimedEffect;
     type StateAspect = Identity;
@@ -1532,7 +1372,7 @@ where
 pub struct SelectSlowAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for SelectSlowAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = ComplexTimedEffect;
     type StateAspect = Identity;
@@ -1551,7 +1391,7 @@ where
 pub struct SelectToCarryAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for SelectToCarryAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
     type StateAspect = Identity;
@@ -1574,7 +1414,7 @@ where
 pub struct LoopAdvanceAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for LoopAdvanceAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateAddEffect;
     type StateAspect = Identity;
@@ -1596,7 +1436,7 @@ where
 pub struct UniqueAlphaAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for UniqueAlphaAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
     type StateAspect = Identity;
@@ -1617,7 +1457,7 @@ where
 pub struct UniqueBetaAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for UniqueBetaAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
     type StateAspect = Identity;
@@ -1638,7 +1478,7 @@ where
 pub struct FinalizeAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> Act<A> for FinalizeAct<A>
 where
-    A: jungle_sdk::types::Animal + ComplexFlowBinding,
+    A: Animal + ComplexFlowBinding,
 {
     type Effect = TemplateCommitEffect;
     type StateAspect = Identity;
@@ -1660,70 +1500,70 @@ impl ActionSpec for JoinLeftSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = JoinLeftAct<A>;
+    type Act<A: Animal> = JoinLeftAct<A>;
 }
 
 impl ActionSpec for JoinRightSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = JoinRightAct<A>;
+    type Act<A: Animal> = JoinRightAct<A>;
 }
 
 impl ActionSpec for JoinToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = (i32, i32);
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = JoinToCarryAct<A>;
+    type Act<A: Animal> = JoinToCarryAct<A>;
 }
 
 impl ActionSpec for SelectFastSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = SelectFastAct<A>;
+    type Act<A: Animal> = SelectFastAct<A>;
 }
 
 impl ActionSpec for SelectSlowSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = SelectSlowAct<A>;
+    type Act<A: Animal> = SelectSlowAct<A>;
 }
 
 impl ActionSpec for SelectToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = SelectToCarryAct<A>;
+    type Act<A: Animal> = SelectToCarryAct<A>;
 }
 
 impl ActionSpec for LoopAdvanceSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = LoopAdvanceAct<A>;
+    type Act<A: Animal> = LoopAdvanceAct<A>;
 }
 
 impl ActionSpec for UniqueAlphaSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = UniqueAlphaAct<A>;
+    type Act<A: Animal> = UniqueAlphaAct<A>;
 }
 
 impl ActionSpec for UniqueBetaSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = UniqueBetaAct<A>;
+    type Act<A: Animal> = UniqueBetaAct<A>;
 }
 
 impl ActionSpec for FinalizeSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Act<A: jungle_sdk::types::Animal> = FinalizeAct<A>;
+    type Act<A: Animal> = FinalizeAct<A>;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -1758,8 +1598,9 @@ struct UniqueSegment(Conditional<ChooseUniqueAlpha, UStep<UniqueAlphaSpec>, USte
 struct LongMixedTemplate(LongSharedSegment, UniqueSegment, UStep<FinalizeSpec>);
 
 struct ComplexAlphaAnimal;
-impl jungle_sdk::types::Animal for ComplexAlphaAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U50>;
+#[animal(observe)]
+impl Animal for ComplexAlphaAnimal {
+    type Id = Id<U50>;
     type Generation = U0;
     type State = ComplexAlphaState;
     type Seed = i32;
@@ -1810,30 +1651,10 @@ impl Observe for ComplexAlphaAnimal {
     }
 }
 
-impl jungle_sdk::types::Observable for ComplexAlphaAnimal {
-    type Observation = jungle_sdk::types::ObserveObservation;
-}
-
-impl jungle_sdk::types::Perturbable for ComplexAlphaAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for ComplexAlphaAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<
-        jungle_sdk::typosaurus::num::consts::U50,
-        ComplexAlphaAnimal,
-    >;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ComplexAlphaAnimal {
-    type Id = jungle_sdk::typosaurus::num::consts::U50;
-}
-
 struct ComplexBetaAnimal;
-impl jungle_sdk::types::Animal for ComplexBetaAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U51>;
+#[animal(observe)]
+impl Animal for ComplexBetaAnimal {
+    type Id = Id<U51>;
     type Generation = U0;
     type State = ComplexBetaState;
     type Seed = i32;
@@ -1883,27 +1704,6 @@ impl Observe for ComplexBetaAnimal {
     fn observe(state: &Self::State) -> Self::Appearance {
         *state
     }
-}
-
-impl jungle_sdk::types::Observable for ComplexBetaAnimal {
-    type Observation = jungle_sdk::types::ObserveObservation;
-}
-
-impl jungle_sdk::types::Perturbable for ComplexBetaAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for ComplexBetaAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<
-        jungle_sdk::typosaurus::num::consts::U51,
-        ComplexBetaAnimal,
-    >;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ComplexBetaAnimal {
-    type Id = jungle_sdk::typosaurus::num::consts::U51;
 }
 
 #[derive(Animals)]

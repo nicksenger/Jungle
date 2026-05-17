@@ -1,3 +1,8 @@
+use jungle_sdk::typosaurus::num::consts::*;
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use serde::{Deserialize, Serialize};
+use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
@@ -19,7 +24,7 @@ struct SleepState {
 
 struct AddEffect;
 impl EffectSchema for AddEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
+    type Id = Id<U40>;
     type In = ();
     type Out = i32;
     type Err = ();
@@ -119,10 +124,10 @@ type SleepJourney = While<
 
 struct SleepAnimal;
 
-#[jungle_sdk::animal(observe)]
-impl jungle_sdk::types::Animal for SleepAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal(observe)]
+impl Animal for SleepAnimal {
+    type Id = Id<U0>;
+    type Generation = U0;
     type State = SleepState;
     type Seed = SleepState;
     type Journey = SleepJourney;

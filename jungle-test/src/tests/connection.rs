@@ -1,3 +1,8 @@
+use jungle_sdk::typosaurus::num::consts::*;
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use jungle_sdk::effect;
+use jungle_sdk::animal;
 use futures::StreamExt;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{
@@ -12,9 +17,9 @@ use uuid::Uuid;
 
 struct ConnectionEffect7;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U80>;
+    type Id = Id<U80>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -29,10 +34,10 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
 
 struct ConnectionAnimal7;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for ConnectionAnimal7 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for ConnectionAnimal7 {
+    type Id = Id<U7>;
+    type Generation = U0;
     type State = ();
     type Seed = ();
     type Journey = ConnectionJourney7;
@@ -60,9 +65,9 @@ struct ConnectionJourney7(jungle_sdk::types::Step<ConnectionAnimal7, ConnectionS
 
 struct ConnectionEffect9;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U81>;
+    type Id = Id<U81>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -77,10 +82,10 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
 
 struct ConnectionAnimal9;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for ConnectionAnimal9 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U9>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for ConnectionAnimal9 {
+    type Id = Id<U9>;
+    type Generation = U0;
     type State = ();
     type Seed = ();
     type Journey = ConnectionJourney9;

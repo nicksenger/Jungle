@@ -1,11 +1,12 @@
+use jungle_sdk::typosaurus::num::consts::U90;
+use jungle_sdk::effect;
 use jungle_sdk::types::{EffectExec, EffectSchema, Effects, Id, Identified};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::collections::sp::Node;
-use jungle_sdk::typosaurus::num::consts::U90;
 
 struct AutoPrimitiveEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for AutoPrimitiveEffect {
     type Id = Id<U90>;
     type In = i32;

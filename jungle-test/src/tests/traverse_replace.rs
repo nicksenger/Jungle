@@ -1,15 +1,17 @@
+use jungle_sdk::effect;
+use jungle_sdk::animal;
 use jungle_sdk::types::{
-    Act, Conditional, EffectCompletion, Identity, LoopCondition, ReplaceStep, Step, TraverseStep,
-    While,
+    Act, Animal, Conditional, EffectCompletion, Id, Identity, LoopCondition, ReplaceStep, Step,
+    TraverseStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::{U20, U21, U22, U23, U24};
+use jungle_sdk::typosaurus::num::consts::{U0, U20, U21, U22, U23, U24};
 
 struct TraverseAEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for TraverseAEffect {
-    type Id = jungle_sdk::types::Id<U20>;
+    type Id = Id<U20>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -23,9 +25,9 @@ impl<J> jungle_sdk::types::Effect<J> for TraverseAEffect {
 }
 struct TraverseBEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for TraverseBEffect {
-    type Id = jungle_sdk::types::Id<U21>;
+    type Id = Id<U21>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -39,9 +41,9 @@ impl<J> jungle_sdk::types::Effect<J> for TraverseBEffect {
 }
 struct TraverseCEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for TraverseCEffect {
-    type Id = jungle_sdk::types::Id<U22>;
+    type Id = Id<U22>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -55,9 +57,9 @@ impl<J> jungle_sdk::types::Effect<J> for TraverseCEffect {
 }
 struct TraverseDEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for TraverseDEffect {
-    type Id = jungle_sdk::types::Id<U23>;
+    type Id = Id<U23>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -159,35 +161,28 @@ impl ReplaceStep<Step<TraverseAnimal, StepB>> for ReplaceMapper {
 
 #[test]
 fn traverse_and_replace_are_type_level_transformations() {
-    type Traversed = jungle_sdk::types::Traversed<SourceFlow, TraverseMapper>;
+    type TraversedFlow = jungle_sdk::types::Traversed<SourceFlow, TraverseMapper>;
     type ExpectedTraversed = Conditional<
         KeepLooping,
         Seen<Step<TraverseAnimal, StepA>>,
         While<KeepLooping, Seen<Step<TraverseAnimal, StepB>>>,
     >;
-    assert_type_eq!(Traversed, ExpectedTraversed);
+    assert_type_eq!(TraversedFlow, ExpectedTraversed);
 
-    type Replace = jungle_sdk::types::Replace<SourceFlow, ReplaceMapper>;
+    type ReplacedFlow = jungle_sdk::types::Replace<SourceFlow, ReplaceMapper>;
     type ExpectedReplaced = Conditional<
         KeepLooping,
         Step<TraverseAnimal, StepC>,
         While<KeepLooping, Step<TraverseAnimal, StepD>>,
     >;
-    assert_type_eq!(Replace, ExpectedReplaced);
+    assert_type_eq!(ReplacedFlow, ExpectedReplaced);
 }
 
-impl jungle_sdk::types::Animal for TraverseAnimal {
-    type Id = jungle_sdk::types::Id<U24>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for TraverseAnimal {
+    type Id = Id<U24>;
+    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = SourceFlow;
-}
-
-impl jungle_sdk::types::Observable for TraverseAnimal {
-    type Observation = jungle_sdk::types::NoopObservation;
-}
-
-impl jungle_sdk::types::Perturbable for TraverseAnimal {
-    type Perturbation = jungle_sdk::types::NoopPerturbation;
 }

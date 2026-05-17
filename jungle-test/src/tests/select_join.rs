@@ -1,3 +1,8 @@
+use jungle_sdk::typosaurus::num::consts::*;
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use serde::{Deserialize, Serialize};
+use jungle_sdk::animal;
 use jungle_sdk::types::{
     Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
     Join, Select, Sleep, Step,
@@ -17,7 +22,7 @@ struct SelectJoinState {
 
 struct TimedValueEffect;
 impl EffectSchema for TimedValueEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U60>;
+    type Id = Id<U60>;
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
@@ -37,7 +42,7 @@ impl<J> EffectExec<J> for TimedValueEffect {
 
 struct ContextTimedValueEffect;
 impl EffectSchema for ContextTimedValueEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U61>;
+    type Id = Id<U61>;
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
@@ -120,10 +125,10 @@ struct SelectJourney(
 
 struct SelectAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for SelectAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for SelectAnimal {
+    type Id = Id<U0>;
+    type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
     type Journey = SelectJourney;
@@ -191,10 +196,10 @@ struct JoinJourney(
 
 struct JoinAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for JoinAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for JoinAnimal {
+    type Id = Id<U1>;
+    type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
     type Journey = JoinJourney;
@@ -240,10 +245,10 @@ type TimeoutJourney = Select<Step<TimeoutAnimal, TimeoutSleep>, Step<TimeoutAnim
 
 struct TimeoutAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for TimeoutAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for TimeoutAnimal {
+    type Id = Id<U2>;
+    type Generation = U0;
     type State = SelectJoinState;
     type Seed = SelectJoinState;
     type Journey = TimeoutJourney;

@@ -1,8 +1,13 @@
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use serde::{Deserialize, Serialize};
+use jungle_sdk::effect;
+use jungle_sdk::animal;
 use jungle_sdk::types::{
     Act, EffectCompletion, Identity, Running, StateLens, Step, ViewProject, Waiting,
 };
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U72, U73, U74, U75};
+use jungle_sdk::typosaurus::num::consts::{U0, U9, U72, U73, U74, U75};
 use jungle_sdk::Optic;
 
 #[derive(
@@ -50,9 +55,9 @@ struct IoArg {
 
 struct EchoI32;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
-    type Id = jungle_sdk::types::Id<U72>;
+    type Id = Id<U72>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -66,9 +71,9 @@ impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
 }
 struct SumPair;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for SumPair {
-    type Id = jungle_sdk::types::Id<U73>;
+    type Id = Id<U73>;
     type In = (i32, i32);
     type Out = i32;
     type Err = ();
@@ -82,9 +87,9 @@ impl<J> jungle_sdk::types::Effect<J> for SumPair {
 }
 struct EchoPair;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for EchoPair {
-    type Id = jungle_sdk::types::Id<U74>;
+    type Id = Id<U74>;
     type In = (i32, i32);
     type Out = (i32, i32);
     type Err = ();
@@ -98,9 +103,9 @@ impl<J> jungle_sdk::types::Effect<J> for EchoPair {
 }
 struct EchoRootState;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
-    type Id = jungle_sdk::types::Id<U75>;
+    type Id = Id<U75>;
     type In = RootState;
     type Out = RootState;
     type Err = ();
@@ -168,10 +173,10 @@ impl Act<OpticAnimal> for RootStatePulse {
 
 struct OpticAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for OpticAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U9>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for OpticAnimal {
+    type Id = Id<U9>;
+    type Generation = U0;
     type State = RootState;
     type Seed = RootState;
     type Journey = Step<OpticAnimal, LensOnBranch>;

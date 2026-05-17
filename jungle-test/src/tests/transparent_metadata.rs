@@ -1,15 +1,19 @@
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use jungle_sdk::effect;
+use jungle_sdk::animal;
 use jungle_sdk::types::{
     Act, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst, JourneyAstSource,
     ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
 };
-use jungle_sdk::typosaurus::num::consts::{U30, U31};
+use jungle_sdk::typosaurus::num::consts::{U0, U30, U31};
 use std::future::ready;
 
 struct TransparentEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
-    type Id = jungle_sdk::types::Id<U30>;
+    type Id = Id<U30>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -24,10 +28,10 @@ impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
 
 struct TransparentAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for TransparentAnimal {
-    type Id = jungle_sdk::types::Id<U31>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for TransparentAnimal {
+    type Id = Id<U31>;
+    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = TransparentJourney;

@@ -1,3 +1,8 @@
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use serde::{Deserialize, Serialize};
+use jungle_sdk::effect;
+use jungle_sdk::animal;
 use jungle_sdk::types::{
     Act, EffectCompletion, Executor, Identity, LoopCondition, ManualExecutor, Running, Step,
     Waiting, While,
@@ -8,9 +13,9 @@ use std::future::ready;
 
 struct TickEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for TickEffect {
-    type Id = jungle_sdk::types::Id<U0>;
+    type Id = Id<U0>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -25,10 +30,10 @@ impl<J> jungle_sdk::types::Effect<J> for TickEffect {
 
 struct Looper;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Looper {
-    type Id = jungle_sdk::types::Id<U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for Looper {
+    type Id = Id<U0>;
+    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = LoopJourney;
@@ -69,9 +74,9 @@ struct LoopJourney(WhileTickFlow);
 
 struct TailEchoEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for TailEchoEffect {
-    type Id = jungle_sdk::types::Id<U1>;
+    type Id = Id<U1>;
     type In = (bool, i32);
     type Out = (bool, i32);
     type Err = ();
@@ -86,10 +91,10 @@ impl<J> jungle_sdk::types::Effect<J> for TailEchoEffect {
 
 struct LooperWithTail;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for LooperWithTail {
-    type Id = jungle_sdk::types::Id<U1>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for LooperWithTail {
+    type Id = Id<U1>;
+    type Generation = U0;
     type State = i32;
     type Seed = i32;
     type Journey = LoopWithTailJourney;
@@ -143,9 +148,9 @@ struct LoopWithTailJourney(WhileTickWithTailFlow, Step<LooperWithTail, TailAfter
 
 struct UnitEffect;
 
-#[jungle_sdk::effect]
+#[effect]
 impl<J> jungle_sdk::types::Effect<J> for UnitEffect {
-    type Id = jungle_sdk::types::Id<U2>;
+    type Id = Id<U2>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -167,10 +172,10 @@ struct NestedState {
 
 struct NestedLooper;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for NestedLooper {
-    type Id = jungle_sdk::types::Id<U2>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for NestedLooper {
+    type Id = Id<U2>;
+    type Generation = U0;
     type State = NestedState;
     type Seed = NestedState;
     type Journey = NestedLoopJourney;

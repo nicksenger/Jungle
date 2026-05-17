@@ -1,3 +1,8 @@
+use jungle_sdk::typosaurus::num::consts::*;
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use serde::{Deserialize, Serialize};
+use jungle_sdk::animal;
 use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
@@ -47,7 +52,7 @@ struct IntegrationState {
 struct AddOneEffect;
 
 impl EffectSchema for AddOneEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
+    type Id = Id<U1>;
     type In = ();
     type Out = i32;
     type Err = ();
@@ -65,7 +70,7 @@ impl<J> EffectExec<J> for AddOneEffect {
 struct AddTwoEffect;
 
 impl EffectSchema for AddTwoEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
+    type Id = Id<U2>;
     type In = ();
     type Out = i32;
     type Err = ();
@@ -119,7 +124,7 @@ impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
 struct AddOneFocusedStep;
 impl Act<IntegrationAnimal> for AddOneFocusedStep {
     type Effect = AddOneEffect;
-    type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type StateAspect = StateLens<IntegrationState, list![U1]>;
     type Input = ();
     type Output = ();
 
@@ -134,7 +139,7 @@ impl Act<IntegrationAnimal> for AddOneFocusedStep {
 struct AddTwoFocusedStep;
 impl Act<IntegrationAnimal> for AddTwoFocusedStep {
     type Effect = AddTwoEffect;
-    type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
+    type StateAspect = StateLens<IntegrationState, list![U1]>;
     type Input = ();
     type Output = ();
 
@@ -152,8 +157,8 @@ impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
     type StateAspect = StateLens<
         IntegrationState,
         list![
-            jungle_sdk::typosaurus::num::consts::U1,
-            jungle_sdk::typosaurus::num::consts::U0
+            U1,
+            U0
         ],
     >;
     type Input = ();
@@ -173,8 +178,8 @@ impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
     type StateAspect = StateLens<
         IntegrationState,
         list![
-            jungle_sdk::typosaurus::num::consts::U1,
-            jungle_sdk::typosaurus::num::consts::U0
+            U1,
+            U0
         ],
     >;
     type Input = ();
@@ -336,10 +341,10 @@ type IntegrationJourney = While<
 
 struct IntegrationAnimal;
 
-#[jungle_sdk::animal(observe, perturb)]
-impl jungle_sdk::types::Animal for IntegrationAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal(observe, perturb)]
+impl Animal for IntegrationAnimal {
+    type Id = Id<U0>;
+    type Generation = U0;
     type State = IntegrationState;
     type Seed = IntegrationState;
     type Journey = IntegrationJourney;

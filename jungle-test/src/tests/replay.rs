@@ -1,3 +1,8 @@
+use jungle_sdk::typosaurus::num::consts::*;
+use jungle_sdk::types::Id;
+use jungle_sdk::types::Animal;
+use serde::{Deserialize, Serialize};
+use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
@@ -30,7 +35,7 @@ struct ReplayGateZoo {
 
 struct ReplayPreIncrementEffect;
 impl EffectSchema for ReplayPreIncrementEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U41>;
+    type Id = Id<U41>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -57,7 +62,7 @@ impl EffectExec<ReplayGateZoo> for ReplayPreIncrementEffect {
 
 struct ReplayPostIncrementEffect;
 impl EffectSchema for ReplayPostIncrementEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U42>;
+    type Id = Id<U42>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -84,7 +89,7 @@ impl EffectExec<ReplayGateZoo> for ReplayPostIncrementEffect {
 
 struct ReplayGateEffect;
 impl EffectSchema for ReplayGateEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U43>;
+    type Id = Id<U43>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -118,7 +123,7 @@ impl EffectExec<ReplayGateZoo> for ReplayGateEffect {
 struct ReplayPreStep;
 impl<A> Act<A> for ReplayPreStep
 where
-    A: jungle_sdk::types::Animal<State = ReplayGateState>,
+    A: Animal<State = ReplayGateState>,
 {
     type Effect = ReplayPreIncrementEffect;
     type StateAspect = Identity;
@@ -136,7 +141,7 @@ where
 struct ReplayPostStep;
 impl<A> Act<A> for ReplayPostStep
 where
-    A: jungle_sdk::types::Animal<State = ReplayGateState>,
+    A: Animal<State = ReplayGateState>,
 {
     type Effect = ReplayPostIncrementEffect;
     type StateAspect = Identity;
@@ -154,7 +159,7 @@ where
 struct ReplayGateStep;
 impl<A> Act<A> for ReplayGateStep
 where
-    A: jungle_sdk::types::Animal<State = ReplayGateState>,
+    A: Animal<State = ReplayGateState>,
 {
     type Effect = ReplayGateEffect;
     type StateAspect = Identity;
@@ -223,7 +228,7 @@ impl ActionSpec for ReplayPreSpec {
     type Effect = ReplayPreIncrementEffect;
     type Input = ();
     type Output = ();
-    type Act<A: jungle_sdk::types::Animal> = ReplayPreStep;
+    type Act<A: Animal> = ReplayPreStep;
 }
 
 struct ReplayGateSpec;
@@ -231,7 +236,7 @@ impl ActionSpec for ReplayGateSpec {
     type Effect = ReplayGateEffect;
     type Input = ();
     type Output = ();
-    type Act<A: jungle_sdk::types::Animal> = ReplayGateStep;
+    type Act<A: Animal> = ReplayGateStep;
 }
 
 struct ReplayPostSpec;
@@ -239,7 +244,7 @@ impl ActionSpec for ReplayPostSpec {
     type Effect = ReplayPostIncrementEffect;
     type Input = ();
     type Output = ();
-    type Act<A: jungle_sdk::types::Animal> = ReplayPostStep;
+    type Act<A: Animal> = ReplayPostStep;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -249,10 +254,10 @@ type ReplayGateJourney = <ReplayGateTemplate as BindAnimal<ReplayGateAnimal>>::B
 
 struct ReplayGateAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for ReplayGateAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for ReplayGateAnimal {
+    type Id = Id<U0>;
+    type Generation = U0;
     type State = ReplayGateState;
     type Seed = ReplayGateState;
     type Journey = ReplayGateJourney;
@@ -410,7 +415,7 @@ struct ReplayTimeoutZoo {
 
 struct ReplayTimeoutPreIncrementEffect;
 impl EffectSchema for ReplayTimeoutPreIncrementEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U44>;
+    type Id = Id<U44>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -438,7 +443,7 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
 
 struct ReplayTimeoutPostIncrementEffect;
 impl EffectSchema for ReplayTimeoutPostIncrementEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U45>;
+    type Id = Id<U45>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -466,7 +471,7 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
 struct ReplayTimeoutPreStep;
 impl<A> Act<A> for ReplayTimeoutPreStep
 where
-    A: jungle_sdk::types::Animal<State = ReplayTimeoutState>,
+    A: Animal<State = ReplayTimeoutState>,
 {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type StateAspect = Identity;
@@ -484,7 +489,7 @@ where
 struct ReplayTimeoutSleepStep;
 impl<A> Act<A> for ReplayTimeoutSleepStep
 where
-    A: jungle_sdk::types::Animal<State = ReplayTimeoutState>,
+    A: Animal<State = ReplayTimeoutState>,
 {
     type Effect = Sleep;
     type StateAspect = Identity;
@@ -504,7 +509,7 @@ where
 struct ReplayTimeoutPostStep;
 impl<A> Act<A> for ReplayTimeoutPostStep
 where
-    A: jungle_sdk::types::Animal<State = ReplayTimeoutState>,
+    A: Animal<State = ReplayTimeoutState>,
 {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type StateAspect = Identity;
@@ -524,7 +529,7 @@ impl ActionSpec for ReplayTimeoutPreSpec {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type Input = ();
     type Output = ();
-    type Act<A: jungle_sdk::types::Animal> = ReplayTimeoutPreStep;
+    type Act<A: Animal> = ReplayTimeoutPreStep;
 }
 
 struct ReplayTimeoutSleepSpec;
@@ -532,7 +537,7 @@ impl ActionSpec for ReplayTimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
-    type Act<A: jungle_sdk::types::Animal> = ReplayTimeoutSleepStep;
+    type Act<A: Animal> = ReplayTimeoutSleepStep;
 }
 
 struct ReplayTimeoutPostSpec;
@@ -540,7 +545,7 @@ impl ActionSpec for ReplayTimeoutPostSpec {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type Input = ();
     type Output = ();
-    type Act<A: jungle_sdk::types::Animal> = ReplayTimeoutPostStep;
+    type Act<A: Animal> = ReplayTimeoutPostStep;
 }
 
 #[derive(jungle_sdk::FlowTemplate)]
@@ -552,10 +557,10 @@ type ReplayTimeoutJourney = <ReplayTimeoutTemplate as BindAnimal<ReplayTimeoutAn
 
 struct ReplayTimeoutAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for ReplayTimeoutAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[animal]
+impl Animal for ReplayTimeoutAnimal {
+    type Id = Id<U0>;
+    type Generation = U0;
     type State = ReplayTimeoutState;
     type Seed = ReplayTimeoutState;
     type Journey = ReplayTimeoutJourney;
