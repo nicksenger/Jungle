@@ -1,3 +1,11 @@
+mod animals;
+mod assets;
+mod audio;
+mod effects;
+mod flow;
+mod instruments;
+mod ui;
+
 use cpal::traits::{DeviceTrait, HostTrait};
 
 fn main() {
