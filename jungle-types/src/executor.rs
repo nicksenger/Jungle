@@ -1612,15 +1612,83 @@ impl<State> BuildFlow<DynFlow<State>> for list::Empty {
     }
 }
 
-impl<State, Head, Tail> BuildFlow<DynFlow<State>> for TList<(Head, Tail)>
+macro_rules! dynflow_list_chain {
+    ($h:ty) => {
+        TList<($h, list::Empty)>
+    };
+    ($h:ty, $($rest:ty),+) => {
+        TList<($h, dynflow_list_chain!($($rest),+))>
+    };
+}
+macro_rules! dynflow_list_chain_tail {
+    ($h:ty ; $tail:ty) => {
+        TList<($h, $tail)>
+    };
+    ($h:ty, $($rest:ty),+ ; $tail:ty) => {
+        TList<($h, dynflow_list_chain_tail!($($rest),+ ; $tail))>
+    };
+}
+
+macro_rules! build_flow_len_impl {
+    ($h0:ident) => {
+        impl<State, $h0> BuildFlow<DynFlow<State>> for dynflow_list_chain!($h0)
+        where
+            $h0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+        {
+            type Output = DynFlow<State>;
+
+            fn push_steps(steps: DynFlow<State>) -> Self::Output {
+                <$h0 as BuildFlow<DynFlow<State>>>::push_steps(steps)
+            }
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<State, $h0, $($rest,)+> BuildFlow<DynFlow<State>>
+            for dynflow_list_chain!($h0, $($rest),+)
+        where
+            $h0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+            dynflow_list_chain!($($rest),+): BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+        {
+            type Output = DynFlow<State>;
+
+            fn push_steps(steps: DynFlow<State>) -> Self::Output {
+                let steps = <$h0 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+                <dynflow_list_chain!($($rest),+) as BuildFlow<DynFlow<State>>>::push_steps(steps)
+            }
+        }
+    };
+}
+build_flow_len_impl!(H0);
+build_flow_len_impl!(H0; H1);
+build_flow_len_impl!(H0; H1, H2);
+build_flow_len_impl!(H0; H1, H2, H3);
+build_flow_len_impl!(H0; H1, H2, H3, H4);
+build_flow_len_impl!(H0; H1, H2, H3, H4, H5);
+build_flow_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<State, H0, H1, H2, H3, H4, H5, H6, H7, Tail> BuildFlow<DynFlow<State>>
+    for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H1: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H2: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H3: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H4: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H5: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H6: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H7: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     Tail: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(steps: DynFlow<State>) -> Self::Output {
-        let steps = <Head as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H0 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H1 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H2 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H3 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H4 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H5 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H6 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H7 as BuildFlow<DynFlow<State>>>::push_steps(steps);
         <Tail as BuildFlow<DynFlow<State>>>::push_steps(steps)
     }
 }
@@ -1798,10 +1866,90 @@ impl<Context, State> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for li
     }
 }
 
-impl<Context, State, Head, Tail> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for TList<(Head, Tail)>
+macro_rules! build_flow_with_context_len_impl {
+    ($h0:ident) => {
+        impl<Context, State, $h0> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+            for dynflow_list_chain!($h0)
+        where
+            $h0: BuildFlowWithContext<
+                (Arc<Context>, DynFlow<State>),
+                Output = (Arc<Context>, DynFlow<State>),
+            >,
+        {
+            type Output = (Arc<Context>, DynFlow<State>);
+
+            fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+                <$h0 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
+            }
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<Context, State, $h0, $($rest,)+> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+            for dynflow_list_chain!($h0, $($rest),+)
+        where
+            $h0: BuildFlowWithContext<
+                (Arc<Context>, DynFlow<State>),
+                Output = (Arc<Context>, DynFlow<State>),
+            >,
+            dynflow_list_chain!($($rest),+): BuildFlowWithContext<
+                (Arc<Context>, DynFlow<State>),
+                Output = (Arc<Context>, DynFlow<State>),
+            >,
+        {
+            type Output = (Arc<Context>, DynFlow<State>);
+
+            fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+                let input =
+                    <$h0 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
+                        input,
+                    );
+                <dynflow_list_chain!($($rest),+) as BuildFlowWithContext<
+                    (Arc<Context>, DynFlow<State>),
+                >>::push_steps(input)
+            }
+        }
+    };
+}
+build_flow_with_context_len_impl!(H0);
+build_flow_with_context_len_impl!(H0; H1);
+build_flow_with_context_len_impl!(H0; H1, H2);
+build_flow_with_context_len_impl!(H0; H1, H2, H3);
+build_flow_with_context_len_impl!(H0; H1, H2, H3, H4);
+build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5);
+build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<Context, State, H0, H1, H2, H3, H4, H5, H6, H7, Tail>
+    BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: BuildFlowWithContext<
+    H0: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H1: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H2: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H3: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H4: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H5: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H6: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H7: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
     >,
@@ -1813,8 +1961,14 @@ where
     type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let input =
-            <Head as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H0 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H1 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H2 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H3 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H4 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H5 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H6 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H7 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
         <Tail as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
     }
 }
