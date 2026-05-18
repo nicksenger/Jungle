@@ -1,11 +1,6 @@
-use jungle_sdk::prelude::*;
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::prelude::*;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, EffectCompletion, JourneyStatus, LoopCondition,
-    Observe, Sleep, Step, While,
-};
 use jungle_sdk::{Animals, JungleClient, Optic};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -20,7 +15,7 @@ pub struct SleepState {
 
 pub struct AddEffect;
 #[jungle::effect(id = 40)]
-impl<J> jungle_sdk::types::Effect<J> for AddEffect {
+impl<J> Effect<J> for AddEffect {
     type In = ();
     type Out = i32;
     type Err = ();

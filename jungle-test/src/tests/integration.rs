@@ -1,12 +1,7 @@
-use jungle_sdk::prelude::*;
 use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::prelude::*;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, JourneyStatus,
-    LoopCondition, Observe, Perturb, StateCarrier, Step, While,
-};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
 use serde::{Deserialize, Serialize};
@@ -61,7 +56,7 @@ impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
 pub struct AddOneEffect;
 
 #[jungle::effect(id = 1)]
-impl<J> jungle_sdk::types::Effect<J> for AddOneEffect {
+impl<J> Effect<J> for AddOneEffect {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -77,7 +72,7 @@ impl<J> jungle_sdk::types::Effect<J> for AddOneEffect {
 pub struct AddTwoEffect;
 
 #[jungle::effect(id = 2)]
-impl<J> jungle_sdk::types::Effect<J> for AddTwoEffect {
+impl<J> Effect<J> for AddTwoEffect {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -740,7 +735,10 @@ fn replaced_alias_rewrites_integration_flow_steps() {
     >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
-        BoundFlowStep<IntegrationAnimal, <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>>,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
         Conditional<
             UseFirstBeforeFullStateTask,
             BoundFlowStep<
@@ -768,8 +766,10 @@ fn replaced_nodes_alias_replaces_loop_branch_section() {
             >,
         >,
     >;
-    type Expected =
-        BoundFlowStep<IntegrationAnimal, <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>>;
+    type Expected = BoundFlowStep<
+        IntegrationAnimal,
+        <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>,
+    >;
     assert_type_eq!(Actual, Expected);
 }
 

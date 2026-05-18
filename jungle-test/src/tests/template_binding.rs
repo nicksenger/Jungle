@@ -1,20 +1,13 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, BindAnimal, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion,
-    Either, Identity, Join, JourneyStatus, Lens, LoopCondition, ManualExecutor, NodeMetadata,
-    Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, Step, Transparent, TraverseFlow,
-    TraverseStep, While,
-};
 use jungle_sdk::typosaurus::assert_type_eq;
-use num::*;
 use jungle_sdk::{Animals, JungleClient, Optic};
+use num::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub struct TemplateAddEffect;
 #[jungle::effect(id = 40)]
-impl<J> jungle_sdk::types::Effect<J> for TemplateAddEffect {
+impl<J> Effect<J> for TemplateAddEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -29,7 +22,7 @@ impl<J> jungle_sdk::types::Effect<J> for TemplateAddEffect {
 
 pub struct TemplateCommitEffect;
 #[jungle::effect(id = 41)]
-impl<J> jungle_sdk::types::Effect<J> for TemplateCommitEffect {
+impl<J> Effect<J> for TemplateCommitEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -463,7 +456,7 @@ trait RequiresContextBump {
 
 pub struct ContextBoundEffect;
 #[jungle::effect(id = 53)]
-impl<J> jungle_sdk::types::Effect<J> for ContextBoundEffect
+impl<J> Effect<J> for ContextBoundEffect
 where
     J: RequiresContextBump,
 {
@@ -1220,7 +1213,7 @@ struct ComplexBetaState {
 
 pub struct ComplexTimedEffect;
 #[jungle::effect(id = 49)]
-impl<J> jungle_sdk::types::Effect<J> for ComplexTimedEffect {
+impl<J> Effect<J> for ComplexTimedEffect {
     type In = (u64, i32);
     type Out = i32;
     type Err = ();

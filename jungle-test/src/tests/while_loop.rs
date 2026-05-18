@@ -1,16 +1,11 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, BoundFlowStep, EffectCompletion, Executor, LoopCondition, ManualExecutor, Running, Step,
-    Waiting, While,
-};
 use serde::{Deserialize, Serialize};
 use std::future::ready;
 
 pub struct TickEffect;
 
 #[jungle::effect(id = 0)]
-impl<J> jungle_sdk::types::Effect<J> for TickEffect {
+impl<J> Effect<J> for TickEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -68,7 +63,7 @@ pub struct LoopFlowTemplate(While<LessThanThree, Step<TickSpec>>);
 pub struct TailEchoEffect;
 
 #[jungle::effect(id = 1)]
-impl<J> jungle_sdk::types::Effect<J> for TailEchoEffect {
+impl<J> Effect<J> for TailEchoEffect {
     type In = (bool, i32);
     type Out = (bool, i32);
     type Err = ();
@@ -113,12 +108,15 @@ impl Act for TailAfterLoopSpec {
 }
 
 #[derive(Flow)]
-pub struct LoopWithTailFlowTemplate(While<LessThanThree, Step<TickSpec>>, Step<TailAfterLoopSpec>);
+pub struct LoopWithTailFlowTemplate(
+    While<LessThanThree, Step<TickSpec>>,
+    Step<TailAfterLoopSpec>,
+);
 
 pub struct UnitEffect;
 
 #[jungle::effect(id = 2)]
-impl<J> jungle_sdk::types::Effect<J> for UnitEffect {
+impl<J> Effect<J> for UnitEffect {
     type In = ();
     type Out = ();
     type Err = ();
@@ -196,7 +194,10 @@ impl Act for FinishOuterRoundSpec {
 }
 
 #[derive(Flow)]
-pub struct NestedOuterBodyTemplate(While<InnerContinue, Step<InnerWorkSpec>>, Step<FinishOuterRoundSpec>);
+pub struct NestedOuterBodyTemplate(
+    While<InnerContinue, Step<InnerWorkSpec>>,
+    Step<FinishOuterRoundSpec>,
+);
 
 #[derive(Flow)]
 pub struct NestedLoopFlowTemplate(While<OuterContinue, NestedOuterBodyTemplate>);

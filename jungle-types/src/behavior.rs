@@ -628,16 +628,13 @@ where
     ScopeCarrier: Aspect<T::State>,
     S: Act,
     S: ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>,
-    <S as ScopedAct<
-        T,
-        <ScopeCarrier as StateCarrier<T::State>>::Focus,
-        ScopeCarrier,
-    >>::BoundAct: BoundAct<
-        T,
-        Input = <S as Act>::Input,
-        Output = <S as Act>::Output,
-        Effect = <S as Act>::Effect,
-    >,
+    <S as ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>>::BoundAct:
+        BoundAct<
+            T,
+            Input = <S as Act>::Input,
+            Output = <S as Act>::Output,
+            Effect = <S as Act>::Effect,
+        >,
 {
     type Output = BoundFlowStep<
         T,

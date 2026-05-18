@@ -1,8 +1,4 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, ContextExecutor, EffectCompletion, Either, Executor, Join, Select, Sleep, Step,
-};
 use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -17,7 +13,7 @@ pub struct SelectJoinState {
 
 pub struct TimedValueEffect;
 #[jungle::effect(id = 60)]
-impl<J> jungle_sdk::types::Effect<J> for TimedValueEffect {
+impl<J> Effect<J> for TimedValueEffect {
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
@@ -36,7 +32,7 @@ impl<J> jungle_sdk::types::Effect<J> for TimedValueEffect {
 
 pub struct ContextTimedValueEffect;
 #[jungle::effect(id = 61)]
-impl<J> jungle_sdk::types::Effect<J> for ContextTimedValueEffect {
+impl<J> Effect<J> for ContextTimedValueEffect {
     type In = (u64, i32);
     type Out = i32;
     type Err = ();

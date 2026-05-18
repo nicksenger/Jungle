@@ -1,5 +1,4 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::{Effect, EffectIdentified, EffectSchema, Effects, Id};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::collections::sp::Node;
 use num::U90;
@@ -7,7 +6,7 @@ use num::U90;
 struct AutoPrimitiveEffect;
 
 #[jungle::effect(id = 90)]
-impl<J> jungle_sdk::types::Effect<J> for AutoPrimitiveEffect {
+impl<J> Effect<J> for AutoPrimitiveEffect {
     type In = i32;
     type Out = i32;
     type Err = ();

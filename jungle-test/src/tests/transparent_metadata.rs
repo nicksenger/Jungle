@@ -1,15 +1,10 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, Conditional, EffectCompletion, Executor, Join, JourneyAst, JourneyAstSource,
-    ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
-};
 use std::future::ready;
 
 pub struct TransparentEffect;
 
 #[jungle::effect(id = 30)]
-impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
+impl<J> Effect<J> for TransparentEffect {
     type In = i32;
     type Out = i32;
     type Err = ();

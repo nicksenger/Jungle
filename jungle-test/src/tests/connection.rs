@@ -1,8 +1,6 @@
-use jungle_sdk::prelude::*;
 use futures::StreamExt;
+use jungle_sdk::prelude::*;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{Act, EffectCompletion, Step};
 use jungle_sdk::{
     BackendError, ClaimedPerturbable, JourneyStatus, JungleClient, MockServer, RunnerOut,
     RunnerUpdateOut, SupportedAnimal, WireIn, WireOut, Work,
@@ -16,7 +14,7 @@ use uuid::Uuid;
 pub struct ConnectionEffect7;
 
 #[jungle::effect(id = 80)]
-impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
+impl<J> Effect<J> for ConnectionEffect7 {
     type In = ();
     type Out = ();
     type Err = ();
@@ -58,7 +56,7 @@ pub struct ConnectionFlowTemplate7(Step<ConnectionStepSpec7>);
 pub struct ConnectionEffect9;
 
 #[jungle::effect(id = 81)]
-impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
+impl<J> Effect<J> for ConnectionEffect9 {
     type In = ();
     type Out = ();
     type Err = ();

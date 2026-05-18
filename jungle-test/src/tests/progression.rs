@@ -1,17 +1,10 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types as jungle_types;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, BoundAct, BoundFlowStep, Condition, Conditional, ContextExecutor,
-    EffectCompletion, Effect, EffectRequest, EffectSchema, Executor, Identity,
-    ManualExecutor, Running, Step, Waiting,
-};
 use std::future::ready;
 use std::sync::Arc;
 
 pub struct SeedEffect;
 #[jungle::effect(id = 0)]
-impl<J> jungle_sdk::types::Effect<J> for SeedEffect {
+impl<J> Effect<J> for SeedEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -26,7 +19,7 @@ impl<J> jungle_sdk::types::Effect<J> for SeedEffect {
 
 pub struct FinishEffect;
 #[jungle::effect(id = 1)]
-impl<J> jungle_sdk::types::Effect<J> for FinishEffect {
+impl<J> Effect<J> for FinishEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -210,7 +203,7 @@ fn context_executor_progresses_multi_step_derived_journey() {
 
 pub struct BranchEffect;
 #[jungle::effect(id = 2)]
-impl<J> jungle_sdk::types::Effect<J> for BranchEffect {
+impl<J> Effect<J> for BranchEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -265,12 +258,14 @@ impl Condition<(i32, ())> for UseDerivedBranch {
 #[derive(Flow)]
 pub struct DerivedBranchFlowTemplate(Step<BranchStepASpec>, Step<BranchStepBSpec>);
 
-type DerivedBranchFlow = jungle_types::BoundFlow<DerivedBranchFlowTemplate, BranchAnimal>;
+type DerivedBranchFlow = BoundFlow<DerivedBranchFlowTemplate, BranchAnimal>;
 
 #[derive(Flow)]
-pub struct BranchFlowTemplate(Conditional<UseDerivedBranch, DerivedBranchFlowTemplate, Step<BranchStepBSpec>>);
+pub struct BranchFlowTemplate(
+    Conditional<UseDerivedBranch, DerivedBranchFlowTemplate, Step<BranchStepBSpec>>,
+);
 
-type BranchBoundFlow = jungle_types::BoundFlow<BranchFlowTemplate, BranchAnimal>;
+type BranchBoundFlow = BoundFlow<BranchFlowTemplate, BranchAnimal>;
 
 pub struct BranchAnimal;
 
@@ -287,9 +282,9 @@ pub struct BranchContext;
 fn context_executor_accepts_conditional_with_derived_multistep_branch() {
     fn assert_context_flow<F>()
     where
-        F: jungle_types::BuildFlowWithContext<
-            (Arc<BranchContext>, jungle_types::DynFlow<i32>),
-            Output = (Arc<BranchContext>, jungle_types::DynFlow<i32>),
+        F: BuildFlowWithContext<
+            (Arc<BranchContext>, DynFlow<i32>),
+            Output = (Arc<BranchContext>, DynFlow<i32>),
         >,
     {
     }

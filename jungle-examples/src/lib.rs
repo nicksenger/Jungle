@@ -1,10 +1,7 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::effect;
+use jungle_sdk::prelude::*;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::{
-    Animal, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion,
-    Id, Identity, LoopCondition, Observe, Sleep, While,
-};
 use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::{Animals, Flow, JungleClient, Optic};
 use serde::{Deserialize, Serialize};
@@ -47,7 +44,7 @@ pub struct ObserveState {
 
 pub struct BumpEffect;
 #[effect(id = 14)]
-impl<J> jungle_sdk::types::Effect<J> for BumpEffect {
+impl<J> Effect<J> for BumpEffect {
     type In = ();
     type Out = ();
     type Err = ();

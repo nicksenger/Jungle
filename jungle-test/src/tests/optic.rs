@@ -1,9 +1,4 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, BoundAct, BoundFlowStep, EffectCompletion, Identity, Running, StateCarrier, Step,
-    ViewProject, Waiting,
-};
 use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +38,7 @@ pub struct IoArg {
 pub struct EchoI32;
 
 #[jungle::effect(id = 72)]
-impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
+impl<J> Effect<J> for EchoI32 {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -59,7 +54,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
 pub struct SumPair;
 
 #[jungle::effect(id = 73)]
-impl<J> jungle_sdk::types::Effect<J> for SumPair {
+impl<J> Effect<J> for SumPair {
     type In = (i32, i32);
     type Out = i32;
     type Err = ();
@@ -75,7 +70,7 @@ impl<J> jungle_sdk::types::Effect<J> for SumPair {
 pub struct EchoPair;
 
 #[jungle::effect(id = 74)]
-impl<J> jungle_sdk::types::Effect<J> for EchoPair {
+impl<J> Effect<J> for EchoPair {
     type In = (i32, i32);
     type Out = (i32, i32);
     type Err = ();
@@ -91,7 +86,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoPair {
 pub struct EchoRootState;
 
 #[jungle::effect(id = 75)]
-impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
+impl<J> Effect<J> for EchoRootState {
     type In = RootState;
     type Out = RootState;
     type Err = ();
@@ -153,7 +148,6 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
     }
 
     fn absorb(_view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        
         output.expect("echo root should succeed")
     }
 }
@@ -200,10 +194,10 @@ fn seed_state() -> RootState {
 
 #[test]
 fn state_lens_single_index_short_flow() {
-    let (state, request) = <BoundFlowStep<
-        OpticAnimal,
-        <LensOnBranchSpec as Act>::Bind<OpticAnimal>,
-    > as Running>::run((seed_state(), 3));
+    let (state, request) =
+        <BoundFlowStep<OpticAnimal, <LensOnBranchSpec as Act>::Bind<OpticAnimal>> as Running>::run(
+            (seed_state(), 3),
+        );
     assert_eq!(request.into_input(), 7);
 
     let (state, emitted) = <BoundFlowStep<

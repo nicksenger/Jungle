@@ -5,9 +5,7 @@ use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{Cluster, Graph, OutgoingEdgeStyle, Sugiyama};
 use jungle_client::JungleClient;
-use jungle_types::{
-    Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut,
-};
+use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};

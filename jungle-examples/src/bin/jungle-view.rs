@@ -1,7 +1,7 @@
 use iced::widget::{button, column, container, text};
 use iced::{Color, Element, Length, Task};
 use jungle_sdk::core::JungleWorker;
-use jungle_sdk::types::RunnerUpdateOut;
+use jungle_sdk::prelude::*;
 use jungle_sdk::{JungleClient, LocalClient};
 use jungle_viewer::{
     AnyAnimal, ClusterKind, ClusterView, ClusterViewCtx, EdgeStyle, EdgeStyleCtx, JunglePanelTheme,
@@ -304,9 +304,7 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         event: ViewerEvent<Self::Message>,
     ) -> Task<ViewerEvent<Self::Message>> {
         let now = Instant::now();
-        let guard = state
-            .get_mut()
-            .expect("example theme state mutex poisoned");
+        let guard = state.get_mut().expect("example theme state mutex poisoned");
         let mut should_tick = false;
 
         match event {
@@ -615,7 +613,6 @@ fn next_tick() -> Task<ViewerEvent<()>> {
     Task::perform(
         async move {
             tokio::time::sleep(ANIMATION_TICK).await;
-            
         },
         ViewerEvent::Message,
     )

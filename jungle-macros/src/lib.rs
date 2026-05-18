@@ -617,10 +617,7 @@ impl Parse for ActAttributes {
             }
         }
 
-        Ok(Self {
-            aspect,
-            bind,
-        })
+        Ok(Self { aspect, bind })
     }
 }
 

@@ -1,6 +1,5 @@
 use crate::{
-    Animal, Aspect, BoundAct, EffectCompletion, Effect, EffectSchema, Id, Identity,
-    StateCarrier,
+    Animal, Aspect, BoundAct, Effect, EffectCompletion, EffectSchema, Id, Identity, StateCarrier,
 };
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;

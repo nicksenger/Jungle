@@ -104,12 +104,10 @@ where
                         };
                         out.map(|_| RunnerChannelResponse::Ack)
                     }
-                    RunnerChannelMessage::ClaimPerturbable { journey_id } => {
-                        client_for_transport
-                            .claim_animal_perturbation(journey_id)
-                            .await
-                            .map(RunnerChannelResponse::ClaimedPerturbation)
-                    }
+                    RunnerChannelMessage::ClaimPerturbable { journey_id } => client_for_transport
+                        .claim_animal_perturbation(journey_id)
+                        .await
+                        .map(RunnerChannelResponse::ClaimedPerturbation),
                     RunnerChannelMessage::AckPerturbable {
                         journey_id,
                         perturbation_id,
@@ -123,8 +121,7 @@ where
         });
 
         let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
-        let supported_animals =
-            <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
+        let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
 
         loop {
             for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
@@ -163,14 +160,14 @@ where
             }
 
             match self.client.poll_work(supported_animals.clone()).await? {
-                    Some(Work::StartJourney {
-                        journey_id,
-                        animal_id,
-                        generation,
-                        seed,
-                    }) => {
-                        let history = self.client.journey_history(journey_id).await?;
-                        match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
+                Some(Work::StartJourney {
+                    journey_id,
+                    animal_id,
+                    generation,
+                    seed,
+                }) => {
+                    let history = self.client.journey_history(journey_id).await?;
+                    match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
                         animal_id,
                         generation,
                         seed,
@@ -209,13 +206,13 @@ where
                     }
                 }
                 Some(Work::ResumeJourney {
-                        journey_id,
-                        animal_id,
-                        generation,
-                        seed,
-                    }) => {
-                        let history = self.client.journey_history(journey_id).await?;
-                        match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
+                    journey_id,
+                    animal_id,
+                    generation,
+                    seed,
+                }) => {
+                    let history = self.client.journey_history(journey_id).await?;
+                    match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
                         animal_id,
                         generation,
                         seed,

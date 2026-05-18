@@ -107,7 +107,10 @@ all_from_len_impl!(A0; A1, A2, A3, A4);
 all_from_len_impl!(A0; A1, A2, A3, A4, A5);
 all_from_len_impl!(A0; A1, A2, A3, A4, A5, A6);
 impl<T, A0, A1, A2, A3, A4, A5, A6, A7, Tail> AllFrom<T>
-    for list::List<(A0, all_from_list_chain_tail!(A1, A2, A3, A4, A5, A6, A7 ; Tail))>
+    for list::List<(
+        A0,
+        all_from_list_chain_tail!(A1, A2, A3, A4, A5, A6, A7 ; Tail),
+    )>
 where
     T: Into<A0>,
     T: Into<A1>,

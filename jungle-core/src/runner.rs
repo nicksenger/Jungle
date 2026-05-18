@@ -2,9 +2,8 @@ use futures::channel::oneshot;
 use futures::SinkExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow,
-    ExecutorError, Observable, ObservationBridge, Perturbable, PerturbationBridge, RunnerOut,
-    Sleep,
+    BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError,
+    Observable, ObservationBridge, Perturbable, PerturbationBridge, RunnerOut, Sleep,
 };
 use serde::Serialize;
 use std::sync::Arc;

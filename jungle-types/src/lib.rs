@@ -12,8 +12,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, Aspect, BoundAct, BoundFlowStep, EffectCompletion, Effect, EffectRequest,
-    EffectSchema, Identity, ScopeReboundAct, ScopedAct, ScopedAnimal, StateCarrier, Step,
+    Act, Aspect, BoundAct, BoundFlowStep, Effect, EffectCompletion, EffectRequest, EffectSchema,
+    Identity, ScopeReboundAct, ScopedAct, ScopedAnimal, StateCarrier, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -26,11 +26,11 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    AllFrom, AnimalEffectCompatible, AnimalEffectMembers, AnimalIdValue,
-    AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
-    AnimalVersionIdentitiesUnique, AnimalVersions, EffectIdentity, EffectMember, EffectSet,
-    Generations, GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals,
-    IdValue, StripAnimalHeaders, StripEffectHeaders, WithEffectFor,
+    AllFrom, AnimalEffectCompatible, AnimalEffectMembers, AnimalIdValue, AnimalMember, AnimalSet,
+    AnimalStates, AnimalStatesCompatible, AnimalVersion, AnimalVersionIdentitiesUnique,
+    AnimalVersions, EffectIdentity, EffectMember, EffectSet, Generations, GenerationsForAnimals,
+    HighestGeneration, HighestGenerationForAnimals, IdValue, StripAnimalHeaders,
+    StripEffectHeaders, WithEffectFor,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -569,7 +569,10 @@ where
     Head: JourneyEffects,
     Tail: JourneyEffects,
 {
-    type List = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>;
+    type List = TList<(
+        <Head as JourneyEffects>::List,
+        <Tail as JourneyEffects>::List,
+    )>;
 }
 
 /// Leaf-level hook used by [`TraverseWith`] at `Step` nodes.
@@ -840,8 +843,7 @@ traverse_with_len_impl!(H0; H1, H2, H3);
 traverse_with_len_impl!(H0; H1, H2, H3, H4);
 traverse_with_len_impl!(H0; H1, H2, H3, H4, H5);
 traverse_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
-impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Traversal> TraverseWith<Traversal>
-    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Traversal> TraverseWith<Traversal> for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     H0: TraverseWith<Traversal>,
     H1: TraverseWith<Traversal>,
@@ -895,8 +897,7 @@ replace_with_len_impl!(H0; H1, H2, H3);
 replace_with_len_impl!(H0; H1, H2, H3, H4);
 replace_with_len_impl!(H0; H1, H2, H3, H4, H5);
 replace_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
-impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceWith<Replacer>
-    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceWith<Replacer> for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     H0: ReplaceWith<Replacer>,
     H1: ReplaceWith<Replacer>,
@@ -950,8 +951,7 @@ replace_nodes_with_len_impl!(H0; H1, H2, H3);
 replace_nodes_with_len_impl!(H0; H1, H2, H3, H4);
 replace_nodes_with_len_impl!(H0; H1, H2, H3, H4, H5);
 replace_nodes_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
-impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceNodesWith<Replacer>
-    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceNodesWith<Replacer> for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     H0: ReplaceNodesWith<Replacer>,
     H1: ReplaceNodesWith<Replacer>,

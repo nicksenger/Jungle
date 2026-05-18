@@ -1,5 +1,5 @@
-use jungle_sdk::prelude::*;
 use super::support::maybe_delay;
+use jungle_sdk::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DigestiveDependency {
@@ -19,7 +19,7 @@ impl Default for DigestiveDependency {
 pub struct Eat;
 
 #[jungle::effect(id = 10)]
-impl<J> jungle_sdk::types::Effect<J> for Eat {
+impl<J> Effect<J> for Eat {
     type In = u16;
     type Out = u16;
     type Err = String;
@@ -39,7 +39,7 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
 pub struct UseTool;
 
 #[jungle::effect(id = 14)]
-impl<J> jungle_sdk::types::Effect<J> for UseTool {
+impl<J> Effect<J> for UseTool {
     type In = bool;
     type Out = String;
     type Err = String;
@@ -63,7 +63,7 @@ impl<J> jungle_sdk::types::Effect<J> for UseTool {
 pub struct PeelFruit;
 
 #[jungle::effect(id = 16)]
-impl<J> jungle_sdk::types::Effect<J> for PeelFruit {
+impl<J> Effect<J> for PeelFruit {
     type In = (u8, u16);
     type Out = u16;
     type Err = String;

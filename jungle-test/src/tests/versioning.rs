@@ -1,21 +1,17 @@
-use jungle_sdk::prelude::*;
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::prelude::*;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::{
-    Act, Animal, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id, JourneyStatus,
-    Observe, Step, SupportedAnimal,
-};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use num::{U0, U1, U33};
 use jungle_sdk::{Animals, JungleClient};
+use num::{U0, U1, U33};
 use std::net::SocketAddr;
 use std::time::Duration;
 
 pub struct LegacyEffect;
 
 #[jungle::effect(id = 70)]
-impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
+impl<J> Effect<J> for LegacyEffect {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -31,7 +27,7 @@ impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
 pub struct ModernEffect;
 
 #[jungle::effect(id = 71)]
-impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
+impl<J> Effect<J> for ModernEffect {
     type In = ();
     type Out = i32;
     type Err = ();

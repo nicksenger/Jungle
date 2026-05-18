@@ -1,6 +1,6 @@
-use jungle_sdk::prelude::*;
 use super::support::maybe_delay;
 use crate::state::{AgeState, DailyActivity, LifePhase, PerceivedTimeOfDay, TimePerception};
+use jungle_sdk::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TemporalDependency {
@@ -41,7 +41,7 @@ fn next_time_of_day(time_of_day: PerceivedTimeOfDay) -> PerceivedTimeOfDay {
 pub struct AdvanceAge;
 
 #[jungle::effect(id = 50)]
-impl<J> jungle_sdk::types::Effect<J> for AdvanceAge {
+impl<J> Effect<J> for AdvanceAge {
     type In = u8;
     type Out = AgeState;
     type Err = String;
@@ -70,7 +70,7 @@ impl<J> jungle_sdk::types::Effect<J> for AdvanceAge {
 pub struct TickPerceivedTime;
 
 #[jungle::effect(id = 51)]
-impl<J> jungle_sdk::types::Effect<J> for TickPerceivedTime {
+impl<J> Effect<J> for TickPerceivedTime {
     type In = (PerceivedTimeOfDay, u16);
     type Out = TimePerception;
     type Err = String;
@@ -102,7 +102,7 @@ impl<J> jungle_sdk::types::Effect<J> for TickPerceivedTime {
 pub struct EvaluateActivityWindow;
 
 #[jungle::effect(id = 52)]
-impl<J> jungle_sdk::types::Effect<J> for EvaluateActivityWindow {
+impl<J> Effect<J> for EvaluateActivityWindow {
     type In = (DailyActivity, PerceivedTimeOfDay);
     type Out = bool;
     type Err = String;
@@ -136,7 +136,7 @@ impl<J> jungle_sdk::types::Effect<J> for EvaluateActivityWindow {
 pub struct CelebrateBirthday;
 
 #[jungle::effect(id = 53)]
-impl<J> jungle_sdk::types::Effect<J> for CelebrateBirthday {
+impl<J> Effect<J> for CelebrateBirthday {
     type In = AgeState;
     type Out = AgeState;
     type Err = String;
@@ -168,7 +168,7 @@ impl<J> jungle_sdk::types::Effect<J> for CelebrateBirthday {
 pub struct Birth;
 
 #[jungle::effect(id = 54)]
-impl<J> jungle_sdk::types::Effect<J> for Birth {
+impl<J> Effect<J> for Birth {
     type In = AgeState;
     type Out = AgeState;
     type Err = String;
