@@ -10,3 +10,6 @@ jungle-client = { path = "../jungle-client" }
 jungle-types = { path = "../jungle-types" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 uuid = { workspace = true }
+
+[lints]
+workspace = true

@@ -20,3 +20,6 @@ uuid = { workspace = true }
 [[bin]]
 name = "jungle-view"
 path = "src/bin/jungle-view.rs"
+
+[lints]
+workspace = true

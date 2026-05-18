@@ -12,3 +12,6 @@ serde = { workspace = true }
 jungle-types = { path = "../jungle-types" }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk" }
 tokio = { version = "1", features = ["time"], optional = true }
+
+[lints]
+workspace = true
