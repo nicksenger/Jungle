@@ -29,7 +29,7 @@ impl<J> jungle_sdk::types::EffectExec<J> for ProbeEffect {
 //}
 
 pub struct ProbeStepSpec;
-#[jungle_sdk::act(bind_vis = pub)]
+#[jungle_sdk::act]
 impl jungle_sdk::types::Act for ProbeStepSpec {
     type Effect = ProbeEffect;
     type Input = ();

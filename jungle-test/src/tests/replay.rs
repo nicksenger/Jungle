@@ -171,7 +171,7 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
 >;
 
 struct ReplayPreSpec;
-#[act]
+#[act(private)]
 impl Act for ReplayPreSpec {
     type Effect = ReplayPreIncrementEffect;
     type Input = ();
@@ -186,7 +186,7 @@ impl Act for ReplayPreSpec {
 }
 
 struct ReplayGateSpec;
-#[act]
+#[act(private)]
 impl Act for ReplayGateSpec {
     type Effect = ReplayGateEffect;
     type Input = ();
@@ -201,7 +201,7 @@ impl Act for ReplayGateSpec {
 }
 
 struct ReplayPostSpec;
-#[act]
+#[act(private)]
 impl Act for ReplayPostSpec {
     type Effect = ReplayPostIncrementEffect;
     type Input = ();
@@ -435,7 +435,7 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
 }
 
 struct ReplayTimeoutPreSpec;
-#[act]
+#[act(private)]
 impl Act for ReplayTimeoutPreSpec {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type Input = ();
@@ -453,7 +453,7 @@ impl Act for ReplayTimeoutPreSpec {
 }
 
 struct ReplayTimeoutSleepSpec;
-#[act]
+#[act(private)]
 impl Act for ReplayTimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
@@ -473,7 +473,7 @@ impl Act for ReplayTimeoutSleepSpec {
 }
 
 struct ReplayTimeoutPostSpec;
-#[act]
+#[act(private)]
 impl Act for ReplayTimeoutPostSpec {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type Input = ();

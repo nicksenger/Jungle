@@ -241,7 +241,7 @@ impl Act for GorillaEatSpec {
 }
 
 struct GorillaSleepManualSpec;
-#[act]
+#[act(private)]
 impl Act for GorillaSleepManualSpec {
     type Effect = Sleep;
     type Input = i32;

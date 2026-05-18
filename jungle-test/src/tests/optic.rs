@@ -159,7 +159,7 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
 struct OpticAnimal;
 
 struct LensOnBranchSpec;
-#[act(aspect = BranchCarrier)]
+#[act(aspect = BranchCarrier, private)]
 impl Act for LensOnBranchSpec {
     type Effect = EchoI32;
     type Input = i32;

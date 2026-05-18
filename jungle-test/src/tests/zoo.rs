@@ -320,7 +320,7 @@ impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
 }
 
 struct RunnerStepOneSpec;
-#[act]
+#[act(private)]
 impl Act for RunnerStepOneSpec {
     type Effect = RunnerStepOneEffect;
     type Input = ();
@@ -334,7 +334,7 @@ impl Act for RunnerStepOneSpec {
 }
 
 struct RunnerStepTwoSpec;
-#[act]
+#[act(private)]
 impl Act for RunnerStepTwoSpec {
     type Effect = RunnerStepTwoEffect;
     type Input = ();

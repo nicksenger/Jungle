@@ -549,7 +549,7 @@ impl Parse for EffectAttributes {
 
 struct ActAttributes {
     aspect: Option<Type>,
-    bind_vis: Option<Visibility>,
+    private_bind: bool,
 }
 
 impl Parse for ActAttributes {
@@ -557,31 +557,35 @@ impl Parse for ActAttributes {
         if input.is_empty() {
             return Ok(Self {
                 aspect: None,
-                bind_vis: None,
+                private_bind: false,
             });
         }
 
         let mut aspect = None;
-        let mut bind_vis = None;
+        let mut private_bind = false;
 
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
-            input.parse::<Token![=]>()?;
-
-            if key == "aspect" {
+            if key == "private" {
+                if private_bind {
+                    return Err(syn::Error::new_spanned(key, "Duplicate `private` setting."));
+                }
+                private_bind = true;
+            } else if key == "aspect" {
+                input.parse::<Token![=]>()?;
                 if aspect.is_some() {
                     return Err(syn::Error::new_spanned(key, "Duplicate `aspect` setting."));
                 }
                 aspect = Some(input.parse::<Type>()?);
             } else if key == "bind_vis" {
-                if bind_vis.is_some() {
-                    return Err(syn::Error::new_spanned(key, "Duplicate `bind_vis` setting."));
-                }
-                bind_vis = Some(input.parse::<Visibility>()?);
+                return Err(syn::Error::new_spanned(
+                    key,
+                    "`bind_vis` has been removed. Default generated bind visibility is public; add `private` to opt into private bind visibility.",
+                ));
             } else {
                 return Err(syn::Error::new_spanned(
                     key,
-                    "Unknown `act` setting. Supported: `aspect = ...`, `bind_vis = ...`.",
+                    "Unknown `act` setting. Supported: `aspect = ...`, `private`.",
                 ));
             }
 
@@ -595,7 +599,10 @@ impl Parse for ActAttributes {
             }
         }
 
-        Ok(Self { aspect, bind_vis })
+        Ok(Self {
+            aspect,
+            private_bind,
+        })
     }
 }
 
@@ -1322,7 +1329,11 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     let types = jungle_types_path();
     let default_aspect: Type = parse_quote!(#types::Identity);
     let aspect_ty = attrs.aspect.unwrap_or(default_aspect);
-    let bind_vis = attrs.bind_vis.unwrap_or(Visibility::Inherited);
+    let bind_vis: Visibility = if attrs.private_bind {
+        Visibility::Inherited
+    } else {
+        parse_quote!(pub)
+    };
 
     let bind_assoc: ImplItem = parse_quote! {
         type Bind<A: #types::Animal> = #bound_ident<A>;

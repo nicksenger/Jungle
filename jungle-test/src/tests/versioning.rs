@@ -47,7 +47,7 @@ impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
 }
 
 struct LegacyStepSpec;
-#[act]
+#[act(private)]
 impl Act for LegacyStepSpec {
     type Effect = LegacyEffect;
     type Input = i32;
@@ -61,7 +61,7 @@ impl Act for LegacyStepSpec {
 }
 
 struct ModernStepSpec;
-#[act]
+#[act(private)]
 impl Act for ModernStepSpec {
     type Effect = ModernEffect;
     type Input = i32;

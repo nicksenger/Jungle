@@ -50,7 +50,7 @@ impl Animal for ConditionalAnimal {
 }
 
 struct LeftSpec;
-#[act]
+#[act(private)]
 impl Act for LeftSpec {
     type Effect = LeftEffect;
     type Input = i32;
@@ -68,7 +68,7 @@ impl Act for LeftSpec {
 }
 
 struct RightSpec;
-#[act]
+#[act(private)]
 impl Act for RightSpec {
     type Effect = RightEffect;
     type Input = i32;

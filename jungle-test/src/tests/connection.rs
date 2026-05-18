@@ -41,7 +41,7 @@ impl Animal for ConnectionAnimal7 {
 }
 
 struct ConnectionStepSpec7;
-#[act]
+#[act(private)]
 impl Act for ConnectionStepSpec7 {
     type Effect = ConnectionEffect7;
     type Input = ();
@@ -83,7 +83,7 @@ impl Animal for ConnectionAnimal9 {
 }
 
 struct ConnectionStepSpec9;
-#[act]
+#[act(private)]
 impl Act for ConnectionStepSpec9 {
     type Effect = ConnectionEffect9;
     type Input = ();

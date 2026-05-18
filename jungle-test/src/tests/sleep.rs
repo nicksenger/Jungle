@@ -62,7 +62,7 @@ impl Condition<(SleepState, ())> for SleepPhaseOne {
 }
 
 struct AddBeforeSleepSpec;
-#[act]
+#[act(private)]
 impl Act for AddBeforeSleepSpec {
     type Effect = AddEffect;
     type Input = ();
@@ -77,7 +77,7 @@ impl Act for AddBeforeSleepSpec {
 }
 
 struct SleepForStateWakeSpec;
-#[act]
+#[act(private)]
 impl Act for SleepForStateWakeSpec {
     type Effect = Sleep;
     type Input = ();
@@ -94,7 +94,7 @@ impl Act for SleepForStateWakeSpec {
 }
 
 struct AddAfterSleepSpec;
-#[act]
+#[act(private)]
 impl Act for AddAfterSleepSpec {
     type Effect = AddEffect;
     type Input = ();

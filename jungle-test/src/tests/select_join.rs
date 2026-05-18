@@ -60,7 +60,7 @@ impl<J> EffectExec<J> for ContextTimedValueEffect {
 }
 
 struct SelectFastSpec;
-#[act]
+#[act(private)]
 impl Act for SelectFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -79,7 +79,7 @@ impl Act for SelectFastSpec {
 }
 
 struct SelectSlowSpec;
-#[act]
+#[act(private)]
 impl Act for SelectSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -98,7 +98,7 @@ impl Act for SelectSlowSpec {
 }
 
 struct CaptureSelectWinnerSpec;
-#[act]
+#[act(private)]
 impl Act for CaptureSelectWinnerSpec {
     type Effect = TimedValueEffect;
     type Input = Either<i32, i32>;
@@ -132,7 +132,7 @@ impl Animal for SelectAnimal {
 }
 
 struct JoinFastSpec;
-#[act]
+#[act(private)]
 impl Act for JoinFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -151,7 +151,7 @@ impl Act for JoinFastSpec {
 }
 
 struct JoinSlowSpec;
-#[act]
+#[act(private)]
 impl Act for JoinSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -170,7 +170,7 @@ impl Act for JoinSlowSpec {
 }
 
 struct CaptureJoinSumSpec;
-#[act]
+#[act(private)]
 impl Act for CaptureJoinSumSpec {
     type Effect = TimedValueEffect;
     type Input = (i32, i32);
@@ -201,7 +201,7 @@ impl Animal for JoinAnimal {
 }
 
 struct TimeoutSleepSpec;
-#[act]
+#[act(private)]
 impl Act for TimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
@@ -219,7 +219,7 @@ impl Act for TimeoutSleepSpec {
 }
 
 struct TimeoutSlowSpec;
-#[act]
+#[act(private)]
 impl Act for TimeoutSlowSpec {
     type Effect = ContextTimedValueEffect;
     type Input = ();

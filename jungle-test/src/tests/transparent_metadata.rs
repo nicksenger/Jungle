@@ -34,7 +34,7 @@ impl Animal for TransparentAnimal {
 }
 
 struct TransparentStepSpec;
-#[act]
+#[act(private)]
 impl Act for TransparentStepSpec {
     type Effect = TransparentEffect;
     type Input = i32;

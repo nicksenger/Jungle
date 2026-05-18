@@ -35,7 +35,7 @@ impl Animal for Looper {
 }
 
 struct TickSpec;
-#[act]
+#[act(private)]
 impl Act for TickSpec {
     type Effect = TickEffect;
     type Input = i32;
@@ -93,7 +93,7 @@ impl Animal for LooperWithTail {
 }
 
 struct TailAfterLoopSpec;
-#[act]
+#[act(private)]
 impl Act for TailAfterLoopSpec {
     type Effect = TailEchoEffect;
     type Input = (bool, i32);
@@ -168,7 +168,7 @@ impl LoopCondition<NestedState> for OuterContinue {
 }
 
 struct InnerWorkSpec;
-#[act]
+#[act(private)]
 impl Act for InnerWorkSpec {
     type Effect = UnitEffect;
     type Input = ();
@@ -182,7 +182,7 @@ impl Act for InnerWorkSpec {
 }
 
 struct FinishOuterRoundSpec;
-#[act]
+#[act(private)]
 impl Act for FinishOuterRoundSpec {
     type Effect = UnitEffect;
     type Input = ();

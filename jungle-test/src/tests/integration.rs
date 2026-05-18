@@ -156,7 +156,7 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
 }
 
 struct AddOneBeforeFullStateSpec;
-#[act]
+#[act(private)]
 impl Act for AddOneBeforeFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -174,7 +174,7 @@ impl Act for AddOneBeforeFullStateSpec {
 }
 
 struct AddTwoBeforeFullStateSpec;
-#[act]
+#[act(private)]
 impl Act for AddTwoBeforeFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -192,7 +192,7 @@ impl Act for AddTwoBeforeFullStateSpec {
 }
 
 struct AddOneFocusedSpec;
-#[act(aspect = IntegrationFocusedCarrier)]
+#[act(aspect = IntegrationFocusedCarrier, private)]
 impl Act for AddOneFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -207,7 +207,7 @@ impl Act for AddOneFocusedSpec {
 }
 
 struct AddTwoFocusedSpec;
-#[act(aspect = IntegrationFocusedCarrier)]
+#[act(aspect = IntegrationFocusedCarrier, private)]
 impl Act for AddTwoFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -222,7 +222,7 @@ impl Act for AddTwoFocusedSpec {
 }
 
 struct AddOneDeepFocusedSpec;
-#[act(aspect = IntegrationDeepFocusedCarrier)]
+#[act(aspect = IntegrationDeepFocusedCarrier, private)]
 impl Act for AddOneDeepFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -237,7 +237,7 @@ impl Act for AddOneDeepFocusedSpec {
 }
 
 struct AddTwoDeepFocusedSpec;
-#[act(aspect = IntegrationDeepFocusedCarrier)]
+#[act(aspect = IntegrationDeepFocusedCarrier, private)]
 impl Act for AddTwoDeepFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -252,7 +252,7 @@ impl Act for AddTwoDeepFocusedSpec {
 }
 
 struct AddOneAfterFullStateSpec;
-#[act]
+#[act(private)]
 impl Act for AddOneAfterFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -270,7 +270,7 @@ impl Act for AddOneAfterFullStateSpec {
 }
 
 struct AddTwoAfterFullStateSpec;
-#[act]
+#[act(private)]
 impl Act for AddTwoAfterFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();

@@ -46,7 +46,7 @@ impl<J> EffectExec<J> for FinishEffect {
 }
 
 struct SeedSpec;
-#[act]
+#[act(private)]
 impl Act for SeedSpec {
     type Effect = SeedEffect;
     type Input = i32;
@@ -64,7 +64,7 @@ impl Act for SeedSpec {
 }
 
 struct FinishSpec;
-#[act]
+#[act(private)]
 impl Act for FinishSpec {
     type Effect = FinishEffect;
     type Input = i32;
@@ -232,7 +232,7 @@ impl<J> EffectExec<J> for BranchEffect {
 }
 
 struct BranchStepASpec;
-#[act]
+#[act(private)]
 impl Act for BranchStepASpec {
     type Effect = BranchEffect;
     type Input = ();
@@ -248,7 +248,7 @@ impl Act for BranchStepASpec {
 }
 
 struct BranchStepBSpec;
-#[act]
+#[act(private)]
 impl Act for BranchStepBSpec {
     type Effect = BranchEffect;
     type Input = ();
