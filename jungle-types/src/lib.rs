@@ -12,9 +12,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, ActionSpec, Aspect, EffectCompletion, EffectExec, EffectRequest, EffectSchema, Identity,
-    ScopeReboundAct, ScopedActionSpec, ScopedAnimal, StateCarrier, StateLens, Step, StepSpec,
-    UStep,
+    Act, Aspect, BoundAct, BoundFlowStep, EffectCompletion, Effect, EffectRequest,
+    EffectSchema, Identity, ScopeReboundAct, ScopedAct, ScopedAnimal, StateCarrier, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -27,14 +26,14 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    AllFrom, AnimalEffectExecCompatible, AnimalEffectMembers, AnimalEffectSet, AnimalIdValue,
+    AllFrom, AnimalEffectCompatible, AnimalEffectMembers, AnimalIdValue,
     AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
     AnimalVersionIdentitiesUnique, AnimalVersions, EffectIdentity, EffectMember, EffectSet,
     Generations, GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals,
-    StripAnimalHeaders, StripEffectHeaders, WithEffectExecFor,
+    IdValue, StripAnimalHeaders, StripEffectHeaders, WithEffectFor,
 };
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 pub use sleep::{Sleep, SleepError, SleepStep};
 use std::marker::PhantomData;
 pub use transport::{
@@ -45,10 +44,11 @@ pub use transport::{ClaimedPerturbable, OwnerWake, SupportedAnimal};
 use typosaurus::collections::list::{self, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
+use typosaurus::num::{Bit, UInt, UTerm, Unsigned};
 pub use view::{BuildJourneyAst, JourneyAst, JourneyAstSource, JungleJourneyAst};
 
 /// A tagged union over two possible outputs.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Either<L, R> {
     Left(L),
     Right(R),
@@ -118,10 +118,83 @@ impl<State, View> StateCarrier<State> for ViewCarrier<View>
 where
     State: ViewProject<View>,
 {
-    type View = View;
+    type Focus = View;
 
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
         <State as ViewProject<View>>::project_view(state)
+    }
+}
+
+/// Index-based field projection contract used by [`Lens`].
+pub trait LensIndex<Index> {
+    type View;
+
+    fn lens_index<'a>(state: &'a mut Self) -> &'a mut Self::View;
+}
+
+/// Recursive path projection over nested optic fields.
+pub trait LensPath<Path> {
+    type View;
+
+    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View;
+}
+
+impl<State> LensPath<list::List<()>> for State {
+    type View = State;
+
+    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+        state
+    }
+}
+
+/// Marker for numeric lens indexes (`U0`, `U1`, `U2`, ...).
+pub trait LensNumber: Unsigned {}
+
+impl LensNumber for UTerm {}
+impl<U, B> LensNumber for UInt<U, B>
+where
+    U: Unsigned,
+    B: Bit,
+{
+}
+
+impl<State, Index> LensPath<Index> for State
+where
+    Index: LensNumber,
+    State: LensIndex<Index>,
+{
+    type View = <State as LensIndex<Index>>::View;
+
+    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+        <State as LensIndex<Index>>::lens_index(state)
+    }
+}
+
+impl<State, Head, Tail> LensPath<list::List<(Head, Tail)>> for State
+where
+    Head: LensNumber,
+    State: LensIndex<Head>,
+    <State as LensIndex<Head>>::View: LensPath<Tail>,
+{
+    type View = <<State as LensIndex<Head>>::View as LensPath<Tail>>::View;
+
+    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+        let inner = <State as LensIndex<Head>>::lens_index(state);
+        <<State as LensIndex<Head>>::View as LensPath<Tail>>::lens_path(inner)
+    }
+}
+
+/// Generic state carrier that projects by a type-level index or index path.
+pub struct Lens<S, P>(PhantomData<S>, PhantomData<P>);
+
+impl<State, Path> StateCarrier<State> for Lens<State, Path>
+where
+    State: LensPath<Path>,
+{
+    type Focus = <State as LensPath<Path>>::View;
+
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+        <State as LensPath<Path>>::lens_path(state)
     }
 }
 
@@ -176,7 +249,10 @@ pub trait Animal {
     /// Serializable seed used to initialize the first step input of this animal's journey.
     type Seed: Serialize + DeserializeOwned;
 
-    /// The fundamental behavior of this Animal.
+    /// The fundamental behavior template of this Animal.
+    ///
+    /// Framework/runtime sites bind this to the concrete animal via [`BindAnimal`]
+    /// before execution.
     type Journey;
 }
 
@@ -264,51 +340,236 @@ pub trait Perturbable: Animal + Sized {
     type Perturbation: PerturbationBridge<Self>;
 }
 
-#[inception(property = Ident, types)]
-pub trait Identified {
+#[inception(property = AnimalIdent, types, no_blanket)]
+pub trait AnimalIdentified {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as Identified>::Id, <Tail as Identified>::Id)>,
-        merge_variant = TList<(<Head as Identified>::Id, <Tail as Identified>::Id)>,
-        join = TList<(U0, <Fields as Identified>::Id)>
+        merge = TList<(<Head as AnimalIdentified>::Id, <Tail as AnimalIdentified>::Id)>,
+        merge_variant = TList<(<Head as AnimalIdentified>::Id, <Tail as AnimalIdentified>::Id)>,
+        join = TList<(U0, <Fields as AnimalIdentified>::Id)>
+    )]
+    type Id;
+}
+
+#[inception(property = EffectIdent, types, no_blanket)]
+pub trait EffectIdentified {
+    #[induce(
+        base = list::Empty,
+        merge = TList<(<Head as EffectIdentified>::Id, <Tail as EffectIdentified>::Id)>,
+        merge_variant = TList<(<Head as EffectIdentified>::Id, <Tail as EffectIdentified>::Id)>,
+        join = TList<(U0, <Fields as EffectIdentified>::Id)>
     )]
     type Id;
 }
 
 /// Any collection of [`Animal`]s with a flat type-level list of members.
-#[inception(property = JungleAnimals, types)]
+#[inception(property = JungleAnimals, types, no_blanket)]
 pub trait Animals {
     #[induce(
         base = list::Empty,
         merge = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
         merge_variant = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Animals>::List)> where { Self: Identified }
+        join = TList<(Node<<Self as AnimalIdentified>::Id, ()>, <Fields as Animals>::List)> where { Self: AnimalIdentified }
     )]
     type List;
 }
 
 /// Any collection of [`Effect`]s with a flat type-level list of members.
-#[inception(property = JungleEffects, types)]
+#[inception(property = JungleEffects, types, no_blanket)]
 pub trait Effects {
     #[induce(
         base = list::Empty,
         merge = TList<(<Head as Effects>::List, <Tail as Effects>::List)>,
         merge_variant = TList<(<Head as Effects>::List, <Tail as Effects>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Effects>::List)> where { Self: Identified }
+        join = TList<(Node<<Self as EffectIdentified>::Id, ()>, <Fields as Effects>::List)> where { Self: EffectIdentified }
     )]
     type List;
 }
 
+#[primitive(property = AnimalIdent)]
+impl<T> Compat<T> for AnimalIdent
+where
+    T: Animal,
+    T::Id: IdValue,
+{
+    type Out = True;
+}
+
+#[doc(hidden)]
+pub trait AnimalIdentDispatch<P, T> {
+    type Id;
+}
+
+impl<T> AnimalIdentDispatch<True, T> for ()
+where
+    T: Animal,
+    T::Id: IdValue,
+{
+    type Id = <T::Id as IdValue>::Value;
+}
+
+impl<T> AnimalIdentDispatch<False, T> for ()
+where
+    T: Inception<AnimalIdent> + Meta,
+    __inception_animal_identified::Wrap<<T as Inception<AnimalIdent>>::TyFields>:
+        __inception_animal_identified::__InceptionInduceId<False>,
+{
+    type Id = <__inception_animal_identified::Wrap<
+        <T as Inception<AnimalIdent>>::TyFields,
+    > as __inception_animal_identified::__InceptionInduceId<False>>::Ret;
+}
+
+impl<T> AnimalIdentified for T
+where
+    T: IsPrimitive<AnimalIdent>,
+    (): AnimalIdentDispatch<<T as IsPrimitive<AnimalIdent>>::Is, T>,
+{
+    type Id = <() as AnimalIdentDispatch<<T as IsPrimitive<AnimalIdent>>::Is, T>>::Id;
+}
+
+#[primitive(property = JungleAnimals)]
+impl<T> Compat<T> for JungleAnimals
+where
+    T: Animal,
+{
+    type Out = True;
+}
+
+#[doc(hidden)]
+pub trait AnimalsDispatch<P, T> {
+    type List;
+}
+
+impl<T> AnimalsDispatch<True, T> for ()
+where
+    T: Animal + AnimalIdentified,
+{
+    type List = Node<<T as AnimalIdentified>::Id, T>;
+}
+
+impl<T> AnimalsDispatch<False, T> for ()
+where
+    T: Inception<JungleAnimals> + Meta,
+    __inception_animals::Wrap<<T as Inception<JungleAnimals>>::TyFields>:
+        __inception_animals::__InceptionInduceList<False>,
+{
+    type List = <__inception_animals::Wrap<
+        <T as Inception<JungleAnimals>>::TyFields,
+    > as __inception_animals::__InceptionInduceList<False>>::Ret;
+}
+
+impl<T> Animals for T
+where
+    T: IsPrimitive<JungleAnimals>,
+    (): AnimalsDispatch<<T as IsPrimitive<JungleAnimals>>::Is, T>,
+{
+    type List = <() as AnimalsDispatch<<T as IsPrimitive<JungleAnimals>>::Is, T>>::List;
+}
+
+#[primitive(property = EffectIdent)]
+impl<T> Compat<T> for EffectIdent
+where
+    T: EffectSchema,
+    T::Id: IdValue,
+{
+    type Out = True;
+}
+
+#[doc(hidden)]
+pub trait EffectIdentDispatch<P, T> {
+    type Id;
+}
+
+impl<T> EffectIdentDispatch<True, T> for ()
+where
+    T: EffectSchema,
+    T::Id: IdValue,
+{
+    type Id = <T::Id as IdValue>::Value;
+}
+
+impl<T> EffectIdentDispatch<False, T> for ()
+where
+    T: Inception<EffectIdent> + Meta,
+    __inception_effect_identified::Wrap<<T as Inception<EffectIdent>>::TyFields>:
+        __inception_effect_identified::__InceptionInduceId<False>,
+{
+    type Id = <__inception_effect_identified::Wrap<
+        <T as Inception<EffectIdent>>::TyFields,
+    > as __inception_effect_identified::__InceptionInduceId<False>>::Ret;
+}
+
+impl<T> EffectIdentified for T
+where
+    T: IsPrimitive<EffectIdent>,
+    (): EffectIdentDispatch<<T as IsPrimitive<EffectIdent>>::Is, T>,
+{
+    type Id = <() as EffectIdentDispatch<<T as IsPrimitive<EffectIdent>>::Is, T>>::Id;
+}
+
+#[primitive(property = JungleEffects)]
+impl<T> Compat<T> for JungleEffects
+where
+    T: EffectSchema,
+{
+    type Out = True;
+}
+
+#[doc(hidden)]
+pub trait EffectsDispatch<P, T> {
+    type List;
+}
+
+impl<T> EffectsDispatch<True, T> for ()
+where
+    T: EffectSchema + EffectIdentified,
+{
+    type List = Node<<T as EffectIdentified>::Id, T>;
+}
+
+impl<T> EffectsDispatch<False, T> for ()
+where
+    T: Inception<JungleEffects> + Meta,
+    __inception_effects::Wrap<<T as Inception<JungleEffects>>::TyFields>:
+        __inception_effects::__InceptionInduceList<False>,
+{
+    type List = <__inception_effects::Wrap<
+        <T as Inception<JungleEffects>>::TyFields,
+    > as __inception_effects::__InceptionInduceList<False>>::Ret;
+}
+
+impl<T> Effects for T
+where
+    T: IsPrimitive<JungleEffects>,
+    (): EffectsDispatch<<T as IsPrimitive<JungleEffects>>::Is, T>,
+{
+    type List = <() as EffectsDispatch<<T as IsPrimitive<JungleEffects>>::Is, T>>::List;
+}
+
 /// A collection of [`Effect`]s extractable from an executable workflow.
 #[inception(property = JungleFlow, types)]
-pub trait FlowEffects {
+pub trait JourneyEffects {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as FlowEffects>::List, <Tail as FlowEffects>::List)>,
-        merge_variant = TList<(<Head as FlowEffects>::List, <Tail as FlowEffects>::List)>,
-        join = TList<(Node<U0, ()>, <Fields as FlowEffects>::List)>
+        merge = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>,
+        merge_variant = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>,
+        join = TList<(Node<U0, ()>, <Fields as JourneyEffects>::List)>
     )]
     type List;
+}
+
+// Late-bound `BindAnimal` outputs are list-shaped flows (`TList`), and providing
+// direct impls avoids pushing these through inception's reflective field path.
+impl JourneyEffects for list::Empty {
+    type List = list::Empty;
+}
+
+impl<Head, Tail> JourneyEffects for TList<(Head, Tail)>
+where
+    Head: JourneyEffects,
+    Tail: JourneyEffects,
+{
+    type List = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>;
 }
 
 /// Leaf-level hook used by [`TraverseWith`] at `Step` nodes.
@@ -332,26 +593,49 @@ pub trait BindAnimal<A: Animal> {
 }
 
 /// Per-template scope declaration used by late-bound `BindAnimal`.
-pub trait TemplateScope {
+pub trait FlowScope {
     type View;
 }
 
 /// Default marker: bind template against root animal state.
-pub struct RootTemplateScope;
-pub struct TemplateView<View>(PhantomData<fn() -> View>);
+pub struct RootFlowScope;
+pub struct FlowView<View>(PhantomData<fn() -> View>);
 
-/// Internal helper selecting bind traversal from [`TemplateScope`].
-pub trait BindWithTemplateScope<A: Animal, ScopeView> {
+/// Internal helper selecting bind traversal from [`FlowScope`].
+pub trait BindWithFlowScope<A: Animal, ScopeView> {
     type Bound;
 }
 
 /// Convenience alias for binding a flow/template to a concrete animal.
 pub type BoundFlow<F, A> = <F as BindAnimal<A>>::Bound;
+/// Marker for animals whose journey template can be bound to themselves.
+pub trait BoundAnimal: Animal {
+    type BoundJourney;
+}
 
-/// Traversal that binds `StepSpec<S>` nodes to concrete `Step<A, _>` nodes
+impl<A> BoundAnimal for A
+where
+    A: Animal,
+    A::Journey: BindAnimal<A>,
+{
+    type BoundJourney = BoundFlow<A::Journey, A>;
+}
+
+/// Convenience alias for an [`Animal`]'s bound journey.
+pub type BoundAnimalJourney<A> = <A as BoundAnimal>::BoundJourney;
+
+/// Traversal that binds `Step<S>` nodes to concrete `BoundFlowStep<A, _>` nodes
 /// within a current scope carrier.
 pub struct RootScope;
 pub struct BindAnimalTraversal<A, Scope = RootScope>(PhantomData<fn() -> (A, Scope)>);
+
+impl<State> StateCarrier<State> for RootScope {
+    type Focus = State;
+
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+        state
+    }
+}
 
 pub(crate) trait ScopedCarrierMarker {}
 
@@ -364,7 +648,7 @@ where
 {
 }
 
-impl<F, A> BindWithTemplateScope<A, RootTemplateScope> for F
+impl<F, A> BindWithFlowScope<A, RootFlowScope> for F
 where
     A: Animal,
     F: TraverseFlow,
@@ -374,7 +658,7 @@ where
         <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
 }
 
-impl<F, A, View> BindWithTemplateScope<A, TemplateView<View>> for F
+impl<F, A, View> BindWithFlowScope<A, FlowView<View>> for F
 where
     A: Animal,
     View: 'static,
@@ -385,10 +669,10 @@ where
         <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
 }
 
-/// Directional helper that rewrites `Step<Animal, Left>` to `Step<Animal, Right>`.
+/// Directional helper that rewrites `BoundFlowStep<Animal, Left>` to `BoundFlowStep<Animal, Right>`.
 pub struct SwapLR<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
-/// Directional helper that rewrites `Step<Animal, Right>` to `Step<Animal, Left>`.
+/// Directional helper that rewrites `BoundFlowStep<Animal, Right>` to `BoundFlowStep<Animal, Left>`.
 pub struct SwapRL<Left, Right>(PhantomData<fn() -> (Left, Right)>);
 
 /// Directional helper alias for node replacement from `Left` to `Right`.
@@ -397,46 +681,46 @@ pub type SwapNodeLR<Left, Right> = SwapLR<Left, Right>;
 /// Directional helper alias for node replacement from `Right` to `Left`.
 pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 
-impl<A, Left, Right> ReplaceStep<Step<A, Left>> for SwapLR<Left, Right>
+impl<A, Left, Right> ReplaceStep<BoundFlowStep<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
-    Left: Act<A>,
-    Right: Act<A>,
+    Left: BoundAct<A>,
+    Right: BoundAct<A>,
 {
-    type Output = Step<A, Right>;
+    type Output = BoundFlowStep<A, Right>;
 }
 
-impl<A, Left, Right> ReplaceStep<Step<A, Right>> for SwapRL<Left, Right>
+impl<A, Left, Right> ReplaceStep<BoundFlowStep<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
-    Left: Act<A>,
-    Right: Act<A>,
+    Left: BoundAct<A>,
+    Right: BoundAct<A>,
 {
-    type Output = Step<A, Left>;
+    type Output = BoundFlowStep<A, Left>;
 }
 
-impl<Left, Right> ReplaceStep<StepSpec<Left>> for SwapLR<Left, Right>
+impl<Left, Right> ReplaceStep<Step<Left>> for SwapLR<Left, Right>
 where
-    Left: ActionSpec,
-    Right: ActionSpec<
-        Input = <Left as ActionSpec>::Input,
-        Output = <Left as ActionSpec>::Output,
-        Effect = <Left as ActionSpec>::Effect,
+    Left: Act,
+    Right: Act<
+        Input = <Left as Act>::Input,
+        Output = <Left as Act>::Output,
+        Effect = <Left as Act>::Effect,
     >,
 {
-    type Output = StepSpec<Right>;
+    type Output = Step<Right>;
 }
 
-impl<Left, Right> ReplaceStep<StepSpec<Right>> for SwapRL<Left, Right>
+impl<Left, Right> ReplaceStep<Step<Right>> for SwapRL<Left, Right>
 where
-    Left: ActionSpec,
-    Right: ActionSpec<
-        Input = <Left as ActionSpec>::Input,
-        Output = <Left as ActionSpec>::Output,
-        Effect = <Left as ActionSpec>::Effect,
+    Left: Act,
+    Right: Act<
+        Input = <Left as Act>::Input,
+        Output = <Left as Act>::Output,
+        Effect = <Left as Act>::Effect,
     >,
 {
-    type Output = StepSpec<Left>;
+    type Output = Step<Left>;
 }
 
 impl<Left, Right> ReplaceNode<Left> for SwapLR<Left, Right> {
@@ -510,37 +794,186 @@ impl<Replacer> ReplaceNodesWith<Replacer> for list::Empty {
     type Output = list::Empty;
 }
 
-impl<Head, Tail, Traversal> TraverseWith<Traversal> for TList<(Head, Tail)>
+macro_rules! flow_list_chain {
+    ($h:ty) => {
+        TList<($h, list::Empty)>
+    };
+    ($h:ty, $($rest:ty),+) => {
+        TList<($h, flow_list_chain!($($rest),+))>
+    };
+}
+macro_rules! flow_list_chain_tail {
+    ($h:ty ; $tail:ty) => {
+        TList<($h, $tail)>
+    };
+    ($h:ty, $($rest:ty),+ ; $tail:ty) => {
+        TList<($h, flow_list_chain_tail!($($rest),+ ; $tail))>
+    };
+}
+
+macro_rules! traverse_with_len_impl {
+    ($h0:ident) => {
+        impl<$h0, Traversal> TraverseWith<Traversal> for flow_list_chain!($h0)
+        where
+            $h0: TraverseWith<Traversal>,
+        {
+            type Output = flow_list_chain!(<$h0 as TraverseWith<Traversal>>::Output);
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<$h0, $($rest,)+ Traversal> TraverseWith<Traversal> for flow_list_chain!($h0, $($rest),+)
+        where
+            $h0: TraverseWith<Traversal>,
+            flow_list_chain!($($rest),+): TraverseWith<Traversal>,
+        {
+            type Output = flow_list_chain_tail!(
+                <$h0 as TraverseWith<Traversal>>::Output ;
+                <flow_list_chain!($($rest),+) as TraverseWith<Traversal>>::Output
+            );
+        }
+    };
+}
+traverse_with_len_impl!(H0);
+traverse_with_len_impl!(H0; H1);
+traverse_with_len_impl!(H0; H1, H2);
+traverse_with_len_impl!(H0; H1, H2, H3);
+traverse_with_len_impl!(H0; H1, H2, H3, H4);
+traverse_with_len_impl!(H0; H1, H2, H3, H4, H5);
+traverse_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Traversal> TraverseWith<Traversal>
+    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: TraverseWith<Traversal>,
+    H0: TraverseWith<Traversal>,
+    H1: TraverseWith<Traversal>,
+    H2: TraverseWith<Traversal>,
+    H3: TraverseWith<Traversal>,
+    H4: TraverseWith<Traversal>,
+    H5: TraverseWith<Traversal>,
+    H6: TraverseWith<Traversal>,
+    H7: TraverseWith<Traversal>,
     Tail: TraverseWith<Traversal>,
 {
-    type Output = TList<(
-        <Head as TraverseWith<Traversal>>::Output,
-        <Tail as TraverseWith<Traversal>>::Output,
-    )>;
+    type Output = flow_list_chain_tail!(
+        <H0 as TraverseWith<Traversal>>::Output,
+        <H1 as TraverseWith<Traversal>>::Output,
+        <H2 as TraverseWith<Traversal>>::Output,
+        <H3 as TraverseWith<Traversal>>::Output,
+        <H4 as TraverseWith<Traversal>>::Output,
+        <H5 as TraverseWith<Traversal>>::Output,
+        <H6 as TraverseWith<Traversal>>::Output,
+        <H7 as TraverseWith<Traversal>>::Output ;
+        <Tail as TraverseWith<Traversal>>::Output
+    );
 }
 
-impl<Head, Tail, Replacer> ReplaceWith<Replacer> for TList<(Head, Tail)>
+macro_rules! replace_with_len_impl {
+    ($h0:ident) => {
+        impl<$h0, Replacer> ReplaceWith<Replacer> for flow_list_chain!($h0)
+        where
+            $h0: ReplaceWith<Replacer>,
+        {
+            type Output = flow_list_chain!(<$h0 as ReplaceWith<Replacer>>::Output);
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<$h0, $($rest,)+ Replacer> ReplaceWith<Replacer> for flow_list_chain!($h0, $($rest),+)
+        where
+            $h0: ReplaceWith<Replacer>,
+            flow_list_chain!($($rest),+): ReplaceWith<Replacer>,
+        {
+            type Output = flow_list_chain_tail!(
+                <$h0 as ReplaceWith<Replacer>>::Output ;
+                <flow_list_chain!($($rest),+) as ReplaceWith<Replacer>>::Output
+            );
+        }
+    };
+}
+replace_with_len_impl!(H0);
+replace_with_len_impl!(H0; H1);
+replace_with_len_impl!(H0; H1, H2);
+replace_with_len_impl!(H0; H1, H2, H3);
+replace_with_len_impl!(H0; H1, H2, H3, H4);
+replace_with_len_impl!(H0; H1, H2, H3, H4, H5);
+replace_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceWith<Replacer>
+    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: ReplaceWith<Replacer>,
+    H0: ReplaceWith<Replacer>,
+    H1: ReplaceWith<Replacer>,
+    H2: ReplaceWith<Replacer>,
+    H3: ReplaceWith<Replacer>,
+    H4: ReplaceWith<Replacer>,
+    H5: ReplaceWith<Replacer>,
+    H6: ReplaceWith<Replacer>,
+    H7: ReplaceWith<Replacer>,
     Tail: ReplaceWith<Replacer>,
 {
-    type Output = TList<(
-        <Head as ReplaceWith<Replacer>>::Output,
-        <Tail as ReplaceWith<Replacer>>::Output,
-    )>;
+    type Output = flow_list_chain_tail!(
+        <H0 as ReplaceWith<Replacer>>::Output,
+        <H1 as ReplaceWith<Replacer>>::Output,
+        <H2 as ReplaceWith<Replacer>>::Output,
+        <H3 as ReplaceWith<Replacer>>::Output,
+        <H4 as ReplaceWith<Replacer>>::Output,
+        <H5 as ReplaceWith<Replacer>>::Output,
+        <H6 as ReplaceWith<Replacer>>::Output,
+        <H7 as ReplaceWith<Replacer>>::Output ;
+        <Tail as ReplaceWith<Replacer>>::Output
+    );
 }
 
-impl<Head, Tail, Replacer> ReplaceNodesWith<Replacer> for TList<(Head, Tail)>
+macro_rules! replace_nodes_with_len_impl {
+    ($h0:ident) => {
+        impl<$h0, Replacer> ReplaceNodesWith<Replacer> for flow_list_chain!($h0)
+        where
+            $h0: ReplaceNodesWith<Replacer>,
+        {
+            type Output = flow_list_chain!(<$h0 as ReplaceNodesWith<Replacer>>::Output);
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<$h0, $($rest,)+ Replacer> ReplaceNodesWith<Replacer> for flow_list_chain!($h0, $($rest),+)
+        where
+            $h0: ReplaceNodesWith<Replacer>,
+            flow_list_chain!($($rest),+): ReplaceNodesWith<Replacer>,
+        {
+            type Output = flow_list_chain_tail!(
+                <$h0 as ReplaceNodesWith<Replacer>>::Output ;
+                <flow_list_chain!($($rest),+) as ReplaceNodesWith<Replacer>>::Output
+            );
+        }
+    };
+}
+replace_nodes_with_len_impl!(H0);
+replace_nodes_with_len_impl!(H0; H1);
+replace_nodes_with_len_impl!(H0; H1, H2);
+replace_nodes_with_len_impl!(H0; H1, H2, H3);
+replace_nodes_with_len_impl!(H0; H1, H2, H3, H4);
+replace_nodes_with_len_impl!(H0; H1, H2, H3, H4, H5);
+replace_nodes_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceNodesWith<Replacer>
+    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: ReplaceNodesWith<Replacer>,
+    H0: ReplaceNodesWith<Replacer>,
+    H1: ReplaceNodesWith<Replacer>,
+    H2: ReplaceNodesWith<Replacer>,
+    H3: ReplaceNodesWith<Replacer>,
+    H4: ReplaceNodesWith<Replacer>,
+    H5: ReplaceNodesWith<Replacer>,
+    H6: ReplaceNodesWith<Replacer>,
+    H7: ReplaceNodesWith<Replacer>,
     Tail: ReplaceNodesWith<Replacer>,
 {
-    type Output = TList<(
-        <Head as ReplaceNodesWith<Replacer>>::Output,
-        <Tail as ReplaceNodesWith<Replacer>>::Output,
-    )>;
+    type Output = flow_list_chain_tail!(
+        <H0 as ReplaceNodesWith<Replacer>>::Output,
+        <H1 as ReplaceNodesWith<Replacer>>::Output,
+        <H2 as ReplaceNodesWith<Replacer>>::Output,
+        <H3 as ReplaceNodesWith<Replacer>>::Output,
+        <H4 as ReplaceNodesWith<Replacer>>::Output,
+        <H5 as ReplaceNodesWith<Replacer>>::Output,
+        <H6 as ReplaceNodesWith<Replacer>>::Output,
+        <H7 as ReplaceNodesWith<Replacer>>::Output ;
+        <Tail as ReplaceNodesWith<Replacer>>::Output
+    );
 }
 
 pub type Traversed<Flow, Traversal> =
@@ -757,10 +1190,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<P, L, R, M> FlowEffects for Conditional<P, L, R, M>
+impl<P, L, R, M> JourneyEffects for Conditional<P, L, R, M>
 where
-    L: FlowEffects,
-    R: FlowEffects,
+    L: JourneyEffects,
+    R: JourneyEffects,
 {
     type List = TList<(L::List, R::List)>;
 }
@@ -864,9 +1297,9 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<C, F, M> FlowEffects for While<C, F, M>
+impl<C, F, M> JourneyEffects for While<C, F, M>
 where
-    F: FlowEffects,
+    F: JourneyEffects,
 {
     type List = F::List;
 }
@@ -937,9 +1370,9 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<View, F> FlowEffects for Scoped<View, F>
+impl<View, F> JourneyEffects for Scoped<View, F>
 where
-    F: FlowEffects,
+    F: JourneyEffects,
 {
     type List = F::List;
 }
@@ -1003,9 +1436,9 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<M, F> FlowEffects for Transparent<M, F>
+impl<M, F> JourneyEffects for Transparent<M, F>
 where
-    F: FlowEffects,
+    F: JourneyEffects,
 {
     type List = F::List;
 }
@@ -1050,10 +1483,10 @@ where
     >>::Output;
 }
 
-impl<T, A> NodeMetadata for Step<T, A>
+impl<T, A> NodeMetadata for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
 }
 
@@ -1091,16 +1524,16 @@ where
 
 impl<View, F> NodeMetadata for Scoped<View, F> {}
 
-impl<S> NodeMetadata for StepSpec<S> where S: ActionSpec {}
+impl<S> NodeMetadata for Step<S> where S: Act {}
 
-impl<A, Scope, T, B> TraverseStep<Step<T, B>> for BindAnimalTraversal<A, Scope>
+impl<A, Scope, T, B> TraverseStep<BoundFlowStep<T, B>> for BindAnimalTraversal<A, Scope>
 where
     A: Animal,
     Scope: Aspect<A::State>,
     T: Animal,
-    B: Act<T>,
+    B: BoundAct<T>,
 {
-    type Output = Step<T, B>;
+    type Output = BoundFlowStep<T, B>;
 }
 
 impl<A, View, F> TraverseWith<BindAnimalTraversal<A, RootScope>> for Scoped<View, F>
@@ -1131,9 +1564,9 @@ where
 impl<A, F> BindAnimal<A> for F
 where
     A: Animal,
-    F: TemplateScope + BindWithTemplateScope<A, <F as TemplateScope>::View>,
+    F: FlowScope + BindWithFlowScope<A, <F as FlowScope>::View>,
 {
-    type Bound = <F as BindWithTemplateScope<A, <F as TemplateScope>::View>>::Bound;
+    type Bound = <F as BindWithFlowScope<A, <F as FlowScope>::View>>::Bound;
 }
 
 #[primitive(property = JungleRunning)]
@@ -1169,10 +1602,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<L, R, M> FlowEffects for Select<L, R, M>
+impl<L, R, M> JourneyEffects for Select<L, R, M>
 where
-    L: FlowEffects,
-    R: FlowEffects,
+    L: JourneyEffects,
+    R: JourneyEffects,
 {
     type List = TList<(L::List, R::List)>;
 }
@@ -1264,10 +1697,10 @@ where
 }
 
 #[primitive(property = JungleFlow)]
-impl<L, R, M> FlowEffects for Join<L, R, M>
+impl<L, R, M> JourneyEffects for Join<L, R, M>
 where
-    L: FlowEffects,
-    R: FlowEffects,
+    L: JourneyEffects,
+    R: JourneyEffects,
 {
     type List = TList<(L::List, R::List)>;
 }

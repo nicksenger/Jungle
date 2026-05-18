@@ -1,6 +1,5 @@
+use jungle_sdk::prelude::*;
 use super::support::maybe_delay;
-use jungle_sdk::types::Id;
-use jungle_sdk::typosaurus::num::consts::{U10, U14, U16};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DigestiveDependency {
@@ -19,9 +18,8 @@ impl Default for DigestiveDependency {
 
 pub struct Eat;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 10)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
-    type Id = Id<U10>;
     type In = u16;
     type Out = u16;
     type Err = String;
@@ -40,9 +38,8 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
 
 pub struct UseTool;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 14)]
 impl<J> jungle_sdk::types::Effect<J> for UseTool {
-    type Id = Id<U14>;
     type In = bool;
     type Out = String;
     type Err = String;
@@ -64,9 +61,8 @@ impl<J> jungle_sdk::types::Effect<J> for UseTool {
 
 pub struct PeelFruit;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 16)]
 impl<J> jungle_sdk::types::Effect<J> for PeelFruit {
-    type Id = Id<U16>;
     type In = (u8, u16);
     type Out = u16;
     type Err = String;

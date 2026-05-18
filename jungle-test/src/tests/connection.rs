@@ -1,5 +1,8 @@
+use jungle_sdk::prelude::*;
 use futures::StreamExt;
 use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::Animal;
+use jungle_sdk::types::{Act, EffectCompletion, Step};
 use jungle_sdk::{
     BackendError, ClaimedPerturbable, JourneyStatus, JungleClient, MockServer, RunnerOut,
     RunnerUpdateOut, SupportedAnimal, WireIn, WireOut, Work,
@@ -10,11 +13,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
 
-struct ConnectionEffect7;
+pub struct ConnectionEffect7;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 80)]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U80>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -27,42 +29,36 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
     }
 }
 
-struct ConnectionAnimal7;
+pub struct ConnectionAnimal7;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for ConnectionAnimal7 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 7, generation = 0)]
+impl Animal for ConnectionAnimal7 {
     type State = ();
     type Seed = ();
-    type Journey = ConnectionJourney7;
+    type Journey = ConnectionFlowTemplate7;
 }
 
-struct ConnectionStep7;
-impl jungle_sdk::types::Act<ConnectionAnimal7> for ConnectionStep7 {
+pub struct ConnectionStepSpec7;
+#[jungle::act]
+impl Act for ConnectionStepSpec7 {
     type Effect = ConnectionEffect7;
-    type StateAspect = jungle_sdk::types::Identity;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        _state: &mut (),
-        output: jungle_sdk::types::EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("connection animal 7 effect should succeed");
     }
 }
 
-#[derive(jungle_sdk::Journey)]
-struct ConnectionJourney7(jungle_sdk::types::Step<ConnectionAnimal7, ConnectionStep7>);
+#[derive(Flow)]
+pub struct ConnectionFlowTemplate7(Step<ConnectionStepSpec7>);
 
-struct ConnectionEffect9;
+pub struct ConnectionEffect9;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 81)]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U81>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -75,36 +71,31 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
     }
 }
 
-struct ConnectionAnimal9;
+pub struct ConnectionAnimal9;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for ConnectionAnimal9 {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U9>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 9, generation = 0)]
+impl Animal for ConnectionAnimal9 {
     type State = ();
     type Seed = ();
-    type Journey = ConnectionJourney9;
+    type Journey = ConnectionFlowTemplate9;
 }
 
-struct ConnectionStep9;
-impl jungle_sdk::types::Act<ConnectionAnimal9> for ConnectionStep9 {
+pub struct ConnectionStepSpec9;
+#[jungle::act]
+impl Act for ConnectionStepSpec9 {
     type Effect = ConnectionEffect9;
-    type StateAspect = jungle_sdk::types::Identity;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        _state: &mut (),
-        output: jungle_sdk::types::EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("connection animal 9 effect should succeed");
     }
 }
 
-#[derive(jungle_sdk::Journey)]
-struct ConnectionJourney9(jungle_sdk::types::Step<ConnectionAnimal9, ConnectionStep9>);
+#[derive(Flow)]
+pub struct ConnectionFlowTemplate9(Step<ConnectionStepSpec9>);
 
 #[tokio::test]
 async fn client_exchanges_messages_with_mock_server() {

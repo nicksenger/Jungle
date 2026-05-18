@@ -1,19 +1,20 @@
+use jungle_sdk::prelude::*;
 use jungle_sdk::types as jungle_types;
+use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    Act, Aspect, Condition, Conditional, EffectCompletion, EffectExec, EffectSchema, Either,
-    Executor, Identity, LoopCondition, Running, StateLens, Step, Waiting, While,
+    Act, Aspect, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, Effect,
+    EffectSchema, Either, Executor, Identity, LoopCondition, Running, StateCarrier, Waiting, While,
+    Step,
 };
-use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3};
-use jungle_sdk::{Journey, Optic};
+use jungle_sdk::Optic;
+use serde::{Deserialize, Serialize};
 use std::future::ready;
 use std::marker::PhantomData;
 
-struct Sleep;
+pub struct Sleep;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for Sleep {
-    type Id = jungle_sdk::types::Id<U0>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -25,11 +26,10 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
         ready(Ok(input + 1))
     }
 }
-struct Eat;
+pub struct Eat;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
-    type Id = jungle_sdk::types::Id<U1>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -41,11 +41,10 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
         ready(Ok(input + 1))
     }
 }
-struct Forage;
+pub struct Forage;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Forage {
-    type Id = jungle_sdk::types::Id<U2>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -57,11 +56,10 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
         ready(Ok(input - 1))
     }
 }
-struct Hunt;
+pub struct Hunt;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for Hunt {
-    type Id = jungle_sdk::types::Id<U3>;
     type In = ();
     type Out = i32;
     type Err = ();
@@ -74,33 +72,69 @@ impl<J> jungle_sdk::types::Effect<J> for Hunt {
     }
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct CoreState {
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoreState {
     energy: i32,
     age: i32,
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct GorillaState {
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GorillaState {
     core: CoreState,
     bananas: i32,
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct TigerState {
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TigerState {
     stripes: u8,
     core: CoreState,
 }
 
-struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
+pub struct GorillaCoreCarrier;
+impl StateCarrier<GorillaState> for GorillaCoreCarrier {
+    type Focus = CoreState;
 
-impl<T, Focus> Act<T> for CoreEnergyStep<Sleep, Focus>
+    fn focus<'a>(state: &'a mut GorillaState) -> &'a mut Self::Focus {
+        &mut state.core
+    }
+}
+
+pub struct TigerCoreCarrier;
+impl StateCarrier<TigerState> for TigerCoreCarrier {
+    type Focus = CoreState;
+
+    fn focus<'a>(state: &'a mut TigerState) -> &'a mut Self::Focus {
+        &mut state.core
+    }
+}
+
+pub struct GorillaEnergyCarrier;
+impl StateCarrier<GorillaState> for GorillaEnergyCarrier {
+    type Focus = i32;
+
+    fn focus<'a>(state: &'a mut GorillaState) -> &'a mut Self::Focus {
+        &mut state.core.energy
+    }
+}
+
+pub struct TigerEnergyCarrier;
+impl StateCarrier<TigerState> for TigerEnergyCarrier {
+    type Focus = i32;
+
+    fn focus<'a>(state: &'a mut TigerState) -> &'a mut Self::Focus {
+        &mut state.core.energy
+    }
+}
+
+pub struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
+
+impl<T, Focus> BoundAct<T> for CoreEnergyStep<Sleep, Focus>
 where
     T: jungle_types::Animal,
-    Focus: Aspect<T::State, View = CoreState>,
+    Focus: Aspect<T::State, Focus = CoreState>,
 {
     type Effect = Sleep;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = i32;
     type Output = i32;
 
@@ -115,13 +149,13 @@ where
     }
 }
 
-impl<T, Focus> Act<T> for CoreEnergyStep<Eat, Focus>
+impl<T, Focus> BoundAct<T> for CoreEnergyStep<Eat, Focus>
 where
     T: jungle_types::Animal,
-    Focus: Aspect<T::State, View = CoreState>,
+    Focus: Aspect<T::State, Focus = CoreState>,
 {
     type Effect = Eat;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = i32;
     type Output = i32;
 
@@ -136,16 +170,16 @@ where
     }
 }
 
-struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Act<T> for AddI32<Focus, A>
+impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
     T: jungle_types::Animal,
-    Focus: Aspect<T::State, View = i32>,
+    Focus: Aspect<T::State, Focus = i32>,
     A: EffectSchema<Out = i32>,
 {
     type Effect = A;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = A::In;
     type Output = i32;
 
@@ -163,16 +197,16 @@ where
     }
 }
 
-struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+pub struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> Act<T> for SubI32<Focus, A>
+impl<T, Focus, A> BoundAct<T> for SubI32<Focus, A>
 where
     T: jungle_types::Animal,
-    Focus: Aspect<T::State, View = i32>,
+    Focus: Aspect<T::State, Focus = i32>,
     A: EffectSchema<Out = i32>,
 {
     type Effect = A;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = A::In;
     type Output = i32;
 
@@ -190,10 +224,24 @@ where
     }
 }
 
-struct GorillaSleepManual;
-impl Act<Gorilla> for GorillaSleepManual {
+type GorillaEat = AddI32<GorillaEnergyCarrier, Eat>;
+type GorillaForageStep = SubI32<GorillaEnergyCarrier, Forage>;
+
+type TigerEat = AddI32<TigerEnergyCarrier, Eat>;
+type TigerSleep = AddI32<TigerEnergyCarrier, Sleep>;
+
+pub struct GorillaEatSpec;
+#[jungle::act(bind = AddI32<GorillaEnergyCarrier, Eat>)]
+impl Act for GorillaEatSpec {
+    type Effect = Eat;
+    type Input = i32;
+    type Output = i32;
+}
+
+pub struct GorillaSleepManualSpec;
+#[jungle::act]
+impl Act for GorillaSleepManualSpec {
     type Effect = Sleep;
-    type StateAspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -209,20 +257,22 @@ impl Act<Gorilla> for GorillaSleepManual {
     }
 }
 
-type GorillaEat = AddI32<StateLens<GorillaState, list![U0, U0]>, Eat>;
-type GorillaForageStep = SubI32<StateLens<GorillaState, list![U0, U0]>, Forage>;
+pub struct GorillaForageSpec;
+#[jungle::act(bind = SubI32<GorillaEnergyCarrier, Forage>)]
+impl Act for GorillaForageSpec {
+    type Effect = Forage;
+    type Input = i32;
+    type Output = i32;
+}
 
-type TigerEat = AddI32<StateLens<TigerState, list![U1, U0]>, Eat>;
-type TigerSleep = AddI32<StateLens<TigerState, list![U1, U0]>, Sleep>;
-
-#[derive(Journey)]
-struct GorillaLoopSequence(
-    Step<Gorilla, GorillaEat>,
-    Step<Gorilla, GorillaSleepManual>,
-    Step<Gorilla, GorillaForageStep>,
+#[derive(Flow)]
+pub struct GorillaLoopTemplate(
+    Step<GorillaEatSpec>,
+    Step<GorillaSleepManualSpec>,
+    Step<GorillaForageSpec>,
 );
 
-struct GorillaUnderAgeHundred;
+pub struct GorillaUnderAgeHundred;
 impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     type Arg = i32;
 
@@ -231,24 +281,48 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     }
 }
 
-#[derive(Journey)]
-struct GorillaJourney(While<GorillaUnderAgeHundred, GorillaLoopSequence>);
+#[derive(Flow)]
+pub struct GorillaJourneyTemplate(While<GorillaUnderAgeHundred, GorillaLoopTemplate>);
 
-struct TigerStripesAreEven;
+pub struct TigerStripesAreEven;
 impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     fn choose((state, _): &(TigerState, i32)) -> bool {
         state.stripes % 2 == 0
     }
 }
 
-#[derive(Journey)]
-struct TigerLoopSequence(
-    Conditional<TigerStripesAreEven, Step<Tiger, TigerEat>, Step<Tiger, TigerSleep>>,
-    Step<Tiger, TigerSleep>,
-    Step<Tiger, AddI32<StateLens<TigerState, list![U1, U0]>, Hunt>>,
+pub struct TigerEatSpec;
+#[jungle::act(bind = AddI32<TigerEnergyCarrier, Eat>)]
+impl Act for TigerEatSpec {
+    type Effect = Eat;
+    type Input = i32;
+    type Output = i32;
+}
+
+pub struct TigerSleepSpec;
+#[jungle::act(bind = AddI32<TigerEnergyCarrier, Sleep>)]
+impl Act for TigerSleepSpec {
+    type Effect = Sleep;
+    type Input = i32;
+    type Output = i32;
+}
+
+pub struct TigerHuntSpec;
+#[jungle::act(bind = AddI32<TigerEnergyCarrier, Hunt>)]
+impl Act for TigerHuntSpec {
+    type Effect = Hunt;
+    type Input = ();
+    type Output = i32;
+}
+
+#[derive(Flow)]
+pub struct TigerLoopTemplate(
+    Conditional<TigerStripesAreEven, Step<TigerEatSpec>, Step<TigerSleepSpec>>,
+    Step<TigerSleepSpec>,
+    Step<TigerHuntSpec>,
 );
 
-struct TigerUnderHundredStripes;
+pub struct TigerUnderHundredStripes;
 impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     type Arg = i32;
 
@@ -257,28 +331,24 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     }
 }
 
-#[derive(Journey)]
-struct TigerJourney(While<TigerUnderHundredStripes, TigerLoopSequence>);
+#[derive(Flow)]
+pub struct TigerJourneyTemplate(While<TigerUnderHundredStripes, TigerLoopTemplate>);
 
-struct Gorilla;
+pub struct Gorilla;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Gorilla {
-    type Id = jungle_sdk::types::Id<U1>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 1, generation = 0)]
+impl Animal for Gorilla {
     type State = GorillaState;
     type Seed = GorillaState;
-    type Journey = GorillaJourney;
+    type Journey = GorillaJourneyTemplate;
 }
-struct Tiger;
+pub struct Tiger;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Tiger {
-    type Id = jungle_sdk::types::Id<U2>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 2, generation = 0)]
+impl Animal for Tiger {
     type State = TigerState;
     type Seed = TigerState;
-    type Journey = TigerJourney;
+    type Journey = TigerJourneyTemplate;
 }
 
 #[test]
@@ -290,14 +360,14 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         },
         bananas: 3,
     };
-    let (gorilla_state, gorilla_request) = <Step<
+    let (gorilla_state, gorilla_request) = <BoundFlowStep<
         Gorilla,
-        CoreEnergyStep<Sleep, StateLens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, GorillaCoreCarrier>,
     > as Running>::run((gorilla_state, 2));
     assert_eq!(gorilla_request.into_input(), 12);
-    let (gorilla_state, gorilla_emitted) = <Step<
+    let (gorilla_state, gorilla_emitted) = <BoundFlowStep<
         Gorilla,
-        CoreEnergyStep<Sleep, StateLens<GorillaState, U0>>,
+        CoreEnergyStep<Sleep, GorillaCoreCarrier>,
     > as Waiting>::accept((gorilla_state, Ok(20)));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
@@ -308,14 +378,14 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         stripes: 9,
         core: CoreState { energy: 6, age: 12 },
     };
-    let (tiger_state, tiger_request) = <Step<
+    let (tiger_state, tiger_request) = <BoundFlowStep<
         Tiger,
-        CoreEnergyStep<Sleep, StateLens<TigerState, U1>>,
+        CoreEnergyStep<Sleep, TigerCoreCarrier>,
     > as Running>::run((tiger_state, 4));
     assert_eq!(tiger_request.into_input(), 10);
-    let (tiger_state, tiger_emitted) = <Step<
+    let (tiger_state, tiger_emitted) = <BoundFlowStep<
         Tiger,
-        CoreEnergyStep<Sleep, StateLens<TigerState, U1>>,
+        CoreEnergyStep<Sleep, TigerCoreCarrier>,
     > as Waiting>::accept((tiger_state, Ok(15)));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
@@ -417,8 +487,8 @@ async fn executor_runs_aspected_steps() {
 fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     let even = <Conditional<
         TigerStripesAreEven,
-        Step<Tiger, TigerEat>,
-        Step<Tiger, TigerSleep>,
+        BoundFlowStep<Tiger, TigerEat>,
+        BoundFlowStep<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 8,
@@ -433,8 +503,8 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
 
     let odd = <Conditional<
         TigerStripesAreEven,
-        Step<Tiger, TigerEat>,
-        Step<Tiger, TigerSleep>,
+        BoundFlowStep<Tiger, TigerEat>,
+        BoundFlowStep<Tiger, TigerSleep>,
     > as Running>::run((
         TigerState {
             stripes: 9,

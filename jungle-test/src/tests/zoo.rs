@@ -1,23 +1,23 @@
+use jungle_sdk::prelude::*;
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::types::{
-    Act, ActionSpec, Animal, AnimalEffectSet, AnimalSet, AnimalStates, Ecosystem, EffectCompletion,
-    EffectExec, EffectSchema, EffectSet, Identity, LoopCondition, StateLens, Step, UStep, While,
+    Act, Animal, AnimalSet, AnimalStates, BoundAct, Ecosystem, EffectCompletion, EffectSchema,
+    EffectSet, Identity, LoopCondition, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2, U3, U4, U5, U6};
 use jungle_sdk::{Animals, Effects, Optic};
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
 
-struct Eat;
+pub struct Eat;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
-    type Id = jungle_sdk::types::Id<U0>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -29,11 +29,10 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
         std::future::ready(Ok(()))
     }
 }
-struct Sleep;
+pub struct Sleep;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for Sleep {
-    type Id = jungle_sdk::types::Id<U1>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -45,11 +44,10 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
         std::future::ready(Ok(()))
     }
 }
-struct Forage;
+pub struct Forage;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Forage {
-    type Id = jungle_sdk::types::Id<U2>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -61,11 +59,10 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
         std::future::ready(Ok(()))
     }
 }
-struct Drink;
+pub struct Drink;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for Drink {
-    type Id = jungle_sdk::types::Id<U3>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -77,11 +74,10 @@ impl<J> jungle_sdk::types::Effect<J> for Drink {
         std::future::ready(Ok(()))
     }
 }
-struct Hunt;
+pub struct Hunt;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 4)]
 impl<J> jungle_sdk::types::Effect<J> for Hunt {
-    type Id = jungle_sdk::types::Id<U4>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -93,11 +89,10 @@ impl<J> jungle_sdk::types::Effect<J> for Hunt {
         std::future::ready(Ok(()))
     }
 }
-struct Flee;
+pub struct Flee;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 5)]
 impl<J> jungle_sdk::types::Effect<J> for Flee {
-    type Id = jungle_sdk::types::Id<U5>;
     type In = ();
     type Out = ();
     type Err = ();
@@ -111,33 +106,33 @@ impl<J> jungle_sdk::types::Effect<J> for Flee {
 }
 
 #[derive(Effects)]
-struct BasicNeeds(Eat, Sleep, Forage, Drink);
+pub struct BasicNeeds(Eat, Sleep, Forage, Drink);
 
 #[derive(Effects)]
-struct Predation(Hunt);
+pub struct Predation(Hunt);
 
 #[derive(Effects)]
-struct Predator(BasicNeeds, Predation);
+pub struct Predator(BasicNeeds, Predation);
 
 #[derive(Effects)]
-struct Prey(BasicNeeds, Flee);
+pub struct Prey(BasicNeeds, Flee);
 
-#[derive(Default, serde::Serialize, serde::Deserialize)]
-struct SharedState;
+#[derive(Default, Serialize, Deserialize)]
+pub struct SharedState;
 impl From<&Zoo> for SharedState {
     fn from(_value: &Zoo) -> Self {
         Self
     }
 }
 
-struct UnitOkStep<A>(PhantomData<fn() -> A>);
-impl<T, A> Act<T> for UnitOkStep<A>
+pub struct UnitOkStep<A>(PhantomData<fn() -> A>);
+impl<T, A> BoundAct<T> for UnitOkStep<A>
 where
     T: Animal,
     A: EffectSchema<In = (), Out = (), Err = ()>,
 {
     type Effect = A;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -148,21 +143,21 @@ where
     }
 }
 
-struct UnitOkSpec<E>(PhantomData<fn() -> E>);
-impl<E> ActionSpec for UnitOkSpec<E>
+pub struct UnitOkSpec<E>(PhantomData<fn() -> E>);
+impl<E> Act for UnitOkSpec<E>
 where
     E: EffectSchema<In = (), Out = (), Err = ()>,
 {
     type Effect = E;
     type Input = ();
     type Output = ();
-    type Act<A: Animal> = UnitOkStep<E>;
+    type Bind<A: Animal> = UnitOkStep<E>;
 }
 
-type UUnitStep<E> = UStep<UnitOkSpec<E>>;
+type UUnitStep<E> = Step<UnitOkSpec<E>>;
 
-#[derive(jungle_sdk::FlowTemplate)]
-struct PreyWorkflowTemplate(
+#[derive(Flow)]
+pub struct PreyWorkflowTemplate(
     UUnitStep<Eat>,
     UUnitStep<Sleep>,
     UUnitStep<Forage>,
@@ -170,8 +165,8 @@ struct PreyWorkflowTemplate(
     UUnitStep<Flee>,
 );
 
-#[derive(jungle_sdk::FlowTemplate)]
-struct PredatorWorkflowTemplate(
+#[derive(Flow)]
+pub struct PredatorWorkflowTemplate(
     UUnitStep<Eat>,
     UUnitStep<Sleep>,
     UUnitStep<Forage>,
@@ -179,163 +174,86 @@ struct PredatorWorkflowTemplate(
     UUnitStep<Hunt>,
 );
 
-#[derive(jungle_sdk::Flow)]
-struct GorillaJourney(
-    Step<Gorilla, UnitOkStep<Eat>>,
-    Step<Gorilla, UnitOkStep<Sleep>>,
-    Step<Gorilla, UnitOkStep<Forage>>,
-    Step<Gorilla, UnitOkStep<Drink>>,
-    Step<Gorilla, UnitOkStep<Flee>>,
-);
+pub struct Gorilla;
 
-#[derive(jungle_sdk::Flow)]
-struct ChimpanzeeJourney(
-    Step<Chimpanzee, UnitOkStep<Eat>>,
-    Step<Chimpanzee, UnitOkStep<Sleep>>,
-    Step<Chimpanzee, UnitOkStep<Forage>>,
-    Step<Chimpanzee, UnitOkStep<Drink>>,
-    Step<Chimpanzee, UnitOkStep<Flee>>,
-);
-
-#[derive(jungle_sdk::Flow)]
-struct TigerJourney(
-    Step<Tiger, UnitOkStep<Eat>>,
-    Step<Tiger, UnitOkStep<Sleep>>,
-    Step<Tiger, UnitOkStep<Forage>>,
-    Step<Tiger, UnitOkStep<Drink>>,
-    Step<Tiger, UnitOkStep<Hunt>>,
-);
-
-#[derive(jungle_sdk::Flow)]
-struct JaguarJourney(
-    Step<Jaguar, UnitOkStep<Eat>>,
-    Step<Jaguar, UnitOkStep<Sleep>>,
-    Step<Jaguar, UnitOkStep<Forage>>,
-    Step<Jaguar, UnitOkStep<Drink>>,
-    Step<Jaguar, UnitOkStep<Hunt>>,
-);
-
-#[derive(jungle_sdk::Flow)]
-struct AnacondaJourney(
-    Step<Anaconda, UnitOkStep<Eat>>,
-    Step<Anaconda, UnitOkStep<Sleep>>,
-    Step<Anaconda, UnitOkStep<Forage>>,
-    Step<Anaconda, UnitOkStep<Drink>>,
-    Step<Anaconda, UnitOkStep<Hunt>>,
-);
-
-#[derive(jungle_sdk::Flow)]
-struct HippoJourney(
-    Step<Hippo, UnitOkStep<Eat>>,
-    Step<Hippo, UnitOkStep<Sleep>>,
-    Step<Hippo, UnitOkStep<Forage>>,
-    Step<Hippo, UnitOkStep<Drink>>,
-    Step<Hippo, UnitOkStep<Flee>>,
-);
-
-#[derive(jungle_sdk::Flow)]
-struct ElephantJourney(
-    Step<Elephant, UnitOkStep<Eat>>,
-    Step<Elephant, UnitOkStep<Sleep>>,
-    Step<Elephant, UnitOkStep<Forage>>,
-    Step<Elephant, UnitOkStep<Drink>>,
-    Step<Elephant, UnitOkStep<Flee>>,
-);
-
-struct Gorilla;
-
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Gorilla {
-    type Id = jungle_sdk::types::Id<U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 0, generation = 0)]
+impl Animal for Gorilla {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = GorillaJourney;
+    type Journey = PreyWorkflowTemplate;
 }
-struct Chimpanzee;
+pub struct Chimpanzee;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Chimpanzee {
-    type Id = jungle_sdk::types::Id<U1>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 1, generation = 0)]
+impl Animal for Chimpanzee {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = ChimpanzeeJourney;
+    type Journey = PreyWorkflowTemplate;
 }
-struct Tiger;
+pub struct Tiger;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Tiger {
-    type Id = jungle_sdk::types::Id<U2>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 2, generation = 0)]
+impl Animal for Tiger {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = TigerJourney;
+    type Journey = PredatorWorkflowTemplate;
 }
-struct Jaguar;
+pub struct Jaguar;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Jaguar {
-    type Id = jungle_sdk::types::Id<U3>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 3, generation = 0)]
+impl Animal for Jaguar {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = JaguarJourney;
+    type Journey = PredatorWorkflowTemplate;
 }
-struct Anaconda;
+pub struct Anaconda;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Anaconda {
-    type Id = jungle_sdk::types::Id<U4>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 4, generation = 0)]
+impl Animal for Anaconda {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = AnacondaJourney;
+    type Journey = PredatorWorkflowTemplate;
 }
-struct Hippo;
+pub struct Hippo;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Hippo {
-    type Id = jungle_sdk::types::Id<U5>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 5, generation = 0)]
+impl Animal for Hippo {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = HippoJourney;
+    type Journey = PreyWorkflowTemplate;
 }
-struct Elephant;
+pub struct Elephant;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for Elephant {
-    type Id = jungle_sdk::types::Id<U6>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 6, generation = 0)]
+impl Animal for Elephant {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = ElephantJourney;
+    type Journey = PreyWorkflowTemplate;
 }
 
 #[derive(Animals)]
-struct Apes(Gorilla, Chimpanzee);
+pub struct Apes(Gorilla, Chimpanzee);
 
 #[derive(Animals)]
-struct Cats(Tiger, Jaguar);
+pub struct Cats(Tiger, Jaguar);
 
 #[derive(Animals)]
-struct Predators(Cats, Anaconda);
+pub struct Predators(Cats, Anaconda);
 
 #[derive(Animals)]
-struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
+pub struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
 
 #[derive(Effects)]
-struct AllEffects(Predator, Prey);
+pub struct AllEffects(Predator, Prey);
 
-struct Zoo;
+pub struct Zoo;
 impl Ecosystem for Zoo {
     const NAME: &'static str = "zoo";
     type Animals = AllAnimals;
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct RunnerState(i32);
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunnerState(i32);
 
 impl From<&RunnerZoo> for RunnerState {
     fn from(_value: &RunnerZoo) -> Self {
@@ -347,15 +265,13 @@ impl From<RunnerState> for () {
     fn from(_value: RunnerState) -> Self {}
 }
 
-struct RunnerStepOneEffect;
-impl EffectSchema for RunnerStepOneEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U14>;
+pub struct RunnerStepOneEffect;
+#[jungle::effect(id = 14)]
+impl<J> jungle_sdk::types::Effect<J> for RunnerStepOneEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for RunnerStepOneEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -364,15 +280,13 @@ impl<J> EffectExec<J> for RunnerStepOneEffect {
     }
 }
 
-struct RunnerStepTwoEffect;
-impl EffectSchema for RunnerStepTwoEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U15>;
+pub struct RunnerStepTwoEffect;
+#[jungle::effect(id = 15)]
+impl<J> jungle_sdk::types::Effect<J> for RunnerStepTwoEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for RunnerStepTwoEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -381,10 +295,26 @@ impl<J> EffectExec<J> for RunnerStepTwoEffect {
     }
 }
 
-struct RunnerStepOne;
-impl Act<RunnerAnimal> for RunnerStepOne {
+pub struct RunnerKeepGoing;
+impl LoopCondition<RunnerState> for RunnerKeepGoing {
+    type Arg = ();
+
+    fn should_continue(state: &RunnerState) -> bool {
+        state.0 < 4
+    }
+}
+
+pub struct RunnerUseStepOne;
+impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
+    fn choose((state, _): &(RunnerState, ())) -> bool {
+        state.0 % 2 == 0
+    }
+}
+
+pub struct RunnerStepOneSpec;
+#[jungle::act]
+impl Act for RunnerStepOneSpec {
     type Effect = RunnerStepOneEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -395,10 +325,10 @@ impl Act<RunnerAnimal> for RunnerStepOne {
     }
 }
 
-struct RunnerStepTwo;
-impl Act<RunnerAnimal> for RunnerStepTwo {
+pub struct RunnerStepTwoSpec;
+#[jungle::act]
+impl Act for RunnerStepTwoSpec {
     type Effect = RunnerStepTwoEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -409,46 +339,27 @@ impl Act<RunnerAnimal> for RunnerStepTwo {
     }
 }
 
-struct RunnerKeepGoing;
-impl LoopCondition<RunnerState> for RunnerKeepGoing {
-    type Arg = ();
-
-    fn should_continue(state: &RunnerState) -> bool {
-        state.0 < 4
-    }
-}
-
-struct RunnerUseStepOne;
-impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
-    fn choose((state, _): &(RunnerState, ())) -> bool {
-        state.0 % 2 == 0
-    }
-}
-
-type RunnerJourney = While<
-    RunnerKeepGoing,
-    jungle_sdk::types::Conditional<
-        RunnerUseStepOne,
-        Step<RunnerAnimal, RunnerStepOne>,
-        Step<RunnerAnimal, RunnerStepTwo>,
+#[derive(Flow)]
+pub struct RunnerJourneyTemplate(
+    While<
+        RunnerKeepGoing,
+        jungle_sdk::types::Conditional<RunnerUseStepOne, Step<RunnerStepOneSpec>, Step<RunnerStepTwoSpec>>,
     >,
->;
+);
 
-struct RunnerAnimal;
+pub struct RunnerAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for RunnerAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U16>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 16, generation = 0)]
+impl Animal for RunnerAnimal {
     type State = RunnerState;
     type Seed = RunnerState;
-    type Journey = RunnerJourney;
+    type Journey = RunnerJourneyTemplate;
 }
 
 #[derive(Animals)]
-struct RunnerAnimals(RunnerAnimal);
+pub struct RunnerAnimals(RunnerAnimal);
 
-struct RunnerZoo;
+pub struct RunnerZoo;
 impl Ecosystem for RunnerZoo {
     const NAME: &'static str = "runner-zoo";
     type Animals = RunnerAnimals;
@@ -473,42 +384,27 @@ fn composite_animals() {
 }
 
 #[test]
-fn animal_effect_set() {
-    type ApeAnimalEffects = list![Eat, Sleep, Forage, Drink, Flee];
-    assert_type_eq!(AnimalEffectSet<Apes>, ApeAnimalEffects);
-
-    type AllAnimalEffects = list![Eat, Sleep, Forage, Drink, Hunt, Flee];
-    assert_type_eq!(AnimalEffectSet<AllAnimals>, AllAnimalEffects);
-}
-
-#[test]
 fn animal_state_set() {
-    #[derive(Default, serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     struct ApeState;
-    #[derive(Default, serde::Serialize, serde::Deserialize)]
+    #[derive(Default, Serialize, Deserialize)]
     struct CatState;
 
-    type StatefulGorillaJourney =
-        <PreyWorkflowTemplate as jungle_sdk::types::BindAnimal<StatefulGorilla>>::Bound;
-    type StatefulTigerJourney =
-        <PredatorWorkflowTemplate as jungle_sdk::types::BindAnimal<StatefulTiger>>::Bound;
+    type StatefulGorillaJourney = PreyWorkflowTemplate;
+    type StatefulTigerJourney = PredatorWorkflowTemplate;
 
     struct StatefulGorilla;
 
-    #[jungle_sdk::animal]
-    impl jungle_sdk::types::Animal for StatefulGorilla {
-        type Id = jungle_sdk::types::Id<U0>;
-        type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    #[jungle::animal(id = 0, generation = 0)]
+    impl Animal for StatefulGorilla {
         type State = ApeState;
         type Seed = ApeState;
         type Journey = StatefulGorillaJourney;
     }
     struct StatefulTiger;
 
-    #[jungle_sdk::animal]
-    impl jungle_sdk::types::Animal for StatefulTiger {
-        type Id = jungle_sdk::types::Id<U1>;
-        type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    #[jungle::animal(id = 1, generation = 0)]
+    impl Animal for StatefulTiger {
         type State = CatState;
         type Seed = CatState;
         type Journey = StatefulTigerJourney;
@@ -527,34 +423,32 @@ fn jungle_impl() {
     let _jungle_fut = zoo.manifest();
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct CoreState {
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoreState {
     energy: i32,
     rounds: i32,
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct ExecutorApeState {
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutorApeState {
     core: CoreState,
     bananas: i32,
     mood: i32,
 }
 
-#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-struct ExecutorCatState {
+#[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutorCatState {
     core: CoreState,
     stripes: i32,
 }
 
-struct EatEnergy;
-impl EffectSchema for EatEnergy {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U7>;
+pub struct EatEnergy;
+#[jungle::effect(id = 7)]
+impl<J> jungle_sdk::types::Effect<J> for EatEnergy {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for EatEnergy {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -563,15 +457,13 @@ impl<J> EffectExec<J> for EatEnergy {
     }
 }
 
-struct HuntEnergy;
-impl EffectSchema for HuntEnergy {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U10>;
+pub struct HuntEnergy;
+#[jungle::effect(id = 10)]
+impl<J> jungle_sdk::types::Effect<J> for HuntEnergy {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for HuntEnergy {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -580,15 +472,13 @@ impl<J> EffectExec<J> for HuntEnergy {
     }
 }
 
-struct RoundAdvance;
-impl EffectSchema for RoundAdvance {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U13>;
+pub struct RoundAdvance;
+#[jungle::effect(id = 13)]
+impl<J> jungle_sdk::types::Effect<J> for RoundAdvance {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for RoundAdvance {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -597,15 +487,15 @@ impl<J> EffectExec<J> for RoundAdvance {
     }
 }
 
-struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
-impl<T, Focus, A> Act<T> for AddI32<Focus, A>
+pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
     T: Animal,
-    Focus: jungle_sdk::types::Aspect<T::State, View = i32>,
+    Focus: jungle_sdk::types::Aspect<T::State, Focus = i32>,
     A: EffectSchema<In = i32, Out = i32, Err = ()>,
 {
     type Effect = A;
-    type StateAspect = Focus;
+    type Aspect = Focus;
     type Input = i32;
     type Output = i32;
 
@@ -620,11 +510,53 @@ where
     }
 }
 
-type ApeRoundTask = AddI32<StateLens<ExecutorApeState, list![U0, U1]>, RoundAdvance>;
-type TigerHuntTask = AddI32<StateLens<ExecutorCatState, list![U0, U0]>, HuntEnergy>;
-type TigerEatTask = AddI32<StateLens<ExecutorCatState, list![U0, U0]>, EatEnergy>;
+pub struct ApeRoundCarrier;
+impl StateCarrier<ExecutorApeState> for ApeRoundCarrier {
+    type Focus = i32;
 
-struct ApeKeepRunning;
+    fn focus<'a>(state: &'a mut ExecutorApeState) -> &'a mut Self::Focus {
+        &mut state.core.rounds
+    }
+}
+
+pub struct TigerEnergyCarrier;
+impl StateCarrier<ExecutorCatState> for TigerEnergyCarrier {
+    type Focus = i32;
+
+    fn focus<'a>(state: &'a mut ExecutorCatState) -> &'a mut Self::Focus {
+        &mut state.core.energy
+    }
+}
+
+type ApeRoundTask = AddI32<ApeRoundCarrier, RoundAdvance>;
+type TigerHuntTask = AddI32<TigerEnergyCarrier, HuntEnergy>;
+type TigerEatTask = AddI32<TigerEnergyCarrier, EatEnergy>;
+
+pub struct ApeRoundTaskSpec;
+#[jungle::act(bind = ApeRoundTask)]
+impl Act for ApeRoundTaskSpec {
+    type Effect = RoundAdvance;
+    type Input = i32;
+    type Output = i32;
+}
+
+pub struct TigerHuntTaskSpec;
+#[jungle::act(bind = TigerHuntTask)]
+impl Act for TigerHuntTaskSpec {
+    type Effect = HuntEnergy;
+    type Input = i32;
+    type Output = i32;
+}
+
+pub struct TigerEatTaskSpec;
+#[jungle::act(bind = TigerEatTask)]
+impl Act for TigerEatTaskSpec {
+    type Effect = EatEnergy;
+    type Input = i32;
+    type Output = i32;
+}
+
+pub struct ApeKeepRunning;
 impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
     type Arg = i32;
 
@@ -633,7 +565,7 @@ impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
     }
 }
 
-struct TigerKeepRunning;
+pub struct TigerKeepRunning;
 impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
     type Arg = i32;
 
@@ -642,42 +574,39 @@ impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
     }
 }
 
-struct TigerChooseHunt;
+pub struct TigerChooseHunt;
 impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
     fn choose((state, _): &(ExecutorCatState, i32)) -> bool {
         state.stripes % 2 == 0
     }
 }
 
-type WorkflowGorillaJourney = While<ApeKeepRunning, Step<WorkflowGorilla, ApeRoundTask>>;
-type WorkflowTigerJourney = While<
-    TigerKeepRunning,
-    jungle_sdk::types::Conditional<
-        TigerChooseHunt,
-        Step<WorkflowTiger, TigerHuntTask>,
-        Step<WorkflowTiger, TigerEatTask>,
+#[derive(Flow)]
+pub struct WorkflowGorillaJourneyTemplate(While<ApeKeepRunning, Step<ApeRoundTaskSpec>>);
+
+#[derive(Flow)]
+pub struct WorkflowTigerJourneyTemplate(
+    While<
+        TigerKeepRunning,
+        jungle_sdk::types::Conditional<TigerChooseHunt, Step<TigerHuntTaskSpec>, Step<TigerEatTaskSpec>>,
     >,
->;
+);
 
-struct WorkflowGorilla;
+pub struct WorkflowGorilla;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for WorkflowGorilla {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U11>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 11, generation = 0)]
+impl Animal for WorkflowGorilla {
     type State = ExecutorApeState;
     type Seed = ExecutorApeState;
-    type Journey = WorkflowGorillaJourney;
+    type Journey = WorkflowGorillaJourneyTemplate;
 }
-struct WorkflowTiger;
+pub struct WorkflowTiger;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for WorkflowTiger {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U12>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 12, generation = 0)]
+impl Animal for WorkflowTiger {
     type State = ExecutorCatState;
     type Seed = ExecutorCatState;
-    type Journey = WorkflowTigerJourney;
+    type Journey = WorkflowTigerJourneyTemplate;
 }
 
 #[tokio::test]

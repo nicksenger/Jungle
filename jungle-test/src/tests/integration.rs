@@ -1,13 +1,15 @@
+use jungle_sdk::prelude::*;
 use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
-    JourneyStatus, LoopCondition, Observe, Perturb, StateLens, Step, While,
+    Act, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, JourneyStatus,
+    LoopCondition, Observe, Perturb, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::list;
 use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -17,43 +19,53 @@ use testcontainers::runners::AsyncRunner;
 #[cfg(feature = "postgres")]
 use testcontainers_modules::postgres::Postgres;
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
-struct SubFlowState {
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubFlowState {
     nested: DeepFocusState,
     value: i32,
     updates: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
-struct DeepFocusState {
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeepFocusState {
     value: i32,
     updates: i32,
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
-struct IntegrationState {
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IntegrationState {
     total: i32,
     focused: SubFlowState,
     before_steps: u8,
     after_steps: u8,
 }
 
-struct AddOneEffect;
+pub struct IntegrationFocusedCarrier;
+impl StateCarrier<IntegrationState> for IntegrationFocusedCarrier {
+    type Focus = SubFlowState;
 
-impl EffectSchema for AddOneEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
+    fn focus<'a>(state: &'a mut IntegrationState) -> &'a mut Self::Focus {
+        &mut state.focused
+    }
+}
+
+pub struct IntegrationDeepFocusedCarrier;
+impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
+    type Focus = DeepFocusState;
+
+    fn focus<'a>(state: &'a mut IntegrationState) -> &'a mut Self::Focus {
+        &mut state.focused.nested
+    }
+}
+
+pub struct AddOneEffect;
+
+#[jungle::effect(id = 1)]
+impl<J> jungle_sdk::types::Effect<J> for AddOneEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for AddOneEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -62,16 +74,14 @@ impl<J> EffectExec<J> for AddOneEffect {
     }
 }
 
-struct AddTwoEffect;
+pub struct AddTwoEffect;
 
-impl EffectSchema for AddTwoEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
+#[jungle::effect(id = 2)]
+impl<J> jungle_sdk::types::Effect<J> for AddTwoEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for AddTwoEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -80,10 +90,68 @@ impl<J> EffectExec<J> for AddTwoEffect {
     }
 }
 
-struct AddOneBeforeFullStateStep;
-impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
+pub struct KeepRunning;
+impl LoopCondition<IntegrationState> for KeepRunning {
+    type Arg = ();
+
+    fn should_continue(state: &IntegrationState) -> bool {
+        state.after_steps < 2
+    }
+}
+
+pub struct IsBeforeFocusedSubFlow;
+impl Condition<(IntegrationState, ())> for IsBeforeFocusedSubFlow {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.before_steps < 2
+    }
+}
+
+pub struct UseFirstBeforeFullStateTask;
+impl Condition<(IntegrationState, ())> for UseFirstBeforeFullStateTask {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.before_steps == 0
+    }
+}
+
+pub struct IsInFocusedSubFlow;
+impl Condition<(IntegrationState, ())> for IsInFocusedSubFlow {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.focused.updates < 2
+    }
+}
+
+pub struct UseFirstFocusedTask;
+impl Condition<(IntegrationState, ())> for UseFirstFocusedTask {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.focused.updates == 0
+    }
+}
+
+pub struct IsInDeepFocusedSubFlow;
+impl Condition<(IntegrationState, ())> for IsInDeepFocusedSubFlow {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.focused.nested.updates < 2
+    }
+}
+
+pub struct UseFirstDeepFocusedTask;
+impl Condition<(IntegrationState, ())> for UseFirstDeepFocusedTask {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.focused.nested.updates == 0
+    }
+}
+
+pub struct UseFirstAfterFullStateTask;
+impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
+    fn choose((state, _): &(IntegrationState, ())) -> bool {
+        state.after_steps == 0
+    }
+}
+
+pub struct AddOneBeforeFullStateSpec;
+#[jungle::act]
+impl Act for AddOneBeforeFullStateSpec {
     type Effect = AddOneEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -98,10 +166,10 @@ impl Act<IntegrationAnimal> for AddOneBeforeFullStateStep {
     }
 }
 
-struct AddTwoBeforeFullStateStep;
-impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
+pub struct AddTwoBeforeFullStateSpec;
+#[jungle::act]
+impl Act for AddTwoBeforeFullStateSpec {
     type Effect = AddTwoEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -116,10 +184,10 @@ impl Act<IntegrationAnimal> for AddTwoBeforeFullStateStep {
     }
 }
 
-struct AddOneFocusedStep;
-impl Act<IntegrationAnimal> for AddOneFocusedStep {
+pub struct AddOneFocusedSpec;
+#[jungle::act(aspect = IntegrationFocusedCarrier)]
+impl Act for AddOneFocusedSpec {
     type Effect = AddOneEffect;
-    type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Input = ();
     type Output = ();
 
@@ -131,10 +199,10 @@ impl Act<IntegrationAnimal> for AddOneFocusedStep {
     }
 }
 
-struct AddTwoFocusedStep;
-impl Act<IntegrationAnimal> for AddTwoFocusedStep {
+pub struct AddTwoFocusedSpec;
+#[jungle::act(aspect = IntegrationFocusedCarrier)]
+impl Act for AddTwoFocusedSpec {
     type Effect = AddTwoEffect;
-    type StateAspect = StateLens<IntegrationState, list![jungle_sdk::typosaurus::num::consts::U1]>;
     type Input = ();
     type Output = ();
 
@@ -146,16 +214,10 @@ impl Act<IntegrationAnimal> for AddTwoFocusedStep {
     }
 }
 
-struct AddOneDeepFocusedStep;
-impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
+pub struct AddOneDeepFocusedSpec;
+#[jungle::act(aspect = IntegrationDeepFocusedCarrier)]
+impl Act for AddOneDeepFocusedSpec {
     type Effect = AddOneEffect;
-    type StateAspect = StateLens<
-        IntegrationState,
-        list![
-            jungle_sdk::typosaurus::num::consts::U1,
-            jungle_sdk::typosaurus::num::consts::U0
-        ],
-    >;
     type Input = ();
     type Output = ();
 
@@ -167,16 +229,10 @@ impl Act<IntegrationAnimal> for AddOneDeepFocusedStep {
     }
 }
 
-struct AddTwoDeepFocusedStep;
-impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
+pub struct AddTwoDeepFocusedSpec;
+#[jungle::act(aspect = IntegrationDeepFocusedCarrier)]
+impl Act for AddTwoDeepFocusedSpec {
     type Effect = AddTwoEffect;
-    type StateAspect = StateLens<
-        IntegrationState,
-        list![
-            jungle_sdk::typosaurus::num::consts::U1,
-            jungle_sdk::typosaurus::num::consts::U0
-        ],
-    >;
     type Input = ();
     type Output = ();
 
@@ -188,10 +244,10 @@ impl Act<IntegrationAnimal> for AddTwoDeepFocusedStep {
     }
 }
 
-struct AddOneAfterFullStateStep;
-impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
+pub struct AddOneAfterFullStateSpec;
+#[jungle::act]
+impl Act for AddOneAfterFullStateSpec {
     type Effect = AddOneEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -206,10 +262,10 @@ impl Act<IntegrationAnimal> for AddOneAfterFullStateStep {
     }
 }
 
-struct AddTwoAfterFullStateStep;
-impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
+pub struct AddTwoAfterFullStateSpec;
+#[jungle::act]
+impl Act for AddTwoAfterFullStateSpec {
     type Effect = AddTwoEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -224,71 +280,19 @@ impl Act<IntegrationAnimal> for AddTwoAfterFullStateStep {
     }
 }
 
-struct KeepRunning;
-impl LoopCondition<IntegrationState> for KeepRunning {
-    type Arg = ();
-
-    fn should_continue(state: &IntegrationState) -> bool {
-        state.after_steps < 2
-    }
-}
-
-struct IsBeforeFocusedSubFlow;
-impl Condition<(IntegrationState, ())> for IsBeforeFocusedSubFlow {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
-        state.before_steps < 2
-    }
-}
-
-struct UseFirstBeforeFullStateTask;
-impl Condition<(IntegrationState, ())> for UseFirstBeforeFullStateTask {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
-        state.before_steps == 0
-    }
-}
-
-struct IsInFocusedSubFlow;
-impl Condition<(IntegrationState, ())> for IsInFocusedSubFlow {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
-        state.focused.updates < 2
-    }
-}
-
-struct UseFirstFocusedTask;
-impl Condition<(IntegrationState, ())> for UseFirstFocusedTask {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
-        state.focused.updates == 0
-    }
-}
-
-struct IsInDeepFocusedSubFlow;
-impl Condition<(IntegrationState, ())> for IsInDeepFocusedSubFlow {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
-        state.focused.nested.updates < 2
-    }
-}
-
-struct UseFirstDeepFocusedTask;
-impl Condition<(IntegrationState, ())> for UseFirstDeepFocusedTask {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
-        state.focused.nested.updates == 0
-    }
-}
-
-struct UseFirstAfterFullStateTask;
-impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
-        state.after_steps == 0
-    }
-}
-
 type MultiMatchBeforeFlow = Conditional<
     UseFirstBeforeFullStateTask,
-    Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
+    BoundFlowStep<IntegrationAnimal, <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>>,
     Conditional<
         UseFirstBeforeFullStateTask,
-        Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
-        Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
     >,
 >;
 
@@ -296,53 +300,56 @@ type LoopBranchFlow = While<
     KeepRunning,
     Conditional<
         UseFirstBeforeFullStateTask,
-        Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
-        Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
-    >,
->;
-
-type IntegrationJourney = While<
-    KeepRunning,
-    Conditional<
-        IsBeforeFocusedSubFlow,
-        Conditional<
-            UseFirstBeforeFullStateTask,
-            Step<IntegrationAnimal, AddOneBeforeFullStateStep>,
-            Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
         >,
-        Conditional<
-            IsInFocusedSubFlow,
-            Conditional<
-                UseFirstFocusedTask,
-                Step<IntegrationAnimal, AddOneFocusedStep>,
-                Step<IntegrationAnimal, AddTwoFocusedStep>,
-            >,
-            Conditional<
-                IsInDeepFocusedSubFlow,
-                Conditional<
-                    UseFirstDeepFocusedTask,
-                    Step<IntegrationAnimal, AddOneDeepFocusedStep>,
-                    Step<IntegrationAnimal, AddTwoDeepFocusedStep>,
-                >,
-                Conditional<
-                    UseFirstAfterFullStateTask,
-                    Step<IntegrationAnimal, AddOneAfterFullStateStep>,
-                    Step<IntegrationAnimal, AddTwoAfterFullStateStep>,
-                >,
-            >,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
         >,
     >,
 >;
 
-struct IntegrationAnimal;
+#[derive(Flow)]
+pub struct IntegrationJourneyTemplate(
+    While<
+        KeepRunning,
+        Conditional<
+            IsBeforeFocusedSubFlow,
+            Conditional<
+                UseFirstBeforeFullStateTask,
+                Step<AddOneBeforeFullStateSpec>,
+                Step<AddTwoBeforeFullStateSpec>,
+            >,
+            Conditional<
+                IsInFocusedSubFlow,
+                Conditional<UseFirstFocusedTask, Step<AddOneFocusedSpec>, Step<AddTwoFocusedSpec>>,
+                Conditional<
+                    IsInDeepFocusedSubFlow,
+                    Conditional<
+                        UseFirstDeepFocusedTask,
+                        Step<AddOneDeepFocusedSpec>,
+                        Step<AddTwoDeepFocusedSpec>,
+                    >,
+                    Conditional<
+                        UseFirstAfterFullStateTask,
+                        Step<AddOneAfterFullStateSpec>,
+                        Step<AddTwoAfterFullStateSpec>,
+                    >,
+                >,
+            >,
+        >,
+    >,
+);
 
-#[jungle_sdk::animal(observe, perturb)]
-impl jungle_sdk::types::Animal for IntegrationAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+pub struct IntegrationAnimal;
+
+#[jungle::animal(observe, perturb, id = 0, generation = 0)]
+impl Animal for IntegrationAnimal {
     type State = IntegrationState;
     type Seed = IntegrationState;
-    type Journey = IntegrationJourney;
+    type Journey = IntegrationJourneyTemplate;
 }
 
 impl Observe for IntegrationAnimal {
@@ -353,8 +360,8 @@ impl Observe for IntegrationAnimal {
     }
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-struct IntegrationPerturbation {
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct IntegrationPerturbation {
     delta: i32,
 }
 
@@ -367,9 +374,9 @@ impl Perturb for IntegrationAnimal {
 }
 
 #[derive(Animals)]
-struct IntegrationAnimals(IntegrationAnimal);
+pub struct IntegrationAnimals(IntegrationAnimal);
 
-struct IntegrationZoo;
+pub struct IntegrationZoo;
 impl Ecosystem for IntegrationZoo {
     const NAME: &'static str = "integration-zoo";
     type Animals = IntegrationAnimals;
@@ -729,15 +736,24 @@ fn integration_seed() -> Vec<u8> {
 fn replaced_alias_rewrites_integration_flow_steps() {
     type Actual = jungle_sdk::types::Replace<
         MultiMatchBeforeFlow,
-        jungle_sdk::types::SwapLR<AddOneBeforeFullStateStep, AddTwoBeforeFullStateStep>,
+        jungle_sdk::types::SwapLR<
+            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
     >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
-        Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+        BoundFlowStep<IntegrationAnimal, <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>>,
         Conditional<
             UseFirstBeforeFullStateTask,
-            Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
-            Step<IntegrationAnimal, AddTwoBeforeFullStateStep>,
+            BoundFlowStep<
+                IntegrationAnimal,
+                <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            >,
+            BoundFlowStep<
+                IntegrationAnimal,
+                <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            >,
         >,
     >;
     assert_type_eq!(Actual, Expected);
@@ -749,10 +765,14 @@ fn replaced_nodes_alias_replaces_loop_branch_section() {
         LoopBranchFlow,
         jungle_sdk::types::SwapNodeLR<
             LoopBranchFlow,
-            Step<IntegrationAnimal, AddOneAfterFullStateStep>,
+            BoundFlowStep<
+                IntegrationAnimal,
+                <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            >,
         >,
     >;
-    type Expected = Step<IntegrationAnimal, AddOneAfterFullStateStep>;
+    type Expected =
+        BoundFlowStep<IntegrationAnimal, <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>>;
     assert_type_eq!(Actual, Expected);
 }
 

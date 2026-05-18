@@ -1,31 +1,30 @@
+use jungle_sdk::prelude::*;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Identity,
-    JourneyStatus, LoopCondition, Observe, Sleep, Step, While,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, JourneyStatus, LoopCondition,
+    Observe, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, Optic};
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
-struct SleepState {
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SleepState {
     counter: i32,
     phase: u8,
     sleep_for_ms: u64,
 }
 
-struct AddEffect;
-impl EffectSchema for AddEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U40>;
+pub struct AddEffect;
+#[jungle::effect(id = 40)]
+impl<J> jungle_sdk::types::Effect<J> for AddEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for AddEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -34,10 +33,33 @@ impl<J> EffectExec<J> for AddEffect {
     }
 }
 
-struct AddBeforeSleep;
-impl Act<SleepAnimal> for AddBeforeSleep {
+pub struct SleepNotComplete;
+impl LoopCondition<SleepState> for SleepNotComplete {
+    type Arg = ();
+
+    fn should_continue(state: &SleepState) -> bool {
+        state.phase < 3
+    }
+}
+
+pub struct SleepPhaseZero;
+impl Condition<(SleepState, ())> for SleepPhaseZero {
+    fn choose((state, _): &(SleepState, ())) -> bool {
+        state.phase == 0
+    }
+}
+
+pub struct SleepPhaseOne;
+impl Condition<(SleepState, ())> for SleepPhaseOne {
+    fn choose((state, _): &(SleepState, ())) -> bool {
+        state.phase == 1
+    }
+}
+
+pub struct AddBeforeSleepSpec;
+#[jungle::act]
+impl Act for AddBeforeSleepSpec {
     type Effect = AddEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -49,10 +71,10 @@ impl Act<SleepAnimal> for AddBeforeSleep {
     }
 }
 
-struct SleepForStateWake;
-impl Act<SleepAnimal> for SleepForStateWake {
+pub struct SleepForStateWakeSpec;
+#[jungle::act]
+impl Act for SleepForStateWakeSpec {
     type Effect = Sleep;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -66,10 +88,10 @@ impl Act<SleepAnimal> for SleepForStateWake {
     }
 }
 
-struct AddAfterSleep;
-impl Act<SleepAnimal> for AddAfterSleep {
+pub struct AddAfterSleepSpec;
+#[jungle::act]
+impl Act for AddAfterSleepSpec {
     type Effect = AddEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -81,51 +103,25 @@ impl Act<SleepAnimal> for AddAfterSleep {
     }
 }
 
-struct SleepNotComplete;
-impl LoopCondition<SleepState> for SleepNotComplete {
-    type Arg = ();
-
-    fn should_continue(state: &SleepState) -> bool {
-        state.phase < 3
-    }
-}
-
-struct SleepPhaseZero;
-impl Condition<(SleepState, ())> for SleepPhaseZero {
-    fn choose((state, _): &(SleepState, ())) -> bool {
-        state.phase == 0
-    }
-}
-
-struct SleepPhaseOne;
-impl Condition<(SleepState, ())> for SleepPhaseOne {
-    fn choose((state, _): &(SleepState, ())) -> bool {
-        state.phase == 1
-    }
-}
-
-type SleepJourney = While<
-    SleepNotComplete,
-    Conditional<
-        SleepPhaseZero,
-        Step<SleepAnimal, AddBeforeSleep>,
+#[derive(Flow)]
+pub struct SleepJourneyTemplate(
+    While<
+        SleepNotComplete,
         Conditional<
-            SleepPhaseOne,
-            Step<SleepAnimal, SleepForStateWake>,
-            Step<SleepAnimal, AddAfterSleep>,
+            SleepPhaseZero,
+            Step<AddBeforeSleepSpec>,
+            Conditional<SleepPhaseOne, Step<SleepForStateWakeSpec>, Step<AddAfterSleepSpec>>,
         >,
     >,
->;
+);
 
-struct SleepAnimal;
+pub struct SleepAnimal;
 
-#[jungle_sdk::animal(observe)]
-impl jungle_sdk::types::Animal for SleepAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(observe, id = 0, generation = 0)]
+impl Animal for SleepAnimal {
     type State = SleepState;
     type Seed = SleepState;
-    type Journey = SleepJourney;
+    type Journey = SleepJourneyTemplate;
 }
 
 impl Observe for SleepAnimal {
@@ -137,9 +133,9 @@ impl Observe for SleepAnimal {
 }
 
 #[derive(Animals)]
-struct SleepAnimals(SleepAnimal);
+pub struct SleepAnimals(SleepAnimal);
 
-struct SleepZoo;
+pub struct SleepZoo;
 impl Ecosystem for SleepZoo {
     const NAME: &'static str = "sleep-zoo";
     type Animals = SleepAnimals;

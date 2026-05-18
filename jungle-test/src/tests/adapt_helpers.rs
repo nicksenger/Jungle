@@ -1,11 +1,12 @@
+use jungle_sdk::prelude::*;
+use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    AbsorbFn, AbsorbMapper, EffectCompletion, EmitFn, EmitMapper, FocusedStep, Fuse, Identity,
-    IdentityStep, ManualExecutor, PassthroughEmit, Step, UnitEmit,
+    AbsorbFn, AbsorbMapper, Act, EffectCompletion, EmitFn, EmitMapper, Fuse, Identity,
+    ManualExecutor, PassthroughEmit, Step, UnitEmit,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U70, U71};
-use jungle_sdk::Journey;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct HelperState {
     value: i32,
     pulse_count: i32,
@@ -13,9 +14,8 @@ struct HelperState {
 
 struct EchoEffect;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 70)]
 impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
-    type Id = jungle_sdk::types::Id<U70>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -29,9 +29,8 @@ impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
 }
 struct PulseEffect;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 71)]
 impl<J> jungle_sdk::types::Effect<J> for PulseEffect {
-    type Id = jungle_sdk::types::Id<U71>;
     type In = ();
     type Out = i32;
     type Err = ();
@@ -69,39 +68,49 @@ impl EmitMapper<HelperState, EchoEffect, i32> for EmitUsingState {
     }
 }
 
-type PassthroughStep = FocusedStep<
-    HelperAnimal,
-    Identity,
-    PassthroughEmit<EchoEffect, Identity>,
-    AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
->;
+struct PassthroughSpec;
+#[jungle::act(bind = Fuse<
+        PassthroughEmit<EchoEffect, Identity>,
+        AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
+    >)]
+impl Act for PassthroughSpec {
+    type Effect = EchoEffect;
+    type Input = i32;
+    type Output = i32;
+}
 
-type UnitStep = IdentityStep<
-    HelperAnimal,
-    UnitEmit<PulseEffect, Identity>,
-    AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
->;
+struct UnitSpec;
+#[jungle::act(bind = Fuse<
+        UnitEmit<PulseEffect, Identity>,
+        AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
+    >)]
+impl Act for UnitSpec {
+    type Effect = PulseEffect;
+    type Input = ();
+    type Output = ();
+}
 
-type FunctionEmitStep = Step<
-    HelperAnimal,
-    Fuse<
+struct FunctionEmitSpec;
+#[jungle::act(bind = Fuse<
         EmitFn<Identity, EchoEffect, i32, EmitUsingState>,
         AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
-    >,
->;
+    >)]
+impl Act for FunctionEmitSpec {
+    type Effect = EchoEffect;
+    type Input = i32;
+    type Output = i32;
+}
 
-#[derive(Journey)]
-struct AdaptHelpersJourney(PassthroughStep, UnitStep, FunctionEmitStep);
+#[derive(Flow)]
+struct AdaptHelpersFlowTemplate(Step<PassthroughSpec>, Step<UnitSpec>, Step<FunctionEmitSpec>);
 
 struct HelperAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for HelperAnimal {
-    type Id = jungle_sdk::types::Id<U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 0, generation = 0)]
+impl Animal for HelperAnimal {
     type State = HelperState;
     type Seed = HelperState;
-    type Journey = AdaptHelpersJourney;
+    type Journey = AdaptHelpersFlowTemplate;
 }
 
 #[test]

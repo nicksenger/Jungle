@@ -1,11 +1,13 @@
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
-    Act, Animal, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema, Id,
-    Identity, LoopCondition, Observe, Sleep, Step, While,
+    Animal, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion,
+    Id, Identity, LoopCondition, Observe, Sleep, While,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
-use jungle_sdk::{Animals, JungleClient, Optic};
+use jungle_sdk::typosaurus::num::consts::{U0, U1};
+use jungle_sdk::{Animals, Flow, JungleClient, Optic};
+use serde::{Deserialize, Serialize};
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 use uuid::Uuid;
@@ -37,23 +39,19 @@ pub async fn connect_client_with_retry(remote: SocketAddr) -> jungle_sdk::Client
     unreachable!("retry loop always returns or panics")
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObserveState {
     pub tick: u64,
     pub sleep_ms: u64,
 }
 
 pub struct BumpEffect;
-impl EffectSchema for BumpEffect {
-    type Id = Id<U14>;
+#[effect(id = 14)]
+impl<J> jungle_sdk::types::Effect<J> for BumpEffect {
     type In = ();
     type Out = ();
     type Err = ();
-}
 
-impl<J> EffectExec<J> for BumpEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -63,9 +61,9 @@ impl<J> EffectExec<J> for BumpEffect {
 }
 
 pub struct ObserveSleep;
-impl Act<ObserveAnimal> for ObserveSleep {
+impl BoundAct<ObserveAnimal> for ObserveSleep {
     type Effect = Sleep;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -80,9 +78,9 @@ impl Act<ObserveAnimal> for ObserveSleep {
 }
 
 pub struct ObserveBump;
-impl Act<ObserveAnimal> for ObserveBump {
+impl BoundAct<ObserveAnimal> for ObserveBump {
     type Effect = BumpEffect;
-    type StateAspect = Identity;
+    type Aspect = Identity;
     type Input = ();
     type Output = ();
 
@@ -112,11 +110,12 @@ impl LoopCondition<ObserveState> for ObserveLoopForever {
 
 type ObserveBody = Conditional<
     ObserveChooseSleep,
-    Step<ObserveAnimal, ObserveSleep>,
-    Step<ObserveAnimal, ObserveBump>,
+    BoundFlowStep<ObserveAnimal, ObserveSleep>,
+    BoundFlowStep<ObserveAnimal, ObserveBump>,
 >;
 
-type ObserveJourney = While<ObserveLoopForever, ObserveBody>;
+#[derive(Flow)]
+pub struct ObserveJourney(While<ObserveLoopForever, ObserveBody>);
 
 pub struct ObserveAnimal;
 impl Animal for ObserveAnimal {
@@ -138,16 +137,6 @@ impl Observe for ObserveAnimal {
     fn observe(state: &Self::State) -> Self::Appearance {
         *state
     }
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for ObserveAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U1, ObserveAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ObserveAnimal {
-    type Id = U1;
 }
 
 #[derive(Animals)]

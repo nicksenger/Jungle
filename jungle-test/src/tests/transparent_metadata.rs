@@ -1,15 +1,15 @@
+use jungle_sdk::prelude::*;
+use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    Act, Conditional, EffectCompletion, Executor, Identity, Join, JourneyAst, JourneyAstSource,
+    Act, Conditional, EffectCompletion, Executor, Join, JourneyAst, JourneyAstSource,
     ManualExecutor, NodeMetadata, Select, Step, Transparent, While,
 };
-use jungle_sdk::typosaurus::num::consts::{U30, U31};
 use std::future::ready;
 
-struct TransparentEffect;
+pub struct TransparentEffect;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 30)]
 impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
-    type Id = jungle_sdk::types::Id<U30>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -22,21 +22,19 @@ impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
     }
 }
 
-struct TransparentAnimal;
+pub struct TransparentAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for TransparentAnimal {
-    type Id = jungle_sdk::types::Id<U31>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 31, generation = 0)]
+impl Animal for TransparentAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = TransparentJourney;
+    type Journey = TransparentFlowTemplate;
 }
 
-struct TransparentStep;
-impl Act<TransparentAnimal> for TransparentStep {
+pub struct TransparentStepSpec;
+#[jungle::act]
+impl Act for TransparentStepSpec {
     type Effect = TransparentEffect;
-    type StateAspect = Identity;
     type Input = i32;
     type Output = i32;
 
@@ -51,16 +49,16 @@ impl Act<TransparentAnimal> for TransparentStep {
     }
 }
 
-struct FlowSectionMetadata;
+pub struct FlowSectionMetadata;
 impl NodeMetadata for FlowSectionMetadata {
     const METADATA: &'static str = "section:checkout/preflight";
 }
 
-type BaseFlow = Step<TransparentAnimal, TransparentStep>;
+type BaseFlow = Step<TransparentStepSpec>;
 type TransparentFlow = Transparent<FlowSectionMetadata, BaseFlow>;
 
-#[derive(jungle_sdk::Journey)]
-struct TransparentJourney(TransparentFlow);
+#[derive(Flow)]
+pub struct TransparentFlowTemplate(TransparentFlow);
 
 #[test]
 fn transparent_flow_runs_as_passthrough_boundary() {
@@ -95,7 +93,7 @@ fn transparent_flow_exposes_custom_metadata() {
     assert_eq!(<BaseFlow as NodeMetadata>::METADATA, "");
 }
 
-struct AnnotatedNonTransparentStep;
+pub struct AnnotatedNonTransparentStep;
 
 impl NodeMetadata for AnnotatedNonTransparentStep {
     const METADATA: &'static str = "node:custom/non-transparent-step";
@@ -109,7 +107,7 @@ fn non_transparent_node_can_customize_metadata() {
     );
 }
 
-struct ControlMetadata;
+pub struct ControlMetadata;
 impl NodeMetadata for ControlMetadata {
     const METADATA: &'static str = "control:branching";
 }

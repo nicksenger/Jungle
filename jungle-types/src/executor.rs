@@ -1,11 +1,11 @@
 use crate::{
-    Act, Animal, BackendError, Conditional, EffectCompletion, EffectExec, EffectSchema, Join,
-    LoopCondition, Running, Scoped, Select, Step, Transparent, While,
+    Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
+    EffectCompletion, Effect, EffectSchema, Join, LoopCondition, Running, Scoped, Select,
+    Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
-use serde::{Deserialize, Serialize as SerdeSerialize};
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -31,10 +31,10 @@ pub trait ArgputForState<State> {
     type Carry;
 }
 
-impl<State, T, A> ArgputForState<State> for Step<T, A>
+impl<State, T, A> ArgputForState<State> for BoundFlowStep<T, A>
 where
     T: Animal<State = State>,
-    A: Act<T>,
+    A: BoundAct<T>,
 {
     type Carry = A::Input;
 }
@@ -263,16 +263,16 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
-impl<T, A> ErasedFlow<T::State> for TypedErasedStep<Step<T, A>>
+impl<T, A> ErasedFlow<T::State> for TypedErasedStep<BoundFlowStep<T, A>>
 where
     T: Animal,
-    A: Act<T>,
-    <A as Act<T>>::Effect: EffectExec<()>,
-    <<A as Act<T>>::Effect as EffectSchema>::In: 'static,
-    <<A as Act<T>>::Effect as EffectSchema>::Out: 'static,
-    <<A as Act<T>>::Effect as EffectSchema>::Err: Serialize + 'static,
-    <<A as Act<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as Act<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAct<T>,
+    <A as BoundAct<T>>::Effect: Effect<()>,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: 'static,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize + 'static,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -292,7 +292,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
-        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
+        let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -317,7 +317,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
-        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
+        let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
         let request = match postcard::to_allocvec(&effect_input) {
             Ok(request) => request,
@@ -326,7 +326,7 @@ where
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<A as Act<T>>::Effect as EffectExec<()>>::effect(&(), effect_input).await;
+                    <<A as BoundAct<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -336,7 +336,7 @@ where
             state,
             ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as Act<T>>::Effect>(),
+                core::any::type_name::<<A as BoundAct<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -355,18 +355,19 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: EffectCompletion<<A as Act<T>>::Effect> = match completion {
-            Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Act<T>>::Effect as EffectSchema>::Out>(&output)
-                    .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
-            ),
-            Err(error) => Err(
-                postcard::from_bytes::<<<A as Act<T>>::Effect as EffectSchema>::Err>(&error)
-                    .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
-            ),
+        let typed_completion: EffectCompletion<<A as BoundAct<T>>::Effect> = match completion {
+            Ok(output) => Ok(postcard::from_bytes::<
+                <<A as BoundAct<T>>::Effect as EffectSchema>::Out,
+            >(&output)
+            .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
+            Err(error) => Err(postcard::from_bytes::<
+                <<A as BoundAct<T>>::Effect as EffectSchema>::Err,
+            >(&error)
+            .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, emitted) = <Step<T, A> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) =
+            <BoundFlowStep<T, A> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -408,15 +409,15 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
     }
 }
 
-impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, Step<T, A>>
+impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, BoundFlowStep<T, A>>
 where
     Context: Send + Sync + 'static,
     T: Animal,
-    A: Act<T>,
-    <A as Act<T>>::Effect: EffectExec<Context>,
-    <<A as Act<T>>::Effect as EffectSchema>::In: 'static,
-    <<A as Act<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
-    <<A as Act<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
+    A: BoundAct<T>,
+    <A as BoundAct<T>>::Effect: Effect<Context>,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -436,7 +437,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
-        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
+        let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -461,7 +462,7 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
         };
-        let (state, request) = <Step<T, A> as Running>::run((state, typed_input));
+        let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
         let request = match postcard::to_allocvec(&effect_input) {
             Ok(request) => request,
@@ -470,7 +471,7 @@ where
         let context = Arc::clone(&self.context);
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as Act<T>>::Effect as EffectExec<Context>>::effect(
+                let completion = <<A as BoundAct<T>>::Effect as Effect<Context>>::effect(
                     context.as_ref(),
                     effect_input,
                 )
@@ -484,7 +485,7 @@ where
             state,
             ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as Act<T>>::Effect>(),
+                core::any::type_name::<<A as BoundAct<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -503,18 +504,19 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: EffectCompletion<<A as Act<T>>::Effect> = match completion {
-            Ok(output) => Ok(
-                postcard::from_bytes::<<<A as Act<T>>::Effect as EffectSchema>::Out>(&output)
-                    .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
-            ),
-            Err(error) => Err(
-                postcard::from_bytes::<<<A as Act<T>>::Effect as EffectSchema>::Err>(&error)
-                    .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?,
-            ),
+        let typed_completion: EffectCompletion<<A as BoundAct<T>>::Effect> = match completion {
+            Ok(output) => Ok(postcard::from_bytes::<
+                <<A as BoundAct<T>>::Effect as EffectSchema>::Out,
+            >(&output)
+            .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
+            Err(error) => Err(postcard::from_bytes::<
+                <<A as BoundAct<T>>::Effect as EffectSchema>::Err,
+            >(&error)
+            .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
-        let (state, emitted) = <Step<T, A> as crate::Waiting>::accept((state, typed_completion));
+        let (state, emitted) =
+            <BoundFlowStep<T, A> as crate::Waiting>::accept((state, typed_completion));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -725,13 +727,13 @@ where
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
-#[derive(Debug, Clone, Deserialize, SerdeSerialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 enum SelectCompletionEnvelope {
     Left(SerializedCompletion),
     Right(SerializedCompletion),
 }
 
-#[derive(Debug, Clone, Deserialize, SerdeSerialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct SelectRequestEnvelope {
     left: Serialized,
     right: Serialized,
@@ -1069,13 +1071,13 @@ where
     }
 }
 
-#[derive(Debug, Clone, Deserialize, SerdeSerialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct JoinCompletionEnvelope {
     left: SerializedCompletion,
     right: SerializedCompletion,
 }
 
-#[derive(Debug, Clone, Deserialize, SerdeSerialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct JoinRequestEnvelope {
     left: Serialized,
     right: Serialized,
@@ -1610,35 +1612,103 @@ impl<State> BuildFlow<DynFlow<State>> for list::Empty {
     }
 }
 
-impl<State, Head, Tail> BuildFlow<DynFlow<State>> for TList<(Head, Tail)>
+macro_rules! dynflow_list_chain {
+    ($h:ty) => {
+        TList<($h, list::Empty)>
+    };
+    ($h:ty, $($rest:ty),+) => {
+        TList<($h, dynflow_list_chain!($($rest),+))>
+    };
+}
+macro_rules! dynflow_list_chain_tail {
+    ($h:ty ; $tail:ty) => {
+        TList<($h, $tail)>
+    };
+    ($h:ty, $($rest:ty),+ ; $tail:ty) => {
+        TList<($h, dynflow_list_chain_tail!($($rest),+ ; $tail))>
+    };
+}
+
+macro_rules! build_flow_len_impl {
+    ($h0:ident) => {
+        impl<State, $h0> BuildFlow<DynFlow<State>> for dynflow_list_chain!($h0)
+        where
+            $h0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+        {
+            type Output = DynFlow<State>;
+
+            fn push_steps(steps: DynFlow<State>) -> Self::Output {
+                <$h0 as BuildFlow<DynFlow<State>>>::push_steps(steps)
+            }
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<State, $h0, $($rest,)+> BuildFlow<DynFlow<State>>
+            for dynflow_list_chain!($h0, $($rest),+)
+        where
+            $h0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+            dynflow_list_chain!($($rest),+): BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+        {
+            type Output = DynFlow<State>;
+
+            fn push_steps(steps: DynFlow<State>) -> Self::Output {
+                let steps = <$h0 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+                <dynflow_list_chain!($($rest),+) as BuildFlow<DynFlow<State>>>::push_steps(steps)
+            }
+        }
+    };
+}
+build_flow_len_impl!(H0);
+build_flow_len_impl!(H0; H1);
+build_flow_len_impl!(H0; H1, H2);
+build_flow_len_impl!(H0; H1, H2, H3);
+build_flow_len_impl!(H0; H1, H2, H3, H4);
+build_flow_len_impl!(H0; H1, H2, H3, H4, H5);
+build_flow_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<State, H0, H1, H2, H3, H4, H5, H6, H7, Tail> BuildFlow<DynFlow<State>>
+    for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H1: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H2: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H3: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H4: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H5: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H6: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+    H7: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     Tail: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(steps: DynFlow<State>) -> Self::Output {
-        let steps = <Head as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H0 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H1 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H2 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H3 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H4 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H5 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H6 as BuildFlow<DynFlow<State>>>::push_steps(steps);
+        let steps = <H7 as BuildFlow<DynFlow<State>>>::push_steps(steps);
         <Tail as BuildFlow<DynFlow<State>>>::push_steps(steps)
     }
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<T, A> BuildFlow<DynFlow<T::State>> for Step<T, A>
+impl<T, A> BuildFlow<DynFlow<T::State>> for BoundFlowStep<T, A>
 where
     T: Animal + 'static,
-    A: Act<T> + 'static,
-    <A as Act<T>>::Effect: EffectExec<()> + 'static,
-    <<A as Act<T>>::Effect as EffectSchema>::Err: Serialize,
-    <<A as Act<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as Act<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAct<T> + 'static,
+    <A as BoundAct<T>>::Effect: Effect<()> + 'static,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
     type Output = DynFlow<T::State>;
 
     fn push_steps(mut steps: DynFlow<T::State>) -> Self::Output {
-        steps.push(Box::new(TypedErasedStep::<Step<T, A>>::new()));
+        steps.push(Box::new(TypedErasedStep::<BoundFlowStep<T, A>>::new()));
         steps
     }
 }
@@ -1796,10 +1866,90 @@ impl<Context, State> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for li
     }
 }
 
-impl<Context, State, Head, Tail> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for TList<(Head, Tail)>
+macro_rules! build_flow_with_context_len_impl {
+    ($h0:ident) => {
+        impl<Context, State, $h0> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+            for dynflow_list_chain!($h0)
+        where
+            $h0: BuildFlowWithContext<
+                (Arc<Context>, DynFlow<State>),
+                Output = (Arc<Context>, DynFlow<State>),
+            >,
+        {
+            type Output = (Arc<Context>, DynFlow<State>);
+
+            fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+                <$h0 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
+            }
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<Context, State, $h0, $($rest,)+> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+            for dynflow_list_chain!($h0, $($rest),+)
+        where
+            $h0: BuildFlowWithContext<
+                (Arc<Context>, DynFlow<State>),
+                Output = (Arc<Context>, DynFlow<State>),
+            >,
+            dynflow_list_chain!($($rest),+): BuildFlowWithContext<
+                (Arc<Context>, DynFlow<State>),
+                Output = (Arc<Context>, DynFlow<State>),
+            >,
+        {
+            type Output = (Arc<Context>, DynFlow<State>);
+
+            fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+                let input =
+                    <$h0 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
+                        input,
+                    );
+                <dynflow_list_chain!($($rest),+) as BuildFlowWithContext<
+                    (Arc<Context>, DynFlow<State>),
+                >>::push_steps(input)
+            }
+        }
+    };
+}
+build_flow_with_context_len_impl!(H0);
+build_flow_with_context_len_impl!(H0; H1);
+build_flow_with_context_len_impl!(H0; H1, H2);
+build_flow_with_context_len_impl!(H0; H1, H2, H3);
+build_flow_with_context_len_impl!(H0; H1, H2, H3, H4);
+build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5);
+build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<Context, State, H0, H1, H2, H3, H4, H5, H6, H7, Tail>
+    BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: BuildFlowWithContext<
+    H0: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H1: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H2: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H3: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H4: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H5: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H6: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+    H7: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
     >,
@@ -1811,32 +1961,39 @@ where
     type Output = (Arc<Context>, DynFlow<State>);
 
     fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
-        let input =
-            <Head as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H0 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H1 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H2 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H3 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H4 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H5 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H6 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
+        let input = <H7 as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input);
         <Tail as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
     }
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for Step<T, A>
+impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for BoundFlowStep<T, A>
 where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
-    A: Act<T> + 'static,
-    <A as Act<T>>::Effect: EffectExec<Context> + 'static,
-    <<A as Act<T>>::Effect as EffectSchema>::Out: Serialize,
-    <<A as Act<T>>::Effect as EffectSchema>::Err: Serialize,
-    <<A as Act<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as Act<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAct<T> + 'static,
+    <A as BoundAct<T>>::Effect: Effect<Context> + 'static,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
     type Output = (Arc<Context>, DynFlow<T::State>);
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<T::State>)) -> Self::Output {
-        steps.push(Box::new(
-            ContextualTypedErasedStep::<Context, Step<T, A>>::new(Arc::clone(&context)),
-        ));
+        steps.push(Box::new(ContextualTypedErasedStep::<
+            Context,
+            BoundFlowStep<T, A>,
+        >::new(Arc::clone(&context))));
         (context, steps)
     }
 }
@@ -2434,8 +2591,8 @@ fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {
 
 pub struct ContextExecutor<Context, A>
 where
-    A: Animal,
-    A::Journey: BuildFlowWithContext<
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlowWithContext<
         (Arc<Context>, DynFlow<A::State>),
         Output = (Arc<Context>, DynFlow<A::State>),
     >,
@@ -2450,8 +2607,8 @@ where
 impl<Context, A> ContextExecutor<Context, A>
 where
     Context: 'static,
-    A: Animal,
-    A::Journey: BuildFlowWithContext<
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlowWithContext<
         (Arc<Context>, DynFlow<A::State>),
         Output = (Arc<Context>, DynFlow<A::State>),
     >,
@@ -2483,7 +2640,7 @@ where
     }
 
     pub fn new(context: Arc<Context>, state: A::State) -> Self {
-        let (_, mut steps) = <A::Journey as BuildFlowWithContext<(
+        let (_, mut steps) = <BoundAnimalJourney<A> as BuildFlowWithContext<(
             Arc<Context>,
             DynFlow<A::State>,
         )>>::push_steps((context, Vec::new()));
@@ -2705,8 +2862,8 @@ where
 
 pub struct ManualExecutor<A>
 where
-    A: Animal,
-    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     state: Option<A::State>,
     steps: DynFlow<A::State>,
@@ -2715,8 +2872,8 @@ where
 
 impl<A> ManualExecutor<A>
 where
-    A: Animal,
-    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     fn settle_without_progress(&mut self) -> Result<(), ExecutorError> {
         loop {
@@ -2745,7 +2902,8 @@ where
     }
 
     pub fn new(state: A::State) -> Self {
-        let mut steps = <A::Journey as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new());
+        let mut steps =
+            <BoundAnimalJourney<A> as BuildFlow<DynFlow<A::State>>>::push_steps(Vec::new());
         assign_flow_node_ids(&mut steps);
         let mut executor = Self {
             state: Some(state),
@@ -3002,8 +3160,8 @@ where
 
 pub struct Executor<A>
 where
-    A: Animal,
-    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     manual: ManualExecutor<A>,
     last_emitted: Option<Serialized>,
@@ -3011,8 +3169,8 @@ where
 
 impl<A> Executor<A>
 where
-    A: Animal,
-    A::Journey: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>: BuildFlow<DynFlow<A::State>, Output = DynFlow<A::State>>,
 {
     pub fn new(state: A::State) -> Self {
         Self {

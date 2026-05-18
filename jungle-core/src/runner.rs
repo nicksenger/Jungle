@@ -2,8 +2,9 @@ use futures::channel::oneshot;
 use futures::SinkExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
-    Animal, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError, Observable,
-    ObservationBridge, Perturbable, PerturbationBridge, RunnerOut, Sleep,
+    BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow,
+    ExecutorError, Observable, ObservationBridge, Perturbable, PerturbationBridge, RunnerOut,
+    Sleep,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -41,8 +42,8 @@ where
         mut tx: RunnerChannelTx,
     ) -> Result<A::State, ExecutorError>
     where
-        A: Animal + Observable + Perturbable,
-        A::Journey:
+        A: BoundAnimal + Observable + Perturbable,
+        BoundAnimalJourney<A>:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         let mut executor = self.new_executor::<A>(state);
@@ -63,8 +64,8 @@ where
 
     pub fn new_executor<A>(&self, state: A::State) -> ContextExecutor<T, A>
     where
-        A: Animal,
-        A::Journey:
+        A: BoundAnimal,
+        BoundAnimalJourney<A>:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         ContextExecutor::new(Arc::clone(&self.jungle), state)
@@ -75,8 +76,8 @@ where
         executor: &ContextExecutor<T, A>,
     ) -> Result<Option<Vec<u8>>, ExecutorError>
     where
-        A: Animal + Observable,
-        A::Journey:
+        A: BoundAnimal + Observable,
+        BoundAnimalJourney<A>:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(executor.state())
@@ -109,8 +110,8 @@ where
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
-        A: Animal + Observable + Perturbable,
-        A::Journey:
+        A: BoundAnimal + Observable + Perturbable,
+        BoundAnimalJourney<A>:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
         Initial: Serialize + Clone,
     {
@@ -161,8 +162,8 @@ where
         tx: &mut RunnerChannelTx,
     ) -> Result<RunnerAdvance, ExecutorError>
     where
-        A: Animal + Observable + Perturbable,
-        A::Journey:
+        A: BoundAnimal + Observable + Perturbable,
+        BoundAnimalJourney<A>:
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         let sleep_out = postcard::to_allocvec(&())
@@ -190,8 +191,8 @@ async fn apply_completion_and_emit_appearance<T, A>(
 ) -> Result<(), ExecutorError>
 where
     T: 'static,
-    A: Animal + Observable,
-    A::Journey:
+    A: BoundAnimal + Observable,
+    BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     match &completion {
@@ -256,9 +257,9 @@ async fn process_perturbations<A, Ctx>(
     tx: &mut RunnerChannelTx,
 ) -> Result<(), ExecutorError>
 where
-    A: Animal + Perturbable,
+    A: BoundAnimal + Perturbable,
     Ctx: 'static,
-    A::Journey:
+    BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<Ctx>, DynFlow<A::State>), Output = (Arc<Ctx>, DynFlow<A::State>)>,
 {
     if !<<A as Perturbable>::Perturbation as PerturbationBridge<A>>::enabled() {

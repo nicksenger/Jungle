@@ -1,29 +1,27 @@
+use jungle_sdk::prelude::*;
+use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Identity,
-    Join, Select, Sleep, Step,
+    Act, ContextExecutor, EffectCompletion, Either, Executor, Join, Select, Sleep, Step,
 };
-use jungle_sdk::{Journey, Optic};
+use jungle_sdk::Optic;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
-struct SelectJoinState {
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectJoinState {
     fast_ms: u64,
     slow_ms: u64,
     winner: i32,
     joined_sum: i32,
 }
 
-struct TimedValueEffect;
-impl EffectSchema for TimedValueEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U60>;
+pub struct TimedValueEffect;
+#[jungle::effect(id = 60)]
+impl<J> jungle_sdk::types::Effect<J> for TimedValueEffect {
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for TimedValueEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -35,15 +33,13 @@ impl<J> EffectExec<J> for TimedValueEffect {
     }
 }
 
-struct ContextTimedValueEffect;
-impl EffectSchema for ContextTimedValueEffect {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U61>;
+pub struct ContextTimedValueEffect;
+#[jungle::effect(id = 61)]
+impl<J> jungle_sdk::types::Effect<J> for ContextTimedValueEffect {
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for ContextTimedValueEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -55,10 +51,10 @@ impl<J> EffectExec<J> for ContextTimedValueEffect {
     }
 }
 
-struct SelectFast;
-impl Act<SelectAnimal> for SelectFast {
+pub struct SelectFastSpec;
+#[jungle::act]
+impl Act for SelectFastSpec {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -74,10 +70,10 @@ impl Act<SelectAnimal> for SelectFast {
     }
 }
 
-struct SelectSlow;
-impl Act<SelectAnimal> for SelectSlow {
+pub struct SelectSlowSpec;
+#[jungle::act]
+impl Act for SelectSlowSpec {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -93,10 +89,10 @@ impl Act<SelectAnimal> for SelectSlow {
     }
 }
 
-struct CaptureSelectWinner;
-impl Act<SelectAnimal> for CaptureSelectWinner {
+pub struct CaptureSelectWinnerSpec;
+#[jungle::act]
+impl Act for CaptureSelectWinnerSpec {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
     type Input = Either<i32, i32>;
     type Output = ();
 
@@ -112,27 +108,25 @@ impl Act<SelectAnimal> for CaptureSelectWinner {
     }
 }
 
-#[derive(Journey)]
-struct SelectJourney(
-    Select<Step<SelectAnimal, SelectFast>, Step<SelectAnimal, SelectSlow>>,
-    Step<SelectAnimal, CaptureSelectWinner>,
+#[derive(Flow)]
+pub struct SelectFlowTemplate(
+    Select<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
+    Step<CaptureSelectWinnerSpec>,
 );
 
-struct SelectAnimal;
+pub struct SelectAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for SelectAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U0>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 0, generation = 0)]
+impl Animal for SelectAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = SelectJourney;
+    type Journey = SelectFlowTemplate;
 }
 
-struct JoinFast;
-impl Act<JoinAnimal> for JoinFast {
+pub struct JoinFastSpec;
+#[jungle::act]
+impl Act for JoinFastSpec {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -148,10 +142,10 @@ impl Act<JoinAnimal> for JoinFast {
     }
 }
 
-struct JoinSlow;
-impl Act<JoinAnimal> for JoinSlow {
+pub struct JoinSlowSpec;
+#[jungle::act]
+impl Act for JoinSlowSpec {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -167,10 +161,10 @@ impl Act<JoinAnimal> for JoinSlow {
     }
 }
 
-struct CaptureJoinSum;
-impl Act<JoinAnimal> for CaptureJoinSum {
+pub struct CaptureJoinSumSpec;
+#[jungle::act]
+impl Act for CaptureJoinSumSpec {
     type Effect = TimedValueEffect;
-    type StateAspect = Identity;
     type Input = (i32, i32);
     type Output = ();
 
@@ -183,27 +177,25 @@ impl Act<JoinAnimal> for CaptureJoinSum {
     }
 }
 
-#[derive(Journey)]
-struct JoinJourney(
-    Join<Step<JoinAnimal, JoinFast>, Step<JoinAnimal, JoinSlow>>,
-    Step<JoinAnimal, CaptureJoinSum>,
+#[derive(Flow)]
+pub struct JoinFlowTemplate(
+    Join<Step<JoinFastSpec>, Step<JoinSlowSpec>>,
+    Step<CaptureJoinSumSpec>,
 );
 
-struct JoinAnimal;
+pub struct JoinAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for JoinAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U1>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 1, generation = 0)]
+impl Animal for JoinAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = JoinJourney;
+    type Journey = JoinFlowTemplate;
 }
 
-struct TimeoutSleep;
-impl Act<TimeoutAnimal> for TimeoutSleep {
+pub struct TimeoutSleepSpec;
+#[jungle::act]
+impl Act for TimeoutSleepSpec {
     type Effect = Sleep;
-    type StateAspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -218,10 +210,10 @@ impl Act<TimeoutAnimal> for TimeoutSleep {
     }
 }
 
-struct TimeoutSlow;
-impl Act<TimeoutAnimal> for TimeoutSlow {
+pub struct TimeoutSlowSpec;
+#[jungle::act]
+impl Act for TimeoutSlowSpec {
     type Effect = ContextTimedValueEffect;
-    type StateAspect = Identity;
     type Input = ();
     type Output = i32;
 
@@ -236,17 +228,16 @@ impl Act<TimeoutAnimal> for TimeoutSlow {
     }
 }
 
-type TimeoutJourney = Select<Step<TimeoutAnimal, TimeoutSleep>, Step<TimeoutAnimal, TimeoutSlow>>;
+#[derive(Flow)]
+pub struct TimeoutFlowTemplate(Select<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>);
 
-struct TimeoutAnimal;
+pub struct TimeoutAnimal;
 
-#[jungle_sdk::animal]
-impl jungle_sdk::types::Animal for TimeoutAnimal {
-    type Id = jungle_sdk::types::Id<jungle_sdk::typosaurus::num::consts::U2>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+#[jungle::animal(id = 2, generation = 0)]
+impl Animal for TimeoutAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = TimeoutJourney;
+    type Journey = TimeoutFlowTemplate;
 }
 
 #[tokio::test]

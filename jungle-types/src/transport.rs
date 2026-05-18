@@ -1,13 +1,14 @@
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, thiserror::Error, Serialize, Deserialize)]
 pub enum BackendError {
     #[error("{0}")]
     Message(String),
 }
 
 /// Transport messages sent from runners to external clients.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RunnerOut {
     EffectInput {
         node_id: u32,
@@ -40,7 +41,7 @@ pub enum RunnerOut {
     },
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JourneyEvent {
     pub sequence_id: u64,
     pub event: RunnerOut,
@@ -50,7 +51,7 @@ pub struct JourneyEvent {
 ///
 /// Effect variants intentionally omit effect payload bytes to keep subscription
 /// streams inexpensive for long-running journeys.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RunnerUpdateOut {
     EffectInput {
         node_id: u32,
@@ -76,31 +77,31 @@ pub enum RunnerUpdateOut {
     },
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JourneyUpdateEvent {
     pub sequence_id: u64,
     pub event: RunnerUpdateOut,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimedPerturbable {
     pub id: u64,
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupportedAnimal {
     pub animal_id: u32,
     pub generation: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnerWake {
     pub journey_id: Uuid,
     pub timer_id: Uuid,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JourneyStatus {
     Created,
     Alive,
@@ -110,7 +111,7 @@ pub enum JourneyStatus {
 }
 
 /// Work messages sent from external clients to runners.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Work {
     StartJourney {
         journey_id: Uuid,
@@ -127,7 +128,7 @@ pub enum Work {
 }
 
 /// Wire-level messages sent from external clients to runners.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WireIn {
     CreateJourney {
         namespace: String,
@@ -177,7 +178,7 @@ pub enum WireIn {
 }
 
 /// Wire-level messages sent from runners to external clients.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyHistory(Vec<RunnerOut>),

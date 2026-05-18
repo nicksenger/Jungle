@@ -1,13 +1,13 @@
-use jungle_sdk::types::{EffectExec, EffectSchema, Effects, Id, Identified};
+use jungle_sdk::prelude::*;
+use jungle_sdk::types::{Effect, EffectIdentified, EffectSchema, Effects, Id};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::collections::sp::Node;
-use jungle_sdk::typosaurus::num::consts::U90;
+use num::U90;
 
 struct AutoPrimitiveEffect;
 
-#[jungle_sdk::effect]
+#[jungle::effect(id = 90)]
 impl<J> jungle_sdk::types::Effect<J> for AutoPrimitiveEffect {
-    type Id = Id<U90>;
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -21,9 +21,9 @@ impl<J> jungle_sdk::types::Effect<J> for AutoPrimitiveEffect {
 }
 
 fn assert_schema<T: EffectSchema>() {}
-fn assert_exec<T: EffectExec<()>>() {}
+fn assert_exec<T: Effect<()>>() {}
 fn assert_effects<T: Effects>() {}
-fn assert_identified<T: Identified>() {}
+fn assert_identified<T: EffectIdentified>() {}
 
 #[test]
 fn effect_attr_emits_schema_exec_and_primitives() {
@@ -33,6 +33,6 @@ fn effect_attr_emits_schema_exec_and_primitives() {
     assert_identified::<AutoPrimitiveEffect>();
 
     assert_type_eq!(<AutoPrimitiveEffect as EffectSchema>::Id, Id<U90>);
-    assert_type_eq!(<AutoPrimitiveEffect as Identified>::Id, U90);
+    assert_type_eq!(<AutoPrimitiveEffect as EffectIdentified>::Id, U90);
     assert_type_eq!(<AutoPrimitiveEffect as Effects>::List, Node<U90, AutoPrimitiveEffect>);
 }
