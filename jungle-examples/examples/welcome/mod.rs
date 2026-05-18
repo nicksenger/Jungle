@@ -1,18 +1,18 @@
 mod animals;
 mod assets;
 mod audio;
-mod electric_guitar_score;
 mod effects;
 mod flow;
 mod instrumentation;
+mod score;
 mod ui;
 
 use std::time::Duration;
 
 use crate::{
     audio::AudioEngine,
-    electric_guitar_score::electric_guitar_score,
     instrumentation::{Error as InstrumentError, Instrument, LeadGuitar},
+    score::electric_guitar_score,
 };
 
 #[tokio::main]
