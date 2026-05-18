@@ -1,5 +1,21 @@
+mod bass_drum;
+mod bass_guitar;
+mod closed_hi_hat_cymbal;
+mod crash_cymbal;
 mod distortion_guitar;
 mod electric_guitar;
+mod flute;
+mod saxophone;
+mod snare_drum;
+mod toms_snare;
 
+pub use bass_drum::bass_drum_score;
+pub use bass_guitar::bass_guitar_score;
+pub use closed_hi_hat_cymbal::closed_hi_hat_cymbal_score;
+pub use crash_cymbal::crash_cymbal_score;
 pub use distortion_guitar::distortion_guitar_score;
 pub use electric_guitar::electric_guitar_score;
+pub use flute::flute_score;
+pub use saxophone::saxophone_score;
+pub use snare_drum::snare_drum_score;
+pub use toms_snare::toms_snare_score;

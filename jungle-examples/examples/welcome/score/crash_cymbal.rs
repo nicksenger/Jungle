@@ -1,0 +1,119 @@
+use std::time::Duration;
+
+use crate::instrumentation::{LeadGuitarArticulation, Note};
+
+const TICKS_PER_QUARTER_NOTE: u64 = 384;
+const TEMPO_MICROS_PER_QUARTER_NOTE: u64 = 483_870;
+
+#[derive(Clone, Copy)]
+struct ScoreEvent {
+    start_tick: u32,
+    duration_tick: u32,
+    n_midi: u8,
+    velocity: u8,
+}
+
+const SCORE: &[ScoreEvent] = &[
+    ScoreEvent { start_tick: 11520, duration_tick: 96, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 16128, duration_tick: 384, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 16896, duration_tick: 384, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 17664, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 20736, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 26880, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 33024, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 39168, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 40704, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 42240, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 46848, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 47136, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 47424, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 48384, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 54528, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 60672, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 62208, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 63744, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 68352, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 68640, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 68928, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 69888, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 82176, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 88320, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 94464, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 96000, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 97536, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 102144, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 102432, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 102720, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 103680, duration_tick: 384, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 120576, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 126720, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 128064, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 129792, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 131136, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 134208, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 135408, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 135600, duration_tick: 192, n_midi: 49, velocity: 31 },
+    ScoreEvent { start_tick: 135792, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 136320, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 137088, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 137856, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 138432, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 139008, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 141888, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 144960, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 151296, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 151296, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 154368, duration_tick: 96, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 154368, duration_tick: 96, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 172800, duration_tick: 384, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 173184, duration_tick: 384, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 173568, duration_tick: 384, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 173952, duration_tick: 384, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 174336, duration_tick: 384, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 174720, duration_tick: 384, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 175104, duration_tick: 384, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 175872, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 177408, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 178944, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 182016, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 183552, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 185088, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 188160, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 189696, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 191232, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 194304, duration_tick: 192, n_midi: 57, velocity: 37 },
+    ScoreEvent { start_tick: 195840, duration_tick: 192, n_midi: 49, velocity: 37 },
+    ScoreEvent { start_tick: 197376, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 197664, duration_tick: 96, n_midi: 49, velocity: 31 },
+    ScoreEvent { start_tick: 197952, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 198240, duration_tick: 192, n_midi: 49, velocity: 31 },
+    ScoreEvent { start_tick: 198528, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 198720, duration_tick: 192, n_midi: 49, velocity: 31 },
+    ScoreEvent { start_tick: 198912, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 199200, duration_tick: 96, n_midi: 49, velocity: 31 },
+    ScoreEvent { start_tick: 199488, duration_tick: 192, n_midi: 57, velocity: 31 },
+    ScoreEvent { start_tick: 200064, duration_tick: 384, n_midi: 49, velocity: 31 },
+    ScoreEvent { start_tick: 200064, duration_tick: 384, n_midi: 57, velocity: 31 },
+];
+
+pub fn crash_cymbal_score() -> Vec<Note<LeadGuitarArticulation>> {
+    SCORE
+        .iter()
+        .map(|event| Note {
+            n_midi: event.n_midi,
+            duration: ticks_to_duration(event.duration_tick),
+            velocity: event.velocity as f32 / 127.0,
+            expression: None,
+            offset: ticks_to_duration(event.start_tick),
+            articulation: LeadGuitarArticulation::Sustained,
+        })
+        .collect()
+}
+
+fn ticks_to_duration(ticks: u32) -> Duration {
+    let micros = (ticks as u64)
+        .saturating_mul(TEMPO_MICROS_PER_QUARTER_NOTE)
+        .saturating_add(TICKS_PER_QUARTER_NOTE / 2)
+        / TICKS_PER_QUARTER_NOTE;
+    Duration::from_micros(micros)
+}

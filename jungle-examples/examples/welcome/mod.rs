@@ -14,24 +14,44 @@ use crate::{
     instrumentation::{
         Error as InstrumentError, Instrument, LeadGuitar, LeadGuitarArticulation, Note,
     },
-    score::{distortion_guitar_score, electric_guitar_score},
+    score::{
+        bass_drum_score, bass_guitar_score, closed_hi_hat_cymbal_score, crash_cymbal_score,
+        distortion_guitar_score, electric_guitar_score, flute_score, saxophone_score,
+        snare_drum_score, toms_snare_score,
+    },
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _viewer = jungle_viewer::JungleViewerBuilder::new().title("Welcome Example");
     let audio_engine = AudioEngine::start_default().await?;
-    let electric_notes = electric_guitar_score();
-    let distortion_notes = distortion_guitar_score();
+    let instrument_scores = vec![
+        electric_guitar_score(),
+        distortion_guitar_score(),
+        saxophone_score(),
+        flute_score(),
+        bass_guitar_score(),
+        bass_drum_score(),
+        closed_hi_hat_cymbal_score(),
+        crash_cymbal_score(),
+        snare_drum_score(),
+        toms_snare_score(),
+    ];
 
-    let total_duration = score_duration(&electric_notes).max(score_duration(&distortion_notes));
+    let total_duration = instrument_scores
+        .iter()
+        .map(|notes| score_duration(notes))
+        .max()
+        .unwrap_or(Duration::ZERO);
 
-    let electric_task = tokio::spawn(play_lead_guitar_score(audio_engine.handle(), electric_notes));
-    let distortion_task =
-        tokio::spawn(play_lead_guitar_score(audio_engine.handle(), distortion_notes));
+    let mut tasks = Vec::with_capacity(instrument_scores.len());
+    for notes in instrument_scores {
+        tasks.push(tokio::spawn(play_lead_guitar_score(audio_engine.handle(), notes)));
+    }
 
-    electric_task.await??;
-    distortion_task.await??;
+    for task in tasks {
+        task.await??;
+    }
 
     tokio::time::sleep(total_duration.saturating_add(Duration::from_secs(1))).await;
     Ok(())
