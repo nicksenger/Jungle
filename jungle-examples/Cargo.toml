@@ -11,6 +11,7 @@ zoo = ["dep:jungle-zoo"]
 zoo-delay = ["zoo", "jungle-zoo/delay"]
 
 [dependencies]
+futures = { workspace = true }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "local"] }
 jungle-zoo = { path = "../jungle-zoo", optional = true }
 jungle-viewer = { path = "../jungle-viewer", optional = true }
@@ -18,6 +19,7 @@ iced = { version = "0.14", features = ["tokio"], optional = true }
 cpal = { version = "0.17", optional = true }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
+thiserror = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 uuid = { workspace = true }
 

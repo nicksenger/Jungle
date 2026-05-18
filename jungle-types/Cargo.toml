@@ -10,7 +10,7 @@ inception = { workspace = true }
 typosaurus = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
-thiserror = "2"
+thiserror = { workspace = true }
 
 [lints]
 workspace = true
