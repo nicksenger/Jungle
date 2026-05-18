@@ -22,6 +22,7 @@ impl EffectSchema for Sleep {
 }
 
 impl<J> Effect<J> for Sleep {
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         input: Self::In,

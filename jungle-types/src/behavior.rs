@@ -68,7 +68,7 @@ pub type EffectCompletion<A> = Result<<A as EffectSchema>::Out, <A as EffectSche
 pub trait StateCarrier<State> {
     type Focus;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus;
+    fn focus(state: &mut State) -> &mut Self::Focus;
 }
 
 /// Composes two carriers into a single projection.
@@ -82,7 +82,7 @@ where
 {
     type Focus = <Inner as StateCarrier<<Outer as StateCarrier<State>>::Focus>>::Focus;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+    fn focus(state: &mut State) -> &mut Self::Focus {
         let outer = <Outer as StateCarrier<State>>::focus(state);
         <Inner as StateCarrier<<Outer as StateCarrier<State>>::Focus>>::focus(outer)
     }
@@ -99,7 +99,7 @@ pub struct Identity;
 impl<State> StateCarrier<State> for Identity {
     type Focus = State;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+    fn focus(state: &mut State) -> &mut Self::Focus {
         state
     }
 }
@@ -427,6 +427,15 @@ where
     }
 }
 
+impl<S> Default for Step<S>
+where
+    S: Act,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A primitive workflow step that adapts an [`Effect`] to the
 /// [`Running`]/[`Waiting`] protocol.
 pub struct BoundFlowStep<T, A>
@@ -446,6 +455,16 @@ where
         Self {
             marker: PhantomData,
         }
+    }
+}
+
+impl<T, A> Default for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAct<T>,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 

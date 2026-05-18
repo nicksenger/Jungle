@@ -189,16 +189,7 @@ impl ExampleThemeState {
 
             let mut just_opened = false;
             if let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) {
-                if is_while_cluster && contains_entry {
-                    visual.expanded = true;
-                    changed |= update_cluster_border_visual(
-                        &mut visual.border,
-                        cluster_border_color_gray(),
-                        cluster_border_color_running(),
-                        now,
-                    );
-                    just_opened = true;
-                } else if !visual.expanded && contains_member {
+                if (is_while_cluster && contains_entry) || (!visual.expanded && contains_member) {
                     visual.expanded = true;
                     changed |= update_cluster_border_visual(
                         &mut visual.border,
@@ -313,7 +304,9 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         event: ViewerEvent<Self::Message>,
     ) -> Task<ViewerEvent<Self::Message>> {
         let now = Instant::now();
-        let mut guard = state.lock().expect("example theme state mutex poisoned");
+        let guard = state
+            .get_mut()
+            .expect("example theme state mutex poisoned");
         let mut should_tick = false;
 
         match event {
@@ -338,7 +331,6 @@ impl JunglePanelTheme<AnyAnimal> for ExampleTheme {
         }
 
         if should_tick {
-            drop(guard);
             return next_tick();
         }
 
@@ -623,80 +615,10 @@ fn next_tick() -> Task<ViewerEvent<()>> {
     Task::perform(
         async move {
             tokio::time::sleep(ANIMATION_TICK).await;
-            ()
+            
         },
         ViewerEvent::Message,
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use jungle_viewer::{ClusterLive, ClusterViewCtx, Phase};
-
-    #[test]
-    fn while_cluster_border_resets_on_reentry() {
-        let mut state = ExampleThemeState {
-            node_visuals: HashMap::new(),
-            condition_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            condition_successor_runtime_ids: HashMap::new(),
-            force_pending_runtime_ids: HashSet::new(),
-            runtime_update_counter: 0,
-            runtime_update_order: HashMap::new(),
-        };
-
-        let started_at = Instant::now();
-        let cx = ClusterViewCtx {
-            cluster_id: 9,
-            cluster_index: 0,
-            kind: ClusterKind::While,
-            label: "while: flow::GorillaDaylightRemaining",
-            metadata: None,
-            parent_cluster_id: Some(1),
-            depth: 1,
-            member_display_ids: &[],
-            entry_runtime_ids: vec![18],
-            member_runtime_ids: vec![18, 19],
-            successor_runtime_ids: vec![32],
-            phase: Phase::Live(ClusterLive {
-                has_running: false,
-                has_failed: false,
-                has_completed: false,
-            }),
-        };
-        state.register_cluster(&cx, started_at);
-
-        let first_entry = started_at + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(18, first_entry));
-        let border = state
-            .cluster_visuals
-            .get(&9)
-            .expect("cluster visual should exist")
-            .border;
-        assert_eq!(border.from, cluster_border_color_gray());
-        assert_eq!(border.to, cluster_border_color_running());
-
-        let first_exit = first_entry + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(32, first_exit));
-        let border = state
-            .cluster_visuals
-            .get(&9)
-            .expect("cluster visual should exist")
-            .border;
-        assert_eq!(border.to, cluster_border_color_completed());
-
-        let second_entry = first_exit + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(18, second_entry));
-        let border = state
-            .cluster_visuals
-            .get(&9)
-            .expect("cluster visual should exist")
-            .border;
-        assert_eq!(border.from, cluster_border_color_gray());
-        assert_eq!(border.to, cluster_border_color_running());
-    }
 }
 
 fn main() {
@@ -783,5 +705,75 @@ fn main() {
                 ExampleTheme,
             )
             .expect("jungle-view example should launch viewer");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jungle_viewer::{ClusterLive, ClusterViewCtx, Phase};
+
+    #[test]
+    fn while_cluster_border_resets_on_reentry() {
+        let mut state = ExampleThemeState {
+            node_visuals: HashMap::new(),
+            condition_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
+        };
+
+        let started_at = Instant::now();
+        let cx = ClusterViewCtx {
+            cluster_id: 9,
+            cluster_index: 0,
+            kind: ClusterKind::While,
+            label: "while: flow::GorillaDaylightRemaining",
+            metadata: None,
+            parent_cluster_id: Some(1),
+            depth: 1,
+            member_display_ids: &[],
+            entry_runtime_ids: vec![18],
+            member_runtime_ids: vec![18, 19],
+            successor_runtime_ids: vec![32],
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: false,
+            }),
+        };
+        state.register_cluster(&cx, started_at);
+
+        let first_entry = started_at + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(18, first_entry));
+        let border = state
+            .cluster_visuals
+            .get(&9)
+            .expect("cluster visual should exist")
+            .border;
+        assert_eq!(border.from, cluster_border_color_gray());
+        assert_eq!(border.to, cluster_border_color_running());
+
+        let first_exit = first_entry + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(32, first_exit));
+        let border = state
+            .cluster_visuals
+            .get(&9)
+            .expect("cluster visual should exist")
+            .border;
+        assert_eq!(border.to, cluster_border_color_completed());
+
+        let second_entry = first_exit + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(18, second_entry));
+        let border = state
+            .cluster_visuals
+            .get(&9)
+            .expect("cluster visual should exist")
+            .border;
+        assert_eq!(border.from, cluster_border_color_gray());
+        assert_eq!(border.to, cluster_border_color_running());
     }
 }

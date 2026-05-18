@@ -22,6 +22,7 @@ impl<J> jungle_sdk::types::Effect<J> for TimedValueEffect {
     type Out = i32;
     type Err = ();
 
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -40,6 +41,7 @@ impl<J> jungle_sdk::types::Effect<J> for ContextTimedValueEffect {
     type Out = i32;
     type Err = ();
 
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         input: Self::In,

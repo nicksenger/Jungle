@@ -44,7 +44,7 @@ pub struct IntegrationFocusedCarrier;
 impl StateCarrier<IntegrationState> for IntegrationFocusedCarrier {
     type Focus = SubFlowState;
 
-    fn focus<'a>(state: &'a mut IntegrationState) -> &'a mut Self::Focus {
+    fn focus(state: &mut IntegrationState) -> &mut Self::Focus {
         &mut state.focused
     }
 }
@@ -53,7 +53,7 @@ pub struct IntegrationDeepFocusedCarrier;
 impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
     type Focus = DeepFocusState;
 
-    fn focus<'a>(state: &'a mut IntegrationState) -> &'a mut Self::Focus {
+    fn focus(state: &mut IntegrationState) -> &mut Self::Focus {
         &mut state.focused.nested
     }
 }
@@ -640,10 +640,7 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
     let mut last_sequence_id: Option<u64> = None;
 
     let completion = tokio::time::timeout(Duration::from_secs(8), async {
-        loop {
-            let Some(next) = subscription.next().await else {
-                break;
-            };
+        while let Some(next) = subscription.next().await {
             let update = next.expect("streamed journey update should succeed");
 
             let (sequence_id, update_journey_id) = match update.event {

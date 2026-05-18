@@ -3,7 +3,7 @@ use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     Act, Aspect, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, Effect,
-    EffectSchema, Either, Executor, Identity, LoopCondition, Running, StateCarrier, Waiting, While,
+    EffectSchema, Either, Executor, LoopCondition, Running, StateCarrier, Waiting, While,
     Step,
 };
 use jungle_sdk::Optic;
@@ -94,7 +94,7 @@ pub struct GorillaCoreCarrier;
 impl StateCarrier<GorillaState> for GorillaCoreCarrier {
     type Focus = CoreState;
 
-    fn focus<'a>(state: &'a mut GorillaState) -> &'a mut Self::Focus {
+    fn focus(state: &mut GorillaState) -> &mut Self::Focus {
         &mut state.core
     }
 }
@@ -103,7 +103,7 @@ pub struct TigerCoreCarrier;
 impl StateCarrier<TigerState> for TigerCoreCarrier {
     type Focus = CoreState;
 
-    fn focus<'a>(state: &'a mut TigerState) -> &'a mut Self::Focus {
+    fn focus(state: &mut TigerState) -> &mut Self::Focus {
         &mut state.core
     }
 }
@@ -112,7 +112,7 @@ pub struct GorillaEnergyCarrier;
 impl StateCarrier<GorillaState> for GorillaEnergyCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut GorillaState) -> &'a mut Self::Focus {
+    fn focus(state: &mut GorillaState) -> &mut Self::Focus {
         &mut state.core.energy
     }
 }
@@ -121,7 +121,7 @@ pub struct TigerEnergyCarrier;
 impl StateCarrier<TigerState> for TigerEnergyCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut TigerState) -> &'a mut Self::Focus {
+    fn focus(state: &mut TigerState) -> &mut Self::Focus {
         &mut state.core.energy
     }
 }
@@ -224,7 +224,9 @@ where
     }
 }
 
+#[allow(dead_code)]
 type GorillaEat = AddI32<GorillaEnergyCarrier, Eat>;
+#[allow(dead_code)]
 type GorillaForageStep = SubI32<GorillaEnergyCarrier, Forage>;
 
 type TigerEat = AddI32<TigerEnergyCarrier, Eat>;

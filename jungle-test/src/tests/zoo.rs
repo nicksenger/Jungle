@@ -514,7 +514,7 @@ pub struct ApeRoundCarrier;
 impl StateCarrier<ExecutorApeState> for ApeRoundCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut ExecutorApeState) -> &'a mut Self::Focus {
+    fn focus(state: &mut ExecutorApeState) -> &mut Self::Focus {
         &mut state.core.rounds
     }
 }
@@ -523,7 +523,7 @@ pub struct TigerEnergyCarrier;
 impl StateCarrier<ExecutorCatState> for TigerEnergyCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut ExecutorCatState) -> &'a mut Self::Focus {
+    fn focus(state: &mut ExecutorCatState) -> &mut Self::Focus {
         &mut state.core.energy
     }
 }

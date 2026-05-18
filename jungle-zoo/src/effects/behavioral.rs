@@ -65,6 +65,7 @@ impl<J> jungle_sdk::types::Effect<J> for ChestBeat {
     type Out = u8;
     type Err = String;
 
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         (stress, opposable_thumb): Self::In,

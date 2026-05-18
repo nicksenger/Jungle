@@ -107,6 +107,7 @@ impl<J> jungle_sdk::types::Effect<J> for EvaluateActivityWindow {
     type Out = bool;
     type Err = String;
 
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         (activity, time_of_day): Self::In,

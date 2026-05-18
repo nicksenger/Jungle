@@ -55,6 +55,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
         std::future::ready(Ok(input + 1))
     }
 }
+#[allow(dead_code)]
 pub struct SumPair;
 
 #[jungle::effect(id = 73)]
@@ -70,6 +71,7 @@ impl<J> jungle_sdk::types::Effect<J> for SumPair {
         std::future::ready(Ok(input.0 + input.1))
     }
 }
+#[allow(dead_code)]
 pub struct EchoPair;
 
 #[jungle::effect(id = 74)]
@@ -85,6 +87,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoPair {
         std::future::ready(Ok(input))
     }
 }
+#[allow(dead_code)]
 pub struct EchoRootState;
 
 #[jungle::effect(id = 75)]
@@ -105,7 +108,7 @@ pub struct BranchCarrier;
 impl StateCarrier<RootState> for BranchCarrier {
     type Focus = Branch;
 
-    fn focus<'a>(state: &'a mut RootState) -> &'a mut Self::Focus {
+    fn focus(state: &mut RootState) -> &mut Self::Focus {
         &mut state.branch
     }
 }
@@ -114,7 +117,7 @@ pub struct LeafValueCarrier;
 impl StateCarrier<RootState> for LeafValueCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut RootState) -> &'a mut Self::Focus {
+    fn focus(state: &mut RootState) -> &mut Self::Focus {
         &mut state.branch.leaf.value
     }
 }
@@ -137,6 +140,7 @@ impl BoundAct<OpticAnimal> for LensOnLeafValue {
     }
 }
 
+#[allow(dead_code)]
 pub struct RootStatePulse;
 impl BoundAct<OpticAnimal> for RootStatePulse {
     type Effect = EchoRootState;
@@ -144,13 +148,13 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
     type Input = ();
     type Output = RootState;
 
-    fn emit(view: &RootState, input: Self::Input) -> RootState {
-        view.clone()
+    fn emit(view: &RootState, _input: Self::Input) -> RootState {
+        *view
     }
 
-    fn absorb(view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("echo root should succeed");
-        out
+    fn absorb(_view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        
+        output.expect("echo root should succeed")
     }
 }
 

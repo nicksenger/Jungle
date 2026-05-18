@@ -44,6 +44,7 @@ impl<J> jungle_sdk::types::Effect<J> for UseTool {
     type Out = String;
     type Err = String;
 
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         opposable_thumb: Self::In,

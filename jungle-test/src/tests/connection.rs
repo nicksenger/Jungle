@@ -170,7 +170,7 @@ async fn client_exchanges_messages_with_mock_server() {
                                     other
                                 ))),
                             },
-                            3 | 4 | 5 => match msg {
+                            3..=5 => match msg {
                                 WireIn::HistoryEvent(_) => Ok(WireOut::Ack),
                                 other => Err(BackendError::Message(format!(
                                     "expected history event, got {:?}",

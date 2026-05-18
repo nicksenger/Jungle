@@ -61,113 +61,108 @@ where
         &self.runner
     }
 
-    pub fn spawn(&self) -> impl Future<Output = Result<(), ExecutorError>> + Send + '_ {
-        async move {
-            let owner_id = Uuid::new_v4();
-            let (tx, mut rx): (RunnerChannelTx, _) = mpsc::channel(64);
-            let client_for_transport = self.client.clone();
-            tokio::spawn(async move {
-                while let Some((message, done)) = rx.next().await {
-                    let result: Result<RunnerChannelResponse, ExecutorError> = match message {
-                        RunnerChannelMessage::History(history) => {
-                            let out = match history {
-                                RunnerOut::EffectInput {
-                                    node_id,
-                                    data,
-                                    uuid,
-                                } => client_for_transport.effect_input(uuid, node_id, data).await,
-                                RunnerOut::EffectSuccessOutput {
-                                    node_id,
-                                    data,
-                                    uuid,
-                                } => {
-                                    client_for_transport
-                                        .effect_success_output(uuid, node_id, data)
-                                        .await
-                                }
-                                RunnerOut::EffectFailureOutput {
-                                    node_id,
-                                    data,
-                                    uuid,
-                                } => {
-                                    client_for_transport
-                                        .effect_failure_output(uuid, node_id, data)
-                                        .await
-                                }
-                                RunnerOut::Appearance { data, uuid } => {
-                                    client_for_transport
-                                        .animal_appearance_update(uuid, data)
-                                        .await
-                                }
-                                RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => {
-                                    Ok(())
-                                }
-                            };
-                            out.map(|_| RunnerChannelResponse::Ack)
-                        }
-                        RunnerChannelMessage::ClaimPerturbable { journey_id } => {
-                            client_for_transport
-                                .claim_animal_perturbation(journey_id)
-                                .await
-                                .map(RunnerChannelResponse::ClaimedPerturbation)
-                        }
-                        RunnerChannelMessage::AckPerturbable {
-                            journey_id,
-                            perturbation_id,
-                        } => client_for_transport
-                            .ack_animal_perturbation(journey_id, perturbation_id)
-                            .await
-                            .map(|_| RunnerChannelResponse::Ack),
-                    };
-                    let _ = done.send(result);
-                }
-            });
-
-            let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
-            let supported_animals =
-                <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
-
-            loop {
-                for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
-                    self.client
-                        .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
-                        .await?;
-                }
-
-                let _ = self.client.poll_timers().await?;
-
-                if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
-                    if let Some(mut journey) = suspended.remove(&wake.journey_id) {
-                        match journey.resume(&self.runner, tx.clone()).await? {
-                            SuspendedOutcome::Completed => {
-                                self.client.complete_journey(wake.journey_id).await?;
-                            }
-                            SuspendedOutcome::Sleeping {
-                                wake_at_unix_ms,
-                                node_id: _,
+    pub async fn spawn(&self) -> Result<(), ExecutorError> {
+        let owner_id = Uuid::new_v4();
+        let (tx, mut rx): (RunnerChannelTx, _) = mpsc::channel(64);
+        let client_for_transport = self.client.clone();
+        tokio::spawn(async move {
+            while let Some((message, done)) = rx.next().await {
+                let result: Result<RunnerChannelResponse, ExecutorError> = match message {
+                    RunnerChannelMessage::History(history) => {
+                        let out = match history {
+                            RunnerOut::EffectInput {
+                                node_id,
+                                data,
+                                uuid,
+                            } => client_for_transport.effect_input(uuid, node_id, data).await,
+                            RunnerOut::EffectSuccessOutput {
+                                node_id,
+                                data,
+                                uuid,
                             } => {
-                                let timer_id = Uuid::new_v4();
-                                self.client
-                                    .schedule_sleep_timer(
-                                        wake.journey_id,
-                                        timer_id,
-                                        wake_at_unix_ms,
-                                    )
-                                    .await?;
-                                self.client
-                                    .heartbeat_journey_lease(
-                                        wake.journey_id,
-                                        owner_id,
-                                        self.owner_lease_ttl_ms,
-                                    )
-                                    .await?;
-                                suspended.insert(wake.journey_id, journey);
+                                client_for_transport
+                                    .effect_success_output(uuid, node_id, data)
+                                    .await
                             }
+                            RunnerOut::EffectFailureOutput {
+                                node_id,
+                                data,
+                                uuid,
+                            } => {
+                                client_for_transport
+                                    .effect_failure_output(uuid, node_id, data)
+                                    .await
+                            }
+                            RunnerOut::Appearance { data, uuid } => {
+                                client_for_transport
+                                    .animal_appearance_update(uuid, data)
+                                    .await
+                            }
+                            RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => {
+                                Ok(())
+                            }
+                        };
+                        out.map(|_| RunnerChannelResponse::Ack)
+                    }
+                    RunnerChannelMessage::ClaimPerturbable { journey_id } => {
+                        client_for_transport
+                            .claim_animal_perturbation(journey_id)
+                            .await
+                            .map(RunnerChannelResponse::ClaimedPerturbation)
+                    }
+                    RunnerChannelMessage::AckPerturbable {
+                        journey_id,
+                        perturbation_id,
+                    } => client_for_transport
+                        .ack_animal_perturbation(journey_id, perturbation_id)
+                        .await
+                        .map(|_| RunnerChannelResponse::Ack),
+                };
+                let _ = done.send(result);
+            }
+        });
+
+        let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
+        let supported_animals =
+            <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
+
+        loop {
+            for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
+                self.client
+                    .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
+                    .await?;
+            }
+
+            let _ = self.client.poll_timers().await?;
+
+            if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
+                if let Some(mut journey) = suspended.remove(&wake.journey_id) {
+                    match journey.resume(&self.runner, tx.clone()).await? {
+                        SuspendedOutcome::Completed => {
+                            self.client.complete_journey(wake.journey_id).await?;
+                        }
+                        SuspendedOutcome::Sleeping {
+                            wake_at_unix_ms,
+                            node_id: _,
+                        } => {
+                            let timer_id = Uuid::new_v4();
+                            self.client
+                                .schedule_sleep_timer(wake.journey_id, timer_id, wake_at_unix_ms)
+                                .await?;
+                            self.client
+                                .heartbeat_journey_lease(
+                                    wake.journey_id,
+                                    owner_id,
+                                    self.owner_lease_ttl_ms,
+                                )
+                                .await?;
+                            suspended.insert(wake.journey_id, journey);
                         }
                     }
                 }
+            }
 
-                match self.client.poll_work(supported_animals.clone()).await? {
+            match self.client.poll_work(supported_animals.clone()).await? {
                     Some(Work::StartJourney {
                         journey_id,
                         animal_id,
@@ -212,8 +207,8 @@ where
                             suspended.insert(journey_id, journey);
                         }
                     }
-                    }
-                    Some(Work::ResumeJourney {
+                }
+                Some(Work::ResumeJourney {
                         journey_id,
                         animal_id,
                         generation,
@@ -257,12 +252,11 @@ where
                             suspended.insert(journey_id, journey);
                         }
                     }
-                    }
-                    None => {}
                 }
-
-                sleep(Duration::from_millis(200)).await;
+                None => {}
             }
+
+            sleep(Duration::from_millis(200)).await;
         }
     }
 }

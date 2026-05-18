@@ -1355,9 +1355,7 @@ where
         })
         .clusters(visible_clusters)
         .cluster_container(move |index, _| {
-            let Some(source_index) = visible_cluster_sources.get(index).copied() else {
-                return None;
-            };
+            let source_index = visible_cluster_sources.get(index).copied()?;
             let cluster = cluster_info_for_clusters.get(source_index)?;
             let cx = ClusterViewCtx {
                 cluster_id: cluster.id,
@@ -1405,12 +1403,13 @@ where
 
 #[derive(Clone)]
 struct GraphModel {
-    graph: Graph,
     nodes: Vec<NodeDisplay>,
     node_map: HashMap<u32, NodeDisplay>,
     edges: Vec<(u32, u32)>,
     clusters: Vec<Cluster>,
+    #[cfg(test)]
     while_clusters: Vec<Cluster>,
+    #[cfg(test)]
     while_cluster_labels: Vec<String>,
     cluster_info: Vec<ClusterInfo>,
 }
@@ -1420,11 +1419,6 @@ impl GraphModel {
         let mut builder = GraphBuilder::default();
         builder.flatten(&ast);
 
-        let graph = Graph::new(
-            builder.nodes.iter().map(|node| node.id).collect(),
-            builder.edges.clone(),
-        );
-
         let node_map = builder
             .nodes
             .iter()
@@ -1432,12 +1426,13 @@ impl GraphModel {
             .collect::<HashMap<_, _>>();
 
         Self {
-            graph,
             nodes: builder.nodes,
             node_map,
             edges: builder.edges,
             clusters: builder.clusters.clone(),
+            #[cfg(test)]
             while_clusters: builder.clusters,
+            #[cfg(test)]
             while_cluster_labels: builder.cluster_labels,
             cluster_info: builder.cluster_info,
         }
@@ -1482,18 +1477,6 @@ struct ClusterInfo {
 }
 
 impl NodeDisplay {
-    fn unknown(id: u32) -> Self {
-        Self {
-            id,
-            label: format!("node {id}"),
-            metadata: None,
-            runtime_node_id: None,
-            is_conditional_branch: false,
-            is_select: false,
-            is_join: false,
-        }
-    }
-
     fn kind(&self) -> StepKind {
         if self.is_conditional_branch {
             StepKind::Conditional

@@ -231,22 +231,17 @@ fn while_waiting_passthroughs_optional_branch() {
 #[test]
 fn executor_repeats_until_condition_fails() {
     let mut loop_executor = ManualExecutor::<Looper>::new(0);
-    let mut emitted = Vec::new();
-    emitted.push(
+    let emitted = vec![
         loop_executor
             .next_typed::<_, i32, (), (bool, i32)>(1, Ok(1))
             .expect("first tick should advance"),
-    );
-    emitted.push(
         loop_executor
             .next_typed::<_, i32, (), (bool, i32)>(1, Ok(2))
             .expect("second tick should advance"),
-    );
-    emitted.push(
         loop_executor
             .next_typed::<_, i32, (), (bool, i32)>(1, Ok(3))
             .expect("third tick should advance"),
-    );
+    ];
     assert_eq!(emitted, vec![(true, 1), (true, 2), (false, 3)]);
     let done = loop_executor
         .next_request_typed::<_, i32>((false, 3))

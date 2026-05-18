@@ -108,7 +108,7 @@ impl<T> Optic for T where T: Inception<JungleOptic, False> {}
 
 /// Direct projection contract from a scope state to a requested view type.
 pub trait ViewProject<View> {
-    fn project_view<'a>(state: &'a mut Self) -> &'a mut View;
+    fn project_view(state: &mut Self) -> &mut View;
 }
 
 /// Carrier that projects by target type via [`ViewProject`].
@@ -120,7 +120,7 @@ where
 {
     type Focus = View;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+    fn focus(state: &mut State) -> &mut Self::Focus {
         <State as ViewProject<View>>::project_view(state)
     }
 }
@@ -129,20 +129,20 @@ where
 pub trait LensIndex<Index> {
     type View;
 
-    fn lens_index<'a>(state: &'a mut Self) -> &'a mut Self::View;
+    fn lens_index(state: &mut Self) -> &mut Self::View;
 }
 
 /// Recursive path projection over nested optic fields.
 pub trait LensPath<Path> {
     type View;
 
-    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View;
+    fn lens_path(state: &mut Self) -> &mut Self::View;
 }
 
 impl<State> LensPath<list::List<()>> for State {
     type View = State;
 
-    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+    fn lens_path(state: &mut Self) -> &mut Self::View {
         state
     }
 }
@@ -165,7 +165,7 @@ where
 {
     type View = <State as LensIndex<Index>>::View;
 
-    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+    fn lens_path(state: &mut Self) -> &mut Self::View {
         <State as LensIndex<Index>>::lens_index(state)
     }
 }
@@ -178,7 +178,7 @@ where
 {
     type View = <<State as LensIndex<Head>>::View as LensPath<Tail>>::View;
 
-    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+    fn lens_path(state: &mut Self) -> &mut Self::View {
         let inner = <State as LensIndex<Head>>::lens_index(state);
         <<State as LensIndex<Head>>::View as LensPath<Tail>>::lens_path(inner)
     }
@@ -193,7 +193,7 @@ where
 {
     type Focus = <State as LensPath<Path>>::View;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+    fn focus(state: &mut State) -> &mut Self::Focus {
         <State as LensPath<Path>>::lens_path(state)
     }
 }
@@ -632,7 +632,7 @@ pub struct BindAnimalTraversal<A, Scope = RootScope>(PhantomData<fn() -> (A, Sco
 impl<State> StateCarrier<State> for RootScope {
     type Focus = State;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+    fn focus(state: &mut State) -> &mut Self::Focus {
         state
     }
 }

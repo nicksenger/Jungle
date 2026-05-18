@@ -528,7 +528,7 @@ impl Ecosystem for LocalTemplateContextZoo {
     type Animals = LocalTemplateContextAnimals;
 }
 
-impl<'a> RequiresContextBump for &'a LocalTemplateContextZoo {
+impl RequiresContextBump for &LocalTemplateContextZoo {
     fn context_bump(&self) -> i32 {
         11
     }
@@ -1225,6 +1225,7 @@ impl<J> jungle_sdk::types::Effect<J> for ComplexTimedEffect {
     type Out = i32;
     type Err = ();
 
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         input: Self::In,

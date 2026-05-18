@@ -263,6 +263,12 @@ impl<Step> TypedErasedStep<Step> {
     }
 }
 
+impl<Step> Default for TypedErasedStep<Step> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T, A> ErasedFlow<T::State> for TypedErasedStep<BoundFlowStep<T, A>>
 where
     T: Animal,
@@ -1401,7 +1407,6 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        let input = input;
         let mut state = state;
         loop {
             if self.complete {
@@ -1482,7 +1487,6 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
-        let input = input;
         let mut state = state;
         loop {
             if self.complete {
@@ -2265,7 +2269,6 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        let input = input;
         let mut state = state;
         loop {
             if self.complete {
@@ -2346,7 +2349,6 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
-        let input = input;
         let mut state = state;
         loop {
             if self.complete {
@@ -2822,7 +2824,6 @@ where
     }
 
     fn next_request_serialized(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
-        let input = input;
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
@@ -2933,7 +2934,6 @@ where
     }
 
     pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
-        let input = input;
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
@@ -2974,7 +2974,6 @@ where
         &mut self,
         input: Serialized,
     ) -> Result<ExecutableEffectRequest, ExecutorError> {
-        let input = input;
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {

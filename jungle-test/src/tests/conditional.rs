@@ -154,7 +154,7 @@ fn executor_dynamically_selects_conditional_branch() {
     let right_emitted: bool = right
         .next_typed((false, 3), Ok::<i32, ()>(6))
         .expect("right branch");
-    assert_eq!(right_emitted, true);
+    assert!(right_emitted);
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 6);
 }

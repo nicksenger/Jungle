@@ -263,7 +263,12 @@ impl BoundAct<Gorilla> for GorillaTickPerceivedTime {
     type Output = ();
 
     fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        let segment_minutes = if state.temporal.perception.minutes_since_transition % 2 == 0 {
+        let segment_minutes = if state
+            .temporal
+            .perception
+            .minutes_since_transition
+            .is_multiple_of(2)
+        {
             0
         } else {
             360
