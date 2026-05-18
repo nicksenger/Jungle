@@ -695,13 +695,13 @@ fn main() {
                 journey_id,
                 ExampleTheme,
             )
-            .expect("jungle-view example should launch live viewer");
+            .expect("safari example should launch live viewer");
     } else {
         viewer
             .view_animal_with_theme::<jungle_zoo::animals::gorilla::Gorilla, _, AnyAnimal>(
                 ExampleTheme,
             )
-            .expect("jungle-view example should launch viewer");
+            .expect("safari example should launch viewer");
     }
 }
 
