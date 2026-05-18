@@ -1,14 +1,13 @@
 use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema,
-    JourneyStatus, LoopCondition, Sleep, Step, While,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, JourneyStatus,
+    LoopCondition, Sleep, Step, While,
 };
-use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -35,14 +34,12 @@ pub struct ReplayGateZoo {
 }
 
 pub struct ReplayPreIncrementEffect;
-impl EffectSchema for ReplayPreIncrementEffect {
-    type Id = Id<U41>;
+#[effect(id = 41)]
+impl jungle_sdk::types::Effect<()> for ReplayPreIncrementEffect {
     type In = ();
     type Out = ();
     type Err = ();
-}
 
-impl EffectExec<()> for ReplayPreIncrementEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -62,14 +59,12 @@ impl EffectExec<ReplayGateZoo> for ReplayPreIncrementEffect {
 }
 
 pub struct ReplayPostIncrementEffect;
-impl EffectSchema for ReplayPostIncrementEffect {
-    type Id = Id<U42>;
+#[effect(id = 42)]
+impl jungle_sdk::types::Effect<()> for ReplayPostIncrementEffect {
     type In = ();
     type Out = ();
     type Err = ();
-}
 
-impl EffectExec<()> for ReplayPostIncrementEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -89,14 +84,12 @@ impl EffectExec<ReplayGateZoo> for ReplayPostIncrementEffect {
 }
 
 pub struct ReplayGateEffect;
-impl EffectSchema for ReplayGateEffect {
-    type Id = Id<U43>;
+#[effect(id = 43)]
+impl jungle_sdk::types::Effect<()> for ReplayGateEffect {
     type In = ();
     type Out = ();
     type Err = ();
-}
 
-impl EffectExec<()> for ReplayGateEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -380,14 +373,12 @@ pub struct ReplayTimeoutZoo {
 }
 
 pub struct ReplayTimeoutPreIncrementEffect;
-impl EffectSchema for ReplayTimeoutPreIncrementEffect {
-    type Id = Id<U44>;
+#[effect(id = 44)]
+impl jungle_sdk::types::Effect<()> for ReplayTimeoutPreIncrementEffect {
     type In = ();
     type Out = ();
     type Err = ();
-}
 
-impl EffectExec<()> for ReplayTimeoutPreIncrementEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,
@@ -408,14 +399,12 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
 }
 
 pub struct ReplayTimeoutPostIncrementEffect;
-impl EffectSchema for ReplayTimeoutPostIncrementEffect {
-    type Id = Id<U45>;
+#[effect(id = 45)]
+impl jungle_sdk::types::Effect<()> for ReplayTimeoutPostIncrementEffect {
     type In = ();
     type Out = ();
     type Err = ();
-}
 
-impl EffectExec<()> for ReplayTimeoutPostIncrementEffect {
     fn effect(
         _jungle: &(),
         _input: Self::In,

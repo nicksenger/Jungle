@@ -1,12 +1,10 @@
 use jungle_sdk::act;
 use jungle_sdk::animal;
+use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, ContextExecutor, EffectCompletion, EffectExec, EffectSchema, Either, Executor, Join,
-    Select, Sleep, Step,
+    Act, ContextExecutor, EffectCompletion, Either, Executor, Join, Select, Sleep, Step,
 };
-use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -20,14 +18,12 @@ pub struct SelectJoinState {
 }
 
 pub struct TimedValueEffect;
-impl EffectSchema for TimedValueEffect {
-    type Id = Id<U60>;
+#[effect(id = 60)]
+impl<J> jungle_sdk::types::Effect<J> for TimedValueEffect {
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for TimedValueEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -40,14 +36,12 @@ impl<J> EffectExec<J> for TimedValueEffect {
 }
 
 pub struct ContextTimedValueEffect;
-impl EffectSchema for ContextTimedValueEffect {
-    type Id = Id<U61>;
+#[effect(id = 61)]
+impl<J> jungle_sdk::types::Effect<J> for ContextTimedValueEffect {
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for ContextTimedValueEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,

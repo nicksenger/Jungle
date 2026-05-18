@@ -1,25 +1,23 @@
 use jungle_sdk::act;
 use jungle_sdk::animal;
+use jungle_sdk::effect;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     Act, BoundAct, BoundFlowStep, Condition, Conditional, ContextExecutor,
-    EffectCompletion, EffectExec, EffectRequest, EffectSchema, Executor, Id, Identity,
+    EffectCompletion, EffectExec, EffectRequest, EffectSchema, Executor, Identity,
     ManualExecutor, Running, Step, Waiting,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U2};
 use std::future::ready;
 use std::sync::Arc;
 
 pub struct SeedEffect;
-impl EffectSchema for SeedEffect {
-    type Id = Id<U0>;
+#[effect(id = 0)]
+impl<J> jungle_sdk::types::Effect<J> for SeedEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for SeedEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -29,14 +27,12 @@ impl<J> EffectExec<J> for SeedEffect {
 }
 
 pub struct FinishEffect;
-impl EffectSchema for FinishEffect {
-    type Id = Id<U1>;
+#[effect(id = 1)]
+impl<J> jungle_sdk::types::Effect<J> for FinishEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for FinishEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -215,14 +211,12 @@ fn context_executor_progresses_multi_step_derived_journey() {
 }
 
 pub struct BranchEffect;
-impl EffectSchema for BranchEffect {
-    type Id = Id<U2>;
+#[effect(id = 2)]
+impl<J> jungle_sdk::types::Effect<J> for BranchEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for BranchEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,

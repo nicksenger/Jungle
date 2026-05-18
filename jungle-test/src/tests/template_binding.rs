@@ -1,31 +1,25 @@
 use jungle_sdk::animal;
 use jungle_sdk::effect;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
     Act, BindAnimal, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion,
-    EffectExec, EffectSchema, Either, Identity, Join, JourneyStatus, Lens, LoopCondition,
-    ManualExecutor, NodeMetadata, Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select,
-    Step, Transparent, TraverseFlow, TraverseStep, While,
+    Either, Identity, Join, JourneyStatus, Lens, LoopCondition, ManualExecutor, NodeMetadata,
+    Observe, ReplaceFlow, ReplaceStep, RunnerOut, Scoped, Select, Step, Transparent, TraverseFlow,
+    TraverseStep, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::num::consts::*;
-use jungle_sdk::typosaurus::num::consts::{
-    U0, U40, U41, U49, U53,
-};
 use jungle_sdk::{Animals, JungleClient, Optic};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub struct TemplateAddEffect;
-impl EffectSchema for TemplateAddEffect {
-    type Id = Id<U40>;
+#[effect(id = 40)]
+impl<J> jungle_sdk::types::Effect<J> for TemplateAddEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for TemplateAddEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -35,14 +29,12 @@ impl<J> EffectExec<J> for TemplateAddEffect {
 }
 
 pub struct TemplateCommitEffect;
-impl EffectSchema for TemplateCommitEffect {
-    type Id = Id<U41>;
+#[effect(id = 41)]
+impl<J> jungle_sdk::types::Effect<J> for TemplateCommitEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for TemplateCommitEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,
@@ -1228,14 +1220,12 @@ struct ComplexBetaState {
 }
 
 pub struct ComplexTimedEffect;
-impl EffectSchema for ComplexTimedEffect {
-    type Id = Id<U49>;
+#[effect(id = 49)]
+impl<J> jungle_sdk::types::Effect<J> for ComplexTimedEffect {
     type In = (u64, i32);
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for ComplexTimedEffect {
     fn effect(
         _jungle: &J,
         input: Self::In,

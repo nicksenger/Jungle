@@ -1,14 +1,13 @@
 use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, EffectSchema,
-    JourneyStatus, LoopCondition, Observe, Sleep, Step, While,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, JourneyStatus, LoopCondition,
+    Observe, Sleep, Step, While,
 };
-use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, Optic};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -22,14 +21,12 @@ pub struct SleepState {
 }
 
 pub struct AddEffect;
-impl EffectSchema for AddEffect {
-    type Id = Id<U40>;
+#[effect(id = 40)]
+impl<J> jungle_sdk::types::Effect<J> for AddEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for AddEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,

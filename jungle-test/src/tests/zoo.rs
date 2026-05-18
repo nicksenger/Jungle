@@ -3,14 +3,12 @@ use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::core::Jungle as _;
 use jungle_sdk::effect;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, Animal, AnimalSet, AnimalStates, BoundAct, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, EffectSet, Identity, LoopCondition, StateCarrier, Step, While,
+    Act, Animal, AnimalSet, AnimalStates, BoundAct, Ecosystem, EffectCompletion, EffectSchema,
+    EffectSet, Identity, LoopCondition, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U10, U13, U14, U15, U7};
 use jungle_sdk::{Animals, Effects, Optic};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -270,14 +268,12 @@ impl From<RunnerState> for () {
 }
 
 pub struct RunnerStepOneEffect;
-impl EffectSchema for RunnerStepOneEffect {
-    type Id = Id<U14>;
+#[effect(id = 14)]
+impl<J> jungle_sdk::types::Effect<J> for RunnerStepOneEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for RunnerStepOneEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -287,14 +283,12 @@ impl<J> EffectExec<J> for RunnerStepOneEffect {
 }
 
 pub struct RunnerStepTwoEffect;
-impl EffectSchema for RunnerStepTwoEffect {
-    type Id = Id<U15>;
+#[effect(id = 15)]
+impl<J> jungle_sdk::types::Effect<J> for RunnerStepTwoEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for RunnerStepTwoEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -451,14 +445,12 @@ pub struct ExecutorCatState {
 }
 
 pub struct EatEnergy;
-impl EffectSchema for EatEnergy {
-    type Id = Id<U7>;
+#[effect(id = 7)]
+impl<J> jungle_sdk::types::Effect<J> for EatEnergy {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for EatEnergy {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -468,14 +460,12 @@ impl<J> EffectExec<J> for EatEnergy {
 }
 
 pub struct HuntEnergy;
-impl EffectSchema for HuntEnergy {
-    type Id = Id<U10>;
+#[effect(id = 10)]
+impl<J> jungle_sdk::types::Effect<J> for HuntEnergy {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for HuntEnergy {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -485,14 +475,12 @@ impl<J> EffectExec<J> for HuntEnergy {
 }
 
 pub struct RoundAdvance;
-impl EffectSchema for RoundAdvance {
-    type Id = Id<U13>;
+#[effect(id = 13)]
+impl<J> jungle_sdk::types::Effect<J> for RoundAdvance {
     type In = i32;
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for RoundAdvance {
     fn effect(
         _jungle: &J,
         _input: Self::In,

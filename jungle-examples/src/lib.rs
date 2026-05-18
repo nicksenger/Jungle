@@ -1,10 +1,11 @@
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Animal, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion,
-    EffectExec, EffectSchema, Id, Identity, LoopCondition, Observe, Sleep, While,
+    Id, Identity, LoopCondition, Observe, Sleep, While,
 };
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U14};
+use jungle_sdk::typosaurus::num::consts::{U0, U1};
 use jungle_sdk::{Animals, Flow, JungleClient, Optic};
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
@@ -45,14 +46,12 @@ pub struct ObserveState {
 }
 
 pub struct BumpEffect;
-impl EffectSchema for BumpEffect {
-    type Id = Id<U14>;
+#[effect(id = 14)]
+impl<J> jungle_sdk::types::Effect<J> for BumpEffect {
     type In = ();
     type Out = ();
     type Err = ();
-}
 
-impl<J> EffectExec<J> for BumpEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,

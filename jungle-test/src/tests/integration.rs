@@ -2,15 +2,14 @@ use futures::StreamExt;
 use jungle_sdk::act;
 use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
-use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
-    EffectSchema, JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, Step, While,
+    Act, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, JourneyStatus,
+    LoopCondition, Observe, Perturb, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
-use jungle_sdk::typosaurus::num::consts::*;
 use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -63,14 +62,12 @@ impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
 
 pub struct AddOneEffect;
 
-impl EffectSchema for AddOneEffect {
-    type Id = Id<U1>;
+#[effect(id = 1)]
+impl<J> jungle_sdk::types::Effect<J> for AddOneEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for AddOneEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
@@ -81,14 +78,12 @@ impl<J> EffectExec<J> for AddOneEffect {
 
 pub struct AddTwoEffect;
 
-impl EffectSchema for AddTwoEffect {
-    type Id = Id<U2>;
+#[effect(id = 2)]
+impl<J> jungle_sdk::types::Effect<J> for AddTwoEffect {
     type In = ();
     type Out = i32;
     type Err = ();
-}
 
-impl<J> EffectExec<J> for AddTwoEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,
