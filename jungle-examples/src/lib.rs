@@ -197,6 +197,7 @@ pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
     (client, journey_id)
 }
 
+#[cfg(feature = "zoo")]
 fn spawn_gorilla_runtime_with_start<F>(start_journey: F) -> (jungle_sdk::Client, Uuid)
 where
     F: FnOnce(&tokio::runtime::Runtime, &jungle_sdk::Client, Vec<u8>) -> Uuid,
@@ -216,6 +217,7 @@ where
     (client, journey_id)
 }
 
+#[cfg(feature = "zoo")]
 pub fn spawn_gorilla_runtime_by_animal() -> (jungle_sdk::Client, Uuid) {
     spawn_gorilla_runtime_with_start(|runtime, client, seed| {
         runtime

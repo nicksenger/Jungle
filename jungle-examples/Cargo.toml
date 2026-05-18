@@ -5,21 +5,23 @@ edition = "2021"
 
 [features]
 default = ["zoo-delay"]
-zoo-delay = ["jungle-zoo/delay"]
+viewer = ["dep:jungle-viewer", "dep:iced"]
+zoo = ["dep:jungle-zoo"]
+zoo-delay = ["zoo", "jungle-zoo/delay"]
 
 [dependencies]
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "local"] }
-jungle-zoo = { path = "../jungle-zoo" }
-jungle-viewer = { path = "../jungle-viewer" }
-iced = { version = "0.14", features = ["tokio"] }
+jungle-zoo = { path = "../jungle-zoo", optional = true }
+jungle-viewer = { path = "../jungle-viewer", optional = true }
+iced = { version = "0.14", features = ["tokio"], optional = true }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 uuid = { workspace = true }
 
-[[bin]]
+[[example]]
 name = "jungle-view"
-path = "src/bin/jungle-view.rs"
+required-features = ["viewer", "zoo"]
 
 [lints]
 workspace = true
