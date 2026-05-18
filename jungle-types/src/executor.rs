@@ -1,6 +1,6 @@
 use crate::{
     Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    EffectCompletion, Effect, EffectSchema, Join, LoopCondition, Running, Scoped, Select,
+    Effect, EffectCompletion, EffectSchema, Join, LoopCondition, Running, Scoped, Select,
     Transparent, While,
 };
 use inception::*;
@@ -260,6 +260,12 @@ impl<Step> TypedErasedStep<Step> {
             waiting_completion: false,
             marker: core::marker::PhantomData,
         }
+    }
+}
+
+impl<Step> Default for TypedErasedStep<Step> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1401,7 +1407,6 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        let input = input;
         let mut state = state;
         loop {
             if self.complete {
@@ -1482,7 +1487,6 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
-        let input = input;
         let mut state = state;
         loop {
             if self.complete {
@@ -1665,8 +1669,7 @@ build_flow_len_impl!(H0; H1, H2, H3);
 build_flow_len_impl!(H0; H1, H2, H3, H4);
 build_flow_len_impl!(H0; H1, H2, H3, H4, H5);
 build_flow_len_impl!(H0; H1, H2, H3, H4, H5, H6);
-impl<State, H0, H1, H2, H3, H4, H5, H6, H7, Tail> BuildFlow<DynFlow<State>>
-    for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
+impl<State, H0, H1, H2, H3, H4, H5, H6, H7, Tail> BuildFlow<DynFlow<State>> for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     H0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     H1: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
@@ -1918,8 +1921,7 @@ build_flow_with_context_len_impl!(H0; H1, H2, H3, H4);
 build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5);
 build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5, H6);
 impl<Context, State, H0, H1, H2, H3, H4, H5, H6, H7, Tail>
-    BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
+    BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     H0: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
@@ -2265,7 +2267,6 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        let input = input;
         let mut state = state;
         loop {
             if self.complete {
@@ -2346,7 +2347,6 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
-        let input = input;
         let mut state = state;
         loop {
             if self.complete {
@@ -2822,7 +2822,6 @@ where
     }
 
     fn next_request_serialized(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
-        let input = input;
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
@@ -2933,7 +2932,6 @@ where
     }
 
     pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
-        let input = input;
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
@@ -2974,7 +2972,6 @@ where
         &mut self,
         input: Serialized,
     ) -> Result<ExecutableEffectRequest, ExecutorError> {
-        let input = input;
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {

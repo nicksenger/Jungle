@@ -1,6 +1,5 @@
 use crate::{
-    Animal, Aspect, BoundAct, EffectCompletion, Effect, EffectSchema, Id, Identity,
-    StateCarrier,
+    Animal, Aspect, BoundAct, Effect, EffectCompletion, EffectSchema, Id, Identity, StateCarrier,
 };
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -22,6 +21,7 @@ impl EffectSchema for Sleep {
 }
 
 impl<J> Effect<J> for Sleep {
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         input: Self::In,

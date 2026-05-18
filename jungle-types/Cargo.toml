@@ -11,3 +11,6 @@ typosaurus = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 thiserror = "2"
+
+[lints]
+workspace = true

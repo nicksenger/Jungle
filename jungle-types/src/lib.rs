@@ -12,8 +12,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, Aspect, BoundAct, BoundFlowStep, EffectCompletion, Effect, EffectRequest,
-    EffectSchema, Identity, ScopeReboundAct, ScopedAct, ScopedAnimal, StateCarrier, Step,
+    Act, Aspect, BoundAct, BoundFlowStep, Effect, EffectCompletion, EffectRequest, EffectSchema,
+    Identity, ScopeReboundAct, ScopedAct, ScopedAnimal, StateCarrier, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -26,11 +26,11 @@ use inception::*;
 pub use journey::Journey;
 pub use meta::Id;
 pub use meta::{
-    AllFrom, AnimalEffectCompatible, AnimalEffectMembers, AnimalIdValue,
-    AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
-    AnimalVersionIdentitiesUnique, AnimalVersions, EffectIdentity, EffectMember, EffectSet,
-    Generations, GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals,
-    IdValue, StripAnimalHeaders, StripEffectHeaders, WithEffectFor,
+    AllFrom, AnimalEffectCompatible, AnimalEffectMembers, AnimalIdValue, AnimalMember, AnimalSet,
+    AnimalStates, AnimalStatesCompatible, AnimalVersion, AnimalVersionIdentitiesUnique,
+    AnimalVersions, EffectIdentity, EffectMember, EffectSet, Generations, GenerationsForAnimals,
+    HighestGeneration, HighestGenerationForAnimals, IdValue, StripAnimalHeaders,
+    StripEffectHeaders, WithEffectFor,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -108,7 +108,7 @@ impl<T> Optic for T where T: Inception<JungleOptic, False> {}
 
 /// Direct projection contract from a scope state to a requested view type.
 pub trait ViewProject<View> {
-    fn project_view<'a>(state: &'a mut Self) -> &'a mut View;
+    fn project_view(state: &mut Self) -> &mut View;
 }
 
 /// Carrier that projects by target type via [`ViewProject`].
@@ -120,7 +120,7 @@ where
 {
     type Focus = View;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+    fn focus(state: &mut State) -> &mut Self::Focus {
         <State as ViewProject<View>>::project_view(state)
     }
 }
@@ -129,20 +129,20 @@ where
 pub trait LensIndex<Index> {
     type View;
 
-    fn lens_index<'a>(state: &'a mut Self) -> &'a mut Self::View;
+    fn lens_index(state: &mut Self) -> &mut Self::View;
 }
 
 /// Recursive path projection over nested optic fields.
 pub trait LensPath<Path> {
     type View;
 
-    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View;
+    fn lens_path(state: &mut Self) -> &mut Self::View;
 }
 
 impl<State> LensPath<list::List<()>> for State {
     type View = State;
 
-    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+    fn lens_path(state: &mut Self) -> &mut Self::View {
         state
     }
 }
@@ -165,7 +165,7 @@ where
 {
     type View = <State as LensIndex<Index>>::View;
 
-    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+    fn lens_path(state: &mut Self) -> &mut Self::View {
         <State as LensIndex<Index>>::lens_index(state)
     }
 }
@@ -178,7 +178,7 @@ where
 {
     type View = <<State as LensIndex<Head>>::View as LensPath<Tail>>::View;
 
-    fn lens_path<'a>(state: &'a mut Self) -> &'a mut Self::View {
+    fn lens_path(state: &mut Self) -> &mut Self::View {
         let inner = <State as LensIndex<Head>>::lens_index(state);
         <<State as LensIndex<Head>>::View as LensPath<Tail>>::lens_path(inner)
     }
@@ -193,7 +193,7 @@ where
 {
     type Focus = <State as LensPath<Path>>::View;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+    fn focus(state: &mut State) -> &mut Self::Focus {
         <State as LensPath<Path>>::lens_path(state)
     }
 }
@@ -569,7 +569,10 @@ where
     Head: JourneyEffects,
     Tail: JourneyEffects,
 {
-    type List = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>;
+    type List = TList<(
+        <Head as JourneyEffects>::List,
+        <Tail as JourneyEffects>::List,
+    )>;
 }
 
 /// Leaf-level hook used by [`TraverseWith`] at `Step` nodes.
@@ -632,7 +635,7 @@ pub struct BindAnimalTraversal<A, Scope = RootScope>(PhantomData<fn() -> (A, Sco
 impl<State> StateCarrier<State> for RootScope {
     type Focus = State;
 
-    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+    fn focus(state: &mut State) -> &mut Self::Focus {
         state
     }
 }
@@ -840,8 +843,7 @@ traverse_with_len_impl!(H0; H1, H2, H3);
 traverse_with_len_impl!(H0; H1, H2, H3, H4);
 traverse_with_len_impl!(H0; H1, H2, H3, H4, H5);
 traverse_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
-impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Traversal> TraverseWith<Traversal>
-    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Traversal> TraverseWith<Traversal> for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     H0: TraverseWith<Traversal>,
     H1: TraverseWith<Traversal>,
@@ -895,8 +897,7 @@ replace_with_len_impl!(H0; H1, H2, H3);
 replace_with_len_impl!(H0; H1, H2, H3, H4);
 replace_with_len_impl!(H0; H1, H2, H3, H4, H5);
 replace_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
-impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceWith<Replacer>
-    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceWith<Replacer> for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     H0: ReplaceWith<Replacer>,
     H1: ReplaceWith<Replacer>,
@@ -950,8 +951,7 @@ replace_nodes_with_len_impl!(H0; H1, H2, H3);
 replace_nodes_with_len_impl!(H0; H1, H2, H3, H4);
 replace_nodes_with_len_impl!(H0; H1, H2, H3, H4, H5);
 replace_nodes_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
-impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceNodesWith<Replacer>
-    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceNodesWith<Replacer> for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     H0: ReplaceNodesWith<Replacer>,
     H1: ReplaceNodesWith<Replacer>,

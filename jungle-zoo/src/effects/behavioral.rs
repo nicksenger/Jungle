@@ -1,5 +1,5 @@
-use jungle_sdk::prelude::*;
 use super::support::maybe_delay;
+use jungle_sdk::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BehavioralDependency {
@@ -19,7 +19,7 @@ impl Default for BehavioralDependency {
 pub struct Rest;
 
 #[jungle::effect(id = 2)]
-impl<J> jungle_sdk::types::Effect<J> for Rest {
+impl<J> Effect<J> for Rest {
     type In = u16;
     type Out = u16;
     type Err = String;
@@ -39,7 +39,7 @@ impl<J> jungle_sdk::types::Effect<J> for Rest {
 pub struct MakeSound;
 
 #[jungle::effect(id = 3)]
-impl<J> jungle_sdk::types::Effect<J> for MakeSound {
+impl<J> Effect<J> for MakeSound {
     type In = (String, u8);
     type Out = String;
     type Err = String;
@@ -60,11 +60,12 @@ impl<J> jungle_sdk::types::Effect<J> for MakeSound {
 pub struct ChestBeat;
 
 #[jungle::effect(id = 5)]
-impl<J> jungle_sdk::types::Effect<J> for ChestBeat {
+impl<J> Effect<J> for ChestBeat {
     type In = (u8, bool);
     type Out = u8;
     type Err = String;
 
+    #[allow(clippy::manual_async_fn)]
     fn effect(
         _jungle: &J,
         (stress, opposable_thumb): Self::In,

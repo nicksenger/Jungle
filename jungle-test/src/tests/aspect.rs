@@ -1,11 +1,4 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types as jungle_types;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, Aspect, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, Effect,
-    EffectSchema, Either, Executor, Identity, LoopCondition, Running, StateCarrier, Waiting, While,
-    Step,
-};
 use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 use std::future::ready;
@@ -14,7 +7,7 @@ use std::marker::PhantomData;
 pub struct Sleep;
 
 #[jungle::effect(id = 0)]
-impl<J> jungle_sdk::types::Effect<J> for Sleep {
+impl<J> Effect<J> for Sleep {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -29,7 +22,7 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
 pub struct Eat;
 
 #[jungle::effect(id = 1)]
-impl<J> jungle_sdk::types::Effect<J> for Eat {
+impl<J> Effect<J> for Eat {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -44,7 +37,7 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
 pub struct Forage;
 
 #[jungle::effect(id = 2)]
-impl<J> jungle_sdk::types::Effect<J> for Forage {
+impl<J> Effect<J> for Forage {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -59,7 +52,7 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
 pub struct Hunt;
 
 #[jungle::effect(id = 3)]
-impl<J> jungle_sdk::types::Effect<J> for Hunt {
+impl<J> Effect<J> for Hunt {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -94,7 +87,7 @@ pub struct GorillaCoreCarrier;
 impl StateCarrier<GorillaState> for GorillaCoreCarrier {
     type Focus = CoreState;
 
-    fn focus<'a>(state: &'a mut GorillaState) -> &'a mut Self::Focus {
+    fn focus(state: &mut GorillaState) -> &mut Self::Focus {
         &mut state.core
     }
 }
@@ -103,7 +96,7 @@ pub struct TigerCoreCarrier;
 impl StateCarrier<TigerState> for TigerCoreCarrier {
     type Focus = CoreState;
 
-    fn focus<'a>(state: &'a mut TigerState) -> &'a mut Self::Focus {
+    fn focus(state: &mut TigerState) -> &mut Self::Focus {
         &mut state.core
     }
 }
@@ -112,7 +105,7 @@ pub struct GorillaEnergyCarrier;
 impl StateCarrier<GorillaState> for GorillaEnergyCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut GorillaState) -> &'a mut Self::Focus {
+    fn focus(state: &mut GorillaState) -> &mut Self::Focus {
         &mut state.core.energy
     }
 }
@@ -121,7 +114,7 @@ pub struct TigerEnergyCarrier;
 impl StateCarrier<TigerState> for TigerEnergyCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut TigerState) -> &'a mut Self::Focus {
+    fn focus(state: &mut TigerState) -> &mut Self::Focus {
         &mut state.core.energy
     }
 }
@@ -130,7 +123,7 @@ pub struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
 impl<T, Focus> BoundAct<T> for CoreEnergyStep<Sleep, Focus>
 where
-    T: jungle_types::Animal,
+    T: Animal,
     Focus: Aspect<T::State, Focus = CoreState>,
 {
     type Effect = Sleep;
@@ -151,7 +144,7 @@ where
 
 impl<T, Focus> BoundAct<T> for CoreEnergyStep<Eat, Focus>
 where
-    T: jungle_types::Animal,
+    T: Animal,
     Focus: Aspect<T::State, Focus = CoreState>,
 {
     type Effect = Eat;
@@ -174,7 +167,7 @@ pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
 impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
-    T: jungle_types::Animal,
+    T: Animal,
     Focus: Aspect<T::State, Focus = i32>,
     A: EffectSchema<Out = i32>,
 {
@@ -201,7 +194,7 @@ pub struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
 impl<T, Focus, A> BoundAct<T> for SubI32<Focus, A>
 where
-    T: jungle_types::Animal,
+    T: Animal,
     Focus: Aspect<T::State, Focus = i32>,
     A: EffectSchema<Out = i32>,
 {
@@ -224,7 +217,9 @@ where
     }
 }
 
+#[allow(dead_code)]
 type GorillaEat = AddI32<GorillaEnergyCarrier, Eat>;
+#[allow(dead_code)]
 type GorillaForageStep = SubI32<GorillaEnergyCarrier, Forage>;
 
 type TigerEat = AddI32<TigerEnergyCarrier, Eat>;

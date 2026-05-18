@@ -1,14 +1,10 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::{
-    Animal, BoundAct, BoundFlowStep, Conditional, EffectCompletion, Identity, LoopCondition,
-    ReplaceStep, TraverseStep, While,
-};
 use jungle_sdk::typosaurus::assert_type_eq;
 
 struct TraverseAEffect;
 
 #[jungle::effect(id = 20)]
-impl<J> jungle_sdk::types::Effect<J> for TraverseAEffect {
+impl<J> Effect<J> for TraverseAEffect {
     type In = ();
     type Out = ();
     type Err = ();
@@ -23,7 +19,7 @@ impl<J> jungle_sdk::types::Effect<J> for TraverseAEffect {
 struct TraverseBEffect;
 
 #[jungle::effect(id = 21)]
-impl<J> jungle_sdk::types::Effect<J> for TraverseBEffect {
+impl<J> Effect<J> for TraverseBEffect {
     type In = ();
     type Out = ();
     type Err = ();
@@ -38,7 +34,7 @@ impl<J> jungle_sdk::types::Effect<J> for TraverseBEffect {
 struct TraverseCEffect;
 
 #[jungle::effect(id = 22)]
-impl<J> jungle_sdk::types::Effect<J> for TraverseCEffect {
+impl<J> Effect<J> for TraverseCEffect {
     type In = ();
     type Out = ();
     type Err = ();
@@ -53,7 +49,7 @@ impl<J> jungle_sdk::types::Effect<J> for TraverseCEffect {
 struct TraverseDEffect;
 
 #[jungle::effect(id = 23)]
-impl<J> jungle_sdk::types::Effect<J> for TraverseDEffect {
+impl<J> Effect<J> for TraverseDEffect {
     type In = ();
     type Out = ();
     type Err = ();

@@ -1,10 +1,6 @@
-use jungle_sdk::prelude::*;
 use futures::channel::mpsc;
 use jungle_sdk::core::Jungle as _;
-use jungle_sdk::types::{
-    Act, Animal, AnimalSet, AnimalStates, BoundAct, Ecosystem, EffectCompletion, EffectSchema,
-    EffectSet, Identity, LoopCondition, StateCarrier, Step, While,
-};
+use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
 use jungle_sdk::{Animals, Effects, Optic};
@@ -17,7 +13,7 @@ use uuid::Uuid;
 pub struct Eat;
 
 #[jungle::effect(id = 0)]
-impl<J> jungle_sdk::types::Effect<J> for Eat {
+impl<J> Effect<J> for Eat {
     type In = ();
     type Out = ();
     type Err = ();
@@ -32,7 +28,7 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
 pub struct Sleep;
 
 #[jungle::effect(id = 1)]
-impl<J> jungle_sdk::types::Effect<J> for Sleep {
+impl<J> Effect<J> for Sleep {
     type In = ();
     type Out = ();
     type Err = ();
@@ -47,7 +43,7 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
 pub struct Forage;
 
 #[jungle::effect(id = 2)]
-impl<J> jungle_sdk::types::Effect<J> for Forage {
+impl<J> Effect<J> for Forage {
     type In = ();
     type Out = ();
     type Err = ();
@@ -62,7 +58,7 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
 pub struct Drink;
 
 #[jungle::effect(id = 3)]
-impl<J> jungle_sdk::types::Effect<J> for Drink {
+impl<J> Effect<J> for Drink {
     type In = ();
     type Out = ();
     type Err = ();
@@ -77,7 +73,7 @@ impl<J> jungle_sdk::types::Effect<J> for Drink {
 pub struct Hunt;
 
 #[jungle::effect(id = 4)]
-impl<J> jungle_sdk::types::Effect<J> for Hunt {
+impl<J> Effect<J> for Hunt {
     type In = ();
     type Out = ();
     type Err = ();
@@ -92,7 +88,7 @@ impl<J> jungle_sdk::types::Effect<J> for Hunt {
 pub struct Flee;
 
 #[jungle::effect(id = 5)]
-impl<J> jungle_sdk::types::Effect<J> for Flee {
+impl<J> Effect<J> for Flee {
     type In = ();
     type Out = ();
     type Err = ();
@@ -267,7 +263,7 @@ impl From<RunnerState> for () {
 
 pub struct RunnerStepOneEffect;
 #[jungle::effect(id = 14)]
-impl<J> jungle_sdk::types::Effect<J> for RunnerStepOneEffect {
+impl<J> Effect<J> for RunnerStepOneEffect {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -282,7 +278,7 @@ impl<J> jungle_sdk::types::Effect<J> for RunnerStepOneEffect {
 
 pub struct RunnerStepTwoEffect;
 #[jungle::effect(id = 15)]
-impl<J> jungle_sdk::types::Effect<J> for RunnerStepTwoEffect {
+impl<J> Effect<J> for RunnerStepTwoEffect {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -343,7 +339,11 @@ impl Act for RunnerStepTwoSpec {
 pub struct RunnerJourneyTemplate(
     While<
         RunnerKeepGoing,
-        jungle_sdk::types::Conditional<RunnerUseStepOne, Step<RunnerStepOneSpec>, Step<RunnerStepTwoSpec>>,
+        jungle_sdk::types::Conditional<
+            RunnerUseStepOne,
+            Step<RunnerStepOneSpec>,
+            Step<RunnerStepTwoSpec>,
+        >,
     >,
 );
 
@@ -444,7 +444,7 @@ pub struct ExecutorCatState {
 
 pub struct EatEnergy;
 #[jungle::effect(id = 7)]
-impl<J> jungle_sdk::types::Effect<J> for EatEnergy {
+impl<J> Effect<J> for EatEnergy {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -459,7 +459,7 @@ impl<J> jungle_sdk::types::Effect<J> for EatEnergy {
 
 pub struct HuntEnergy;
 #[jungle::effect(id = 10)]
-impl<J> jungle_sdk::types::Effect<J> for HuntEnergy {
+impl<J> Effect<J> for HuntEnergy {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -474,7 +474,7 @@ impl<J> jungle_sdk::types::Effect<J> for HuntEnergy {
 
 pub struct RoundAdvance;
 #[jungle::effect(id = 13)]
-impl<J> jungle_sdk::types::Effect<J> for RoundAdvance {
+impl<J> Effect<J> for RoundAdvance {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -514,7 +514,7 @@ pub struct ApeRoundCarrier;
 impl StateCarrier<ExecutorApeState> for ApeRoundCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut ExecutorApeState) -> &'a mut Self::Focus {
+    fn focus(state: &mut ExecutorApeState) -> &mut Self::Focus {
         &mut state.core.rounds
     }
 }
@@ -523,7 +523,7 @@ pub struct TigerEnergyCarrier;
 impl StateCarrier<ExecutorCatState> for TigerEnergyCarrier {
     type Focus = i32;
 
-    fn focus<'a>(state: &'a mut ExecutorCatState) -> &'a mut Self::Focus {
+    fn focus(state: &mut ExecutorCatState) -> &mut Self::Focus {
         &mut state.core.energy
     }
 }
@@ -588,7 +588,11 @@ pub struct WorkflowGorillaJourneyTemplate(While<ApeKeepRunning, Step<ApeRoundTas
 pub struct WorkflowTigerJourneyTemplate(
     While<
         TigerKeepRunning,
-        jungle_sdk::types::Conditional<TigerChooseHunt, Step<TigerHuntTaskSpec>, Step<TigerEatTaskSpec>>,
+        jungle_sdk::types::Conditional<
+            TigerChooseHunt,
+            Step<TigerHuntTaskSpec>,
+            Step<TigerEatTaskSpec>,
+        >,
     >,
 );
 

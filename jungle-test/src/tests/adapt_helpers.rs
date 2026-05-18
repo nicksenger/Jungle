@@ -1,9 +1,4 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    AbsorbFn, AbsorbMapper, Act, EffectCompletion, EmitFn, EmitMapper, Fuse, Identity,
-    ManualExecutor, PassthroughEmit, Step, UnitEmit,
-};
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,7 +10,7 @@ struct HelperState {
 struct EchoEffect;
 
 #[jungle::effect(id = 70)]
-impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
+impl<J> Effect<J> for EchoEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -30,7 +25,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
 struct PulseEffect;
 
 #[jungle::effect(id = 71)]
-impl<J> jungle_sdk::types::Effect<J> for PulseEffect {
+impl<J> Effect<J> for PulseEffect {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -102,7 +97,11 @@ impl Act for FunctionEmitSpec {
 }
 
 #[derive(Flow)]
-struct AdaptHelpersFlowTemplate(Step<PassthroughSpec>, Step<UnitSpec>, Step<FunctionEmitSpec>);
+struct AdaptHelpersFlowTemplate(
+    Step<PassthroughSpec>,
+    Step<UnitSpec>,
+    Step<FunctionEmitSpec>,
+);
 
 struct HelperAnimal;
 

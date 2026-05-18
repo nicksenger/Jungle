@@ -13,3 +13,6 @@ futures = { workspace = true }
 postcard = { workspace = true }
 tokio = { version = "1", features = ["rt", "time"] }
 chrono = "0.4"
+
+[lints]
+workspace = true

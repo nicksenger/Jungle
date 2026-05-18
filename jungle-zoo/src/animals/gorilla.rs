@@ -1,19 +1,14 @@
 //! Gorilla state model and lifecycle journey.
 
-use jungle_sdk::prelude::*;
 use crate::effects;
 use crate::state::{
     ActivitySchedule, AgeState, CircadianWindow, DailyActivity, Finger, FingerSet, FruitFlesh,
     FruitMeal, FruitRind, Hand, Hands, LifePhase, Lobe, Nail, NervousSystem, PerceivedTimeOfDay,
     TemporalState, TimePerception, VitalReadings,
 };
-use jungle_sdk::types::{
-    Act, Animal, BoundAct, Condition, Conditional, EffectCompletion, EffectSchema, Id, Identity,
-    LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation,
-    Observable, Perturbable, Step, Transparent, While,
-};
-use num::U0;
+use jungle_sdk::prelude::*;
 use jungle_sdk::Optic;
+use num::U0;
 use serde::{Deserialize, Serialize};
 
 const GORILLA_DAY_LOOPS_PER_YEAR: u16 = 4;
@@ -263,7 +258,12 @@ impl BoundAct<Gorilla> for GorillaTickPerceivedTime {
     type Output = ();
 
     fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        let segment_minutes = if state.temporal.perception.minutes_since_transition % 2 == 0 {
+        let segment_minutes = if state
+            .temporal
+            .perception
+            .minutes_since_transition
+            .is_multiple_of(2)
+        {
             0
         } else {
             360
@@ -553,10 +553,7 @@ pub struct GorillaToolSocialFlow(
 );
 
 #[derive(Flow)]
-pub struct GorillaSimpleSocialFlow(
-    Step<GorillaMakeSoundSpec>,
-    Step<GorillaRestSpec>,
-);
+pub struct GorillaSimpleSocialFlow(Step<GorillaMakeSoundSpec>, Step<GorillaRestSpec>);
 
 pub type GorillaActiveFlow = Conditional<
     GorillaIsHungry,
@@ -614,10 +611,7 @@ impl Act for ProbeStepSpec {
 }
 
 #[derive(Flow)]
-pub struct ProbeActiveFlow(
-    Step<ProbeStepSpec>,
-    Step<ProbeStepSpec>,
-);
+pub struct ProbeActiveFlow(Step<ProbeStepSpec>, Step<ProbeStepSpec>);
 
 #[derive(Flow)]
 pub struct ProbeYearFlow(

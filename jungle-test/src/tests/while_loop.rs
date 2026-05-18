@@ -1,16 +1,11 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, BoundFlowStep, EffectCompletion, Executor, LoopCondition, ManualExecutor, Running, Step,
-    Waiting, While,
-};
 use serde::{Deserialize, Serialize};
 use std::future::ready;
 
 pub struct TickEffect;
 
 #[jungle::effect(id = 0)]
-impl<J> jungle_sdk::types::Effect<J> for TickEffect {
+impl<J> Effect<J> for TickEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -68,7 +63,7 @@ pub struct LoopFlowTemplate(While<LessThanThree, Step<TickSpec>>);
 pub struct TailEchoEffect;
 
 #[jungle::effect(id = 1)]
-impl<J> jungle_sdk::types::Effect<J> for TailEchoEffect {
+impl<J> Effect<J> for TailEchoEffect {
     type In = (bool, i32);
     type Out = (bool, i32);
     type Err = ();
@@ -113,12 +108,15 @@ impl Act for TailAfterLoopSpec {
 }
 
 #[derive(Flow)]
-pub struct LoopWithTailFlowTemplate(While<LessThanThree, Step<TickSpec>>, Step<TailAfterLoopSpec>);
+pub struct LoopWithTailFlowTemplate(
+    While<LessThanThree, Step<TickSpec>>,
+    Step<TailAfterLoopSpec>,
+);
 
 pub struct UnitEffect;
 
 #[jungle::effect(id = 2)]
-impl<J> jungle_sdk::types::Effect<J> for UnitEffect {
+impl<J> Effect<J> for UnitEffect {
     type In = ();
     type Out = ();
     type Err = ();
@@ -196,7 +194,10 @@ impl Act for FinishOuterRoundSpec {
 }
 
 #[derive(Flow)]
-pub struct NestedOuterBodyTemplate(While<InnerContinue, Step<InnerWorkSpec>>, Step<FinishOuterRoundSpec>);
+pub struct NestedOuterBodyTemplate(
+    While<InnerContinue, Step<InnerWorkSpec>>,
+    Step<FinishOuterRoundSpec>,
+);
 
 #[derive(Flow)]
 pub struct NestedLoopFlowTemplate(While<OuterContinue, NestedOuterBodyTemplate>);
@@ -231,22 +232,17 @@ fn while_waiting_passthroughs_optional_branch() {
 #[test]
 fn executor_repeats_until_condition_fails() {
     let mut loop_executor = ManualExecutor::<Looper>::new(0);
-    let mut emitted = Vec::new();
-    emitted.push(
+    let emitted = vec![
         loop_executor
             .next_typed::<_, i32, (), (bool, i32)>(1, Ok(1))
             .expect("first tick should advance"),
-    );
-    emitted.push(
         loop_executor
             .next_typed::<_, i32, (), (bool, i32)>(1, Ok(2))
             .expect("second tick should advance"),
-    );
-    emitted.push(
         loop_executor
             .next_typed::<_, i32, (), (bool, i32)>(1, Ok(3))
             .expect("third tick should advance"),
-    );
+    ];
     assert_eq!(emitted, vec![(true, 1), (true, 2), (false, 3)]);
     let done = loop_executor
         .next_request_typed::<_, i32>((false, 3))

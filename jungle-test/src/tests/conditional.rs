@@ -1,15 +1,10 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, BoundFlowStep, Conditional, EffectCompletion, Either, Executor, ManualExecutor, Running,
-    Waiting,
-};
 use std::future::ready;
 
 pub struct LeftEffect;
 
 #[jungle::effect(id = 0)]
-impl<J> jungle_sdk::types::Effect<J> for LeftEffect {
+impl<J> Effect<J> for LeftEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -25,7 +20,7 @@ impl<J> jungle_sdk::types::Effect<J> for LeftEffect {
 pub struct RightEffect;
 
 #[jungle::effect(id = 1)]
-impl<J> jungle_sdk::types::Effect<J> for RightEffect {
+impl<J> Effect<J> for RightEffect {
     type In = i32;
     type Out = i32;
     type Err = ();
@@ -154,7 +149,7 @@ fn executor_dynamically_selects_conditional_branch() {
     let right_emitted: bool = right
         .next_typed((false, 3), Ok::<i32, ()>(6))
         .expect("right branch");
-    assert_eq!(right_emitted, true);
+    assert!(right_emitted);
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 6);
 }

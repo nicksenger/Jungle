@@ -1,12 +1,7 @@
-use jungle_sdk::prelude::*;
 use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::prelude::*;
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::types::Animal;
-use jungle_sdk::types::{
-    Act, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, JourneyStatus,
-    LoopCondition, Observe, Perturb, StateCarrier, Step, While,
-};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::{Animals, JungleClient, Optic, RunnerUpdateOut};
 use serde::{Deserialize, Serialize};
@@ -44,7 +39,7 @@ pub struct IntegrationFocusedCarrier;
 impl StateCarrier<IntegrationState> for IntegrationFocusedCarrier {
     type Focus = SubFlowState;
 
-    fn focus<'a>(state: &'a mut IntegrationState) -> &'a mut Self::Focus {
+    fn focus(state: &mut IntegrationState) -> &mut Self::Focus {
         &mut state.focused
     }
 }
@@ -53,7 +48,7 @@ pub struct IntegrationDeepFocusedCarrier;
 impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
     type Focus = DeepFocusState;
 
-    fn focus<'a>(state: &'a mut IntegrationState) -> &'a mut Self::Focus {
+    fn focus(state: &mut IntegrationState) -> &mut Self::Focus {
         &mut state.focused.nested
     }
 }
@@ -61,7 +56,7 @@ impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
 pub struct AddOneEffect;
 
 #[jungle::effect(id = 1)]
-impl<J> jungle_sdk::types::Effect<J> for AddOneEffect {
+impl<J> Effect<J> for AddOneEffect {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -77,7 +72,7 @@ impl<J> jungle_sdk::types::Effect<J> for AddOneEffect {
 pub struct AddTwoEffect;
 
 #[jungle::effect(id = 2)]
-impl<J> jungle_sdk::types::Effect<J> for AddTwoEffect {
+impl<J> Effect<J> for AddTwoEffect {
     type In = ();
     type Out = i32;
     type Err = ();
@@ -640,10 +635,7 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
     let mut last_sequence_id: Option<u64> = None;
 
     let completion = tokio::time::timeout(Duration::from_secs(8), async {
-        loop {
-            let Some(next) = subscription.next().await else {
-                break;
-            };
+        while let Some(next) = subscription.next().await {
             let update = next.expect("streamed journey update should succeed");
 
             let (sequence_id, update_journey_id) = match update.event {
@@ -743,7 +735,10 @@ fn replaced_alias_rewrites_integration_flow_steps() {
     >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
-        BoundFlowStep<IntegrationAnimal, <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>>,
+        BoundFlowStep<
+            IntegrationAnimal,
+            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        >,
         Conditional<
             UseFirstBeforeFullStateTask,
             BoundFlowStep<
@@ -771,8 +766,10 @@ fn replaced_nodes_alias_replaces_loop_branch_section() {
             >,
         >,
     >;
-    type Expected =
-        BoundFlowStep<IntegrationAnimal, <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>>;
+    type Expected = BoundFlowStep<
+        IntegrationAnimal,
+        <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>,
+    >;
     assert_type_eq!(Actual, Expected);
 }
 

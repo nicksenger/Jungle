@@ -19,3 +19,6 @@ jungle-macros = { path = "../jungle-macros" }
 jungle-server = { path = "../jungle-server", optional = true }
 jungle-types = { path = "../jungle-types" }
 typosaurus = { workspace = true }
+
+[lints]
+workspace = true
