@@ -647,37 +647,186 @@ impl<Replacer> ReplaceNodesWith<Replacer> for list::Empty {
     type Output = list::Empty;
 }
 
-impl<Head, Tail, Traversal> TraverseWith<Traversal> for TList<(Head, Tail)>
+macro_rules! flow_list_chain {
+    ($h:ty) => {
+        TList<($h, list::Empty)>
+    };
+    ($h:ty, $($rest:ty),+) => {
+        TList<($h, flow_list_chain!($($rest),+))>
+    };
+}
+macro_rules! flow_list_chain_tail {
+    ($h:ty ; $tail:ty) => {
+        TList<($h, $tail)>
+    };
+    ($h:ty, $($rest:ty),+ ; $tail:ty) => {
+        TList<($h, flow_list_chain_tail!($($rest),+ ; $tail))>
+    };
+}
+
+macro_rules! traverse_with_len_impl {
+    ($h0:ident) => {
+        impl<$h0, Traversal> TraverseWith<Traversal> for flow_list_chain!($h0)
+        where
+            $h0: TraverseWith<Traversal>,
+        {
+            type Output = flow_list_chain!(<$h0 as TraverseWith<Traversal>>::Output);
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<$h0, $($rest,)+ Traversal> TraverseWith<Traversal> for flow_list_chain!($h0, $($rest),+)
+        where
+            $h0: TraverseWith<Traversal>,
+            flow_list_chain!($($rest),+): TraverseWith<Traversal>,
+        {
+            type Output = flow_list_chain_tail!(
+                <$h0 as TraverseWith<Traversal>>::Output ;
+                <flow_list_chain!($($rest),+) as TraverseWith<Traversal>>::Output
+            );
+        }
+    };
+}
+traverse_with_len_impl!(H0);
+traverse_with_len_impl!(H0; H1);
+traverse_with_len_impl!(H0; H1, H2);
+traverse_with_len_impl!(H0; H1, H2, H3);
+traverse_with_len_impl!(H0; H1, H2, H3, H4);
+traverse_with_len_impl!(H0; H1, H2, H3, H4, H5);
+traverse_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Traversal> TraverseWith<Traversal>
+    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: TraverseWith<Traversal>,
+    H0: TraverseWith<Traversal>,
+    H1: TraverseWith<Traversal>,
+    H2: TraverseWith<Traversal>,
+    H3: TraverseWith<Traversal>,
+    H4: TraverseWith<Traversal>,
+    H5: TraverseWith<Traversal>,
+    H6: TraverseWith<Traversal>,
+    H7: TraverseWith<Traversal>,
     Tail: TraverseWith<Traversal>,
 {
-    type Output = TList<(
-        <Head as TraverseWith<Traversal>>::Output,
-        <Tail as TraverseWith<Traversal>>::Output,
-    )>;
+    type Output = flow_list_chain_tail!(
+        <H0 as TraverseWith<Traversal>>::Output,
+        <H1 as TraverseWith<Traversal>>::Output,
+        <H2 as TraverseWith<Traversal>>::Output,
+        <H3 as TraverseWith<Traversal>>::Output,
+        <H4 as TraverseWith<Traversal>>::Output,
+        <H5 as TraverseWith<Traversal>>::Output,
+        <H6 as TraverseWith<Traversal>>::Output,
+        <H7 as TraverseWith<Traversal>>::Output ;
+        <Tail as TraverseWith<Traversal>>::Output
+    );
 }
 
-impl<Head, Tail, Replacer> ReplaceWith<Replacer> for TList<(Head, Tail)>
+macro_rules! replace_with_len_impl {
+    ($h0:ident) => {
+        impl<$h0, Replacer> ReplaceWith<Replacer> for flow_list_chain!($h0)
+        where
+            $h0: ReplaceWith<Replacer>,
+        {
+            type Output = flow_list_chain!(<$h0 as ReplaceWith<Replacer>>::Output);
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<$h0, $($rest,)+ Replacer> ReplaceWith<Replacer> for flow_list_chain!($h0, $($rest),+)
+        where
+            $h0: ReplaceWith<Replacer>,
+            flow_list_chain!($($rest),+): ReplaceWith<Replacer>,
+        {
+            type Output = flow_list_chain_tail!(
+                <$h0 as ReplaceWith<Replacer>>::Output ;
+                <flow_list_chain!($($rest),+) as ReplaceWith<Replacer>>::Output
+            );
+        }
+    };
+}
+replace_with_len_impl!(H0);
+replace_with_len_impl!(H0; H1);
+replace_with_len_impl!(H0; H1, H2);
+replace_with_len_impl!(H0; H1, H2, H3);
+replace_with_len_impl!(H0; H1, H2, H3, H4);
+replace_with_len_impl!(H0; H1, H2, H3, H4, H5);
+replace_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceWith<Replacer>
+    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: ReplaceWith<Replacer>,
+    H0: ReplaceWith<Replacer>,
+    H1: ReplaceWith<Replacer>,
+    H2: ReplaceWith<Replacer>,
+    H3: ReplaceWith<Replacer>,
+    H4: ReplaceWith<Replacer>,
+    H5: ReplaceWith<Replacer>,
+    H6: ReplaceWith<Replacer>,
+    H7: ReplaceWith<Replacer>,
     Tail: ReplaceWith<Replacer>,
 {
-    type Output = TList<(
-        <Head as ReplaceWith<Replacer>>::Output,
-        <Tail as ReplaceWith<Replacer>>::Output,
-    )>;
+    type Output = flow_list_chain_tail!(
+        <H0 as ReplaceWith<Replacer>>::Output,
+        <H1 as ReplaceWith<Replacer>>::Output,
+        <H2 as ReplaceWith<Replacer>>::Output,
+        <H3 as ReplaceWith<Replacer>>::Output,
+        <H4 as ReplaceWith<Replacer>>::Output,
+        <H5 as ReplaceWith<Replacer>>::Output,
+        <H6 as ReplaceWith<Replacer>>::Output,
+        <H7 as ReplaceWith<Replacer>>::Output ;
+        <Tail as ReplaceWith<Replacer>>::Output
+    );
 }
 
-impl<Head, Tail, Replacer> ReplaceNodesWith<Replacer> for TList<(Head, Tail)>
+macro_rules! replace_nodes_with_len_impl {
+    ($h0:ident) => {
+        impl<$h0, Replacer> ReplaceNodesWith<Replacer> for flow_list_chain!($h0)
+        where
+            $h0: ReplaceNodesWith<Replacer>,
+        {
+            type Output = flow_list_chain!(<$h0 as ReplaceNodesWith<Replacer>>::Output);
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<$h0, $($rest,)+ Replacer> ReplaceNodesWith<Replacer> for flow_list_chain!($h0, $($rest),+)
+        where
+            $h0: ReplaceNodesWith<Replacer>,
+            flow_list_chain!($($rest),+): ReplaceNodesWith<Replacer>,
+        {
+            type Output = flow_list_chain_tail!(
+                <$h0 as ReplaceNodesWith<Replacer>>::Output ;
+                <flow_list_chain!($($rest),+) as ReplaceNodesWith<Replacer>>::Output
+            );
+        }
+    };
+}
+replace_nodes_with_len_impl!(H0);
+replace_nodes_with_len_impl!(H0; H1);
+replace_nodes_with_len_impl!(H0; H1, H2);
+replace_nodes_with_len_impl!(H0; H1, H2, H3);
+replace_nodes_with_len_impl!(H0; H1, H2, H3, H4);
+replace_nodes_with_len_impl!(H0; H1, H2, H3, H4, H5);
+replace_nodes_with_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Replacer> ReplaceNodesWith<Replacer>
+    for flow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    Head: ReplaceNodesWith<Replacer>,
+    H0: ReplaceNodesWith<Replacer>,
+    H1: ReplaceNodesWith<Replacer>,
+    H2: ReplaceNodesWith<Replacer>,
+    H3: ReplaceNodesWith<Replacer>,
+    H4: ReplaceNodesWith<Replacer>,
+    H5: ReplaceNodesWith<Replacer>,
+    H6: ReplaceNodesWith<Replacer>,
+    H7: ReplaceNodesWith<Replacer>,
     Tail: ReplaceNodesWith<Replacer>,
 {
-    type Output = TList<(
-        <Head as ReplaceNodesWith<Replacer>>::Output,
-        <Tail as ReplaceNodesWith<Replacer>>::Output,
-    )>;
+    type Output = flow_list_chain_tail!(
+        <H0 as ReplaceNodesWith<Replacer>>::Output,
+        <H1 as ReplaceNodesWith<Replacer>>::Output,
+        <H2 as ReplaceNodesWith<Replacer>>::Output,
+        <H3 as ReplaceNodesWith<Replacer>>::Output,
+        <H4 as ReplaceNodesWith<Replacer>>::Output,
+        <H5 as ReplaceNodesWith<Replacer>>::Output,
+        <H6 as ReplaceNodesWith<Replacer>>::Output,
+        <H7 as ReplaceNodesWith<Replacer>>::Output ;
+        <Tail as ReplaceNodesWith<Replacer>>::Output
+    );
 }
 
 pub type Traversed<Flow, Traversal> =
