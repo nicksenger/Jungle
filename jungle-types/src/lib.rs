@@ -30,7 +30,7 @@ pub use meta::{
     AnimalMember, AnimalSet, AnimalStates, AnimalStatesCompatible, AnimalVersion,
     AnimalVersionIdentitiesUnique, AnimalVersions, EffectIdentity, EffectMember, EffectSet,
     Generations, GenerationsForAnimals, HighestGeneration, HighestGenerationForAnimals,
-    StripAnimalHeaders, StripEffectHeaders, WithEffectFor,
+    IdValue, StripAnimalHeaders, StripEffectHeaders, WithEffectFor,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -340,47 +340,91 @@ pub trait Perturbable: Animal + Sized {
     type Perturbation: PerturbationBridge<Self>;
 }
 
-#[inception(property = Ident, types)]
-pub trait Identified {
+#[inception(property = AnimalIdent, types, no_blanket)]
+pub trait AnimalIdentified {
     #[induce(
         base = list::Empty,
-        merge = TList<(<Head as Identified>::Id, <Tail as Identified>::Id)>,
-        merge_variant = TList<(<Head as Identified>::Id, <Tail as Identified>::Id)>,
-        join = TList<(U0, <Fields as Identified>::Id)>
+        merge = TList<(<Head as AnimalIdentified>::Id, <Tail as AnimalIdentified>::Id)>,
+        merge_variant = TList<(<Head as AnimalIdentified>::Id, <Tail as AnimalIdentified>::Id)>,
+        join = TList<(U0, <Fields as AnimalIdentified>::Id)>
+    )]
+    type Id;
+}
+
+#[inception(property = EffectIdent, types, no_blanket)]
+pub trait EffectIdentified {
+    #[induce(
+        base = list::Empty,
+        merge = TList<(<Head as EffectIdentified>::Id, <Tail as EffectIdentified>::Id)>,
+        merge_variant = TList<(<Head as EffectIdentified>::Id, <Tail as EffectIdentified>::Id)>,
+        join = TList<(U0, <Fields as EffectIdentified>::Id)>
     )]
     type Id;
 }
 
 /// Any collection of [`Animal`]s with a flat type-level list of members.
-#[inception(property = JungleAnimals, types)]
+#[inception(property = JungleAnimals, types, no_blanket)]
 pub trait Animals {
     #[induce(
         base = list::Empty,
         merge = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
         merge_variant = TList<(<Head as Animals>::List, <Tail as Animals>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Animals>::List)> where { Self: Identified }
+        join = TList<(Node<<Self as AnimalIdentified>::Id, ()>, <Fields as Animals>::List)> where { Self: AnimalIdentified }
     )]
     type List;
 }
 
 /// Any collection of [`Effect`]s with a flat type-level list of members.
-#[inception(property = JungleEffects, types)]
+#[inception(property = JungleEffects, types, no_blanket)]
 pub trait Effects {
     #[induce(
         base = list::Empty,
         merge = TList<(<Head as Effects>::List, <Tail as Effects>::List)>,
         merge_variant = TList<(<Head as Effects>::List, <Tail as Effects>::List)>,
-        join = TList<(Node<<Self as Identified>::Id, ()>, <Fields as Effects>::List)> where { Self: Identified }
+        join = TList<(Node<<Self as EffectIdentified>::Id, ()>, <Fields as Effects>::List)> where { Self: EffectIdentified }
     )]
     type List;
 }
 
-#[primitive(property = Ident)]
-impl<T> Compat<T> for Ident
+#[primitive(property = AnimalIdent)]
+impl<T> Compat<T> for AnimalIdent
 where
     T: Animal,
+    T::Id: IdValue,
 {
     type Out = True;
+}
+
+#[doc(hidden)]
+pub trait AnimalIdentDispatch<P, T> {
+    type Id;
+}
+
+impl<T> AnimalIdentDispatch<True, T> for ()
+where
+    T: Animal,
+    T::Id: IdValue,
+{
+    type Id = <T::Id as IdValue>::Value;
+}
+
+impl<T> AnimalIdentDispatch<False, T> for ()
+where
+    T: Inception<AnimalIdent> + Meta,
+    __inception_animal_identified::Wrap<<T as Inception<AnimalIdent>>::TyFields>:
+        __inception_animal_identified::__InceptionInduceId<False>,
+{
+    type Id = <__inception_animal_identified::Wrap<
+        <T as Inception<AnimalIdent>>::TyFields,
+    > as __inception_animal_identified::__InceptionInduceId<False>>::Ret;
+}
+
+impl<T> AnimalIdentified for T
+where
+    T: IsPrimitive<AnimalIdent>,
+    (): AnimalIdentDispatch<<T as IsPrimitive<AnimalIdent>>::Is, T>,
+{
+    type Id = <() as AnimalIdentDispatch<<T as IsPrimitive<AnimalIdent>>::Is, T>>::Id;
 }
 
 #[primitive(property = JungleAnimals)]
@@ -391,12 +435,115 @@ where
     type Out = True;
 }
 
+#[doc(hidden)]
+pub trait AnimalsDispatch<P, T> {
+    type List;
+}
+
+impl<T> AnimalsDispatch<True, T> for ()
+where
+    T: Animal + AnimalIdentified,
+{
+    type List = Node<<T as AnimalIdentified>::Id, T>;
+}
+
+impl<T> AnimalsDispatch<False, T> for ()
+where
+    T: Inception<JungleAnimals> + Meta,
+    __inception_animals::Wrap<<T as Inception<JungleAnimals>>::TyFields>:
+        __inception_animals::__InceptionInduceList<False>,
+{
+    type List = <__inception_animals::Wrap<
+        <T as Inception<JungleAnimals>>::TyFields,
+    > as __inception_animals::__InceptionInduceList<False>>::Ret;
+}
+
+impl<T> Animals for T
+where
+    T: IsPrimitive<JungleAnimals>,
+    (): AnimalsDispatch<<T as IsPrimitive<JungleAnimals>>::Is, T>,
+{
+    type List = <() as AnimalsDispatch<<T as IsPrimitive<JungleAnimals>>::Is, T>>::List;
+}
+
+#[primitive(property = EffectIdent)]
+impl<T> Compat<T> for EffectIdent
+where
+    T: EffectSchema,
+    T::Id: IdValue,
+{
+    type Out = True;
+}
+
+#[doc(hidden)]
+pub trait EffectIdentDispatch<P, T> {
+    type Id;
+}
+
+impl<T> EffectIdentDispatch<True, T> for ()
+where
+    T: EffectSchema,
+    T::Id: IdValue,
+{
+    type Id = <T::Id as IdValue>::Value;
+}
+
+impl<T> EffectIdentDispatch<False, T> for ()
+where
+    T: Inception<EffectIdent> + Meta,
+    __inception_effect_identified::Wrap<<T as Inception<EffectIdent>>::TyFields>:
+        __inception_effect_identified::__InceptionInduceId<False>,
+{
+    type Id = <__inception_effect_identified::Wrap<
+        <T as Inception<EffectIdent>>::TyFields,
+    > as __inception_effect_identified::__InceptionInduceId<False>>::Ret;
+}
+
+impl<T> EffectIdentified for T
+where
+    T: IsPrimitive<EffectIdent>,
+    (): EffectIdentDispatch<<T as IsPrimitive<EffectIdent>>::Is, T>,
+{
+    type Id = <() as EffectIdentDispatch<<T as IsPrimitive<EffectIdent>>::Is, T>>::Id;
+}
+
 #[primitive(property = JungleEffects)]
 impl<T> Compat<T> for JungleEffects
 where
     T: EffectSchema,
 {
     type Out = True;
+}
+
+#[doc(hidden)]
+pub trait EffectsDispatch<P, T> {
+    type List;
+}
+
+impl<T> EffectsDispatch<True, T> for ()
+where
+    T: EffectSchema + EffectIdentified,
+{
+    type List = Node<<T as EffectIdentified>::Id, T>;
+}
+
+impl<T> EffectsDispatch<False, T> for ()
+where
+    T: Inception<JungleEffects> + Meta,
+    __inception_effects::Wrap<<T as Inception<JungleEffects>>::TyFields>:
+        __inception_effects::__InceptionInduceList<False>,
+{
+    type List = <__inception_effects::Wrap<
+        <T as Inception<JungleEffects>>::TyFields,
+    > as __inception_effects::__InceptionInduceList<False>>::Ret;
+}
+
+impl<T> Effects for T
+where
+    T: IsPrimitive<JungleEffects>,
+    (): EffectsDispatch<<T as IsPrimitive<JungleEffects>>::Is, T>,
+{
+    type List = <() as EffectsDispatch<<T as IsPrimitive<JungleEffects>>::Is, T>>::List;
 }
 
 /// A collection of [`Effect`]s extractable from an executable workflow.

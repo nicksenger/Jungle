@@ -19,6 +19,16 @@ use core::marker::PhantomData;
 /// Newtype wrapper around an Unsigned constant.
 pub struct Id<T: Unsigned>(pub T);
 
+pub trait IdValue {
+    type Value: Unsigned;
+}
+impl<T> IdValue for Id<T>
+where
+    T: Unsigned,
+{
+    type Value = T;
+}
+
 pub trait AnimalIdValue {
     const U32: u32;
 }

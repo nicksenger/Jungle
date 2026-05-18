@@ -1,5 +1,5 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::{Effect, EffectSchema, Effects, Id, Identified};
+use jungle_sdk::types::{Effect, EffectIdentified, EffectSchema, Effects, Id};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::collections::sp::Node;
 use num::U90;
@@ -23,7 +23,7 @@ impl<J> jungle_sdk::types::Effect<J> for AutoPrimitiveEffect {
 fn assert_schema<T: EffectSchema>() {}
 fn assert_exec<T: Effect<()>>() {}
 fn assert_effects<T: Effects>() {}
-fn assert_identified<T: Identified>() {}
+fn assert_identified<T: EffectIdentified>() {}
 
 #[test]
 fn effect_attr_emits_schema_exec_and_primitives() {
@@ -33,6 +33,6 @@ fn effect_attr_emits_schema_exec_and_primitives() {
     assert_identified::<AutoPrimitiveEffect>();
 
     assert_type_eq!(<AutoPrimitiveEffect as EffectSchema>::Id, Id<U90>);
-    assert_type_eq!(<AutoPrimitiveEffect as Identified>::Id, U90);
+    assert_type_eq!(<AutoPrimitiveEffect as EffectIdentified>::Id, U90);
     assert_type_eq!(<AutoPrimitiveEffect as Effects>::List, Node<U90, AutoPrimitiveEffect>);
 }

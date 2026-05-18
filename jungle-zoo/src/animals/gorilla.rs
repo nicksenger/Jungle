@@ -8,8 +8,8 @@ use crate::state::{
     TemporalState, TimePerception, VitalReadings,
 };
 use jungle_sdk::types::{
-    Act, Animal, Animals, BoundAct, Condition, Conditional, EffectCompletion, EffectSchema, Id,
-    Identified, Identity, LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation,
+    Act, Animal, BoundAct, Condition, Conditional, EffectCompletion, EffectSchema, Id, Identity,
+    LoopCondition, NodeMetadata, NoopObservation, NoopPerturbation,
     Observable, Perturbable, Step, Transparent, While,
 };
 use num::U0;
@@ -723,14 +723,6 @@ impl Perturbable for Gorilla {
 //    assert_running::<GorillaYearFlow>();
 //    assert_running::<GorillaJourney>();
 //}
-
-impl Animals for Gorilla {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U0, Gorilla>;
-}
-
-impl Identified for Gorilla {
-    type Id = U0;
-}
 
 #[allow(dead_code)]
 pub fn default_temporal_seed() -> TemporalState {
