@@ -3,7 +3,6 @@ pub mod prelude;
 pub use crate::prelude::*;
 pub use inception;
 pub use inception::Inception as Jungle;
-pub use inception::*;
 pub use jungle_client as client;
 pub use jungle_client::{Client, JungleClient, MockClient};
 pub use jungle_core as core;
