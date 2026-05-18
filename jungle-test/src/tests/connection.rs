@@ -1,7 +1,5 @@
+use jungle_sdk::prelude::*;
 use futures::StreamExt;
-use jungle_sdk::act;
-use jungle_sdk::animal;
-use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{Act, EffectCompletion, Step};
@@ -17,7 +15,7 @@ use uuid::Uuid;
 
 pub struct ConnectionEffect7;
 
-#[effect(id = 80)]
+#[jungle::effect(id = 80)]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
     type In = ();
     type Out = ();
@@ -33,7 +31,7 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
 
 pub struct ConnectionAnimal7;
 
-#[animal(id = 7, generation = 0)]
+#[jungle::animal(id = 7, generation = 0)]
 impl Animal for ConnectionAnimal7 {
     type State = ();
     type Seed = ();
@@ -41,7 +39,7 @@ impl Animal for ConnectionAnimal7 {
 }
 
 pub struct ConnectionStepSpec7;
-#[act]
+#[jungle::act]
 impl Act for ConnectionStepSpec7 {
     type Effect = ConnectionEffect7;
     type Input = ();
@@ -54,12 +52,12 @@ impl Act for ConnectionStepSpec7 {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct ConnectionFlowTemplate7(Step<ConnectionStepSpec7>);
 
 pub struct ConnectionEffect9;
 
-#[effect(id = 81)]
+#[jungle::effect(id = 81)]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
     type In = ();
     type Out = ();
@@ -75,7 +73,7 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
 
 pub struct ConnectionAnimal9;
 
-#[animal(id = 9, generation = 0)]
+#[jungle::animal(id = 9, generation = 0)]
 impl Animal for ConnectionAnimal9 {
     type State = ();
     type Seed = ();
@@ -83,7 +81,7 @@ impl Animal for ConnectionAnimal9 {
 }
 
 pub struct ConnectionStepSpec9;
-#[act]
+#[jungle::act]
 impl Act for ConnectionStepSpec9 {
     type Effect = ConnectionEffect9;
     type Input = ();
@@ -96,7 +94,7 @@ impl Act for ConnectionStepSpec9 {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct ConnectionFlowTemplate9(Step<ConnectionStepSpec9>);
 
 #[tokio::test]

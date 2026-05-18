@@ -1,6 +1,4 @@
-use jungle_sdk::act;
-use jungle_sdk::animal;
-use jungle_sdk::effect;
+use jungle_sdk::prelude::*;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     Act, BoundAct, BoundFlowStep, EffectCompletion, Identity, Running, StateCarrier, Step,
@@ -28,11 +26,11 @@ pub struct RootState {
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ViewWrapped(#[focus] Leaf);
+pub struct ViewWrapped(#[jungle(focus)] Leaf);
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ViewRoot {
-    #[focus]
+    #[jungle(focus)]
     wrapped: ViewWrapped,
 }
 
@@ -44,7 +42,7 @@ pub struct IoArg {
 
 pub struct EchoI32;
 
-#[effect(id = 72)]
+#[jungle::effect(id = 72)]
 impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
     type In = i32;
     type Out = i32;
@@ -59,7 +57,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
 }
 pub struct SumPair;
 
-#[effect(id = 73)]
+#[jungle::effect(id = 73)]
 impl<J> jungle_sdk::types::Effect<J> for SumPair {
     type In = (i32, i32);
     type Out = i32;
@@ -74,7 +72,7 @@ impl<J> jungle_sdk::types::Effect<J> for SumPair {
 }
 pub struct EchoPair;
 
-#[effect(id = 74)]
+#[jungle::effect(id = 74)]
 impl<J> jungle_sdk::types::Effect<J> for EchoPair {
     type In = (i32, i32);
     type Out = (i32, i32);
@@ -89,7 +87,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoPair {
 }
 pub struct EchoRootState;
 
-#[effect(id = 75)]
+#[jungle::effect(id = 75)]
 impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
     type In = RootState;
     type Out = RootState;
@@ -159,7 +157,7 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
 pub struct OpticAnimal;
 
 pub struct LensOnBranchSpec;
-#[act(aspect = BranchCarrier)]
+#[jungle::act(aspect = BranchCarrier)]
 impl Act for LensOnBranchSpec {
     type Effect = EchoI32;
     type Input = i32;
@@ -176,10 +174,10 @@ impl Act for LensOnBranchSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct OpticJourneyTemplate(Step<LensOnBranchSpec>);
 
-#[animal(id = 9, generation = 0)]
+#[jungle::animal(id = 9, generation = 0)]
 impl Animal for OpticAnimal {
     type State = RootState;
     type Seed = RootState;

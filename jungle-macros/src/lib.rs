@@ -280,7 +280,7 @@ pub fn derive_effects(input: TokenStream) -> TokenStream {
     derive_with_properties(input, &properties)
 }
 
-#[proc_macro_derive(Optic, attributes(focus, jungle_sdk))]
+#[proc_macro_derive(Optic, attributes(focus, jungle, jungle_sdk))]
 pub fn derive_optic(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let ident = input.ident.clone();
@@ -365,13 +365,29 @@ pub fn derive_optic(input: TokenStream) -> TokenStream {
 
 fn is_focus_marker(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
-        attr.path().is_ident("focus")
-            || attr
-                .path()
-                .segments
-                .last()
-                .map(|seg| seg.ident == "focus")
-                .unwrap_or(false)
+        if attr.path().is_ident("focus") {
+            return true;
+        }
+        if attr
+            .path()
+            .segments
+            .last()
+            .map(|seg| seg.ident == "focus")
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        if attr.path().is_ident("jungle") {
+            let mut has_focus = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("focus") {
+                    has_focus = true;
+                }
+                Ok(())
+            });
+            return has_focus;
+        }
+        false
     })
 }
 

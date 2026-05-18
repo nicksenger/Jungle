@@ -1,7 +1,5 @@
-use jungle_sdk::act;
-use jungle_sdk::animal;
+use jungle_sdk::prelude::*;
 use jungle_sdk::core::JungleWorker;
-use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::{
     Act, Animal, Ecosystem, EffectCompletion, Generations, HighestGeneration, Id, JourneyStatus,
@@ -9,14 +7,14 @@ use jungle_sdk::types::{
 };
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::list;
-use jungle_sdk::typosaurus::num::consts::{U0, U1, U33};
+use num::{U0, U1, U33};
 use jungle_sdk::{Animals, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
 
 pub struct LegacyEffect;
 
-#[effect(id = 70)]
+#[jungle::effect(id = 70)]
 impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
     type In = ();
     type Out = i32;
@@ -32,7 +30,7 @@ impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
 
 pub struct ModernEffect;
 
-#[effect(id = 71)]
+#[jungle::effect(id = 71)]
 impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
     type In = ();
     type Out = i32;
@@ -47,7 +45,7 @@ impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
 }
 
 pub struct LegacyStepSpec;
-#[act]
+#[jungle::act]
 impl Act for LegacyStepSpec {
     type Effect = LegacyEffect;
     type Input = i32;
@@ -61,7 +59,7 @@ impl Act for LegacyStepSpec {
 }
 
 pub struct ModernStepSpec;
-#[act]
+#[jungle::act]
 impl Act for ModernStepSpec {
     type Effect = ModernEffect;
     type Input = i32;
@@ -74,14 +72,14 @@ impl Act for ModernStepSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct LegacyFlowTemplate(Step<LegacyStepSpec>);
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct ModernFlowTemplate(Step<ModernStepSpec>);
 
 pub struct LegacyAnimal;
-#[animal(observe, id = 33, generation = 0)]
+#[jungle::animal(observe, id = 33, generation = 0)]
 impl Animal for LegacyAnimal {
     type State = i32;
     type Seed = i32;
@@ -96,7 +94,7 @@ impl Observe for LegacyAnimal {
 }
 
 pub struct ModernAnimal;
-#[animal(observe, id = 33, generation = 1)]
+#[jungle::animal(observe, id = 33, generation = 1)]
 impl Animal for ModernAnimal {
     type State = i32;
     type Seed = i32;
@@ -111,7 +109,7 @@ impl Observe for ModernAnimal {
 }
 
 pub struct FutureAnimal;
-#[animal(observe, id = 33, generation = 2)]
+#[jungle::animal(observe, id = 33, generation = 2)]
 impl Animal for FutureAnimal {
     type State = i32;
     type Seed = i32;

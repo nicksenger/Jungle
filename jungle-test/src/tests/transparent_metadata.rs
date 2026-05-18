@@ -1,6 +1,4 @@
-use jungle_sdk::act;
-use jungle_sdk::animal;
-use jungle_sdk::effect;
+use jungle_sdk::prelude::*;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     Act, Conditional, EffectCompletion, Executor, Join, JourneyAst, JourneyAstSource,
@@ -10,7 +8,7 @@ use std::future::ready;
 
 pub struct TransparentEffect;
 
-#[effect(id = 30)]
+#[jungle::effect(id = 30)]
 impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
     type In = i32;
     type Out = i32;
@@ -26,7 +24,7 @@ impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
 
 pub struct TransparentAnimal;
 
-#[animal(id = 31, generation = 0)]
+#[jungle::animal(id = 31, generation = 0)]
 impl Animal for TransparentAnimal {
     type State = i32;
     type Seed = i32;
@@ -34,7 +32,7 @@ impl Animal for TransparentAnimal {
 }
 
 pub struct TransparentStepSpec;
-#[act]
+#[jungle::act]
 impl Act for TransparentStepSpec {
     type Effect = TransparentEffect;
     type Input = i32;
@@ -59,7 +57,7 @@ impl NodeMetadata for FlowSectionMetadata {
 type BaseFlow = Step<TransparentStepSpec>;
 type TransparentFlow = Transparent<FlowSectionMetadata, BaseFlow>;
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct TransparentFlowTemplate(TransparentFlow);
 
 #[test]

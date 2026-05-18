@@ -1,6 +1,4 @@
-use jungle_sdk::act;
-use jungle_sdk::animal;
-use jungle_sdk::effect;
+use jungle_sdk::prelude::*;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
@@ -15,7 +13,7 @@ use std::marker::PhantomData;
 
 pub struct Sleep;
 
-#[effect(id = 0)]
+#[jungle::effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for Sleep {
     type In = i32;
     type Out = i32;
@@ -30,7 +28,7 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
 }
 pub struct Eat;
 
-#[effect(id = 1)]
+#[jungle::effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
     type In = i32;
     type Out = i32;
@@ -45,7 +43,7 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
 }
 pub struct Forage;
 
-#[effect(id = 2)]
+#[jungle::effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Forage {
     type In = i32;
     type Out = i32;
@@ -60,7 +58,7 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
 }
 pub struct Hunt;
 
-#[effect(id = 3)]
+#[jungle::effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for Hunt {
     type In = ();
     type Out = i32;
@@ -233,7 +231,7 @@ type TigerEat = AddI32<TigerEnergyCarrier, Eat>;
 type TigerSleep = AddI32<TigerEnergyCarrier, Sleep>;
 
 pub struct GorillaEatSpec;
-#[jungle_sdk::act(bind = AddI32<GorillaEnergyCarrier, Eat>)]
+#[jungle::act(bind = AddI32<GorillaEnergyCarrier, Eat>)]
 impl Act for GorillaEatSpec {
     type Effect = Eat;
     type Input = i32;
@@ -241,7 +239,7 @@ impl Act for GorillaEatSpec {
 }
 
 pub struct GorillaSleepManualSpec;
-#[act]
+#[jungle::act]
 impl Act for GorillaSleepManualSpec {
     type Effect = Sleep;
     type Input = i32;
@@ -260,14 +258,14 @@ impl Act for GorillaSleepManualSpec {
 }
 
 pub struct GorillaForageSpec;
-#[jungle_sdk::act(bind = SubI32<GorillaEnergyCarrier, Forage>)]
+#[jungle::act(bind = SubI32<GorillaEnergyCarrier, Forage>)]
 impl Act for GorillaForageSpec {
     type Effect = Forage;
     type Input = i32;
     type Output = i32;
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct GorillaLoopTemplate(
     Step<GorillaEatSpec>,
     Step<GorillaSleepManualSpec>,
@@ -283,7 +281,7 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct GorillaJourneyTemplate(While<GorillaUnderAgeHundred, GorillaLoopTemplate>);
 
 pub struct TigerStripesAreEven;
@@ -294,7 +292,7 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 }
 
 pub struct TigerEatSpec;
-#[jungle_sdk::act(bind = AddI32<TigerEnergyCarrier, Eat>)]
+#[jungle::act(bind = AddI32<TigerEnergyCarrier, Eat>)]
 impl Act for TigerEatSpec {
     type Effect = Eat;
     type Input = i32;
@@ -302,7 +300,7 @@ impl Act for TigerEatSpec {
 }
 
 pub struct TigerSleepSpec;
-#[jungle_sdk::act(bind = AddI32<TigerEnergyCarrier, Sleep>)]
+#[jungle::act(bind = AddI32<TigerEnergyCarrier, Sleep>)]
 impl Act for TigerSleepSpec {
     type Effect = Sleep;
     type Input = i32;
@@ -310,14 +308,14 @@ impl Act for TigerSleepSpec {
 }
 
 pub struct TigerHuntSpec;
-#[jungle_sdk::act(bind = AddI32<TigerEnergyCarrier, Hunt>)]
+#[jungle::act(bind = AddI32<TigerEnergyCarrier, Hunt>)]
 impl Act for TigerHuntSpec {
     type Effect = Hunt;
     type Input = ();
     type Output = i32;
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct TigerLoopTemplate(
     Conditional<TigerStripesAreEven, Step<TigerEatSpec>, Step<TigerSleepSpec>>,
     Step<TigerSleepSpec>,
@@ -333,12 +331,12 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct TigerJourneyTemplate(While<TigerUnderHundredStripes, TigerLoopTemplate>);
 
 pub struct Gorilla;
 
-#[animal(id = 1, generation = 0)]
+#[jungle::animal(id = 1, generation = 0)]
 impl Animal for Gorilla {
     type State = GorillaState;
     type Seed = GorillaState;
@@ -346,7 +344,7 @@ impl Animal for Gorilla {
 }
 pub struct Tiger;
 
-#[animal(id = 2, generation = 0)]
+#[jungle::animal(id = 2, generation = 0)]
 impl Animal for Tiger {
     type State = TigerState;
     type Seed = TigerState;

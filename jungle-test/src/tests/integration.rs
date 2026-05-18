@@ -1,8 +1,6 @@
+use jungle_sdk::prelude::*;
 use futures::StreamExt;
-use jungle_sdk::act;
-use jungle_sdk::animal;
 use jungle_sdk::core::JungleWorker;
-use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
@@ -62,7 +60,7 @@ impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
 
 pub struct AddOneEffect;
 
-#[effect(id = 1)]
+#[jungle::effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for AddOneEffect {
     type In = ();
     type Out = i32;
@@ -78,7 +76,7 @@ impl<J> jungle_sdk::types::Effect<J> for AddOneEffect {
 
 pub struct AddTwoEffect;
 
-#[effect(id = 2)]
+#[jungle::effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for AddTwoEffect {
     type In = ();
     type Out = i32;
@@ -151,7 +149,7 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
 }
 
 pub struct AddOneBeforeFullStateSpec;
-#[act]
+#[jungle::act]
 impl Act for AddOneBeforeFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -169,7 +167,7 @@ impl Act for AddOneBeforeFullStateSpec {
 }
 
 pub struct AddTwoBeforeFullStateSpec;
-#[act]
+#[jungle::act]
 impl Act for AddTwoBeforeFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -187,7 +185,7 @@ impl Act for AddTwoBeforeFullStateSpec {
 }
 
 pub struct AddOneFocusedSpec;
-#[act(aspect = IntegrationFocusedCarrier)]
+#[jungle::act(aspect = IntegrationFocusedCarrier)]
 impl Act for AddOneFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -202,7 +200,7 @@ impl Act for AddOneFocusedSpec {
 }
 
 pub struct AddTwoFocusedSpec;
-#[act(aspect = IntegrationFocusedCarrier)]
+#[jungle::act(aspect = IntegrationFocusedCarrier)]
 impl Act for AddTwoFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -217,7 +215,7 @@ impl Act for AddTwoFocusedSpec {
 }
 
 pub struct AddOneDeepFocusedSpec;
-#[act(aspect = IntegrationDeepFocusedCarrier)]
+#[jungle::act(aspect = IntegrationDeepFocusedCarrier)]
 impl Act for AddOneDeepFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -232,7 +230,7 @@ impl Act for AddOneDeepFocusedSpec {
 }
 
 pub struct AddTwoDeepFocusedSpec;
-#[act(aspect = IntegrationDeepFocusedCarrier)]
+#[jungle::act(aspect = IntegrationDeepFocusedCarrier)]
 impl Act for AddTwoDeepFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -247,7 +245,7 @@ impl Act for AddTwoDeepFocusedSpec {
 }
 
 pub struct AddOneAfterFullStateSpec;
-#[act]
+#[jungle::act]
 impl Act for AddOneAfterFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -265,7 +263,7 @@ impl Act for AddOneAfterFullStateSpec {
 }
 
 pub struct AddTwoAfterFullStateSpec;
-#[act]
+#[jungle::act]
 impl Act for AddTwoAfterFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -313,7 +311,7 @@ type LoopBranchFlow = While<
     >,
 >;
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct IntegrationJourneyTemplate(
     While<
         KeepRunning,
@@ -347,7 +345,7 @@ pub struct IntegrationJourneyTemplate(
 
 pub struct IntegrationAnimal;
 
-#[animal(observe, perturb, id = 0, generation = 0)]
+#[jungle::animal(observe, perturb, id = 0, generation = 0)]
 impl Animal for IntegrationAnimal {
     type State = IntegrationState;
     type Seed = IntegrationState;

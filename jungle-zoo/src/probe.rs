@@ -1,4 +1,5 @@
-use jungle_sdk::typosaurus::num::consts::U255;
+use jungle_sdk::prelude::*;
+use num::U255;
 
 pub struct ProbeEffect;
 
@@ -18,18 +19,18 @@ impl<J> jungle_sdk::types::EffectExec<J> for ProbeEffect {
     }
 }
 
-//#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleEffects)]
+//#[jungle::sdk_primitive(property = jungle_sdk::types::JungleEffects)]
 //impl jungle_sdk::types::Effects for ProbeEffect {
 //    type List = jungle_sdk::typosaurus::collections::sp::Node<U255, ProbeEffect>;
 //}
 
-//#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+//#[jungle::sdk_primitive(property = jungle_sdk::types::Ident)]
 //impl jungle_sdk::types::Identified for ProbeEffect {
 //    type Id = U255;
 //}
 
 pub struct ProbeStepSpec;
-#[jungle_sdk::act]
+#[jungle::act]
 impl jungle_sdk::types::Act for ProbeStepSpec {
     type Effect = ProbeEffect;
     type Input = ();
@@ -48,14 +49,14 @@ impl jungle_sdk::types::Act for ProbeStepSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct ProbeJourney(jungle_sdk::types::Step<ProbeStepSpec>);
 
 pub struct ProbeAnimal;
 
 impl jungle_sdk::types::Animal for ProbeAnimal {
     type Id = jungle_sdk::types::Id<U255>;
-    type Generation = jungle_sdk::typosaurus::num::consts::U0;
+    type Generation = num::U0;
     type State = ();
     type Seed = ();
     type Journey = ProbeJourney;
@@ -69,17 +70,17 @@ impl jungle_sdk::types::Perturbable for ProbeAnimal {
     type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
+#[jungle::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
 impl jungle_sdk::types::Animals for ProbeAnimal {
     type List = jungle_sdk::typosaurus::collections::sp::Node<U255, ProbeAnimal>;
 }
 
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
+#[jungle::sdk_primitive(property = jungle_sdk::types::Ident)]
 impl jungle_sdk::types::Identified for ProbeAnimal {
     type Id = U255;
 }
 
-#[derive(jungle_sdk::Animals)]
+#[derive(Animals)]
 pub struct ProbeZooAnimals(ProbeAnimal);
 
 pub struct ProbeZoo;

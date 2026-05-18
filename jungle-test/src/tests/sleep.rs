@@ -1,7 +1,5 @@
-use jungle_sdk::act;
-use jungle_sdk::animal;
+use jungle_sdk::prelude::*;
 use jungle_sdk::core::JungleWorker;
-use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
@@ -21,7 +19,7 @@ pub struct SleepState {
 }
 
 pub struct AddEffect;
-#[effect(id = 40)]
+#[jungle::effect(id = 40)]
 impl<J> jungle_sdk::types::Effect<J> for AddEffect {
     type In = ();
     type Out = i32;
@@ -59,7 +57,7 @@ impl Condition<(SleepState, ())> for SleepPhaseOne {
 }
 
 pub struct AddBeforeSleepSpec;
-#[act]
+#[jungle::act]
 impl Act for AddBeforeSleepSpec {
     type Effect = AddEffect;
     type Input = ();
@@ -74,7 +72,7 @@ impl Act for AddBeforeSleepSpec {
 }
 
 pub struct SleepForStateWakeSpec;
-#[act]
+#[jungle::act]
 impl Act for SleepForStateWakeSpec {
     type Effect = Sleep;
     type Input = ();
@@ -91,7 +89,7 @@ impl Act for SleepForStateWakeSpec {
 }
 
 pub struct AddAfterSleepSpec;
-#[act]
+#[jungle::act]
 impl Act for AddAfterSleepSpec {
     type Effect = AddEffect;
     type Input = ();
@@ -105,7 +103,7 @@ impl Act for AddAfterSleepSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct SleepJourneyTemplate(
     While<
         SleepNotComplete,
@@ -119,7 +117,7 @@ pub struct SleepJourneyTemplate(
 
 pub struct SleepAnimal;
 
-#[animal(observe, id = 0, generation = 0)]
+#[jungle::animal(observe, id = 0, generation = 0)]
 impl Animal for SleepAnimal {
     type State = SleepState;
     type Seed = SleepState;

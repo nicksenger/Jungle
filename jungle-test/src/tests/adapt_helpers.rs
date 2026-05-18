@@ -1,5 +1,4 @@
-use jungle_sdk::animal;
-use jungle_sdk::effect;
+use jungle_sdk::prelude::*;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     AbsorbFn, AbsorbMapper, Act, EffectCompletion, EmitFn, EmitMapper, Fuse, Identity,
@@ -15,7 +14,7 @@ struct HelperState {
 
 struct EchoEffect;
 
-#[effect(id = 70)]
+#[jungle::effect(id = 70)]
 impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
     type In = i32;
     type Out = i32;
@@ -30,7 +29,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoEffect {
 }
 struct PulseEffect;
 
-#[effect(id = 71)]
+#[jungle::effect(id = 71)]
 impl<J> jungle_sdk::types::Effect<J> for PulseEffect {
     type In = ();
     type Out = i32;
@@ -70,7 +69,7 @@ impl EmitMapper<HelperState, EchoEffect, i32> for EmitUsingState {
 }
 
 struct PassthroughSpec;
-#[jungle_sdk::act(bind = Fuse<
+#[jungle::act(bind = Fuse<
         PassthroughEmit<EchoEffect, Identity>,
         AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
     >)]
@@ -81,7 +80,7 @@ impl Act for PassthroughSpec {
 }
 
 struct UnitSpec;
-#[jungle_sdk::act(bind = Fuse<
+#[jungle::act(bind = Fuse<
         UnitEmit<PulseEffect, Identity>,
         AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
     >)]
@@ -92,7 +91,7 @@ impl Act for UnitSpec {
 }
 
 struct FunctionEmitSpec;
-#[jungle_sdk::act(bind = Fuse<
+#[jungle::act(bind = Fuse<
         EmitFn<Identity, EchoEffect, i32, EmitUsingState>,
         AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
     >)]
@@ -102,12 +101,12 @@ impl Act for FunctionEmitSpec {
     type Output = i32;
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 struct AdaptHelpersFlowTemplate(Step<PassthroughSpec>, Step<UnitSpec>, Step<FunctionEmitSpec>);
 
 struct HelperAnimal;
 
-#[animal(id = 0, generation = 0)]
+#[jungle::animal(id = 0, generation = 0)]
 impl Animal for HelperAnimal {
     type State = HelperState;
     type Seed = HelperState;

@@ -1,6 +1,4 @@
-use jungle_sdk::act;
-use jungle_sdk::animal;
-use jungle_sdk::effect;
+use jungle_sdk::prelude::*;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     Act, ContextExecutor, EffectCompletion, Either, Executor, Join, Select, Sleep, Step,
@@ -18,7 +16,7 @@ pub struct SelectJoinState {
 }
 
 pub struct TimedValueEffect;
-#[effect(id = 60)]
+#[jungle::effect(id = 60)]
 impl<J> jungle_sdk::types::Effect<J> for TimedValueEffect {
     type In = (u64, i32);
     type Out = i32;
@@ -36,7 +34,7 @@ impl<J> jungle_sdk::types::Effect<J> for TimedValueEffect {
 }
 
 pub struct ContextTimedValueEffect;
-#[effect(id = 61)]
+#[jungle::effect(id = 61)]
 impl<J> jungle_sdk::types::Effect<J> for ContextTimedValueEffect {
     type In = (u64, i32);
     type Out = i32;
@@ -54,7 +52,7 @@ impl<J> jungle_sdk::types::Effect<J> for ContextTimedValueEffect {
 }
 
 pub struct SelectFastSpec;
-#[act]
+#[jungle::act]
 impl Act for SelectFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -73,7 +71,7 @@ impl Act for SelectFastSpec {
 }
 
 pub struct SelectSlowSpec;
-#[act]
+#[jungle::act]
 impl Act for SelectSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -92,7 +90,7 @@ impl Act for SelectSlowSpec {
 }
 
 pub struct CaptureSelectWinnerSpec;
-#[act]
+#[jungle::act]
 impl Act for CaptureSelectWinnerSpec {
     type Effect = TimedValueEffect;
     type Input = Either<i32, i32>;
@@ -110,7 +108,7 @@ impl Act for CaptureSelectWinnerSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct SelectFlowTemplate(
     Select<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
     Step<CaptureSelectWinnerSpec>,
@@ -118,7 +116,7 @@ pub struct SelectFlowTemplate(
 
 pub struct SelectAnimal;
 
-#[animal(id = 0, generation = 0)]
+#[jungle::animal(id = 0, generation = 0)]
 impl Animal for SelectAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
@@ -126,7 +124,7 @@ impl Animal for SelectAnimal {
 }
 
 pub struct JoinFastSpec;
-#[act]
+#[jungle::act]
 impl Act for JoinFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -145,7 +143,7 @@ impl Act for JoinFastSpec {
 }
 
 pub struct JoinSlowSpec;
-#[act]
+#[jungle::act]
 impl Act for JoinSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -164,7 +162,7 @@ impl Act for JoinSlowSpec {
 }
 
 pub struct CaptureJoinSumSpec;
-#[act]
+#[jungle::act]
 impl Act for CaptureJoinSumSpec {
     type Effect = TimedValueEffect;
     type Input = (i32, i32);
@@ -179,7 +177,7 @@ impl Act for CaptureJoinSumSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct JoinFlowTemplate(
     Join<Step<JoinFastSpec>, Step<JoinSlowSpec>>,
     Step<CaptureJoinSumSpec>,
@@ -187,7 +185,7 @@ pub struct JoinFlowTemplate(
 
 pub struct JoinAnimal;
 
-#[animal(id = 1, generation = 0)]
+#[jungle::animal(id = 1, generation = 0)]
 impl Animal for JoinAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
@@ -195,7 +193,7 @@ impl Animal for JoinAnimal {
 }
 
 pub struct TimeoutSleepSpec;
-#[act]
+#[jungle::act]
 impl Act for TimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
@@ -213,7 +211,7 @@ impl Act for TimeoutSleepSpec {
 }
 
 pub struct TimeoutSlowSpec;
-#[act]
+#[jungle::act]
 impl Act for TimeoutSlowSpec {
     type Effect = ContextTimedValueEffect;
     type Input = ();
@@ -230,12 +228,12 @@ impl Act for TimeoutSlowSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct TimeoutFlowTemplate(Select<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>);
 
 pub struct TimeoutAnimal;
 
-#[animal(id = 2, generation = 0)]
+#[jungle::animal(id = 2, generation = 0)]
 impl Animal for TimeoutAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;

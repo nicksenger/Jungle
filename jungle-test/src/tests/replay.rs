@@ -1,7 +1,5 @@
-use jungle_sdk::act;
-use jungle_sdk::animal;
+use jungle_sdk::prelude::*;
 use jungle_sdk::core::JungleWorker;
-use jungle_sdk::effect;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
@@ -34,7 +32,7 @@ pub struct ReplayGateZoo {
 }
 
 pub struct ReplayPreIncrementEffect;
-#[effect(id = 41)]
+#[jungle::effect(id = 41)]
 impl jungle_sdk::types::Effect<()> for ReplayPreIncrementEffect {
     type In = ();
     type Out = ();
@@ -59,7 +57,7 @@ impl EffectExec<ReplayGateZoo> for ReplayPreIncrementEffect {
 }
 
 pub struct ReplayPostIncrementEffect;
-#[effect(id = 42)]
+#[jungle::effect(id = 42)]
 impl jungle_sdk::types::Effect<()> for ReplayPostIncrementEffect {
     type In = ();
     type Out = ();
@@ -84,7 +82,7 @@ impl EffectExec<ReplayGateZoo> for ReplayPostIncrementEffect {
 }
 
 pub struct ReplayGateEffect;
-#[effect(id = 43)]
+#[jungle::effect(id = 43)]
 impl jungle_sdk::types::Effect<()> for ReplayGateEffect {
     type In = ();
     type Out = ();
@@ -164,7 +162,7 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
 >;
 
 pub struct ReplayPreSpec;
-#[act]
+#[jungle::act]
 impl Act for ReplayPreSpec {
     type Effect = ReplayPreIncrementEffect;
     type Input = ();
@@ -179,7 +177,7 @@ impl Act for ReplayPreSpec {
 }
 
 pub struct ReplayGateSpec;
-#[act]
+#[jungle::act]
 impl Act for ReplayGateSpec {
     type Effect = ReplayGateEffect;
     type Input = ();
@@ -194,7 +192,7 @@ impl Act for ReplayGateSpec {
 }
 
 pub struct ReplayPostSpec;
-#[act]
+#[jungle::act]
 impl Act for ReplayPostSpec {
     type Effect = ReplayPostIncrementEffect;
     type Input = ();
@@ -208,14 +206,14 @@ impl Act for ReplayPostSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct ReplayGateTemplate(ReplayPhaseRouterFlow<ReplayPreSpec, ReplayGateSpec, ReplayPostSpec>);
 
 type ReplayGateJourney = ReplayGateTemplate;
 
 pub struct ReplayGateAnimal;
 
-#[animal(id = 0, generation = 0)]
+#[jungle::animal(id = 0, generation = 0)]
 impl Animal for ReplayGateAnimal {
     type State = ReplayGateState;
     type Seed = ReplayGateState;
@@ -373,7 +371,7 @@ pub struct ReplayTimeoutZoo {
 }
 
 pub struct ReplayTimeoutPreIncrementEffect;
-#[effect(id = 44)]
+#[jungle::effect(id = 44)]
 impl jungle_sdk::types::Effect<()> for ReplayTimeoutPreIncrementEffect {
     type In = ();
     type Out = ();
@@ -399,7 +397,7 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
 }
 
 pub struct ReplayTimeoutPostIncrementEffect;
-#[effect(id = 45)]
+#[jungle::effect(id = 45)]
 impl jungle_sdk::types::Effect<()> for ReplayTimeoutPostIncrementEffect {
     type In = ();
     type Out = ();
@@ -424,7 +422,7 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
 }
 
 pub struct ReplayTimeoutPreSpec;
-#[act]
+#[jungle::act]
 impl Act for ReplayTimeoutPreSpec {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type Input = ();
@@ -442,7 +440,7 @@ impl Act for ReplayTimeoutPreSpec {
 }
 
 pub struct ReplayTimeoutSleepSpec;
-#[act]
+#[jungle::act]
 impl Act for ReplayTimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
@@ -462,7 +460,7 @@ impl Act for ReplayTimeoutSleepSpec {
 }
 
 pub struct ReplayTimeoutPostSpec;
-#[act]
+#[jungle::act]
 impl Act for ReplayTimeoutPostSpec {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type Input = ();
@@ -479,7 +477,7 @@ impl Act for ReplayTimeoutPostSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct ReplayTimeoutTemplate(
     ReplayPhaseRouterFlow<ReplayTimeoutPreSpec, ReplayTimeoutSleepSpec, ReplayTimeoutPostSpec>,
 );
@@ -488,7 +486,7 @@ type ReplayTimeoutJourney = ReplayTimeoutTemplate;
 
 pub struct ReplayTimeoutAnimal;
 
-#[animal(id = 0, generation = 0)]
+#[jungle::animal(id = 0, generation = 0)]
 impl Animal for ReplayTimeoutAnimal {
     type State = ReplayTimeoutState;
     type Seed = ReplayTimeoutState;

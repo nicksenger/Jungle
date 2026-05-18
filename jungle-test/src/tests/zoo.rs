@@ -1,8 +1,6 @@
+use jungle_sdk::prelude::*;
 use futures::channel::mpsc;
-use jungle_sdk::act;
-use jungle_sdk::animal;
 use jungle_sdk::core::Jungle as _;
-use jungle_sdk::effect;
 use jungle_sdk::types::{
     Act, Animal, AnimalSet, AnimalStates, BoundAct, Ecosystem, EffectCompletion, EffectSchema,
     EffectSet, Identity, LoopCondition, StateCarrier, Step, While,
@@ -18,7 +16,7 @@ use uuid::Uuid;
 
 pub struct Eat;
 
-#[effect(id = 0)]
+#[jungle::effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
     type In = ();
     type Out = ();
@@ -33,7 +31,7 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
 }
 pub struct Sleep;
 
-#[effect(id = 1)]
+#[jungle::effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for Sleep {
     type In = ();
     type Out = ();
@@ -48,7 +46,7 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
 }
 pub struct Forage;
 
-#[effect(id = 2)]
+#[jungle::effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Forage {
     type In = ();
     type Out = ();
@@ -63,7 +61,7 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
 }
 pub struct Drink;
 
-#[effect(id = 3)]
+#[jungle::effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for Drink {
     type In = ();
     type Out = ();
@@ -78,7 +76,7 @@ impl<J> jungle_sdk::types::Effect<J> for Drink {
 }
 pub struct Hunt;
 
-#[effect(id = 4)]
+#[jungle::effect(id = 4)]
 impl<J> jungle_sdk::types::Effect<J> for Hunt {
     type In = ();
     type Out = ();
@@ -93,7 +91,7 @@ impl<J> jungle_sdk::types::Effect<J> for Hunt {
 }
 pub struct Flee;
 
-#[effect(id = 5)]
+#[jungle::effect(id = 5)]
 impl<J> jungle_sdk::types::Effect<J> for Flee {
     type In = ();
     type Out = ();
@@ -158,7 +156,7 @@ where
 
 type UUnitStep<E> = Step<UnitOkSpec<E>>;
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct PreyWorkflowTemplate(
     UUnitStep<Eat>,
     UUnitStep<Sleep>,
@@ -167,7 +165,7 @@ pub struct PreyWorkflowTemplate(
     UUnitStep<Flee>,
 );
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct PredatorWorkflowTemplate(
     UUnitStep<Eat>,
     UUnitStep<Sleep>,
@@ -178,7 +176,7 @@ pub struct PredatorWorkflowTemplate(
 
 pub struct Gorilla;
 
-#[animal(id = 0, generation = 0)]
+#[jungle::animal(id = 0, generation = 0)]
 impl Animal for Gorilla {
     type State = SharedState;
     type Seed = SharedState;
@@ -186,7 +184,7 @@ impl Animal for Gorilla {
 }
 pub struct Chimpanzee;
 
-#[animal(id = 1, generation = 0)]
+#[jungle::animal(id = 1, generation = 0)]
 impl Animal for Chimpanzee {
     type State = SharedState;
     type Seed = SharedState;
@@ -194,7 +192,7 @@ impl Animal for Chimpanzee {
 }
 pub struct Tiger;
 
-#[animal(id = 2, generation = 0)]
+#[jungle::animal(id = 2, generation = 0)]
 impl Animal for Tiger {
     type State = SharedState;
     type Seed = SharedState;
@@ -202,7 +200,7 @@ impl Animal for Tiger {
 }
 pub struct Jaguar;
 
-#[animal(id = 3, generation = 0)]
+#[jungle::animal(id = 3, generation = 0)]
 impl Animal for Jaguar {
     type State = SharedState;
     type Seed = SharedState;
@@ -210,7 +208,7 @@ impl Animal for Jaguar {
 }
 pub struct Anaconda;
 
-#[animal(id = 4, generation = 0)]
+#[jungle::animal(id = 4, generation = 0)]
 impl Animal for Anaconda {
     type State = SharedState;
     type Seed = SharedState;
@@ -218,7 +216,7 @@ impl Animal for Anaconda {
 }
 pub struct Hippo;
 
-#[animal(id = 5, generation = 0)]
+#[jungle::animal(id = 5, generation = 0)]
 impl Animal for Hippo {
     type State = SharedState;
     type Seed = SharedState;
@@ -226,7 +224,7 @@ impl Animal for Hippo {
 }
 pub struct Elephant;
 
-#[animal(id = 6, generation = 0)]
+#[jungle::animal(id = 6, generation = 0)]
 impl Animal for Elephant {
     type State = SharedState;
     type Seed = SharedState;
@@ -268,7 +266,7 @@ impl From<RunnerState> for () {
 }
 
 pub struct RunnerStepOneEffect;
-#[effect(id = 14)]
+#[jungle::effect(id = 14)]
 impl<J> jungle_sdk::types::Effect<J> for RunnerStepOneEffect {
     type In = ();
     type Out = i32;
@@ -283,7 +281,7 @@ impl<J> jungle_sdk::types::Effect<J> for RunnerStepOneEffect {
 }
 
 pub struct RunnerStepTwoEffect;
-#[effect(id = 15)]
+#[jungle::effect(id = 15)]
 impl<J> jungle_sdk::types::Effect<J> for RunnerStepTwoEffect {
     type In = ();
     type Out = i32;
@@ -314,7 +312,7 @@ impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
 }
 
 pub struct RunnerStepOneSpec;
-#[act]
+#[jungle::act]
 impl Act for RunnerStepOneSpec {
     type Effect = RunnerStepOneEffect;
     type Input = ();
@@ -328,7 +326,7 @@ impl Act for RunnerStepOneSpec {
 }
 
 pub struct RunnerStepTwoSpec;
-#[act]
+#[jungle::act]
 impl Act for RunnerStepTwoSpec {
     type Effect = RunnerStepTwoEffect;
     type Input = ();
@@ -341,7 +339,7 @@ impl Act for RunnerStepTwoSpec {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct RunnerJourneyTemplate(
     While<
         RunnerKeepGoing,
@@ -351,7 +349,7 @@ pub struct RunnerJourneyTemplate(
 
 pub struct RunnerAnimal;
 
-#[animal(id = 16, generation = 0)]
+#[jungle::animal(id = 16, generation = 0)]
 impl Animal for RunnerAnimal {
     type State = RunnerState;
     type Seed = RunnerState;
@@ -397,7 +395,7 @@ fn animal_state_set() {
 
     struct StatefulGorilla;
 
-    #[animal(id = 0, generation = 0)]
+    #[jungle::animal(id = 0, generation = 0)]
     impl Animal for StatefulGorilla {
         type State = ApeState;
         type Seed = ApeState;
@@ -405,7 +403,7 @@ fn animal_state_set() {
     }
     struct StatefulTiger;
 
-    #[animal(id = 1, generation = 0)]
+    #[jungle::animal(id = 1, generation = 0)]
     impl Animal for StatefulTiger {
         type State = CatState;
         type Seed = CatState;
@@ -445,7 +443,7 @@ pub struct ExecutorCatState {
 }
 
 pub struct EatEnergy;
-#[effect(id = 7)]
+#[jungle::effect(id = 7)]
 impl<J> jungle_sdk::types::Effect<J> for EatEnergy {
     type In = i32;
     type Out = i32;
@@ -460,7 +458,7 @@ impl<J> jungle_sdk::types::Effect<J> for EatEnergy {
 }
 
 pub struct HuntEnergy;
-#[effect(id = 10)]
+#[jungle::effect(id = 10)]
 impl<J> jungle_sdk::types::Effect<J> for HuntEnergy {
     type In = i32;
     type Out = i32;
@@ -475,7 +473,7 @@ impl<J> jungle_sdk::types::Effect<J> for HuntEnergy {
 }
 
 pub struct RoundAdvance;
-#[effect(id = 13)]
+#[jungle::effect(id = 13)]
 impl<J> jungle_sdk::types::Effect<J> for RoundAdvance {
     type In = i32;
     type Out = i32;
@@ -535,7 +533,7 @@ type TigerHuntTask = AddI32<TigerEnergyCarrier, HuntEnergy>;
 type TigerEatTask = AddI32<TigerEnergyCarrier, EatEnergy>;
 
 pub struct ApeRoundTaskSpec;
-#[jungle_sdk::act(bind = ApeRoundTask)]
+#[jungle::act(bind = ApeRoundTask)]
 impl Act for ApeRoundTaskSpec {
     type Effect = RoundAdvance;
     type Input = i32;
@@ -543,7 +541,7 @@ impl Act for ApeRoundTaskSpec {
 }
 
 pub struct TigerHuntTaskSpec;
-#[jungle_sdk::act(bind = TigerHuntTask)]
+#[jungle::act(bind = TigerHuntTask)]
 impl Act for TigerHuntTaskSpec {
     type Effect = HuntEnergy;
     type Input = i32;
@@ -551,7 +549,7 @@ impl Act for TigerHuntTaskSpec {
 }
 
 pub struct TigerEatTaskSpec;
-#[jungle_sdk::act(bind = TigerEatTask)]
+#[jungle::act(bind = TigerEatTask)]
 impl Act for TigerEatTaskSpec {
     type Effect = EatEnergy;
     type Input = i32;
@@ -583,10 +581,10 @@ impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
     }
 }
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct WorkflowGorillaJourneyTemplate(While<ApeKeepRunning, Step<ApeRoundTaskSpec>>);
 
-#[derive(jungle_sdk::Flow)]
+#[derive(Flow)]
 pub struct WorkflowTigerJourneyTemplate(
     While<
         TigerKeepRunning,
@@ -596,7 +594,7 @@ pub struct WorkflowTigerJourneyTemplate(
 
 pub struct WorkflowGorilla;
 
-#[animal(id = 11, generation = 0)]
+#[jungle::animal(id = 11, generation = 0)]
 impl Animal for WorkflowGorilla {
     type State = ExecutorApeState;
     type Seed = ExecutorApeState;
@@ -604,7 +602,7 @@ impl Animal for WorkflowGorilla {
 }
 pub struct WorkflowTiger;
 
-#[animal(id = 12, generation = 0)]
+#[jungle::animal(id = 12, generation = 0)]
 impl Animal for WorkflowTiger {
     type State = ExecutorCatState;
     type Seed = ExecutorCatState;

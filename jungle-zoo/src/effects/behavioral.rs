@@ -1,3 +1,4 @@
+use jungle_sdk::prelude::*;
 use super::support::maybe_delay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,7 +18,7 @@ impl Default for BehavioralDependency {
 
 pub struct Rest;
 
-#[jungle_sdk::effect(id = 2)]
+#[jungle::effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Rest {
     type In = u16;
     type Out = u16;
@@ -37,7 +38,7 @@ impl<J> jungle_sdk::types::Effect<J> for Rest {
 
 pub struct MakeSound;
 
-#[jungle_sdk::effect(id = 3)]
+#[jungle::effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for MakeSound {
     type In = (String, u8);
     type Out = String;
@@ -58,7 +59,7 @@ impl<J> jungle_sdk::types::Effect<J> for MakeSound {
 
 pub struct ChestBeat;
 
-#[jungle_sdk::effect(id = 5)]
+#[jungle::effect(id = 5)]
 impl<J> jungle_sdk::types::Effect<J> for ChestBeat {
     type In = (u8, bool);
     type Out = u8;
