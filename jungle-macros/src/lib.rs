@@ -1399,7 +1399,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
             impl<A> #types::BoundAct<A> for #bound_ident<A>
             where
                 A: #types::Animal,
-                #aspect_ty: #types::Aspect<<A as #types::Animal>::State, View = #emit_view_ty>,
+                #aspect_ty: #types::Aspect<<A as #types::Animal>::State, Focus = #emit_view_ty>,
             {
                 type Effect = #effect_ty;
                 type Aspect = #aspect_ty;

@@ -58,14 +58,14 @@ where
     type Output = ();
 
     fn emit(
-        _view: &<Focus as StateCarrier<T::State>>::View,
+        _view: &<Focus as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
         input
     }
 
     fn absorb(
-        _view: &mut <Focus as StateCarrier<T::State>>::View,
+        _view: &mut <Focus as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("Sleep effect should be resumed by worker runtime");

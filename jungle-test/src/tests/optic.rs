@@ -103,18 +103,18 @@ impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
 
 pub struct BranchCarrier;
 impl StateCarrier<RootState> for BranchCarrier {
-    type View = Branch;
+    type Focus = Branch;
 
-    fn view<'a>(state: &'a mut RootState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut RootState) -> &'a mut Self::Focus {
         &mut state.branch
     }
 }
 
 pub struct LeafValueCarrier;
 impl StateCarrier<RootState> for LeafValueCarrier {
-    type View = i32;
+    type Focus = i32;
 
-    fn view<'a>(state: &'a mut RootState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut RootState) -> &'a mut Self::Focus {
         &mut state.branch.leaf.value
     }
 }

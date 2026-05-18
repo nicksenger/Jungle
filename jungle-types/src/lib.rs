@@ -118,9 +118,9 @@ impl<State, View> StateCarrier<State> for ViewCarrier<View>
 where
     State: ViewProject<View>,
 {
-    type View = View;
+    type Focus = View;
 
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
         <State as ViewProject<View>>::project_view(state)
     }
 }
@@ -191,9 +191,9 @@ impl<State, Path> StateCarrier<State> for Lens<State, Path>
 where
     State: LensPath<Path>,
 {
-    type View = <State as LensPath<Path>>::View;
+    type Focus = <State as LensPath<Path>>::View;
 
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
         <State as LensPath<Path>>::lens_path(state)
     }
 }
@@ -459,9 +459,9 @@ pub struct RootScope;
 pub struct BindAnimalTraversal<A, Scope = RootScope>(PhantomData<fn() -> (A, Scope)>);
 
 impl<State> StateCarrier<State> for RootScope {
-    type View = State;
+    type Focus = State;
 
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
         state
     }
 }

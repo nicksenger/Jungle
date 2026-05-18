@@ -66,9 +66,9 @@ pub type EffectCompletion<A> = Result<<A as EffectSchema>::Out, <A as EffectSche
 
 /// Projects a larger state into a focused mutable substate.
 pub trait StateCarrier<State> {
-    type View;
+    type Focus;
 
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View;
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus;
 }
 
 /// Composes two carriers into a single projection.
@@ -77,14 +77,14 @@ pub struct ComposeCarrier<Outer, Inner>(PhantomData<fn() -> (Outer, Inner)>);
 impl<State, Outer, Inner> StateCarrier<State> for ComposeCarrier<Outer, Inner>
 where
     Outer: StateCarrier<State>,
-    <Outer as StateCarrier<State>>::View: 'static,
-    Inner: StateCarrier<<Outer as StateCarrier<State>>::View>,
+    <Outer as StateCarrier<State>>::Focus: 'static,
+    Inner: StateCarrier<<Outer as StateCarrier<State>>::Focus>,
 {
-    type View = <Inner as StateCarrier<<Outer as StateCarrier<State>>::View>>::View;
+    type Focus = <Inner as StateCarrier<<Outer as StateCarrier<State>>::Focus>>::Focus;
 
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
-        let outer = <Outer as StateCarrier<State>>::view(state);
-        <Inner as StateCarrier<<Outer as StateCarrier<State>>::View>>::view(outer)
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
+        let outer = <Outer as StateCarrier<State>>::focus(state);
+        <Inner as StateCarrier<<Outer as StateCarrier<State>>::Focus>>::focus(outer)
     }
 }
 
@@ -97,9 +97,9 @@ impl<T, State> Aspect<State> for T where T: StateCarrier<State> {}
 pub struct Identity;
 
 impl<State> StateCarrier<State> for Identity {
-    type View = State;
+    type Focus = State;
 
-    fn view<'a>(state: &'a mut State) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut State) -> &'a mut Self::Focus {
         state
     }
 }
@@ -113,12 +113,12 @@ pub trait BoundAct<T: Animal> {
     type Output;
 
     fn emit(
-        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::View,
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In;
 
     fn absorb(
-        view: &mut <<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::View,
+        view: &mut <<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output;
 }
@@ -162,7 +162,7 @@ impl<A, ScopeState, ScopeCarrier, InnerAct> BoundAct<A>
 where
     A: Animal,
     ScopeState: Default + 'static,
-    ScopeCarrier: Aspect<A::State, View = ScopeState>,
+    ScopeCarrier: Aspect<A::State, Focus = ScopeState>,
     InnerAct: BoundAct<ScopedAnimal<A, ScopeState>>,
 {
     type Effect = <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::Effect;
@@ -172,14 +172,14 @@ where
     type Output = <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::Output;
 
     fn emit(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::View,
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
         <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::emit(view, input)
     }
 
     fn absorb(
-        view: &mut <<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::View,
+        view: &mut <<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::absorb(view, output)
@@ -191,7 +191,7 @@ where
     A: Animal,
     S: Act,
     ScopeState: Default + 'static,
-    ScopeCarrier: Aspect<A::State, View = ScopeState>,
+    ScopeCarrier: Aspect<A::State, Focus = ScopeState>,
     <S as Act>::Bind<ScopedAnimal<A, ScopeState>>: BoundAct<
         ScopedAnimal<A, ScopeState>,
         Input = <S as Act>::Input,
@@ -210,7 +210,7 @@ pub trait Emit<T: Animal> {
     type Effect: EffectSchema;
 
     fn emit(
-        view: &<Self::Aspect as StateCarrier<T::State>>::View,
+        view: &<Self::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Arg,
     ) -> <Self::Effect as EffectSchema>::In;
 }
@@ -222,7 +222,7 @@ pub trait Absorb<T: Animal> {
     type Effect: EffectSchema;
 
     fn absorb(
-        view: &mut <Self::Aspect as StateCarrier<T::State>>::View,
+        view: &mut <Self::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret;
 }
@@ -243,7 +243,7 @@ where
     type Effect = A;
 
     fn emit(
-        _view: &<Self::Aspect as StateCarrier<T::State>>::View,
+        _view: &<Self::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Arg,
     ) -> <Self::Effect as EffectSchema>::In {
         input
@@ -264,7 +264,7 @@ where
     type Effect = A;
 
     fn emit(
-        _view: &<Self::Aspect as StateCarrier<T::State>>::View,
+        _view: &<Self::Aspect as StateCarrier<T::State>>::Focus,
         _input: Self::Arg,
     ) -> <Self::Effect as EffectSchema>::In {
     }
@@ -286,17 +286,17 @@ where
     T: Animal,
     Focus: Aspect<T::State>,
     A: EffectSchema,
-    F: EmitMapper<<Focus as StateCarrier<T::State>>::View, A, In>,
+    F: EmitMapper<<Focus as StateCarrier<T::State>>::Focus, A, In>,
 {
     type Arg = In;
     type Aspect = Focus;
     type Effect = A;
 
     fn emit(
-        view: &<Self::Aspect as StateCarrier<T::State>>::View,
+        view: &<Self::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Arg,
     ) -> <Self::Effect as EffectSchema>::In {
-        <F as EmitMapper<<Focus as StateCarrier<T::State>>::View, A, In>>::emit(view, input)
+        <F as EmitMapper<<Focus as StateCarrier<T::State>>::Focus, A, In>>::emit(view, input)
     }
 }
 
@@ -316,17 +316,17 @@ where
     T: Animal,
     Focus: Aspect<T::State>,
     A: EffectSchema,
-    F: AbsorbMapper<<Focus as StateCarrier<T::State>>::View, A, Out>,
+    F: AbsorbMapper<<Focus as StateCarrier<T::State>>::Focus, A, Out>,
 {
     type Ret = Out;
     type Aspect = Focus;
     type Effect = A;
 
     fn absorb(
-        view: &mut <Self::Aspect as StateCarrier<T::State>>::View,
+        view: &mut <Self::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
-        <F as AbsorbMapper<<Focus as StateCarrier<T::State>>::View, A, Out>>::absorb(view, output)
+        <F as AbsorbMapper<<Focus as StateCarrier<T::State>>::Focus, A, Out>>::absorb(view, output)
     }
 }
 
@@ -345,14 +345,14 @@ where
     type Output = <A as Absorb<T>>::Ret;
 
     fn emit(
-        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::View,
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
         <E as Emit<T>>::emit(view, input)
     }
 
     fn absorb(
-        view: &mut <<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::View,
+        view: &mut <<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         <A as Absorb<T>>::absorb(view, output)
@@ -373,7 +373,7 @@ where
     type Effect = <E as Emit<T>>::Effect;
 
     fn emit(
-        view: &<Self::Aspect as StateCarrier<T::State>>::View,
+        view: &<Self::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Arg,
     ) -> <Self::Effect as EffectSchema>::In {
         <E as Emit<T>>::emit(view, input)
@@ -394,7 +394,7 @@ where
     type Effect = <A as Absorb<T>>::Effect;
 
     fn absorb(
-        view: &mut <Self::Aspect as StateCarrier<T::State>>::View,
+        view: &mut <Self::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Ret {
         <A as Absorb<T>>::absorb(view, output)
@@ -459,7 +459,7 @@ where
     type Out = (T::State, EffectRequest<<A as BoundAct<T>>::Effect>);
 
     fn run((mut state, input): Self::In) -> Self::Out {
-        let view = <<A as BoundAct<T>>::Aspect as StateCarrier<T::State>>::view(&mut state);
+        let view = <<A as BoundAct<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
         let effect_input = <A as BoundAct<T>>::emit(view, input);
         (
             state,
@@ -478,7 +478,7 @@ where
     type Out = (T::State, <A as BoundAct<T>>::Output);
 
     fn accept((mut state, output): Self::In) -> Self::Out {
-        let view = <<A as BoundAct<T>>::Aspect as StateCarrier<T::State>>::view(&mut state);
+        let view = <<A as BoundAct<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
         let emitted = <A as BoundAct<T>>::absorb(view, output);
         (state, emitted)
     }
@@ -608,10 +608,10 @@ where
     ScopeCarrier: crate::ScopedCarrierMarker,
     ScopeCarrier: Aspect<T::State>,
     S: Act,
-    S: ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::View, ScopeCarrier>,
+    S: ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>,
     <S as ScopedAct<
         T,
-        <ScopeCarrier as StateCarrier<T::State>>::View,
+        <ScopeCarrier as StateCarrier<T::State>>::Focus,
         ScopeCarrier,
     >>::BoundAct: BoundAct<
         T,
@@ -624,7 +624,7 @@ where
         T,
         <S as ScopedAct<
             T,
-            <ScopeCarrier as StateCarrier<T::State>>::View,
+            <ScopeCarrier as StateCarrier<T::State>>::Focus,
             ScopeCarrier,
         >>::BoundAct,
     >;

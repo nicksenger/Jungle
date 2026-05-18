@@ -92,36 +92,36 @@ pub struct TigerState {
 
 pub struct GorillaCoreCarrier;
 impl StateCarrier<GorillaState> for GorillaCoreCarrier {
-    type View = CoreState;
+    type Focus = CoreState;
 
-    fn view<'a>(state: &'a mut GorillaState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut GorillaState) -> &'a mut Self::Focus {
         &mut state.core
     }
 }
 
 pub struct TigerCoreCarrier;
 impl StateCarrier<TigerState> for TigerCoreCarrier {
-    type View = CoreState;
+    type Focus = CoreState;
 
-    fn view<'a>(state: &'a mut TigerState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut TigerState) -> &'a mut Self::Focus {
         &mut state.core
     }
 }
 
 pub struct GorillaEnergyCarrier;
 impl StateCarrier<GorillaState> for GorillaEnergyCarrier {
-    type View = i32;
+    type Focus = i32;
 
-    fn view<'a>(state: &'a mut GorillaState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut GorillaState) -> &'a mut Self::Focus {
         &mut state.core.energy
     }
 }
 
 pub struct TigerEnergyCarrier;
 impl StateCarrier<TigerState> for TigerEnergyCarrier {
-    type View = i32;
+    type Focus = i32;
 
-    fn view<'a>(state: &'a mut TigerState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut TigerState) -> &'a mut Self::Focus {
         &mut state.core.energy
     }
 }
@@ -131,7 +131,7 @@ pub struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 impl<T, Focus> BoundAct<T> for CoreEnergyStep<Sleep, Focus>
 where
     T: jungle_types::Animal,
-    Focus: Aspect<T::State, View = CoreState>,
+    Focus: Aspect<T::State, Focus = CoreState>,
 {
     type Effect = Sleep;
     type Aspect = Focus;
@@ -152,7 +152,7 @@ where
 impl<T, Focus> BoundAct<T> for CoreEnergyStep<Eat, Focus>
 where
     T: jungle_types::Animal,
-    Focus: Aspect<T::State, View = CoreState>,
+    Focus: Aspect<T::State, Focus = CoreState>,
 {
     type Effect = Eat;
     type Aspect = Focus;
@@ -175,7 +175,7 @@ pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
     T: jungle_types::Animal,
-    Focus: Aspect<T::State, View = i32>,
+    Focus: Aspect<T::State, Focus = i32>,
     A: EffectSchema<Out = i32>,
 {
     type Effect = A;
@@ -202,7 +202,7 @@ pub struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 impl<T, Focus, A> BoundAct<T> for SubI32<Focus, A>
 where
     T: jungle_types::Animal,
-    Focus: Aspect<T::State, View = i32>,
+    Focus: Aspect<T::State, Focus = i32>,
     A: EffectSchema<Out = i32>,
 {
     type Effect = A;

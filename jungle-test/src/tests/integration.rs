@@ -42,18 +42,18 @@ pub struct IntegrationState {
 
 pub struct IntegrationFocusedCarrier;
 impl StateCarrier<IntegrationState> for IntegrationFocusedCarrier {
-    type View = SubFlowState;
+    type Focus = SubFlowState;
 
-    fn view<'a>(state: &'a mut IntegrationState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut IntegrationState) -> &'a mut Self::Focus {
         &mut state.focused
     }
 }
 
 pub struct IntegrationDeepFocusedCarrier;
 impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
-    type View = DeepFocusState;
+    type Focus = DeepFocusState;
 
-    fn view<'a>(state: &'a mut IntegrationState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut IntegrationState) -> &'a mut Self::Focus {
         &mut state.focused.nested
     }
 }

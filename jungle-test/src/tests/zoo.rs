@@ -491,7 +491,7 @@ pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
     T: Animal,
-    Focus: jungle_sdk::types::Aspect<T::State, View = i32>,
+    Focus: jungle_sdk::types::Aspect<T::State, Focus = i32>,
     A: EffectSchema<In = i32, Out = i32, Err = ()>,
 {
     type Effect = A;
@@ -512,18 +512,18 @@ where
 
 pub struct ApeRoundCarrier;
 impl StateCarrier<ExecutorApeState> for ApeRoundCarrier {
-    type View = i32;
+    type Focus = i32;
 
-    fn view<'a>(state: &'a mut ExecutorApeState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut ExecutorApeState) -> &'a mut Self::Focus {
         &mut state.core.rounds
     }
 }
 
 pub struct TigerEnergyCarrier;
 impl StateCarrier<ExecutorCatState> for TigerEnergyCarrier {
-    type View = i32;
+    type Focus = i32;
 
-    fn view<'a>(state: &'a mut ExecutorCatState) -> &'a mut Self::View {
+    fn focus<'a>(state: &'a mut ExecutorCatState) -> &'a mut Self::Focus {
         &mut state.core.energy
     }
 }
