@@ -11,8 +11,8 @@ use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
 use super::{
-    Animal, Animals, BoundAnimal, BoundAnimalJourney, Ecosystem, Effect, EffectSchema,
-    Effects, Journey, JourneyEffects,
+    Animal, Animals, BoundAnimal, BoundAnimalJourney, Ecosystem, Effect, EffectSchema, Effects,
+    Journey, JourneyEffects,
 };
 use core::marker::PhantomData;
 
@@ -154,36 +154,68 @@ pub trait ContainsAnimalVersion<Target> {
 impl<Target> ContainsAnimalVersion<Target> for list::Empty {
     type Out = typosaurus::bool::False;
 }
-impl<Head, Target> ContainsAnimalVersion<Target> for list::List<(Head, list::Empty)>
-where
-    Head: Equality<Target>,
-{
-    type Out = <Head as Equality<Target>>::Out;
+macro_rules! list_chain {
+    ($h:ident) => {
+        list::List<($h, list::Empty)>
+    };
+    ($h:ident, $($rest:ident),+) => {
+        list::List<($h, list_chain!($($rest),+))>
+    };
 }
-impl<Head0, Head1, Tail, Target> ContainsAnimalVersion<Target>
-    for list::List<(Head0, list::List<(Head1, Tail)>)>
+macro_rules! list_chain_tail {
+    ($h:ident ; $tail:ty) => {
+        list::List<($h, $tail)>
+    };
+    ($h:ident, $($rest:ident),+ ; $tail:ty) => {
+        list::List<($h, list_chain_tail!($($rest),+ ; $tail))>
+    };
+}
+macro_rules! contains_animal_version_len_impl {
+    ($h0:ident) => {
+        impl<$h0, Target> ContainsAnimalVersion<Target> for list_chain!($h0)
+        where
+            $h0: Equality<Target>,
+        {
+            type Out = <$h0 as Equality<Target>>::Out;
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<$h0, $($rest,)+ Target> ContainsAnimalVersion<Target> for list_chain!($h0, $($rest),+)
+        where
+            $h0: Equality<Target>,
+            list_chain!($($rest),+): ContainsAnimalVersion<Target>,
+            (
+                <$h0 as Equality<Target>>::Out,
+                <list_chain!($($rest),+) as ContainsAnimalVersion<Target>>::Out,
+            ): typosaurus::bool::Or,
+        {
+            type Out = <(
+                <$h0 as Equality<Target>>::Out,
+                <list_chain!($($rest),+) as ContainsAnimalVersion<Target>>::Out,
+            ) as typosaurus::bool::Or>::Out;
+        }
+    };
+}
+contains_animal_version_len_impl!(H0);
+contains_animal_version_len_impl!(H0; H1);
+contains_animal_version_len_impl!(H0; H1, H2);
+contains_animal_version_len_impl!(H0; H1, H2, H3);
+contains_animal_version_len_impl!(H0; H1, H2, H3, H4);
+contains_animal_version_len_impl!(H0; H1, H2, H3, H4, H5);
+contains_animal_version_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Target> ContainsAnimalVersion<Target>
+    for list::List<(H0, list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail))>
 where
-    Head0: Equality<Target>,
-    Head1: Equality<Target>,
-    Tail: ContainsAnimalVersion<Target>,
+    H0: Equality<Target>,
+    list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail): ContainsAnimalVersion<Target>,
     (
-        <Head1 as Equality<Target>>::Out,
-        <Tail as ContainsAnimalVersion<Target>>::Out,
-    ): typosaurus::bool::Or,
-    (
-        <Head0 as Equality<Target>>::Out,
-        <(
-            <Head1 as Equality<Target>>::Out,
-            <Tail as ContainsAnimalVersion<Target>>::Out,
-        ) as typosaurus::bool::Or>::Out,
+        <H0 as Equality<Target>>::Out,
+        <list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail) as ContainsAnimalVersion<Target>>::Out,
     ): typosaurus::bool::Or,
 {
     type Out = <(
-        <Head0 as Equality<Target>>::Out,
-        <(
-            <Head1 as Equality<Target>>::Out,
-            <Tail as ContainsAnimalVersion<Target>>::Out,
-        ) as typosaurus::bool::Or>::Out,
+        <H0 as Equality<Target>>::Out,
+        <list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail) as ContainsAnimalVersion<Target>>::Out,
     ) as typosaurus::bool::Or>::Out;
 }
 
@@ -248,19 +280,47 @@ pub trait MaxGeneration {
 impl MaxGeneration for list::Empty {
     type Out = typosaurus::num::consts::U0;
 }
-impl<Head> MaxGeneration for list::List<(Head, list::Empty)>
-where
-    Head: Max<typosaurus::num::consts::U0>,
-{
-    type Out = <Head as Max<typosaurus::num::consts::U0>>::Output;
+macro_rules! max_generation_len_impl {
+    ($h0:ident) => {
+        impl<$h0> MaxGeneration for list_chain!($h0)
+        where
+            $h0: Max<typosaurus::num::consts::U0>,
+        {
+            type Out = <$h0 as Max<typosaurus::num::consts::U0>>::Output;
+        }
+    };
+    ($h0:ident ; $h1:ident $(, $rest:ident)*) => {
+        impl<$h0, $h1, $($rest,)*> MaxGeneration for list_chain!($h0, $h1 $(, $rest)*)
+        where
+            $h0: Max<$h1>,
+            list_chain!($h1 $(, $rest)*): MaxGeneration,
+            <$h0 as Max<$h1>>::Output:
+                Max<<list_chain!($h1 $(, $rest)*) as MaxGeneration>::Out>,
+        {
+            type Out = <<$h0 as Max<$h1>>::Output as Max<
+                <list_chain!($h1 $(, $rest)*) as MaxGeneration>::Out,
+            >>::Output;
+        }
+    };
 }
-impl<Head0, Head1, Tail> MaxGeneration for list::List<(Head0, list::List<(Head1, Tail)>)>
+max_generation_len_impl!(H0);
+max_generation_len_impl!(H0; H1);
+max_generation_len_impl!(H0; H1, H2);
+max_generation_len_impl!(H0; H1, H2, H3);
+max_generation_len_impl!(H0; H1, H2, H3, H4);
+max_generation_len_impl!(H0; H1, H2, H3, H4, H5);
+max_generation_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail> MaxGeneration
+    for list::List<(H0, list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail))>
 where
-    Head0: Max<Head1>,
-    Tail: MaxGeneration,
-    <Head0 as Max<Head1>>::Output: Max<<Tail as MaxGeneration>::Out>,
+    H0: Max<H1>,
+    list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail): MaxGeneration,
+    <H0 as Max<H1>>::Output:
+        Max<<list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail) as MaxGeneration>::Out>,
 {
-    type Out = <<Head0 as Max<Head1>>::Output as Max<<Tail as MaxGeneration>::Out>>::Output;
+    type Out = <<H0 as Max<H1>>::Output as Max<
+        <list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail) as MaxGeneration>::Out,
+    >>::Output;
 }
 
 pub type HighestGenerationForAnimals<T, AnimalId> =
