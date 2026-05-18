@@ -450,91 +450,91 @@ impl BoundAct<Gorilla> for GorillaMakeSound {
 }
 
 pub struct GorillaAdvanceAgeSpec;
+#[jungle_sdk::act(bind = GorillaAdvanceAge)]
 impl Act for GorillaAdvanceAgeSpec {
     type Effect = effects::AdvanceAge;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaAdvanceAge;
 }
 
 pub struct GorillaTickPerceivedTimeSpec;
+#[jungle_sdk::act(bind = GorillaTickPerceivedTime)]
 impl Act for GorillaTickPerceivedTimeSpec {
     type Effect = effects::TickPerceivedTime;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaTickPerceivedTime;
 }
 
 pub struct GorillaBirthdaySpec;
+#[jungle_sdk::act(bind = GorillaBirthday)]
 impl Act for GorillaBirthdaySpec {
     type Effect = effects::CelebrateBirthday;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaBirthday;
 }
 
 pub struct GorillaBirthSpec;
+#[jungle_sdk::act(bind = GorillaBirth)]
 impl Act for GorillaBirthSpec {
     type Effect = effects::Birth;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaBirth;
 }
 
 pub struct GorillaEvaluateActivityWindowSpec;
+#[jungle_sdk::act(bind = GorillaEvaluateActivityWindow)]
 impl Act for GorillaEvaluateActivityWindowSpec {
     type Effect = effects::EvaluateActivityWindow;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaEvaluateActivityWindow;
 }
 
 pub struct GorillaPeelFruitSpec;
+#[jungle_sdk::act(bind = GorillaPeelFruit)]
 impl Act for GorillaPeelFruitSpec {
     type Effect = effects::PeelFruit;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaPeelFruit;
 }
 
 pub struct GorillaEatSpec;
+#[jungle_sdk::act(bind = GorillaEat)]
 impl Act for GorillaEatSpec {
     type Effect = effects::Eat;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaEat;
 }
 
 pub struct GorillaUseToolSpec;
+#[jungle_sdk::act(bind = GorillaUseTool)]
 impl Act for GorillaUseToolSpec {
     type Effect = effects::UseTool;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaUseTool;
 }
 
 pub struct GorillaChestBeatSpec;
+#[jungle_sdk::act(bind = GorillaChestBeat)]
 impl Act for GorillaChestBeatSpec {
     type Effect = effects::ChestBeat;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaChestBeat;
 }
 
 pub struct GorillaRestSpec;
+#[jungle_sdk::act(bind = GorillaRest)]
 impl Act for GorillaRestSpec {
     type Effect = effects::Rest;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaRest;
 }
 
 pub struct GorillaMakeSoundSpec;
+#[jungle_sdk::act(bind = GorillaMakeSound)]
 impl Act for GorillaMakeSoundSpec {
     type Effect = effects::MakeSound;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = GorillaMakeSound;
 }
 
 #[derive(jungle_sdk::Flow)]
@@ -605,11 +605,11 @@ pub struct ProbeDayFlow(
 );
 
 pub struct ProbeStepSpec;
+#[jungle_sdk::act(bind = ProbeStep)]
 impl Act for ProbeStepSpec {
     type Effect = crate::probe::ProbeEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = ProbeStep;
 }
 
 #[derive(jungle_sdk::Flow)]

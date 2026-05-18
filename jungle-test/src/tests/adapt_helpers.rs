@@ -70,36 +70,36 @@ impl EmitMapper<HelperState, EchoEffect, i32> for EmitUsingState {
 }
 
 struct PassthroughSpec;
+#[jungle_sdk::act(bind = Fuse<
+        PassthroughEmit<EchoEffect, Identity>,
+        AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
+    >)]
 impl Act for PassthroughSpec {
     type Effect = EchoEffect;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = Fuse<
-        PassthroughEmit<EchoEffect, Identity>,
-        AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
-    >;
 }
 
 struct UnitSpec;
+#[jungle_sdk::act(bind = Fuse<
+        UnitEmit<PulseEffect, Identity>,
+        AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
+    >)]
 impl Act for UnitSpec {
     type Effect = PulseEffect;
     type Input = ();
     type Output = ();
-    type Bind<A: Animal> = Fuse<
-        UnitEmit<PulseEffect, Identity>,
-        AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
-    >;
 }
 
 struct FunctionEmitSpec;
+#[jungle_sdk::act(bind = Fuse<
+        EmitFn<Identity, EchoEffect, i32, EmitUsingState>,
+        AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
+    >)]
 impl Act for FunctionEmitSpec {
     type Effect = EchoEffect;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = Fuse<
-        EmitFn<Identity, EchoEffect, i32, EmitUsingState>,
-        AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
-    >;
 }
 
 #[derive(jungle_sdk::Flow)]

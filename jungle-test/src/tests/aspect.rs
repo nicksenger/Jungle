@@ -233,11 +233,11 @@ type TigerEat = AddI32<TigerEnergyCarrier, Eat>;
 type TigerSleep = AddI32<TigerEnergyCarrier, Sleep>;
 
 pub struct GorillaEatSpec;
+#[jungle_sdk::act(bind = AddI32<GorillaEnergyCarrier, Eat>)]
 impl Act for GorillaEatSpec {
     type Effect = Eat;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = AddI32<GorillaEnergyCarrier, Eat>;
 }
 
 pub struct GorillaSleepManualSpec;
@@ -260,11 +260,11 @@ impl Act for GorillaSleepManualSpec {
 }
 
 pub struct GorillaForageSpec;
+#[jungle_sdk::act(bind = SubI32<GorillaEnergyCarrier, Forage>)]
 impl Act for GorillaForageSpec {
     type Effect = Forage;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = SubI32<GorillaEnergyCarrier, Forage>;
 }
 
 #[derive(jungle_sdk::Flow)]
@@ -294,27 +294,27 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 }
 
 pub struct TigerEatSpec;
+#[jungle_sdk::act(bind = AddI32<TigerEnergyCarrier, Eat>)]
 impl Act for TigerEatSpec {
     type Effect = Eat;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = AddI32<TigerEnergyCarrier, Eat>;
 }
 
 pub struct TigerSleepSpec;
+#[jungle_sdk::act(bind = AddI32<TigerEnergyCarrier, Sleep>)]
 impl Act for TigerSleepSpec {
     type Effect = Sleep;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = AddI32<TigerEnergyCarrier, Sleep>;
 }
 
 pub struct TigerHuntSpec;
+#[jungle_sdk::act(bind = AddI32<TigerEnergyCarrier, Hunt>)]
 impl Act for TigerHuntSpec {
     type Effect = Hunt;
     type Input = ();
     type Output = i32;
-    type Bind<A: Animal> = AddI32<TigerEnergyCarrier, Hunt>;
 }
 
 #[derive(jungle_sdk::Flow)]

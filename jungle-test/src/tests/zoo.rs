@@ -547,27 +547,27 @@ type TigerHuntTask = AddI32<TigerEnergyCarrier, HuntEnergy>;
 type TigerEatTask = AddI32<TigerEnergyCarrier, EatEnergy>;
 
 pub struct ApeRoundTaskSpec;
+#[jungle_sdk::act(bind = ApeRoundTask)]
 impl Act for ApeRoundTaskSpec {
     type Effect = RoundAdvance;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = ApeRoundTask;
 }
 
 pub struct TigerHuntTaskSpec;
+#[jungle_sdk::act(bind = TigerHuntTask)]
 impl Act for TigerHuntTaskSpec {
     type Effect = HuntEnergy;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = TigerHuntTask;
 }
 
 pub struct TigerEatTaskSpec;
+#[jungle_sdk::act(bind = TigerEatTask)]
 impl Act for TigerEatTaskSpec {
     type Effect = EatEnergy;
     type Input = i32;
     type Output = i32;
-    type Bind<A: Animal> = TigerEatTask;
 }
 
 pub struct ApeKeepRunning;
