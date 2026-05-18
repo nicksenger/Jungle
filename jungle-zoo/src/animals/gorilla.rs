@@ -724,6 +724,14 @@ impl Perturbable for Gorilla {
 //    assert_running::<GorillaJourney>();
 //}
 
+impl Animals for Gorilla {
+    type List = jungle_sdk::typosaurus::collections::sp::Node<U0, Gorilla>;
+}
+
+impl Identified for Gorilla {
+    type Id = U0;
+}
+
 #[allow(dead_code)]
 pub fn default_temporal_seed() -> TemporalState {
     TemporalState {

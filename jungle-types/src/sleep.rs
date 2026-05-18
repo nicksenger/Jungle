@@ -2,9 +2,11 @@ use crate::{
     Animal, Aspect, BoundAct, EffectCompletion, Effect, EffectSchema, Id, Identity,
     StateCarrier,
 };
+use inception::primitive;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::time::Duration;
+use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U65535;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,6 +33,15 @@ impl<J> Effect<J> for Sleep {
             Ok(())
         }
     }
+}
+
+impl crate::Effects for Sleep {
+    type List = Node<U65535, Sleep>;
+}
+
+#[primitive(property = crate::Ident)]
+impl crate::Identified for Sleep {
+    type Id = U65535;
 }
 
 pub struct SleepStep<Focus = Identity>(PhantomData<fn() -> Focus>);

@@ -891,6 +891,54 @@ fn self_type_ident(self_ty: &Type) -> Result<syn::Ident, syn::Error> {
     Ok(last.ident.clone())
 }
 
+fn id_inner_from_impl(
+    item_impl: &ItemImpl,
+    macro_name: &str,
+    require_non_generic_impl: bool,
+) -> Result<Type, syn::Error> {
+    if require_non_generic_impl && !item_impl.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &item_impl.generics,
+            format!("`#[{macro_name}]` currently supports only non-generic impl blocks."),
+        ));
+    }
+
+    let Some(id_assoc) = item_impl.items.iter().find_map(|item| {
+        let ImplItem::Type(ty) = item else {
+            return None;
+        };
+        (ty.ident == "Id").then_some(ty)
+    }) else {
+        return Err(syn::Error::new_spanned(
+            item_impl,
+            "Missing associated type `Id`.",
+        ));
+    };
+
+    id_inner_from_meta_id(&id_assoc.ty)
+}
+
+fn emit_identified_animals(
+    item_impl: &ItemImpl,
+    self_ty: &Type,
+    id_inner: &Type,
+) -> proc_macro2::TokenStream {
+    let types = jungle_types_path();
+    let typosaurus = typosaurus_path();
+    let node_ty = quote!(#typosaurus::collections::sp::Node<#id_inner, #self_ty>);
+    let (impl_generics, impl_where_clause) = self_impl_generics(item_impl, self_ty);
+
+    quote! {
+        impl #impl_generics #types::Animals for #self_ty #impl_where_clause {
+            type List = #node_ty;
+        }
+
+        impl #impl_generics #types::Identified for #self_ty #impl_where_clause {
+            type Id = #id_inner;
+        }
+    }
+}
+
 #[proc_macro_attribute]
 pub fn animal(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attrs = match syn::parse::<AnimalAttributes>(attr) {
@@ -947,6 +995,11 @@ pub fn animal(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     let self_ty = &item_impl.self_ty;
+    let id_inner = match id_inner_from_impl(&item_impl, "animal", false) {
+        Ok(id) => id,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    let primitives = emit_identified_animals(&item_impl, self_ty, &id_inner);
 
     let (impl_generics, impl_where_clause) = self_impl_generics(&item_impl, self_ty);
     let observation_ty = if attrs.observe {
@@ -970,7 +1023,7 @@ pub fn animal(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #impl_generics #types::Perturbable for #self_ty #impl_where_clause {
             type Perturbation = #perturbation_ty;
         }
-
+        #primitives
     }
     .into()
 }
@@ -1163,11 +1216,18 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into();
     }
 
+    let id_inner = match id_inner_from_meta_id(&id_ty) {
+        Ok(id) => id,
+        Err(err) => return err.to_compile_error().into(),
+    };
     let (schema_impl_generics, schema_where_clause) = self_impl_generics(&item_impl, self_ty);
 
     let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
+    let node_ty = quote!(#typosaurus::collections::sp::Node<#id_inner, #self_ty>);
     let effect_schema = jungle_type("EffectSchema");
     let effect_exec = jungle_type("Effect");
+    let ident_prop = jungle_type("Ident");
+    let identified_marker = primitive_marker_impl(&item_impl, self_ty, &ident_prop);
 
     quote! {
         impl #schema_impl_generics #effect_schema for #self_ty #schema_where_clause {
@@ -1180,6 +1240,15 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl #exec_impl_generics #effect_exec<#context_ty> for #self_ty #exec_where_clause {
             #effect_fn
         }
+
+        impl #schema_impl_generics #types::Effects for #self_ty #schema_where_clause {
+            type List = #node_ty;
+        }
+
+        impl #schema_impl_generics #types::Identified for #self_ty #schema_where_clause {
+            type Id = #id_inner;
+        }
+        #identified_marker
     }
     .into()
 }
