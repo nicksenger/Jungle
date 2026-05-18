@@ -6,7 +6,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, token::Comma, Attribute, Data,
     DeriveInput, Expr, Fields, FnArg, GenericParam, ImplItem, ImplItemFn, ImplItemType, ItemImpl,
-    Lit, Meta, Path, Type, TypeReference,
+    Lit, Meta, Path, Token, Type, TypeReference, Visibility,
 };
 
 fn derive_with_properties(input: TokenStream, properties: &[Path]) -> TokenStream {
@@ -549,39 +549,53 @@ impl Parse for EffectAttributes {
 
 struct ActAttributes {
     aspect: Option<Type>,
+    bind_vis: Option<Visibility>,
 }
 
 impl Parse for ActAttributes {
     fn parse(input: ParseStream) -> Result<Self, syn::Error> {
         if input.is_empty() {
-            return Ok(Self { aspect: None });
+            return Ok(Self {
+                aspect: None,
+                bind_vis: None,
+            });
         }
 
-        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
         let mut aspect = None;
+        let mut bind_vis = None;
 
-        for meta in metas {
-            match meta {
-                Meta::NameValue(nv) if nv.path.is_ident("aspect") => {
-                    if aspect.is_some() {
-                        return Err(syn::Error::new_spanned(
-                            nv.path,
-                            "Duplicate `aspect` setting.",
-                        ));
-                    }
-                    let ty: Type = syn::parse2(quote!(#nv.value))?;
-                    aspect = Some(ty);
+        while !input.is_empty() {
+            let key: syn::Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+
+            if key == "aspect" {
+                if aspect.is_some() {
+                    return Err(syn::Error::new_spanned(key, "Duplicate `aspect` setting."));
                 }
-                _ => {
-                    return Err(syn::Error::new_spanned(
-                        meta,
-                        "Unknown `act` setting. Supported: `aspect = ...`.",
-                    ));
+                aspect = Some(input.parse::<Type>()?);
+            } else if key == "bind_vis" {
+                if bind_vis.is_some() {
+                    return Err(syn::Error::new_spanned(key, "Duplicate `bind_vis` setting."));
                 }
+                bind_vis = Some(input.parse::<Visibility>()?);
+            } else {
+                return Err(syn::Error::new_spanned(
+                    key,
+                    "Unknown `act` setting. Supported: `aspect = ...`, `bind_vis = ...`.",
+                ));
+            }
+
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+                if input.is_empty() {
+                    break;
+                }
+            } else if !input.is_empty() {
+                return Err(input.error("Expected `,` between `act` settings."));
             }
         }
 
-        Ok(Self { aspect })
+        Ok(Self { aspect, bind_vis })
     }
 }
 
@@ -1308,6 +1322,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     let types = jungle_types_path();
     let default_aspect: Type = parse_quote!(#types::Identity);
     let aspect_ty = attrs.aspect.unwrap_or(default_aspect);
+    let bind_vis = attrs.bind_vis.unwrap_or(Visibility::Inherited);
 
     let bind_assoc: ImplItem = parse_quote! {
         type Bind<A: #types::Animal> = #bound_ident<A>;
@@ -1327,7 +1342,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #generated_act_impl
 
-        struct #bound_ident<A>(::core::marker::PhantomData<fn() -> A>);
+        #bind_vis struct #bound_ident<A>(::core::marker::PhantomData<fn() -> A>);
 
         impl<A> #types::BoundAct<A> for #bound_ident<A>
         where

@@ -28,10 +28,10 @@ impl<J> jungle_sdk::types::EffectExec<J> for ProbeEffect {
 //    type Id = U255;
 //}
 
-pub struct ProbeStep;
-impl jungle_sdk::types::BoundAct<ProbeAnimal> for ProbeStep {
+pub struct ProbeStepSpec;
+#[jungle_sdk::act(bind_vis = pub)]
+impl jungle_sdk::types::Act for ProbeStepSpec {
     type Effect = ProbeEffect;
-    type Aspect = jungle_sdk::types::Identity;
     type Input = ();
     type Output = ();
 
@@ -46,14 +46,6 @@ impl jungle_sdk::types::BoundAct<ProbeAnimal> for ProbeStep {
         _output: jungle_sdk::types::EffectCompletion<Self::Effect>,
     ) -> Self::Output {
     }
-}
-
-pub struct ProbeStepSpec;
-impl jungle_sdk::types::Act for ProbeStepSpec {
-    type Effect = ProbeEffect;
-    type Input = ();
-    type Output = ();
-    type Bind<A: jungle_sdk::types::Animal> = ProbeStep;
 }
 
 #[derive(jungle_sdk::Flow)]

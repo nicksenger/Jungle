@@ -6,7 +6,7 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::Id;
 use jungle_sdk::types::{
-    Act, BoundAct, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
+    Act, BoundFlowStep, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec,
     EffectSchema, JourneyStatus, LoopCondition, Observe, Perturb, StateCarrier, Step, While,
 };
 use jungle_sdk::typosaurus::assert_type_eq;
@@ -191,10 +191,10 @@ impl Act for AddTwoBeforeFullStateSpec {
     }
 }
 
-struct AddOneFocusedStep;
-impl BoundAct<IntegrationAnimal> for AddOneFocusedStep {
+struct AddOneFocusedSpec;
+#[act(aspect = IntegrationFocusedCarrier)]
+impl Act for AddOneFocusedSpec {
     type Effect = AddOneEffect;
-    type Aspect = IntegrationFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -206,18 +206,10 @@ impl BoundAct<IntegrationAnimal> for AddOneFocusedStep {
     }
 }
 
-struct AddOneFocusedSpec;
-impl Act for AddOneFocusedSpec {
-    type Effect = AddOneEffect;
-    type Input = ();
-    type Output = ();
-    type Bind<A: Animal> = AddOneFocusedStep;
-}
-
-struct AddTwoFocusedStep;
-impl BoundAct<IntegrationAnimal> for AddTwoFocusedStep {
+struct AddTwoFocusedSpec;
+#[act(aspect = IntegrationFocusedCarrier)]
+impl Act for AddTwoFocusedSpec {
     type Effect = AddTwoEffect;
-    type Aspect = IntegrationFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -229,18 +221,10 @@ impl BoundAct<IntegrationAnimal> for AddTwoFocusedStep {
     }
 }
 
-struct AddTwoFocusedSpec;
-impl Act for AddTwoFocusedSpec {
-    type Effect = AddTwoEffect;
-    type Input = ();
-    type Output = ();
-    type Bind<A: Animal> = AddTwoFocusedStep;
-}
-
-struct AddOneDeepFocusedStep;
-impl BoundAct<IntegrationAnimal> for AddOneDeepFocusedStep {
+struct AddOneDeepFocusedSpec;
+#[act(aspect = IntegrationDeepFocusedCarrier)]
+impl Act for AddOneDeepFocusedSpec {
     type Effect = AddOneEffect;
-    type Aspect = IntegrationDeepFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -252,18 +236,10 @@ impl BoundAct<IntegrationAnimal> for AddOneDeepFocusedStep {
     }
 }
 
-struct AddOneDeepFocusedSpec;
-impl Act for AddOneDeepFocusedSpec {
-    type Effect = AddOneEffect;
-    type Input = ();
-    type Output = ();
-    type Bind<A: Animal> = AddOneDeepFocusedStep;
-}
-
-struct AddTwoDeepFocusedStep;
-impl BoundAct<IntegrationAnimal> for AddTwoDeepFocusedStep {
+struct AddTwoDeepFocusedSpec;
+#[act(aspect = IntegrationDeepFocusedCarrier)]
+impl Act for AddTwoDeepFocusedSpec {
     type Effect = AddTwoEffect;
-    type Aspect = IntegrationDeepFocusedCarrier;
     type Input = ();
     type Output = ();
 
@@ -273,14 +249,6 @@ impl BoundAct<IntegrationAnimal> for AddTwoDeepFocusedStep {
         state.value += output.expect("second deep-focused integration effect should succeed");
         state.updates += 1;
     }
-}
-
-struct AddTwoDeepFocusedSpec;
-impl Act for AddTwoDeepFocusedSpec {
-    type Effect = AddTwoEffect;
-    type Input = ();
-    type Output = ();
-    type Bind<A: Animal> = AddTwoDeepFocusedStep;
 }
 
 struct AddOneAfterFullStateSpec;
