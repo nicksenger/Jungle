@@ -23,10 +23,12 @@ uuid = { workspace = true }
 
 [[example]]
 name = "safari"
+path = "examples/safari/mod.rs"
 required-features = ["viewer", "zoo"]
 
 [[example]]
 name = "welcome"
+path = "examples/welcome/mod.rs"
 required-features = ["viewer", "audio"]
 
 [lints]
