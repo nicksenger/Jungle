@@ -70,16 +70,6 @@ impl jungle_sdk::types::Perturbable for ProbeAnimal {
     type Perturbation = jungle_sdk::types::NoopPerturbation;
 }
 
-#[jungle::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for ProbeAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U255, ProbeAnimal>;
-}
-
-#[jungle::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ProbeAnimal {
-    type Id = U255;
-}
-
 #[derive(Animals)]
 pub struct ProbeZooAnimals(ProbeAnimal);
 

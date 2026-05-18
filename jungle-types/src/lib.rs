@@ -375,6 +375,54 @@ pub trait Effects {
     type List;
 }
 
+/// Extracts the underlying typenum id from [`Id`].
+pub trait IdentInner {
+    type Inner;
+}
+
+impl<T> IdentInner for Id<T>
+where
+    T: Unsigned,
+{
+    type Inner = T;
+}
+
+#[primitive(property = Ident)]
+impl<T> Identified for T
+where
+    T: Animal,
+    <T as Animal>::Id: IdentInner,
+{
+    type Id = <<T as Animal>::Id as IdentInner>::Inner;
+}
+
+#[primitive(property = Ident)]
+impl<T> Identified for T
+where
+    T: EffectSchema,
+    <T as EffectSchema>::Id: IdentInner,
+{
+    type Id = <<T as EffectSchema>::Id as IdentInner>::Inner;
+}
+
+#[primitive(property = JungleAnimals)]
+impl<T> Animals for T
+where
+    T: Animal,
+    <T as Animal>::Id: IdentInner,
+{
+    type List = Node<<<T as Animal>::Id as IdentInner>::Inner, T>;
+}
+
+#[primitive(property = JungleEffects)]
+impl<T> Effects for T
+where
+    T: EffectSchema,
+    <T as EffectSchema>::Id: IdentInner,
+{
+    type List = Node<<<T as EffectSchema>::Id as IdentInner>::Inner, T>;
+}
+
 /// A collection of [`Effect`]s extractable from an executable workflow.
 #[inception(property = JungleFlow, types)]
 pub trait JourneyEffects {

@@ -139,16 +139,6 @@ impl Observe for ObserveAnimal {
     }
 }
 
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::JungleAnimals)]
-impl jungle_sdk::types::Animals for ObserveAnimal {
-    type List = jungle_sdk::typosaurus::collections::sp::Node<U1, ObserveAnimal>;
-}
-
-#[jungle_sdk::sdk_primitive(property = jungle_sdk::types::Ident)]
-impl jungle_sdk::types::Identified for ObserveAnimal {
-    type Id = U1;
-}
-
 #[derive(Animals)]
 pub struct ObserveAnimals(ObserveAnimal);
 
