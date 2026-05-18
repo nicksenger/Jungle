@@ -6,22 +6,71 @@ mod flow;
 mod instrumentation;
 mod ui;
 
-use cpal::traits::{DeviceTrait, HostTrait};
+use std::time::Duration;
 
-fn main() {
+use crate::{
+    audio::AudioEngine,
+    instrumentation::{Instrument, LeadGuitar, LeadGuitarArticulation, Note},
+};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _viewer = jungle_viewer::JungleViewerBuilder::new().title("Welcome Example");
+    let audio_engine = AudioEngine::start_default().await?;
+    let lead_guitar = LeadGuitar::new(audio_engine.handle());
 
-    let host = cpal::default_host();
-    let device_name = host
-        .default_output_device()
-        .and_then(|device| {
-            device
-                .description()
-                .ok()
-                .map(|description| description.name().to_string())
-        })
-        .unwrap_or_else(|| "none".to_string());
+    let notes = [
+        (
+            58,
+            LeadGuitarArticulation::Sustained,
+            Duration::from_millis(850),
+            0.8,
+        ),
+        (
+            56,
+            LeadGuitarArticulation::PalmMuted,
+            Duration::from_millis(420),
+            0.75,
+        ),
+        (
+            53,
+            LeadGuitarArticulation::HammerOn,
+            Duration::from_millis(560),
+            0.78,
+        ),
+        (
+            51,
+            LeadGuitarArticulation::PullOff,
+            Duration::from_millis(500),
+            0.72,
+        ),
+        (
+            49,
+            LeadGuitarArticulation::Slide,
+            Duration::from_millis(780),
+            0.84,
+        ),
+        (
+            46,
+            LeadGuitarArticulation::PinchHarmonic,
+            Duration::from_millis(620),
+            0.9,
+        ),
+    ];
 
-    println!("welcome example");
-    println!("default audio output device: {device_name}");
+    for (n_midi, articulation, duration, velocity) in notes {
+        let note = Note {
+            n_midi,
+            duration,
+            velocity,
+            expression: None,
+            offset: Duration::ZERO,
+            articulation,
+        };
+        lead_guitar.play(note).await?;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    Ok(())
 }

@@ -11,6 +11,8 @@ mod synth;
 mod tambourine;
 mod vocals;
 
+pub use lead_guitar::{LeadGuitar, LeadGuitarArticulation};
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Note playback submission failed.")]
