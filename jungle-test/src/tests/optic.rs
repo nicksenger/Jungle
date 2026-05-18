@@ -10,39 +10,39 @@ use jungle_sdk::Optic;
 use serde::{Deserialize, Serialize};
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct Leaf {
+pub struct Leaf {
     value: i32,
     noise: i32,
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct Branch {
+pub struct Branch {
     leaf: Leaf,
     spare: i32,
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct RootState {
+pub struct RootState {
     branch: Branch,
     top: i32,
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ViewWrapped(#[focus] Leaf);
+pub struct ViewWrapped(#[focus] Leaf);
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ViewRoot {
+pub struct ViewRoot {
     #[focus]
     wrapped: ViewWrapped,
 }
 
 #[derive(Optic, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct IoArg {
+pub struct IoArg {
     left: i32,
     right: i32,
 }
 
-struct EchoI32;
+pub struct EchoI32;
 
 #[effect(id = 72)]
 impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
@@ -57,7 +57,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoI32 {
         std::future::ready(Ok(input + 1))
     }
 }
-struct SumPair;
+pub struct SumPair;
 
 #[effect(id = 73)]
 impl<J> jungle_sdk::types::Effect<J> for SumPair {
@@ -72,7 +72,7 @@ impl<J> jungle_sdk::types::Effect<J> for SumPair {
         std::future::ready(Ok(input.0 + input.1))
     }
 }
-struct EchoPair;
+pub struct EchoPair;
 
 #[effect(id = 74)]
 impl<J> jungle_sdk::types::Effect<J> for EchoPair {
@@ -87,7 +87,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoPair {
         std::future::ready(Ok(input))
     }
 }
-struct EchoRootState;
+pub struct EchoRootState;
 
 #[effect(id = 75)]
 impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
@@ -103,7 +103,7 @@ impl<J> jungle_sdk::types::Effect<J> for EchoRootState {
     }
 }
 
-struct BranchCarrier;
+pub struct BranchCarrier;
 impl StateCarrier<RootState> for BranchCarrier {
     type View = Branch;
 
@@ -112,7 +112,7 @@ impl StateCarrier<RootState> for BranchCarrier {
     }
 }
 
-struct LeafValueCarrier;
+pub struct LeafValueCarrier;
 impl StateCarrier<RootState> for LeafValueCarrier {
     type View = i32;
 
@@ -121,7 +121,7 @@ impl StateCarrier<RootState> for LeafValueCarrier {
     }
 }
 
-struct LensOnLeafValue;
+pub struct LensOnLeafValue;
 impl BoundAct<OpticAnimal> for LensOnLeafValue {
     type Effect = EchoI32;
     type Aspect = LeafValueCarrier;
@@ -139,7 +139,7 @@ impl BoundAct<OpticAnimal> for LensOnLeafValue {
     }
 }
 
-struct RootStatePulse;
+pub struct RootStatePulse;
 impl BoundAct<OpticAnimal> for RootStatePulse {
     type Effect = EchoRootState;
     type Aspect = Identity;
@@ -156,10 +156,10 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
     }
 }
 
-struct OpticAnimal;
+pub struct OpticAnimal;
 
-struct LensOnBranchSpec;
-#[act(aspect = BranchCarrier, private)]
+pub struct LensOnBranchSpec;
+#[act(aspect = BranchCarrier)]
 impl Act for LensOnBranchSpec {
     type Effect = EchoI32;
     type Input = i32;
@@ -177,7 +177,7 @@ impl Act for LensOnBranchSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct OpticJourneyTemplate(Step<LensOnBranchSpec>);
+pub struct OpticJourneyTemplate(Step<LensOnBranchSpec>);
 
 #[animal(id = 9, generation = 0)]
 impl Animal for OpticAnimal {

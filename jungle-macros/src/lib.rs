@@ -549,7 +549,7 @@ impl Parse for EffectAttributes {
 
 struct ActAttributes {
     aspect: Option<Type>,
-    private_bind: bool,
+    bind: Option<Type>,
 }
 
 impl Parse for ActAttributes {
@@ -557,35 +557,35 @@ impl Parse for ActAttributes {
         if input.is_empty() {
             return Ok(Self {
                 aspect: None,
-                private_bind: false,
+                bind: None,
             });
         }
 
         let mut aspect = None;
-        let mut private_bind = false;
+        let mut bind = None;
 
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
-            if key == "private" {
-                if private_bind {
-                    return Err(syn::Error::new_spanned(key, "Duplicate `private` setting."));
-                }
-                private_bind = true;
-            } else if key == "aspect" {
+            if key == "aspect" {
                 input.parse::<Token![=]>()?;
                 if aspect.is_some() {
                     return Err(syn::Error::new_spanned(key, "Duplicate `aspect` setting."));
                 }
                 aspect = Some(input.parse::<Type>()?);
+            } else if key == "bind" {
+                input.parse::<Token![=]>()?;
+                if bind.is_some() {
+                    return Err(syn::Error::new_spanned(key, "Duplicate `bind` setting."));
+                }
+                bind = Some(input.parse::<Type>()?);
             } else if key == "bind_vis" {
-                return Err(syn::Error::new_spanned(
-                    key,
-                    "`bind_vis` has been removed. Default generated bind visibility is public; add `private` to opt into private bind visibility.",
-                ));
+                // Back-compat: consume and ignore deprecated `bind_vis`.
+                input.parse::<Token![=]>()?;
+                let _ = input.parse::<Visibility>()?;
             } else {
                 return Err(syn::Error::new_spanned(
                     key,
-                    "Unknown `act` setting. Supported: `aspect = ...`, `private`.",
+                    "Unknown `act` setting. Supported: `aspect = ...`, `bind = ...`.",
                 ));
             }
 
@@ -601,7 +601,7 @@ impl Parse for ActAttributes {
 
         Ok(Self {
             aspect,
-            private_bind,
+            bind,
         })
     }
 }
@@ -1292,33 +1292,16 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let (Some(effect_assoc), Some(input_assoc), Some(output_assoc), Some(emit_fn), Some(absorb_fn)) =
-        (effect_assoc, input_assoc, output_assoc, emit_fn, absorb_fn)
+    let (Some(effect_assoc), Some(input_assoc), Some(output_assoc)) =
+        (effect_assoc, input_assoc, output_assoc)
     else {
         return syn::Error::new_spanned(
             &item_impl,
-            "Expected `type Effect`, `type Input`, `type Output`, and methods `emit` + `absorb`.",
+            "Expected `type Effect`, `type Input`, and `type Output`.",
         )
         .to_compile_error()
         .into();
     };
-
-    let emit_view_ty = match view_ty_from_bound_method(&emit_fn, "emit", false) {
-        Ok(ty) => ty,
-        Err(err) => return err.to_compile_error().into(),
-    };
-    let absorb_view_ty = match view_ty_from_bound_method(&absorb_fn, "absorb", true) {
-        Ok(ty) => ty,
-        Err(err) => return err.to_compile_error().into(),
-    };
-    if !type_tokens_match(&emit_view_ty, &absorb_view_ty) {
-        return syn::Error::new_spanned(
-            &absorb_fn.sig,
-            "`emit` and `absorb` must operate on the same view type.",
-        )
-        .to_compile_error()
-        .into();
-    }
 
     let self_ty = &item_impl.self_ty;
     let self_ident = match self_type_ident(self_ty) {
@@ -1328,15 +1311,24 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     let bound_ident = format_ident!("__JungleActBound{self_ident}");
     let types = jungle_types_path();
     let default_aspect: Type = parse_quote!(#types::Identity);
+    let explicit_bind_ty = attrs.bind.clone();
+    if explicit_bind_ty.is_some() && attrs.aspect.is_some() {
+        return syn::Error::new_spanned(
+            &item_impl.self_ty,
+            "`#[act(bind = ...)]` cannot be combined with `aspect = ...`; define the aspect on the explicit bound type instead.",
+        )
+        .to_compile_error()
+        .into();
+    }
     let aspect_ty = attrs.aspect.unwrap_or(default_aspect);
-    let bind_vis: Visibility = if attrs.private_bind {
-        Visibility::Inherited
+    let bind_assoc: ImplItem = if let Some(bind_ty) = explicit_bind_ty.clone() {
+        parse_quote! {
+            type Bind<A: #types::Animal> = #bind_ty;
+        }
     } else {
-        parse_quote!(pub)
-    };
-
-    let bind_assoc: ImplItem = parse_quote! {
-        type Bind<A: #types::Animal> = #bound_ident<A>;
+        parse_quote! {
+            type Bind<A: #types::Animal> = #bound_ident<A>;
+        }
     };
     let effect_ty = effect_assoc.ty.clone();
     let input_ty = input_assoc.ty.clone();
@@ -1350,24 +1342,56 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
         bind_assoc,
     ];
 
-    quote! {
-        #generated_act_impl
-
-        #bind_vis struct #bound_ident<A>(::core::marker::PhantomData<fn() -> A>);
-
-        impl<A> #types::BoundAct<A> for #bound_ident<A>
-        where
-            A: #types::Animal,
-            #aspect_ty: #types::Aspect<<A as #types::Animal>::State, View = #emit_view_ty>,
-        {
-            type Effect = #effect_ty;
-            type Aspect = #aspect_ty;
-            type Input = #input_ty;
-            type Output = #output_ty;
-
-            #emit_fn
-            #absorb_fn
+    if explicit_bind_ty.is_some() {
+        quote! {
+            #generated_act_impl
         }
+        .into()
+    } else {
+        let (Some(emit_fn), Some(absorb_fn)) = (emit_fn, absorb_fn) else {
+            return syn::Error::new_spanned(
+                &item_impl,
+                "Expected methods `emit` + `absorb` unless `bind = ...` is provided.",
+            )
+            .to_compile_error()
+            .into();
+        };
+        let emit_view_ty = match view_ty_from_bound_method(&emit_fn, "emit", false) {
+            Ok(ty) => ty,
+            Err(err) => return err.to_compile_error().into(),
+        };
+        let absorb_view_ty = match view_ty_from_bound_method(&absorb_fn, "absorb", true) {
+            Ok(ty) => ty,
+            Err(err) => return err.to_compile_error().into(),
+        };
+        if !type_tokens_match(&emit_view_ty, &absorb_view_ty) {
+            return syn::Error::new_spanned(
+                &absorb_fn.sig,
+                "`emit` and `absorb` must operate on the same view type.",
+            )
+            .to_compile_error()
+            .into();
+        }
+
+        quote! {
+            #generated_act_impl
+
+            pub struct #bound_ident<A>(::core::marker::PhantomData<fn() -> A>);
+
+            impl<A> #types::BoundAct<A> for #bound_ident<A>
+            where
+                A: #types::Animal,
+                #aspect_ty: #types::Aspect<<A as #types::Animal>::State, View = #emit_view_ty>,
+            {
+                type Effect = #effect_ty;
+                type Aspect = #aspect_ty;
+                type Input = #input_ty;
+                type Output = #output_ty;
+
+                #emit_fn
+                #absorb_fn
+            }
+        }
+        .into()
     }
-    .into()
 }

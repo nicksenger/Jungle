@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::future::ready;
 use std::marker::PhantomData;
 
-struct Sleep;
+pub struct Sleep;
 
 #[effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for Sleep {
@@ -28,7 +28,7 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
         ready(Ok(input + 1))
     }
 }
-struct Eat;
+pub struct Eat;
 
 #[effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
@@ -43,7 +43,7 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
         ready(Ok(input + 1))
     }
 }
-struct Forage;
+pub struct Forage;
 
 #[effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Forage {
@@ -58,7 +58,7 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
         ready(Ok(input - 1))
     }
 }
-struct Hunt;
+pub struct Hunt;
 
 #[effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for Hunt {
@@ -75,24 +75,24 @@ impl<J> jungle_sdk::types::Effect<J> for Hunt {
 }
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct CoreState {
+pub struct CoreState {
     energy: i32,
     age: i32,
 }
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct GorillaState {
+pub struct GorillaState {
     core: CoreState,
     bananas: i32,
 }
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct TigerState {
+pub struct TigerState {
     stripes: u8,
     core: CoreState,
 }
 
-struct GorillaCoreCarrier;
+pub struct GorillaCoreCarrier;
 impl StateCarrier<GorillaState> for GorillaCoreCarrier {
     type View = CoreState;
 
@@ -101,7 +101,7 @@ impl StateCarrier<GorillaState> for GorillaCoreCarrier {
     }
 }
 
-struct TigerCoreCarrier;
+pub struct TigerCoreCarrier;
 impl StateCarrier<TigerState> for TigerCoreCarrier {
     type View = CoreState;
 
@@ -110,7 +110,7 @@ impl StateCarrier<TigerState> for TigerCoreCarrier {
     }
 }
 
-struct GorillaEnergyCarrier;
+pub struct GorillaEnergyCarrier;
 impl StateCarrier<GorillaState> for GorillaEnergyCarrier {
     type View = i32;
 
@@ -119,7 +119,7 @@ impl StateCarrier<GorillaState> for GorillaEnergyCarrier {
     }
 }
 
-struct TigerEnergyCarrier;
+pub struct TigerEnergyCarrier;
 impl StateCarrier<TigerState> for TigerEnergyCarrier {
     type View = i32;
 
@@ -128,7 +128,7 @@ impl StateCarrier<TigerState> for TigerEnergyCarrier {
     }
 }
 
-struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
+pub struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
 impl<T, Focus> BoundAct<T> for CoreEnergyStep<Sleep, Focus>
 where
@@ -172,7 +172,7 @@ where
     }
 }
 
-struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
 impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
@@ -199,7 +199,7 @@ where
     }
 }
 
-struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+pub struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
 impl<T, Focus, A> BoundAct<T> for SubI32<Focus, A>
 where
@@ -232,7 +232,7 @@ type GorillaForageStep = SubI32<GorillaEnergyCarrier, Forage>;
 type TigerEat = AddI32<TigerEnergyCarrier, Eat>;
 type TigerSleep = AddI32<TigerEnergyCarrier, Sleep>;
 
-struct GorillaEatSpec;
+pub struct GorillaEatSpec;
 impl Act for GorillaEatSpec {
     type Effect = Eat;
     type Input = i32;
@@ -240,8 +240,8 @@ impl Act for GorillaEatSpec {
     type Bind<A: Animal> = AddI32<GorillaEnergyCarrier, Eat>;
 }
 
-struct GorillaSleepManualSpec;
-#[act(private)]
+pub struct GorillaSleepManualSpec;
+#[act]
 impl Act for GorillaSleepManualSpec {
     type Effect = Sleep;
     type Input = i32;
@@ -259,7 +259,7 @@ impl Act for GorillaSleepManualSpec {
     }
 }
 
-struct GorillaForageSpec;
+pub struct GorillaForageSpec;
 impl Act for GorillaForageSpec {
     type Effect = Forage;
     type Input = i32;
@@ -268,13 +268,13 @@ impl Act for GorillaForageSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct GorillaLoopTemplate(
+pub struct GorillaLoopTemplate(
     Step<GorillaEatSpec>,
     Step<GorillaSleepManualSpec>,
     Step<GorillaForageSpec>,
 );
 
-struct GorillaUnderAgeHundred;
+pub struct GorillaUnderAgeHundred;
 impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
     type Arg = i32;
 
@@ -284,16 +284,16 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct GorillaJourneyTemplate(While<GorillaUnderAgeHundred, GorillaLoopTemplate>);
+pub struct GorillaJourneyTemplate(While<GorillaUnderAgeHundred, GorillaLoopTemplate>);
 
-struct TigerStripesAreEven;
+pub struct TigerStripesAreEven;
 impl Condition<(TigerState, i32)> for TigerStripesAreEven {
     fn choose((state, _): &(TigerState, i32)) -> bool {
         state.stripes % 2 == 0
     }
 }
 
-struct TigerEatSpec;
+pub struct TigerEatSpec;
 impl Act for TigerEatSpec {
     type Effect = Eat;
     type Input = i32;
@@ -301,7 +301,7 @@ impl Act for TigerEatSpec {
     type Bind<A: Animal> = AddI32<TigerEnergyCarrier, Eat>;
 }
 
-struct TigerSleepSpec;
+pub struct TigerSleepSpec;
 impl Act for TigerSleepSpec {
     type Effect = Sleep;
     type Input = i32;
@@ -309,7 +309,7 @@ impl Act for TigerSleepSpec {
     type Bind<A: Animal> = AddI32<TigerEnergyCarrier, Sleep>;
 }
 
-struct TigerHuntSpec;
+pub struct TigerHuntSpec;
 impl Act for TigerHuntSpec {
     type Effect = Hunt;
     type Input = ();
@@ -318,13 +318,13 @@ impl Act for TigerHuntSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct TigerLoopTemplate(
+pub struct TigerLoopTemplate(
     Conditional<TigerStripesAreEven, Step<TigerEatSpec>, Step<TigerSleepSpec>>,
     Step<TigerSleepSpec>,
     Step<TigerHuntSpec>,
 );
 
-struct TigerUnderHundredStripes;
+pub struct TigerUnderHundredStripes;
 impl LoopCondition<TigerState> for TigerUnderHundredStripes {
     type Arg = i32;
 
@@ -334,9 +334,9 @@ impl LoopCondition<TigerState> for TigerUnderHundredStripes {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct TigerJourneyTemplate(While<TigerUnderHundredStripes, TigerLoopTemplate>);
+pub struct TigerJourneyTemplate(While<TigerUnderHundredStripes, TigerLoopTemplate>);
 
-struct Gorilla;
+pub struct Gorilla;
 
 #[animal(id = 1, generation = 0)]
 impl Animal for Gorilla {
@@ -344,7 +344,7 @@ impl Animal for Gorilla {
     type Seed = GorillaState;
     type Journey = GorillaJourneyTemplate;
 }
-struct Tiger;
+pub struct Tiger;
 
 #[animal(id = 2, generation = 0)]
 impl Animal for Tiger {

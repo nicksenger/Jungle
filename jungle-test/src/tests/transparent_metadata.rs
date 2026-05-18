@@ -8,7 +8,7 @@ use jungle_sdk::types::{
 };
 use std::future::ready;
 
-struct TransparentEffect;
+pub struct TransparentEffect;
 
 #[effect(id = 30)]
 impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
@@ -24,7 +24,7 @@ impl<J> jungle_sdk::types::Effect<J> for TransparentEffect {
     }
 }
 
-struct TransparentAnimal;
+pub struct TransparentAnimal;
 
 #[animal(id = 31, generation = 0)]
 impl Animal for TransparentAnimal {
@@ -33,8 +33,8 @@ impl Animal for TransparentAnimal {
     type Journey = TransparentFlowTemplate;
 }
 
-struct TransparentStepSpec;
-#[act(private)]
+pub struct TransparentStepSpec;
+#[act]
 impl Act for TransparentStepSpec {
     type Effect = TransparentEffect;
     type Input = i32;
@@ -51,7 +51,7 @@ impl Act for TransparentStepSpec {
     }
 }
 
-struct FlowSectionMetadata;
+pub struct FlowSectionMetadata;
 impl NodeMetadata for FlowSectionMetadata {
     const METADATA: &'static str = "section:checkout/preflight";
 }
@@ -60,7 +60,7 @@ type BaseFlow = Step<TransparentStepSpec>;
 type TransparentFlow = Transparent<FlowSectionMetadata, BaseFlow>;
 
 #[derive(jungle_sdk::Flow)]
-struct TransparentFlowTemplate(TransparentFlow);
+pub struct TransparentFlowTemplate(TransparentFlow);
 
 #[test]
 fn transparent_flow_runs_as_passthrough_boundary() {
@@ -95,7 +95,7 @@ fn transparent_flow_exposes_custom_metadata() {
     assert_eq!(<BaseFlow as NodeMetadata>::METADATA, "");
 }
 
-struct AnnotatedNonTransparentStep;
+pub struct AnnotatedNonTransparentStep;
 
 impl NodeMetadata for AnnotatedNonTransparentStep {
     const METADATA: &'static str = "node:custom/non-transparent-step";
@@ -109,7 +109,7 @@ fn non_transparent_node_can_customize_metadata() {
     );
 }
 
-struct ControlMetadata;
+pub struct ControlMetadata;
 impl NodeMetadata for ControlMetadata {
     const METADATA: &'static str = "control:branching";
 }

@@ -12,14 +12,14 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct SelectJoinState {
+pub struct SelectJoinState {
     fast_ms: u64,
     slow_ms: u64,
     winner: i32,
     joined_sum: i32,
 }
 
-struct TimedValueEffect;
+pub struct TimedValueEffect;
 impl EffectSchema for TimedValueEffect {
     type Id = Id<U60>;
     type In = (u64, i32);
@@ -39,7 +39,7 @@ impl<J> EffectExec<J> for TimedValueEffect {
     }
 }
 
-struct ContextTimedValueEffect;
+pub struct ContextTimedValueEffect;
 impl EffectSchema for ContextTimedValueEffect {
     type Id = Id<U61>;
     type In = (u64, i32);
@@ -59,8 +59,8 @@ impl<J> EffectExec<J> for ContextTimedValueEffect {
     }
 }
 
-struct SelectFastSpec;
-#[act(private)]
+pub struct SelectFastSpec;
+#[act]
 impl Act for SelectFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -78,8 +78,8 @@ impl Act for SelectFastSpec {
     }
 }
 
-struct SelectSlowSpec;
-#[act(private)]
+pub struct SelectSlowSpec;
+#[act]
 impl Act for SelectSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -97,8 +97,8 @@ impl Act for SelectSlowSpec {
     }
 }
 
-struct CaptureSelectWinnerSpec;
-#[act(private)]
+pub struct CaptureSelectWinnerSpec;
+#[act]
 impl Act for CaptureSelectWinnerSpec {
     type Effect = TimedValueEffect;
     type Input = Either<i32, i32>;
@@ -117,12 +117,12 @@ impl Act for CaptureSelectWinnerSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct SelectFlowTemplate(
+pub struct SelectFlowTemplate(
     Select<Step<SelectFastSpec>, Step<SelectSlowSpec>>,
     Step<CaptureSelectWinnerSpec>,
 );
 
-struct SelectAnimal;
+pub struct SelectAnimal;
 
 #[animal(id = 0, generation = 0)]
 impl Animal for SelectAnimal {
@@ -131,8 +131,8 @@ impl Animal for SelectAnimal {
     type Journey = SelectFlowTemplate;
 }
 
-struct JoinFastSpec;
-#[act(private)]
+pub struct JoinFastSpec;
+#[act]
 impl Act for JoinFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -150,8 +150,8 @@ impl Act for JoinFastSpec {
     }
 }
 
-struct JoinSlowSpec;
-#[act(private)]
+pub struct JoinSlowSpec;
+#[act]
 impl Act for JoinSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
@@ -169,8 +169,8 @@ impl Act for JoinSlowSpec {
     }
 }
 
-struct CaptureJoinSumSpec;
-#[act(private)]
+pub struct CaptureJoinSumSpec;
+#[act]
 impl Act for CaptureJoinSumSpec {
     type Effect = TimedValueEffect;
     type Input = (i32, i32);
@@ -186,12 +186,12 @@ impl Act for CaptureJoinSumSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct JoinFlowTemplate(
+pub struct JoinFlowTemplate(
     Join<Step<JoinFastSpec>, Step<JoinSlowSpec>>,
     Step<CaptureJoinSumSpec>,
 );
 
-struct JoinAnimal;
+pub struct JoinAnimal;
 
 #[animal(id = 1, generation = 0)]
 impl Animal for JoinAnimal {
@@ -200,8 +200,8 @@ impl Animal for JoinAnimal {
     type Journey = JoinFlowTemplate;
 }
 
-struct TimeoutSleepSpec;
-#[act(private)]
+pub struct TimeoutSleepSpec;
+#[act]
 impl Act for TimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
@@ -218,8 +218,8 @@ impl Act for TimeoutSleepSpec {
     }
 }
 
-struct TimeoutSlowSpec;
-#[act(private)]
+pub struct TimeoutSlowSpec;
+#[act]
 impl Act for TimeoutSlowSpec {
     type Effect = ContextTimedValueEffect;
     type Input = ();
@@ -237,9 +237,9 @@ impl Act for TimeoutSlowSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct TimeoutFlowTemplate(Select<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>);
+pub struct TimeoutFlowTemplate(Select<Step<TimeoutSleepSpec>, Step<TimeoutSlowSpec>>);
 
-struct TimeoutAnimal;
+pub struct TimeoutAnimal;
 
 #[animal(id = 2, generation = 0)]
 impl Animal for TimeoutAnimal {

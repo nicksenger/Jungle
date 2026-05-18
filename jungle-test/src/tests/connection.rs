@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
 
-struct ConnectionEffect7;
+pub struct ConnectionEffect7;
 
 #[effect(id = 80)]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
@@ -31,7 +31,7 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect7 {
     }
 }
 
-struct ConnectionAnimal7;
+pub struct ConnectionAnimal7;
 
 #[animal(id = 7, generation = 0)]
 impl Animal for ConnectionAnimal7 {
@@ -40,8 +40,8 @@ impl Animal for ConnectionAnimal7 {
     type Journey = ConnectionFlowTemplate7;
 }
 
-struct ConnectionStepSpec7;
-#[act(private)]
+pub struct ConnectionStepSpec7;
+#[act]
 impl Act for ConnectionStepSpec7 {
     type Effect = ConnectionEffect7;
     type Input = ();
@@ -55,9 +55,9 @@ impl Act for ConnectionStepSpec7 {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct ConnectionFlowTemplate7(Step<ConnectionStepSpec7>);
+pub struct ConnectionFlowTemplate7(Step<ConnectionStepSpec7>);
 
-struct ConnectionEffect9;
+pub struct ConnectionEffect9;
 
 #[effect(id = 81)]
 impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
@@ -73,7 +73,7 @@ impl<J> jungle_sdk::types::Effect<J> for ConnectionEffect9 {
     }
 }
 
-struct ConnectionAnimal9;
+pub struct ConnectionAnimal9;
 
 #[animal(id = 9, generation = 0)]
 impl Animal for ConnectionAnimal9 {
@@ -82,8 +82,8 @@ impl Animal for ConnectionAnimal9 {
     type Journey = ConnectionFlowTemplate9;
 }
 
-struct ConnectionStepSpec9;
-#[act(private)]
+pub struct ConnectionStepSpec9;
+#[act]
 impl Act for ConnectionStepSpec9 {
     type Effect = ConnectionEffect9;
     type Input = ();
@@ -97,7 +97,7 @@ impl Act for ConnectionStepSpec9 {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct ConnectionFlowTemplate9(Step<ConnectionStepSpec9>);
+pub struct ConnectionFlowTemplate9(Step<ConnectionStepSpec9>);
 
 #[tokio::test]
 async fn client_exchanges_messages_with_mock_server() {

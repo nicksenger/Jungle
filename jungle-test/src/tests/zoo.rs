@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
 
-struct Eat;
+pub struct Eat;
 
 #[effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for Eat {
@@ -33,7 +33,7 @@ impl<J> jungle_sdk::types::Effect<J> for Eat {
         std::future::ready(Ok(()))
     }
 }
-struct Sleep;
+pub struct Sleep;
 
 #[effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for Sleep {
@@ -48,7 +48,7 @@ impl<J> jungle_sdk::types::Effect<J> for Sleep {
         std::future::ready(Ok(()))
     }
 }
-struct Forage;
+pub struct Forage;
 
 #[effect(id = 2)]
 impl<J> jungle_sdk::types::Effect<J> for Forage {
@@ -63,7 +63,7 @@ impl<J> jungle_sdk::types::Effect<J> for Forage {
         std::future::ready(Ok(()))
     }
 }
-struct Drink;
+pub struct Drink;
 
 #[effect(id = 3)]
 impl<J> jungle_sdk::types::Effect<J> for Drink {
@@ -78,7 +78,7 @@ impl<J> jungle_sdk::types::Effect<J> for Drink {
         std::future::ready(Ok(()))
     }
 }
-struct Hunt;
+pub struct Hunt;
 
 #[effect(id = 4)]
 impl<J> jungle_sdk::types::Effect<J> for Hunt {
@@ -93,7 +93,7 @@ impl<J> jungle_sdk::types::Effect<J> for Hunt {
         std::future::ready(Ok(()))
     }
 }
-struct Flee;
+pub struct Flee;
 
 #[effect(id = 5)]
 impl<J> jungle_sdk::types::Effect<J> for Flee {
@@ -110,26 +110,26 @@ impl<J> jungle_sdk::types::Effect<J> for Flee {
 }
 
 #[derive(Effects)]
-struct BasicNeeds(Eat, Sleep, Forage, Drink);
+pub struct BasicNeeds(Eat, Sleep, Forage, Drink);
 
 #[derive(Effects)]
-struct Predation(Hunt);
+pub struct Predation(Hunt);
 
 #[derive(Effects)]
-struct Predator(BasicNeeds, Predation);
+pub struct Predator(BasicNeeds, Predation);
 
 #[derive(Effects)]
-struct Prey(BasicNeeds, Flee);
+pub struct Prey(BasicNeeds, Flee);
 
 #[derive(Default, Serialize, Deserialize)]
-struct SharedState;
+pub struct SharedState;
 impl From<&Zoo> for SharedState {
     fn from(_value: &Zoo) -> Self {
         Self
     }
 }
 
-struct UnitOkStep<A>(PhantomData<fn() -> A>);
+pub struct UnitOkStep<A>(PhantomData<fn() -> A>);
 impl<T, A> BoundAct<T> for UnitOkStep<A>
 where
     T: Animal,
@@ -147,7 +147,7 @@ where
     }
 }
 
-struct UnitOkSpec<E>(PhantomData<fn() -> E>);
+pub struct UnitOkSpec<E>(PhantomData<fn() -> E>);
 impl<E> Act for UnitOkSpec<E>
 where
     E: EffectSchema<In = (), Out = (), Err = ()>,
@@ -161,7 +161,7 @@ where
 type UUnitStep<E> = Step<UnitOkSpec<E>>;
 
 #[derive(jungle_sdk::Flow)]
-struct PreyWorkflowTemplate(
+pub struct PreyWorkflowTemplate(
     UUnitStep<Eat>,
     UUnitStep<Sleep>,
     UUnitStep<Forage>,
@@ -170,7 +170,7 @@ struct PreyWorkflowTemplate(
 );
 
 #[derive(jungle_sdk::Flow)]
-struct PredatorWorkflowTemplate(
+pub struct PredatorWorkflowTemplate(
     UUnitStep<Eat>,
     UUnitStep<Sleep>,
     UUnitStep<Forage>,
@@ -178,7 +178,7 @@ struct PredatorWorkflowTemplate(
     UUnitStep<Hunt>,
 );
 
-struct Gorilla;
+pub struct Gorilla;
 
 #[animal(id = 0, generation = 0)]
 impl Animal for Gorilla {
@@ -186,7 +186,7 @@ impl Animal for Gorilla {
     type Seed = SharedState;
     type Journey = PreyWorkflowTemplate;
 }
-struct Chimpanzee;
+pub struct Chimpanzee;
 
 #[animal(id = 1, generation = 0)]
 impl Animal for Chimpanzee {
@@ -194,7 +194,7 @@ impl Animal for Chimpanzee {
     type Seed = SharedState;
     type Journey = PreyWorkflowTemplate;
 }
-struct Tiger;
+pub struct Tiger;
 
 #[animal(id = 2, generation = 0)]
 impl Animal for Tiger {
@@ -202,7 +202,7 @@ impl Animal for Tiger {
     type Seed = SharedState;
     type Journey = PredatorWorkflowTemplate;
 }
-struct Jaguar;
+pub struct Jaguar;
 
 #[animal(id = 3, generation = 0)]
 impl Animal for Jaguar {
@@ -210,7 +210,7 @@ impl Animal for Jaguar {
     type Seed = SharedState;
     type Journey = PredatorWorkflowTemplate;
 }
-struct Anaconda;
+pub struct Anaconda;
 
 #[animal(id = 4, generation = 0)]
 impl Animal for Anaconda {
@@ -218,7 +218,7 @@ impl Animal for Anaconda {
     type Seed = SharedState;
     type Journey = PredatorWorkflowTemplate;
 }
-struct Hippo;
+pub struct Hippo;
 
 #[animal(id = 5, generation = 0)]
 impl Animal for Hippo {
@@ -226,7 +226,7 @@ impl Animal for Hippo {
     type Seed = SharedState;
     type Journey = PreyWorkflowTemplate;
 }
-struct Elephant;
+pub struct Elephant;
 
 #[animal(id = 6, generation = 0)]
 impl Animal for Elephant {
@@ -236,28 +236,28 @@ impl Animal for Elephant {
 }
 
 #[derive(Animals)]
-struct Apes(Gorilla, Chimpanzee);
+pub struct Apes(Gorilla, Chimpanzee);
 
 #[derive(Animals)]
-struct Cats(Tiger, Jaguar);
+pub struct Cats(Tiger, Jaguar);
 
 #[derive(Animals)]
-struct Predators(Cats, Anaconda);
+pub struct Predators(Cats, Anaconda);
 
 #[derive(Animals)]
-struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
+pub struct AllAnimals(Cats, Apes, Anaconda, Hippo, Elephant);
 
 #[derive(Effects)]
-struct AllEffects(Predator, Prey);
+pub struct AllEffects(Predator, Prey);
 
-struct Zoo;
+pub struct Zoo;
 impl Ecosystem for Zoo {
     const NAME: &'static str = "zoo";
     type Animals = AllAnimals;
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct RunnerState(i32);
+pub struct RunnerState(i32);
 
 impl From<&RunnerZoo> for RunnerState {
     fn from(_value: &RunnerZoo) -> Self {
@@ -269,7 +269,7 @@ impl From<RunnerState> for () {
     fn from(_value: RunnerState) -> Self {}
 }
 
-struct RunnerStepOneEffect;
+pub struct RunnerStepOneEffect;
 impl EffectSchema for RunnerStepOneEffect {
     type Id = Id<U14>;
     type In = ();
@@ -286,7 +286,7 @@ impl<J> EffectExec<J> for RunnerStepOneEffect {
     }
 }
 
-struct RunnerStepTwoEffect;
+pub struct RunnerStepTwoEffect;
 impl EffectSchema for RunnerStepTwoEffect {
     type Id = Id<U15>;
     type In = ();
@@ -303,7 +303,7 @@ impl<J> EffectExec<J> for RunnerStepTwoEffect {
     }
 }
 
-struct RunnerKeepGoing;
+pub struct RunnerKeepGoing;
 impl LoopCondition<RunnerState> for RunnerKeepGoing {
     type Arg = ();
 
@@ -312,15 +312,15 @@ impl LoopCondition<RunnerState> for RunnerKeepGoing {
     }
 }
 
-struct RunnerUseStepOne;
+pub struct RunnerUseStepOne;
 impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
     fn choose((state, _): &(RunnerState, ())) -> bool {
         state.0 % 2 == 0
     }
 }
 
-struct RunnerStepOneSpec;
-#[act(private)]
+pub struct RunnerStepOneSpec;
+#[act]
 impl Act for RunnerStepOneSpec {
     type Effect = RunnerStepOneEffect;
     type Input = ();
@@ -333,8 +333,8 @@ impl Act for RunnerStepOneSpec {
     }
 }
 
-struct RunnerStepTwoSpec;
-#[act(private)]
+pub struct RunnerStepTwoSpec;
+#[act]
 impl Act for RunnerStepTwoSpec {
     type Effect = RunnerStepTwoEffect;
     type Input = ();
@@ -348,14 +348,14 @@ impl Act for RunnerStepTwoSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct RunnerJourneyTemplate(
+pub struct RunnerJourneyTemplate(
     While<
         RunnerKeepGoing,
         jungle_sdk::types::Conditional<RunnerUseStepOne, Step<RunnerStepOneSpec>, Step<RunnerStepTwoSpec>>,
     >,
 );
 
-struct RunnerAnimal;
+pub struct RunnerAnimal;
 
 #[animal(id = 16, generation = 0)]
 impl Animal for RunnerAnimal {
@@ -365,9 +365,9 @@ impl Animal for RunnerAnimal {
 }
 
 #[derive(Animals)]
-struct RunnerAnimals(RunnerAnimal);
+pub struct RunnerAnimals(RunnerAnimal);
 
-struct RunnerZoo;
+pub struct RunnerZoo;
 impl Ecosystem for RunnerZoo {
     const NAME: &'static str = "runner-zoo";
     type Animals = RunnerAnimals;
@@ -432,25 +432,25 @@ fn jungle_impl() {
 }
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct CoreState {
+pub struct CoreState {
     energy: i32,
     rounds: i32,
 }
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ExecutorApeState {
+pub struct ExecutorApeState {
     core: CoreState,
     bananas: i32,
     mood: i32,
 }
 
 #[derive(Optic, Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ExecutorCatState {
+pub struct ExecutorCatState {
     core: CoreState,
     stripes: i32,
 }
 
-struct EatEnergy;
+pub struct EatEnergy;
 impl EffectSchema for EatEnergy {
     type Id = Id<U7>;
     type In = i32;
@@ -467,7 +467,7 @@ impl<J> EffectExec<J> for EatEnergy {
     }
 }
 
-struct HuntEnergy;
+pub struct HuntEnergy;
 impl EffectSchema for HuntEnergy {
     type Id = Id<U10>;
     type In = i32;
@@ -484,7 +484,7 @@ impl<J> EffectExec<J> for HuntEnergy {
     }
 }
 
-struct RoundAdvance;
+pub struct RoundAdvance;
 impl EffectSchema for RoundAdvance {
     type Id = Id<U13>;
     type In = i32;
@@ -501,7 +501,7 @@ impl<J> EffectExec<J> for RoundAdvance {
     }
 }
 
-struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
+pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
 where
     T: Animal,
@@ -524,7 +524,7 @@ where
     }
 }
 
-struct ApeRoundCarrier;
+pub struct ApeRoundCarrier;
 impl StateCarrier<ExecutorApeState> for ApeRoundCarrier {
     type View = i32;
 
@@ -533,7 +533,7 @@ impl StateCarrier<ExecutorApeState> for ApeRoundCarrier {
     }
 }
 
-struct TigerEnergyCarrier;
+pub struct TigerEnergyCarrier;
 impl StateCarrier<ExecutorCatState> for TigerEnergyCarrier {
     type View = i32;
 
@@ -546,7 +546,7 @@ type ApeRoundTask = AddI32<ApeRoundCarrier, RoundAdvance>;
 type TigerHuntTask = AddI32<TigerEnergyCarrier, HuntEnergy>;
 type TigerEatTask = AddI32<TigerEnergyCarrier, EatEnergy>;
 
-struct ApeRoundTaskSpec;
+pub struct ApeRoundTaskSpec;
 impl Act for ApeRoundTaskSpec {
     type Effect = RoundAdvance;
     type Input = i32;
@@ -554,7 +554,7 @@ impl Act for ApeRoundTaskSpec {
     type Bind<A: Animal> = ApeRoundTask;
 }
 
-struct TigerHuntTaskSpec;
+pub struct TigerHuntTaskSpec;
 impl Act for TigerHuntTaskSpec {
     type Effect = HuntEnergy;
     type Input = i32;
@@ -562,7 +562,7 @@ impl Act for TigerHuntTaskSpec {
     type Bind<A: Animal> = TigerHuntTask;
 }
 
-struct TigerEatTaskSpec;
+pub struct TigerEatTaskSpec;
 impl Act for TigerEatTaskSpec {
     type Effect = EatEnergy;
     type Input = i32;
@@ -570,7 +570,7 @@ impl Act for TigerEatTaskSpec {
     type Bind<A: Animal> = TigerEatTask;
 }
 
-struct ApeKeepRunning;
+pub struct ApeKeepRunning;
 impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
     type Arg = i32;
 
@@ -579,7 +579,7 @@ impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
     }
 }
 
-struct TigerKeepRunning;
+pub struct TigerKeepRunning;
 impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
     type Arg = i32;
 
@@ -588,7 +588,7 @@ impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
     }
 }
 
-struct TigerChooseHunt;
+pub struct TigerChooseHunt;
 impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
     fn choose((state, _): &(ExecutorCatState, i32)) -> bool {
         state.stripes % 2 == 0
@@ -596,17 +596,17 @@ impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct WorkflowGorillaJourneyTemplate(While<ApeKeepRunning, Step<ApeRoundTaskSpec>>);
+pub struct WorkflowGorillaJourneyTemplate(While<ApeKeepRunning, Step<ApeRoundTaskSpec>>);
 
 #[derive(jungle_sdk::Flow)]
-struct WorkflowTigerJourneyTemplate(
+pub struct WorkflowTigerJourneyTemplate(
     While<
         TigerKeepRunning,
         jungle_sdk::types::Conditional<TigerChooseHunt, Step<TigerHuntTaskSpec>, Step<TigerEatTaskSpec>>,
     >,
 );
 
-struct WorkflowGorilla;
+pub struct WorkflowGorilla;
 
 #[animal(id = 11, generation = 0)]
 impl Animal for WorkflowGorilla {
@@ -614,7 +614,7 @@ impl Animal for WorkflowGorilla {
     type Seed = ExecutorApeState;
     type Journey = WorkflowGorillaJourneyTemplate;
 }
-struct WorkflowTiger;
+pub struct WorkflowTiger;
 
 #[animal(id = 12, generation = 0)]
 impl Animal for WorkflowTiger {

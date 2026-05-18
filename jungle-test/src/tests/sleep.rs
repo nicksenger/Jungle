@@ -15,13 +15,13 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct SleepState {
+pub struct SleepState {
     counter: i32,
     phase: u8,
     sleep_for_ms: u64,
 }
 
-struct AddEffect;
+pub struct AddEffect;
 impl EffectSchema for AddEffect {
     type Id = Id<U40>;
     type In = ();
@@ -38,7 +38,7 @@ impl<J> EffectExec<J> for AddEffect {
     }
 }
 
-struct SleepNotComplete;
+pub struct SleepNotComplete;
 impl LoopCondition<SleepState> for SleepNotComplete {
     type Arg = ();
 
@@ -47,22 +47,22 @@ impl LoopCondition<SleepState> for SleepNotComplete {
     }
 }
 
-struct SleepPhaseZero;
+pub struct SleepPhaseZero;
 impl Condition<(SleepState, ())> for SleepPhaseZero {
     fn choose((state, _): &(SleepState, ())) -> bool {
         state.phase == 0
     }
 }
 
-struct SleepPhaseOne;
+pub struct SleepPhaseOne;
 impl Condition<(SleepState, ())> for SleepPhaseOne {
     fn choose((state, _): &(SleepState, ())) -> bool {
         state.phase == 1
     }
 }
 
-struct AddBeforeSleepSpec;
-#[act(private)]
+pub struct AddBeforeSleepSpec;
+#[act]
 impl Act for AddBeforeSleepSpec {
     type Effect = AddEffect;
     type Input = ();
@@ -76,8 +76,8 @@ impl Act for AddBeforeSleepSpec {
     }
 }
 
-struct SleepForStateWakeSpec;
-#[act(private)]
+pub struct SleepForStateWakeSpec;
+#[act]
 impl Act for SleepForStateWakeSpec {
     type Effect = Sleep;
     type Input = ();
@@ -93,8 +93,8 @@ impl Act for SleepForStateWakeSpec {
     }
 }
 
-struct AddAfterSleepSpec;
-#[act(private)]
+pub struct AddAfterSleepSpec;
+#[act]
 impl Act for AddAfterSleepSpec {
     type Effect = AddEffect;
     type Input = ();
@@ -109,7 +109,7 @@ impl Act for AddAfterSleepSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct SleepJourneyTemplate(
+pub struct SleepJourneyTemplate(
     While<
         SleepNotComplete,
         Conditional<
@@ -120,7 +120,7 @@ struct SleepJourneyTemplate(
     >,
 );
 
-struct SleepAnimal;
+pub struct SleepAnimal;
 
 #[animal(observe, id = 0, generation = 0)]
 impl Animal for SleepAnimal {
@@ -138,9 +138,9 @@ impl Observe for SleepAnimal {
 }
 
 #[derive(Animals)]
-struct SleepAnimals(SleepAnimal);
+pub struct SleepAnimals(SleepAnimal);
 
-struct SleepZoo;
+pub struct SleepZoo;
 impl Ecosystem for SleepZoo {
     const NAME: &'static str = "sleep-zoo";
     type Animals = SleepAnimals;

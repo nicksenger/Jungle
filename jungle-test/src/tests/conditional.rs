@@ -8,7 +8,7 @@ use jungle_sdk::types::{
 };
 use std::future::ready;
 
-struct LeftEffect;
+pub struct LeftEffect;
 
 #[effect(id = 0)]
 impl<J> jungle_sdk::types::Effect<J> for LeftEffect {
@@ -24,7 +24,7 @@ impl<J> jungle_sdk::types::Effect<J> for LeftEffect {
     }
 }
 
-struct RightEffect;
+pub struct RightEffect;
 
 #[effect(id = 1)]
 impl<J> jungle_sdk::types::Effect<J> for RightEffect {
@@ -40,7 +40,7 @@ impl<J> jungle_sdk::types::Effect<J> for RightEffect {
     }
 }
 
-struct ConditionalAnimal;
+pub struct ConditionalAnimal;
 
 #[animal(id = 0, generation = 0)]
 impl Animal for ConditionalAnimal {
@@ -49,8 +49,8 @@ impl Animal for ConditionalAnimal {
     type Journey = ConditionalFlowTemplate;
 }
 
-struct LeftSpec;
-#[act(private)]
+pub struct LeftSpec;
+#[act]
 impl Act for LeftSpec {
     type Effect = LeftEffect;
     type Input = i32;
@@ -67,8 +67,8 @@ impl Act for LeftSpec {
     }
 }
 
-struct RightSpec;
-#[act(private)]
+pub struct RightSpec;
+#[act]
 impl Act for RightSpec {
     type Effect = RightEffect;
     type Input = i32;
@@ -88,7 +88,7 @@ impl Act for RightSpec {
 type LeftFlow = jungle_sdk::types::Step<LeftSpec>;
 type RightFlow = jungle_sdk::types::Step<RightSpec>;
 
-struct PreferLeftWhenStateIsNonNegative;
+pub struct PreferLeftWhenStateIsNonNegative;
 impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
     fn choose((state, _): &(i32, i32)) -> bool {
         *state >= 0
@@ -98,7 +98,7 @@ impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegati
 type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, RightFlow>;
 
 #[derive(jungle_sdk::Flow)]
-struct ConditionalFlowTemplate(ConditionalFlow);
+pub struct ConditionalFlowTemplate(ConditionalFlow);
 
 type BoundConditionalFlow = Conditional<
     PreferLeftWhenStateIsNonNegative,

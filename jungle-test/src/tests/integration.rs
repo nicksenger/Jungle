@@ -23,27 +23,27 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct SubFlowState {
+pub struct SubFlowState {
     nested: DeepFocusState,
     value: i32,
     updates: i32,
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct DeepFocusState {
+pub struct DeepFocusState {
     value: i32,
     updates: i32,
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct IntegrationState {
+pub struct IntegrationState {
     total: i32,
     focused: SubFlowState,
     before_steps: u8,
     after_steps: u8,
 }
 
-struct IntegrationFocusedCarrier;
+pub struct IntegrationFocusedCarrier;
 impl StateCarrier<IntegrationState> for IntegrationFocusedCarrier {
     type View = SubFlowState;
 
@@ -52,7 +52,7 @@ impl StateCarrier<IntegrationState> for IntegrationFocusedCarrier {
     }
 }
 
-struct IntegrationDeepFocusedCarrier;
+pub struct IntegrationDeepFocusedCarrier;
 impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
     type View = DeepFocusState;
 
@@ -61,7 +61,7 @@ impl StateCarrier<IntegrationState> for IntegrationDeepFocusedCarrier {
     }
 }
 
-struct AddOneEffect;
+pub struct AddOneEffect;
 
 impl EffectSchema for AddOneEffect {
     type Id = Id<U1>;
@@ -79,7 +79,7 @@ impl<J> EffectExec<J> for AddOneEffect {
     }
 }
 
-struct AddTwoEffect;
+pub struct AddTwoEffect;
 
 impl EffectSchema for AddTwoEffect {
     type Id = Id<U2>;
@@ -97,7 +97,7 @@ impl<J> EffectExec<J> for AddTwoEffect {
     }
 }
 
-struct KeepRunning;
+pub struct KeepRunning;
 impl LoopCondition<IntegrationState> for KeepRunning {
     type Arg = ();
 
@@ -106,57 +106,57 @@ impl LoopCondition<IntegrationState> for KeepRunning {
     }
 }
 
-struct IsBeforeFocusedSubFlow;
+pub struct IsBeforeFocusedSubFlow;
 impl Condition<(IntegrationState, ())> for IsBeforeFocusedSubFlow {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
         state.before_steps < 2
     }
 }
 
-struct UseFirstBeforeFullStateTask;
+pub struct UseFirstBeforeFullStateTask;
 impl Condition<(IntegrationState, ())> for UseFirstBeforeFullStateTask {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
         state.before_steps == 0
     }
 }
 
-struct IsInFocusedSubFlow;
+pub struct IsInFocusedSubFlow;
 impl Condition<(IntegrationState, ())> for IsInFocusedSubFlow {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
         state.focused.updates < 2
     }
 }
 
-struct UseFirstFocusedTask;
+pub struct UseFirstFocusedTask;
 impl Condition<(IntegrationState, ())> for UseFirstFocusedTask {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
         state.focused.updates == 0
     }
 }
 
-struct IsInDeepFocusedSubFlow;
+pub struct IsInDeepFocusedSubFlow;
 impl Condition<(IntegrationState, ())> for IsInDeepFocusedSubFlow {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
         state.focused.nested.updates < 2
     }
 }
 
-struct UseFirstDeepFocusedTask;
+pub struct UseFirstDeepFocusedTask;
 impl Condition<(IntegrationState, ())> for UseFirstDeepFocusedTask {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
         state.focused.nested.updates == 0
     }
 }
 
-struct UseFirstAfterFullStateTask;
+pub struct UseFirstAfterFullStateTask;
 impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
     fn choose((state, _): &(IntegrationState, ())) -> bool {
         state.after_steps == 0
     }
 }
 
-struct AddOneBeforeFullStateSpec;
-#[act(private)]
+pub struct AddOneBeforeFullStateSpec;
+#[act]
 impl Act for AddOneBeforeFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -173,8 +173,8 @@ impl Act for AddOneBeforeFullStateSpec {
     }
 }
 
-struct AddTwoBeforeFullStateSpec;
-#[act(private)]
+pub struct AddTwoBeforeFullStateSpec;
+#[act]
 impl Act for AddTwoBeforeFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -191,8 +191,8 @@ impl Act for AddTwoBeforeFullStateSpec {
     }
 }
 
-struct AddOneFocusedSpec;
-#[act(aspect = IntegrationFocusedCarrier, private)]
+pub struct AddOneFocusedSpec;
+#[act(aspect = IntegrationFocusedCarrier)]
 impl Act for AddOneFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -206,8 +206,8 @@ impl Act for AddOneFocusedSpec {
     }
 }
 
-struct AddTwoFocusedSpec;
-#[act(aspect = IntegrationFocusedCarrier, private)]
+pub struct AddTwoFocusedSpec;
+#[act(aspect = IntegrationFocusedCarrier)]
 impl Act for AddTwoFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -221,8 +221,8 @@ impl Act for AddTwoFocusedSpec {
     }
 }
 
-struct AddOneDeepFocusedSpec;
-#[act(aspect = IntegrationDeepFocusedCarrier, private)]
+pub struct AddOneDeepFocusedSpec;
+#[act(aspect = IntegrationDeepFocusedCarrier)]
 impl Act for AddOneDeepFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -236,8 +236,8 @@ impl Act for AddOneDeepFocusedSpec {
     }
 }
 
-struct AddTwoDeepFocusedSpec;
-#[act(aspect = IntegrationDeepFocusedCarrier, private)]
+pub struct AddTwoDeepFocusedSpec;
+#[act(aspect = IntegrationDeepFocusedCarrier)]
 impl Act for AddTwoDeepFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -251,8 +251,8 @@ impl Act for AddTwoDeepFocusedSpec {
     }
 }
 
-struct AddOneAfterFullStateSpec;
-#[act(private)]
+pub struct AddOneAfterFullStateSpec;
+#[act]
 impl Act for AddOneAfterFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
@@ -269,8 +269,8 @@ impl Act for AddOneAfterFullStateSpec {
     }
 }
 
-struct AddTwoAfterFullStateSpec;
-#[act(private)]
+pub struct AddTwoAfterFullStateSpec;
+#[act]
 impl Act for AddTwoAfterFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
@@ -319,7 +319,7 @@ type LoopBranchFlow = While<
 >;
 
 #[derive(jungle_sdk::Flow)]
-struct IntegrationJourneyTemplate(
+pub struct IntegrationJourneyTemplate(
     While<
         KeepRunning,
         Conditional<
@@ -350,7 +350,7 @@ struct IntegrationJourneyTemplate(
     >,
 );
 
-struct IntegrationAnimal;
+pub struct IntegrationAnimal;
 
 #[animal(observe, perturb, id = 0, generation = 0)]
 impl Animal for IntegrationAnimal {
@@ -368,7 +368,7 @@ impl Observe for IntegrationAnimal {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-struct IntegrationPerturbation {
+pub struct IntegrationPerturbation {
     delta: i32,
 }
 
@@ -381,9 +381,9 @@ impl Perturb for IntegrationAnimal {
 }
 
 #[derive(Animals)]
-struct IntegrationAnimals(IntegrationAnimal);
+pub struct IntegrationAnimals(IntegrationAnimal);
 
-struct IntegrationZoo;
+pub struct IntegrationZoo;
 impl Ecosystem for IntegrationZoo {
     const NAME: &'static str = "integration-zoo";
     type Animals = IntegrationAnimals;

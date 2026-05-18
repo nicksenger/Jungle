@@ -22,19 +22,19 @@ const POST_STEPS: usize = 2;
 const TEST_OWNER_LEASE_TTL_MS: i64 = 1_500;
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ReplayGateState {
+pub struct ReplayGateState {
     phase: u8,
 }
 
 #[derive(Clone)]
-struct ReplayGateZoo {
+pub struct ReplayGateZoo {
     pre_counter: Arc<AtomicUsize>,
     post_counter: Arc<AtomicUsize>,
     reached_tx: mpsc::UnboundedSender<()>,
     gate: Arc<Semaphore>,
 }
 
-struct ReplayPreIncrementEffect;
+pub struct ReplayPreIncrementEffect;
 impl EffectSchema for ReplayPreIncrementEffect {
     type Id = Id<U41>;
     type In = ();
@@ -61,7 +61,7 @@ impl EffectExec<ReplayGateZoo> for ReplayPreIncrementEffect {
     }
 }
 
-struct ReplayPostIncrementEffect;
+pub struct ReplayPostIncrementEffect;
 impl EffectSchema for ReplayPostIncrementEffect {
     type Id = Id<U42>;
     type In = ();
@@ -88,7 +88,7 @@ impl EffectExec<ReplayGateZoo> for ReplayPostIncrementEffect {
     }
 }
 
-struct ReplayGateEffect;
+pub struct ReplayGateEffect;
 impl EffectSchema for ReplayGateEffect {
     type Id = Id<U43>;
     type In = ();
@@ -131,7 +131,7 @@ impl ReplayPhaseState for ReplayGateState {
     }
 }
 
-struct ReplayPhaseNotComplete;
+pub struct ReplayPhaseNotComplete;
 impl<S> LoopCondition<S> for ReplayPhaseNotComplete
 where
     S: ReplayPhaseState,
@@ -143,7 +143,7 @@ where
     }
 }
 
-struct ReplayPhaseIs<const N: u8>;
+pub struct ReplayPhaseIs<const N: u8>;
 impl<S, Arg, const N: u8> Condition<(S, Arg)> for ReplayPhaseIs<N>
 where
     S: ReplayPhaseState,
@@ -170,8 +170,8 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
     >,
 >;
 
-struct ReplayPreSpec;
-#[act(private)]
+pub struct ReplayPreSpec;
+#[act]
 impl Act for ReplayPreSpec {
     type Effect = ReplayPreIncrementEffect;
     type Input = ();
@@ -185,8 +185,8 @@ impl Act for ReplayPreSpec {
     }
 }
 
-struct ReplayGateSpec;
-#[act(private)]
+pub struct ReplayGateSpec;
+#[act]
 impl Act for ReplayGateSpec {
     type Effect = ReplayGateEffect;
     type Input = ();
@@ -200,8 +200,8 @@ impl Act for ReplayGateSpec {
     }
 }
 
-struct ReplayPostSpec;
-#[act(private)]
+pub struct ReplayPostSpec;
+#[act]
 impl Act for ReplayPostSpec {
     type Effect = ReplayPostIncrementEffect;
     type Input = ();
@@ -216,11 +216,11 @@ impl Act for ReplayPostSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct ReplayGateTemplate(ReplayPhaseRouterFlow<ReplayPreSpec, ReplayGateSpec, ReplayPostSpec>);
+pub struct ReplayGateTemplate(ReplayPhaseRouterFlow<ReplayPreSpec, ReplayGateSpec, ReplayPostSpec>);
 
 type ReplayGateJourney = ReplayGateTemplate;
 
-struct ReplayGateAnimal;
+pub struct ReplayGateAnimal;
 
 #[animal(id = 0, generation = 0)]
 impl Animal for ReplayGateAnimal {
@@ -230,7 +230,7 @@ impl Animal for ReplayGateAnimal {
 }
 
 #[derive(Animals)]
-struct ReplayGateAnimals(ReplayGateAnimal);
+pub struct ReplayGateAnimals(ReplayGateAnimal);
 
 impl Ecosystem for ReplayGateZoo {
     const NAME: &'static str = "replay-gate-zoo";
@@ -352,7 +352,7 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ReplayTimeoutState {
+pub struct ReplayTimeoutState {
     phase: u8,
     sleep_for_ms: u64,
 }
@@ -373,13 +373,13 @@ impl ReplayPhaseState for ReplayTimeoutState {
 }
 
 #[derive(Clone)]
-struct ReplayTimeoutZoo {
+pub struct ReplayTimeoutZoo {
     global_pre_counter: Arc<AtomicUsize>,
     global_post_counter: Arc<AtomicUsize>,
     worker_pre_counter: Arc<AtomicUsize>,
 }
 
-struct ReplayTimeoutPreIncrementEffect;
+pub struct ReplayTimeoutPreIncrementEffect;
 impl EffectSchema for ReplayTimeoutPreIncrementEffect {
     type Id = Id<U44>;
     type In = ();
@@ -407,7 +407,7 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
     }
 }
 
-struct ReplayTimeoutPostIncrementEffect;
+pub struct ReplayTimeoutPostIncrementEffect;
 impl EffectSchema for ReplayTimeoutPostIncrementEffect {
     type Id = Id<U45>;
     type In = ();
@@ -434,8 +434,8 @@ impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
     }
 }
 
-struct ReplayTimeoutPreSpec;
-#[act(private)]
+pub struct ReplayTimeoutPreSpec;
+#[act]
 impl Act for ReplayTimeoutPreSpec {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type Input = ();
@@ -452,8 +452,8 @@ impl Act for ReplayTimeoutPreSpec {
     }
 }
 
-struct ReplayTimeoutSleepSpec;
-#[act(private)]
+pub struct ReplayTimeoutSleepSpec;
+#[act]
 impl Act for ReplayTimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
@@ -472,8 +472,8 @@ impl Act for ReplayTimeoutSleepSpec {
     }
 }
 
-struct ReplayTimeoutPostSpec;
-#[act(private)]
+pub struct ReplayTimeoutPostSpec;
+#[act]
 impl Act for ReplayTimeoutPostSpec {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type Input = ();
@@ -491,13 +491,13 @@ impl Act for ReplayTimeoutPostSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct ReplayTimeoutTemplate(
+pub struct ReplayTimeoutTemplate(
     ReplayPhaseRouterFlow<ReplayTimeoutPreSpec, ReplayTimeoutSleepSpec, ReplayTimeoutPostSpec>,
 );
 
 type ReplayTimeoutJourney = ReplayTimeoutTemplate;
 
-struct ReplayTimeoutAnimal;
+pub struct ReplayTimeoutAnimal;
 
 #[animal(id = 0, generation = 0)]
 impl Animal for ReplayTimeoutAnimal {
@@ -507,7 +507,7 @@ impl Animal for ReplayTimeoutAnimal {
 }
 
 #[derive(Animals)]
-struct ReplayTimeoutAnimals(ReplayTimeoutAnimal);
+pub struct ReplayTimeoutAnimals(ReplayTimeoutAnimal);
 
 impl Ecosystem for ReplayTimeoutZoo {
     const NAME: &'static str = "replay-timeout-zoo";

@@ -14,7 +14,7 @@ use jungle_sdk::{Animals, JungleClient};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-struct LegacyEffect;
+pub struct LegacyEffect;
 
 #[effect(id = 70)]
 impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
@@ -30,7 +30,7 @@ impl<J> jungle_sdk::types::Effect<J> for LegacyEffect {
     }
 }
 
-struct ModernEffect;
+pub struct ModernEffect;
 
 #[effect(id = 71)]
 impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
@@ -46,8 +46,8 @@ impl<J> jungle_sdk::types::Effect<J> for ModernEffect {
     }
 }
 
-struct LegacyStepSpec;
-#[act(private)]
+pub struct LegacyStepSpec;
+#[act]
 impl Act for LegacyStepSpec {
     type Effect = LegacyEffect;
     type Input = i32;
@@ -60,8 +60,8 @@ impl Act for LegacyStepSpec {
     }
 }
 
-struct ModernStepSpec;
-#[act(private)]
+pub struct ModernStepSpec;
+#[act]
 impl Act for ModernStepSpec {
     type Effect = ModernEffect;
     type Input = i32;
@@ -75,12 +75,12 @@ impl Act for ModernStepSpec {
 }
 
 #[derive(jungle_sdk::Flow)]
-struct LegacyFlowTemplate(Step<LegacyStepSpec>);
+pub struct LegacyFlowTemplate(Step<LegacyStepSpec>);
 
 #[derive(jungle_sdk::Flow)]
-struct ModernFlowTemplate(Step<ModernStepSpec>);
+pub struct ModernFlowTemplate(Step<ModernStepSpec>);
 
-struct LegacyAnimal;
+pub struct LegacyAnimal;
 #[animal(observe, id = 33, generation = 0)]
 impl Animal for LegacyAnimal {
     type State = i32;
@@ -95,7 +95,7 @@ impl Observe for LegacyAnimal {
     }
 }
 
-struct ModernAnimal;
+pub struct ModernAnimal;
 #[animal(observe, id = 33, generation = 1)]
 impl Animal for ModernAnimal {
     type State = i32;
@@ -110,7 +110,7 @@ impl Observe for ModernAnimal {
     }
 }
 
-struct FutureAnimal;
+pub struct FutureAnimal;
 #[animal(observe, id = 33, generation = 2)]
 impl Animal for FutureAnimal {
     type State = i32;
@@ -126,9 +126,9 @@ impl Observe for FutureAnimal {
 }
 
 #[derive(Animals)]
-struct VersionedAnimals(LegacyAnimal, ModernAnimal);
+pub struct VersionedAnimals(LegacyAnimal, ModernAnimal);
 
-struct VersionedZoo;
+pub struct VersionedZoo;
 impl Ecosystem for VersionedZoo {
     const NAME: &'static str = "versioned-zoo";
     type Animals = VersionedAnimals;
