@@ -2,7 +2,7 @@ use jungle_sdk::prelude::*;
 use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    Act, Aspect, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, EffectExec,
+    Act, Aspect, BoundAct, BoundFlowStep, Condition, Conditional, EffectCompletion, Effect,
     EffectSchema, Either, Executor, Identity, LoopCondition, Running, StateCarrier, Waiting, While,
     Step,
 };

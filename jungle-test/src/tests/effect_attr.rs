@@ -1,5 +1,5 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::types::{EffectExec, EffectSchema, Effects, Id, Identified};
+use jungle_sdk::types::{Effect, EffectSchema, Effects, Id, Identified};
 use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::typosaurus::collections::sp::Node;
 use num::U90;
@@ -21,7 +21,7 @@ impl<J> jungle_sdk::types::Effect<J> for AutoPrimitiveEffect {
 }
 
 fn assert_schema<T: EffectSchema>() {}
-fn assert_exec<T: EffectExec<()>>() {}
+fn assert_exec<T: Effect<()>>() {}
 fn assert_effects<T: Effects>() {}
 fn assert_identified<T: Identified>() {}
 

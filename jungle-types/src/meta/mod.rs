@@ -11,7 +11,7 @@ use typosaurus::traits::fold::Foldable;
 use typosaurus::traits::functor::{Map, Mapper};
 
 use super::{
-    Animal, Animals, BoundAnimal, BoundAnimalJourney, Ecosystem, EffectExec, EffectSchema,
+    Animal, Animals, BoundAnimal, BoundAnimalJourney, Ecosystem, Effect, EffectSchema,
     Effects, Journey, JourneyEffects,
 };
 use core::marker::PhantomData;
@@ -271,16 +271,16 @@ where
 {
 }
 
-pub struct WithEffectExecFor<Context>(PhantomData<fn() -> Context>);
-impl<T, Context> Mapper<T> for WithEffectExecFor<Context>
+pub struct WithEffectFor<Context>(PhantomData<fn() -> Context>);
+impl<T, Context> Mapper<T> for WithEffectFor<Context>
 where
-    T: EffectExec<Context>,
+    T: Effect<Context>,
 {
     type Out = ();
 }
 
-pub trait AnimalEffectExecCompatible<Context>: Animals {}
-impl<T, Context> AnimalEffectExecCompatible<Context> for T
+pub trait AnimalEffectCompatible<Context>: Animals {}
+impl<T, Context> AnimalEffectCompatible<Context> for T
 where
     T: Animals,
     <T as Animals>::List: FlattenNodes,
@@ -289,8 +289,8 @@ where
     <AnimalSet<T> as CollectAnimalJourneyEffects>::Out: FlattenNodes,
     SPFlatten<<AnimalSet<T> as CollectAnimalJourneyEffects>::Out>: StripEffectHeaders,
     AnimalEffectMembers<T>: Container,
-    (AnimalEffectMembers<T>, WithEffectExecFor<Context>):
-        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectExecFor<Context>>,
+    (AnimalEffectMembers<T>, WithEffectFor<Context>):
+        Map<<AnimalEffectMembers<T> as Container>::Content, WithEffectFor<Context>>,
 {
 }
 

@@ -27,7 +27,7 @@ pub trait EffectSchema {
 }
 
 /// Context-bound effect execution contract.
-pub trait EffectExec<J>: EffectSchema {
+pub trait Effect<J>: EffectSchema {
     /// Process one input into one output in the provided context.
     fn effect(
         jungle: &J,
@@ -55,7 +55,7 @@ impl<A: EffectSchema> EffectRequest<A> {
 
     pub fn effect<'a, J>(self, jungle: &'a J) -> impl Future<Output = Result<A::Out, A::Err>> + 'a
     where
-        A: EffectExec<J> + 'a,
+        A: Effect<J> + 'a,
     {
         A::effect(jungle, self.input)
     }

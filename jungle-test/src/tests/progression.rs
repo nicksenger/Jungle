@@ -3,7 +3,7 @@ use jungle_sdk::types as jungle_types;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
     Act, BoundAct, BoundFlowStep, Condition, Conditional, ContextExecutor,
-    EffectCompletion, EffectExec, EffectRequest, EffectSchema, Executor, Identity,
+    EffectCompletion, Effect, EffectRequest, EffectSchema, Executor, Identity,
     ManualExecutor, Running, Step, Waiting,
 };
 use std::future::ready;
@@ -119,7 +119,7 @@ impl<A> StepExecutor for BoundFlowStep<ProgressAnimal, A>
 where
     A: BoundAct<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32>,
     <A as BoundAct<ProgressAnimal>>::Effect:
-        EffectSchema<In = i32, Out = i32, Err = ()> + EffectExec<()>,
+        EffectSchema<In = i32, Out = i32, Err = ()> + Effect<()>,
 {
     type Effect = <A as BoundAct<ProgressAnimal>>::Effect;
 }

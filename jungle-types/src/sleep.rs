@@ -1,5 +1,5 @@
 use crate::{
-    Animal, Aspect, BoundAct, EffectCompletion, EffectExec, EffectSchema, Id, Identity,
+    Animal, Aspect, BoundAct, EffectCompletion, Effect, EffectSchema, Id, Identity,
     StateCarrier,
 };
 use inception::primitive;
@@ -23,7 +23,7 @@ impl EffectSchema for Sleep {
     type Err = SleepError;
 }
 
-impl<J> EffectExec<J> for Sleep {
+impl<J> Effect<J> for Sleep {
     fn effect(
         _jungle: &J,
         input: Self::In,

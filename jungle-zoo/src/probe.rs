@@ -10,7 +10,7 @@ impl jungle_sdk::types::EffectSchema for ProbeEffect {
     type Err = ();
 }
 
-impl<J> jungle_sdk::types::EffectExec<J> for ProbeEffect {
+impl<J> jungle_sdk::types::Effect<J> for ProbeEffect {
     fn effect(
         _jungle: &J,
         _input: Self::In,

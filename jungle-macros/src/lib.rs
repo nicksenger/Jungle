@@ -1231,7 +1231,7 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
     let (exec_impl_generics, _, exec_where_clause) = item_impl.generics.split_for_impl();
     let node_ty = quote!(#typosaurus::collections::sp::Node<#id_inner, #self_ty>);
     let effect_schema = jungle_type("EffectSchema");
-    let effect_exec = jungle_type("EffectExec");
+    let effect_exec = jungle_type("Effect");
     let effects_prop = jungle_type("JungleEffects");
     let ident_prop = jungle_type("Ident");
     let effects_marker = primitive_marker_impl(&item_impl, self_ty, &effects_prop);

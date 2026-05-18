@@ -3,7 +3,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::types::Animal;
 use jungle_sdk::types::{
-    Act, Condition, Conditional, Ecosystem, EffectCompletion, EffectExec, JourneyStatus,
+    Act, Condition, Conditional, Ecosystem, EffectCompletion, Effect, JourneyStatus,
     LoopCondition, Sleep, Step, While,
 };
 use jungle_sdk::{Animals, JungleClient, RunnerOut};
@@ -46,7 +46,7 @@ impl jungle_sdk::types::Effect<()> for ReplayPreIncrementEffect {
     }
 }
 
-impl EffectExec<ReplayGateZoo> for ReplayPreIncrementEffect {
+impl Effect<ReplayGateZoo> for ReplayPreIncrementEffect {
     fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
@@ -71,7 +71,7 @@ impl jungle_sdk::types::Effect<()> for ReplayPostIncrementEffect {
     }
 }
 
-impl EffectExec<ReplayGateZoo> for ReplayPostIncrementEffect {
+impl Effect<ReplayGateZoo> for ReplayPostIncrementEffect {
     fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
@@ -96,7 +96,7 @@ impl jungle_sdk::types::Effect<()> for ReplayGateEffect {
     }
 }
 
-impl EffectExec<ReplayGateZoo> for ReplayGateEffect {
+impl Effect<ReplayGateZoo> for ReplayGateEffect {
     fn effect(
         jungle: &ReplayGateZoo,
         _input: Self::In,
@@ -385,7 +385,7 @@ impl jungle_sdk::types::Effect<()> for ReplayTimeoutPreIncrementEffect {
     }
 }
 
-impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
+impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPreIncrementEffect {
     fn effect(
         jungle: &ReplayTimeoutZoo,
         _input: Self::In,
@@ -411,7 +411,7 @@ impl jungle_sdk::types::Effect<()> for ReplayTimeoutPostIncrementEffect {
     }
 }
 
-impl EffectExec<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
+impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
     fn effect(
         jungle: &ReplayTimeoutZoo,
         _input: Self::In,

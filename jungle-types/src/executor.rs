@@ -1,6 +1,6 @@
 use crate::{
     Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    EffectCompletion, EffectExec, EffectSchema, Join, LoopCondition, Running, Scoped, Select,
+    EffectCompletion, Effect, EffectSchema, Join, LoopCondition, Running, Scoped, Select,
     Transparent, While,
 };
 use inception::*;
@@ -267,7 +267,7 @@ impl<T, A> ErasedFlow<T::State> for TypedErasedStep<BoundFlowStep<T, A>>
 where
     T: Animal,
     A: BoundAct<T>,
-    <A as BoundAct<T>>::Effect: EffectExec<()>,
+    <A as BoundAct<T>>::Effect: Effect<()>,
     <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize + 'static,
@@ -326,7 +326,7 @@ where
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<A as BoundAct<T>>::Effect as EffectExec<()>>::effect(&(), effect_input).await;
+                    <<A as BoundAct<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -414,7 +414,7 @@ where
     Context: Send + Sync + 'static,
     T: Animal,
     A: BoundAct<T>,
-    <A as BoundAct<T>>::Effect: EffectExec<Context>,
+    <A as BoundAct<T>>::Effect: Effect<Context>,
     <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
@@ -471,7 +471,7 @@ where
         let context = Arc::clone(&self.context);
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as BoundAct<T>>::Effect as EffectExec<Context>>::effect(
+                let completion = <<A as BoundAct<T>>::Effect as Effect<Context>>::effect(
                     context.as_ref(),
                     effect_input,
                 )
@@ -1630,7 +1630,7 @@ impl<T, A> BuildFlow<DynFlow<T::State>> for BoundFlowStep<T, A>
 where
     T: Animal + 'static,
     A: BoundAct<T> + 'static,
-    <A as BoundAct<T>>::Effect: EffectExec<()> + 'static,
+    <A as BoundAct<T>>::Effect: Effect<()> + 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
@@ -1825,7 +1825,7 @@ where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
     A: BoundAct<T> + 'static,
-    <A as BoundAct<T>>::Effect: EffectExec<Context> + 'static,
+    <A as BoundAct<T>>::Effect: Effect<Context> + 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
