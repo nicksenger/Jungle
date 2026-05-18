@@ -154,18 +154,36 @@ pub trait ContainsAnimalVersion<Target> {
 impl<Target> ContainsAnimalVersion<Target> for list::Empty {
     type Out = typosaurus::bool::False;
 }
-impl<Head, Tail, Target> ContainsAnimalVersion<Target> for list::List<(Head, Tail)>
+impl<Head, Target> ContainsAnimalVersion<Target> for list::List<(Head, list::Empty)>
 where
     Head: Equality<Target>,
+{
+    type Out = <Head as Equality<Target>>::Out;
+}
+impl<Head0, Head1, Tail, Target> ContainsAnimalVersion<Target>
+    for list::List<(Head0, list::List<(Head1, Tail)>)>
+where
+    Head0: Equality<Target>,
+    Head1: Equality<Target>,
     Tail: ContainsAnimalVersion<Target>,
     (
-        <Head as Equality<Target>>::Out,
+        <Head1 as Equality<Target>>::Out,
         <Tail as ContainsAnimalVersion<Target>>::Out,
+    ): typosaurus::bool::Or,
+    (
+        <Head0 as Equality<Target>>::Out,
+        <(
+            <Head1 as Equality<Target>>::Out,
+            <Tail as ContainsAnimalVersion<Target>>::Out,
+        ) as typosaurus::bool::Or>::Out,
     ): typosaurus::bool::Or,
 {
     type Out = <(
-        <Head as Equality<Target>>::Out,
-        <Tail as ContainsAnimalVersion<Target>>::Out,
+        <Head0 as Equality<Target>>::Out,
+        <(
+            <Head1 as Equality<Target>>::Out,
+            <Tail as ContainsAnimalVersion<Target>>::Out,
+        ) as typosaurus::bool::Or>::Out,
     ) as typosaurus::bool::Or>::Out;
 }
 
@@ -230,12 +248,19 @@ pub trait MaxGeneration {
 impl MaxGeneration for list::Empty {
     type Out = typosaurus::num::consts::U0;
 }
-impl<Head, Tail> MaxGeneration for list::List<(Head, Tail)>
+impl<Head> MaxGeneration for list::List<(Head, list::Empty)>
 where
-    Tail: MaxGeneration,
-    Head: Max<<Tail as MaxGeneration>::Out>,
+    Head: Max<typosaurus::num::consts::U0>,
 {
-    type Out = <Head as Max<<Tail as MaxGeneration>::Out>>::Output;
+    type Out = <Head as Max<typosaurus::num::consts::U0>>::Output;
+}
+impl<Head0, Head1, Tail> MaxGeneration for list::List<(Head0, list::List<(Head1, Tail)>)>
+where
+    Head0: Max<Head1>,
+    Tail: MaxGeneration,
+    <Head0 as Max<Head1>>::Output: Max<<Tail as MaxGeneration>::Out>,
+{
+    type Out = <<Head0 as Max<Head1>>::Output as Max<<Tail as MaxGeneration>::Out>>::Output;
 }
 
 pub type HighestGenerationForAnimals<T, AnimalId> =
