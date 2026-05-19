@@ -275,4 +275,66 @@ mod tests {
         assert!(output[4] > 0.0);
         assert!(output[5] > 0.0);
     }
+
+    #[test]
+    fn overlaps_multiple_notes_in_same_render_window() {
+        let mut mixer = AudioMixer::new(2, 10);
+        let (mut tx, mut rx) = mpsc::channel(8);
+        let first = PlayRequest {
+            pcm: Arc::from([1.0_f32, 1.0, 1.0, 1.0]),
+            source_channels: 1,
+            source_sample_rate: 10,
+            start_offset: Duration::ZERO,
+            gain: 0.4,
+            pan: 0.0,
+            playback_rate: 1.0,
+        };
+        let second = PlayRequest {
+            start_offset: Duration::from_millis(100),
+            ..first.clone()
+        };
+
+        tx.try_send(Command::Play(first))
+            .expect("first command send should succeed");
+        tx.try_send(Command::Play(second))
+            .expect("second command send should succeed");
+
+        let mut output = vec![0.0_f32; 10];
+        mixer.render_interleaved(&mut output, &mut rx);
+
+        // Frame 0: only note 1. Frame 1: note 1 + note 2 overlap.
+        assert!(output[0] > 0.0);
+        assert!(output[2] > output[0]);
+        assert_eq!(output[2], output[3]);
+    }
+
+    #[test]
+    fn overlaps_same_note_when_submitted_back_to_back() {
+        let mut mixer = AudioMixer::new(2, 10);
+        let (mut tx, mut rx) = mpsc::channel(8);
+        let request = PlayRequest {
+            pcm: Arc::from([1.0_f32, 1.0, 1.0]),
+            source_channels: 1,
+            source_sample_rate: 10,
+            start_offset: Duration::ZERO,
+            gain: 0.35,
+            pan: 0.0,
+            playback_rate: 1.0,
+        };
+
+        tx.try_send(Command::Play(request.clone()))
+            .expect("first command send should succeed");
+        tx.try_send(Command::Play(request))
+            .expect("second command send should succeed");
+
+        let mut output = vec![0.0_f32; 6];
+        mixer.render_interleaved(&mut output, &mut rx);
+
+        // Both notes start at the same frame and should both be present.
+        let first_frame_left = output[0];
+        assert!(first_frame_left > 0.0);
+        assert_eq!(first_frame_left, output[1]);
+        // One note at this gain is about 0.247 on each channel; overlap should be higher.
+        assert!(first_frame_left > 0.3);
+    }
 }

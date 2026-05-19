@@ -67,7 +67,8 @@ fn synthesize_cymbal(note: &Note<CymbalArticulation>) -> (Arc<[f32]>, f32, f32) 
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
         let sample = articulation_sample(note.articulation, phase, t, velocity, pitch_bias);
-        let env = articulation_envelope(note.articulation, phase, velocity);
+        let env = articulation_envelope(note.articulation, phase, velocity)
+            * release_taper(note.articulation, phase);
         pcm.push((sample * env).clamp(-1.0, 1.0));
     }
 
@@ -136,7 +137,7 @@ fn articulation_envelope(articulation: CymbalArticulation, phase: f32, velocity:
         _ => 0.0035,
     };
     let decay = match articulation {
-        CymbalArticulation::StandardCrash => 0.18 - velocity * 0.05,
+        CymbalArticulation::StandardCrash => 0.86 - velocity * 0.12,
         CymbalArticulation::ChokedCrash => 1.5,
         CymbalArticulation::RideTip => 0.72,
         CymbalArticulation::RideBell => 0.62,
@@ -144,4 +145,15 @@ fn articulation_envelope(articulation: CymbalArticulation, phase: f32, velocity:
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
     let decay_env = (-phase * decay * 4.6).exp();
     (attack_env * decay_env).clamp(0.0, 1.0)
+}
+
+fn release_taper(articulation: CymbalArticulation, phase: f32) -> f32 {
+    let release_start = match articulation {
+        CymbalArticulation::StandardCrash => 0.88,
+        CymbalArticulation::ChokedCrash => 0.8,
+        CymbalArticulation::RideTip => 0.86,
+        CymbalArticulation::RideBell => 0.86,
+    };
+    let tail = ((phase - release_start) / (1.0 - release_start)).clamp(0.0, 1.0);
+    1.0 - smoothstep(tail)
 }
