@@ -2,15 +2,26 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 mod bass;
+#[allow(dead_code)]
 mod backup_vocals;
+#[allow(dead_code)]
 mod cymbal;
+#[allow(dead_code)]
 mod hihat;
+#[allow(dead_code)]
 mod kick_drum;
 mod lead_guitar;
+#[allow(dead_code)]
 mod rhythm_guitar;
+#[allow(dead_code)]
 mod snare_drum;
+#[allow(dead_code)]
+mod synthesis;
+#[allow(dead_code)]
 mod toms;
+#[allow(dead_code)]
 mod vocals;
 
 pub use lead_guitar::{LeadGuitar, LeadGuitarArticulation};
