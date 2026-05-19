@@ -49,12 +49,119 @@ impl Instrument for Vocals {
             synthesize_vocals(&note)
         };
 
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.start_offset = note.offset;
-        request.gain = gain;
-        request.playback_rate = playback_rate;
-        request.pan = 0.05;
-        self.audio.try_play(request).map_err(|_| Error::Submission)
+        for layer in articulation_layers(note.articulation) {
+            let mut request = PlayRequest::new(Arc::clone(&pcm), 1, SAMPLE_RATE);
+            request.start_offset = note.offset + Duration::from_secs_f32(layer.delay_seconds);
+            request.gain = gain * layer.gain_scale;
+            request.playback_rate = playback_rate * layer.playback_rate_scale;
+            request.pan = layer.pan;
+            self.audio
+                .try_play(request)
+                .map_err(|_| Error::Submission)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PlaybackLayer {
+    pan: f32,
+    gain_scale: f32,
+    playback_rate_scale: f32,
+    delay_seconds: f32,
+}
+
+fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLayer] {
+    match articulation {
+        VocalsArticulation::Clean => &[
+            PlaybackLayer {
+                pan: 0.02,
+                gain_scale: 1.0,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.17,
+                gain_scale: 0.42,
+                playback_rate_scale: 0.996,
+                delay_seconds: 0.013,
+            },
+            PlaybackLayer {
+                pan: 0.21,
+                gain_scale: 0.33,
+                playback_rate_scale: 1.007,
+                delay_seconds: 0.021,
+            },
+        ],
+        VocalsArticulation::GritRasp => &[
+            PlaybackLayer {
+                pan: 0.0,
+                gain_scale: 1.0,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.12,
+                gain_scale: 0.48,
+                playback_rate_scale: 0.992,
+                delay_seconds: 0.009,
+            },
+            PlaybackLayer {
+                pan: 0.16,
+                gain_scale: 0.38,
+                playback_rate_scale: 1.01,
+                delay_seconds: 0.015,
+            },
+        ],
+        VocalsArticulation::SpokenBreakdown => &[
+            PlaybackLayer {
+                pan: -0.02,
+                gain_scale: 1.0,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: 0.14,
+                gain_scale: 0.26,
+                playback_rate_scale: 1.008,
+                delay_seconds: 0.018,
+            },
+        ],
+        VocalsArticulation::SirenScream => &[
+            PlaybackLayer {
+                pan: 0.0,
+                gain_scale: 1.0,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.09,
+                gain_scale: 0.31,
+                playback_rate_scale: 0.994,
+                delay_seconds: 0.012,
+            },
+            PlaybackLayer {
+                pan: 0.11,
+                gain_scale: 0.29,
+                playback_rate_scale: 1.008,
+                delay_seconds: 0.019,
+            },
+        ],
+        VocalsArticulation::StutterStab => &[
+            PlaybackLayer {
+                pan: 0.03,
+                gain_scale: 1.0,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.14,
+                gain_scale: 0.24,
+                playback_rate_scale: 0.99,
+                delay_seconds: 0.008,
+            },
+        ],
     }
 }
 
@@ -162,14 +269,28 @@ fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
         VocalsArticulation::SirenScream => 0.06,
         _ => 0.03,
     };
-    let decay = match articulation {
-        VocalsArticulation::Clean => 0.42,
-        VocalsArticulation::GritRasp => 0.5,
-        VocalsArticulation::SpokenBreakdown => 0.7,
-        VocalsArticulation::SirenScream => 0.38,
-        VocalsArticulation::StutterStab => 1.45,
+    let body = match articulation {
+        VocalsArticulation::Clean => 0.9,
+        VocalsArticulation::GritRasp => 0.94,
+        VocalsArticulation::SpokenBreakdown => 0.82,
+        VocalsArticulation::SirenScream => 0.97,
+        VocalsArticulation::StutterStab => 0.74,
+    };
+    let release_start = match articulation {
+        VocalsArticulation::SpokenBreakdown => 0.66,
+        VocalsArticulation::StutterStab => 0.48,
+        VocalsArticulation::SirenScream => 0.84,
+        _ => 0.8,
+    };
+    let release = match articulation {
+        VocalsArticulation::Clean => 0.18,
+        VocalsArticulation::GritRasp => 0.15,
+        VocalsArticulation::SpokenBreakdown => 0.22,
+        VocalsArticulation::SirenScream => 0.2,
+        VocalsArticulation::StutterStab => 0.1,
     };
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
-    let decay_env = (-phase * decay * 4.0).exp();
-    (attack_env * decay_env).clamp(0.0, 1.0)
+    let release_phase = ((phase - release_start) / release.max(1e-3)).clamp(0.0, 1.0);
+    let release_env = 1.0 - smoothstep(release_phase);
+    (attack_env * body * release_env).clamp(0.0, 1.0)
 }
