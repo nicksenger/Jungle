@@ -5452,25 +5452,6 @@ const SCORE: &[ScoreEvent] = &[
     },
 ];
 
-pub fn closed_hi_hat_cymbal_score() -> Vec<Note<LeadGuitarArticulation>> {
-    SCORE
-        .iter()
-        .map(|event| Note {
-            n_midi: event.n_midi,
-            duration: ticks_to_duration(event.duration_tick),
-            velocity: event.velocity as f32 / 127.0,
-            amplitude_multiplier: 0.5,
-            expression: None,
-            offset: ticks_to_duration(event.start_tick),
-            articulation: LeadGuitarArticulation::Sustained,
-        })
-        .collect()
-}
-
-fn ticks_to_duration(ticks: u32) -> Duration {
-    let micros = (ticks as u64)
-        .saturating_mul(TEMPO_MICROS_PER_QUARTER_NOTE)
-        .saturating_add(TICKS_PER_QUARTER_NOTE / 2)
-        / TICKS_PER_QUARTER_NOTE;
-    Duration::from_micros(micros)
+pub fn closed_hi_hat_score() -> Vec<Note<LeadGuitarArticulation>> {
+    todo!()
 }
