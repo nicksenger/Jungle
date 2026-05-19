@@ -13,6 +13,7 @@ pub(crate) struct AudioMixer {
     output_sample_rate: u32,
     frame_clock: u64,
     pending: Vec<PendingVoice>,
+    pending_needs_sort: bool,
     active: Vec<Voice>,
 }
 
@@ -23,6 +24,7 @@ impl AudioMixer {
             output_sample_rate,
             frame_clock: 0,
             pending: Vec::new(),
+            pending_needs_sort: false,
             active: Vec::new(),
         }
     }
@@ -34,6 +36,7 @@ impl AudioMixer {
     ) {
         output.fill(0.0);
         self.drain_commands(command_rx);
+        self.sort_pending_if_needed();
 
         let frame_count = output.len() / self.output_channels;
         for frame_index in 0..frame_count {
@@ -80,6 +83,7 @@ impl AudioMixer {
                         Voice::from_request(request, self.output_sample_rate, self.frame_clock)
                     {
                         self.pending.push(voice);
+                        self.pending_needs_sort = true;
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -88,15 +92,25 @@ impl AudioMixer {
         }
     }
 
+    fn sort_pending_if_needed(&mut self) {
+        if !self.pending_needs_sort {
+            return;
+        }
+        // Keep earliest start frame at the end so activation is a cheap pop.
+        self.pending
+            .sort_unstable_by(|a, b| b.start_frame.cmp(&a.start_frame));
+        self.pending_needs_sort = false;
+    }
+
     fn activate_pending_voices(&mut self) {
         let now = self.frame_clock;
-        let mut i = 0;
-        while i < self.pending.len() {
-            if self.pending[i].start_frame <= now {
-                let pending_voice = self.pending.swap_remove(i);
+        while self
+            .pending
+            .last()
+            .is_some_and(|pending| pending.start_frame <= now)
+        {
+            if let Some(pending_voice) = self.pending.pop() {
                 self.active.push(pending_voice.voice);
-            } else {
-                i += 1;
             }
         }
     }
