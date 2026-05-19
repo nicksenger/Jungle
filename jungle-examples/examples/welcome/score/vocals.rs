@@ -72,7 +72,7 @@ const SCORE: &[ScoreEvent] = &[
     ScoreEvent { start_tick: 196992, duration_tick: 384, n_midi: 68, velocity: 37 },
 ];
 
-pub fn flute_score() -> Vec<Note<LeadGuitarArticulation>> {
+pub fn vocals_score() -> Vec<Note<LeadGuitarArticulation>> {
     SCORE
         .iter()
         .map(|event| Note {

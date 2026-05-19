@@ -15,9 +15,9 @@ use crate::{
         Error as InstrumentError, Instrument, LeadGuitar, LeadGuitarArticulation, Note,
     },
     score::{
-        bass_drum_score, bass_guitar_score, closed_hi_hat_cymbal_score, crash_cymbal_score,
-        distortion_guitar_score, electric_guitar_score, flute_score, saxophone_score,
-        snare_drum_score, toms_snare_score,
+        backup_vocals_score, bass_drum_score, bass_guitar_score, closed_hi_hat_cymbal_score,
+        crash_cymbal_score, lead_guitar_score, rhythm_guitar_score, snare_drum_score,
+        toms_snare_score, vocals_score,
     },
 };
 
@@ -26,10 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _viewer = jungle_viewer::JungleViewerBuilder::new().title("Welcome Example");
     let audio_engine = AudioEngine::start_default().await?;
     let instrument_scores = vec![
-        electric_guitar_score(),
-        distortion_guitar_score(),
-        saxophone_score(),
-        flute_score(),
+        lead_guitar_score(),
+        rhythm_guitar_score(),
+        backup_vocals_score(),
+        vocals_score(),
         bass_guitar_score(),
         bass_drum_score(),
         closed_hi_hat_cymbal_score(),

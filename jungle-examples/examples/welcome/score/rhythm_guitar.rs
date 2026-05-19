@@ -1625,7 +1625,7 @@ const SCORE: &[ScoreEvent] = &[
     ScoreEvent { start_tick: 200064, duration_tick: 3456, n_midi: 46, velocity: 37 },
 ];
 
-pub fn distortion_guitar_score() -> Vec<Note<LeadGuitarArticulation>> {
+pub fn rhythm_guitar_score() -> Vec<Note<LeadGuitarArticulation>> {
     SCORE
         .iter()
         .map(|event| Note {
