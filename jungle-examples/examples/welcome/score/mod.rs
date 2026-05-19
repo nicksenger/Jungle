@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::instrumentation::{LeadGuitarArticulation, Note};
+use crate::instrumentation::{ElectricGuitarArticulation, Note};
 
 mod backup_vocals;
 mod bass_drum;
@@ -62,7 +62,7 @@ pub struct GridNote {
     pub position: Position,
 }
 
-pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> Note<LeadGuitarArticulation> {
+pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> Note<ElectricGuitarArticulation> {
     let seconds_per_beat = 60.0_f32 / bpm;
     let beat_offset = if note.position.beat_offset_den == 0 {
         0.0
@@ -82,6 +82,6 @@ pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> Note<LeadGuitarArti
         pan: 0.5,
         expression: None,
         offset,
-        articulation: LeadGuitarArticulation::Sustained,
+        articulation: ElectricGuitarArticulation::Sustained,
     }
 }

@@ -13,10 +13,9 @@ use crate::{
     audio::{AudioEngine, AudioHandle},
     instrumentation::{
         BackupVocals, BackupVocalsArticulation, Bass, BassArticulation, Cymbal, CymbalArticulation,
-        Error as InstrumentError, HiHat, HiHatArticulation, Instrument, KickDrum,
-        KickDrumArticulation, LeadGuitar, LeadGuitarArticulation, Note, RhythmGuitar,
-        RhythmGuitarArticulation, SnareDrum, SnareDrumArticulation, Toms, TomsArticulation, Vocals,
-        VocalsArticulation,
+        ElectricGuitar, ElectricGuitarArticulation, Error as InstrumentError, HiHat,
+        HiHatArticulation, Instrument, KickDrum, KickDrumArticulation, Note, SnareDrum,
+        SnareDrumArticulation, Toms, TomsArticulation, Vocals, VocalsArticulation,
     },
     metronome::{Metronome, MetronomeSync},
     score::{
@@ -159,7 +158,7 @@ fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
     Ok(bpm)
 }
 
-fn score_duration(notes: &[Note<LeadGuitarArticulation>]) -> Duration {
+fn score_duration(notes: &[Note<ElectricGuitarArticulation>]) -> Duration {
     notes
         .iter()
         .map(|note| note.offset.saturating_add(note.duration))
@@ -169,10 +168,10 @@ fn score_duration(notes: &[Note<LeadGuitarArticulation>]) -> Duration {
 
 async fn play_lead_guitar_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
-    let lead_guitar = LeadGuitar::new(audio_handle);
+    let lead_guitar = ElectricGuitar::new(audio_handle);
     let mut metronome_sync = metronome.subscribe();
     for note in notes {
         play_with_retry(&lead_guitar, note, &mut metronome_sync).await?;
@@ -182,15 +181,15 @@ async fn play_lead_guitar_score(
 
 async fn play_rhythm_guitar_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
-    let rhythm_guitar = RhythmGuitar::new(audio_handle);
+    let rhythm_guitar = ElectricGuitar::new(audio_handle);
     let mut metronome_sync = metronome.subscribe();
     for note in notes {
         play_with_retry(
             &rhythm_guitar,
-            with_articulation(note, RhythmGuitarArticulation::Sustained),
+            with_articulation(note, ElectricGuitarArticulation::RhythmSustained),
             &mut metronome_sync,
         )
         .await?;
@@ -200,7 +199,7 @@ async fn play_rhythm_guitar_score(
 
 async fn play_backup_vocals_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let backup_vocals = BackupVocals::new(audio_handle);
@@ -218,7 +217,7 @@ async fn play_backup_vocals_score(
 
 async fn play_vocals_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let vocals = Vocals::new(audio_handle);
@@ -236,7 +235,7 @@ async fn play_vocals_score(
 
 async fn play_bass_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let bass = Bass::new(audio_handle);
@@ -254,7 +253,7 @@ async fn play_bass_score(
 
 async fn play_kick_drum_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let kick_drum = KickDrum::new(audio_handle);
@@ -272,7 +271,7 @@ async fn play_kick_drum_score(
 
 async fn play_hi_hat_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let hi_hat = HiHat::new(audio_handle);
@@ -290,7 +289,7 @@ async fn play_hi_hat_score(
 
 async fn play_cymbal_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let cymbal = Cymbal::new(audio_handle);
@@ -308,7 +307,7 @@ async fn play_cymbal_score(
 
 async fn play_snare_drum_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let snare_drum = SnareDrum::new(audio_handle);
@@ -326,7 +325,7 @@ async fn play_snare_drum_score(
 
 async fn play_toms_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<LeadGuitarArticulation>>,
+    notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let toms = Toms::new(audio_handle);
@@ -343,7 +342,7 @@ async fn play_toms_score(
 }
 
 fn with_articulation<Articulation>(
-    note: Note<LeadGuitarArticulation>,
+    note: Note<ElectricGuitarArticulation>,
     articulation: Articulation,
 ) -> Note<Articulation> {
     Note {

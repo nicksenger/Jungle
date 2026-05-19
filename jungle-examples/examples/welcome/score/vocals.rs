@@ -1,5 +1,5 @@
 use super::{grid_note_to_note, GridNote, Kind, Position};
-use crate::instrumentation::{LeadGuitarArticulation, Note};
+use crate::instrumentation::{ElectricGuitarArticulation, Note};
 
 const INTRO: &[GridNote] = &[];
 
@@ -763,7 +763,7 @@ const SECTIONS: [&[GridNote]; 12] = [
     FINALE,
 ];
 
-pub fn vocals_score(bpm: f32) -> Vec<Note<LeadGuitarArticulation>> {
+pub fn vocals_score(bpm: f32) -> Vec<Note<ElectricGuitarArticulation>> {
     SECTIONS
         .into_iter()
         .flatten()
