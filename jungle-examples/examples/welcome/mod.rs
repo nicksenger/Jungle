@@ -12,10 +12,10 @@ use std::time::Duration;
 use crate::{
     audio::{AudioEngine, AudioHandle},
     instrumentation::{
-        BackupVocals, BackupVocalsArticulation, Bass, BassArticulation, Cymbal, CymbalArticulation,
-        ElectricGuitar, ElectricGuitarArticulation, Error as InstrumentError, HiHat,
-        HiHatArticulation, Instrument, KickDrum, KickDrumArticulation, Note, SnareDrum,
-        SnareDrumArticulation, Toms, TomsArticulation, Vocals, VocalsArticulation,
+        Bass, BassArticulation, Cymbal, CymbalArticulation, ElectricGuitar,
+        ElectricGuitarArticulation, Error as InstrumentError, HiHat, HiHatArticulation, Instrument,
+        KickDrum, KickDrumArticulation, Note, SnareDrum, SnareDrumArticulation, Toms,
+        TomsArticulation, Vocals, VocalsArticulation,
     },
     metronome::{Metronome, MetronomeSync},
     score::{
@@ -202,12 +202,12 @@ async fn play_backup_vocals_score(
     notes: Vec<Note<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
-    let backup_vocals = BackupVocals::new(audio_handle);
+    let backup_vocals = Vocals::new(audio_handle);
     let mut metronome_sync = metronome.subscribe();
     for note in notes {
         play_with_retry(
             &backup_vocals,
-            with_articulation(note, BackupVocalsArticulation::GroupHarmony),
+            with_articulation(note, VocalsArticulation::GroupHarmony),
             &mut metronome_sync,
         )
         .await?;

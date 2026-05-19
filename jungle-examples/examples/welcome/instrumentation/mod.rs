@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-mod backup_vocals;
 mod bass;
 mod cymbal;
 mod electric_guitar;
@@ -13,7 +12,6 @@ mod synthesis;
 mod toms;
 mod vocals;
 
-pub use backup_vocals::{BackupVocals, BackupVocalsArticulation};
 pub use bass::{Bass, BassArticulation};
 pub use cymbal::{Cymbal, CymbalArticulation};
 pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation};

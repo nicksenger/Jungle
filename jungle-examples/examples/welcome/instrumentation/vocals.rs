@@ -32,6 +32,12 @@ pub enum VocalsArticulation {
     SirenScream,
     /// Rapid, rhythmic, percussive vocal sound effects (e.g., the stuttering "nn-nn-nn-nn-nn-nn-nn-f-f-freee").
     StutterStab,
+    /// Clean, unified group harmony backing up a lead line.
+    GroupHarmony,
+    /// Aggressive, chanted, or shouted backing lines (e.g., shouting "Jungle!" in response to Axl).
+    ShoutResponse,
+    /// Sustained, open-vowel vocal beds ("Ahhs" or "Ohhs") used for atmospheric backing texture.
+    VocalBed,
 }
 
 impl Instrument for Vocals {
@@ -158,6 +164,78 @@ fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLa
                 delay_seconds: 0.008,
             },
         ],
+        VocalsArticulation::GroupHarmony => &[
+            PlaybackLayer {
+                pan: -0.42,
+                gain_scale: 0.7,
+                playback_rate_scale: 0.992,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: 0.0,
+                gain_scale: 0.9,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.011,
+            },
+            PlaybackLayer {
+                pan: 0.38,
+                gain_scale: 0.68,
+                playback_rate_scale: 1.008,
+                delay_seconds: 0.019,
+            },
+        ],
+        VocalsArticulation::ShoutResponse => &[
+            PlaybackLayer {
+                pan: -0.58,
+                gain_scale: 0.68,
+                playback_rate_scale: 0.985,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.1,
+                gain_scale: 0.82,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.007,
+            },
+            PlaybackLayer {
+                pan: 0.24,
+                gain_scale: 0.78,
+                playback_rate_scale: 1.013,
+                delay_seconds: 0.014,
+            },
+            PlaybackLayer {
+                pan: 0.62,
+                gain_scale: 0.63,
+                playback_rate_scale: 1.02,
+                delay_seconds: 0.021,
+            },
+        ],
+        VocalsArticulation::VocalBed => &[
+            PlaybackLayer {
+                pan: -0.65,
+                gain_scale: 0.58,
+                playback_rate_scale: 0.994,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.24,
+                gain_scale: 0.66,
+                playback_rate_scale: 0.999,
+                delay_seconds: 0.026,
+            },
+            PlaybackLayer {
+                pan: 0.22,
+                gain_scale: 0.66,
+                playback_rate_scale: 1.005,
+                delay_seconds: 0.033,
+            },
+            PlaybackLayer {
+                pan: 0.64,
+                gain_scale: 0.57,
+                playback_rate_scale: 1.012,
+                delay_seconds: 0.041,
+            },
+        ],
     }
 }
 
@@ -191,6 +269,9 @@ fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Du
         VocalsArticulation::SpokenBreakdown => 0.8,
         VocalsArticulation::SirenScream => 1.1,
         VocalsArticulation::StutterStab => 0.28,
+        VocalsArticulation::GroupHarmony => 1.0,
+        VocalsArticulation::ShoutResponse => 0.72,
+        VocalsArticulation::VocalBed => 1.35,
     };
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.03))
 }
@@ -202,6 +283,9 @@ fn articulation_output_shape(articulation: VocalsArticulation) -> (f32, f32) {
         VocalsArticulation::SpokenBreakdown => (0.84, 1.0),
         VocalsArticulation::SirenScream => (1.0, 1.03),
         VocalsArticulation::StutterStab => (0.86, 1.0),
+        VocalsArticulation::GroupHarmony => (0.78, 1.0),
+        VocalsArticulation::ShoutResponse => (0.85, 1.0),
+        VocalsArticulation::VocalBed => (0.72, 1.0),
     }
 }
 
@@ -243,6 +327,23 @@ fn articulation_sample(
             let gate = ((phase * 12.0).fract() < 0.42) as i32 as f32;
             body * gate
         }
+        VocalsArticulation::GroupHarmony => {
+            let f = base_hz.clamp(90.0, 880.0);
+            let unison = sine(f * 0.995, t) * 0.42 + sine(f, t) * 0.3 + sine(f * 1.007, t) * 0.28;
+            unison + sine(f * 2.0, t) * 0.15 + hash_noise(t * 4_500.0) * 0.08
+        }
+        VocalsArticulation::ShoutResponse => {
+            let f = base_hz.clamp(90.0, 880.0);
+            let unison = sine(f * 0.995, t) * 0.42 + sine(f, t) * 0.3 + sine(f * 1.007, t) * 0.28;
+            let punch = 1.0 - smoothstep(phase * 3.4);
+            (unison * 1.1 + hash_noise(t * 8_500.0) * 0.22 * punch).tanh()
+        }
+        VocalsArticulation::VocalBed => {
+            let f = base_hz.clamp(90.0, 880.0);
+            let unison = sine(f * 0.995, t) * 0.42 + sine(f, t) * 0.3 + sine(f * 1.007, t) * 0.28;
+            let wide = sine(f * 0.5, t) * 0.2 + sine(f * 1.5, t) * 0.24;
+            unison * 0.72 + wide + hash_noise(t * 2_500.0) * 0.06
+        }
     }
 }
 
@@ -255,6 +356,15 @@ fn vocal_formant(frequency_hz: f32, t: f32, airy: f32) -> f32 {
 }
 
 fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
+    if matches!(
+        articulation,
+        VocalsArticulation::GroupHarmony
+            | VocalsArticulation::ShoutResponse
+            | VocalsArticulation::VocalBed
+    ) {
+        return backup_vocal_envelope(articulation, phase);
+    }
+
     let attack = match articulation {
         VocalsArticulation::StutterStab => 0.01,
         VocalsArticulation::SirenScream => 0.06,
@@ -266,6 +376,9 @@ fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
         VocalsArticulation::SpokenBreakdown => 0.82,
         VocalsArticulation::SirenScream => 0.97,
         VocalsArticulation::StutterStab => 0.74,
+        VocalsArticulation::GroupHarmony
+        | VocalsArticulation::ShoutResponse
+        | VocalsArticulation::VocalBed => unreachable!(),
     };
     let release_start = match articulation {
         VocalsArticulation::SpokenBreakdown => 0.66,
@@ -279,9 +392,30 @@ fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
         VocalsArticulation::SpokenBreakdown => 0.22,
         VocalsArticulation::SirenScream => 0.2,
         VocalsArticulation::StutterStab => 0.1,
+        VocalsArticulation::GroupHarmony
+        | VocalsArticulation::ShoutResponse
+        | VocalsArticulation::VocalBed => unreachable!(),
     };
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
     let release_phase = ((phase - release_start) / release.max(1e-3_f32)).clamp(0.0, 1.0);
     let release_env = 1.0 - smoothstep(release_phase);
     (attack_env * body * release_env).clamp(0.0, 1.0)
+}
+
+fn backup_vocal_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
+    let attack = match articulation {
+        VocalsArticulation::ShoutResponse => 0.015,
+        VocalsArticulation::VocalBed => 0.08,
+        VocalsArticulation::GroupHarmony => 0.04,
+        _ => unreachable!(),
+    };
+    let decay = match articulation {
+        VocalsArticulation::GroupHarmony => 0.45,
+        VocalsArticulation::ShoutResponse => 0.8,
+        VocalsArticulation::VocalBed => 0.32,
+        _ => unreachable!(),
+    };
+    let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
+    let decay_env = (-phase * decay * 4.0).exp();
+    (attack_env * decay_env).clamp(0.0, 1.0)
 }
