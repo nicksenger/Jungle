@@ -20,7 +20,7 @@ cpal = { version = "0.17", optional = true }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 uuid = { workspace = true }
 
 [[example]]
