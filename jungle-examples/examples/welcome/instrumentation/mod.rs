@@ -3,12 +3,14 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 mod bass;
+mod backup_vocals;
+mod cymbal;
+mod hihat;
 mod kick_drum;
 mod lead_guitar;
 mod rhythm_guitar;
 mod snare_drum;
-mod synth;
-mod tambourine;
+mod toms;
 mod vocals;
 
 pub use lead_guitar::{LeadGuitar, LeadGuitarArticulation};
