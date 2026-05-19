@@ -43,12 +43,104 @@ impl Instrument for BackupVocals {
             synthesize_backup_vocals(&note)
         };
 
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.start_offset = note.offset;
-        request.gain = gain;
-        request.playback_rate = playback_rate;
-        request.pan = -0.1;
-        self.audio.try_play(request).map_err(|_| Error::Submission)
+        // Layer multiple takes with slight timing/rate offsets to emulate a backing vocal gang.
+        for layer in articulation_layers(note.articulation) {
+            let mut request = PlayRequest::new(Arc::clone(&pcm), 1, SAMPLE_RATE);
+            request.start_offset = note.offset + Duration::from_secs_f32(layer.delay_seconds);
+            request.gain = gain * layer.gain_scale;
+            request.playback_rate = playback_rate * layer.playback_rate_scale;
+            request.pan = layer.pan;
+            self.audio
+                .try_play(request)
+                .map_err(|_| Error::Submission)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PlaybackLayer {
+    pan: f32,
+    gain_scale: f32,
+    playback_rate_scale: f32,
+    delay_seconds: f32,
+}
+
+fn articulation_layers(articulation: BackupVocalsArticulation) -> &'static [PlaybackLayer] {
+    match articulation {
+        BackupVocalsArticulation::GroupHarmony => &[
+            PlaybackLayer {
+                pan: -0.42,
+                gain_scale: 0.7,
+                playback_rate_scale: 0.992,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: 0.0,
+                gain_scale: 0.9,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.011,
+            },
+            PlaybackLayer {
+                pan: 0.38,
+                gain_scale: 0.68,
+                playback_rate_scale: 1.008,
+                delay_seconds: 0.019,
+            },
+        ],
+        BackupVocalsArticulation::ShoutResponse => &[
+            PlaybackLayer {
+                pan: -0.58,
+                gain_scale: 0.68,
+                playback_rate_scale: 0.985,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.1,
+                gain_scale: 0.82,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.007,
+            },
+            PlaybackLayer {
+                pan: 0.24,
+                gain_scale: 0.78,
+                playback_rate_scale: 1.013,
+                delay_seconds: 0.014,
+            },
+            PlaybackLayer {
+                pan: 0.62,
+                gain_scale: 0.63,
+                playback_rate_scale: 1.02,
+                delay_seconds: 0.021,
+            },
+        ],
+        BackupVocalsArticulation::VocalBed => &[
+            PlaybackLayer {
+                pan: -0.65,
+                gain_scale: 0.58,
+                playback_rate_scale: 0.994,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.24,
+                gain_scale: 0.66,
+                playback_rate_scale: 0.999,
+                delay_seconds: 0.026,
+            },
+            PlaybackLayer {
+                pan: 0.22,
+                gain_scale: 0.66,
+                playback_rate_scale: 1.005,
+                delay_seconds: 0.033,
+            },
+            PlaybackLayer {
+                pan: 0.64,
+                gain_scale: 0.57,
+                playback_rate_scale: 1.012,
+                delay_seconds: 0.041,
+            },
+        ],
     }
 }
 

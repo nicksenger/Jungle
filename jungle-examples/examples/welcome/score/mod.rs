@@ -1,6 +1,6 @@
+mod backup_vocals;
 mod bass_drum;
 mod bass_guitar;
-mod backup_vocals;
 mod closed_hi_hat_cymbal;
 mod crash_cymbal;
 mod lead_guitar;
@@ -9,9 +9,9 @@ mod snare_drum;
 mod toms_snare;
 mod vocals;
 
+pub use backup_vocals::backup_vocals_score;
 pub use bass_drum::bass_drum_score;
 pub use bass_guitar::bass_guitar_score;
-pub use backup_vocals::backup_vocals_score;
 pub use closed_hi_hat_cymbal::closed_hi_hat_cymbal_score;
 pub use crash_cymbal::crash_cymbal_score;
 pub use lead_guitar::lead_guitar_score;
