@@ -4,7 +4,7 @@ use std::{
 };
 
 const DEFAULT_BPM: f64 = 123.0;
-const ABSOLUTE_TIME_BPM: f64 = 123.0;
+const ABSOLUTE_TIME_BPM: f64 = 124.0;
 const DEFAULT_BEATS_PER_BAR: u32 = 4;
 const DEFAULT_BEAT_UNIT: u32 = 4;
 
@@ -66,6 +66,76 @@ struct GridNote {
     position: Position,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SectionRange {
+    name: &'static str,
+    start_sec: f64,
+    end_sec: Option<f64>,
+}
+
+const SECTION_RANGES: [SectionRange; 12] = [
+    SectionRange {
+        name: "INTRO",
+        start_sec: 0.0,
+        end_sec: Some(32.0),
+    },
+    SectionRange {
+        name: "VERSE1",
+        start_sec: 32.0,
+        end_sec: Some(55.0),
+    },
+    SectionRange {
+        name: "CHORUS1",
+        start_sec: 55.0,
+        end_sec: Some(67.0),
+    },
+    SectionRange {
+        name: "VERSE2",
+        start_sec: 67.0,
+        end_sec: Some(82.0),
+    },
+    SectionRange {
+        name: "CHORUS2",
+        start_sec: 82.0,
+        end_sec: Some(94.0),
+    },
+    SectionRange {
+        name: "SOLO1",
+        start_sec: 94.0,
+        end_sec: Some(110.0),
+    },
+    SectionRange {
+        name: "VERSE3",
+        start_sec: 110.0,
+        end_sec: Some(125.0),
+    },
+    SectionRange {
+        name: "CHORUS3",
+        start_sec: 125.0,
+        end_sec: Some(136.0),
+    },
+    SectionRange {
+        name: "BRIDGE1",
+        start_sec: 136.0,
+        end_sec: Some(158.0),
+    },
+    SectionRange {
+        name: "SOLO2",
+        start_sec: 158.0,
+        end_sec: Some(198.0),
+    },
+    SectionRange {
+        name: "BRIDGE2",
+        start_sec: 198.0,
+        end_sec: Some(228.0),
+    },
+    SectionRange {
+        name: "FINALE",
+        start_sec: 228.0,
+        end_sec: None,
+    },
+];
+
 fn main() -> Result<(), String> {
     let config = Config::from_env()?;
     let mut score_files = load_score_files(&config.score_dir)?;
@@ -82,7 +152,7 @@ fn main() -> Result<(), String> {
         config.bpm, config.beats_per_bar, config.beat_unit
     );
     println!(
-        "// t_sec is absolute start time computed at fixed {:.3} BPM",
+        "// t_sec and section boundaries are computed at fixed {:.3} BPM",
         ABSOLUTE_TIME_BPM
     );
 
@@ -348,31 +418,32 @@ fn emit_score_literals(score: &ScoreFile, config: &Config) -> Result<(), String>
     println!("{}:", score.name);
     println!("// source_bpm={source_bpm:.3}");
 
-    let iter = score
+    let notes: Vec<GridNote> = score
         .events
         .iter()
-        .take(config.event_limit.unwrap_or(usize::MAX));
-    for event in iter {
-        let note = map_event_to_grid_note(
-            event,
-            score.ticks_per_quarter_note,
-            ticks_per_beat,
-            ticks_per_bar,
-            config.bpm,
-        );
+        .take(config.event_limit.unwrap_or(usize::MAX))
+        .map(|event| {
+            map_event_to_grid_note(
+                event,
+                score.ticks_per_quarter_note,
+                ticks_per_beat,
+                ticks_per_bar,
+                config.bpm,
+            )
+        })
+        .collect();
 
-        println!(
-            "GridNote {{ midi: {}, kind: {}, beats: {}, d_sec: {}, t_sec: {}, position: Position {{ bar: {}, beat: {}, beat_offset_num: {}, beat_offset_den: {} }} }},",
-            note.midi,
-            kind_literal(note.kind),
-            format_decimal(note.beats),
-            format_decimal(note.d_sec),
-            format_decimal(note.t_sec),
-            note.position.bar,
-            note.position.beat,
-            note.position.beat_offset_num,
-            note.position.beat_offset_den,
-        );
+    for section in SECTION_RANGES {
+        println!("const {}: &[GridNote] = [", section.name);
+        for note in notes
+            .iter()
+            .copied()
+            .filter(|note| note_in_section(*note, section))
+        {
+            println!("  {},", grid_note_literal(note));
+        }
+        println!("];");
+        println!();
     }
 
     Ok(())
@@ -461,6 +532,31 @@ fn kind_literal(kind: Kind) -> String {
         } => {
             format!("Kind::Fractional {{ numerator: {numerator}, denominator: {denominator} }}")
         }
+    }
+}
+
+fn grid_note_literal(note: GridNote) -> String {
+    format!(
+        "GridNote {{ midi: {}, kind: {}, beats: {}, d_sec: {}, t_sec: {}, position: Position {{ bar: {}, beat: {}, beat_offset_num: {}, beat_offset_den: {} }} }}",
+        note.midi,
+        kind_literal(note.kind),
+        format_decimal(note.beats),
+        format_decimal(note.d_sec),
+        format_decimal(note.t_sec),
+        note.position.bar,
+        note.position.beat,
+        note.position.beat_offset_num,
+        note.position.beat_offset_den,
+    )
+}
+
+fn note_in_section(note: GridNote, section: SectionRange) -> bool {
+    if note.t_sec < section.start_sec {
+        return false;
+    }
+    match section.end_sec {
+        Some(end_sec) => note.t_sec < end_sec,
+        None => true,
     }
 }
 
