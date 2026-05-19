@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use super::GridNote;
+use super::{GridNote, Kind, Position};
 use crate::instrumentation::{LeadGuitarArticulation, Note};
 
 const INTRO: &[GridNote] = &[GridNote {
@@ -5641,14 +5641,28 @@ const FINALE: &[GridNote] = &[
     },
 ];
 
+const SECTIONS: [&[GridNote]; 12] = [
+    INTRO, VERSE1, CHORUS1, VERSE2, CHORUS2, SOLO1, VERSE3, CHORUS3, BRIDGE1, SOLO2, BRIDGE2,
+    FINALE,
+];
+
 pub fn backup_vocals_score() -> Vec<Note<LeadGuitarArticulation>> {
-    todo!()
+    SECTIONS
+        .into_iter()
+        .flatten()
+        .copied()
+        .map(grid_note_to_note)
+        .collect()
 }
 
-fn ticks_to_duration(ticks: u32) -> Duration {
-    let micros = (ticks as u64)
-        .saturating_mul(TEMPO_MICROS_PER_QUARTER_NOTE)
-        .saturating_add(TICKS_PER_QUARTER_NOTE / 2)
-        / TICKS_PER_QUARTER_NOTE;
-    Duration::from_micros(micros)
+fn grid_note_to_note(note: GridNote) -> Note<LeadGuitarArticulation> {
+    Note {
+        n_midi: note.midi,
+        duration: Duration::from_secs_f32(note.d_sec),
+        velocity: 37.0 / 127.0,
+        amplitude_multiplier: 0.5,
+        expression: None,
+        offset: Duration::from_secs_f32(note.t_sec),
+        articulation: LeadGuitarArticulation::Sustained,
+    }
 }
