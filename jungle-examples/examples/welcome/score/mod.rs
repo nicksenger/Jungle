@@ -19,3 +19,41 @@ pub use rhythm_guitar::rhythm_guitar_score;
 pub use snare_drum::snare_drum_score;
 pub use toms_snare::toms_snare_score;
 pub use vocals::vocals_score;
+
+/// Musical duration bucket for notes extracted from tick-based score events.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Whole,
+    DottedHalf,
+    Half,
+    DottedQuarter,
+    Quarter,
+    DottedEighth,
+    Eighth,
+    DottedSixteenth,
+    Sixteenth,
+    ThirtySecond,
+    Fractional { numerator: u32, denominator: u32 },
+}
+
+/// Position of a note relative to a meter grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub bar: u32,
+    pub beat: u32,
+    pub beat_offset_num: u32,
+    pub beat_offset_den: u32,
+}
+
+/// Extracted note timing data from the legacy absolute-tick score representation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GridNote {
+    pub score: &'static str,
+    pub midi: u8,
+    pub start_tick: u32,
+    pub duration_tick: u32,
+    pub kind: Kind,
+    pub beats: f32,
+    pub seconds: f32,
+    pub position: Position,
+}
