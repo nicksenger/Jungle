@@ -126,17 +126,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn parse_bpm_arg() -> Result<f32, Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let Some(arg) = args.next() else {
-        return Ok(DEFAULT_BPM);
-    };
+    let mut bpm = DEFAULT_BPM;
 
-    let bpm = arg
-        .parse::<f32>()
-        .map_err(|_| format!("Invalid BPM argument: {arg}"))?;
-    if !bpm.is_finite() || bpm <= 0.0 {
-        return Err(format!("BPM must be a positive finite number, got: {arg}").into());
+    while let Some(arg) = args.next() {
+        if let Some(value) = arg.strip_prefix("--bpm=") {
+            bpm = parse_bpm_value(value)?;
+            continue;
+        }
+
+        if arg == "--bpm" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--bpm requires a value".to_string())?;
+            bpm = parse_bpm_value(&value)?;
+            continue;
+        }
+
+        // Keep supporting the legacy positional form for compatibility.
+        bpm = parse_bpm_value(&arg)?;
     }
 
+    Ok(bpm)
+}
+
+fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
+    let bpm = value
+        .parse::<f32>()
+        .map_err(|_| format!("Invalid BPM argument: {value}"))?;
+    if !bpm.is_finite() || bpm <= 0.0 {
+        return Err(format!("BPM must be a positive finite number, got: {value}").into());
+    }
     Ok(bpm)
 }
 
