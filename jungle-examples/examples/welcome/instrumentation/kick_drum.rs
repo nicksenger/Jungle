@@ -113,9 +113,7 @@ fn articulation_sample(
 
     match articulation {
         KickDrumArticulation::StandardHit => sub * 0.88 + punch * 0.42 + ring * 0.18 + click * 0.34,
-        KickDrumArticulation::BuriedBeater => {
-            sub * 0.74 + punch * 0.5 + ring * 0.1 + click * 0.4
-        }
+        KickDrumArticulation::BuriedBeater => sub * 0.74 + punch * 0.5 + ring * 0.1 + click * 0.4,
         KickDrumArticulation::GhostHit => {
             (sub * 0.56 + punch * 0.22 + ring * 0.06 + click * 0.14) * (1.0 - phase * 0.5)
         }
