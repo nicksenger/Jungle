@@ -34,8 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let lead_guitar = lead_guitar_score();
     let rhythm_guitar = rhythm_guitar_score();
-    let backup_vocals = vocals_score();
-    let vocals = backup_vocals_score();
+    let backup_vocals = backup_vocals_score();
+    let vocals = vocals_score();
     let bass = bass_guitar_score();
     let kick_drum = bass_drum_score();
     let hi_hat = closed_hi_hat_cymbal_score();
