@@ -4,7 +4,7 @@ use std::{
 };
 
 const DEFAULT_BPM: f64 = 123.0;
-const ABSOLUTE_TIME_BPM: f64 = 124.0;
+const ABSOLUTE_TIME_BPM: f64 = 123.0;
 const DEFAULT_BEATS_PER_BAR: u32 = 4;
 const DEFAULT_BEAT_UNIT: u32 = 4;
 
