@@ -3,8 +3,8 @@ use std::{f32::consts::TAU, sync::Arc, time::Duration};
 use crate::audio::{AudioHandle, PlayRequest};
 
 use super::{
-    amplitude_gain, pitch_hz_list,
-    synthesis::{duration_to_frames, hash_noise, saw, sine, smoothstep, SAMPLE_RATE},
+    amplitude_gain,
+    synthesis::{duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, SAMPLE_RATE},
     Error, Expression, Instrument, Note,
 };
 
@@ -39,7 +39,7 @@ impl Instrument for Vocals {
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
         let (pcm, gain, playback_rate) = {
-            let note_for_synth = note.clone();
+            let note_for_synth = note;
             tokio::task::spawn_blocking(move || synthesize_vocals(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
@@ -164,11 +164,7 @@ fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLa
 fn synthesize_vocals(note: &Note<VocalsArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
-    let pitches_hz = pitch_hz_list(note, 67)
-        .into_iter()
-        .map(|hz| hz.clamp(85.0, 1_300.0))
-        .collect::<Vec<_>>();
-    let voice_count = pitches_hz.len() as f32;
+    let base_hz = midi_to_hz(note.n_midi).clamp(85.0, 1_300.0);
     let velocity = note.velocity.clamp(0.0, 1.0);
     let expression = note.expression.unwrap_or(Expression {
         bend: 0.0,
@@ -179,12 +175,7 @@ fn synthesize_vocals(note: &Note<VocalsArticulation>) -> (Arc<[f32]>, f32, f32) 
     for i in 0..frame_count {
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
-        let sample = pitches_hz
-            .iter()
-            .copied()
-            .map(|base_hz| articulation_sample(note.articulation, base_hz, phase, t, expression))
-            .sum::<f32>()
-            / voice_count;
+        let sample = articulation_sample(note.articulation, base_hz, phase, t, expression);
         let env = articulation_envelope(note.articulation, phase);
         pcm.push((sample * env * velocity).clamp(-1.0, 1.0));
     }

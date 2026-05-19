@@ -2576,7 +2576,7 @@ pub fn backup_vocals_score() -> Vec<Note<LeadGuitarArticulation>> {
     SCORE
         .iter()
         .map(|event| Note {
-            n_midi: vec![event.n_midi],
+            n_midi: event.n_midi,
             duration: ticks_to_duration(event.duration_tick),
             velocity: event.velocity as f32 / 127.0,
             amplitude_multiplier: 0.5,

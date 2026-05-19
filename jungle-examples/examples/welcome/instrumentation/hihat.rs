@@ -38,7 +38,7 @@ impl Instrument for HiHat {
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
         let (pcm, gain, playback_rate) = {
-            let note_for_synth = note.clone();
+            let note_for_synth = note;
             tokio::task::spawn_blocking(move || synthesize_hihat(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
@@ -57,12 +57,7 @@ fn synthesize_hihat(note: &Note<HiHatArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let velocity = note.velocity.clamp(0.0, 1.0);
-    let midi_center = if note.n_midi.is_empty() {
-        46.0
-    } else {
-        note.n_midi.iter().map(|&m| m as f32).sum::<f32>() / note.n_midi.len() as f32
-    };
-    let pitch_bias = ((midi_center - 46.0) / 10.0).clamp(-0.35, 0.35);
+    let pitch_bias = ((note.n_midi as f32 - 46.0) / 10.0).clamp(-0.35, 0.35);
 
     let mut pcm = Vec::with_capacity(frame_count);
     for i in 0..frame_count {

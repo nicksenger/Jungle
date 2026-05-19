@@ -3,8 +3,10 @@ use std::{sync::Arc, time::Duration};
 use crate::audio::{AudioHandle, PlayRequest};
 
 use super::{
-    amplitude_gain, pitch_hz_list,
-    synthesis::{duration_to_frames, hash_noise, sine, smoothstep, triangle, SAMPLE_RATE},
+    amplitude_gain,
+    synthesis::{
+        duration_to_frames, hash_noise, midi_to_hz, sine, smoothstep, triangle, SAMPLE_RATE,
+    },
     Error, Instrument, Note,
 };
 
@@ -39,7 +41,7 @@ impl Instrument for SnareDrum {
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
         let (pcm, mut gain, mut playback_rate) = {
-            let note_for_synth = note.clone();
+            let note_for_synth = note;
             tokio::task::spawn_blocking(move || synthesize_snare_drum(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
@@ -82,11 +84,7 @@ fn synthesize_snare_drum(note: &Note<SnareDrumArticulation>) -> (Arc<[f32]>, f32
     let articulation = resolve_articulation(note);
     let duration = articulation_duration(note.duration, articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
-    let pitches_hz = pitch_hz_list(note, 38)
-        .into_iter()
-        .map(|hz| hz.clamp(145.0, 262.0))
-        .collect::<Vec<_>>();
-    let body_hz = pitches_hz.iter().sum::<f32>() / pitches_hz.len() as f32;
+    let body_hz = midi_to_hz(note.n_midi).clamp(145.0, 262.0);
     let velocity = note.velocity.clamp(0.0, 1.0).powf(0.55);
 
     let mut pcm = Vec::with_capacity(frame_count);

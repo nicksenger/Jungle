@@ -41,7 +41,7 @@ impl Instrument for RhythmGuitar {
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
         let (pcm, gain, playback_rate) = {
-            let note_for_synth = note.clone();
+            let note_for_synth = note;
             tokio::task::spawn_blocking(move || synthesize_rhythm_guitar(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
@@ -59,24 +59,13 @@ impl Instrument for RhythmGuitar {
 fn synthesize_rhythm_guitar(note: &Note<RhythmGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
-    let midi_notes = if note.n_midi.is_empty() {
-        vec![52]
-    } else {
-        note.n_midi.clone()
-    };
-    let pitches_hz = midi_notes
-        .iter()
-        .copied()
-        .map(midi_to_hz)
-        .map(|hz| hz.max(70.0))
-        .collect::<Vec<_>>();
-    let voice_count = pitches_hz.len() as f32;
+    let root_hz = midi_to_hz(note.n_midi).max(70.0);
     let velocity = note.velocity.clamp(0.0, 1.0);
     let expression = note.expression.unwrap_or(super::Expression {
         bend: 0.0,
         vibrato: 0.0,
     });
-    let groove = groove_shape(note.offset, &midi_notes);
+    let groove = groove_shape(note.offset, note.n_midi);
     let tone = articulation_tone(note.articulation, groove);
 
     let mut pcm = Vec::with_capacity(frame_count);
@@ -88,16 +77,8 @@ fn synthesize_rhythm_guitar(note: &Note<RhythmGuitarArticulation>) -> (Arc<[f32]
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
 
-        let picked = pitches_hz
-            .iter()
-            .copied()
-            .map(|root_hz| {
-                let raw =
-                    articulation_sample(note.articulation, root_hz, phase, t, expression, groove);
-                raw + pick_attack(root_hz, phase, t, tone.pick_amount, groove)
-            })
-            .sum::<f32>()
-            / voice_count;
+        let raw = articulation_sample(note.articulation, root_hz, phase, t, expression, groove);
+        let picked = raw + pick_attack(root_hz, phase, t, tone.pick_amount, groove);
         let env = articulation_envelope(note.articulation, phase);
 
         let driven = amp_distortion(picked * env * tone.pre_gain, tone.drive);
@@ -120,13 +101,12 @@ struct GrooveShape {
     amp_jitter: f32,
 }
 
-fn groove_shape(offset: Duration, n_midi: &[u8]) -> GrooveShape {
+fn groove_shape(offset: Duration, n_midi: u8) -> GrooveShape {
     let micros = offset.as_micros() as f32;
-    let n_midi_center = n_midi.iter().map(|&note| note as f32).sum::<f32>() / n_midi.len() as f32;
     let stroke_clock =
-        smoothstep((((micros * 0.000_015) + n_midi_center * 0.01).sin() + 1.0) * 0.5);
+        smoothstep((((micros * 0.000_015) + n_midi as f32 * 0.01).sin() + 1.0) * 0.5);
     let downstroke = 0.82 + stroke_clock * 0.36;
-    let amp_jitter = hash_noise(micros * 0.000_03 + n_midi_center * 0.13) * 0.08;
+    let amp_jitter = hash_noise(micros * 0.000_03 + n_midi as f32 * 0.13) * 0.08;
     GrooveShape {
         downstroke,
         amp_jitter,

@@ -325,14 +325,14 @@ async fn play_with_retry<I>(
 ) -> Result<(), InstrumentError>
 where
     I: Instrument,
-    I::Articulation: Clone,
+    I::Articulation: Copy,
 {
     note.offset = metronome_sync.synchronize(note.offset).await;
 
     // Submitting a dense score can temporarily saturate the mixer queue.
     // Retry with a brief backoff instead of dropping notes.
     loop {
-        match instrument.play(note.clone()).await {
+        match instrument.play(note).await {
             Ok(()) => return Ok(()),
             Err(InstrumentError::Submission) => tokio::time::sleep(Duration::from_millis(1)).await,
             Err(err) => return Err(err),
