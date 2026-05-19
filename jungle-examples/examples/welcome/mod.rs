@@ -2,8 +2,8 @@ mod animals;
 mod assets;
 mod audio;
 mod effects;
-mod flow;
 mod instrumentation;
+mod metronome;
 mod score;
 mod ui;
 
@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use crate::{
     audio::{AudioEngine, AudioHandle},
-    flow::{Metronome, MetronomeSync},
     instrumentation::{
         BackupVocals, BackupVocalsArticulation, Bass, BassArticulation, Cymbal, CymbalArticulation,
         Error as InstrumentError, HiHat, HiHatArticulation, Instrument, KickDrum,
@@ -19,6 +18,7 @@ use crate::{
         RhythmGuitarArticulation, SnareDrum, SnareDrumArticulation, Toms, TomsArticulation, Vocals,
         VocalsArticulation,
     },
+    metronome::{Metronome, MetronomeSync},
     score::{
         backup_vocals_score, bass_drum_score, bass_guitar_score, closed_hi_hat_cymbal_score,
         crash_cymbal_score, lead_guitar_score, rhythm_guitar_score, snare_drum_score,
