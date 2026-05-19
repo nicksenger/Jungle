@@ -2,29 +2,28 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-#[allow(dead_code)]
-mod bass;
-#[allow(dead_code)]
 mod backup_vocals;
-#[allow(dead_code)]
+mod bass;
 mod cymbal;
-#[allow(dead_code)]
 mod hihat;
-#[allow(dead_code)]
 mod kick_drum;
 mod lead_guitar;
-#[allow(dead_code)]
 mod rhythm_guitar;
-#[allow(dead_code)]
 mod snare_drum;
-#[allow(dead_code)]
 mod synthesis;
-#[allow(dead_code)]
 mod toms;
-#[allow(dead_code)]
 mod vocals;
 
+pub use backup_vocals::{BackupVocals, BackupVocalsArticulation};
+pub use bass::{Bass, BassArticulation};
+pub use cymbal::{Cymbal, CymbalArticulation};
+pub use hihat::{HiHat, HiHatArticulation};
+pub use kick_drum::{KickDrum, KickDrumArticulation};
 pub use lead_guitar::{LeadGuitar, LeadGuitarArticulation};
+pub use rhythm_guitar::{RhythmGuitar, RhythmGuitarArticulation};
+pub use snare_drum::{SnareDrum, SnareDrumArticulation};
+pub use toms::{Toms, TomsArticulation};
+pub use vocals::{Vocals, VocalsArticulation};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
