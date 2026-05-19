@@ -66,14 +66,15 @@ fn synthesize_hihat(note: &Note<HiHatArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let velocity = note.velocity.clamp(0.0, 1.0);
+    let pitch_bias = ((note.n_midi as f32 - 46.0) / 10.0).clamp(-0.35, 0.35);
 
     let mut pcm = Vec::with_capacity(frame_count);
     for i in 0..frame_count {
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
-        let sample = articulation_sample(note.articulation, phase, t);
-        let env = articulation_envelope(note.articulation, phase);
-        pcm.push((sample * env * velocity).clamp(-1.0, 1.0));
+        let sample = articulation_sample(note.articulation, phase, t, velocity, pitch_bias);
+        let env = articulation_envelope(note.articulation, phase, velocity);
+        pcm.push((sample * env).clamp(-1.0, 1.0));
     }
 
     let (gain, playback_rate) = articulation_output_shape(note.articulation);
@@ -82,60 +83,82 @@ fn synthesize_hihat(note: &Note<HiHatArticulation>) -> (Arc<[f32]>, f32, f32) {
 
 fn articulation_duration(base: Duration, articulation: HiHatArticulation) -> Duration {
     let scale = match articulation {
-        HiHatArticulation::ClosedTip => 0.14,
-        HiHatArticulation::ClosedEdge => 0.2,
-        HiHatArticulation::HalfOpen => 0.45,
-        HiHatArticulation::FullOpen => 0.9,
-        HiHatArticulation::FootSplash => 0.24,
+        HiHatArticulation::ClosedTip => 0.42,
+        HiHatArticulation::ClosedEdge => 0.54,
+        HiHatArticulation::HalfOpen => 0.78,
+        HiHatArticulation::FullOpen => 1.25,
+        HiHatArticulation::FootSplash => 0.32,
     };
-    Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.02))
+    Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.025))
 }
 
 fn articulation_output_shape(articulation: HiHatArticulation) -> (f32, f32) {
     match articulation {
-        HiHatArticulation::ClosedTip => (0.62, 1.0),
-        HiHatArticulation::ClosedEdge => (0.68, 1.0),
-        HiHatArticulation::HalfOpen => (0.76, 1.0),
-        HiHatArticulation::FullOpen => (0.84, 1.0),
-        HiHatArticulation::FootSplash => (0.58, 1.0),
+        HiHatArticulation::ClosedTip => (0.72, 1.0),
+        HiHatArticulation::ClosedEdge => (0.78, 1.0),
+        HiHatArticulation::HalfOpen => (0.82, 1.0),
+        HiHatArticulation::FullOpen => (0.88, 1.0),
+        HiHatArticulation::FootSplash => (0.64, 1.0),
     }
 }
 
-fn articulation_sample(articulation: HiHatArticulation, phase: f32, t: f32) -> f32 {
-    let bright = hash_noise(t * 22_000.0);
-    let metallic = triangle(4_500.0, t) * 0.15 + triangle(6_800.0, t) * 0.1;
+fn articulation_sample(
+    articulation: HiHatArticulation,
+    phase: f32,
+    t: f32,
+    velocity: f32,
+    pitch_bias: f32,
+) -> f32 {
+    let tilt = 1.0 + pitch_bias * 0.08;
+    let attack_focus = 1.0 - smoothstep((phase / 0.16).clamp(0.0, 1.0));
+    let stick = hash_noise(t * 34_000.0) * (0.16 + 0.44 * velocity) * attack_focus;
+    let bright = hash_noise(t * 21_500.0) * (0.5 + 0.22 * velocity);
+    let hiss = hash_noise(t * 11_400.0) * (0.22 + 0.16 * smoothstep(phase * 1.15));
+    let metallic = triangle(6_900.0 * tilt, t) * 0.24
+        + triangle(8_700.0 * tilt, t) * 0.18
+        + triangle(11_400.0 * tilt, t) * 0.12;
 
     match articulation {
-        HiHatArticulation::ClosedTip => (bright * 0.7 + metallic * 0.3) * (1.0 - phase * 0.75),
+        HiHatArticulation::ClosedTip => {
+            let bark = 1.0 - smoothstep((phase / 0.58).clamp(0.0, 1.0));
+            (bright * 0.54 + metallic * 0.6 + hiss * 0.26 + stick * 0.68) * bark
+        }
         HiHatArticulation::ClosedEdge => {
-            (bright * 0.78 + metallic * 0.38).tanh() * (1.0 - phase * 0.6)
+            let lower = triangle(4_800.0 * tilt, t) * 0.18 + triangle(5_900.0 * tilt, t) * 0.12;
+            let bark = 1.0 - smoothstep((phase / 0.7).clamp(0.0, 1.0));
+            (bright * 0.5 + metallic * 0.62 + lower * 0.45 + stick * 0.72) * bark
         }
         HiHatArticulation::HalfOpen => {
-            let sizzle = hash_noise(t * 13_000.0) * (0.4 + 0.4 * (phase * 4.0).sin().abs());
-            bright * 0.55 + metallic * 0.24 + sizzle * 0.38
+            let sizzle = hash_noise(t * 14_500.0) * (0.34 + 0.3 * (phase * 4.8).sin().abs());
+            bright * 0.46 + metallic * 0.3 + hiss * 0.34 + sizzle + stick * 0.5
         }
         HiHatArticulation::FullOpen => {
-            let wash = hash_noise(t * 10_500.0) * (0.55 + 0.25 * smoothstep(phase * 1.3));
-            (bright * 0.42 + metallic * 0.2 + wash).tanh()
+            let wash = hash_noise(t * 9_600.0) * (0.45 + 0.3 * smoothstep(phase * 1.25));
+            (bright * 0.38 + metallic * 0.24 + hiss * 0.42 + wash + stick * 0.36).tanh()
         }
         HiHatArticulation::FootSplash => {
-            let chick = hash_noise(t * 18_000.0) * (1.0 - smoothstep(phase * 6.0));
+            let chick = hash_noise(t * 17_000.0) * (1.0 - smoothstep(phase * 4.2));
             let pedal = triangle(1_250.0, t) * 0.12;
-            chick * 0.6 + pedal
+            (chick * 0.72 + hiss * 0.2 + pedal).tanh()
         }
     }
 }
 
-fn articulation_envelope(articulation: HiHatArticulation, phase: f32) -> f32 {
-    let attack = 0.004;
+fn articulation_envelope(articulation: HiHatArticulation, phase: f32, velocity: f32) -> f32 {
+    let attack = 0.002;
     let decay = match articulation {
-        HiHatArticulation::ClosedTip => 1.8,
-        HiHatArticulation::ClosedEdge => 1.5,
-        HiHatArticulation::HalfOpen => 0.8,
-        HiHatArticulation::FullOpen => 0.42,
-        HiHatArticulation::FootSplash => 1.2,
+        HiHatArticulation::ClosedTip => 1.05 - velocity * 0.14,
+        HiHatArticulation::ClosedEdge => 0.92 - velocity * 0.12,
+        HiHatArticulation::HalfOpen => 0.54 - velocity * 0.06,
+        HiHatArticulation::FullOpen => 0.29,
+        HiHatArticulation::FootSplash => 0.82,
+    };
+    let fast_choke = match articulation {
+        HiHatArticulation::ClosedTip => 1.0 - smoothstep((phase / 0.95).clamp(0.0, 1.0)),
+        HiHatArticulation::ClosedEdge => 1.0 - smoothstep((phase / 1.05).clamp(0.0, 1.0)),
+        _ => 1.0,
     };
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
     let decay_env = (-phase * decay * 5.0).exp();
-    (attack_env * decay_env).clamp(0.0, 1.0)
+    (attack_env * decay_env * fast_choke).clamp(0.0, 1.0)
 }
