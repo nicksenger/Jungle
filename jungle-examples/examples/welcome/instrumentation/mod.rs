@@ -38,6 +38,8 @@ pub struct Note<Articulation> {
     pub n_midi: u8,
     /// `0.5` is neutral loudness. Lower values are quieter, higher values are louder.
     pub amplitude_multiplier: f32,
+    /// `0.5` is center pan. `0.0` is full left, `1.0` is full right.
+    pub pan: f32,
     pub duration: Duration,
     pub velocity: f32,
     pub expression: Option<Expression>,

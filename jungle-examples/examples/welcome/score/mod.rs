@@ -79,6 +79,7 @@ pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> Note<LeadGuitarArti
         duration: Duration::from_secs_f32(note.beats * seconds_per_beat),
         velocity: 37.0 / 127.0,
         amplitude_multiplier: 0.5,
+        pan: 0.5,
         expression: None,
         offset,
         articulation: LeadGuitarArticulation::Sustained,

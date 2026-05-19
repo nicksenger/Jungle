@@ -349,6 +349,7 @@ fn with_articulation<Articulation>(
     Note {
         n_midi: note.n_midi,
         amplitude_multiplier: note.amplitude_multiplier,
+        pan: note.pan,
         duration: note.duration,
         velocity: note.velocity,
         expression: note.expression,
