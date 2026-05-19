@@ -26,22 +26,26 @@ use crate::{
     },
 };
 
+const DEFAULT_BPM: f32 = 123.0;
+const BEATS_PER_BAR: u32 = 4;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let bpm = parse_bpm_arg()?;
     let _viewer = jungle_viewer::JungleViewerBuilder::new().title("Welcome Example");
     let audio_engine = AudioEngine::start_default().await?;
-    let metronome = Metronome::spawn(Duration::from_millis(2));
+    let metronome = Metronome::spawn(bpm, BEATS_PER_BAR);
 
-    let lead_guitar = lead_guitar_score();
-    let rhythm_guitar = rhythm_guitar_score();
-    let backup_vocals = backup_vocals_score();
-    let vocals = vocals_score();
-    let bass = bass_guitar_score();
-    let kick_drum = bass_drum_score();
-    let hi_hat = closed_hi_hat_cymbal_score();
-    let cymbal = crash_cymbal_score();
-    let snare_drum = snare_drum_score();
-    let toms = toms_snare_score();
+    let lead_guitar = lead_guitar_score(bpm);
+    let rhythm_guitar = rhythm_guitar_score(bpm);
+    let backup_vocals = backup_vocals_score(bpm);
+    let vocals = vocals_score(bpm);
+    let bass = bass_guitar_score(bpm);
+    let kick_drum = bass_drum_score(bpm);
+    let hi_hat = closed_hi_hat_cymbal_score(bpm);
+    let cymbal = crash_cymbal_score(bpm);
+    let snare_drum = snare_drum_score(bpm);
+    let toms = toms_snare_score(bpm);
 
     let total_duration = [
         lead_guitar.as_slice(),
@@ -118,6 +122,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tokio::time::sleep(total_duration.saturating_add(Duration::from_secs(1))).await;
     Ok(())
+}
+
+fn parse_bpm_arg() -> Result<f32, Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
+    let Some(arg) = args.next() else {
+        return Ok(DEFAULT_BPM);
+    };
+
+    let bpm = arg
+        .parse::<f32>()
+        .map_err(|_| format!("Invalid BPM argument: {arg}"))?;
+    if !bpm.is_finite() || bpm <= 0.0 {
+        return Err(format!("BPM must be a positive finite number, got: {arg}").into());
+    }
+
+    Ok(bpm)
 }
 
 fn score_duration(notes: &[Note<LeadGuitarArticulation>]) -> Duration {

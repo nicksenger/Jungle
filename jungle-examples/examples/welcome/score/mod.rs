@@ -1,3 +1,7 @@
+use std::time::Duration;
+
+use crate::instrumentation::{LeadGuitarArticulation, Note};
+
 mod backup_vocals;
 mod bass_drum;
 mod bass_guitar;
@@ -19,6 +23,8 @@ pub use rhythm_guitar::rhythm_guitar_score;
 pub use snare_drum::snare_drum_score;
 pub use toms_snare::toms_snare_score;
 pub use vocals::vocals_score;
+
+const BEATS_PER_BAR: f32 = 4.0;
 
 /// Musical duration bucket for notes extracted from tick-based score events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +58,29 @@ pub struct GridNote {
     pub kind: Kind,
     pub beats: f32,
     pub d_sec: f32,
-    pub t_sec: f32,
+    t_sec: f32,
     pub position: Position,
+}
+
+pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> Note<LeadGuitarArticulation> {
+    let seconds_per_beat = 60.0_f32 / bpm;
+    let beat_offset = if note.position.beat_offset_den == 0 {
+        0.0
+    } else {
+        note.position.beat_offset_num as f32 / note.position.beat_offset_den as f32
+    };
+    let absolute_beats = ((note.position.bar - 1) as f32 * BEATS_PER_BAR)
+        + (note.position.beat - 1) as f32
+        + beat_offset;
+    let offset = Duration::from_secs_f32(absolute_beats * seconds_per_beat);
+
+    Note {
+        n_midi: note.midi,
+        duration: Duration::from_secs_f32(note.beats * seconds_per_beat),
+        velocity: 37.0 / 127.0,
+        amplitude_multiplier: 0.5,
+        expression: None,
+        offset,
+        articulation: LeadGuitarArticulation::Sustained,
+    }
 }

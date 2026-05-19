@@ -1,6 +1,4 @@
-use std::time::Duration;
-
-use super::{GridNote, Kind, Position};
+use super::{grid_note_to_note, GridNote, Kind, Position};
 use crate::instrumentation::{LeadGuitarArticulation, Note};
 
 const INTRO: &[GridNote] = &[
@@ -11822,23 +11820,11 @@ const SECTIONS: [&[GridNote]; 12] = [
     FINALE,
 ];
 
-pub fn closed_hi_hat_cymbal_score() -> Vec<Note<LeadGuitarArticulation>> {
+pub fn closed_hi_hat_cymbal_score(bpm: f32) -> Vec<Note<LeadGuitarArticulation>> {
     SECTIONS
         .into_iter()
         .flatten()
         .copied()
-        .map(grid_note_to_note)
+        .map(|note| grid_note_to_note(note, bpm))
         .collect()
-}
-
-fn grid_note_to_note(note: GridNote) -> Note<LeadGuitarArticulation> {
-    Note {
-        n_midi: note.midi,
-        duration: Duration::from_secs_f32(note.d_sec),
-        velocity: 37.0 / 127.0,
-        amplitude_multiplier: 0.5,
-        expression: None,
-        offset: Duration::from_secs_f32(note.t_sec),
-        articulation: LeadGuitarArticulation::Sustained,
-    }
 }

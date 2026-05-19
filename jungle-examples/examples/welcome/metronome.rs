@@ -7,20 +7,30 @@ use tokio::{
 
 const BROADCAST_CAPACITY: usize = 64;
 
+#[derive(Debug, Clone, Copy)]
+pub struct BeatEvent {
+    pub timestamp: Instant,
+    pub bar: u32,
+    pub beat: u32,
+}
+
 #[derive(Clone)]
 pub struct Metronome {
     started_at: Instant,
-    tick: Duration,
-    tick_tx: broadcast::Sender<Instant>,
+    beat: Duration,
+    beats_per_bar: u32,
+    beat_tx: broadcast::Sender<BeatEvent>,
 }
 
 impl Metronome {
-    pub fn spawn(tick: Duration) -> Self {
-        let (tick_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
+    pub fn spawn(bpm: f32, beats_per_bar: u32) -> Self {
+        let (beat_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
+        let beat = beat_duration(bpm);
         let metronome = Self {
             started_at: Instant::now(),
-            tick,
-            tick_tx,
+            beat,
+            beats_per_bar: beats_per_bar.max(1),
+            beat_tx,
         };
         metronome.start_task();
         metronome
@@ -29,20 +39,32 @@ impl Metronome {
     pub fn subscribe(&self) -> MetronomeSync {
         MetronomeSync {
             started_at: self.started_at,
-            tick: self.tick,
-            tick_rx: self.tick_tx.subscribe(),
+            beat: self.beat,
+            beat_rx: self.beat_tx.subscribe(),
+            last_beat_timestamp: None,
+            last_bar: 0,
+            last_beat_in_bar: 0,
         }
     }
 
     fn start_task(&self) {
-        let tick = self.tick;
-        let tick_tx = self.tick_tx.clone();
+        let beat = self.beat;
+        let beats_per_bar = self.beats_per_bar;
+        let beat_tx = self.beat_tx.clone();
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tick);
+            let mut interval = tokio::time::interval(beat);
             interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            let mut beat_index: u64 = 0;
             loop {
                 interval.tick().await;
-                let _ = tick_tx.send(Instant::now());
+                let beat_in_bar = ((beat_index % beats_per_bar as u64) + 1) as u32;
+                let bar = (beat_index / beats_per_bar as u64 + 1) as u32;
+                beat_index = beat_index.saturating_add(1);
+                let _ = beat_tx.send(BeatEvent {
+                    timestamp: Instant::now(),
+                    bar,
+                    beat: beat_in_bar,
+                });
             }
         });
     }
@@ -50,8 +72,11 @@ impl Metronome {
 
 pub struct MetronomeSync {
     started_at: Instant,
-    tick: Duration,
-    tick_rx: broadcast::Receiver<Instant>,
+    beat: Duration,
+    beat_rx: broadcast::Receiver<BeatEvent>,
+    last_beat_timestamp: Option<Instant>,
+    last_bar: u32,
+    last_beat_in_bar: u32,
 }
 
 impl MetronomeSync {
@@ -61,20 +86,38 @@ impl MetronomeSync {
         }
 
         loop {
-            let elapsed = self.started_at.elapsed();
+            let elapsed = self
+                .last_beat_timestamp
+                .map(|timestamp| timestamp.saturating_duration_since(self.started_at))
+                .unwrap_or_else(|| self.started_at.elapsed());
             if elapsed >= target_offset {
                 return Duration::ZERO;
             }
 
             let remaining = target_offset - elapsed;
-            if remaining <= self.tick {
+            if remaining <= self.beat {
                 return remaining;
             }
 
-            match self.tick_rx.recv().await {
-                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            match self.beat_rx.recv().await {
+                Ok(event) => {
+                    self.last_beat_timestamp = Some(event.timestamp);
+                    self.last_bar = event.bar;
+                    self.last_beat_in_bar = event.beat;
+                    continue;
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(broadcast::error::RecvError::Closed) => return remaining,
             }
         }
     }
+}
+
+fn beat_duration(bpm: f32) -> Duration {
+    let sanitized_bpm = if bpm.is_finite() && bpm > 0.0 {
+        bpm
+    } else {
+        123.0
+    };
+    Duration::from_secs_f32(60.0 / sanitized_bpm)
 }
