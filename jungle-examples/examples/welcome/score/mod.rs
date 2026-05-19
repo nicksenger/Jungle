@@ -48,12 +48,10 @@ pub struct Position {
 /// Extracted note timing data from the legacy absolute-tick score representation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GridNote {
-    pub score: &'static str,
     pub midi: u8,
-    pub start_tick: u32,
-    pub duration_tick: u32,
     pub kind: Kind,
     pub beats: f32,
-    pub seconds: f32,
+    pub d_sec: f32,
+    pub t_sec: f32,
     pub position: Position,
 }
