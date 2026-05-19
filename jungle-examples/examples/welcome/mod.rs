@@ -9,7 +9,12 @@ mod ui;
 
 use std::time::Duration;
 
+use jungle_sdk::core::JungleWorker;
+use jungle_sdk::prelude::*;
+use jungle_sdk::{JungleClient, LocalClient};
+
 use crate::{
+    animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
     audio::{AudioEngine, AudioHandle},
     instrumentation::{
         Bass, BassArticulation, Cymbal, CymbalArticulation, ElectricGuitar,
@@ -28,10 +33,44 @@ use crate::{
 const DEFAULT_BPM: f32 = 123.0;
 const BEATS_PER_BAR: u32 = 4;
 
+#[derive(Animals)]
+struct WelcomeAnimals(
+    LeadVocalist,
+    LeadGuitarist,
+    RhythmGuitarist,
+    BassAnimal,
+    Drums,
+);
+
+struct WelcomeEcosystem;
+impl Ecosystem for WelcomeEcosystem {
+    const NAME: &'static str = "welcome";
+    type Animals = WelcomeAnimals;
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bpm = parse_bpm_arg()?;
-    let _viewer = jungle_viewer::JungleViewerBuilder::new().title("Welcome Example");
+    let client = LocalClient::builder().build().await?;
+    let worker_client = client.clone();
+    let _worker_task = tokio::spawn(async move {
+        let worker = JungleWorker::new(WelcomeEcosystem, worker_client);
+        let _ = worker.spawn().await;
+    });
+
+    let seed = postcard::to_allocvec(&())?;
+    let journeys = ui::JourneyIds {
+        lead_vocalist: client.start_journey::<LeadVocalist>(seed.clone()).await?,
+        lead_guitarist: client.start_journey::<LeadGuitarist>(seed.clone()).await?,
+        rhythm_guitarist: client
+            .start_journey::<RhythmGuitarist>(seed.clone())
+            .await?,
+        bass: client.start_journey::<BassAnimal>(seed.clone()).await?,
+        drums: client.start_journey::<Drums>(seed).await?,
+    };
+    let ui_shutdown = ui::ShutdownFlag::new();
+    let ui_thread = ui::spawn_ui(client.clone(), journeys, ui_shutdown.clone());
+
     let audio_engine = AudioEngine::start_default().await?;
     let metronome = Metronome::spawn(bpm, BEATS_PER_BAR);
 
@@ -120,6 +159,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     tokio::time::sleep(total_duration.saturating_add(Duration::from_secs(1))).await;
+    ui_shutdown.request_shutdown();
+    let _ = ui_thread.join();
     Ok(())
 }
 

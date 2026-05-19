@@ -246,6 +246,36 @@ impl JungleViewerBuilder {
         )
     }
 
+    pub fn eject_animal_with_theme<A, T, Scope>(self, theme: T) -> EjectedViewer<T, Scope>
+    where
+        A: Animal + 'static,
+        A::Journey: JourneyAstSource,
+        T: JunglePanelTheme<Scope, Message = ()>,
+        Scope: 'static,
+    {
+        let ast = <A::Journey as JourneyAstSource>::journey_ast();
+        let journey_name = short_type_name::<A::Journey>();
+        let model = GraphModel::from_ast(ast);
+        EjectedViewer::new(
+            ViewMode::Static {
+                journey_name,
+                model,
+            },
+            theme,
+            self.animation_duration,
+            self.animation_easing,
+            iced_sugiyama::Id::new(format!("{GRAPH_WIDGET_ID}-{}", Uuid::new_v4())),
+        )
+    }
+
+    pub fn eject_animal<A>(self) -> EjectedViewer<DefaultTheme, AnyAnimal>
+    where
+        A: Animal + 'static,
+        A::Journey: JourneyAstSource,
+    {
+        self.eject_animal_with_theme::<A, _, AnyAnimal>(DefaultTheme)
+    }
+
     pub fn view_live_animal<A, C>(self, client: C, journey_id: Uuid) -> iced::Result
     where
         A: Animal + 'static,
@@ -282,6 +312,51 @@ impl JungleViewerBuilder {
             },
             theme,
         )
+    }
+
+    pub fn eject_live_animal_with_theme<A, C, T, Scope>(
+        self,
+        client: C,
+        journey_id: Uuid,
+        theme: T,
+    ) -> EjectedViewer<T, Scope>
+    where
+        A: Animal + 'static,
+        A::Journey: JourneyAstSource,
+        C: JungleClient + 'static,
+        T: JunglePanelTheme<Scope, Message = ()>,
+        Scope: 'static,
+    {
+        let ast = <A::Journey as JourneyAstSource>::journey_ast();
+        let journey_name = short_type_name::<A::Journey>();
+        let model = GraphModel::from_ast(ast);
+        let client: Arc<dyn JungleClient> = Arc::new(client);
+
+        EjectedViewer::new(
+            ViewMode::Live {
+                journey_name,
+                model,
+                client,
+                journey_id,
+            },
+            theme,
+            self.animation_duration,
+            self.animation_easing,
+            iced_sugiyama::Id::new(format!("{GRAPH_WIDGET_ID}-{}", Uuid::new_v4())),
+        )
+    }
+
+    pub fn eject_live_animal<A, C>(
+        self,
+        client: C,
+        journey_id: Uuid,
+    ) -> EjectedViewer<DefaultTheme, AnyAnimal>
+    where
+        A: Animal + 'static,
+        A::Journey: JourneyAstSource,
+        C: JungleClient + 'static,
+    {
+        self.eject_live_animal_with_theme::<A, C, _, AnyAnimal>(client, journey_id, DefaultTheme)
     }
 
     fn run<T, Scope>(self, mode: ViewMode, theme: T) -> iced::Result
@@ -336,6 +411,178 @@ where
     C: JungleClient + 'static,
 {
     JungleViewerBuilder::new().view_live_animal::<A, C>(client, journey_id)
+}
+
+#[derive(Debug, Clone)]
+pub enum EjectedViewerMessage {
+    LiveEvent(Result<JourneyUpdateEvent, String>),
+    ApplyLiveEvent(JourneyUpdateEvent),
+    Theme(ViewerEvent<()>),
+    Retry,
+}
+
+pub struct EjectedViewer<T, Scope>
+where
+    T: JunglePanelTheme<Scope, Message = ()>,
+{
+    mode: ViewMode,
+    state: LiveState,
+    live_generation: u64,
+    theme: Arc<T>,
+    theme_state: T::State,
+    animation_duration: Option<Duration>,
+    animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
+    graph_widget_id: iced_sugiyama::Id,
+    _scope: std::marker::PhantomData<Scope>,
+}
+
+impl<T, Scope> EjectedViewer<T, Scope>
+where
+    T: JunglePanelTheme<Scope, Message = ()>,
+{
+    fn new(
+        mode: ViewMode,
+        theme: T,
+        animation_duration: Option<Duration>,
+        animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
+        graph_widget_id: iced_sugiyama::Id,
+    ) -> Self {
+        let state = match &mode {
+            ViewMode::Live { .. } => LiveState::Loading,
+            ViewMode::Static { .. } => LiveState::Idle,
+        };
+        let theme = Arc::new(theme);
+        let theme_state = theme.init();
+
+        Self {
+            mode,
+            state,
+            live_generation: 0,
+            theme,
+            theme_state,
+            animation_duration,
+            animation_easing,
+            graph_widget_id,
+            _scope: std::marker::PhantomData,
+        }
+    }
+
+    pub fn journey_name(&self) -> &str {
+        match &self.mode {
+            ViewMode::Static { journey_name, .. } | ViewMode::Live { journey_name, .. } => {
+                journey_name
+            }
+        }
+    }
+
+    pub fn retry(&mut self) {
+        if matches!(self.mode, ViewMode::Live { .. }) {
+            self.live_generation = self.live_generation.saturating_add(1);
+            self.state = LiveState::Loading;
+        }
+    }
+
+    pub fn update(&mut self, message: EjectedViewerMessage) -> Task<EjectedViewerMessage> {
+        match message {
+            EjectedViewerMessage::LiveEvent(result) => {
+                match result {
+                    Ok(update) => {
+                        return iced_sugiyama::invalidate::<EjectedViewerMessage>(
+                            self.graph_widget_id.clone(),
+                        )
+                        .chain(Task::done(EjectedViewerMessage::ApplyLiveEvent(update)));
+                    }
+                    Err(error) => {
+                        self.state = LiveState::Error(error);
+                    }
+                }
+                Task::none()
+            }
+            EjectedViewerMessage::ApplyLiveEvent(update) => {
+                let theme_task = self
+                    .theme
+                    .update(
+                        &mut self.theme_state,
+                        ViewerEvent::JourneyUpdate(update.clone()),
+                    )
+                    .map(EjectedViewerMessage::Theme);
+                let data = match &mut self.state {
+                    LiveState::Loaded(data) => data,
+                    _ => {
+                        self.state = LiveState::Loaded(LiveData::default());
+                        match &mut self.state {
+                            LiveState::Loaded(data) => data,
+                            _ => unreachable!("state was set to loaded"),
+                        }
+                    }
+                };
+                let _ = data.apply_update(update);
+                theme_task
+            }
+            EjectedViewerMessage::Theme(event) => {
+                let theme_task = self
+                    .theme
+                    .update(&mut self.theme_state, event)
+                    .map(EjectedViewerMessage::Theme);
+                Task::batch(vec![
+                    theme_task,
+                    iced_sugiyama::force_review::<EjectedViewerMessage>(
+                        self.graph_widget_id.clone(),
+                    ),
+                ])
+            }
+            EjectedViewerMessage::Retry => {
+                self.retry();
+                Task::none()
+            }
+        }
+    }
+
+    pub fn subscription(&self) -> Subscription<EjectedViewerMessage> {
+        match &self.mode {
+            ViewMode::Live {
+                client, journey_id, ..
+            } => Subscription::run_with(
+                LiveSubscription {
+                    client: client.clone(),
+                    journey_id: *journey_id,
+                    generation: self.live_generation,
+                },
+                live_updates_stream_for_panel,
+            ),
+            ViewMode::Static { .. } => Subscription::none(),
+        }
+    }
+
+    pub fn view(&self) -> Element<'_, EjectedViewerMessage> {
+        let model = match &self.mode {
+            ViewMode::Static { model, .. } | ViewMode::Live { model, .. } => model,
+        };
+        let live_data = match (&self.mode, &self.state) {
+            (ViewMode::Live { .. }, LiveState::Loaded(data)) => Some(data),
+            _ => None,
+        };
+
+        graph_panel(
+            model,
+            live_data,
+            self.theme.as_ref(),
+            &self.theme_state,
+            self.animation_duration,
+            self.animation_easing,
+            self.graph_widget_id.clone(),
+        )
+        .map(|message| match message {
+            Message::Theme(event) => EjectedViewerMessage::Theme(event),
+            Message::LiveEvent(result) => EjectedViewerMessage::LiveEvent(result),
+            Message::ApplyLiveEvent(update) => EjectedViewerMessage::ApplyLiveEvent(update),
+            Message::Retry => EjectedViewerMessage::Retry,
+            Message::AppStarted
+            | Message::CaptureView
+            | Message::ViewCaptured(_)
+            | Message::ViewSaved(_) => EjectedViewerMessage::Retry,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -402,6 +649,7 @@ where
     theme_state: T::State,
     animation_duration: Option<Duration>,
     animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
+    graph_widget_id: iced_sugiyama::Id,
     _scope: std::marker::PhantomData<Scope>,
 }
 
@@ -467,6 +715,7 @@ where
                 theme_state,
                 animation_duration,
                 animation_easing,
+                graph_widget_id: iced_sugiyama::Id::new(GRAPH_WIDGET_ID),
                 _scope: std::marker::PhantomData,
             },
             Task::done(Message::AppStarted),
@@ -485,10 +734,8 @@ where
             Message::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
-                        return iced_sugiyama::invalidate::<Message>(iced_sugiyama::Id::new(
-                            GRAPH_WIDGET_ID,
-                        ))
-                        .chain(Task::done(Message::ApplyLiveEvent(update)));
+                        return iced_sugiyama::invalidate::<Message>(self.graph_widget_id.clone())
+                            .chain(Task::done(Message::ApplyLiveEvent(update)));
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -524,7 +771,7 @@ where
                     .map(Message::Theme);
                 Task::batch(vec![
                     theme_task,
-                    iced_sugiyama::force_review::<Message>(iced_sugiyama::Id::new(GRAPH_WIDGET_ID)),
+                    iced_sugiyama::force_review::<Message>(self.graph_widget_id.clone()),
                 ])
             }
             Message::Retry => match &self.mode {
@@ -610,6 +857,7 @@ where
                 &self.theme_state,
                 self.animation_duration,
                 self.animation_easing,
+                self.graph_widget_id.clone(),
             )
         ]
         .height(Length::Fill)
@@ -648,6 +896,27 @@ fn live_updates_stream(config: &LiveSubscription) -> impl Stream<Item = Message>
                 .left_stream(),
             Err(err) => futures::stream::once(async move {
                 Message::LiveEvent(Err(format!("live update stream setup failed: {err}")))
+            })
+            .right_stream(),
+        }
+    })
+    .flatten()
+}
+
+fn live_updates_stream_for_panel(
+    config: &LiveSubscription,
+) -> impl Stream<Item = EjectedViewerMessage> {
+    let client = config.client.clone();
+    let journey_id = config.journey_id;
+    futures::stream::once(async move {
+        match client.subscribe_step_updates(journey_id, None).await {
+            Ok(subscription) => subscription
+                .map(|event| EjectedViewerMessage::LiveEvent(event.map_err(|err| err.to_string())))
+                .left_stream(),
+            Err(err) => futures::stream::once(async move {
+                EjectedViewerMessage::LiveEvent(Err(format!(
+                    "live update stream setup failed: {err}"
+                )))
             })
             .right_stream(),
         }
@@ -848,6 +1117,7 @@ fn graph_panel<'a, T, Scope>(
     theme_state: &'a T::State,
     animation_duration: Option<Duration>,
     animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
+    graph_widget_id: iced_sugiyama::Id,
 ) -> Element<'a, Message>
 where
     T: JunglePanelTheme<Scope, Message = ()>,
@@ -1265,7 +1535,7 @@ where
                 text(format!("node {node_id}")).into()
             },
         )
-        .id(iced_sugiyama::Id::new(GRAPH_WIDGET_ID))
+        .id(graph_widget_id)
         .edge_color(move |ctx| {
             let source_runtime_id = runtime_ids_for_edge_colors
                 .get(&ctx.edge.0)
@@ -1882,7 +2152,7 @@ fn dedup(values: Vec<u32>) -> Vec<u32> {
 }
 
 #[derive(Clone, Copy)]
-struct DefaultTheme;
+pub struct DefaultTheme;
 
 impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     type State = ();
