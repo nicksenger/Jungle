@@ -5,7 +5,6 @@ use crate::audio::{AudioHandle, PlayRequest};
 use super::{
     synthesis::{
         duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, triangle, SAMPLE_RATE,
-        SPAWN_BLOCKING_FRAME_THRESHOLD,
     },
     Error, Expression, Instrument, Note,
 };
@@ -40,13 +39,11 @@ impl Instrument for Bass {
     type Articulation = BassArticulation;
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate) = if should_spawn_blocking(&note) {
+        let (pcm, gain, playback_rate) = {
             let note_for_synth = note;
             tokio::task::spawn_blocking(move || synthesize_bass(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
-        } else {
-            synthesize_bass(&note)
         };
 
         let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
@@ -56,11 +53,6 @@ impl Instrument for Bass {
         request.pan = 0.0;
         self.audio.try_play(request).map_err(|_| Error::Submission)
     }
-}
-
-fn should_spawn_blocking(note: &Note<BassArticulation>) -> bool {
-    let duration = articulation_duration(note.duration, note.articulation);
-    duration_to_frames(duration, SAMPLE_RATE) >= SPAWN_BLOCKING_FRAME_THRESHOLD
 }
 
 fn synthesize_bass(note: &Note<BassArticulation>) -> (Arc<[f32]>, f32, f32) {

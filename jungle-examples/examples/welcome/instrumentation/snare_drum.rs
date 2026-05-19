@@ -5,7 +5,6 @@ use crate::audio::{AudioHandle, PlayRequest};
 use super::{
     synthesis::{
         duration_to_frames, hash_noise, midi_to_hz, sine, smoothstep, triangle, SAMPLE_RATE,
-        SPAWN_BLOCKING_FRAME_THRESHOLD,
     },
     Error, Instrument, Note,
 };
@@ -40,13 +39,11 @@ impl Instrument for SnareDrum {
     type Articulation = SnareDrumArticulation;
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, mut gain, mut playback_rate) = if should_spawn_blocking(&note) {
+        let (pcm, mut gain, mut playback_rate) = {
             let note_for_synth = note;
             tokio::task::spawn_blocking(move || synthesize_snare_drum(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
-        } else {
-            synthesize_snare_drum(&note)
         };
 
         let velocity = note.velocity.clamp(0.0, 1.0);
@@ -60,11 +57,6 @@ impl Instrument for SnareDrum {
         request.pan = 0.08 + (velocity - 0.5) * 0.06;
         self.audio.try_play(request).map_err(|_| Error::Submission)
     }
-}
-
-fn should_spawn_blocking(note: &Note<SnareDrumArticulation>) -> bool {
-    let duration = articulation_duration(note.duration, resolve_articulation(note));
-    duration_to_frames(duration, SAMPLE_RATE) >= SPAWN_BLOCKING_FRAME_THRESHOLD
 }
 
 fn resolve_articulation(note: &Note<SnareDrumArticulation>) -> SnareDrumArticulation {

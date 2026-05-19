@@ -1,7 +1,6 @@
 use std::{f32::consts::TAU, time::Duration};
 
 pub const SAMPLE_RATE: u32 = 48_000;
-pub const SPAWN_BLOCKING_FRAME_THRESHOLD: usize = 8_192;
 
 pub fn duration_to_frames(duration: Duration, sample_rate: u32) -> usize {
     let seconds = duration.as_secs() as usize * sample_rate as usize;

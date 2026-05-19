@@ -5,7 +5,6 @@ use crate::audio::{AudioHandle, PlayRequest};
 use super::{
     synthesis::{
         duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, SAMPLE_RATE,
-        SPAWN_BLOCKING_FRAME_THRESHOLD,
     },
     Error, Expression, Instrument, Note,
 };
@@ -40,13 +39,11 @@ impl Instrument for Vocals {
     type Articulation = VocalsArticulation;
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate) = if should_spawn_blocking(&note) {
+        let (pcm, gain, playback_rate) = {
             let note_for_synth = note;
             tokio::task::spawn_blocking(move || synthesize_vocals(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
-        } else {
-            synthesize_vocals(&note)
         };
 
         for layer in articulation_layers(note.articulation) {
@@ -165,11 +162,6 @@ fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLa
     }
 }
 
-fn should_spawn_blocking(note: &Note<VocalsArticulation>) -> bool {
-    let duration = articulation_duration(note.duration, note.articulation);
-    duration_to_frames(duration, SAMPLE_RATE) >= SPAWN_BLOCKING_FRAME_THRESHOLD
-}
-
 fn synthesize_vocals(note: &Note<VocalsArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
@@ -282,7 +274,7 @@ fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
         VocalsArticulation::SirenScream => 0.84,
         _ => 0.8,
     };
-    let release = match articulation {
+    let release: f32 = match articulation {
         VocalsArticulation::Clean => 0.18,
         VocalsArticulation::GritRasp => 0.15,
         VocalsArticulation::SpokenBreakdown => 0.22,
@@ -290,7 +282,7 @@ fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
         VocalsArticulation::StutterStab => 0.1,
     };
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
-    let release_phase = ((phase - release_start) / release.max(1e-3)).clamp(0.0, 1.0);
+    let release_phase = ((phase - release_start) / release.max(1e-3_f32)).clamp(0.0, 1.0);
     let release_env = 1.0 - smoothstep(release_phase);
     (attack_env * body * release_env).clamp(0.0, 1.0)
 }

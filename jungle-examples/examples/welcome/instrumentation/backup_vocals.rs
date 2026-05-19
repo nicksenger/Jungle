@@ -5,7 +5,6 @@ use crate::audio::{AudioHandle, PlayRequest};
 use super::{
     synthesis::{
         duration_to_frames, hash_noise, midi_to_hz, sine, smoothstep, SAMPLE_RATE,
-        SPAWN_BLOCKING_FRAME_THRESHOLD,
     },
     Error, Instrument, Note,
 };
@@ -34,13 +33,11 @@ impl Instrument for BackupVocals {
     type Articulation = BackupVocalsArticulation;
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate) = if should_spawn_blocking(&note) {
+        let (pcm, gain, playback_rate) = {
             let note_for_synth = note;
             tokio::task::spawn_blocking(move || synthesize_backup_vocals(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
-        } else {
-            synthesize_backup_vocals(&note)
         };
 
         // Layer multiple takes with slight timing/rate offsets to emulate a backing vocal gang.
@@ -142,11 +139,6 @@ fn articulation_layers(articulation: BackupVocalsArticulation) -> &'static [Play
             },
         ],
     }
-}
-
-fn should_spawn_blocking(note: &Note<BackupVocalsArticulation>) -> bool {
-    let duration = articulation_duration(note.duration, note.articulation);
-    duration_to_frames(duration, SAMPLE_RATE) >= SPAWN_BLOCKING_FRAME_THRESHOLD
 }
 
 fn synthesize_backup_vocals(note: &Note<BackupVocalsArticulation>) -> (Arc<[f32]>, f32, f32) {
