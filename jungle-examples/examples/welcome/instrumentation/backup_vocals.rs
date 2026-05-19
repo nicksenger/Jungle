@@ -3,9 +3,8 @@ use std::{sync::Arc, time::Duration};
 use crate::audio::{AudioHandle, PlayRequest};
 
 use super::{
-    synthesis::{
-        duration_to_frames, hash_noise, midi_to_hz, sine, smoothstep, SAMPLE_RATE,
-    },
+    amplitude_gain, pitch_hz_list,
+    synthesis::{duration_to_frames, hash_noise, sine, smoothstep, SAMPLE_RATE},
     Error, Instrument, Note,
 };
 
@@ -34,7 +33,7 @@ impl Instrument for BackupVocals {
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
         let (pcm, gain, playback_rate) = {
-            let note_for_synth = note;
+            let note_for_synth = note.clone();
             tokio::task::spawn_blocking(move || synthesize_backup_vocals(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
@@ -44,7 +43,7 @@ impl Instrument for BackupVocals {
         for layer in articulation_layers(note.articulation) {
             let mut request = PlayRequest::new(Arc::clone(&pcm), 1, SAMPLE_RATE);
             request.start_offset = note.offset + Duration::from_secs_f32(layer.delay_seconds);
-            request.gain = gain * layer.gain_scale;
+            request.gain = gain * layer.gain_scale * amplitude_gain(&note);
             request.playback_rate = playback_rate * layer.playback_rate_scale;
             request.pan = layer.pan;
             self.audio
@@ -144,14 +143,23 @@ fn articulation_layers(articulation: BackupVocalsArticulation) -> &'static [Play
 fn synthesize_backup_vocals(note: &Note<BackupVocalsArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
-    let base_hz = midi_to_hz(note.n_midi).clamp(90.0, 880.0);
+    let pitches_hz = pitch_hz_list(note, 60)
+        .into_iter()
+        .map(|hz| hz.clamp(90.0, 880.0))
+        .collect::<Vec<_>>();
+    let voice_count = pitches_hz.len() as f32;
     let velocity = note.velocity.clamp(0.0, 1.0);
 
     let mut pcm = Vec::with_capacity(frame_count);
     for i in 0..frame_count {
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
-        let sample = articulation_sample(note.articulation, base_hz, phase, t);
+        let sample = pitches_hz
+            .iter()
+            .copied()
+            .map(|base_hz| articulation_sample(note.articulation, base_hz, phase, t))
+            .sum::<f32>()
+            / voice_count;
         let env = articulation_envelope(note.articulation, phase);
         pcm.push((sample * env * velocity).clamp(-1.0, 1.0));
     }

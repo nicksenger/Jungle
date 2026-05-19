@@ -3,9 +3,8 @@ use std::{sync::Arc, time::Duration};
 use crate::audio::{AudioHandle, PlayRequest};
 
 use super::{
-    synthesis::{
-        duration_to_frames, hash_noise, midi_to_hz, sine, smoothstep, SAMPLE_RATE,
-    },
+    amplitude_gain, pitch_hz_list,
+    synthesis::{duration_to_frames, hash_noise, sine, smoothstep, SAMPLE_RATE},
     Error, Instrument, Note,
 };
 
@@ -34,7 +33,7 @@ impl Instrument for KickDrum {
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
         let (pcm, gain, playback_rate) = {
-            let note_for_synth = note;
+            let note_for_synth = note.clone();
             tokio::task::spawn_blocking(move || synthesize_kick_drum(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
@@ -42,7 +41,7 @@ impl Instrument for KickDrum {
 
         let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
         request.start_offset = note.offset;
-        request.gain = gain;
+        request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = 0.0;
         self.audio.try_play(request).map_err(|_| Error::Submission)
@@ -52,7 +51,11 @@ impl Instrument for KickDrum {
 fn synthesize_kick_drum(note: &Note<KickDrumArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
-    let base_hz = midi_to_hz(note.n_midi).clamp(48.0, 74.0);
+    let pitches_hz = pitch_hz_list(note, 36)
+        .into_iter()
+        .map(|hz| hz.clamp(48.0, 74.0))
+        .collect::<Vec<_>>();
+    let base_hz = pitches_hz.iter().sum::<f32>() / pitches_hz.len() as f32;
     let velocity = note.velocity.clamp(0.0, 1.0).powf(0.72);
 
     let mut pcm = Vec::with_capacity(frame_count);

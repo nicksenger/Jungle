@@ -2,7 +2,7 @@ use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
 use crate::audio::{AudioHandle, PlayRequest};
 
-use super::{Error, Expression, Instrument, Note};
+use super::{amplitude_gain, pitch_hz_list, Error, Expression, Instrument, Note};
 
 pub struct LeadGuitar {
     audio: AudioHandle,
@@ -59,7 +59,7 @@ impl Instrument for LeadGuitar {
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
         let (pcm, gain, playback_rate) = {
-            let note_for_synth = note;
+            let note_for_synth = note.clone();
             tokio::task::spawn_blocking(move || synthesize_lead_guitar(&note_for_synth))
                 .await
                 .map_err(|_| Error::Playback)?
@@ -67,7 +67,7 @@ impl Instrument for LeadGuitar {
 
         let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
         request.start_offset = note.offset;
-        request.gain = gain;
+        request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = 0.12;
 
@@ -79,7 +79,12 @@ const SAMPLE_RATE: u32 = 48_000;
 fn synthesize_lead_guitar(note: &Note<LeadGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
-    let frequency_hz = midi_to_hz(note.n_midi).max(80.0);
+    let pitches_hz = pitch_hz_list(note, 64)
+        .into_iter()
+        .map(|hz| hz.max(80.0))
+        .collect::<Vec<_>>();
+    let voice_count = pitches_hz.len() as f32;
+    let root_hz = pitches_hz[0];
     let velocity_gain = note.velocity.clamp(0.0, 1.0);
     let expression = note.expression.unwrap_or(Expression {
         bend: 0.0,
@@ -98,9 +103,16 @@ fn synthesize_lead_guitar(note: &Note<LeadGuitarArticulation>) -> (Arc<[f32]>, f
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
 
-        let raw = articulation_sample(note.articulation, frequency_hz, phase, t, expression, tone);
+        let raw = pitches_hz
+            .iter()
+            .copied()
+            .map(|frequency_hz| {
+                articulation_sample(note.articulation, frequency_hz, phase, t, expression, tone)
+            })
+            .sum::<f32>()
+            / voice_count;
         let envelope = articulation_envelope(note.articulation, phase) * sustain;
-        let picked = raw + pick_attack(frequency_hz, phase, t, tone.pick_amount);
+        let picked = raw + pick_attack(root_hz, phase, t, tone.pick_amount);
         let driven = amp_distortion(picked * envelope, tone.drive);
 
         // Simple cabinet/body voicing so the oscillator stack lands closer to a mic'd amp.
@@ -298,11 +310,6 @@ fn amp_distortion(sample: f32, drive: f32) -> f32 {
     let pre = sample * drive;
     let asym = (pre + pre * pre.abs() * 0.12).clamp(-2.2, 2.2);
     (asym.tanh() * 1.08).clamp(-1.0, 1.0)
-}
-
-fn midi_to_hz(midi: u8) -> f32 {
-    let semitones = midi as f32 - 69.0;
-    440.0 * 2.0_f32.powf(semitones / 12.0)
 }
 
 fn duration_to_frames(duration: Duration, sample_rate: u32) -> usize {

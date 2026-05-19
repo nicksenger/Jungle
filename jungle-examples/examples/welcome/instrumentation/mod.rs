@@ -33,14 +33,39 @@ pub enum Error {
     Playback,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note<Articulation> {
-    pub n_midi: u8,
+    pub n_midi: Vec<u8>,
+    /// `0.5` is neutral loudness. Lower values are quieter, higher values are louder.
+    pub amplitude_multiplier: f32,
     pub duration: Duration,
     pub velocity: f32,
     pub expression: Option<Expression>,
     pub offset: Duration,
     pub articulation: Articulation,
+}
+
+pub const NORMAL_AMPLITUDE_MULTIPLIER: f32 = 0.5;
+
+pub fn amplitude_gain<Articulation>(note: &Note<Articulation>) -> f32 {
+    let amplitude = if note.amplitude_multiplier.is_finite() {
+        note.amplitude_multiplier.clamp(0.0, 1.0)
+    } else {
+        NORMAL_AMPLITUDE_MULTIPLIER
+    };
+    amplitude * 2.0
+}
+
+pub fn pitch_hz_list<Articulation>(note: &Note<Articulation>, default_midi: u8) -> Vec<f32> {
+    let notes = if note.n_midi.is_empty() {
+        vec![default_midi]
+    } else {
+        note.n_midi.clone()
+    };
+    notes
+        .into_iter()
+        .map(synthesis::midi_to_hz)
+        .collect::<Vec<_>>()
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
