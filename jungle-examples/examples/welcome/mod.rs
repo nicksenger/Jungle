@@ -7,7 +7,7 @@ mod metronome;
 mod score;
 mod ui;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
@@ -32,6 +32,7 @@ use crate::{
 
 const DEFAULT_BPM: f32 = 123.0;
 const BEATS_PER_BAR: u32 = 4;
+const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Animals)]
 struct WelcomeAnimals(
@@ -69,6 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         drums: client.start_journey::<Drums>(seed).await?,
     };
     let ui_shutdown = ui::ShutdownFlag::new();
+    let ui_started_at = Instant::now();
     let ui_thread = ui::spawn_ui(client.clone(), journeys, ui_shutdown.clone());
 
     let audio_engine = AudioEngine::start_default().await?;
@@ -159,6 +161,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     tokio::time::sleep(total_duration.saturating_add(Duration::from_secs(1))).await;
+    let elapsed_since_ui_start = ui_started_at.elapsed();
+    if elapsed_since_ui_start < UI_MIN_UPTIME_BEFORE_SHUTDOWN {
+        tokio::time::sleep(UI_MIN_UPTIME_BEFORE_SHUTDOWN - elapsed_since_ui_start).await;
+    }
     ui_shutdown.request_shutdown();
     let _ = ui_thread.join();
     Ok(())
