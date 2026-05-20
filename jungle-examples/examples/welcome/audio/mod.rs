@@ -7,6 +7,7 @@ use cpal::{
     SampleFormat, Stream,
 };
 use futures::{channel::mpsc, SinkExt};
+use tracing::{debug, error};
 
 const COMMAND_CHANNEL_CAPACITY: usize = 1024;
 
@@ -37,7 +38,10 @@ impl AudioHandle {
         command_tx
             .send(mixer::Command::Play(request))
             .await
-            .map_err(|_| AudioError::Submission)
+            .map_err(|err| {
+                debug!(error = %err, "failed submitting audio command to mixer");
+                AudioError::Submission
+            })
     }
 }
 
@@ -112,7 +116,7 @@ fn build_stream_f32(
 ) -> Result<Stream, AudioError> {
     let mut mixer = mixer::AudioMixer::new(config.channels as usize, config.sample_rate);
     let error_callback = |err: cpal::StreamError| {
-        eprintln!("audio output stream error: {err}");
+        error!(error = %err, "audio output stream error");
     };
 
     device
@@ -135,7 +139,7 @@ fn build_stream_i16(
     let mut mixer = mixer::AudioMixer::new(config.channels as usize, config.sample_rate);
     let mut scratch = Vec::<f32>::new();
     let error_callback = |err: cpal::StreamError| {
-        eprintln!("audio output stream error: {err}");
+        error!(error = %err, "audio output stream error");
     };
 
     device
@@ -162,7 +166,7 @@ fn build_stream_u16(
     let mut mixer = mixer::AudioMixer::new(config.channels as usize, config.sample_rate);
     let mut scratch = Vec::<f32>::new();
     let error_callback = |err: cpal::StreamError| {
-        eprintln!("audio output stream error: {err}");
+        error!(error = %err, "audio output stream error");
     };
 
     device

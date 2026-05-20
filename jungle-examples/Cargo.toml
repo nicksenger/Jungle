@@ -21,6 +21,8 @@ postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
 
 [[example]]

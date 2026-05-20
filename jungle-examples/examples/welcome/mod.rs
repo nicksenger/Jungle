@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{JungleClient, LocalClient};
+use tracing::{debug, error, info};
+use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::{
     animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
@@ -50,6 +52,7 @@ impl Ecosystem for WelcomeEcosystem {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_tracing();
     let bpm = parse_bpm_arg()?;
 
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -61,14 +64,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let setup_result = setup_rx.recv().map_err(|err| {
+        error!(error = %err, "failed receiving UI setup from runtime thread");
         std::io::Error::other(format!(
             "failed to receive UI setup from runtime thread: {err}"
         ))
     })?;
-    let setup = setup_result.map_err(std::io::Error::other)?;
+    let setup = setup_result.map_err(|err| {
+        error!(error = %err, "runtime thread setup failed");
+        std::io::Error::other(err)
+    })?;
 
     let ui_started_at = Instant::now();
     started_tx.send(ui_started_at).map_err(|err| {
+        error!(error = %err, "failed notifying runtime thread that UI started");
         std::io::Error::other(format!(
             "failed to notify runtime thread that UI started: {err}"
         ))
@@ -77,10 +85,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui::run_ui(setup.client, setup.journeys, ui_shutdown)?;
 
     let thread_result = runtime_thread.join().map_err(|_| {
+        error!("runtime thread panicked while running welcome example");
         std::io::Error::other("runtime thread panicked while running welcome example")
     })?;
-    thread_result.map_err(std::io::Error::other)?;
+    thread_result.map_err(|err| {
+        error!(error = %err, "runtime thread returned an error");
+        std::io::Error::other(err)
+    })?;
     Ok(())
+}
+
+fn init_tracing() {
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,welcome=debug"));
+    let _ = fmt().with_env_filter(env_filter).compact().try_init();
 }
 
 struct UiSetup {
@@ -94,53 +112,86 @@ fn run_runtime_thread(
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
     started_rx: std::sync::mpsc::Receiver<Instant>,
 ) -> Result<(), String> {
-    let runtime = tokio::runtime::Runtime::new().map_err(|err| err.to_string())?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|err| {
+        error!(error = %err, "failed creating tokio runtime for welcome example");
+        err.to_string()
+    })?;
 
     let setup = runtime.block_on(async {
         let client = LocalClient::builder()
             .build()
             .await
-            .map_err(|err| err.to_string())?;
+            .map_err(|err| {
+                error!(error = %err, "failed building local client");
+                err.to_string()
+            })?;
         let worker_client = client.clone();
         let _worker_task = tokio::spawn(async move {
             let worker = JungleWorker::new(WelcomeEcosystem, worker_client);
-            let _ = worker.spawn().await;
+            if let Err(err) = worker.spawn().await {
+                error!(error = %err, "welcome worker task exited with error");
+            }
         });
 
-        let seed = postcard::to_allocvec(&()).map_err(|err| err.to_string())?;
+        let seed = postcard::to_allocvec(&()).map_err(|err| {
+            error!(error = %err, "failed serializing journey seed");
+            err.to_string()
+        })?;
         let journeys = ui::JourneyIds {
             lead_vocalist: client
                 .start_journey::<LeadVocalist>(seed.clone())
                 .await
-                .map_err(|err| err.to_string())?,
+                .map_err(|err| {
+                    error!(error = %err, "failed starting lead vocalist journey");
+                    err.to_string()
+                })?,
             lead_guitarist: client
                 .start_journey::<LeadGuitarist>(seed.clone())
                 .await
-                .map_err(|err| err.to_string())?,
+                .map_err(|err| {
+                    error!(error = %err, "failed starting lead guitarist journey");
+                    err.to_string()
+                })?,
             rhythm_guitarist: client
                 .start_journey::<RhythmGuitarist>(seed.clone())
                 .await
-                .map_err(|err| err.to_string())?,
+                .map_err(|err| {
+                    error!(error = %err, "failed starting rhythm guitarist journey");
+                    err.to_string()
+                })?,
             bass: client
                 .start_journey::<BassAnimal>(seed.clone())
                 .await
-                .map_err(|err| err.to_string())?,
+                .map_err(|err| {
+                    error!(error = %err, "failed starting bass journey");
+                    err.to_string()
+                })?,
             drums: client
                 .start_journey::<Drums>(seed)
                 .await
-                .map_err(|err| err.to_string())?,
+                .map_err(|err| {
+                    error!(error = %err, "failed starting drums journey");
+                    err.to_string()
+                })?,
         };
 
         Ok::<UiSetup, String>(UiSetup { client, journeys })
     });
 
     if let Err(err) = setup_tx.send(setup) {
+        error!(error = %err, "failed sending UI setup to main thread");
         return Err(format!("failed to send UI setup to main thread: {err}"));
     }
 
     let ui_started_at = started_rx
         .recv()
-        .map_err(|err| format!("failed to receive UI start signal from main thread: {err}"))?;
+        .map_err(|err| {
+            error!(
+                error = %err,
+                "failed receiving UI start signal from main thread"
+            );
+            format!("failed to receive UI start signal from main thread: {err}")
+        })?;
 
     runtime.block_on(play_audio_and_schedule_shutdown(
         bpm,
@@ -156,7 +207,10 @@ async fn play_audio_and_schedule_shutdown(
 ) -> Result<(), String> {
     let audio_engine = AudioEngine::start_default()
         .await
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| {
+            error!(error = %err, "failed starting audio engine");
+            err.to_string()
+        })?;
     let metronome = Metronome::spawn(bpm, BEATS_PER_BAR);
 
     let lead_guitar = lead_guitar_score(bpm);
@@ -187,62 +241,97 @@ async fn play_audio_and_schedule_shutdown(
     .max()
     .unwrap_or(Duration::ZERO);
 
+    info!(bpm, ?total_duration, "starting welcome score playback");
     let mut tasks = Vec::with_capacity(10);
-    tasks.push(tokio::spawn(play_lead_guitar_score(
-        audio_engine.handle(),
-        lead_guitar,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_rhythm_guitar_score(
-        audio_engine.handle(),
-        rhythm_guitar,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_backup_vocals_score(
-        audio_engine.handle(),
-        backup_vocals,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_vocals_score(
-        audio_engine.handle(),
-        vocals,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_bass_score(
-        audio_engine.handle(),
-        bass,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_kick_drum_score(
-        audio_engine.handle(),
-        kick_drum,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_hi_hat_score(
-        audio_engine.handle(),
-        hi_hat,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_cymbal_score(
-        audio_engine.handle(),
-        cymbal,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_snare_drum_score(
-        audio_engine.handle(),
-        snare_drum,
-        metronome.clone(),
-    )));
-    tasks.push(tokio::spawn(play_toms_score(
-        audio_engine.handle(),
-        toms,
-        metronome,
-    )));
+    tasks.push((
+        "lead_guitar",
+        tokio::spawn(play_lead_guitar_score(
+            audio_engine.handle(),
+            lead_guitar,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "rhythm_guitar",
+        tokio::spawn(play_rhythm_guitar_score(
+            audio_engine.handle(),
+            rhythm_guitar,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "backup_vocals",
+        tokio::spawn(play_backup_vocals_score(
+            audio_engine.handle(),
+            backup_vocals,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "vocals",
+        tokio::spawn(play_vocals_score(
+            audio_engine.handle(),
+            vocals,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "bass",
+        tokio::spawn(play_bass_score(
+            audio_engine.handle(),
+            bass,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "kick_drum",
+        tokio::spawn(play_kick_drum_score(
+            audio_engine.handle(),
+            kick_drum,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "hi_hat",
+        tokio::spawn(play_hi_hat_score(
+            audio_engine.handle(),
+            hi_hat,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "cymbal",
+        tokio::spawn(play_cymbal_score(
+            audio_engine.handle(),
+            cymbal,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "snare_drum",
+        tokio::spawn(play_snare_drum_score(
+            audio_engine.handle(),
+            snare_drum,
+            metronome.clone(),
+        )),
+    ));
+    tasks.push((
+        "toms",
+        tokio::spawn(play_toms_score(audio_engine.handle(), toms, metronome)),
+    ));
 
-    for task in tasks {
-        task.await
-            .map_err(|err| err.to_string())?
-            .map_err(|err| err.to_string())?;
+    for (name, task) in tasks {
+        match task.await {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                error!(instrument = name, error = %err, "instrument playback task failed");
+                return Err(err.to_string());
+            }
+            Err(err) => {
+                error!(instrument = name, error = %err, "instrument playback task panicked");
+                return Err(err.to_string());
+            }
+        }
     }
 
     tokio::time::sleep(total_duration.saturating_add(Duration::from_secs(1))).await;
@@ -497,15 +586,54 @@ where
     I: Instrument,
     I::Articulation: Copy,
 {
+    let requested_offset = note.offset;
+    let note_midi = note.n_midi;
+    let note_duration = note.duration;
     note.offset = metronome_sync.synchronize(note.offset).await;
+    let mut retry_count = 0_u32;
 
     // Submitting a dense score can temporarily saturate the mixer queue.
     // Retry with a brief backoff instead of dropping notes.
     loop {
         match instrument.play(note).await {
-            Ok(()) => return Ok(()),
-            Err(InstrumentError::Submission) => tokio::time::sleep(Duration::from_millis(1)).await,
-            Err(err) => return Err(err),
+            Ok(()) => {
+                if retry_count > 0 {
+                    debug!(
+                        retries = retry_count,
+                        midi = note_midi,
+                        requested_offset_ms = requested_offset.as_millis(),
+                        synced_offset_ms = note.offset.as_millis(),
+                        duration_ms = note_duration.as_millis(),
+                        "note playback submission eventually succeeded after retries"
+                    );
+                }
+                return Ok(());
+            }
+            Err(InstrumentError::Submission) => {
+                retry_count = retry_count.saturating_add(1);
+                if retry_count <= 5 || retry_count % 100 == 0 {
+                    debug!(
+                        retries = retry_count,
+                        midi = note_midi,
+                        requested_offset_ms = requested_offset.as_millis(),
+                        synced_offset_ms = note.offset.as_millis(),
+                        duration_ms = note_duration.as_millis(),
+                        "note playback submission failed; retrying"
+                    );
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            Err(err) => {
+                error!(
+                    error = %err,
+                    midi = note_midi,
+                    requested_offset_ms = requested_offset.as_millis(),
+                    synced_offset_ms = note.offset.as_millis(),
+                    duration_ms = note_duration.as_millis(),
+                    "non-retryable instrument playback error"
+                );
+                return Err(err);
+            }
         }
     }
 }
