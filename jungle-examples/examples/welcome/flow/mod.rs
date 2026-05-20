@@ -104,7 +104,8 @@ pub struct PlaySlot<
     const DUR_NUM: u8,
     const DUR_DEN: u8,
     const INTERVAL: i8,
->(PhantomData<fn() -> A>);
+    Input = (),
+>(PhantomData<fn() -> (A, Input)>);
 
 impl<
         A,
@@ -114,13 +115,15 @@ impl<
         const DUR_NUM: u8,
         const DUR_DEN: u8,
         const INTERVAL: i8,
-    > BoundAct<A> for PlaySlot<A, BEAT, OFFSET_NUM, OFFSET_DEN, DUR_NUM, DUR_DEN, INTERVAL>
+        Input,
+    > BoundAct<A>
+    for PlaySlot<A, BEAT, OFFSET_NUM, OFFSET_DEN, DUR_NUM, DUR_DEN, INTERVAL, Input>
 where
     A: Animal<State = RhythmGuitarIntroState>,
 {
     type Effect = effects::PlayRhythmGuitarIntroNote;
     type Aspect = Identity;
-    type Input = ();
+    type Input = Input;
     type Output = ();
 
     fn emit(state: &RhythmGuitarIntroState, _input: Self::Input) -> PlayNoteCommand {
@@ -159,10 +162,10 @@ impl Act for PlayTurnaroundPickupSpec {
 }
 
 pub struct PlayPulseASpec;
-#[jungle::act(bind = PlaySlot<A, 2, 0, 1, 1, 4, 0>)]
+#[jungle::act(bind = PlaySlot<A, 2, 0, 1, 1, 4, 0, Either<(), ()>>)]
 impl Act for PlayPulseASpec {
     type Effect = effects::PlayRhythmGuitarIntroNote;
-    type Input = ();
+    type Input = Either<(), ()>;
     type Output = ();
 }
 
@@ -183,10 +186,10 @@ impl Act for PlayHighPulseSpec {
 }
 
 pub struct PlayResolveSpec;
-#[jungle::act(bind = PlaySlot<A, 4, 3, 4, 1, 4, 0>)]
+#[jungle::act(bind = PlaySlot<A, 4, 3, 4, 1, 4, 0, Either<(), ()>>)]
 impl Act for PlayResolveSpec {
     type Effect = effects::PlayRhythmGuitarIntroNote;
-    type Input = ();
+    type Input = Either<(), ()>;
     type Output = ();
 }
 

@@ -250,11 +250,11 @@ impl BoundAct<Gorilla> for GorillaAdvanceAge {
     }
 }
 
-pub struct GorillaTickPerceivedTime;
-impl BoundAct<Gorilla> for GorillaTickPerceivedTime {
+pub struct GorillaTickPerceivedTime<Input = ()>(core::marker::PhantomData<fn() -> Input>);
+impl<Input> BoundAct<Gorilla> for GorillaTickPerceivedTime<Input> {
     type Effect = effects::TickPerceivedTime;
     type Aspect = Identity;
-    type Input = ();
+    type Input = Input;
     type Output = ();
 
     fn emit(state: &State, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
@@ -466,6 +466,16 @@ impl Act for GorillaTickPerceivedTimeSpec {
     type Output = ();
 }
 
+pub struct GorillaTickPerceivedTimeFromActiveSpec;
+#[jungle::act(bind = GorillaTickPerceivedTime<
+    Either<Either<(), Either<(), ()>>, ()>,
+>)]
+impl Act for GorillaTickPerceivedTimeFromActiveSpec {
+    type Effect = effects::TickPerceivedTime;
+    type Input = Either<Either<(), Either<(), ()>>, ()>;
+    type Output = ();
+}
+
 pub struct GorillaBirthdaySpec;
 #[jungle::act(bind = GorillaBirthday)]
 impl Act for GorillaBirthdaySpec {
@@ -565,7 +575,7 @@ pub type GorillaActiveFlow = Conditional<
 pub struct GorillaDayFlow(
     Step<GorillaEvaluateActivityWindowSpec>,
     Conditional<GorillaIsActiveNow, GorillaActiveFlow, Step<GorillaRestSpec>>,
-    Step<GorillaTickPerceivedTimeSpec>,
+    Step<GorillaTickPerceivedTimeFromActiveSpec>,
 );
 
 #[derive(Flow)]
