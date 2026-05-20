@@ -1,7 +1,7 @@
 use crate::{
     Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
     Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Running, Scoped, Select,
-    Transparent, Waiting, While,
+    Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -1749,30 +1749,97 @@ pub trait BuildFlow<Input> {
     }
 }
 
-trait FlowChainHead {
-    type Head;
+trait FlowCarry<State> {
+    type In;
+    type Out;
 }
 
-impl<Head, Tail> FlowChainHead for TList<(Head, Tail)> {
-    type Head = Head;
+trait NonEmptyFlowList {}
+
+impl<Head, Tail> NonEmptyFlowList for TList<(Head, Tail)> {}
+
+impl<State> FlowCarry<State> for list::Empty {
+    type In = ();
+    type Out = ();
 }
 
-trait FlowChainWellTyped {}
-
-impl FlowChainWellTyped for list::Empty {}
-
-impl<Head> FlowChainWellTyped for TList<(Head, list::Empty)>
+impl<State, Head> FlowCarry<State> for TList<(Head, list::Empty)>
 where
-    Head: Running + Waiting,
+    Head: FlowCarry<State>,
 {
+    type In = <Head as FlowCarry<State>>::In;
+    type Out = <Head as FlowCarry<State>>::Out;
 }
 
-impl<Head, Tail> FlowChainWellTyped for TList<(Head, Tail)>
+impl<State, Head, Tail> FlowCarry<State> for TList<(Head, Tail)>
 where
-    Head: Running + Waiting,
-    Tail: FlowChainWellTyped + FlowChainHead,
-    <Tail as FlowChainHead>::Head: Running<In = <Head as Waiting>::Out>,
+    Tail: NonEmptyFlowList,
+    Head: FlowCarry<State>,
+    Tail: FlowCarry<State, In = <Head as FlowCarry<State>>::Out>,
 {
+    type In = <Head as FlowCarry<State>>::In;
+    type Out = <Tail as FlowCarry<State>>::Out;
+}
+
+impl<T, A> FlowCarry<T::State> for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAct<T>,
+{
+    type In = A::Input;
+    type Out = A::Output;
+}
+
+impl<State, P, L, R, M> FlowCarry<State> for Conditional<P, L, R, M>
+where
+    L: FlowCarry<State>,
+    R: FlowCarry<State, In = <L as FlowCarry<State>>::In>,
+{
+    type In = <L as FlowCarry<State>>::In;
+    type Out = Either<<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out>;
+}
+
+impl<State, In, C, F, M> FlowCarry<State> for While<C, F, M>
+where
+    C: LoopCondition<State, Arg = In>,
+    F: FlowCarry<State, In = In>,
+{
+    type In = In;
+    type Out = <F as FlowCarry<State>>::Out;
+}
+
+impl<State, M, F> FlowCarry<State> for Transparent<M, F>
+where
+    F: FlowCarry<State>,
+{
+    type In = <F as FlowCarry<State>>::In;
+    type Out = <F as FlowCarry<State>>::Out;
+}
+
+impl<State, View, F> FlowCarry<State> for Scoped<View, F>
+where
+    F: FlowCarry<State>,
+{
+    type In = <F as FlowCarry<State>>::In;
+    type Out = <F as FlowCarry<State>>::Out;
+}
+
+impl<State, In, L, R, M> FlowCarry<State> for Select<L, R, M>
+where
+    L: FlowCarry<State, In = In>,
+    R: FlowCarry<State, In = In>,
+{
+    type In = In;
+    type Out = Either<<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out>;
+}
+
+impl<State, In, L, R, M> FlowCarry<State> for Join<L, R, M>
+where
+    L: FlowCarry<State, In = In>,
+    R: FlowCarry<State, In = In>,
+{
+    type In = In;
+    type Out = (<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out);
 }
 
 impl<State> BuildFlow<DynFlow<State>> for list::Empty {
@@ -1817,7 +1884,7 @@ macro_rules! build_flow_len_impl {
         impl<State, $h0, $($rest,)+> BuildFlow<DynFlow<State>>
             for dynflow_list_chain!($h0, $($rest),+)
         where
-            dynflow_list_chain!($h0, $($rest),+): FlowChainWellTyped,
+            dynflow_list_chain!($h0, $($rest),+): FlowCarry<State>,
             $h0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
             dynflow_list_chain!($($rest),+): BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
         {
@@ -1839,7 +1906,7 @@ build_flow_len_impl!(H0; H1, H2, H3, H4, H5);
 build_flow_len_impl!(H0; H1, H2, H3, H4, H5, H6);
 impl<State, H0, H1, H2, H3, H4, H5, H6, H7, Tail> BuildFlow<DynFlow<State>> for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail): FlowChainWellTyped,
+    dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail): FlowCarry<State>,
     H0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     H1: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     H2: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
@@ -2071,7 +2138,7 @@ macro_rules! build_flow_with_context_len_impl {
         impl<Context, State, $h0, $($rest,)+> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
             for dynflow_list_chain!($h0, $($rest),+)
         where
-            dynflow_list_chain!($h0, $($rest),+): FlowChainWellTyped,
+            dynflow_list_chain!($h0, $($rest),+): FlowCarry<State>,
             $h0: BuildFlowWithContext<
                 (Arc<Context>, DynFlow<State>),
                 Output = (Arc<Context>, DynFlow<State>),
@@ -2105,7 +2172,7 @@ build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5, H6);
 impl<Context, State, H0, H1, H2, H3, H4, H5, H6, H7, Tail>
     BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
-    dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail): FlowChainWellTyped,
+    dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail): FlowCarry<State>,
     H0: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
