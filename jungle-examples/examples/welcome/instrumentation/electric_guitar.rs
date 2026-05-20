@@ -87,7 +87,10 @@ impl Instrument for ElectricGuitar {
         request.playback_rate = playback_rate;
         request.pan = pan;
 
-        self.audio.play(request).await.map_err(|_| Error::Submission)
+        self.audio
+            .play(request)
+            .await
+            .map_err(|_| Error::Submission)
     }
 }
 

@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use jungle_persist::{JungleStore, Kind, StoreBuilder};
-use jungle_types::{BackendError, WireIn, WireOut};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use jungle_types::JourneyStatus;
+use jungle_types::{BackendError, WireIn, WireOut};
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgListener;
 #[cfg(any(feature = "postgres", feature = "redb"))]
@@ -87,7 +87,9 @@ impl ServerBuilder {
         let has_configured_database = self.db.has_kind();
         #[cfg(all(feature = "postgres", feature = "redb"))]
         if !has_configured_database {
-            tracing::info!("both `postgres` and `redb` features are enabled; defaulting to postgres");
+            tracing::info!(
+                "both `postgres` and `redb` features are enabled; defaulting to postgres"
+            );
         }
         let store = self.db.build().await?;
         store.migrate().await?;

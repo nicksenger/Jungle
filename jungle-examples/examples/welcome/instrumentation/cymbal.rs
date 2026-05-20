@@ -46,7 +46,10 @@ impl Instrument for Cymbal {
         request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = 0.25;
-        self.audio.play(request).await.map_err(|_| Error::Submission)
+        self.audio
+            .play(request)
+            .await
+            .map_err(|_| Error::Submission)
     }
 }
 

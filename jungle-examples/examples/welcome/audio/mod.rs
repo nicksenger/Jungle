@@ -75,10 +75,13 @@ impl AudioHandle {
                 .pending_commands
                 .fetch_sub(1, Ordering::Relaxed)
                 .saturating_sub(1);
-                debug!(error = %err, "failed submitting audio command to mixer");
-                debug!(pending_after_error, "decremented pending audio command count after failed enqueue");
-                AudioError::Submission
-            })
+            debug!(error = %err, "failed submitting audio command to mixer");
+            debug!(
+                pending_after_error,
+                "decremented pending audio command count after failed enqueue"
+            );
+            AudioError::Submission
+        })
     }
 }
 

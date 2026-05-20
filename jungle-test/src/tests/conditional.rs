@@ -299,9 +299,8 @@ fn conditional_output_is_routed_as_either_for_follow_up_step() {
     let mut left = Executor::<ConditionalThenMergeAnimal>::new(5);
     let left_request_1: i32 = left.next_request().expect("left request 1");
     assert_eq!(left_request_1, 5);
-    let left_emitted_1: Either<i32, i32> = left
-        .complete(Ok::<i32, ()>(5))
-        .expect("left completion 1");
+    let left_emitted_1: Either<i32, i32> =
+        left.complete(Ok::<i32, ()>(5)).expect("left completion 1");
     assert_eq!(left_emitted_1, Either::Left(5));
     let left_request_2: i32 = left.next_request().expect("left request 2");
     assert_eq!(left_request_2, 5);
@@ -319,7 +318,9 @@ fn conditional_output_is_routed_as_either_for_follow_up_step() {
     assert_eq!(right_emitted_1, Either::Right(-2));
     let right_request_2: i32 = right.next_request().expect("right request 2");
     assert_eq!(right_request_2, -2);
-    let right_emitted_2: i32 = right.complete(Ok::<i32, ()>(-2)).expect("right completion 2");
+    let right_emitted_2: i32 = right
+        .complete(Ok::<i32, ()>(-2))
+        .expect("right completion 2");
     assert_eq!(right_emitted_2, -2);
     assert!(right.is_complete());
     assert_eq!(right.into_state(), -2);

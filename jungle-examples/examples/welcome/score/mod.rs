@@ -19,10 +19,10 @@ pub use bass_guitar::bass_guitar_score;
 pub use closed_hi_hat_cymbal::closed_hi_hat_cymbal_score;
 pub use crash_cymbal::crash_cymbal_score;
 pub use lead_guitar::lead_guitar_score;
+pub(crate) use rhythm_guitar::rhythm_guitar_intro_grid;
 pub use rhythm_guitar::{
     rhythm_guitar_intro_len, rhythm_guitar_intro_score, rhythm_guitar_score_without_intro,
 };
-pub(crate) use rhythm_guitar::rhythm_guitar_intro_grid;
 pub use snare_drum::snare_drum_score;
 pub use toms_snare::toms_snare_score;
 pub use vocals::vocals_score;
@@ -71,7 +71,10 @@ pub struct ScheduledNote<Articulation> {
     pub note: Note<Articulation>,
 }
 
-pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> ScheduledNote<ElectricGuitarArticulation> {
+pub(super) fn grid_note_to_note(
+    note: GridNote,
+    bpm: f32,
+) -> ScheduledNote<ElectricGuitarArticulation> {
     let seconds_per_beat = 60.0_f32 / bpm;
     let beat_offset = if note.position.beat_offset_den == 0 {
         0.0

@@ -50,7 +50,10 @@ impl Instrument for Toms {
         request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = -0.14 + (velocity - 0.5) * 0.08;
-        self.audio.play(request).await.map_err(|_| Error::Submission)
+        self.audio
+            .play(request)
+            .await
+            .map_err(|_| Error::Submission)
     }
 }
 

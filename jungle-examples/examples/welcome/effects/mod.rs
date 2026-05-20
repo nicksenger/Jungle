@@ -29,10 +29,7 @@ impl Effect<WelcomeEcosystem> for PlayRhythmGuitarIntroNote {
     type Out = ();
     type Err = String;
 
-    async fn effect(
-        jungle: &WelcomeEcosystem,
-        note: Self::In,
-    ) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &WelcomeEcosystem, note: Self::In) -> Result<Self::Out, Self::Err> {
         let bpm = jungle.bpm();
         let seconds_per_beat = 60.0_f32 / bpm;
         let beat_offset = if note.beat_offset_den == 0 {
@@ -43,9 +40,8 @@ impl Effect<WelcomeEcosystem> for PlayRhythmGuitarIntroNote {
         let absolute_beats = ((note.bar.saturating_sub(1)) as f32 * BEATS_PER_BAR)
             + (note.beat.saturating_sub(1)) as f32
             + beat_offset;
-        let target_instant =
-            jungle.playback_clock().wait_started().await
-                + std::time::Duration::from_secs_f32(absolute_beats * seconds_per_beat);
+        let target_instant = jungle.playback_clock().wait_started().await
+            + std::time::Duration::from_secs_f32(absolute_beats * seconds_per_beat);
         if target_instant > tokio::time::Instant::now() {
             tokio::time::sleep_until(target_instant).await;
         }

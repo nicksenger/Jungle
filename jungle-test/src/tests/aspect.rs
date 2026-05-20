@@ -322,19 +322,27 @@ impl Act for TigerSleepFromEitherSpec {
     }
 }
 
-pub struct TigerHuntSpec;
-#[jungle::act(bind = AddI32<TigerEnergyCarrier, Hunt>)]
-impl Act for TigerHuntSpec {
+pub struct TigerHuntFromEnergySpec;
+#[jungle::act]
+impl Act for TigerHuntFromEnergySpec {
     type Effect = Hunt;
-    type Input = ();
+    type Input = i32;
     type Output = i32;
+
+    fn emit(_state: &TigerState, _input: Self::Input) -> () {}
+
+    fn absorb(state: &mut TigerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let delta = output.expect("hunt should succeed");
+        state.core.energy += delta;
+        state.core.energy
+    }
 }
 
 #[derive(Flow)]
 pub struct TigerLoopTemplate(
     Conditional<TigerStripesAreEven, Step<TigerEatSpec>, Step<TigerSleepSpec>>,
     Step<TigerSleepFromEitherSpec>,
-    Step<TigerHuntSpec>,
+    Step<TigerHuntFromEnergySpec>,
 );
 
 pub struct TigerUnderHundredStripes;
@@ -508,17 +516,20 @@ async fn executor_runs_aspected_steps() {
         tiger_emitted,
         vec![
             SerializedTag::EitherInt(9),
-            SerializedTag::Int(19),
-            SerializedTag::Int(20),
-            SerializedTag::EitherInt(41),
-            SerializedTag::Int(83),
-            SerializedTag::Int(84),
-            SerializedTag::EitherInt(169),
+            SerializedTag::Int(10),
+            SerializedTag::Int(11),
+            SerializedTag::EitherInt(23),
+            SerializedTag::Int(24),
+            SerializedTag::Int(25),
+            SerializedTag::EitherInt(51),
+            SerializedTag::Int(52),
+            SerializedTag::Int(53),
+            SerializedTag::EitherInt(107),
         ]
     );
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
-    assert_eq!(tiger_state.core.energy, 169);
+    assert_eq!(tiger_state.core.energy, 107);
     assert_eq!(tiger_state.core.age, 4);
     assert_eq!(tiger_state.stripes, 98);
 }
@@ -584,11 +595,11 @@ async fn executor_advances_with_executable_requests_and_dynamic_effect_order() {
             .expect("tiger completion should process");
         emitted.push(emitted_step);
     }
-    assert_eq!(emitted.len(), 7);
+    assert_eq!(emitted.len(), 10);
     assert!(tiger.is_complete());
 
     let tiger_state = tiger.into_state();
-    assert_eq!(tiger_state.core.energy, 169);
+    assert_eq!(tiger_state.core.energy, 107);
     assert_eq!(tiger_state.core.age, 4);
     assert_eq!(tiger_state.stripes, 98);
 }

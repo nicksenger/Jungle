@@ -1,8 +1,6 @@
-use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 use futures::channel::mpsc::{Receiver, TryRecvError};
@@ -103,10 +101,7 @@ struct Voice {
 }
 
 impl Voice {
-    fn from_request(
-        request: PlayRequest,
-        output_sample_rate: u32,
-    ) -> Option<Self> {
+    fn from_request(request: PlayRequest, output_sample_rate: u32) -> Option<Self> {
         if request.pcm.is_empty() {
             return None;
         }

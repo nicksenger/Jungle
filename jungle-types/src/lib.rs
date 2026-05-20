@@ -54,6 +54,15 @@ pub enum Either<L, R> {
     Right(R),
 }
 
+impl<L, R> Default for Either<L, R>
+where
+    L: Default,
+{
+    fn default() -> Self {
+        Self::Left(L::default())
+    }
+}
+
 /// Input adapter used by [`Conditional`] to pick a branch and forward carry input.
 pub trait ConditionInput {
     fn choose_left(&self) -> bool;

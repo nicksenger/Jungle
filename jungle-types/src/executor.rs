@@ -19,6 +19,10 @@ type EffectRunner = Box<dyn FnOnce() -> EffectFuture + Send>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
 
+fn input_deserialize_error(context: &'static str, err: postcard::Error) -> ExecutorError {
+    ExecutorError::InputDeserialize(format!("{context}: {err}"))
+}
+
 pub trait SplitStateCarry<State> {
     type Carry;
 }
@@ -121,19 +125,20 @@ where
         return match either {
             Either::Left(carry) => {
                 let carry = postcard::from_bytes::<In>(&carry)
-                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                    .map_err(|err| input_deserialize_error("conditional either left carry", err))?;
                 Ok((true, carry))
             }
             Either::Right(carry) => {
-                let carry = postcard::from_bytes::<In>(&carry)
-                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                let carry = postcard::from_bytes::<In>(&carry).map_err(|err| {
+                    input_deserialize_error("conditional either right carry", err)
+                })?;
                 Ok((false, carry))
             }
         };
     }
 
     let carry = postcard::from_bytes::<In>(input)
-        .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        .map_err(|err| input_deserialize_error("conditional direct carry", err))?;
     Ok((fallback(&carry), carry))
 }
 
@@ -154,14 +159,14 @@ where
         return match either {
             Either::Left(carry) | Either::Right(carry) => {
                 let carry = postcard::from_bytes::<In>(&carry)
-                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                    .map_err(|err| input_deserialize_error("while either carry", err))?;
                 Ok((fallback(&carry), carry))
             }
         };
     }
 
     let carry = postcard::from_bytes::<In>(input)
-        .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        .map_err(|err| input_deserialize_error("while direct carry", err))?;
     Ok((fallback(&carry), carry))
 }
 
@@ -199,10 +204,13 @@ where
                 candidate.extend_from_slice(&payload);
             }
         }
-        return deserialize_exact::<T>(&candidate).map_err(ExecutorError::InputDeserialize);
+        return deserialize_exact::<T>(&candidate).map_err(|err| {
+            ExecutorError::InputDeserialize(format!("step either envelope: {err}"))
+        });
     }
 
-    deserialize_exact::<T>(bytes).map_err(ExecutorError::InputDeserialize)
+    deserialize_exact::<T>(bytes)
+        .map_err(|err| ExecutorError::InputDeserialize(format!("step direct input: {err}")))
 }
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
@@ -697,11 +705,22 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        }) {
-            Ok(pair) => pair,
-            Err(err) => return Err((state, err)),
+        let (choose_left, branch_input) = if self.active_branch.is_none() {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.choose_left)(&state, carry)
+            }) {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            }
+        } else {
+            let request_input = input.clone();
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
+            }
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            return node.request(state, request_input);
         };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
@@ -756,11 +775,22 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
-        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        }) {
-            Ok(pair) => pair,
-            Err(err) => return Err((state, err)),
+        let (choose_left, branch_input) = if self.active_branch.is_none() {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.choose_left)(&state, carry)
+            }) {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            }
+        } else {
+            let request_input = input.clone();
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
+            }
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            return node.request_executable(state, request_input);
         };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
@@ -1527,9 +1557,15 @@ where
                     .expect("deferred state was just set");
                 return Err((state, ExecutorError::Complete));
             }
-            let branch_input = match postcard::to_allocvec(&branch_input) {
-                Ok(branch_input) => branch_input,
-                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -1607,9 +1643,15 @@ where
                     .expect("deferred state was just set");
                 return Err((state, ExecutorError::Complete));
             }
-            let branch_input = match postcard::to_allocvec(&branch_input) {
-                Ok(branch_input) => branch_input,
-                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -1932,8 +1974,7 @@ fn encode_conditional_context_emitted(
         ActiveContextBranch::Left => Either::Left(emitted),
         ActiveContextBranch::Right => Either::Right(emitted),
     };
-    postcard::to_allocvec(&tagged)
-        .expect("conditional context emitted envelope should serialize")
+    postcard::to_allocvec(&tagged).expect("conditional context emitted envelope should serialize")
 }
 
 #[inception(property = JungleDynFlowContext, signature(input = Input, output = Output))]
@@ -2168,11 +2209,22 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        }) {
-            Ok(pair) => pair,
-            Err(err) => return Err((state, err)),
+        let (choose_left, branch_input) = if self.active_branch.is_none() {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.choose_left)(&state, carry)
+            }) {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            }
+        } else {
+            let request_input = input.clone();
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
+            }
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            return node.request(state, request_input);
         };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
@@ -2230,11 +2282,22 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
-        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        }) {
-            Ok(pair) => pair,
-            Err(err) => return Err((state, err)),
+        let (choose_left, branch_input) = if self.active_branch.is_none() {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.choose_left)(&state, carry)
+            }) {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            }
+        } else {
+            let request_input = input.clone();
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
+            }
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            return node.request_executable(state, request_input);
         };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
@@ -2410,9 +2473,15 @@ where
                     .expect("deferred state was just set");
                 return Err((state, ExecutorError::Complete));
             }
-            let branch_input = match postcard::to_allocvec(&branch_input) {
-                Ok(branch_input) => branch_input,
-                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -2490,9 +2559,15 @@ where
                     .expect("deferred state was just set");
                 return Err((state, ExecutorError::Complete));
             }
-            let branch_input = match postcard::to_allocvec(&branch_input) {
-                Ok(branch_input) => branch_input,
-                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                input.clone()
             };
 
             self.ensure_iteration_ready();

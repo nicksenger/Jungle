@@ -23,11 +23,11 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::JungleClient;
 #[cfg(not(feature = "transport"))]
 use jungle_sdk::LocalClient;
+use tokio::sync::Notify;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 #[cfg(feature = "redb")]
 use uuid::Uuid;
-use tokio::sync::Notify;
 
 #[cfg(feature = "postgres")]
 use testcontainers::runners::AsyncRunner;
@@ -174,7 +174,6 @@ struct CliArgs {
 }
 
 fn run_with_ui(bpm: f32) -> Result<(), Box<dyn std::error::Error>> {
-
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
     let ui_shutdown = ui::ShutdownFlag::new();

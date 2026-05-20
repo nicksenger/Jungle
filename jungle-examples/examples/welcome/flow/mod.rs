@@ -77,8 +77,7 @@ impl BoundAct<RhythmGuitarist> for SetBarProfile {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &RhythmGuitarIntroState, _input: Self::Input) -> () {
-    }
+    fn emit(_state: &RhythmGuitarIntroState, _input: Self::Input) -> () {}
 
     fn absorb(state: &mut RhythmGuitarIntroState, output: EffectCompletion<Self::Effect>) {
         output.expect("bar profile step should succeed");
@@ -108,14 +107,14 @@ pub struct PlaySlot<
 >(PhantomData<fn() -> A>);
 
 impl<
-    A,
-    const BEAT: u8,
-    const OFFSET_NUM: u8,
-    const OFFSET_DEN: u8,
-    const DUR_NUM: u8,
-    const DUR_DEN: u8,
-    const INTERVAL: i8,
-> BoundAct<A> for PlaySlot<A, BEAT, OFFSET_NUM, OFFSET_DEN, DUR_NUM, DUR_DEN, INTERVAL>
+        A,
+        const BEAT: u8,
+        const OFFSET_NUM: u8,
+        const OFFSET_DEN: u8,
+        const DUR_NUM: u8,
+        const DUR_DEN: u8,
+        const INTERVAL: i8,
+    > BoundAct<A> for PlaySlot<A, BEAT, OFFSET_NUM, OFFSET_DEN, DUR_NUM, DUR_DEN, INTERVAL>
 where
     A: Animal<State = RhythmGuitarIntroState>,
 {

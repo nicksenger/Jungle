@@ -51,7 +51,10 @@ impl Instrument for Bass {
         request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = 0.0;
-        self.audio.play(request).await.map_err(|_| Error::Submission)
+        self.audio
+            .play(request)
+            .await
+            .map_err(|_| Error::Submission)
     }
 }
 
