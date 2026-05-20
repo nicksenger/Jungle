@@ -49,41 +49,104 @@ impl Ecosystem for WelcomeEcosystem {
     type Animals = WelcomeAnimals;
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bpm = parse_bpm_arg()?;
-    let client = LocalClient::builder().build().await?;
-    let worker_client = client.clone();
-    let _worker_task = tokio::spawn(async move {
-        let worker = JungleWorker::new(WelcomeEcosystem, worker_client);
-        let _ = worker.spawn().await;
+
+    let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
+    let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
+    let ui_shutdown = ui::ShutdownFlag::new();
+    let shutdown_for_runtime = ui_shutdown.clone();
+    let runtime_thread = std::thread::spawn(move || {
+        run_runtime_thread(bpm, shutdown_for_runtime, setup_tx, started_rx)
     });
 
-    let seed = postcard::to_allocvec(&())?;
-    let journeys = ui::JourneyIds {
-        lead_vocalist: client.start_journey::<LeadVocalist>(seed.clone()).await?,
-        lead_guitarist: client.start_journey::<LeadGuitarist>(seed.clone()).await?,
-        rhythm_guitarist: client
-            .start_journey::<RhythmGuitarist>(seed.clone())
-            .await?,
-        bass: client.start_journey::<BassAnimal>(seed.clone()).await?,
-        drums: client.start_journey::<Drums>(seed).await?,
-    };
-    let ui_shutdown = ui::ShutdownFlag::new();
+    let setup_result = setup_rx.recv().map_err(|err| {
+        std::io::Error::other(format!(
+            "failed to receive UI setup from runtime thread: {err}"
+        ))
+    })?;
+    let setup = setup_result.map_err(std::io::Error::other)?;
+
     let ui_started_at = Instant::now();
-    let audio_task = tokio::spawn(play_audio_and_schedule_shutdown(
-        bpm,
-        ui_shutdown.clone(),
-        ui_started_at,
-    ));
+    started_tx.send(ui_started_at).map_err(|err| {
+        std::io::Error::other(format!(
+            "failed to notify runtime thread that UI started: {err}"
+        ))
+    })?;
 
-    ui::run_ui(client, journeys, ui_shutdown.clone())?;
+    ui::run_ui(setup.client, setup.journeys, ui_shutdown)?;
 
-    let audio_result = audio_task
-        .await
-        .map_err(|err| std::io::Error::other(format!("audio task join error: {err}")))?;
-    audio_result.map_err(std::io::Error::other)?;
+    let thread_result = runtime_thread.join().map_err(|_| {
+        std::io::Error::other("runtime thread panicked while running welcome example")
+    })?;
+    thread_result.map_err(std::io::Error::other)?;
     Ok(())
+}
+
+struct UiSetup {
+    client: LocalClient,
+    journeys: ui::JourneyIds,
+}
+
+fn run_runtime_thread(
+    bpm: f32,
+    ui_shutdown: ui::ShutdownFlag,
+    setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
+    started_rx: std::sync::mpsc::Receiver<Instant>,
+) -> Result<(), String> {
+    let runtime = tokio::runtime::Runtime::new().map_err(|err| err.to_string())?;
+
+    let setup = runtime.block_on(async {
+        let client = LocalClient::builder()
+            .build()
+            .await
+            .map_err(|err| err.to_string())?;
+        let worker_client = client.clone();
+        let _worker_task = tokio::spawn(async move {
+            let worker = JungleWorker::new(WelcomeEcosystem, worker_client);
+            let _ = worker.spawn().await;
+        });
+
+        let seed = postcard::to_allocvec(&()).map_err(|err| err.to_string())?;
+        let journeys = ui::JourneyIds {
+            lead_vocalist: client
+                .start_journey::<LeadVocalist>(seed.clone())
+                .await
+                .map_err(|err| err.to_string())?,
+            lead_guitarist: client
+                .start_journey::<LeadGuitarist>(seed.clone())
+                .await
+                .map_err(|err| err.to_string())?,
+            rhythm_guitarist: client
+                .start_journey::<RhythmGuitarist>(seed.clone())
+                .await
+                .map_err(|err| err.to_string())?,
+            bass: client
+                .start_journey::<BassAnimal>(seed.clone())
+                .await
+                .map_err(|err| err.to_string())?,
+            drums: client
+                .start_journey::<Drums>(seed)
+                .await
+                .map_err(|err| err.to_string())?,
+        };
+
+        Ok::<UiSetup, String>(UiSetup { client, journeys })
+    });
+
+    if let Err(err) = setup_tx.send(setup) {
+        return Err(format!("failed to send UI setup to main thread: {err}"));
+    }
+
+    let ui_started_at = started_rx
+        .recv()
+        .map_err(|err| format!("failed to receive UI start signal from main thread: {err}"))?;
+
+    runtime.block_on(play_audio_and_schedule_shutdown(
+        bpm,
+        ui_shutdown,
+        ui_started_at,
+    ))
 }
 
 async fn play_audio_and_schedule_shutdown(
