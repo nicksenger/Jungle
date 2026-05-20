@@ -1,5 +1,6 @@
+use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
-use jungle_sdk::prelude::JourneyStatus;
+use jungle_sdk::prelude::{JourneyStatus, RunnerUpdateOut};
 use jungle_sdk::{JungleClient, LocalClient};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -112,17 +113,81 @@ fn run_headless() {
             .expect("start_journey gorilla should succeed");
         println!("started gorilla journey {journey_id} in headless mode");
 
+        let mut updates = client
+            .subscribe_step_updates(journey_id, None)
+            .await
+            .expect("subscribe_step_updates should succeed");
+
         let final_status = loop {
-            let status = client
-                .journey_details(journey_id)
-                .await
-                .expect("journey_details should succeed");
-            match status {
-                JourneyStatus::Created | JourneyStatus::Alive => {
-                    tokio::time::sleep(Duration::from_millis(250)).await;
+            tokio::select! {
+                maybe_update = updates.next() => {
+                    match maybe_update {
+                        Some(Ok(update)) => {
+                            match update.event {
+                                RunnerUpdateOut::EffectInput { uuid, node_id } => {
+                                    println!(
+                                        "journey update seq={} effect_input journey={} node={}",
+                                        update.sequence_id,
+                                        uuid,
+                                        node_id
+                                    );
+                                }
+                                RunnerUpdateOut::EffectSuccessOutput { uuid, node_id } => {
+                                    println!(
+                                        "journey update seq={} effect_success journey={} node={}",
+                                        update.sequence_id,
+                                        uuid,
+                                        node_id
+                                    );
+                                }
+                                RunnerUpdateOut::EffectFailureOutput { uuid, node_id } => {
+                                    println!(
+                                        "journey update seq={} effect_failure journey={} node={}",
+                                        update.sequence_id,
+                                        uuid,
+                                        node_id
+                                    );
+                                }
+                                RunnerUpdateOut::SleepScheduled { uuid, timer_id, wake_at_unix_ms } => {
+                                    println!(
+                                        "journey update seq={} sleep_scheduled journey={} timer={} wake_at_unix_ms={}",
+                                        update.sequence_id,
+                                        uuid,
+                                        timer_id,
+                                        wake_at_unix_ms
+                                    );
+                                }
+                                RunnerUpdateOut::SleepFired { uuid, timer_id, fired_at_unix_ms } => {
+                                    println!(
+                                        "journey update seq={} sleep_fired journey={} timer={} fired_at_unix_ms={}",
+                                        update.sequence_id,
+                                        uuid,
+                                        timer_id,
+                                        fired_at_unix_ms
+                                    );
+                                }
+                            }
+                        }
+                        Some(Err(err)) => {
+                            println!("journey update stream error: {err}");
+                        }
+                        None => {
+                            println!("journey update stream closed");
+                        }
+                    }
                 }
-                JourneyStatus::Completed | JourneyStatus::Stopped | JourneyStatus::Dead => {
-                    break status;
+                _ = tokio::time::sleep(Duration::from_millis(250)) => {
+                    let status = client
+                        .journey_details(journey_id)
+                        .await
+                        .expect("journey_details should succeed");
+                    println!("journey status poll: {status:?}");
+                    match status {
+                        JourneyStatus::Created | JourneyStatus::Alive => {}
+                        JourneyStatus::Completed | JourneyStatus::Stopped | JourneyStatus::Dead => {
+                            break status;
+                        }
+                    }
                 }
             }
         };
