@@ -1,6 +1,6 @@
 use crate::{
     Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    Effect, EffectCompletion, EffectSchema, Join, LoopCondition, Running, Scoped, Select,
+    Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Running, Scoped, Select,
     Transparent, While,
 };
 use inception::*;
@@ -117,9 +117,48 @@ where
         }
     }
 
+    if let Ok(either) = postcard::from_bytes::<Either<In, In>>(input) {
+        return match either {
+            Either::Left(carry) => Ok((true, carry)),
+            Either::Right(carry) => Ok((false, carry)),
+        };
+    }
+
     let carry = postcard::from_bytes::<In>(input)
         .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
     Ok((fallback(&carry), carry))
+}
+
+fn deserialize_exact<T>(bytes: &[u8]) -> Result<T, String>
+where
+    T: DeserializeOwned,
+{
+    let (value, remainder): (T, &[u8]) =
+        postcard::take_from_bytes(bytes).map_err(|err| err.to_string())?;
+    if !remainder.is_empty() {
+        return Err("unexpected trailing bytes".to_string());
+    }
+    Ok(value)
+}
+
+fn deserialize_with_either_fallback<T>(bytes: &[u8]) -> Result<T, String>
+where
+    T: DeserializeOwned,
+{
+    if let Ok(value) = postcard::from_bytes::<T>(bytes) {
+        return Ok(value);
+    }
+
+    for tag in [0_u8, 1_u8] {
+        let mut tagged = Vec::with_capacity(1 + bytes.len());
+        tagged.push(tag);
+        tagged.extend_from_slice(bytes);
+        if let Ok(value) = postcard::from_bytes::<T>(&tagged) {
+            return Ok(value);
+        }
+    }
+
+    postcard::from_bytes::<T>(bytes).map_err(|err| err.to_string())
 }
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
@@ -294,9 +333,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
+        let typed_input = match deserialize_with_either_fallback::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+            Err(err) => return Err((state, ExecutorError::InputDeserialize(err))),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
@@ -319,9 +358,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
+        let typed_input = match deserialize_with_either_fallback::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+            Err(err) => return Err((state, ExecutorError::InputDeserialize(err))),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
@@ -439,9 +478,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
+        let typed_input = match deserialize_with_either_fallback::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+            Err(err) => return Err((state, ExecutorError::InputDeserialize(err))),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
@@ -464,9 +503,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
+        let typed_input = match deserialize_with_either_fallback::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+            Err(err) => return Err((state, ExecutorError::InputDeserialize(err))),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
@@ -544,6 +583,7 @@ where
     }
 }
 
+#[derive(Clone, Copy)]
 enum ActiveBranch {
     Left,
     Right,
@@ -1819,6 +1859,7 @@ where
     }
 }
 
+#[derive(Clone, Copy)]
 enum ActiveContextBranch {
     Left,
     Right,
@@ -2572,14 +2613,22 @@ fn deserialize_request<Request>(request: Serialized) -> Result<Request, Executor
 where
     Request: DeserializeOwned,
 {
-    postcard::from_bytes(&request).map_err(|err| ExecutorError::RequestDeserialize(err.to_string()))
+    deserialize_exact(&request).map_err(ExecutorError::RequestDeserialize)
 }
 
 fn deserialize_emitted<Emitted>(emitted: Serialized) -> Result<Emitted, ExecutorError>
 where
     Emitted: DeserializeOwned,
 {
-    postcard::from_bytes(&emitted).map_err(|err| ExecutorError::EmitDeserialize(err.to_string()))
+    if let Ok(parsed) = deserialize_exact::<Emitted>(&emitted) {
+        return Ok(parsed);
+    }
+
+    let tagged =
+        deserialize_exact::<Either<Emitted, Emitted>>(&emitted).map_err(ExecutorError::EmitDeserialize)?;
+    Ok(match tagged {
+        Either::Left(value) | Either::Right(value) => value,
+    })
 }
 
 fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {

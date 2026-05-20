@@ -42,6 +42,15 @@ impl Animal for ConditionalAnimal {
     type Journey = ConditionalFlowTemplate;
 }
 
+pub struct ConditionalThenMergeAnimal;
+
+#[jungle::animal(id = 2, generation = 0)]
+impl Animal for ConditionalThenMergeAnimal {
+    type State = i32;
+    type Seed = i32;
+    type Journey = ConditionalThenMergeFlowTemplate;
+}
+
 pub struct LeftSpec;
 #[jungle::act]
 impl Act for LeftSpec {
@@ -92,6 +101,84 @@ type ConditionalFlow = Conditional<PreferLeftWhenStateIsNonNegative, LeftFlow, R
 
 #[derive(Flow)]
 pub struct ConditionalFlowTemplate(ConditionalFlow);
+
+pub struct EchoEffect;
+
+#[jungle::effect(id = 2)]
+impl<J> Effect<J> for EchoEffect {
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _dependency: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input))
+    }
+}
+
+pub struct LeftIntSpec;
+#[jungle::act]
+impl Act for LeftIntSpec {
+    type Effect = EchoEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &i32, input: Self::Input) -> i32 {
+        *state + input
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<EchoEffect>) -> Self::Output {
+        let value = output.expect("left-int effect should succeed");
+        *state = value;
+        value
+    }
+}
+
+pub struct RightIntSpec;
+#[jungle::act]
+impl Act for RightIntSpec {
+    type Effect = EchoEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &i32, input: Self::Input) -> i32 {
+        *state - input
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<EchoEffect>) -> Self::Output {
+        let value = output.expect("right-int effect should succeed");
+        *state = value;
+        value
+    }
+}
+
+pub struct MergeEitherSpec;
+#[jungle::act]
+impl Act for MergeEitherSpec {
+    type Effect = EchoEffect;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
+        match input {
+            Either::Left(value) | Either::Right(value) => value,
+        }
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<EchoEffect>) -> Self::Output {
+        let value = output.expect("merge-either effect should succeed");
+        *state = value;
+        value
+    }
+}
+
+#[derive(Flow)]
+pub struct ConditionalThenMergeFlowTemplate(
+    Conditional<PreferLeftWhenStateIsNonNegative, Step<LeftIntSpec>, Step<RightIntSpec>>,
+    Step<MergeEitherSpec>,
+);
 
 type BoundConditionalFlow = Conditional<
     PreferLeftWhenStateIsNonNegative,
@@ -204,4 +291,31 @@ async fn executor_executable_request_runs_without_static_effect_dispatch() {
         .expect("right completion should process");
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 0);
+}
+
+#[test]
+fn conditional_output_is_routed_as_either_for_follow_up_step() {
+    let mut left = Executor::<ConditionalThenMergeAnimal>::new(5);
+    let left_request_1: i32 = left.next_request().expect("left request 1");
+    assert_eq!(left_request_1, 5);
+    let left_emitted_1: i32 = left.complete(Ok::<i32, ()>(5)).expect("left completion 1");
+    assert_eq!(left_emitted_1, 5);
+    let left_request_2: i32 = left.next_request().expect("left request 2");
+    assert_eq!(left_request_2, 5);
+    let left_emitted_2: i32 = left.complete(Ok::<i32, ()>(5)).expect("left completion 2");
+    assert_eq!(left_emitted_2, 5);
+    assert!(left.is_complete());
+    assert_eq!(left.into_state(), 5);
+
+    let mut right = Executor::<ConditionalThenMergeAnimal>::new(-2);
+    let right_request_1: i32 = right.next_request().expect("right request 1");
+    assert_eq!(right_request_1, -2);
+    let right_emitted_1: i32 = right.complete(Ok::<i32, ()>(-2)).expect("right completion 1");
+    assert_eq!(right_emitted_1, -2);
+    let right_request_2: i32 = right.next_request().expect("right request 2");
+    assert_eq!(right_request_2, -2);
+    let right_emitted_2: i32 = right.complete(Ok::<i32, ()>(-2)).expect("right completion 2");
+    assert_eq!(right_emitted_2, -2);
+    assert!(right.is_complete());
+    assert_eq!(right.into_state(), -2);
 }
