@@ -191,6 +191,8 @@ impl JungleServer for Server {
                                 cursor = Some(update.sequence_id);
                                 tx.send(Ok(WireOut::JourneyUpdate(update))).await?;
                             }
+                            #[cfg(feature = "redb")]
+                            tokio::task::yield_now().await;
                             continue;
                         }
 
