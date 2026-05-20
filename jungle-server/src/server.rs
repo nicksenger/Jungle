@@ -2,15 +2,18 @@ use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use jungle_persist::{JungleStore, Kind, StoreBuilder};
-use jungle_types::{BackendError, JourneyStatus, WireIn, WireOut};
+use jungle_types::{BackendError, WireIn, WireOut};
+#[cfg(any(feature = "postgres", feature = "redb"))]
+use jungle_types::JourneyStatus;
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgListener;
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::sync::Arc;
+#[cfg(any(feature = "postgres", feature = "redb"))]
 use std::time::Duration;
 #[cfg(feature = "redb")]
 use tokio::sync::Notify;
-use tracing::info;
+use tracing::debug;
 #[cfg(feature = "postgres")]
 use tracing::warn;
 
@@ -84,7 +87,7 @@ impl ServerBuilder {
         let has_configured_database = self.db.has_kind();
         #[cfg(all(feature = "postgres", feature = "redb"))]
         if !has_configured_database {
-            info!("both `postgres` and `redb` features are enabled; defaulting to postgres");
+            tracing::info!("both `postgres` and `redb` features are enabled; defaulting to postgres");
         }
         let store = self.db.build().await?;
         store.migrate().await?;
@@ -96,7 +99,7 @@ impl ServerBuilder {
 impl JungleServer for Server {
     async fn handle_request(&self, (mut tx, mut rx): (WireTx, WireRx)) -> Result<()> {
         let request = rx.next().await;
-        info!(has_request = request.is_some(), "received request");
+        debug!(has_request = request.is_some(), "received request");
 
         let response = match request {
             Some(WireIn::CreateJourney {
@@ -201,7 +204,7 @@ impl JungleServer for Server {
                             JourneyStatus::Stopped | JourneyStatus::Completed | JourneyStatus::Dead
                         ) {
                             tx.close().await?;
-                            info!("complete");
+                            debug!("complete");
                             return Ok(());
                         }
 
@@ -497,7 +500,7 @@ impl JungleServer for Server {
         };
         tx.send(Ok(response)).await?;
         tx.close().await?;
-        info!("complete");
+        debug!("complete");
         Ok(())
     }
 }

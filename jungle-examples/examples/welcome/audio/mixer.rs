@@ -1,11 +1,20 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use futures::channel::mpsc::{Receiver, TryRecvError};
 
 use super::PlayRequest;
 
 pub(crate) enum Command {
-    Play(PlayRequest),
+    Play {
+        request: PlayRequest,
+        pending_commands: Arc<AtomicUsize>,
+    },
 }
 
 pub(crate) struct AudioMixer {
@@ -78,7 +87,11 @@ impl AudioMixer {
     fn drain_commands(&mut self, command_rx: &mut Receiver<Command>) {
         loop {
             match command_rx.try_recv() {
-                Ok(Command::Play(request)) => {
+                Ok(Command::Play {
+                    request,
+                    pending_commands,
+                }) => {
+                    let _ = pending_commands.fetch_sub(1, Ordering::Relaxed);
                     if let Some(voice) =
                         Voice::from_request(request, self.output_sample_rate, self.frame_clock)
                     {
@@ -226,6 +239,14 @@ fn clamp_unit(sample: f32) -> f32 {
 mod tests {
     use super::*;
     use futures::channel::mpsc;
+    use std::sync::atomic::AtomicUsize;
+
+    fn play_command(request: PlayRequest) -> Command {
+        Command::Play {
+            request,
+            pending_commands: Arc::new(AtomicUsize::new(0)),
+        }
+    }
 
     #[test]
     fn mixes_mono_voice_into_stereo_output() {
@@ -240,7 +261,7 @@ mod tests {
             pan: 0.0,
             playback_rate: 1.0,
         };
-        tx.try_send(Command::Play(request))
+        tx.try_send(play_command(request))
             .expect("command send should succeed");
 
         let mut output = vec![0.0_f32; 6];
@@ -264,7 +285,7 @@ mod tests {
             pan: 0.0,
             playback_rate: 1.0,
         };
-        tx.try_send(Command::Play(request))
+        tx.try_send(play_command(request))
             .expect("command send should succeed");
 
         let mut output = vec![0.0_f32; 8];
@@ -294,9 +315,9 @@ mod tests {
             ..first.clone()
         };
 
-        tx.try_send(Command::Play(first))
+        tx.try_send(play_command(first))
             .expect("first command send should succeed");
-        tx.try_send(Command::Play(second))
+        tx.try_send(play_command(second))
             .expect("second command send should succeed");
 
         let mut output = vec![0.0_f32; 10];
@@ -322,9 +343,9 @@ mod tests {
             playback_rate: 1.0,
         };
 
-        tx.try_send(Command::Play(request.clone()))
+        tx.try_send(play_command(request.clone()))
             .expect("first command send should succeed");
-        tx.try_send(Command::Play(request))
+        tx.try_send(play_command(request))
             .expect("second command send should succeed");
 
         let mut output = vec![0.0_f32; 6];

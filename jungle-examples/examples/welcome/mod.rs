@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{JungleClient, LocalClient};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::{
@@ -595,7 +595,29 @@ where
     // Submitting a dense score can temporarily saturate the mixer queue.
     // Retry with a brief backoff instead of dropping notes.
     loop {
-        match instrument.play(note).await {
+        let play_started = Instant::now();
+        let play_result = instrument.play(note).await;
+        let play_elapsed = play_started.elapsed();
+        if play_elapsed >= Duration::from_millis(250) {
+            warn!(
+                retries = retry_count,
+                midi = note_midi,
+                play_elapsed_ms = play_elapsed.as_millis(),
+                requested_offset_ms = requested_offset.as_millis(),
+                synced_offset_ms = note.offset.as_millis(),
+                duration_ms = note_duration.as_millis(),
+                "instrument.play is slow; possible compute pressure or enqueue backpressure"
+            );
+        } else if play_elapsed >= Duration::from_millis(50) {
+            debug!(
+                retries = retry_count,
+                midi = note_midi,
+                play_elapsed_ms = play_elapsed.as_millis(),
+                "instrument.play latency spike observed"
+            );
+        }
+
+        match play_result {
             Ok(()) => {
                 if retry_count > 0 {
                     debug!(
@@ -615,6 +637,7 @@ where
                     debug!(
                         retries = retry_count,
                         midi = note_midi,
+                        play_elapsed_ms = play_elapsed.as_millis(),
                         requested_offset_ms = requested_offset.as_millis(),
                         synced_offset_ms = note.offset.as_millis(),
                         duration_ms = note_duration.as_millis(),

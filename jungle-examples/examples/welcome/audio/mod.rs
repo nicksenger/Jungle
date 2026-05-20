@@ -1,15 +1,23 @@
 mod mixer;
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleFormat, Stream,
 };
 use futures::{channel::mpsc, SinkExt};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 const COMMAND_CHANNEL_CAPACITY: usize = 1024;
+const ENQUEUE_WARN_THRESHOLD: Duration = Duration::from_millis(250);
+const ENQUEUE_DEBUG_THRESHOLD: Duration = Duration::from_millis(50);
 
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
@@ -30,16 +38,48 @@ pub enum AudioError {
 #[derive(Clone)]
 pub struct AudioHandle {
     command_tx: mpsc::Sender<mixer::Command>,
+    pending_commands: Arc<AtomicUsize>,
 }
 
 impl AudioHandle {
     pub async fn play(&self, request: PlayRequest) -> Result<(), AudioError> {
+        let pending_before_send = self.pending_commands.fetch_add(1, Ordering::Relaxed) + 1;
+        let request_offset_ms = request.start_offset.as_millis();
         let mut command_tx = self.command_tx.clone();
-        command_tx
-            .send(mixer::Command::Play(request))
-            .await
-            .map_err(|err| {
+        let send_started = Instant::now();
+        let send_result = command_tx
+            .send(mixer::Command::Play {
+                request,
+                pending_commands: Arc::clone(&self.pending_commands),
+            })
+            .await;
+        let send_elapsed = send_started.elapsed();
+
+        if send_elapsed >= ENQUEUE_WARN_THRESHOLD {
+            warn!(
+                enqueue_wait_ms = send_elapsed.as_millis(),
+                pending_before_send,
+                current_pending = self.pending_commands.load(Ordering::Relaxed),
+                request_offset_ms,
+                "audio command enqueue is slow; queue may be backpressured"
+            );
+        } else if send_elapsed >= ENQUEUE_DEBUG_THRESHOLD {
+            debug!(
+                enqueue_wait_ms = send_elapsed.as_millis(),
+                pending_before_send,
+                current_pending = self.pending_commands.load(Ordering::Relaxed),
+                request_offset_ms,
+                "audio command enqueue delay observed"
+            );
+        }
+
+        send_result.map_err(|err| {
+            let pending_after_error = self
+                .pending_commands
+                .fetch_sub(1, Ordering::Relaxed)
+                .saturating_sub(1);
                 debug!(error = %err, "failed submitting audio command to mixer");
+                debug!(pending_after_error, "decremented pending audio command count after failed enqueue");
                 AudioError::Submission
             })
     }
@@ -62,7 +102,11 @@ impl AudioEngine {
         let stream_config: cpal::StreamConfig = supported_config.config();
 
         let (command_tx, command_rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
-        let handle = AudioHandle { command_tx };
+        let pending_commands = Arc::new(AtomicUsize::new(0));
+        let handle = AudioHandle {
+            command_tx,
+            pending_commands,
+        };
 
         let stream = match supported_config.sample_format() {
             SampleFormat::F32 => build_stream_f32(&device, &stream_config, command_rx)?,
