@@ -10,8 +10,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1360.0;
@@ -2427,7 +2428,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         event: ViewerEvent<Self::Message>,
     ) -> Task<ViewerEvent<Self::Message>> {
         let now = Instant::now();
-        let guard = state.get_mut().expect("default theme state mutex poisoned");
+        let guard = state.get_mut();
         let mut should_tick = false;
 
         match event {
@@ -2472,51 +2473,65 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
 
         let now = Instant::now();
         let fill = if let Some(runtime_id) = cx.runtime_id {
-            let mut guard = state.lock().expect("default theme state mutex poisoned");
-            let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
-            let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
-                from: RuntimeState::Pending,
-                to: RuntimeState::Pending,
-                started_at: now,
-            });
-
-            let mut phase_target = match cx.phase {
-                Phase::Live(target) => target,
-                Phase::Static => RuntimeState::Pending,
-            };
-            if forced_pending && !matches!(phase_target, RuntimeState::Running) {
-                phase_target = RuntimeState::Pending;
-            }
-            if visual.to != phase_target {
-                let blended = sampled_runtime_state(visual, now);
-                visual.from = blended;
-                visual.to = phase_target;
-                visual.started_at = now;
-            }
-            blend_runtime_color(*visual, now)
-        } else if matches!(cx.kind, StepKind::Conditional) {
-            let mut guard = state.lock().expect("default theme state mutex poisoned");
-            if !cx.successor_runtime_ids.is_empty() {
-                guard
-                    .condition_successor_runtime_ids
-                    .insert(cx.display_id, cx.successor_runtime_ids.clone());
-            }
-            let phase_target = guard.infer_condition_target(cx.display_id, cx.phase);
-            let visual = guard
-                .condition_visuals
-                .entry(cx.display_id)
-                .or_insert(NodeVisual {
+            if let Ok(mut guard) = state.try_lock() {
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+                let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
                     from: RuntimeState::Pending,
                     to: RuntimeState::Pending,
                     started_at: now,
                 });
-            if visual.to != phase_target {
-                let blended = sampled_runtime_state(visual, now);
-                visual.from = blended;
-                visual.to = phase_target;
-                visual.started_at = now;
+
+                let mut phase_target = match cx.phase {
+                    Phase::Live(target) => target,
+                    Phase::Static => RuntimeState::Pending,
+                };
+                if forced_pending && !matches!(phase_target, RuntimeState::Running) {
+                    phase_target = RuntimeState::Pending;
+                }
+                if visual.to != phase_target {
+                    let blended = sampled_runtime_state(visual, now);
+                    visual.from = blended;
+                    visual.to = phase_target;
+                    visual.started_at = now;
+                }
+                blend_runtime_color(*visual, now)
+            } else {
+                let phase_target = match cx.phase {
+                    Phase::Live(target) => target,
+                    Phase::Static => RuntimeState::Pending,
+                };
+                runtime_color(phase_target)
             }
-            blend_runtime_color(*visual, now)
+        } else if matches!(cx.kind, StepKind::Conditional) {
+            if let Ok(mut guard) = state.try_lock() {
+                if !cx.successor_runtime_ids.is_empty() {
+                    guard
+                        .condition_successor_runtime_ids
+                        .insert(cx.display_id, cx.successor_runtime_ids.clone());
+                }
+                let phase_target = guard.infer_condition_target(cx.display_id, cx.phase);
+                let visual = guard
+                    .condition_visuals
+                    .entry(cx.display_id)
+                    .or_insert(NodeVisual {
+                        from: RuntimeState::Pending,
+                        to: RuntimeState::Pending,
+                        started_at: now,
+                    });
+                if visual.to != phase_target {
+                    let blended = sampled_runtime_state(visual, now);
+                    visual.from = blended;
+                    visual.to = phase_target;
+                    visual.started_at = now;
+                }
+                blend_runtime_color(*visual, now)
+            } else {
+                let phase_target = match cx.phase {
+                    Phase::Live(target) => target,
+                    Phase::Static => RuntimeState::Pending,
+                };
+                runtime_color(phase_target)
+            }
         } else {
             Color::from_rgb8(120, 120, 120)
         };
@@ -2552,11 +2567,15 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         cx: &ClusterViewCtx<'_>,
     ) -> ClusterView<Self::Message> {
         let now = Instant::now();
-        let mut guard = state.lock().expect("default theme state mutex poisoned");
-        guard.register_cluster(cx, now);
-        let expanded = guard.cluster_is_expanded(cx.cluster_id);
-        let border_color = guard.cluster_border_color(cx.cluster_id, now);
-        drop(guard);
+        let (expanded, border_color) = if let Ok(mut guard) = state.try_lock() {
+            guard.register_cluster(cx, now);
+            (
+                guard.cluster_is_expanded(cx.cluster_id),
+                guard.cluster_border_color(cx.cluster_id, now),
+            )
+        } else {
+            (false, cluster_border_color_gray())
+        };
 
         let overlay = container(
             container(text(cx.label.to_string()).size(11).color(border_color))
@@ -2606,29 +2625,37 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     fn edge_style(&self, state: &Self::State, cx: EdgeStyleCtx) -> Option<EdgeStyle> {
         let now = Instant::now();
         let (from_color, to_color) = if let Some(runtime_id) = cx.source_runtime_id {
-            let mut guard = state.lock().expect("default theme state mutex poisoned");
-            let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
-            let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
-                from: RuntimeState::Pending,
-                to: RuntimeState::Pending,
-                started_at: now,
-            });
+            if let Ok(mut guard) = state.try_lock() {
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+                let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
+                    from: RuntimeState::Pending,
+                    to: RuntimeState::Pending,
+                    started_at: now,
+                });
 
-            let mut phase_target = match cx.source_phase {
-                Phase::Live(target) => target,
-                Phase::Static => RuntimeState::Pending,
-            };
-            if forced_pending && !matches!(phase_target, RuntimeState::Running) {
-                phase_target = RuntimeState::Pending;
-            }
-            if visual.to != phase_target {
-                let blended = sampled_runtime_state(visual, now);
-                visual.from = blended;
-                visual.to = phase_target;
-                visual.started_at = now;
-            }
+                let mut phase_target = match cx.source_phase {
+                    Phase::Live(target) => target,
+                    Phase::Static => RuntimeState::Pending,
+                };
+                if forced_pending && !matches!(phase_target, RuntimeState::Running) {
+                    phase_target = RuntimeState::Pending;
+                }
+                if visual.to != phase_target {
+                    let blended = sampled_runtime_state(visual, now);
+                    visual.from = blended;
+                    visual.to = phase_target;
+                    visual.started_at = now;
+                }
 
-            (runtime_color(visual.from), runtime_color(visual.to))
+                (runtime_color(visual.from), runtime_color(visual.to))
+            } else {
+                let phase_target = match cx.source_phase {
+                    Phase::Live(target) => target,
+                    Phase::Static => RuntimeState::Pending,
+                };
+                let color = runtime_color(phase_target);
+                (color, color)
+            }
         } else {
             let phase_target = match cx.source_phase {
                 Phase::Live(target) => target,
