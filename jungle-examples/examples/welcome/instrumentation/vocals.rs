@@ -58,7 +58,8 @@ impl Instrument for Vocals {
             request.playback_rate = playback_rate * layer.playback_rate_scale;
             request.pan = layer.pan;
             self.audio
-                .try_play(request)
+                .play(request)
+                .await
                 .map_err(|_| Error::Submission)?;
         }
 

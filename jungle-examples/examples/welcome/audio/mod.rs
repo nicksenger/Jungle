@@ -6,7 +6,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleFormat, Stream,
 };
-use futures::channel::mpsc;
+use futures::{channel::mpsc, SinkExt};
 
 const COMMAND_CHANNEL_CAPACITY: usize = 1024;
 
@@ -32,10 +32,11 @@ pub struct AudioHandle {
 }
 
 impl AudioHandle {
-    pub fn try_play(&self, request: PlayRequest) -> Result<(), AudioError> {
+    pub async fn play(&self, request: PlayRequest) -> Result<(), AudioError> {
         let mut command_tx = self.command_tx.clone();
         command_tx
-            .try_send(mixer::Command::Play(request))
+            .send(mixer::Command::Play(request))
+            .await
             .map_err(|_| AudioError::Submission)
     }
 }

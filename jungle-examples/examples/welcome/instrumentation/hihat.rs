@@ -49,7 +49,7 @@ impl Instrument for HiHat {
         request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = 0.2;
-        self.audio.try_play(request).map_err(|_| Error::Submission)
+        self.audio.play(request).await.map_err(|_| Error::Submission)
     }
 }
 
