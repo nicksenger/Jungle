@@ -161,7 +161,19 @@ impl RuntimeKeepAlive {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
-    let bpm = parse_bpm_arg()?;
+    let args = parse_cli_args()?;
+    if args.headless {
+        return run_headless(args.bpm);
+    }
+    run_with_ui(args.bpm)
+}
+
+struct CliArgs {
+    bpm: f32,
+    headless: bool,
+}
+
+fn run_with_ui(bpm: f32) -> Result<(), Box<dyn std::error::Error>> {
 
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
@@ -195,6 +207,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let thread_result = runtime_thread.join().map_err(|_| {
         error!("runtime thread panicked while running welcome example");
         std::io::Error::other("runtime thread panicked while running welcome example")
+    })?;
+    thread_result.map_err(|err| {
+        error!(error = %err, "runtime thread returned an error");
+        std::io::Error::other(err)
+    })?;
+    Ok(())
+}
+
+fn run_headless(bpm: f32) -> Result<(), Box<dyn std::error::Error>> {
+    info!(bpm, "running welcome example in headless mode");
+
+    let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
+    let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
+    let ui_shutdown = ui::ShutdownFlag::new();
+    let shutdown_for_runtime = ui_shutdown.clone();
+    let runtime_thread = std::thread::spawn(move || {
+        run_runtime_thread(bpm, shutdown_for_runtime, setup_tx, started_rx)
+    });
+
+    let setup_result = setup_rx.recv().map_err(|err| {
+        error!(
+            error = %err,
+            "failed receiving runtime setup from runtime thread"
+        );
+        std::io::Error::other(format!(
+            "failed to receive runtime setup from runtime thread: {err}"
+        ))
+    })?;
+    let _setup = setup_result.map_err(|err| {
+        error!(error = %err, "runtime thread setup failed");
+        std::io::Error::other(err)
+    })?;
+
+    started_tx.send(Instant::now()).map_err(|err| {
+        error!(
+            error = %err,
+            "failed notifying runtime thread that headless run started"
+        );
+        std::io::Error::other(format!(
+            "failed to notify runtime thread that headless run started: {err}"
+        ))
+    })?;
+
+    let thread_result = runtime_thread.join().map_err(|_| {
+        error!("runtime thread panicked while running welcome example headless");
+        std::io::Error::other("runtime thread panicked while running welcome example headless")
     })?;
     thread_result.map_err(|err| {
         error!(error = %err, "runtime thread returned an error");
@@ -526,11 +584,17 @@ async fn play_audio_and_schedule_shutdown(
     Ok(())
 }
 
-fn parse_bpm_arg() -> Result<f32, Box<dyn std::error::Error>> {
+fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let mut bpm = DEFAULT_BPM;
+    let mut headless = false;
 
     while let Some(arg) = args.next() {
+        if arg == "--headless" {
+            headless = true;
+            continue;
+        }
+
         if let Some(value) = arg.strip_prefix("--bpm=") {
             bpm = parse_bpm_value(value)?;
             continue;
@@ -544,11 +608,15 @@ fn parse_bpm_arg() -> Result<f32, Box<dyn std::error::Error>> {
             continue;
         }
 
+        if arg.starts_with("--") {
+            return Err(format!("Unknown argument: {arg}").into());
+        }
+
         // Keep supporting the legacy positional form for compatibility.
         bpm = parse_bpm_value(&arg)?;
     }
 
-    Ok(bpm)
+    Ok(CliArgs { bpm, headless })
 }
 
 fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
