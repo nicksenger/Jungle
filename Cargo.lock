@@ -2791,6 +2791,7 @@ dependencies = [
  "image",
  "jungle-client",
  "jungle-types",
+ "tokio",
  "uuid",
 ]
 

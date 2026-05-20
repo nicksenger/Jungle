@@ -10,8 +10,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock, RwLock};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1360.0;
@@ -20,6 +20,9 @@ const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-viewer";
 const DEFAULT_CLUSTER_FILL: Color = Color::TRANSPARENT;
+const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
+const CLUSTER_BORDER_ANIMATION_DURATION: Duration = Duration::from_millis(320);
+const ANIMATION_TICK: Duration = Duration::from_millis(16);
 
 static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
 
@@ -2112,21 +2115,6 @@ impl GraphBuilder {
     }
 }
 
-fn truncate_label(label: &str, max_chars: usize) -> String {
-    if label.chars().count() <= max_chars {
-        return label.to_string();
-    }
-    let mut out = String::new();
-    for (index, ch) in label.chars().enumerate() {
-        if index + 1 >= max_chars {
-            break;
-        }
-        out.push(ch);
-    }
-    out.push('…');
-    out
-}
-
 fn short_type_name<T>() -> String {
     short_type_name_str(core::any::type_name::<T>())
 }
@@ -2154,108 +2142,603 @@ fn dedup(values: Vec<u32>) -> Vec<u32> {
 #[derive(Clone, Copy)]
 pub struct DefaultTheme;
 
+#[derive(Debug, Clone, Copy)]
+struct NodeVisual {
+    from: RuntimeState,
+    to: RuntimeState,
+    started_at: Instant,
+}
+
+#[derive(Debug, Clone)]
+struct ClusterRuntimeIndex {
+    kind: ClusterKind,
+    entry_runtime_ids: HashSet<u32>,
+    member_runtime_ids: HashSet<u32>,
+    successor_runtime_ids: HashSet<u32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClusterVisual {
+    expanded: bool,
+    border: ClusterBorderVisual,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClusterBorderVisual {
+    from: Color,
+    to: Color,
+    started_at: Instant,
+}
+
+#[derive(Debug)]
+pub struct DefaultThemeState {
+    node_visuals: HashMap<u32, NodeVisual>,
+    condition_visuals: HashMap<u32, NodeVisual>,
+    cluster_index: HashMap<u32, ClusterRuntimeIndex>,
+    cluster_visuals: HashMap<u32, ClusterVisual>,
+    condition_successor_runtime_ids: HashMap<u32, Vec<u32>>,
+    force_pending_runtime_ids: HashSet<u32>,
+    runtime_update_counter: u64,
+    runtime_update_order: HashMap<u32, u64>,
+}
+
+impl DefaultThemeState {
+    fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>, now: Instant) {
+        let index = ClusterRuntimeIndex {
+            kind: cx.kind,
+            entry_runtime_ids: cx.entry_runtime_ids.iter().copied().collect(),
+            member_runtime_ids: cx.member_runtime_ids.iter().copied().collect(),
+            successor_runtime_ids: cx.successor_runtime_ids.iter().copied().collect(),
+        };
+        self.cluster_index.insert(cx.cluster_id, index);
+        self.cluster_visuals
+            .entry(cx.cluster_id)
+            .or_insert(ClusterVisual {
+                expanded: false,
+                border: ClusterBorderVisual {
+                    from: cluster_border_color_gray(),
+                    to: cluster_border_color_gray(),
+                    started_at: now,
+                },
+            });
+    }
+
+    fn cluster_is_expanded(&self, cluster_id: u32) -> bool {
+        self.cluster_visuals
+            .get(&cluster_id)
+            .map(|visual| visual.expanded)
+            .unwrap_or(false)
+    }
+
+    fn effective_node_target(&self, runtime_id: u32) -> RuntimeState {
+        let mut target = self
+            .node_visuals
+            .get(&runtime_id)
+            .map(|visual| visual.to)
+            .unwrap_or(RuntimeState::Pending);
+        if self.force_pending_runtime_ids.contains(&runtime_id)
+            && !matches!(target, RuntimeState::Running)
+        {
+            target = RuntimeState::Pending;
+        }
+        target
+    }
+
+    fn note_runtime_update(&mut self, runtime_id: u32) {
+        self.runtime_update_counter = self.runtime_update_counter.saturating_add(1);
+        self.runtime_update_order
+            .insert(runtime_id, self.runtime_update_counter);
+    }
+
+    fn infer_condition_target(
+        &self,
+        display_id: u32,
+        fallback_phase: Phase<RuntimeState>,
+    ) -> RuntimeState {
+        let mut newest: Option<(u64, RuntimeState)> = None;
+        if let Some(successors) = self.condition_successor_runtime_ids.get(&display_id) {
+            for runtime_id in successors {
+                let Some(order) = self.runtime_update_order.get(runtime_id).copied() else {
+                    continue;
+                };
+                let state = self.effective_node_target(*runtime_id);
+                if newest.map(|(best, _)| order > best).unwrap_or(true) {
+                    newest = Some((order, state));
+                }
+            }
+        }
+        newest
+            .map(|(_, state)| state)
+            .unwrap_or(match fallback_phase {
+                Phase::Live(state) => state,
+                Phase::Static => RuntimeState::Pending,
+            })
+    }
+
+    fn update_node_state(&mut self, runtime_id: u32, to: RuntimeState, now: Instant) -> bool {
+        if !matches!(to, RuntimeState::Pending) {
+            self.force_pending_runtime_ids.remove(&runtime_id);
+        }
+        let entry = self.node_visuals.entry(runtime_id).or_insert(NodeVisual {
+            from: RuntimeState::Pending,
+            to: RuntimeState::Pending,
+            started_at: now,
+        });
+
+        if entry.to == to {
+            return false;
+        }
+
+        let blended = sampled_runtime_state(entry, now);
+        entry.from = blended;
+        entry.to = to;
+        entry.started_at = now;
+        self.note_runtime_update(runtime_id);
+        true
+    }
+
+    fn reset_cluster_members_to_pending(
+        &mut self,
+        cluster_id: u32,
+        except_runtime_id: u32,
+        now: Instant,
+    ) -> bool {
+        let Some(index) = self.cluster_index.get(&cluster_id) else {
+            return false;
+        };
+        let members = index.member_runtime_ids.iter().copied().collect::<Vec<_>>();
+        let mut changed = false;
+        for member_id in members {
+            if member_id == except_runtime_id {
+                continue;
+            }
+            self.force_pending_runtime_ids.insert(member_id);
+            changed |= self.update_node_state(member_id, RuntimeState::Pending, now);
+        }
+        changed
+    }
+
+    fn update_clusters_for_effect_input(&mut self, runtime_id: u32, now: Instant) -> bool {
+        let mut changed = false;
+        let cluster_ids = self.cluster_index.keys().copied().collect::<Vec<_>>();
+        for cluster_id in cluster_ids {
+            let Some(index) = self.cluster_index.get(&cluster_id) else {
+                continue;
+            };
+            let contains_member = index.member_runtime_ids.contains(&runtime_id);
+            let contains_entry = index.entry_runtime_ids.contains(&runtime_id);
+            let contains_successor = index.successor_runtime_ids.contains(&runtime_id);
+            let is_while_cluster = matches!(index.kind, ClusterKind::While);
+
+            let mut just_opened = false;
+            if let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) {
+                if (is_while_cluster && contains_entry) || (!visual.expanded && contains_member) {
+                    visual.expanded = true;
+                    changed |= update_cluster_border_visual(
+                        &mut visual.border,
+                        cluster_border_color_gray(),
+                        cluster_border_color_running(),
+                        now,
+                    );
+                    just_opened = true;
+                } else if visual.expanded && contains_successor {
+                    let current = current_cluster_border_color(visual.border, now);
+                    changed |= update_cluster_border_visual(
+                        &mut visual.border,
+                        current,
+                        cluster_border_color_completed(),
+                        now,
+                    );
+                }
+            }
+
+            if just_opened || (is_while_cluster && contains_entry) {
+                changed |= self.reset_cluster_members_to_pending(cluster_id, runtime_id, now);
+            }
+        }
+        changed
+    }
+
+    fn has_running_cluster_animations(&self, now: Instant) -> bool {
+        self.cluster_visuals.values().any(|visual| {
+            visual.border.from != visual.border.to
+                && now.duration_since(visual.border.started_at) < CLUSTER_BORDER_ANIMATION_DURATION
+        })
+    }
+
+    fn cluster_border_color(&self, cluster_id: u32, now: Instant) -> Color {
+        self.cluster_visuals
+            .get(&cluster_id)
+            .map(|visual| current_cluster_border_color(visual.border, now))
+            .unwrap_or_else(cluster_border_color_gray)
+    }
+
+    fn settle_cluster_animations(&mut self, now: Instant) -> bool {
+        let mut changed = false;
+        for visual in self.cluster_visuals.values_mut() {
+            let border = &mut visual.border;
+            if border.from == border.to {
+                continue;
+            }
+            if now.duration_since(border.started_at) >= CLUSTER_BORDER_ANIMATION_DURATION {
+                border.from = border.to;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    fn has_running_animations(&self, now: Instant) -> bool {
+        self.node_visuals
+            .values()
+            .chain(self.condition_visuals.values())
+            .any(|visual| {
+                visual.from != visual.to
+                    && now.duration_since(visual.started_at) < NODE_ANIMATION_DURATION
+            })
+            || self.has_running_cluster_animations(now)
+    }
+
+    fn settle_animations(&mut self, now: Instant) -> bool {
+        let mut changed = false;
+        for visual in self.node_visuals.values_mut() {
+            if visual.from == visual.to {
+                continue;
+            }
+            if now.duration_since(visual.started_at) >= NODE_ANIMATION_DURATION {
+                visual.from = visual.to;
+                changed = true;
+            }
+        }
+        for visual in self.condition_visuals.values_mut() {
+            if visual.from == visual.to {
+                continue;
+            }
+            if now.duration_since(visual.started_at) >= NODE_ANIMATION_DURATION {
+                visual.from = visual.to;
+                changed = true;
+            }
+        }
+        changed |= self.settle_cluster_animations(now);
+        changed
+    }
+}
+
 impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
-    type State = ();
+    type State = Mutex<DefaultThemeState>;
     type Message = ();
 
-    fn init(&self) -> Self::State {}
+    fn init(&self) -> Self::State {
+        Mutex::new(DefaultThemeState {
+            node_visuals: HashMap::new(),
+            condition_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
+        })
+    }
+
+    fn update(
+        &self,
+        state: &mut Self::State,
+        event: ViewerEvent<Self::Message>,
+    ) -> Task<ViewerEvent<Self::Message>> {
+        let now = Instant::now();
+        let guard = state.get_mut().expect("default theme state mutex poisoned");
+        let mut should_tick = false;
+
+        match event {
+            ViewerEvent::JourneyUpdate(update) => match update.event {
+                RunnerUpdateOut::EffectInput { node_id, .. } => {
+                    let node_changed = guard.update_node_state(node_id, RuntimeState::Running, now);
+                    let cluster_changed = guard.update_clusters_for_effect_input(node_id, now);
+                    should_tick = node_changed || cluster_changed;
+                }
+                RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
+                    should_tick = guard.update_node_state(node_id, RuntimeState::Completed, now);
+                }
+                RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
+                    should_tick = guard.update_node_state(node_id, RuntimeState::Failed, now);
+                }
+                RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
+            },
+            ViewerEvent::Message(()) => {
+                let settled = guard.settle_animations(now);
+                should_tick = settled || guard.has_running_animations(now);
+            }
+        }
+
+        if should_tick {
+            return next_tick();
+        }
+
+        Task::none()
+    }
 
     fn view_step(
         &self,
-        _state: &Self::State,
+        state: &Self::State,
         cx: &StepViewCtx<'_>,
     ) -> (Element<'static, ViewerEvent<Self::Message>>, (f64, f64)) {
-        let label = truncate_label(cx.label, 58);
-        let badge = match cx.kind {
+        let role = match cx.kind {
             StepKind::Conditional => "condition",
             StepKind::Select => "select",
             StepKind::Join => "join",
             StepKind::Step => "step",
         };
-        let mut base = match cx.kind {
-            StepKind::Conditional => Color::from_rgb8(23, 71, 47),
-            StepKind::Select | StepKind::Join => Color::from_rgb8(19, 84, 58),
-            StepKind::Step => Color::from_rgb8(25, 99, 65),
-        };
-        if let Phase::Live(state) = cx.phase {
-            base = match state {
-                RuntimeState::Running => Color::from_rgb8(123, 166, 52),
-                RuntimeState::Completed => Color::from_rgb8(70, 166, 92),
-                RuntimeState::Failed => Color::from_rgb8(155, 57, 57),
-                RuntimeState::Pending => base,
-            };
-        }
 
-        let content = column![
-            text(badge).size(10).color(jungle_text_muted()),
-            text(label).size(13).color(jungle_text_base())
+        let now = Instant::now();
+        let fill = if let Some(runtime_id) = cx.runtime_id {
+            let mut guard = state.lock().expect("default theme state mutex poisoned");
+            let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+            let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
+                from: RuntimeState::Pending,
+                to: RuntimeState::Pending,
+                started_at: now,
+            });
+
+            let mut phase_target = match cx.phase {
+                Phase::Live(target) => target,
+                Phase::Static => RuntimeState::Pending,
+            };
+            if forced_pending && !matches!(phase_target, RuntimeState::Running) {
+                phase_target = RuntimeState::Pending;
+            }
+            if visual.to != phase_target {
+                let blended = sampled_runtime_state(visual, now);
+                visual.from = blended;
+                visual.to = phase_target;
+                visual.started_at = now;
+            }
+            blend_runtime_color(*visual, now)
+        } else if matches!(cx.kind, StepKind::Conditional) {
+            let mut guard = state.lock().expect("default theme state mutex poisoned");
+            if !cx.successor_runtime_ids.is_empty() {
+                guard
+                    .condition_successor_runtime_ids
+                    .insert(cx.display_id, cx.successor_runtime_ids.clone());
+            }
+            let phase_target = guard.infer_condition_target(cx.display_id, cx.phase);
+            let visual = guard
+                .condition_visuals
+                .entry(cx.display_id)
+                .or_insert(NodeVisual {
+                    from: RuntimeState::Pending,
+                    to: RuntimeState::Pending,
+                    started_at: now,
+                });
+            if visual.to != phase_target {
+                let blended = sampled_runtime_state(visual, now);
+                visual.from = blended;
+                visual.to = phase_target;
+                visual.started_at = now;
+            }
+            blend_runtime_color(*visual, now)
+        } else {
+            Color::from_rgb8(120, 120, 120)
+        };
+
+        let body = column![
+            text(role).size(10).color(Color::from_rgb8(168, 198, 181)),
+            text(cx.label.to_string())
+                .size(13)
+                .color(Color::from_rgb8(223, 245, 230))
         ]
         .spacing(4);
 
         (
-            button(content)
+            button(body)
                 .padding([8, 10])
                 .width(Length::Shrink)
-                .style(move |_theme, status| {
-                    let mut border_color = jungle_accent_dark();
-                    if matches!(status, button::Status::Hovered) {
-                        border_color = jungle_accent_bright();
-                    }
-
-                    iced::widget::button::Style {
-                        background: Some(iced::Background::Color(base)),
-                        text_color: jungle_text_base(),
-                        border: iced::border::rounded(10).color(border_color).width(
-                            if matches!(status, button::Status::Hovered) {
-                                1.6
-                            } else {
-                                1.0
-                            },
-                        ),
-                        shadow: if matches!(status, button::Status::Hovered) {
-                            iced::Shadow {
-                                color: Color::from_rgba8(80, 220, 130, 0.28),
-                                offset: iced::Vector::new(0.0, 1.0),
-                                blur_radius: 8.0,
-                            }
-                        } else {
-                            iced::Shadow::default()
-                        },
-                        ..Default::default()
-                    }
+                .style(move |_theme, _status| iced::widget::button::Style {
+                    background: Some(iced::Background::Color(fill)),
+                    text_color: Color::from_rgb8(223, 245, 230),
+                    border: iced::border::rounded(10)
+                        .color(Color::from_rgb8(58, 122, 86))
+                        .width(1.0),
+                    ..Default::default()
                 })
                 .into(),
-            (NODE_WIDTH, NODE_HEIGHT),
+            (240.0, 80.0),
         )
     }
 
     fn view_cluster(
         &self,
-        _state: &Self::State,
+        state: &Self::State,
         cx: &ClusterViewCtx<'_>,
     ) -> ClusterView<Self::Message> {
-        ClusterView::Expanded {
-            overlay: Some(
-                container(
-                    text(cx.label.to_string())
-                        .size(11)
-                        .color(jungle_text_muted()),
-                )
+        let now = Instant::now();
+        let mut guard = state.lock().expect("default theme state mutex poisoned");
+        guard.register_cluster(cx, now);
+        let expanded = guard.cluster_is_expanded(cx.cluster_id);
+        let border_color = guard.cluster_border_color(cx.cluster_id, now);
+        drop(guard);
+
+        let overlay = container(
+            container(text(cx.label.to_string()).size(11).color(border_color))
                 .padding([4, 8])
-                .style(loop_cluster_label)
-                .into(),
-            ),
-            fill: Color::from_rgba8(30, 91, 53, 0.04),
+                .style(move |_theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
+                    border: iced::border::rounded(6).color(border_color).width(1.0),
+                    text_color: Some(border_color),
+                    ..Default::default()
+                }),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(12)
+        .align_x(iced::alignment::Horizontal::Left)
+        .align_y(iced::alignment::Vertical::Top)
+        .style(move |_theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(Color::TRANSPARENT)),
+            border: iced::border::rounded(10).color(border_color).width(2.0),
+            text_color: Some(border_color),
+            ..Default::default()
+        })
+        .into();
+
+        if expanded {
+            ClusterView::Expanded {
+                overlay: Some(overlay),
+                fill: Color::TRANSPARENT,
+            }
+        } else {
+            ClusterView::Collapsed {
+                element: button(text(cx.label.to_string()).size(11).color(border_color))
+                    .padding([6, 10])
+                    .width(Length::Shrink)
+                    .style(move |_theme, _status| iced::widget::button::Style {
+                        background: None,
+                        text_color: border_color,
+                        border: iced::border::rounded(8).color(border_color).width(1.4),
+                        ..Default::default()
+                    })
+                    .into(),
+                size: (240.0, 46.0),
+            }
         }
     }
 
-    fn edge_style(&self, _state: &Self::State, _ctx: EdgeStyleCtx) -> Option<EdgeStyle> {
+    fn edge_style(&self, state: &Self::State, cx: EdgeStyleCtx) -> Option<EdgeStyle> {
+        let now = Instant::now();
+        let (from_color, to_color) = if let Some(runtime_id) = cx.source_runtime_id {
+            let mut guard = state.lock().expect("default theme state mutex poisoned");
+            let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+            let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
+                from: RuntimeState::Pending,
+                to: RuntimeState::Pending,
+                started_at: now,
+            });
+
+            let mut phase_target = match cx.source_phase {
+                Phase::Live(target) => target,
+                Phase::Static => RuntimeState::Pending,
+            };
+            if forced_pending && !matches!(phase_target, RuntimeState::Running) {
+                phase_target = RuntimeState::Pending;
+            }
+            if visual.to != phase_target {
+                let blended = sampled_runtime_state(visual, now);
+                visual.from = blended;
+                visual.to = phase_target;
+                visual.started_at = now;
+            }
+
+            (runtime_color(visual.from), runtime_color(visual.to))
+        } else {
+            let phase_target = match cx.source_phase {
+                Phase::Live(target) => target,
+                Phase::Static => RuntimeState::Pending,
+            };
+            let color = runtime_color(phase_target);
+            (color, color)
+        };
+
+        let progress = cx.extent.clamp(0.0, 1.0);
+        let source_t = ease_out_cubic((progress / 0.55).clamp(0.0, 1.0));
+        let target_t = ease_out_cubic(((progress - 0.25) / 0.75).clamp(0.0, 1.0));
+        let start = lerp_color(from_color, to_color, source_t);
+        let end = lerp_color(from_color, to_color, target_t);
+
         Some(EdgeStyle {
             width: 1.6,
-            start: Color::from_rgb8(64, 169, 104),
-            end: Color::from_rgb8(40, 104, 67),
+            start,
+            end,
         })
     }
+}
+
+fn sampled_runtime_state(visual: &NodeVisual, now: Instant) -> RuntimeState {
+    if now.duration_since(visual.started_at) >= NODE_ANIMATION_DURATION {
+        return visual.to;
+    }
+    visual.from
+}
+
+fn update_cluster_border_visual(
+    visual: &mut ClusterBorderVisual,
+    from: Color,
+    to: Color,
+    now: Instant,
+) -> bool {
+    if visual.to == to && visual.from == from {
+        return false;
+    }
+    visual.from = from;
+    visual.to = to;
+    visual.started_at = now;
+    true
+}
+
+fn current_cluster_border_color(visual: ClusterBorderVisual, now: Instant) -> Color {
+    if visual.from == visual.to {
+        return visual.to;
+    }
+    let elapsed = now.saturating_duration_since(visual.started_at);
+    let t =
+        (elapsed.as_secs_f32() / CLUSTER_BORDER_ANIMATION_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+    lerp_color(visual.from, visual.to, ease_out_cubic(t))
+}
+
+fn blend_runtime_color(visual: NodeVisual, now: Instant) -> Color {
+    if visual.from == visual.to {
+        return runtime_color(visual.to);
+    }
+
+    let elapsed = now.saturating_duration_since(visual.started_at);
+    let t = (elapsed.as_secs_f32() / NODE_ANIMATION_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+    lerp_color(
+        runtime_color(visual.from),
+        runtime_color(visual.to),
+        ease_out_cubic(t),
+    )
+}
+
+fn runtime_color(state: RuntimeState) -> Color {
+    match state {
+        RuntimeState::Pending => Color::from_rgb8(120, 120, 120),
+        RuntimeState::Running => Color::from_rgb8(212, 190, 68),
+        RuntimeState::Completed => Color::from_rgb8(55, 144, 81),
+        RuntimeState::Failed => Color::from_rgb8(165, 61, 61),
+    }
+}
+
+fn cluster_border_color_gray() -> Color {
+    runtime_color(RuntimeState::Pending)
+}
+
+fn cluster_border_color_running() -> Color {
+    runtime_color(RuntimeState::Running)
+}
+
+fn cluster_border_color_completed() -> Color {
+    runtime_color(RuntimeState::Completed)
+}
+
+fn lerp_color(from: Color, to: Color, t: f32) -> Color {
+    Color {
+        r: from.r + (to.r - from.r) * t,
+        g: from.g + (to.g - from.g) * t,
+        b: from.b + (to.b - from.b) * t,
+        a: from.a + (to.a - from.a) * t,
+    }
+}
+
+fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
+
+fn next_tick() -> Task<ViewerEvent<()>> {
+    Task::perform(
+        async move {
+            tokio::time::sleep(ANIMATION_TICK).await;
+        },
+        ViewerEvent::Message,
+    )
 }
 
 fn app_background(_theme: &iced::Theme) -> iced::widget::container::Style {
@@ -2296,17 +2779,6 @@ fn sidebar_button(_theme: &iced::Theme, status: button::Status) -> iced::widget:
             .color(jungle_accent_dark())
             .width(1.0),
         shadow: iced::Shadow::default(),
-        ..Default::default()
-    }
-}
-
-fn loop_cluster_label(_theme: &iced::Theme) -> iced::widget::container::Style {
-    iced::widget::container::Style {
-        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
-        border: iced::border::rounded(6)
-            .color(Color::from_rgb8(54, 117, 78))
-            .width(1.0),
-        text_color: Some(jungle_text_muted()),
         ..Default::default()
     }
 }
@@ -2366,7 +2838,8 @@ impl fmt::Debug for ViewMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
+    use std::time::{Duration, Instant};
     use uuid::Uuid;
 
     #[test]
@@ -2810,5 +3283,69 @@ mod tests {
         assert!(edges.contains(&(gate_id, in_r_id)));
         assert!(edges.contains(&(in_l_id, tail_id)));
         assert!(edges.contains(&(in_r_id, tail_id)));
+    }
+
+    #[test]
+    fn while_cluster_border_resets_on_reentry() {
+        let mut state = DefaultThemeState {
+            node_visuals: HashMap::new(),
+            condition_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
+        };
+
+        let started_at = Instant::now();
+        let cx = ClusterViewCtx {
+            cluster_id: 9,
+            cluster_index: 0,
+            kind: ClusterKind::While,
+            label: "while: flow::GorillaDaylightRemaining",
+            metadata: None,
+            parent_cluster_id: Some(1),
+            depth: 1,
+            member_display_ids: &[],
+            entry_runtime_ids: vec![18],
+            member_runtime_ids: vec![18, 19],
+            successor_runtime_ids: vec![32],
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: false,
+            }),
+        };
+        state.register_cluster(&cx, started_at);
+
+        let first_entry = started_at + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(18, first_entry));
+        let border = state
+            .cluster_visuals
+            .get(&9)
+            .expect("cluster visual should exist")
+            .border;
+        assert_eq!(border.from, cluster_border_color_gray());
+        assert_eq!(border.to, cluster_border_color_running());
+
+        let first_exit = first_entry + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(32, first_exit));
+        let border = state
+            .cluster_visuals
+            .get(&9)
+            .expect("cluster visual should exist")
+            .border;
+        assert_eq!(border.to, cluster_border_color_completed());
+
+        let second_entry = first_exit + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(18, second_entry));
+        let border = state
+            .cluster_visuals
+            .get(&9)
+            .expect("cluster visual should exist")
+            .border;
+        assert_eq!(border.from, cluster_border_color_gray());
+        assert_eq!(border.to, cluster_border_color_running());
     }
 }
