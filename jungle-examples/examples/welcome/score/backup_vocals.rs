@@ -1,4 +1,4 @@
-use super::{grid_note_to_note, GridNote, Kind, Position};
+use super::{collect_score_from_sections, GridNote, Kind, Position};
 use crate::instrumentation::{ElectricGuitarArticulation, Note};
 
 const INTRO: &[GridNote] = &[GridNote {
@@ -5645,10 +5645,5 @@ const SECTIONS: [&[GridNote]; 12] = [
 ];
 
 pub fn backup_vocals_score(bpm: f32) -> Vec<Note<ElectricGuitarArticulation>> {
-    SECTIONS
-        .into_iter()
-        .flatten()
-        .copied()
-        .map(|note| grid_note_to_note(note, bpm))
-        .collect()
+    collect_score_from_sections(&SECTIONS, bpm)
 }

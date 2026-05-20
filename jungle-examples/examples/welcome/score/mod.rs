@@ -85,3 +85,24 @@ pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> Note<ElectricGuitar
         articulation: ElectricGuitarArticulation::Sustained,
     }
 }
+
+pub(super) fn collect_score_from_sections(
+    sections: &[&[GridNote]],
+    bpm: f32,
+) -> Vec<Note<ElectricGuitarArticulation>> {
+    let total_notes = sections.iter().map(|section| section.len()).sum();
+    let mut notes = Vec::with_capacity(total_notes);
+
+    for section in sections {
+        for &grid_note in *section {
+            notes.push(grid_note_to_note(grid_note, bpm));
+        }
+    }
+
+    debug_assert!(
+        notes.windows(2).all(|pair| pair[0].offset <= pair[1].offset),
+        "welcome score notes are not monotonic by offset"
+    );
+
+    notes
+}
