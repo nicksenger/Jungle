@@ -1,7 +1,7 @@
 use crate::{
     Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
     Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Running, Scoped, Select,
-    Transparent, While,
+    Transparent, Waiting, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -1749,6 +1749,32 @@ pub trait BuildFlow<Input> {
     }
 }
 
+trait FlowChainHead {
+    type Head;
+}
+
+impl<Head, Tail> FlowChainHead for TList<(Head, Tail)> {
+    type Head = Head;
+}
+
+trait FlowChainWellTyped {}
+
+impl FlowChainWellTyped for list::Empty {}
+
+impl<Head> FlowChainWellTyped for TList<(Head, list::Empty)>
+where
+    Head: Running + Waiting,
+{
+}
+
+impl<Head, Tail> FlowChainWellTyped for TList<(Head, Tail)>
+where
+    Head: Running + Waiting,
+    Tail: FlowChainWellTyped + FlowChainHead,
+    <Tail as FlowChainHead>::Head: Running<In = <Head as Waiting>::Out>,
+{
+}
+
 impl<State> BuildFlow<DynFlow<State>> for list::Empty {
     type Output = DynFlow<State>;
 
@@ -1791,6 +1817,7 @@ macro_rules! build_flow_len_impl {
         impl<State, $h0, $($rest,)+> BuildFlow<DynFlow<State>>
             for dynflow_list_chain!($h0, $($rest),+)
         where
+            dynflow_list_chain!($h0, $($rest),+): FlowChainWellTyped,
             $h0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
             dynflow_list_chain!($($rest),+): BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
         {
@@ -1812,6 +1839,7 @@ build_flow_len_impl!(H0; H1, H2, H3, H4, H5);
 build_flow_len_impl!(H0; H1, H2, H3, H4, H5, H6);
 impl<State, H0, H1, H2, H3, H4, H5, H6, H7, Tail> BuildFlow<DynFlow<State>> for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
+    dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail): FlowChainWellTyped,
     H0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     H1: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     H2: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
@@ -2043,6 +2071,7 @@ macro_rules! build_flow_with_context_len_impl {
         impl<Context, State, $h0, $($rest,)+> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
             for dynflow_list_chain!($h0, $($rest),+)
         where
+            dynflow_list_chain!($h0, $($rest),+): FlowChainWellTyped,
             $h0: BuildFlowWithContext<
                 (Arc<Context>, DynFlow<State>),
                 Output = (Arc<Context>, DynFlow<State>),
@@ -2076,6 +2105,7 @@ build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5, H6);
 impl<Context, State, H0, H1, H2, H3, H4, H5, H6, H7, Tail>
     BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
+    dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail): FlowChainWellTyped,
     H0: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
