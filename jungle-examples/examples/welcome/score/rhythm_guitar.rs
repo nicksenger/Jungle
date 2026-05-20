@@ -21002,6 +21002,10 @@ pub fn rhythm_guitar_intro_score(bpm: f32) -> Vec<ScheduledNote<ElectricGuitarAr
     collect_score_from_sections(&[INTRO], bpm)
 }
 
+pub(crate) fn rhythm_guitar_intro_grid() -> &'static [GridNote] {
+    INTRO
+}
+
 pub fn rhythm_guitar_intro_len() -> u16 {
     INTRO.len() as u16
 }

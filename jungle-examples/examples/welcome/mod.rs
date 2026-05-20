@@ -44,7 +44,7 @@ use crate::{
         TomsArticulation, Vocals, VocalsArticulation,
     },
     metronome::{Metronome, MetronomeSync},
-    score::{rhythm_guitar_intro_score, ScheduledNote},
+    score::ScheduledNote,
 };
 
 const DEFAULT_BPM: f32 = 123.0;
@@ -104,18 +104,15 @@ impl PlaybackClock {
 
 struct WelcomeEcosystem {
     rhythm_guitar: ElectricGuitar,
-    rhythm_guitar_intro: Arc<[ScheduledNote<ElectricGuitarArticulation>]>,
+    bpm: f32,
     playback_clock: PlaybackClock,
 }
 
 impl WelcomeEcosystem {
     fn new(audio_handle: AudioHandle, bpm: f32, playback_clock: PlaybackClock) -> Self {
-        let rhythm_guitar_intro: Arc<[ScheduledNote<ElectricGuitarArticulation>]> =
-            rhythm_guitar_intro_score(bpm).into();
-
         Self {
             rhythm_guitar: ElectricGuitar::new(audio_handle),
-            rhythm_guitar_intro,
+            bpm,
             playback_clock,
         }
     }
@@ -124,14 +121,8 @@ impl WelcomeEcosystem {
         &self.rhythm_guitar
     }
 
-    fn rhythm_guitar_intro_note(
-        &self,
-        index: u16,
-    ) -> Option<ScheduledNote<ElectricGuitarArticulation>> {
-        self.rhythm_guitar_intro
-            .get(index as usize)
-            .copied()
-            .map(|note| with_articulation(note, ElectricGuitarArticulation::RhythmSustained))
+    fn bpm(&self) -> f32 {
+        self.bpm
     }
 
     fn playback_clock(&self) -> &PlaybackClock {
