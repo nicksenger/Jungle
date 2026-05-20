@@ -44,16 +44,10 @@ use crate::{
         TomsArticulation, Vocals, VocalsArticulation,
     },
     metronome::{Metronome, MetronomeSync},
-    score::{
-        backup_vocals_score, bass_drum_score, bass_guitar_score, closed_hi_hat_cymbal_score,
-        crash_cymbal_score, lead_guitar_score, rhythm_guitar_intro_score,
-        rhythm_guitar_score_without_intro, snare_drum_score, toms_snare_score, vocals_score,
-        ScheduledNote,
-    },
+    score::{rhythm_guitar_intro_score, ScheduledNote},
 };
 
 const DEFAULT_BPM: f32 = 123.0;
-const BEATS_PER_BAR: u32 = 4;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 const MIN_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(20);
 const MAX_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(120);
@@ -297,15 +291,14 @@ fn run_runtime_thread(
         };
 
         keep_alive.audio_engine = Some(audio_engine);
-        Ok::<(UiSetup, RuntimeKeepAlive, AudioHandle, PlaybackClock), String>((
+        Ok::<(UiSetup, RuntimeKeepAlive, PlaybackClock), String>((
             UiSetup { client, journeys },
             keep_alive,
-            audio_handle,
             playback_clock,
         ))
     });
 
-    let (setup, mut keep_alive, audio_handle, playback_clock) = match setup {
+    let (setup, mut keep_alive, playback_clock) = match setup {
         Ok(value) => value,
         Err(err) => {
             let _ = setup_tx.send(Err(err.clone()));
@@ -332,7 +325,6 @@ fn run_runtime_thread(
         bpm,
         ui_shutdown,
         ui_started_at,
-        audio_handle,
         playback_clock,
     ));
     keep_alive.shutdown();
@@ -528,126 +520,13 @@ async fn play_audio_and_schedule_shutdown(
     bpm: f32,
     ui_shutdown: ui::ShutdownFlag,
     ui_started_at: Instant,
-    audio_handle: AudioHandle,
     playback_clock: PlaybackClock,
 ) -> Result<(), String> {
     let _ = playback_clock.start_now();
-    let metronome = Metronome::spawn(bpm, BEATS_PER_BAR);
-
-    let lead_guitar = lead_guitar_score(bpm);
-    let rhythm_guitar_tail = rhythm_guitar_score_without_intro(bpm);
-    let backup_vocals = backup_vocals_score(bpm);
-    let vocals = vocals_score(bpm);
-    let bass = bass_guitar_score(bpm);
-    let kick_drum = bass_drum_score(bpm);
-    let hi_hat = closed_hi_hat_cymbal_score(bpm);
-    let cymbal = crash_cymbal_score(bpm);
-    let snare_drum = snare_drum_score(bpm);
-    let toms = toms_snare_score(bpm);
-
-    let total_duration = [
-        lead_guitar.as_slice(),
-        rhythm_guitar_tail.as_slice(),
-        backup_vocals.as_slice(),
-        vocals.as_slice(),
-        bass.as_slice(),
-        kick_drum.as_slice(),
-        hi_hat.as_slice(),
-        cymbal.as_slice(),
-        snare_drum.as_slice(),
-        toms.as_slice(),
-    ]
-    .into_iter()
-    .map(score_duration)
-    .max()
-    .unwrap_or(Duration::ZERO);
-
-    info!(bpm, ?total_duration, "starting welcome score playback");
-    let mut tasks = Vec::with_capacity(9);
-    tasks.push((
-        "lead_guitar",
-        tokio::spawn(play_lead_guitar_score(
-            audio_handle.clone(),
-            lead_guitar,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "backup_vocals",
-        tokio::spawn(play_backup_vocals_score(
-            audio_handle.clone(),
-            backup_vocals,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "vocals",
-        tokio::spawn(play_vocals_score(
-            audio_handle.clone(),
-            vocals,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "bass",
-        tokio::spawn(play_bass_score(
-            audio_handle.clone(),
-            bass,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "kick_drum",
-        tokio::spawn(play_kick_drum_score(
-            audio_handle.clone(),
-            kick_drum,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "hi_hat",
-        tokio::spawn(play_hi_hat_score(
-            audio_handle.clone(),
-            hi_hat,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "cymbal",
-        tokio::spawn(play_cymbal_score(
-            audio_handle.clone(),
-            cymbal,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "snare_drum",
-        tokio::spawn(play_snare_drum_score(
-            audio_handle.clone(),
-            snare_drum,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "toms",
-        tokio::spawn(play_toms_score(audio_handle, toms, metronome)),
-    ));
-
-    for (name, task) in tasks {
-        match task.await {
-            Ok(Ok(())) => {}
-            Ok(Err(err)) => {
-                error!(instrument = name, error = %err, "instrument playback task failed");
-                return Err(err.to_string());
-            }
-            Err(err) => {
-                error!(instrument = name, error = %err, "instrument playback task panicked");
-                return Err(err.to_string());
-            }
-        }
-    }
-
-    tokio::time::sleep(total_duration.saturating_add(Duration::from_secs(1))).await;
+    info!(
+        bpm,
+        "starting welcome playback with direct non-flow instruments disabled"
+    );
     let elapsed_since_ui_start = ui_started_at.elapsed();
     if elapsed_since_ui_start < UI_MIN_UPTIME_BEFORE_SHUTDOWN {
         tokio::time::sleep(UI_MIN_UPTIME_BEFORE_SHUTDOWN - elapsed_since_ui_start).await;
