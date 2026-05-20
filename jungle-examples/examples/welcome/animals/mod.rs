@@ -2,7 +2,6 @@
 
 use jungle_sdk::prelude::*;
 use num::U255;
-use std::time::Duration;
 
 pub type LeadVocalistState = ();
 pub type LeadVocalistSeed = ();
@@ -46,25 +45,8 @@ impl Act for StubStepSpec {
     fn absorb(_state: &mut (), _output: EffectCompletion<Self::Effect>) -> Self::Output {}
 }
 
-pub struct SleepFiveMinutesSpec;
-
-#[jungle::act]
-impl Act for SleepFiveMinutesSpec {
-    type Effect = Sleep;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &(), _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        Duration::from_secs(5 * 60)
-    }
-
-    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("sleep step should complete after worker wakeup");
-    }
-}
-
 #[derive(Flow)]
-pub struct BandStubFlow(Step<StubStepSpec>, Step<SleepFiveMinutesSpec>);
+pub struct BandStubFlow(Step<StubStepSpec>);
 
 pub struct LeadVocalist;
 
