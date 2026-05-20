@@ -6,12 +6,13 @@ use std::time::Duration;
 
 use crate::flow;
 
+mod rhythm_guitarist;
+pub use rhythm_guitarist::*;
+
 pub type LeadVocalistState = ();
 pub type LeadVocalistSeed = ();
 pub type LeadGuitaristState = ();
 pub type LeadGuitaristSeed = ();
-pub type RhythmGuitaristState = flow::RhythmGuitarIntroState;
-pub type RhythmGuitaristSeed = ();
 pub type BassState = ();
 pub type BassSeed = ();
 pub type DrumsState = ();
@@ -84,15 +85,6 @@ impl Animal for LeadGuitarist {
     type State = LeadGuitaristState;
     type Seed = LeadGuitaristSeed;
     type Journey = BandStubFlow;
-}
-
-pub struct RhythmGuitarist;
-
-#[jungle::animal(id = 2, generation = 0)]
-impl Animal for RhythmGuitarist {
-    type State = RhythmGuitaristState;
-    type Seed = RhythmGuitaristSeed;
-    type Journey = flow::RhythmGuitaristJourney;
 }
 
 pub struct Bass;
