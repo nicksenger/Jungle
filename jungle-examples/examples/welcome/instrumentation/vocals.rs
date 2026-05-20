@@ -52,8 +52,10 @@ impl Instrument for Vocals {
         };
 
         for layer in articulation_layers(note.articulation) {
+            if layer.delay_seconds > 0.0 {
+                tokio::time::sleep(Duration::from_secs_f32(layer.delay_seconds)).await;
+            }
             let mut request = PlayRequest::new(Arc::clone(&pcm), 1, SAMPLE_RATE);
-            request.start_offset = note.offset + Duration::from_secs_f32(layer.delay_seconds);
             request.gain = gain * layer.gain_scale * amplitude_gain(&note);
             request.playback_rate = playback_rate * layer.playback_rate_scale;
             request.pan = layer.pan;

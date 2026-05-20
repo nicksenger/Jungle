@@ -83,7 +83,6 @@ impl Instrument for ElectricGuitar {
         };
 
         let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.start_offset = note.offset;
         request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = pan;
@@ -374,8 +373,8 @@ struct GrooveShape {
     amp_jitter: f32,
 }
 
-fn groove_shape(offset: Duration, n_midi: u8) -> GrooveShape {
-    let micros = offset.as_micros() as f32;
+fn groove_shape(duration: Duration, n_midi: u8) -> GrooveShape {
+    let micros = duration.as_micros() as f32;
     let stroke_clock =
         smoothstep((((micros * 0.000_015) + n_midi as f32 * 0.01).sin() + 1.0) * 0.5);
     let downstroke = 0.82 + stroke_clock * 0.36;
@@ -404,7 +403,7 @@ fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f3
         bend: 0.0,
         vibrato: 0.0,
     });
-    let groove = groove_shape(note.offset, note.n_midi);
+    let groove = groove_shape(note.duration, note.n_midi);
     let tone = rhythm_tone(note.articulation, groove);
 
     let mut pcm = Vec::with_capacity(frame_count);

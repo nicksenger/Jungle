@@ -62,7 +62,13 @@ pub struct GridNote {
     pub position: Position,
 }
 
-pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> Note<ElectricGuitarArticulation> {
+#[derive(Debug, Clone, Copy)]
+pub struct ScheduledNote<Articulation> {
+    pub at: Duration,
+    pub note: Note<Articulation>,
+}
+
+pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> ScheduledNote<ElectricGuitarArticulation> {
     let seconds_per_beat = 60.0_f32 / bpm;
     let beat_offset = if note.position.beat_offset_den == 0 {
         0.0
@@ -72,24 +78,26 @@ pub(super) fn grid_note_to_note(note: GridNote, bpm: f32) -> Note<ElectricGuitar
     let absolute_beats = ((note.position.bar - 1) as f32 * BEATS_PER_BAR)
         + (note.position.beat - 1) as f32
         + beat_offset;
-    let offset = Duration::from_secs_f32(absolute_beats * seconds_per_beat);
+    let at = Duration::from_secs_f32(absolute_beats * seconds_per_beat);
 
-    Note {
-        n_midi: note.midi,
-        duration: Duration::from_secs_f32(note.beats * seconds_per_beat),
-        velocity: 37.0 / 127.0,
-        amplitude_multiplier: 0.5,
-        pan: 0.5,
-        expression: None,
-        offset,
-        articulation: ElectricGuitarArticulation::Sustained,
+    ScheduledNote {
+        at,
+        note: Note {
+            n_midi: note.midi,
+            duration: Duration::from_secs_f32(note.beats * seconds_per_beat),
+            velocity: 37.0 / 127.0,
+            amplitude_multiplier: 0.5,
+            pan: 0.5,
+            expression: None,
+            articulation: ElectricGuitarArticulation::Sustained,
+        },
     }
 }
 
 pub(super) fn collect_score_from_sections(
     sections: &[&[GridNote]],
     bpm: f32,
-) -> Vec<Note<ElectricGuitarArticulation>> {
+) -> Vec<ScheduledNote<ElectricGuitarArticulation>> {
     let total_notes = sections.iter().map(|section| section.len()).sum();
     let mut notes = Vec::with_capacity(total_notes);
 
@@ -100,8 +108,8 @@ pub(super) fn collect_score_from_sections(
     }
 
     debug_assert!(
-        notes.windows(2).all(|pair| pair[0].offset <= pair[1].offset),
-        "welcome score notes are not monotonic by offset"
+        notes.windows(2).all(|pair| pair[0].at <= pair[1].at),
+        "welcome score notes are not monotonic by scheduled time"
     );
 
     notes

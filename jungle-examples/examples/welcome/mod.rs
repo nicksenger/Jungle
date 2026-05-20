@@ -28,6 +28,7 @@ use crate::{
     score::{
         backup_vocals_score, bass_drum_score, bass_guitar_score, closed_hi_hat_cymbal_score,
         crash_cymbal_score, lead_guitar_score, rhythm_guitar_score, snare_drum_score,
+        ScheduledNote,
         toms_snare_score, vocals_score,
     },
 };
@@ -378,17 +379,17 @@ fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
     Ok(bpm)
 }
 
-fn score_duration(notes: &[Note<ElectricGuitarArticulation>]) -> Duration {
+fn score_duration(notes: &[ScheduledNote<ElectricGuitarArticulation>]) -> Duration {
     notes
         .iter()
-        .map(|note| note.offset.saturating_add(note.duration))
+        .map(|note| note.at.saturating_add(note.note.duration))
         .max()
         .unwrap_or(Duration::ZERO)
 }
 
 async fn play_lead_guitar_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let lead_guitar = ElectricGuitar::new(audio_handle);
@@ -401,7 +402,7 @@ async fn play_lead_guitar_score(
 
 async fn play_rhythm_guitar_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let rhythm_guitar = ElectricGuitar::new(audio_handle);
@@ -419,7 +420,7 @@ async fn play_rhythm_guitar_score(
 
 async fn play_backup_vocals_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let backup_vocals = Vocals::new(audio_handle);
@@ -437,7 +438,7 @@ async fn play_backup_vocals_score(
 
 async fn play_vocals_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let vocals = Vocals::new(audio_handle);
@@ -455,7 +456,7 @@ async fn play_vocals_score(
 
 async fn play_bass_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let bass = Bass::new(audio_handle);
@@ -473,7 +474,7 @@ async fn play_bass_score(
 
 async fn play_kick_drum_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let kick_drum = KickDrum::new(audio_handle);
@@ -491,7 +492,7 @@ async fn play_kick_drum_score(
 
 async fn play_hi_hat_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let hi_hat = HiHat::new(audio_handle);
@@ -509,7 +510,7 @@ async fn play_hi_hat_score(
 
 async fn play_cymbal_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let cymbal = Cymbal::new(audio_handle);
@@ -527,7 +528,7 @@ async fn play_cymbal_score(
 
 async fn play_snare_drum_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let snare_drum = SnareDrum::new(audio_handle);
@@ -545,7 +546,7 @@ async fn play_snare_drum_score(
 
 async fn play_toms_score(
     audio_handle: AudioHandle,
-    notes: Vec<Note<ElectricGuitarArticulation>>,
+    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
     metronome: Metronome,
 ) -> Result<(), InstrumentError> {
     let toms = Toms::new(audio_handle);
@@ -562,34 +563,40 @@ async fn play_toms_score(
 }
 
 fn with_articulation<Articulation>(
-    note: Note<ElectricGuitarArticulation>,
+    note: ScheduledNote<ElectricGuitarArticulation>,
     articulation: Articulation,
-) -> Note<Articulation> {
-    Note {
-        n_midi: note.n_midi,
-        amplitude_multiplier: note.amplitude_multiplier,
-        pan: note.pan,
-        duration: note.duration,
-        velocity: note.velocity,
-        expression: note.expression,
-        offset: note.offset,
-        articulation,
+) -> ScheduledNote<Articulation> {
+    ScheduledNote {
+        at: note.at,
+        note: Note {
+            n_midi: note.note.n_midi,
+            amplitude_multiplier: note.note.amplitude_multiplier,
+            pan: note.note.pan,
+            duration: note.note.duration,
+            velocity: note.note.velocity,
+            expression: note.note.expression,
+            articulation,
+        },
     }
 }
 
 async fn play_with_retry<I>(
     instrument: &I,
-    mut note: Note<I::Articulation>,
+    scheduled_note: ScheduledNote<I::Articulation>,
     metronome_sync: &mut MetronomeSync,
 ) -> Result<(), InstrumentError>
 where
     I: Instrument,
     I::Articulation: Copy,
 {
-    let requested_offset = note.offset;
+    let requested_offset = scheduled_note.at;
+    let note = scheduled_note.note;
     let note_midi = note.n_midi;
     let note_duration = note.duration;
-    note.offset = metronome_sync.synchronize(note.offset).await;
+    let synchronized_wait = metronome_sync.synchronize(requested_offset).await;
+    if !synchronized_wait.is_zero() {
+        tokio::time::sleep(synchronized_wait).await;
+    }
     let mut retry_count = 0_u32;
 
     // Submitting a dense score can temporarily saturate the mixer queue.
@@ -604,7 +611,7 @@ where
                 midi = note_midi,
                 play_elapsed_ms = play_elapsed.as_millis(),
                 requested_offset_ms = requested_offset.as_millis(),
-                synced_offset_ms = note.offset.as_millis(),
+                synchronized_wait_ms = synchronized_wait.as_millis(),
                 duration_ms = note_duration.as_millis(),
                 "instrument.play is slow; possible compute pressure or enqueue backpressure"
             );
@@ -624,7 +631,7 @@ where
                         retries = retry_count,
                         midi = note_midi,
                         requested_offset_ms = requested_offset.as_millis(),
-                        synced_offset_ms = note.offset.as_millis(),
+                        synchronized_wait_ms = synchronized_wait.as_millis(),
                         duration_ms = note_duration.as_millis(),
                         "note playback submission eventually succeeded after retries"
                     );
@@ -639,7 +646,7 @@ where
                         midi = note_midi,
                         play_elapsed_ms = play_elapsed.as_millis(),
                         requested_offset_ms = requested_offset.as_millis(),
-                        synced_offset_ms = note.offset.as_millis(),
+                        synchronized_wait_ms = synchronized_wait.as_millis(),
                         duration_ms = note_duration.as_millis(),
                         "note playback submission failed; retrying"
                     );
@@ -651,7 +658,7 @@ where
                     error = %err,
                     midi = note_midi,
                     requested_offset_ms = requested_offset.as_millis(),
-                    synced_offset_ms = note.offset.as_millis(),
+                    synchronized_wait_ms = synchronized_wait.as_millis(),
                     duration_ms = note_duration.as_millis(),
                     "non-retryable instrument playback error"
                 );

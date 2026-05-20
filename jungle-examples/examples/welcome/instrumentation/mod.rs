@@ -39,7 +39,6 @@ pub struct Note<Articulation> {
     pub duration: Duration,
     pub velocity: f32,
     pub expression: Option<Expression>,
-    pub offset: Duration,
     pub articulation: Articulation,
 }
 

@@ -1,5 +1,5 @@
-use super::{collect_score_from_sections, GridNote, Kind, Position};
-use crate::instrumentation::{ElectricGuitarArticulation, Note};
+use super::{collect_score_from_sections, GridNote, Kind, Position, ScheduledNote};
+use crate::instrumentation::ElectricGuitarArticulation;
 
 const INTRO: &[GridNote] = &[
     GridNote {
@@ -11820,6 +11820,6 @@ const SECTIONS: [&[GridNote]; 12] = [
     FINALE,
 ];
 
-pub fn closed_hi_hat_cymbal_score(bpm: f32) -> Vec<Note<ElectricGuitarArticulation>> {
+pub fn closed_hi_hat_cymbal_score(bpm: f32) -> Vec<ScheduledNote<ElectricGuitarArticulation>> {
     collect_score_from_sections(&SECTIONS, bpm)
 }

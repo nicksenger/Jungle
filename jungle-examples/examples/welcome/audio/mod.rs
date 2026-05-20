@@ -44,7 +44,6 @@ pub struct AudioHandle {
 impl AudioHandle {
     pub async fn play(&self, request: PlayRequest) -> Result<(), AudioError> {
         let pending_before_send = self.pending_commands.fetch_add(1, Ordering::Relaxed) + 1;
-        let request_offset_ms = request.start_offset.as_millis();
         let mut command_tx = self.command_tx.clone();
         let send_started = Instant::now();
         let send_result = command_tx
@@ -60,7 +59,6 @@ impl AudioHandle {
                 enqueue_wait_ms = send_elapsed.as_millis(),
                 pending_before_send,
                 current_pending = self.pending_commands.load(Ordering::Relaxed),
-                request_offset_ms,
                 "audio command enqueue is slow; queue may be backpressured"
             );
         } else if send_elapsed >= ENQUEUE_DEBUG_THRESHOLD {
@@ -68,7 +66,6 @@ impl AudioHandle {
                 enqueue_wait_ms = send_elapsed.as_millis(),
                 pending_before_send,
                 current_pending = self.pending_commands.load(Ordering::Relaxed),
-                request_offset_ms,
                 "audio command enqueue delay observed"
             );
         }
@@ -133,7 +130,6 @@ pub struct PlayRequest {
     pub pcm: Arc<[f32]>,
     pub source_channels: u16,
     pub source_sample_rate: u32,
-    pub start_offset: Duration,
     pub gain: f32,
     pub pan: f32,
     pub playback_rate: f32,
@@ -145,7 +141,6 @@ impl PlayRequest {
             pcm,
             source_channels,
             source_sample_rate,
-            start_offset: Duration::ZERO,
             gain: 1.0,
             pan: 0.0,
             playback_rate: 1.0,

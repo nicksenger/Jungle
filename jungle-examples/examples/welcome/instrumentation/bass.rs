@@ -48,7 +48,6 @@ impl Instrument for Bass {
         };
 
         let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.start_offset = note.offset;
         request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = 0.0;

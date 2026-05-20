@@ -3,7 +3,6 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    time::Duration,
 };
 
 use futures::channel::mpsc::{Receiver, TryRecvError};
@@ -20,9 +19,6 @@ pub(crate) enum Command {
 pub(crate) struct AudioMixer {
     output_channels: usize,
     output_sample_rate: u32,
-    frame_clock: u64,
-    pending: Vec<PendingVoice>,
-    pending_needs_sort: bool,
     active: Vec<Voice>,
 }
 
@@ -31,9 +27,6 @@ impl AudioMixer {
         Self {
             output_channels: output_channels.max(1),
             output_sample_rate,
-            frame_clock: 0,
-            pending: Vec::new(),
-            pending_needs_sort: false,
             active: Vec::new(),
         }
     }
@@ -45,12 +38,9 @@ impl AudioMixer {
     ) {
         output.fill(0.0);
         self.drain_commands(command_rx);
-        self.sort_pending_if_needed();
 
         let frame_count = output.len() / self.output_channels;
         for frame_index in 0..frame_count {
-            self.activate_pending_voices();
-
             let mut mixed_l = 0.0;
             let mut mixed_r = 0.0;
             let mut i = 0;
@@ -65,7 +55,6 @@ impl AudioMixer {
             }
 
             self.write_frame(output, frame_index, mixed_l, mixed_r);
-            self.frame_clock = self.frame_clock.saturating_add(1);
         }
     }
 
@@ -92,11 +81,8 @@ impl AudioMixer {
                     pending_commands,
                 }) => {
                     let _ = pending_commands.fetch_sub(1, Ordering::Relaxed);
-                    if let Some(voice) =
-                        Voice::from_request(request, self.output_sample_rate, self.frame_clock)
-                    {
-                        self.pending.push(voice);
-                        self.pending_needs_sort = true;
+                    if let Some(voice) = Voice::from_request(request, self.output_sample_rate) {
+                        self.active.push(voice);
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -104,34 +90,6 @@ impl AudioMixer {
             }
         }
     }
-
-    fn sort_pending_if_needed(&mut self) {
-        if !self.pending_needs_sort {
-            return;
-        }
-        // Keep earliest start frame at the end so activation is a cheap pop.
-        self.pending
-            .sort_unstable_by(|a, b| b.start_frame.cmp(&a.start_frame));
-        self.pending_needs_sort = false;
-    }
-
-    fn activate_pending_voices(&mut self) {
-        let now = self.frame_clock;
-        while self
-            .pending
-            .last()
-            .is_some_and(|pending| pending.start_frame <= now)
-        {
-            if let Some(pending_voice) = self.pending.pop() {
-                self.active.push(pending_voice.voice);
-            }
-        }
-    }
-}
-
-struct PendingVoice {
-    start_frame: u64,
-    voice: Voice,
 }
 
 struct Voice {
@@ -148,8 +106,7 @@ impl Voice {
     fn from_request(
         request: PlayRequest,
         output_sample_rate: u32,
-        now_frame: u64,
-    ) -> Option<PendingVoice> {
+    ) -> Option<Self> {
         if request.pcm.is_empty() {
             return None;
         }
@@ -187,20 +144,14 @@ impl Voice {
         let left_gain = request.gain * left_pan;
         let right_gain = request.gain * right_pan;
 
-        let start_frame =
-            now_frame.saturating_add(duration_to_frames(request.start_offset, output_sample_rate));
-
-        Some(PendingVoice {
-            start_frame,
-            voice: Voice {
-                pcm: request.pcm,
-                source_channels,
-                source_frames,
-                frame_cursor: 0.0,
-                frame_step,
-                left_gain,
-                right_gain,
-            },
+        Some(Voice {
+            pcm: request.pcm,
+            source_channels,
+            source_frames,
+            frame_cursor: 0.0,
+            frame_step,
+            left_gain,
+            right_gain,
         })
     }
 
@@ -224,11 +175,6 @@ impl Voice {
         self.frame_cursor += self.frame_step;
         Some((source_l * self.left_gain, source_r * self.right_gain))
     }
-}
-
-fn duration_to_frames(duration: Duration, sample_rate: u32) -> u64 {
-    duration.as_secs().saturating_mul(sample_rate as u64)
-        + ((duration.subsec_nanos() as u64).saturating_mul(sample_rate as u64) / 1_000_000_000)
 }
 
 fn clamp_unit(sample: f32) -> f32 {
@@ -256,7 +202,6 @@ mod tests {
             pcm: Arc::from([1.0_f32, 1.0, 1.0]),
             source_channels: 1,
             source_sample_rate: 48_000,
-            start_offset: Duration::ZERO,
             gain: 1.0,
             pan: 0.0,
             playback_rate: 1.0,
@@ -273,31 +218,6 @@ mod tests {
     }
 
     #[test]
-    fn respects_start_offset() {
-        let mut mixer = AudioMixer::new(2, 10);
-        let (mut tx, mut rx) = mpsc::channel(8);
-        let request = PlayRequest {
-            pcm: Arc::from([1.0_f32, 1.0]),
-            source_channels: 1,
-            source_sample_rate: 10,
-            start_offset: Duration::from_millis(200),
-            gain: 1.0,
-            pan: 0.0,
-            playback_rate: 1.0,
-        };
-        tx.try_send(play_command(request))
-            .expect("command send should succeed");
-
-        let mut output = vec![0.0_f32; 8];
-        mixer.render_interleaved(&mut output, &mut rx);
-
-        assert_eq!(output[0], 0.0);
-        assert_eq!(output[1], 0.0);
-        assert!(output[4] > 0.0);
-        assert!(output[5] > 0.0);
-    }
-
-    #[test]
     fn overlaps_multiple_notes_in_same_render_window() {
         let mut mixer = AudioMixer::new(2, 10);
         let (mut tx, mut rx) = mpsc::channel(8);
@@ -305,15 +225,11 @@ mod tests {
             pcm: Arc::from([1.0_f32, 1.0, 1.0, 1.0]),
             source_channels: 1,
             source_sample_rate: 10,
-            start_offset: Duration::ZERO,
             gain: 0.4,
             pan: 0.0,
             playback_rate: 1.0,
         };
-        let second = PlayRequest {
-            start_offset: Duration::from_millis(100),
-            ..first.clone()
-        };
+        let second = first.clone();
 
         tx.try_send(play_command(first))
             .expect("first command send should succeed");
@@ -323,10 +239,10 @@ mod tests {
         let mut output = vec![0.0_f32; 10];
         mixer.render_interleaved(&mut output, &mut rx);
 
-        // Frame 0: only note 1. Frame 1: note 1 + note 2 overlap.
+        // Both notes start immediately and overlap in frame 0.
         assert!(output[0] > 0.0);
-        assert!(output[2] > output[0]);
-        assert_eq!(output[2], output[3]);
+        assert_eq!(output[0], output[1]);
+        assert!(output[0] > 0.3);
     }
 
     #[test]
@@ -337,7 +253,6 @@ mod tests {
             pcm: Arc::from([1.0_f32, 1.0, 1.0]),
             source_channels: 1,
             source_sample_rate: 10,
-            start_offset: Duration::ZERO,
             gain: 0.35,
             pan: 0.0,
             playback_rate: 1.0,

@@ -52,7 +52,6 @@ impl Instrument for SnareDrum {
         playback_rate *= 0.98 + velocity * 0.06;
 
         let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.start_offset = note.offset;
         request.gain = gain * amplitude_gain(&note);
         request.playback_rate = playback_rate;
         request.pan = 0.08 + (velocity - 0.5) * 0.06;
