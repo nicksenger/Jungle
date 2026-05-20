@@ -80,34 +80,35 @@ pub struct MetronomeSync {
 }
 
 impl MetronomeSync {
-    pub async fn synchronize(&mut self, target_offset: Duration) -> Duration {
-        if target_offset.is_zero() {
-            return Duration::ZERO;
-        }
+    pub fn beat_duration(&self) -> Duration {
+        self.beat
+    }
 
+    pub fn target_instant(&self, target_offset: Duration) -> Instant {
+        self.started_at + target_offset
+    }
+
+    pub fn elapsed(&mut self) -> Duration {
+        self.refresh_latest_beat();
+        let now_elapsed = self.started_at.elapsed();
+        let beat_elapsed = self
+            .last_beat_timestamp
+            .map(|timestamp| timestamp.saturating_duration_since(self.started_at))
+            .unwrap_or(Duration::ZERO);
+        now_elapsed.max(beat_elapsed)
+    }
+
+    fn refresh_latest_beat(&mut self) {
         loop {
-            let elapsed = self
-                .last_beat_timestamp
-                .map(|timestamp| timestamp.saturating_duration_since(self.started_at))
-                .unwrap_or_else(|| self.started_at.elapsed());
-            if elapsed >= target_offset {
-                return Duration::ZERO;
-            }
-
-            let remaining = target_offset - elapsed;
-            if remaining <= self.beat {
-                return remaining;
-            }
-
-            match self.beat_rx.recv().await {
+            match self.beat_rx.try_recv() {
                 Ok(event) => {
                     self.last_beat_timestamp = Some(event.timestamp);
                     self.last_bar = event.bar;
                     self.last_beat_in_bar = event.beat;
-                    continue;
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => return remaining,
+                Err(broadcast::error::TryRecvError::Lagged(_)) => continue,
+                Err(broadcast::error::TryRecvError::Empty) => break,
+                Err(broadcast::error::TryRecvError::Closed) => break,
             }
         }
     }

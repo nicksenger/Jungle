@@ -35,6 +35,9 @@ use crate::{
 const DEFAULT_BPM: f32 = 123.0;
 const BEATS_PER_BAR: u32 = 4;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
+const MIN_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(20);
+const MAX_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(120);
+const MAX_SUBMISSION_ATTEMPTS: u32 = 6;
 
 #[derive(Animals)]
 struct WelcomeAnimals(
@@ -383,11 +386,8 @@ async fn play_lead_guitar_score(
 ) -> Result<(), InstrumentError> {
     let lead_guitar = ElectricGuitar::new(audio_handle);
     let mut metronome_sync = metronome.subscribe();
-    let mut i = 1;
     for note in notes {
         play_with_retry(&lead_guitar, note, &mut metronome_sync).await?;
-        debug!("played note: {i}");
-        i += 1;
     }
     Ok(())
 }
@@ -585,14 +585,28 @@ where
     let note = scheduled_note.note;
     let note_midi = note.n_midi;
     let note_duration = note.duration;
-    let synchronized_wait = metronome_sync.synchronize(requested_offset).await;
-    if !synchronized_wait.is_zero() {
-        tokio::time::sleep(synchronized_wait).await;
+    let beat_duration = metronome_sync.beat_duration();
+    let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
+    let target_instant = metronome_sync.target_instant(requested_offset);
+    if target_instant > Instant::now() {
+        tokio::time::sleep_until(target_instant).await;
     }
     let mut retry_count = 0_u32;
+    let mut lateness = metronome_sync.elapsed().saturating_sub(requested_offset);
 
-    // Submitting a dense score can temporarily saturate the mixer queue.
-    // Retry with a brief backoff instead of dropping notes.
+    if lateness > late_note_drop_threshold {
+        debug!(
+            midi = note_midi,
+            lateness_ms = lateness.as_millis(),
+            threshold_ms = late_note_drop_threshold.as_millis(),
+            requested_offset_ms = requested_offset.as_millis(),
+            duration_ms = note_duration.as_millis(),
+            "dropping note that is too late to keep instrument phase aligned"
+        );
+        return Ok(());
+    }
+
+    // Bound retries to prevent queue backpressure from creating a long late-note backlog.
     loop {
         let play_started = Instant::now();
         let play_result = instrument.play(note).await;
@@ -603,7 +617,7 @@ where
                 midi = note_midi,
                 play_elapsed_ms = play_elapsed.as_millis(),
                 requested_offset_ms = requested_offset.as_millis(),
-                synchronized_wait_ms = synchronized_wait.as_millis(),
+                lateness_ms = lateness.as_millis(),
                 duration_ms = note_duration.as_millis(),
                 "instrument.play is slow; possible compute pressure or enqueue backpressure"
             );
@@ -623,7 +637,7 @@ where
                         retries = retry_count,
                         midi = note_midi,
                         requested_offset_ms = requested_offset.as_millis(),
-                        synchronized_wait_ms = synchronized_wait.as_millis(),
+                        lateness_ms = lateness.as_millis(),
                         duration_ms = note_duration.as_millis(),
                         "note playback submission eventually succeeded after retries"
                     );
@@ -632,25 +646,40 @@ where
             }
             Err(InstrumentError::Submission) => {
                 retry_count = retry_count.saturating_add(1);
-                if retry_count <= 5 || retry_count % 100 == 0 {
-                    debug!(
+
+                lateness = metronome_sync.elapsed().saturating_sub(requested_offset);
+                if retry_count >= MAX_SUBMISSION_ATTEMPTS || lateness > late_note_drop_threshold {
+                    warn!(
                         retries = retry_count,
                         midi = note_midi,
                         play_elapsed_ms = play_elapsed.as_millis(),
                         requested_offset_ms = requested_offset.as_millis(),
-                        synchronized_wait_ms = synchronized_wait.as_millis(),
+                        lateness_ms = lateness.as_millis(),
+                        threshold_ms = late_note_drop_threshold.as_millis(),
                         duration_ms = note_duration.as_millis(),
-                        "note playback submission failed; retrying"
+                        "dropping note after bounded submission retries to avoid runtime starvation"
                     );
+                    return Ok(());
                 }
-                tokio::time::sleep(Duration::from_millis(1)).await;
+
+                debug!(
+                    retries = retry_count,
+                    midi = note_midi,
+                    play_elapsed_ms = play_elapsed.as_millis(),
+                    requested_offset_ms = requested_offset.as_millis(),
+                    lateness_ms = lateness.as_millis(),
+                    duration_ms = note_duration.as_millis(),
+                    "note playback submission failed; retrying with bounded backoff"
+                );
+                let backoff_ms = (1_u64 << retry_count.min(4)).min(16);
+                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
             }
             Err(err) => {
                 error!(
                     error = %err,
                     midi = note_midi,
                     requested_offset_ms = requested_offset.as_millis(),
-                    synchronized_wait_ms = synchronized_wait.as_millis(),
+                    lateness_ms = lateness.as_millis(),
                     duration_ms = note_duration.as_millis(),
                     "non-retryable instrument playback error"
                 );
@@ -658,4 +687,9 @@ where
             }
         }
     }
+}
+
+fn late_note_drop_threshold(beat: Duration) -> Duration {
+    beat.div_f32(4.0)
+        .clamp(MIN_LATE_NOTE_DROP_THRESHOLD, MAX_LATE_NOTE_DROP_THRESHOLD)
 }
