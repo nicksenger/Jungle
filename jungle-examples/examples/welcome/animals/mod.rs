@@ -4,11 +4,13 @@ use jungle_sdk::prelude::*;
 use num::U255;
 use std::time::Duration;
 
+use crate::flow;
+
 pub type LeadVocalistState = ();
 pub type LeadVocalistSeed = ();
 pub type LeadGuitaristState = ();
 pub type LeadGuitaristSeed = ();
-pub type RhythmGuitaristState = ();
+pub type RhythmGuitaristState = flow::RhythmGuitarIntroState;
 pub type RhythmGuitaristSeed = ();
 pub type BassState = ();
 pub type BassSeed = ();
@@ -90,7 +92,7 @@ pub struct RhythmGuitarist;
 impl Animal for RhythmGuitarist {
     type State = RhythmGuitaristState;
     type Seed = RhythmGuitaristSeed;
-    type Journey = BandStubFlow;
+    type Journey = flow::RhythmGuitaristJourney;
 }
 
 pub struct Bass;

@@ -2,6 +2,7 @@ mod animals;
 mod assets;
 mod audio;
 mod effects;
+mod flow;
 mod instrumentation;
 mod metronome;
 mod score;
@@ -10,6 +11,10 @@ mod ui;
 #[cfg(feature = "transport")]
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant as StdInstant,
+};
 
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
@@ -22,6 +27,7 @@ use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 #[cfg(feature = "redb")]
 use uuid::Uuid;
+use tokio::sync::Notify;
 
 #[cfg(feature = "postgres")]
 use testcontainers::runners::AsyncRunner;
@@ -40,8 +46,9 @@ use crate::{
     metronome::{Metronome, MetronomeSync},
     score::{
         backup_vocals_score, bass_drum_score, bass_guitar_score, closed_hi_hat_cymbal_score,
-        crash_cymbal_score, lead_guitar_score, rhythm_guitar_score, snare_drum_score,
-        toms_snare_score, vocals_score, ScheduledNote,
+        crash_cymbal_score, lead_guitar_score, rhythm_guitar_intro_score,
+        rhythm_guitar_score_without_intro, snare_drum_score, toms_snare_score, vocals_score,
+        ScheduledNote,
     },
 };
 
@@ -61,7 +68,83 @@ struct WelcomeAnimals(
     Drums,
 );
 
-struct WelcomeEcosystem;
+#[derive(Clone, Default)]
+struct PlaybackClock {
+    started_at: Arc<Mutex<Option<StdInstant>>>,
+    started_notify: Arc<Notify>,
+}
+
+impl PlaybackClock {
+    fn start_now(&self) -> StdInstant {
+        let now = StdInstant::now();
+        let mut started_at = self
+            .started_at
+            .lock()
+            .expect("playback clock mutex should not be poisoned");
+        if started_at.is_none() {
+            *started_at = Some(now);
+            self.started_notify.notify_waiters();
+        }
+        started_at.unwrap_or(now)
+    }
+
+    async fn wait_started(&self) -> tokio::time::Instant {
+        loop {
+            let started_at = {
+                *self
+                    .started_at
+                    .lock()
+                    .expect("playback clock mutex should not be poisoned")
+            };
+            if let Some(started_at) = started_at {
+                let elapsed = StdInstant::now().saturating_duration_since(started_at);
+                return tokio::time::Instant::now()
+                    .checked_sub(elapsed)
+                    .unwrap_or_else(tokio::time::Instant::now);
+            }
+
+            self.started_notify.notified().await;
+        }
+    }
+}
+
+struct WelcomeEcosystem {
+    rhythm_guitar: ElectricGuitar,
+    rhythm_guitar_intro: Arc<[ScheduledNote<ElectricGuitarArticulation>]>,
+    playback_clock: PlaybackClock,
+}
+
+impl WelcomeEcosystem {
+    fn new(audio_handle: AudioHandle, bpm: f32, playback_clock: PlaybackClock) -> Self {
+        let rhythm_guitar_intro: Arc<[ScheduledNote<ElectricGuitarArticulation>]> =
+            rhythm_guitar_intro_score(bpm).into();
+
+        Self {
+            rhythm_guitar: ElectricGuitar::new(audio_handle),
+            rhythm_guitar_intro,
+            playback_clock,
+        }
+    }
+
+    fn rhythm_guitar(&self) -> &ElectricGuitar {
+        &self.rhythm_guitar
+    }
+
+    fn rhythm_guitar_intro_note(
+        &self,
+        index: u16,
+    ) -> Option<ScheduledNote<ElectricGuitarArticulation>> {
+        self.rhythm_guitar_intro
+            .get(index as usize)
+            .copied()
+            .map(|note| with_articulation(note, ElectricGuitarArticulation::RhythmSustained))
+    }
+
+    fn playback_clock(&self) -> &PlaybackClock {
+        &self.playback_clock
+    }
+}
+
 impl Ecosystem for WelcomeEcosystem {
     const NAME: &'static str = "welcome";
     type Animals = WelcomeAnimals;
@@ -77,6 +160,7 @@ type PostgresContainer = testcontainers::ContainerAsync<Postgres>;
 
 #[derive(Default)]
 struct RuntimeKeepAlive {
+    audio_engine: Option<AudioEngine>,
     server_task: Option<tokio::task::JoinHandle<()>>,
     #[cfg(feature = "postgres")]
     postgres_container: Option<PostgresContainer>,
@@ -157,10 +241,17 @@ fn run_runtime_thread(
     })?;
 
     let setup = runtime.block_on(async {
-        let (client, keep_alive) = setup_runtime_client().await?;
+        let (client, mut keep_alive) = setup_runtime_client().await?;
+        let audio_engine = AudioEngine::start_default().await.map_err(|err| {
+            error!(error = %err, "failed starting audio engine");
+            err.to_string()
+        })?;
+        let audio_handle = audio_engine.handle();
+        let playback_clock = PlaybackClock::default();
+        let ecosystem = WelcomeEcosystem::new(audio_handle.clone(), bpm, playback_clock.clone());
         let worker_client = client.clone();
         let _worker_task = tokio::spawn(async move {
-            let worker = JungleWorker::new(WelcomeEcosystem, worker_client);
+            let worker = JungleWorker::new(ecosystem, worker_client);
             if let Err(err) = worker.spawn().await {
                 error!(error = %err, "welcome worker task exited with error");
             }
@@ -205,10 +296,16 @@ fn run_runtime_thread(
             })?,
         };
 
-        Ok::<(UiSetup, RuntimeKeepAlive), String>((UiSetup { client, journeys }, keep_alive))
+        keep_alive.audio_engine = Some(audio_engine);
+        Ok::<(UiSetup, RuntimeKeepAlive, AudioHandle, PlaybackClock), String>((
+            UiSetup { client, journeys },
+            keep_alive,
+            audio_handle,
+            playback_clock,
+        ))
     });
 
-    let (setup, mut keep_alive) = match setup {
+    let (setup, mut keep_alive, audio_handle, playback_clock) = match setup {
         Ok(value) => value,
         Err(err) => {
             let _ = setup_tx.send(Err(err.clone()));
@@ -235,6 +332,8 @@ fn run_runtime_thread(
         bpm,
         ui_shutdown,
         ui_started_at,
+        audio_handle,
+        playback_clock,
     ));
     keep_alive.shutdown();
     result
@@ -429,15 +528,14 @@ async fn play_audio_and_schedule_shutdown(
     bpm: f32,
     ui_shutdown: ui::ShutdownFlag,
     ui_started_at: Instant,
+    audio_handle: AudioHandle,
+    playback_clock: PlaybackClock,
 ) -> Result<(), String> {
-    let audio_engine = AudioEngine::start_default().await.map_err(|err| {
-        error!(error = %err, "failed starting audio engine");
-        err.to_string()
-    })?;
+    let _ = playback_clock.start_now();
     let metronome = Metronome::spawn(bpm, BEATS_PER_BAR);
 
     let lead_guitar = lead_guitar_score(bpm);
-    let rhythm_guitar = rhythm_guitar_score(bpm);
+    let rhythm_guitar_tail = rhythm_guitar_score_without_intro(bpm);
     let backup_vocals = backup_vocals_score(bpm);
     let vocals = vocals_score(bpm);
     let bass = bass_guitar_score(bpm);
@@ -449,7 +547,7 @@ async fn play_audio_and_schedule_shutdown(
 
     let total_duration = [
         lead_guitar.as_slice(),
-        rhythm_guitar.as_slice(),
+        rhythm_guitar_tail.as_slice(),
         backup_vocals.as_slice(),
         vocals.as_slice(),
         bass.as_slice(),
@@ -465,27 +563,19 @@ async fn play_audio_and_schedule_shutdown(
     .unwrap_or(Duration::ZERO);
 
     info!(bpm, ?total_duration, "starting welcome score playback");
-    let mut tasks = Vec::with_capacity(10);
+    let mut tasks = Vec::with_capacity(9);
     tasks.push((
         "lead_guitar",
         tokio::spawn(play_lead_guitar_score(
-            audio_engine.handle(),
+            audio_handle.clone(),
             lead_guitar,
-            metronome.clone(),
-        )),
-    ));
-    tasks.push((
-        "rhythm_guitar",
-        tokio::spawn(play_rhythm_guitar_score(
-            audio_engine.handle(),
-            rhythm_guitar,
             metronome.clone(),
         )),
     ));
     tasks.push((
         "backup_vocals",
         tokio::spawn(play_backup_vocals_score(
-            audio_engine.handle(),
+            audio_handle.clone(),
             backup_vocals,
             metronome.clone(),
         )),
@@ -493,7 +583,7 @@ async fn play_audio_and_schedule_shutdown(
     tasks.push((
         "vocals",
         tokio::spawn(play_vocals_score(
-            audio_engine.handle(),
+            audio_handle.clone(),
             vocals,
             metronome.clone(),
         )),
@@ -501,7 +591,7 @@ async fn play_audio_and_schedule_shutdown(
     tasks.push((
         "bass",
         tokio::spawn(play_bass_score(
-            audio_engine.handle(),
+            audio_handle.clone(),
             bass,
             metronome.clone(),
         )),
@@ -509,7 +599,7 @@ async fn play_audio_and_schedule_shutdown(
     tasks.push((
         "kick_drum",
         tokio::spawn(play_kick_drum_score(
-            audio_engine.handle(),
+            audio_handle.clone(),
             kick_drum,
             metronome.clone(),
         )),
@@ -517,7 +607,7 @@ async fn play_audio_and_schedule_shutdown(
     tasks.push((
         "hi_hat",
         tokio::spawn(play_hi_hat_score(
-            audio_engine.handle(),
+            audio_handle.clone(),
             hi_hat,
             metronome.clone(),
         )),
@@ -525,7 +615,7 @@ async fn play_audio_and_schedule_shutdown(
     tasks.push((
         "cymbal",
         tokio::spawn(play_cymbal_score(
-            audio_engine.handle(),
+            audio_handle.clone(),
             cymbal,
             metronome.clone(),
         )),
@@ -533,14 +623,14 @@ async fn play_audio_and_schedule_shutdown(
     tasks.push((
         "snare_drum",
         tokio::spawn(play_snare_drum_score(
-            audio_engine.handle(),
+            audio_handle.clone(),
             snare_drum,
             metronome.clone(),
         )),
     ));
     tasks.push((
         "toms",
-        tokio::spawn(play_toms_score(audio_engine.handle(), toms, metronome)),
+        tokio::spawn(play_toms_score(audio_handle, toms, metronome)),
     ));
 
     for (name, task) in tasks {
@@ -618,24 +708,6 @@ async fn play_lead_guitar_score(
     let mut metronome_sync = metronome.subscribe();
     for note in notes {
         play_with_retry(&lead_guitar, note, &mut metronome_sync).await?;
-    }
-    Ok(())
-}
-
-async fn play_rhythm_guitar_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let rhythm_guitar = ElectricGuitar::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &rhythm_guitar,
-            with_articulation(note, ElectricGuitarArticulation::RhythmSustained),
-            &mut metronome_sync,
-        )
-        .await?;
     }
     Ok(())
 }

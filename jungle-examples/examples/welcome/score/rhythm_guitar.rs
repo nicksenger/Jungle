@@ -20998,6 +20998,16 @@ const SECTIONS: [&[GridNote]; 12] = [
     FINALE,
 ];
 
-pub fn rhythm_guitar_score(bpm: f32) -> Vec<ScheduledNote<ElectricGuitarArticulation>> {
-    collect_score_from_sections(&SECTIONS, bpm)
+pub fn rhythm_guitar_intro_score(bpm: f32) -> Vec<ScheduledNote<ElectricGuitarArticulation>> {
+    collect_score_from_sections(&[INTRO], bpm)
+}
+
+pub fn rhythm_guitar_intro_len() -> u16 {
+    INTRO.len() as u16
+}
+
+pub fn rhythm_guitar_score_without_intro(
+    bpm: f32,
+) -> Vec<ScheduledNote<ElectricGuitarArticulation>> {
+    collect_score_from_sections(&SECTIONS[1..], bpm)
 }

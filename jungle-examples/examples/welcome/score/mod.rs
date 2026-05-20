@@ -19,7 +19,9 @@ pub use bass_guitar::bass_guitar_score;
 pub use closed_hi_hat_cymbal::closed_hi_hat_cymbal_score;
 pub use crash_cymbal::crash_cymbal_score;
 pub use lead_guitar::lead_guitar_score;
-pub use rhythm_guitar::rhythm_guitar_score;
+pub use rhythm_guitar::{
+    rhythm_guitar_intro_len, rhythm_guitar_intro_score, rhythm_guitar_score_without_intro,
+};
 pub use snare_drum::snare_drum_score;
 pub use toms_snare::toms_snare_score;
 pub use vocals::vocals_score;
