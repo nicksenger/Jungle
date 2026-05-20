@@ -100,10 +100,10 @@ fn run_headless() {
             .expect("local client should build");
         let worker_client = client.clone();
 
-        let worker_task = tokio::spawn(async move {
+        let mut worker_task = Some(tokio::spawn(async move {
             let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
-            let _ = worker.spawn().await;
-        });
+            worker.spawn().await
+        }));
 
         let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
             .expect("gorilla seed should serialize");
@@ -177,11 +177,51 @@ fn run_headless() {
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_millis(250)) => {
+                    if worker_task
+                        .as_ref()
+                        .map(|task| task.is_finished())
+                        .unwrap_or(false)
+                    {
+                        match worker_task
+                            .take()
+                            .expect("worker task is present when finished")
+                            .await
+                        {
+                            Ok(Ok(())) => {
+                                println!("worker task exited cleanly before journey reached terminal status");
+                            }
+                            Ok(Err(err)) => {
+                                println!("worker task exited with error: {err}");
+                            }
+                            Err(err) => {
+                                println!("worker task join error: {err}");
+                            }
+                        }
+                        let history_len = client
+                            .journey_history(journey_id)
+                            .await
+                            .map(|history| history.len())
+                            .unwrap_or(0);
+                        let status = client
+                            .journey_details(journey_id)
+                            .await
+                            .expect("journey_details should succeed after worker exit");
+                        println!(
+                            "journey snapshot after worker exit: status={status:?} history_events={history_len}"
+                        );
+                        break status;
+                    }
+
                     let status = client
                         .journey_details(journey_id)
                         .await
                         .expect("journey_details should succeed");
-                    println!("journey status poll: {status:?}");
+                    let history_len = client
+                        .journey_history(journey_id)
+                        .await
+                        .map(|history| history.len())
+                        .unwrap_or(0);
+                    println!("journey status poll: {status:?} (history_events={history_len})");
                     match status {
                         JourneyStatus::Created | JourneyStatus::Alive => {}
                         JourneyStatus::Completed | JourneyStatus::Stopped | JourneyStatus::Dead => {
@@ -193,6 +233,8 @@ fn run_headless() {
         };
 
         println!("gorilla journey {journey_id} finished with status {final_status:?}");
-        worker_task.abort();
+        if let Some(worker_task) = worker_task.take() {
+            worker_task.abort();
+        }
     });
 }
