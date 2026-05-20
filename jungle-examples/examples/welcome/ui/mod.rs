@@ -1,4 +1,4 @@
-use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
+use crate::animals::RhythmGuitarist;
 use crate::RuntimeClient;
 use iced::widget::{column, container, row, text};
 use iced::{Color, Element, Font, Length, Subscription, Task};
@@ -8,11 +8,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy)]
 pub struct JourneyIds {
-    pub lead_vocalist: Uuid,
-    pub lead_guitarist: Uuid,
     pub rhythm_guitarist: Uuid,
-    pub bass: Uuid,
-    pub drums: Uuid,
 }
 
 #[derive(Clone)]
@@ -49,11 +45,7 @@ pub fn run_ui(client: RuntimeClient, journeys: JourneyIds, shutdown: ShutdownFla
 
 #[derive(Debug, Clone, Copy)]
 enum Panel {
-    LeadVocalist,
-    LeadGuitarist,
     RhythmGuitarist,
-    Bass,
-    Drums,
 }
 
 #[derive(Debug, Clone)]
@@ -63,14 +55,8 @@ enum Message {
 }
 
 struct WelcomeUi {
-    lead_vocalist:
-        jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
-    lead_guitarist:
-        jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
     rhythm_guitarist:
         jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
-    bass: jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
-    drums: jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
     shutdown: ShutdownFlag,
 }
 
@@ -80,29 +66,13 @@ impl WelcomeUi {
         journeys: JourneyIds,
         shutdown: ShutdownFlag,
     ) -> (Self, Task<Message>) {
-        let lead_vocalist = jungle_viewer::JungleViewerBuilder::new()
-            .title("Welcome: Lead Vocalist")
-            .eject_live_animal::<LeadVocalist, _>(client.clone(), journeys.lead_vocalist);
-        let lead_guitarist = jungle_viewer::JungleViewerBuilder::new()
-            .title("Welcome: Lead Guitarist")
-            .eject_live_animal::<LeadGuitarist, _>(client.clone(), journeys.lead_guitarist);
         let rhythm_guitarist = jungle_viewer::JungleViewerBuilder::new()
             .title("Welcome: Rhythm Guitarist")
-            .eject_live_animal::<RhythmGuitarist, _>(client.clone(), journeys.rhythm_guitarist);
-        let bass = jungle_viewer::JungleViewerBuilder::new()
-            .title("Welcome: Bass")
-            .eject_live_animal::<Bass, _>(client.clone(), journeys.bass);
-        let drums = jungle_viewer::JungleViewerBuilder::new()
-            .title("Welcome: Drums")
-            .eject_live_animal::<Drums, _>(client, journeys.drums);
+            .eject_live_animal::<RhythmGuitarist, _>(client, journeys.rhythm_guitarist);
 
         (
             Self {
-                lead_vocalist,
-                lead_guitarist,
                 rhythm_guitarist,
-                bass,
-                drums,
                 shutdown,
             },
             Task::none(),
@@ -117,72 +87,28 @@ impl WelcomeUi {
                 }
                 Task::none()
             }
-            Message::Panel(panel, event) => match panel {
-                Panel::LeadVocalist => self
-                    .lead_vocalist
-                    .update(event)
-                    .map(move |next| Message::Panel(Panel::LeadVocalist, next)),
-                Panel::LeadGuitarist => self
-                    .lead_guitarist
-                    .update(event)
-                    .map(move |next| Message::Panel(Panel::LeadGuitarist, next)),
-                Panel::RhythmGuitarist => self
-                    .rhythm_guitarist
-                    .update(event)
-                    .map(move |next| Message::Panel(Panel::RhythmGuitarist, next)),
-                Panel::Bass => self
-                    .bass
-                    .update(event)
-                    .map(move |next| Message::Panel(Panel::Bass, next)),
-                Panel::Drums => self
-                    .drums
-                    .update(event)
-                    .map(move |next| Message::Panel(Panel::Drums, next)),
-            },
+            Message::Panel(Panel::RhythmGuitarist, event) => self
+                .rhythm_guitarist
+                .update(event)
+                .map(move |next| Message::Panel(Panel::RhythmGuitarist, next)),
         }
     }
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
-            self.lead_vocalist
-                .subscription()
-                .map(|event| Message::Panel(Panel::LeadVocalist, event)),
-            self.lead_guitarist
-                .subscription()
-                .map(|event| Message::Panel(Panel::LeadGuitarist, event)),
             self.rhythm_guitarist
                 .subscription()
                 .map(|event| Message::Panel(Panel::RhythmGuitarist, event)),
-            self.bass
-                .subscription()
-                .map(|event| Message::Panel(Panel::Bass, event)),
-            self.drums
-                .subscription()
-                .map(|event| Message::Panel(Panel::Drums, event)),
             iced::time::every(std::time::Duration::from_millis(200)).map(|_| Message::Tick),
         ])
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let panels = row![
-            panel("Bass", self.bass.view(), Panel::Bass),
-            panel(
-                "Lead Guitarist",
-                self.lead_guitarist.view(),
-                Panel::LeadGuitarist
-            ),
-            panel(
-                "Lead Vocalist",
-                self.lead_vocalist.view(),
-                Panel::LeadVocalist
-            ),
-            panel(
-                "Rhythm Guitarist",
-                self.rhythm_guitarist.view(),
-                Panel::RhythmGuitarist
-            ),
-            panel("Drums", self.drums.view(), Panel::Drums),
-        ]
+        let panels = row![panel(
+            "Rhythm Guitarist",
+            self.rhythm_guitarist.view(),
+            Panel::RhythmGuitarist
+        )]
         .spacing(12)
         .height(Length::Fill)
         .width(Length::Fill);
