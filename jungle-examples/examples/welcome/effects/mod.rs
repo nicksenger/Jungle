@@ -80,16 +80,3 @@ impl Effect<WelcomeEcosystem> for AdvanceRhythmGuitarBar {
         Ok(bar.saturating_add(1))
     }
 }
-
-pub struct MergeRhythmEither;
-
-#[effect(id = 203)]
-impl Effect<WelcomeEcosystem> for MergeRhythmEither {
-    type In = ();
-    type Out = ();
-    type Err = String;
-
-    async fn effect(_jungle: &WelcomeEcosystem, _input: Self::In) -> Result<Self::Out, Self::Err> {
-        Ok(())
-    }
-}

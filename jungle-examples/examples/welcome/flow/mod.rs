@@ -191,28 +191,6 @@ impl Act for PlayResolveSpec {
     type Output = ();
 }
 
-pub struct MergeEither;
-impl BoundAct<RhythmGuitarist> for MergeEither {
-    type Effect = effects::MergeRhythmEither;
-    type Aspect = Identity;
-    type Input = Either<(), ()>;
-    type Output = ();
-
-    fn emit(_state: &RhythmGuitarIntroState, _input: Self::Input) {}
-
-    fn absorb(_state: &mut RhythmGuitarIntroState, output: EffectCompletion<Self::Effect>) {
-        output.expect("either merge should succeed");
-    }
-}
-
-pub struct MergeEitherSpec;
-#[jungle::act(bind = MergeEither)]
-impl Act for MergeEitherSpec {
-    type Effect = effects::MergeRhythmEither;
-    type Input = Either<(), ()>;
-    type Output = ();
-}
-
 pub struct AdvanceBar;
 impl BoundAct<RhythmGuitarist> for AdvanceBar {
     type Effect = effects::AdvanceRhythmGuitarBar;
@@ -241,10 +219,8 @@ impl Act for AdvanceBarSpec {
 pub struct IntroBarFlow(
     Step<SetBarProfileSpec>,
     Conditional<IntroBarIsTurnaround, Step<PlayTurnaroundPickupSpec>, Step<PlayBasePickupSpec>>,
-    Step<MergeEitherSpec>,
     Step<PlayPulseASpec>,
     Conditional<IntroBarIsLowRegister, Step<PlayLowPulseSpec>, Step<PlayHighPulseSpec>>,
-    Step<MergeEitherSpec>,
     Step<PlayResolveSpec>,
     Step<AdvanceBarSpec>,
 );
