@@ -1,4 +1,5 @@
 use jungle_sdk::core::JungleWorker;
+use jungle_sdk::prelude::JourneyStatus;
 use jungle_sdk::{JungleClient, LocalClient};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -45,14 +46,16 @@ fn main() {
         }
     }
 
+    if headless {
+        run_headless();
+        return;
+    }
+
     let mut viewer = jungle_viewer::JungleViewerBuilder::new()
         .title("Jungle View Example (zoo::Gorilla)")
         .animation_duration(Duration::from_millis(280));
     if let Some(path) = screenshot {
         viewer = viewer.screenshot_path(path);
-    }
-    if headless {
-        viewer = viewer.headless(true);
     }
 
     if live {
@@ -85,4 +88,46 @@ fn main() {
             .view_animal::<jungle_zoo::animals::gorilla::Gorilla>()
             .expect("safari example should launch viewer");
     }
+}
+
+fn run_headless() {
+    let runtime = tokio::runtime::Runtime::new().expect("headless runtime should start");
+    runtime.block_on(async {
+        let client = LocalClient::builder()
+            .build()
+            .await
+            .expect("local client should build");
+        let worker_client = client.clone();
+
+        let worker_task = tokio::spawn(async move {
+            let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
+            let _ = worker.spawn().await;
+        });
+
+        let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
+            .expect("gorilla seed should serialize");
+        let journey_id = client
+            .start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed)
+            .await
+            .expect("start_journey gorilla should succeed");
+        println!("started gorilla journey {journey_id} in headless mode");
+
+        let final_status = loop {
+            let status = client
+                .journey_details(journey_id)
+                .await
+                .expect("journey_details should succeed");
+            match status {
+                JourneyStatus::Created | JourneyStatus::Alive => {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+                JourneyStatus::Completed | JourneyStatus::Stopped | JourneyStatus::Dead => {
+                    break status;
+                }
+            }
+        };
+
+        println!("gorilla journey {journey_id} finished with status {final_status:?}");
+        worker_task.abort();
+    });
 }
