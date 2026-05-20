@@ -191,26 +191,37 @@ where
     }
 
     if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(bytes) {
-        let mut candidate = Vec::new();
-        match either {
-            Either::Left(payload) => {
-                candidate.reserve(1 + payload.len());
-                candidate.push(0_u8);
-                candidate.extend_from_slice(&payload);
-            }
-            Either::Right(payload) => {
-                candidate.reserve(1 + payload.len());
-                candidate.push(1_u8);
-                candidate.extend_from_slice(&payload);
-            }
+        // For some envelope producers, unit-like carries are serialized as
+        // branch payloads that should be accepted directly by the next step.
+        // Try branch payload direct decode before reconstructing tagged Either.
+        let payload = match &either {
+            Either::Left(payload) | Either::Right(payload) => payload,
+        };
+        if let Ok(value) = deserialize_exact::<T>(payload) {
+            return Ok(value);
         }
+
+        let mut candidate = Vec::with_capacity(1 + payload.len());
+        match either {
+            Either::Left(_) => candidate.push(0_u8),
+            Either::Right(_) => candidate.push(1_u8),
+        };
+        candidate.extend_from_slice(payload);
         return deserialize_exact::<T>(&candidate).map_err(|err| {
-            ExecutorError::InputDeserialize(format!("step either envelope: {err}"))
+            ExecutorError::InputDeserialize(format!(
+                "step either envelope for {}: {err}",
+                core::any::type_name::<T>()
+            ))
         });
     }
 
     deserialize_exact::<T>(bytes)
-        .map_err(|err| ExecutorError::InputDeserialize(format!("step direct input: {err}")))
+        .map_err(|err| {
+            ExecutorError::InputDeserialize(format!(
+                "step direct input for {}: {err}",
+                core::any::type_name::<T>()
+            ))
+        })
 }
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
