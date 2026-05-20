@@ -28,8 +28,7 @@ use crate::{
     score::{
         backup_vocals_score, bass_drum_score, bass_guitar_score, closed_hi_hat_cymbal_score,
         crash_cymbal_score, lead_guitar_score, rhythm_guitar_score, snare_drum_score,
-        ScheduledNote,
-        toms_snare_score, vocals_score,
+        toms_snare_score, vocals_score, ScheduledNote,
     },
 };
 
@@ -119,13 +118,10 @@ fn run_runtime_thread(
     })?;
 
     let setup = runtime.block_on(async {
-        let client = LocalClient::builder()
-            .build()
-            .await
-            .map_err(|err| {
-                error!(error = %err, "failed building local client");
-                err.to_string()
-            })?;
+        let client = LocalClient::builder().build().await.map_err(|err| {
+            error!(error = %err, "failed building local client");
+            err.to_string()
+        })?;
         let worker_client = client.clone();
         let _worker_task = tokio::spawn(async move {
             let worker = JungleWorker::new(WelcomeEcosystem, worker_client);
@@ -167,13 +163,10 @@ fn run_runtime_thread(
                     error!(error = %err, "failed starting bass journey");
                     err.to_string()
                 })?,
-            drums: client
-                .start_journey::<Drums>(seed)
-                .await
-                .map_err(|err| {
-                    error!(error = %err, "failed starting drums journey");
-                    err.to_string()
-                })?,
+            drums: client.start_journey::<Drums>(seed).await.map_err(|err| {
+                error!(error = %err, "failed starting drums journey");
+                err.to_string()
+            })?,
         };
 
         Ok::<UiSetup, String>(UiSetup { client, journeys })
@@ -184,15 +177,13 @@ fn run_runtime_thread(
         return Err(format!("failed to send UI setup to main thread: {err}"));
     }
 
-    let ui_started_at = started_rx
-        .recv()
-        .map_err(|err| {
-            error!(
-                error = %err,
-                "failed receiving UI start signal from main thread"
-            );
-            format!("failed to receive UI start signal from main thread: {err}")
-        })?;
+    let ui_started_at = started_rx.recv().map_err(|err| {
+        error!(
+            error = %err,
+            "failed receiving UI start signal from main thread"
+        );
+        format!("failed to receive UI start signal from main thread: {err}")
+    })?;
 
     runtime.block_on(play_audio_and_schedule_shutdown(
         bpm,
@@ -206,12 +197,10 @@ async fn play_audio_and_schedule_shutdown(
     ui_shutdown: ui::ShutdownFlag,
     ui_started_at: Instant,
 ) -> Result<(), String> {
-    let audio_engine = AudioEngine::start_default()
-        .await
-        .map_err(|err| {
-            error!(error = %err, "failed starting audio engine");
-            err.to_string()
-        })?;
+    let audio_engine = AudioEngine::start_default().await.map_err(|err| {
+        error!(error = %err, "failed starting audio engine");
+        err.to_string()
+    })?;
     let metronome = Metronome::spawn(bpm, BEATS_PER_BAR);
 
     let lead_guitar = lead_guitar_score(bpm);
@@ -394,8 +383,11 @@ async fn play_lead_guitar_score(
 ) -> Result<(), InstrumentError> {
     let lead_guitar = ElectricGuitar::new(audio_handle);
     let mut metronome_sync = metronome.subscribe();
+    let mut i = 1;
     for note in notes {
         play_with_retry(&lead_guitar, note, &mut metronome_sync).await?;
+        debug!("played note: {i}");
+        i += 1;
     }
     Ok(())
 }

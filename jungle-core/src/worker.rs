@@ -16,12 +16,19 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
+use tokio::time::Instant;
 use typosaurus::collections::list;
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
 use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const OWNER_LEASE_TTL_MS: i64 = 30_000;
+
+fn heartbeat_interval_for_lease_ttl(lease_ttl_ms: i64) -> Duration {
+    // Refresh at ~3x faster than expiration to keep ownership stable without hot-looping.
+    let ttl_ms = lease_ttl_ms.max(1) as u64;
+    Duration::from_millis((ttl_ms / 3).max(1))
+}
 
 pub struct JungleWorker<T> {
     client: Box<dyn JungleClient>,
@@ -63,6 +70,8 @@ where
 
     pub async fn spawn(&self) -> Result<(), ExecutorError> {
         let owner_id = Uuid::new_v4();
+        let heartbeat_interval = heartbeat_interval_for_lease_ttl(self.owner_lease_ttl_ms);
+        let mut next_heartbeat_at = Instant::now();
         let (tx, mut rx): (RunnerChannelTx, _) = mpsc::channel(64);
         let client_for_transport = self.client.clone();
         tokio::spawn(async move {
@@ -124,10 +133,13 @@ where
         let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
 
         loop {
-            for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
-                self.client
-                    .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
-                    .await?;
+            if !suspended.is_empty() && Instant::now() >= next_heartbeat_at {
+                for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
+                    self.client
+                        .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
+                        .await?;
+                }
+                next_heartbeat_at = Instant::now() + heartbeat_interval;
             }
 
             let _ = self.client.poll_timers().await?;
