@@ -491,10 +491,7 @@ where
             EjectedViewerMessage::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
-                        return iced_sugiyama::invalidate::<EjectedViewerMessage>(
-                            self.graph_widget_id.clone(),
-                        )
-                        .chain(Task::done(EjectedViewerMessage::ApplyLiveEvent(update)));
+                        return Task::done(EjectedViewerMessage::ApplyLiveEvent(update));
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -521,7 +518,12 @@ where
                     }
                 };
                 let _ = data.apply_update(update);
-                theme_task
+                Task::batch(vec![
+                    theme_task,
+                    iced_sugiyama::force_review::<EjectedViewerMessage>(
+                        self.graph_widget_id.clone(),
+                    ),
+                ])
             }
             EjectedViewerMessage::Theme(event) => {
                 let theme_task = self
@@ -738,8 +740,7 @@ where
             Message::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
-                        return iced_sugiyama::invalidate::<Message>(self.graph_widget_id.clone())
-                            .chain(Task::done(Message::ApplyLiveEvent(update)));
+                        return Task::done(Message::ApplyLiveEvent(update));
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -766,7 +767,10 @@ where
                     }
                 };
                 let _ = data.apply_update(update);
-                theme_task
+                Task::batch(vec![
+                    theme_task,
+                    iced_sugiyama::force_review::<Message>(self.graph_widget_id.clone()),
+                ])
             }
             Message::Theme(event) => {
                 let theme_task = self
