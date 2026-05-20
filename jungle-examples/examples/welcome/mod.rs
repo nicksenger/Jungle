@@ -71,9 +71,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let ui_shutdown = ui::ShutdownFlag::new();
     let ui_started_at = Instant::now();
-    let ui_thread = ui::spawn_ui(client.clone(), journeys, ui_shutdown.clone());
+    let audio_task = tokio::spawn(play_audio_and_schedule_shutdown(
+        bpm,
+        ui_shutdown.clone(),
+        ui_started_at,
+    ));
 
-    let audio_engine = AudioEngine::start_default().await?;
+    ui::run_ui(client, journeys, ui_shutdown.clone())?;
+
+    let audio_result = audio_task
+        .await
+        .map_err(|err| std::io::Error::other(format!("audio task join error: {err}")))?;
+    audio_result.map_err(std::io::Error::other)?;
+    Ok(())
+}
+
+async fn play_audio_and_schedule_shutdown(
+    bpm: f32,
+    ui_shutdown: ui::ShutdownFlag,
+    ui_started_at: Instant,
+) -> Result<(), String> {
+    let audio_engine = AudioEngine::start_default()
+        .await
+        .map_err(|err| err.to_string())?;
     let metronome = Metronome::spawn(bpm, BEATS_PER_BAR);
 
     let lead_guitar = lead_guitar_score(bpm);
@@ -157,7 +177,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )));
 
     for task in tasks {
-        task.await??;
+        task.await
+            .map_err(|err| err.to_string())?
+            .map_err(|err| err.to_string())?;
     }
 
     tokio::time::sleep(total_duration.saturating_add(Duration::from_secs(1))).await;
@@ -166,7 +188,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(UI_MIN_UPTIME_BEFORE_SHUTDOWN - elapsed_since_ui_start).await;
     }
     ui_shutdown.request_shutdown();
-    let _ = ui_thread.join();
     Ok(())
 }
 

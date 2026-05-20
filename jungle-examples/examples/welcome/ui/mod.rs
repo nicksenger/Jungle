@@ -32,19 +32,7 @@ impl ShutdownFlag {
     }
 }
 
-pub fn spawn_ui(
-    client: LocalClient,
-    journeys: JourneyIds,
-    shutdown: ShutdownFlag,
-) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || {
-        if let Err(err) = run_ui(client, journeys, shutdown) {
-            eprintln!("welcome UI exited with error: {err}");
-        }
-    })
-}
-
-fn run_ui(client: LocalClient, journeys: JourneyIds, shutdown: ShutdownFlag) -> iced::Result {
+pub fn run_ui(client: LocalClient, journeys: JourneyIds, shutdown: ShutdownFlag) -> iced::Result {
     let title = "Welcome Example";
     iced::application(
         move || WelcomeUi::new(client.clone(), journeys, shutdown.clone()),
