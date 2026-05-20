@@ -9,6 +9,9 @@ viewer = ["dep:jungle-viewer", "dep:iced"]
 audio = ["dep:cpal"]
 zoo = ["dep:jungle-zoo"]
 zoo-delay = ["zoo", "jungle-zoo/delay"]
+redb = []
+postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
+transport = []
 
 [dependencies]
 futures = { workspace = true }
@@ -24,6 +27,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
+testcontainers = { version = "0.23", optional = true }
+testcontainers-modules = { version = "0.11", features = ["postgres"], optional = true }
 
 [[example]]
 name = "safari"

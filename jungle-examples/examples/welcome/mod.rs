@@ -7,13 +7,26 @@ mod metronome;
 mod score;
 mod ui;
 
+#[cfg(feature = "transport")]
+use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
-use jungle_sdk::{JungleClient, LocalClient};
+#[cfg(feature = "transport")]
+use jungle_sdk::server::ServerBuilder;
+use jungle_sdk::JungleClient;
+#[cfg(not(feature = "transport"))]
+use jungle_sdk::LocalClient;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
+#[cfg(feature = "redb")]
+use uuid::Uuid;
+
+#[cfg(feature = "postgres")]
+use testcontainers::runners::AsyncRunner;
+#[cfg(feature = "postgres")]
+use testcontainers_modules::postgres::Postgres;
 
 use crate::{
     animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
@@ -52,6 +65,29 @@ struct WelcomeEcosystem;
 impl Ecosystem for WelcomeEcosystem {
     const NAME: &'static str = "welcome";
     type Animals = WelcomeAnimals;
+}
+
+#[cfg(feature = "transport")]
+pub(crate) type RuntimeClient = jungle_sdk::Client<WelcomeEcosystem>;
+#[cfg(not(feature = "transport"))]
+pub(crate) type RuntimeClient = LocalClient;
+
+#[cfg(feature = "postgres")]
+type PostgresContainer = testcontainers::ContainerAsync<Postgres>;
+
+#[derive(Default)]
+struct RuntimeKeepAlive {
+    server_task: Option<tokio::task::JoinHandle<()>>,
+    #[cfg(feature = "postgres")]
+    postgres_container: Option<PostgresContainer>,
+}
+
+impl RuntimeKeepAlive {
+    fn shutdown(&mut self) {
+        if let Some(task) = self.server_task.take() {
+            task.abort();
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -105,7 +141,7 @@ fn init_tracing() {
 }
 
 struct UiSetup {
-    client: LocalClient,
+    client: RuntimeClient,
     journeys: ui::JourneyIds,
 }
 
@@ -121,10 +157,7 @@ fn run_runtime_thread(
     })?;
 
     let setup = runtime.block_on(async {
-        let client = LocalClient::builder().build().await.map_err(|err| {
-            error!(error = %err, "failed building local client");
-            err.to_string()
-        })?;
+        let (client, keep_alive) = setup_runtime_client().await?;
         let worker_client = client.clone();
         let _worker_task = tokio::spawn(async move {
             let worker = JungleWorker::new(WelcomeEcosystem, worker_client);
@@ -172,15 +205,25 @@ fn run_runtime_thread(
             })?,
         };
 
-        Ok::<UiSetup, String>(UiSetup { client, journeys })
+        Ok::<(UiSetup, RuntimeKeepAlive), String>((UiSetup { client, journeys }, keep_alive))
     });
 
-    if let Err(err) = setup_tx.send(setup) {
+    let (setup, mut keep_alive) = match setup {
+        Ok(value) => value,
+        Err(err) => {
+            let _ = setup_tx.send(Err(err.clone()));
+            return Err(err);
+        }
+    };
+
+    if let Err(err) = setup_tx.send(Ok(setup)) {
+        keep_alive.shutdown();
         error!(error = %err, "failed sending UI setup to main thread");
         return Err(format!("failed to send UI setup to main thread: {err}"));
     }
 
     let ui_started_at = started_rx.recv().map_err(|err| {
+        keep_alive.shutdown();
         error!(
             error = %err,
             "failed receiving UI start signal from main thread"
@@ -188,11 +231,198 @@ fn run_runtime_thread(
         format!("failed to receive UI start signal from main thread: {err}")
     })?;
 
-    runtime.block_on(play_audio_and_schedule_shutdown(
+    let result = runtime.block_on(play_audio_and_schedule_shutdown(
         bpm,
         ui_shutdown,
         ui_started_at,
-    ))
+    ));
+    keep_alive.shutdown();
+    result
+}
+
+#[cfg(feature = "transport")]
+fn reserve_local_addr() -> SocketAddr {
+    let socket = UdpSocket::bind((Ipv6Addr::LOCALHOST, 0))
+        .expect("should bind temporary udp socket for port reservation");
+    socket
+        .local_addr()
+        .expect("temporary udp socket should expose local address")
+}
+
+async fn setup_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive), String> {
+    #[cfg(feature = "transport")]
+    {
+        setup_transport_runtime_client().await
+    }
+    #[cfg(not(feature = "transport"))]
+    {
+        setup_local_runtime_client().await
+    }
+}
+
+#[cfg(not(feature = "transport"))]
+async fn setup_local_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive), String> {
+    #[cfg(feature = "postgres")]
+    let mut keep_alive = RuntimeKeepAlive::default();
+    #[cfg(not(feature = "postgres"))]
+    let keep_alive = RuntimeKeepAlive::default();
+
+    #[cfg(feature = "postgres")]
+    {
+        let postgres = Postgres::default().start().await.map_err(|err| {
+            error!(error = %err, "failed starting postgres testcontainer");
+            err.to_string()
+        })?;
+        let pg_port = postgres.get_host_port_ipv4(5432).await.map_err(|err| {
+            error!(error = %err, "failed resolving postgres mapped port");
+            err.to_string()
+        })?;
+        let connection_string =
+            format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+        let backend = jungle_sdk::server::Server::builder()
+            .postgres_connection_string(connection_string)
+            .build()
+            .await
+            .map_err(|err| {
+                error!(error = %err, "failed building postgres server backend");
+                err.to_string()
+            })?;
+        let client = LocalClient::builder()
+            .backend(backend)
+            .build()
+            .await
+            .map_err(|err| {
+                error!(error = %err, "failed building local client with postgres backend");
+                err.to_string()
+            })?;
+        keep_alive.postgres_container = Some(postgres);
+        return Ok((client, keep_alive));
+    }
+
+    #[cfg(all(feature = "redb", not(feature = "postgres")))]
+    {
+        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.redb", Uuid::new_v4()));
+        let backend = jungle_sdk::server::Server::builder()
+            .redb_path(db_path)
+            .build()
+            .await
+            .map_err(|err| {
+                error!(error = %err, "failed building redb server backend");
+                err.to_string()
+            })?;
+        let client = LocalClient::builder()
+            .backend(backend)
+            .build()
+            .await
+            .map_err(|err| {
+                error!(error = %err, "failed building local client with redb backend");
+                err.to_string()
+            })?;
+        return Ok((client, keep_alive));
+    }
+
+    #[cfg(not(any(feature = "redb", feature = "postgres")))]
+    {
+        let client = LocalClient::builder().build().await.map_err(|err| {
+            error!(error = %err, "failed building in-memory local client");
+            err.to_string()
+        })?;
+        Ok((client, keep_alive))
+    }
+}
+
+#[cfg(feature = "transport")]
+async fn setup_transport_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive), String> {
+    let mut keep_alive = RuntimeKeepAlive::default();
+    let listen_addr = reserve_local_addr();
+
+    #[cfg(feature = "postgres")]
+    {
+        let postgres = Postgres::default().start().await.map_err(|err| {
+            error!(error = %err, "failed starting postgres testcontainer");
+            err.to_string()
+        })?;
+        let pg_port = postgres.get_host_port_ipv4(5432).await.map_err(|err| {
+            error!(error = %err, "failed resolving postgres mapped port");
+            err.to_string()
+        })?;
+        let connection_string =
+            format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+        let server_task = tokio::spawn(async move {
+            if let Err(err) = ServerBuilder::new()
+                .listen(listen_addr)
+                .postgres_connection_string(connection_string)
+                .run()
+                .await
+            {
+                error!(error = %err, "welcome transport server exited with error");
+            }
+        });
+        let client = connect_transport_client_with_retry(listen_addr).await?;
+        keep_alive.server_task = Some(server_task);
+        keep_alive.postgres_container = Some(postgres);
+        return Ok((client, keep_alive));
+    }
+
+    #[cfg(all(feature = "redb", not(feature = "postgres")))]
+    {
+        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.redb", Uuid::new_v4()));
+        let server_task = tokio::spawn(async move {
+            if let Err(err) = ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+            {
+                error!(error = %err, "welcome transport server exited with error");
+            }
+        });
+        let client = connect_transport_client_with_retry(listen_addr).await?;
+        keep_alive.server_task = Some(server_task);
+        return Ok((client, keep_alive));
+    }
+
+    #[cfg(not(any(feature = "redb", feature = "postgres")))]
+    {
+        let server_task = tokio::spawn(async move {
+            if let Err(err) = ServerBuilder::new()
+                .listen(listen_addr)
+                .memory()
+                .run()
+                .await
+            {
+                error!(error = %err, "welcome transport server exited with error");
+            }
+        });
+        let client = connect_transport_client_with_retry(listen_addr).await?;
+        keep_alive.server_task = Some(server_task);
+        Ok((client, keep_alive))
+    }
+}
+
+#[cfg(feature = "transport")]
+async fn connect_transport_client_with_retry(remote: SocketAddr) -> Result<RuntimeClient, String> {
+    for attempt in 0..40 {
+        match jungle_sdk::Client::builder()
+            .ecosystem::<WelcomeEcosystem>()
+            .remote(remote)
+            .server_name("localhost")
+            .build()
+            .await
+        {
+            Ok(client) => return Ok(client),
+            Err(err) if attempt < 39 => {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+                let _ = err;
+            }
+            Err(err) => {
+                error!(error = %err, "failed connecting transport client to welcome server");
+                return Err(err.to_string());
+            }
+        }
+    }
+
+    Err("transport client retry loop exhausted".to_string())
 }
 
 async fn play_audio_and_schedule_shutdown(

@@ -1,7 +1,7 @@
 use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
+use crate::RuntimeClient;
 use iced::widget::{column, container, row, text};
 use iced::{Color, Element, Font, Length, Subscription, Task};
-use jungle_sdk::LocalClient;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -32,7 +32,7 @@ impl ShutdownFlag {
     }
 }
 
-pub fn run_ui(client: LocalClient, journeys: JourneyIds, shutdown: ShutdownFlag) -> iced::Result {
+pub fn run_ui(client: RuntimeClient, journeys: JourneyIds, shutdown: ShutdownFlag) -> iced::Result {
     let title = "Welcome Example";
     iced::application(
         move || WelcomeUi::new(client.clone(), journeys, shutdown.clone()),
@@ -76,7 +76,7 @@ struct WelcomeUi {
 
 impl WelcomeUi {
     fn new(
-        client: LocalClient,
+        client: RuntimeClient,
         journeys: JourneyIds,
         shutdown: ShutdownFlag,
     ) -> (Self, Task<Message>) {

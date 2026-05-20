@@ -2651,6 +2651,8 @@ dependencies = [
  "jungle-zoo",
  "postcard",
  "serde",
+ "testcontainers",
+ "testcontainers-modules",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
