@@ -4,6 +4,7 @@ use jungle_sdk::prelude::{JourneyStatus, RunnerUpdateOut};
 use jungle_sdk::{JungleClient, LocalClient};
 use std::path::PathBuf;
 use std::time::Duration;
+use tracing::error;
 
 fn main() {
     let mut headless = false;
@@ -69,7 +70,10 @@ fn main() {
 
         let _worker_task = live_runtime.spawn(async move {
             let worker = JungleWorker::new(jungle_zoo::Zoo, worker_client);
-            let _ = worker.spawn().await;
+            if let Err(err) = worker.spawn().await {
+                error!(error = %err, "safari live worker exited with error");
+                eprintln!("safari live worker exited with error: {err}");
+            }
         });
 
         let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())

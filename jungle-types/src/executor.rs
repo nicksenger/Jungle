@@ -182,46 +182,60 @@ where
     Ok(value)
 }
 
+fn try_deserialize_step_input_from_either<T>(bytes: &[u8], depth: usize) -> Option<T>
+where
+    T: DeserializeOwned,
+{
+    if depth > 16 {
+        return None;
+    }
+
+    let (tag, payload) = match postcard::from_bytes::<Either<Serialized, Serialized>>(bytes) {
+        Ok(Either::Left(payload)) => (0_u8, payload),
+        Ok(Either::Right(payload)) => (1_u8, payload),
+        Err(_) => return None,
+    };
+
+    if let Ok(value) = deserialize_exact::<T>(&payload) {
+        return Some(value);
+    }
+    if let Some(value) = try_deserialize_step_input_from_either::<T>(&payload, depth + 1) {
+        return Some(value);
+    }
+
+    let mut tagged = Vec::with_capacity(1 + payload.len());
+    tagged.push(tag);
+    tagged.extend_from_slice(&payload);
+    if let Ok(value) = deserialize_exact::<T>(&tagged) {
+        return Some(value);
+    }
+    try_deserialize_step_input_from_either::<T>(&tagged, depth + 1)
+}
+
 fn deserialize_step_input<T>(bytes: &[u8]) -> Result<T, ExecutorError>
 where
     T: DeserializeOwned,
 {
-    if let Ok(value) = deserialize_exact::<T>(bytes) {
+    let direct_err = match deserialize_exact::<T>(bytes) {
+        Ok(value) => return Ok(value),
+        Err(err) => err,
+    };
+
+    if let Some(value) = try_deserialize_step_input_from_either::<T>(bytes, 0) {
         return Ok(value);
     }
 
-    if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(bytes) {
-        // For some envelope producers, unit-like carries are serialized as
-        // branch payloads that should be accepted directly by the next step.
-        // Try branch payload direct decode before reconstructing tagged Either.
-        let payload = match &either {
-            Either::Left(payload) | Either::Right(payload) => payload,
-        };
-        if let Ok(value) = deserialize_exact::<T>(payload) {
-            return Ok(value);
-        }
-
-        let mut candidate = Vec::with_capacity(1 + payload.len());
-        match either {
-            Either::Left(_) => candidate.push(0_u8),
-            Either::Right(_) => candidate.push(1_u8),
-        };
-        candidate.extend_from_slice(payload);
-        return deserialize_exact::<T>(&candidate).map_err(|err| {
-            ExecutorError::InputDeserialize(format!(
-                "step either envelope for {}: {err}",
-                core::any::type_name::<T>()
-            ))
-        });
+    if postcard::from_bytes::<Either<Serialized, Serialized>>(bytes).is_ok() {
+        return Err(ExecutorError::InputDeserialize(format!(
+            "step either envelope for {}: {direct_err}",
+            core::any::type_name::<T>()
+        )));
     }
 
-    deserialize_exact::<T>(bytes)
-        .map_err(|err| {
-            ExecutorError::InputDeserialize(format!(
-                "step direct input for {}: {err}",
-                core::any::type_name::<T>()
-            ))
-        })
+    Err(ExecutorError::InputDeserialize(format!(
+        "step direct input for {}: {direct_err}",
+        core::any::type_name::<T>()
+    )))
 }
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
