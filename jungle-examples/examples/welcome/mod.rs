@@ -16,7 +16,7 @@ use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::{
-    animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
+    animals::LeadVocalist,
     audio::{AudioEngine, AudioHandle},
     instrumentation::{
         Bass, BassArticulation, Cymbal, CymbalArticulation, ElectricGuitar,
@@ -40,13 +40,7 @@ const MAX_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(120);
 const MAX_SUBMISSION_ATTEMPTS: u32 = 6;
 
 #[derive(Animals)]
-struct WelcomeAnimals(
-    LeadVocalist,
-    LeadGuitarist,
-    RhythmGuitarist,
-    BassAnimal,
-    Drums,
-);
+struct WelcomeAnimals(LeadVocalist);
 
 struct WelcomeEcosystem;
 impl Ecosystem for WelcomeEcosystem {
@@ -139,37 +133,12 @@ fn run_runtime_thread(
         })?;
         let journeys = ui::JourneyIds {
             lead_vocalist: client
-                .start_journey::<LeadVocalist>(seed.clone())
+                .start_journey::<LeadVocalist>(seed)
                 .await
                 .map_err(|err| {
                     error!(error = %err, "failed starting lead vocalist journey");
                     err.to_string()
                 })?,
-            lead_guitarist: client
-                .start_journey::<LeadGuitarist>(seed.clone())
-                .await
-                .map_err(|err| {
-                    error!(error = %err, "failed starting lead guitarist journey");
-                    err.to_string()
-                })?,
-            rhythm_guitarist: client
-                .start_journey::<RhythmGuitarist>(seed.clone())
-                .await
-                .map_err(|err| {
-                    error!(error = %err, "failed starting rhythm guitarist journey");
-                    err.to_string()
-                })?,
-            bass: client
-                .start_journey::<BassAnimal>(seed.clone())
-                .await
-                .map_err(|err| {
-                    error!(error = %err, "failed starting bass journey");
-                    err.to_string()
-                })?,
-            drums: client.start_journey::<Drums>(seed).await.map_err(|err| {
-                error!(error = %err, "failed starting drums journey");
-                err.to_string()
-            })?,
         };
 
         Ok::<UiSetup, String>(UiSetup { client, journeys })
