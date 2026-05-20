@@ -588,7 +588,7 @@ where
     let beat_duration = metronome_sync.beat_duration();
     let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
     let target_instant = metronome_sync.target_instant(requested_offset);
-    if target_instant > Instant::now() {
+    if target_instant > tokio::time::Instant::now() {
         tokio::time::sleep_until(target_instant).await;
     }
     let mut retry_count = 0_u32;
