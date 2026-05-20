@@ -165,22 +165,22 @@ impl WelcomeUi {
 
     fn view(&self) -> Element<'_, Message> {
         let panels = row![
-            panel(
-                "Lead Vocalist",
-                self.lead_vocalist.view(),
-                Panel::LeadVocalist
-            ),
+            panel("Bass", self.bass.view(), Panel::Bass),
             panel(
                 "Lead Guitarist",
                 self.lead_guitarist.view(),
                 Panel::LeadGuitarist
             ),
             panel(
+                "Lead Vocalist",
+                self.lead_vocalist.view(),
+                Panel::LeadVocalist
+            ),
+            panel(
                 "Rhythm Guitarist",
                 self.rhythm_guitarist.view(),
                 Panel::RhythmGuitarist
             ),
-            panel("Bass", self.bass.view(), Panel::Bass),
             panel("Drums", self.drums.view(), Panel::Drums),
         ]
         .spacing(12)
