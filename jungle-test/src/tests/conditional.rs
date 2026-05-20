@@ -225,18 +225,18 @@ fn conditional_waiting_accept_returns_either_branch_output() {
 #[test]
 fn executor_dynamically_selects_conditional_branch() {
     let mut left = ManualExecutor::<ConditionalAnimal>::new(5);
-    let left_emitted: i32 = left
+    let left_emitted: Either<i32, bool> = left
         .next_typed((true, 3), Ok::<i32, ()>(9))
         .expect("left branch");
-    assert_eq!(left_emitted, 9);
+    assert_eq!(left_emitted, Either::Left(9));
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
     let mut right = ManualExecutor::<ConditionalAnimal>::new(-2);
-    let right_emitted: bool = right
+    let right_emitted: Either<i32, bool> = right
         .next_typed((false, 3), Ok::<i32, ()>(6))
         .expect("right branch");
-    assert!(right_emitted);
+    assert_eq!(right_emitted, Either::Right(true));
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 6);
 }
@@ -246,16 +246,17 @@ fn executor_requests_and_completes_conditional_branch() {
     let mut left = Executor::<ConditionalAnimal>::new(5);
     let left_request: i32 = left.next_request().expect("left request");
     assert_eq!(left_request, 5);
-    let left_emitted: i32 = left.complete(Ok::<i32, ()>(9)).expect("left completion");
-    assert_eq!(left_emitted, 9);
+    let left_emitted: Either<i32, bool> = left.complete(Ok::<i32, ()>(9)).expect("left completion");
+    assert_eq!(left_emitted, Either::Left(9));
     assert!(left.is_complete());
     assert_eq!(left.into_state(), 9);
 
     let mut right = Executor::<ConditionalAnimal>::new(-2);
     let right_request: i32 = right.next_request().expect("right request");
     assert_eq!(right_request, -2);
-    let right_emitted: bool = right.complete(Ok::<i32, ()>(6)).expect("right completion");
-    assert!(right_emitted);
+    let right_emitted: Either<i32, bool> =
+        right.complete(Ok::<i32, ()>(6)).expect("right completion");
+    assert_eq!(right_emitted, Either::Right(true));
     assert!(right.is_complete());
     assert_eq!(right.into_state(), 6);
 }
@@ -298,8 +299,10 @@ fn conditional_output_is_routed_as_either_for_follow_up_step() {
     let mut left = Executor::<ConditionalThenMergeAnimal>::new(5);
     let left_request_1: i32 = left.next_request().expect("left request 1");
     assert_eq!(left_request_1, 5);
-    let left_emitted_1: i32 = left.complete(Ok::<i32, ()>(5)).expect("left completion 1");
-    assert_eq!(left_emitted_1, 5);
+    let left_emitted_1: Either<i32, i32> = left
+        .complete(Ok::<i32, ()>(5))
+        .expect("left completion 1");
+    assert_eq!(left_emitted_1, Either::Left(5));
     let left_request_2: i32 = left.next_request().expect("left request 2");
     assert_eq!(left_request_2, 5);
     let left_emitted_2: i32 = left.complete(Ok::<i32, ()>(5)).expect("left completion 2");
@@ -310,8 +313,10 @@ fn conditional_output_is_routed_as_either_for_follow_up_step() {
     let mut right = Executor::<ConditionalThenMergeAnimal>::new(-2);
     let right_request_1: i32 = right.next_request().expect("right request 1");
     assert_eq!(right_request_1, -2);
-    let right_emitted_1: i32 = right.complete(Ok::<i32, ()>(-2)).expect("right completion 1");
-    assert_eq!(right_emitted_1, -2);
+    let right_emitted_1: Either<i32, i32> = right
+        .complete(Ok::<i32, ()>(-2))
+        .expect("right completion 1");
+    assert_eq!(right_emitted_1, Either::Right(-2));
     let right_request_2: i32 = right.next_request().expect("right request 2");
     assert_eq!(right_request_2, -2);
     let right_emitted_2: i32 = right.complete(Ok::<i32, ()>(-2)).expect("right completion 2");

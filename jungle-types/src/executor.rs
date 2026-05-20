@@ -117,10 +117,46 @@ where
         }
     }
 
-    if let Ok(either) = postcard::from_bytes::<Either<In, In>>(input) {
+    if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(input) {
         return match either {
-            Either::Left(carry) => Ok((true, carry)),
-            Either::Right(carry) => Ok((false, carry)),
+            Either::Left(carry) => {
+                let carry = postcard::from_bytes::<In>(&carry)
+                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                Ok((true, carry))
+            }
+            Either::Right(carry) => {
+                let carry = postcard::from_bytes::<In>(&carry)
+                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                Ok((false, carry))
+            }
+        };
+    }
+
+    let carry = postcard::from_bytes::<In>(input)
+        .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+    Ok((fallback(&carry), carry))
+}
+
+fn decode_loop_input<In, F>(input: &[u8], fallback: F) -> Result<(bool, In), ExecutorError>
+where
+    In: DeserializeOwned + Serialize,
+    F: FnOnce(&In) -> bool,
+{
+    if let Ok((should, carry)) = postcard::from_bytes::<(bool, In)>(input) {
+        let reencoded = postcard::to_allocvec(&(should, &carry))
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        if reencoded.as_slice() == input {
+            return Ok((should, carry));
+        }
+    }
+
+    if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(input) {
+        return match either {
+            Either::Left(carry) | Either::Right(carry) => {
+                let carry = postcard::from_bytes::<In>(&carry)
+                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+                Ok((fallback(&carry), carry))
+            }
         };
     }
 
@@ -141,24 +177,32 @@ where
     Ok(value)
 }
 
-fn deserialize_with_either_fallback<T>(bytes: &[u8]) -> Result<T, String>
+fn deserialize_step_input<T>(bytes: &[u8]) -> Result<T, ExecutorError>
 where
     T: DeserializeOwned,
 {
-    if let Ok(value) = postcard::from_bytes::<T>(bytes) {
+    if let Ok(value) = deserialize_exact::<T>(bytes) {
         return Ok(value);
     }
 
-    for tag in [0_u8, 1_u8] {
-        let mut tagged = Vec::with_capacity(1 + bytes.len());
-        tagged.push(tag);
-        tagged.extend_from_slice(bytes);
-        if let Ok(value) = postcard::from_bytes::<T>(&tagged) {
-            return Ok(value);
+    if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(bytes) {
+        let mut candidate = Vec::new();
+        match either {
+            Either::Left(payload) => {
+                candidate.reserve(1 + payload.len());
+                candidate.push(0_u8);
+                candidate.extend_from_slice(&payload);
+            }
+            Either::Right(payload) => {
+                candidate.reserve(1 + payload.len());
+                candidate.push(1_u8);
+                candidate.extend_from_slice(&payload);
+            }
         }
+        return deserialize_exact::<T>(&candidate).map_err(ExecutorError::InputDeserialize);
     }
 
-    postcard::from_bytes::<T>(bytes).map_err(|err| err.to_string())
+    deserialize_exact::<T>(bytes).map_err(ExecutorError::InputDeserialize)
 }
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
@@ -333,9 +377,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match deserialize_with_either_fallback::<A::Input>(&input) {
+        let typed_input = match deserialize_step_input::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err))),
+            Err(err) => return Err((state, err)),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
@@ -358,9 +402,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match deserialize_with_either_fallback::<A::Input>(&input) {
+        let typed_input = match deserialize_step_input::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err))),
+            Err(err) => return Err((state, err)),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
@@ -478,9 +522,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match deserialize_with_either_fallback::<A::Input>(&input) {
+        let typed_input = match deserialize_step_input::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err))),
+            Err(err) => return Err((state, err)),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
@@ -503,9 +547,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match deserialize_with_either_fallback::<A::Input>(&input) {
+        let typed_input = match deserialize_step_input::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err))),
+            Err(err) => return Err((state, err)),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
@@ -587,6 +631,14 @@ where
 enum ActiveBranch {
     Left,
     Right,
+}
+
+fn encode_conditional_emitted(active_branch: ActiveBranch, emitted: Serialized) -> Serialized {
+    let tagged = match active_branch {
+        ActiveBranch::Left => Either::Left(emitted),
+        ActiveBranch::Right => Either::Right(emitted),
+    };
+    postcard::to_allocvec(&tagged).expect("conditional emitted envelope should serialize")
 }
 
 struct ConditionalErasedFlow<State, In>
@@ -686,8 +738,15 @@ where
             .active_node_mut()
             .expect("cursor was checked against active branch length");
         let (state, emitted) = node.complete(state, completion)?;
-        if node.is_complete() {
+        let node_complete = node.is_complete();
+        if node_complete {
             self.cursor += 1;
+        }
+        if node_complete && self.cursor >= self.branch_len() {
+            let active_branch = self
+                .active_branch
+                .expect("active branch is present while conditional is executing");
+            return Ok((state, encode_conditional_emitted(active_branch, emitted)));
         }
         Ok((state, emitted))
     }
@@ -1453,7 +1512,7 @@ where
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_controlled_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -1533,7 +1592,7 @@ where
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_controlled_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -1865,6 +1924,18 @@ enum ActiveContextBranch {
     Right,
 }
 
+fn encode_conditional_context_emitted(
+    active_branch: ActiveContextBranch,
+    emitted: Serialized,
+) -> Serialized {
+    let tagged = match active_branch {
+        ActiveContextBranch::Left => Either::Left(emitted),
+        ActiveContextBranch::Right => Either::Right(emitted),
+    };
+    postcard::to_allocvec(&tagged)
+        .expect("conditional context emitted envelope should serialize")
+}
+
 #[inception(property = JungleDynFlowContext, signature(input = Input, output = Output))]
 pub trait BuildFlowWithContext<Input> {
     type Output;
@@ -2138,8 +2209,18 @@ where
             .active_node_mut()
             .expect("cursor was checked against active branch length");
         let (state, emitted) = node.complete(state, completion)?;
-        if node.is_complete() {
+        let node_complete = node.is_complete();
+        if node_complete {
             self.cursor += 1;
+        }
+        if node_complete && self.cursor >= self.branch_len() {
+            let active_branch = self
+                .active_branch
+                .expect("active branch is present while conditional is executing");
+            return Ok((
+                state,
+                encode_conditional_context_emitted(active_branch, emitted),
+            ));
         }
         Ok((state, emitted))
     }
@@ -2314,7 +2395,7 @@ where
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_controlled_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -2394,7 +2475,7 @@ where
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_controlled_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -2624,11 +2705,24 @@ where
         return Ok(parsed);
     }
 
-    let tagged =
-        deserialize_exact::<Either<Emitted, Emitted>>(&emitted).map_err(ExecutorError::EmitDeserialize)?;
-    Ok(match tagged {
-        Either::Left(value) | Either::Right(value) => value,
-    })
+    if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(&emitted) {
+        let mut candidate = Vec::new();
+        match either {
+            Either::Left(payload) => {
+                candidate.reserve(1 + payload.len());
+                candidate.push(0_u8);
+                candidate.extend_from_slice(&payload);
+            }
+            Either::Right(payload) => {
+                candidate.reserve(1 + payload.len());
+                candidate.push(1_u8);
+                candidate.extend_from_slice(&payload);
+            }
+        }
+        return deserialize_exact::<Emitted>(&candidate).map_err(ExecutorError::EmitDeserialize);
+    }
+
+    deserialize_exact(&emitted).map_err(ExecutorError::EmitDeserialize)
 }
 
 fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {

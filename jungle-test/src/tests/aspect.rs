@@ -302,6 +302,26 @@ impl Act for TigerSleepSpec {
     type Output = i32;
 }
 
+pub struct TigerSleepFromEitherSpec;
+#[jungle::act]
+impl Act for TigerSleepFromEitherSpec {
+    type Effect = Sleep;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+
+    fn emit(_state: &TigerState, input: Self::Input) -> i32 {
+        match input {
+            Either::Left(value) | Either::Right(value) => value,
+        }
+    }
+
+    fn absorb(state: &mut TigerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("sleep should succeed");
+        state.core.energy = value;
+        value
+    }
+}
+
 pub struct TigerHuntSpec;
 #[jungle::act(bind = AddI32<TigerEnergyCarrier, Hunt>)]
 impl Act for TigerHuntSpec {
@@ -313,7 +333,7 @@ impl Act for TigerHuntSpec {
 #[derive(Flow)]
 pub struct TigerLoopTemplate(
     Conditional<TigerStripesAreEven, Step<TigerEatSpec>, Step<TigerSleepSpec>>,
-    Step<TigerSleepSpec>,
+    Step<TigerSleepFromEitherSpec>,
     Step<TigerHuntSpec>,
 );
 
@@ -431,7 +451,7 @@ async fn executor_runs_aspected_steps() {
     });
     assert!(!tiger.is_complete());
 
-    let mut tiger_emitted: Vec<i32> = Vec::new();
+    let mut tiger_emitted: Vec<SerializedTag> = Vec::new();
     loop {
         let step = tiger_emitted.len() % 3;
         let completion: i32 = match step % 3 {
@@ -465,17 +485,48 @@ async fn executor_runs_aspected_steps() {
             }
             _ => unreachable!(),
         };
-        let emitted: i32 = tiger
-            .complete(Ok::<i32, ()>(completion))
-            .expect("tiger completion should advance");
+        let emitted = match step % 3 {
+            0 => {
+                let either = tiger
+                    .complete::<i32, (), Either<i32, i32>>(Ok(completion))
+                    .expect("tiger completion should advance");
+                match either {
+                    Either::Left(value) | Either::Right(value) => SerializedTag::EitherInt(value),
+                }
+            }
+            1 | 2 => {
+                let value: i32 = tiger
+                    .complete(Ok::<i32, ()>(completion))
+                    .expect("tiger completion should advance");
+                SerializedTag::Int(value)
+            }
+            _ => unreachable!(),
+        };
         tiger_emitted.push(emitted);
     }
-    assert_eq!(tiger_emitted, vec![9, 19, 20, 41, 83, 84, 169]);
+    assert_eq!(
+        tiger_emitted,
+        vec![
+            SerializedTag::EitherInt(9),
+            SerializedTag::Int(19),
+            SerializedTag::Int(20),
+            SerializedTag::EitherInt(41),
+            SerializedTag::Int(83),
+            SerializedTag::Int(84),
+            SerializedTag::EitherInt(169),
+        ]
+    );
     assert!(tiger.is_complete());
     let tiger_state = tiger.into_state();
     assert_eq!(tiger_state.core.energy, 169);
     assert_eq!(tiger_state.core.age, 4);
     assert_eq!(tiger_state.stripes, 98);
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SerializedTag {
+    Int(i32),
+    EitherInt(i32),
 }
 
 #[test]

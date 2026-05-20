@@ -98,16 +98,50 @@ impl Act for AddAfterSleepSpec {
     }
 }
 
+pub struct MergeEitherUnitEffect;
+#[jungle::effect(id = 41)]
+impl<J> Effect<J> for MergeEitherUnitEffect {
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+
+pub struct MergeEitherUnitSpec;
+#[jungle::act]
+impl Act for MergeEitherUnitSpec {
+    type Effect = MergeEitherUnitEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &SleepState, _input: Self::Input) -> () {}
+
+    fn absorb(_state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("merge either unit should succeed");
+    }
+}
+
+#[derive(Flow)]
+pub struct SleepPhaseOneBranch(
+    Conditional<SleepPhaseOne, Step<SleepForStateWakeSpec>, Step<AddAfterSleepSpec>>,
+    Step<MergeEitherUnitSpec>,
+);
+
+#[derive(Flow)]
+pub struct SleepLoopBody(
+    Conditional<SleepPhaseZero, Step<AddBeforeSleepSpec>, SleepPhaseOneBranch>,
+    Step<MergeEitherUnitSpec>,
+);
+
 #[derive(Flow)]
 pub struct SleepJourneyTemplate(
-    While<
-        SleepNotComplete,
-        Conditional<
-            SleepPhaseZero,
-            Step<AddBeforeSleepSpec>,
-            Conditional<SleepPhaseOne, Step<SleepForStateWakeSpec>, Step<AddAfterSleepSpec>>,
-        >,
-    >,
+    While<SleepNotComplete, SleepLoopBody>,
 );
 
 pub struct SleepAnimal;
