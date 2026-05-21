@@ -17,6 +17,14 @@ pub struct Monad<
     const REST_TICK: u8,
 >(PhantomData<(I, A)>);
 
+pub struct Diad<
+    I: Instrument<Articulation = A>,
+    A: RhythmArticulation,
+    const NOTES: [u8; 2],
+    const NOTE_TICK: u8,
+    const REST_TICK: u8,
+>(PhantomData<(I, A)>);
+
 pub trait RhythmArticulation: Copy + Into<ElectricGuitarArticulation> {
     fn rhythm_sustained() -> Self;
 }
@@ -62,6 +70,64 @@ where
                 .play(playable_note)
                 .await
                 .map_err(|err| err.to_string())?;
+        }
+
+        let sleep_for = rest_duration.saturating_sub(phase_offset);
+        if !sleep_for.is_zero() {
+            tokio::time::sleep(sleep_for).await;
+        }
+
+        Ok(())
+    }
+}
+
+#[effect(id = 501)]
+impl<I, A, const NOTES: [u8; 2], const NOTE_TICK: u8, const REST_TICK: u8>
+    jungle_sdk::prelude::Effect<WelcomeEcosystem> for Diad<I, A, NOTES, NOTE_TICK, REST_TICK>
+where
+    I: Instrument<Articulation = A>,
+    A: RhythmArticulation,
+{
+    type In = ();
+    type Out = ();
+    type Err = String;
+
+    async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
+        let metronome = jungle.metronome();
+        let beat_duration = metronome.beat_duration();
+        let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
+        let rest_duration = duration_for_ticks(tick_duration, REST_TICK as u32);
+        let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
+        let phase_offset = current_phase_offset(metronome, rest_duration);
+
+        let note_duration = duration_for_ticks(tick_duration, NOTE_TICK as u32);
+        let articulation = A::rhythm_sustained().into();
+        let playable_note_one = Note::<ElectricGuitarArticulation> {
+            n_midi: NOTES[0],
+            amplitude_multiplier: 0.5,
+            pan: 0.5,
+            duration: note_duration,
+            velocity: 37.0 / 127.0,
+            expression: None,
+            articulation,
+        };
+        let playable_note_two = Note::<ElectricGuitarArticulation> {
+            n_midi: NOTES[1],
+            amplitude_multiplier: 0.5,
+            pan: 0.5,
+            duration: note_duration,
+            velocity: 37.0 / 127.0,
+            expression: None,
+            articulation,
+        };
+
+        if phase_offset <= late_note_drop_threshold {
+            let (first, second) = tokio::join!(
+                jungle.rhythm_guitar().play(playable_note_one),
+                jungle.rhythm_guitar().play(playable_note_two)
+            );
+            first.map_err(|err| err.to_string())?;
+            second.map_err(|err| err.to_string())?;
         }
 
         let sleep_for = rest_duration.saturating_sub(phase_offset);
