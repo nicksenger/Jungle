@@ -172,7 +172,7 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::silent_for_tests();
+        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
         let playback_clock = PlaybackClock::default();
         let _ = playback_clock.start_now();
         let ecosystem = WelcomeEcosystem::new(audio_handle, 123.0, playback_clock);

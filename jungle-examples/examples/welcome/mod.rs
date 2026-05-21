@@ -37,7 +37,7 @@ use testcontainers_modules::postgres::Postgres;
 
 use crate::{
     animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
-    audio::{AudioEngine, AudioHandle},
+    audio::{AudioEngine, AudioHandle, StubAudioKeepAlive},
     ecosystem::WelcomeEcosystem,
     instrumentation::{
         Bass, BassArticulation, Cymbal, CymbalArticulation, ElectricGuitar,
@@ -106,6 +106,7 @@ type PostgresContainer = testcontainers::ContainerAsync<Postgres>;
 #[derive(Default)]
 struct RuntimeKeepAlive {
     audio_engine: Option<AudioEngine>,
+    stub_audio: Option<StubAudioKeepAlive>,
     server_task: Option<tokio::task::JoinHandle<()>>,
     #[cfg(feature = "postgres")]
     postgres_container: Option<PostgresContainer>,
@@ -123,23 +124,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let args = parse_cli_args()?;
     if args.headless {
-        return run_headless(args.bpm);
+        return run_headless(args.bpm, args.mute);
     }
-    run_with_ui(args.bpm)
+    run_with_ui(args.bpm, args.mute)
 }
 
 struct CliArgs {
     bpm: f32,
     headless: bool,
+    mute: bool,
 }
 
-fn run_with_ui(bpm: f32) -> Result<(), Box<dyn std::error::Error>> {
+fn run_with_ui(bpm: f32, mute: bool) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
     let ui_shutdown = ui::ShutdownFlag::new();
     let shutdown_for_runtime = ui_shutdown.clone();
     let runtime_thread = std::thread::spawn(move || {
-        run_runtime_thread(bpm, shutdown_for_runtime, setup_tx, started_rx)
+        run_runtime_thread(bpm, mute, shutdown_for_runtime, setup_tx, started_rx)
     });
 
     let setup_result = setup_rx.recv().map_err(|err| {
@@ -174,15 +176,15 @@ fn run_with_ui(bpm: f32) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn run_headless(bpm: f32) -> Result<(), Box<dyn std::error::Error>> {
-    info!(bpm, "running welcome example in headless mode");
+fn run_headless(bpm: f32, mute: bool) -> Result<(), Box<dyn std::error::Error>> {
+    info!(bpm, mute, "running welcome example in headless mode");
 
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
     let ui_shutdown = ui::ShutdownFlag::new();
     let shutdown_for_runtime = ui_shutdown.clone();
     let runtime_thread = std::thread::spawn(move || {
-        run_runtime_thread(bpm, shutdown_for_runtime, setup_tx, started_rx)
+        run_runtime_thread(bpm, mute, shutdown_for_runtime, setup_tx, started_rx)
     });
 
     let setup_result = setup_rx.recv().map_err(|err| {
@@ -233,6 +235,7 @@ struct UiSetup {
 
 fn run_runtime_thread(
     bpm: f32,
+    mute: bool,
     ui_shutdown: ui::ShutdownFlag,
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
     started_rx: std::sync::mpsc::Receiver<Instant>,
@@ -244,13 +247,20 @@ fn run_runtime_thread(
 
     let setup = runtime.block_on(async {
         let (client, mut keep_alive) = setup_runtime_client().await?;
-        let audio_engine = AudioEngine::start_default().await.map_err(|err| {
-            error!(error = %err, "failed starting audio engine");
-            err.to_string()
-        })?;
-        let audio_handle = audio_engine.handle();
+        let (audio_handle, audio_engine, stub_audio) = if mute {
+            info!("starting welcome runtime in muted mode using audio stub");
+            let (audio_handle, stub_audio) = AudioHandle::stub();
+            (audio_handle, None, Some(stub_audio))
+        } else {
+            let audio_engine = AudioEngine::start_default().await.map_err(|err| {
+                error!(error = %err, "failed starting audio engine");
+                err.to_string()
+            })?;
+            let audio_handle = audio_engine.handle();
+            (audio_handle, Some(audio_engine), None)
+        };
         let playback_clock = PlaybackClock::default();
-        let ecosystem = WelcomeEcosystem::new(audio_handle.clone(), bpm, playback_clock.clone());
+        let ecosystem = WelcomeEcosystem::new(audio_handle, bpm, playback_clock.clone());
         let worker_client = client.clone();
         let _worker_task = tokio::spawn(async move {
             let worker = JungleWorker::new(ecosystem, worker_client);
@@ -298,7 +308,8 @@ fn run_runtime_thread(
             })?,
         };
 
-        keep_alive.audio_engine = Some(audio_engine);
+        keep_alive.audio_engine = audio_engine;
+        keep_alive.stub_audio = stub_audio;
         Ok::<(UiSetup, RuntimeKeepAlive, PlaybackClock), String>((
             UiSetup { client, journeys },
             keep_alive,
@@ -547,10 +558,16 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let mut bpm = DEFAULT_BPM;
     let mut headless = false;
+    let mut mute = false;
 
     while let Some(arg) = args.next() {
         if arg == "--headless" {
             headless = true;
+            continue;
+        }
+
+        if arg == "--mute" {
+            mute = true;
             continue;
         }
 
@@ -575,7 +592,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         bpm = parse_bpm_value(&arg)?;
     }
 
-    Ok(CliArgs { bpm, headless })
+    Ok(CliArgs { bpm, headless, mute })
 }
 
 fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
