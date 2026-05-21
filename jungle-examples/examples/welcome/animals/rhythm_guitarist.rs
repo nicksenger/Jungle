@@ -27,7 +27,7 @@ pub struct Buildup(
 
 #[derive(Flow)]
 pub struct Triple<const NOTE: u8>(
-    Step<Pick<{ NOTE }, 96, 96>>,
+    Step<Pluck<{ NOTE }, 96, 96>>,
     Step<Pick<{ NOTE }, 96, 96>>,
     Step<Pick<{ NOTE }, 96, 96>>,
 );
@@ -41,7 +41,10 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     type Input = ();
     type Output = ();
 
-    fn emit(state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+    fn emit(
+        state: &RhythmGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
         *state
     }
 
@@ -53,16 +56,20 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     }
 }
 
-pub struct Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+pub struct Pluck<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
 #[jungle::act]
-impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for Pluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
+impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+    for Pluck<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Dyad<ElectricGuitar, ElectricGuitarArticulation, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>;
+    type Effect =
+        Dyad<ElectricGuitar, ElectricGuitarArticulation, NOTE, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
-    fn emit(state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+    fn emit(
+        state: &RhythmGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
         *state
     }
 
