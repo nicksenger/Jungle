@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
@@ -23,14 +23,14 @@ pub struct Metronome {
     beat: Duration,
     beats_per_bar: u32,
     beat_tx: broadcast::Sender<BeatEvent>,
-    latest_beat: Arc<Mutex<Option<BeatEvent>>>,
+    latest_beat: Arc<RwLock<Option<BeatEvent>>>,
 }
 
 impl Metronome {
     pub fn spawn(bpm: f32, beats_per_bar: u32) -> Self {
         let (beat_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
         let beat = beat_duration(bpm);
-        let latest_beat = Arc::new(Mutex::new(None));
+        let latest_beat = Arc::new(RwLock::new(None));
         let metronome = Self {
             started_at: Instant::now(),
             beat,
@@ -64,8 +64,8 @@ impl Metronome {
     pub fn latest_beat(&self) -> Option<BeatEvent> {
         let latest_beat = self
             .latest_beat
-            .lock()
-            .expect("latest beat mutex should not be poisoned");
+            .read()
+            .expect("latest beat rwlock should not be poisoned");
         *latest_beat
     }
 
@@ -99,8 +99,8 @@ impl Metronome {
                 };
                 {
                     let mut latest_beat_lock = latest_beat
-                        .lock()
-                        .expect("latest beat mutex should not be poisoned");
+                        .write()
+                        .expect("latest beat rwlock should not be poisoned");
                     *latest_beat_lock = Some(event);
                 }
                 let _ = beat_tx.send(event);

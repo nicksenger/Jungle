@@ -23,19 +23,19 @@ pub struct TestProbe(Step<Probe>, Step<Probe>);
 
 #[derive(Flow)]
 pub struct Buildup(
-    Triple<58, 192>,
-    Triple<56, 192>,
-    Triple<53, 192>,
-    Triple<51, 192>,
+    Triple<58>,
+    Triple<56>,
+    Triple<53>,
+    Triple<51>,
     Step<Pick<49, 96, 96>>,
     Step<Pick<46, 96, 0>>,
 );
 
 #[derive(Flow)]
-pub struct Triple<const NOTE: u8, const END_REST_TICK: u8>(
+pub struct Triple<const NOTE: u8>(
     Step<Pick<{ NOTE }, 96, 96>>,
     Step<Pick<{ NOTE }, 96, 96>>,
-    Step<Pick<{ NOTE }, 96, END_REST_TICK>>,
+    Step<Pick<{ NOTE }, 96, 96>>,
 );
 
 pub struct Pick<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
