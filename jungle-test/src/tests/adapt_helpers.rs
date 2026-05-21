@@ -190,15 +190,21 @@ fn helper_emit_absorb_adapters_work_in_flow() {
     let step0: i32 = executor.next_typed(4, Ok::<i32, ()>(5)).expect("step 0");
     assert_eq!(step0, 5);
 
-    let step1: () = executor.next_typed(step0, Ok::<(), ()>(())).expect("step 1");
+    let step1: () = executor
+        .next_typed(step0, Ok::<(), ()>(()))
+        .expect("step 1");
     assert_eq!(step1, ());
 
-    let step2: () = executor.next_typed(step1, Ok::<i32, ()>(5)).expect("step 2");
+    let step2: () = executor
+        .next_typed(step1, Ok::<i32, ()>(5))
+        .expect("step 2");
     assert_eq!(step2, ());
     assert_eq!(executor.state().pulse_count, 1);
     assert_eq!(executor.state().value, 10);
 
-    let step3: i32 = executor.next_typed(step2, Ok::<i32, ()>(2)).expect("step 3");
+    let step3: i32 = executor
+        .next_typed(step2, Ok::<i32, ()>(2))
+        .expect("step 3");
     assert_eq!(step3, 2);
 
     let step4: i32 = executor

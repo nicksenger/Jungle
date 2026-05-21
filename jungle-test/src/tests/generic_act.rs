@@ -48,7 +48,10 @@ fn assert_bound<T: BoundAct<GenericActAnimal>>() {}
 fn generic_act_attr_generates_bind_type() {
     type Bound = <GenericActSpec<7, 3> as Act>::Bind<GenericActAnimal>;
     assert_bound::<Bound>();
-    assert_type_eq!(<Bound as BoundAct<GenericActAnimal>>::Effect, GenericActEffect<7>);
+    assert_type_eq!(
+        <Bound as BoundAct<GenericActAnimal>>::Effect,
+        GenericActEffect<7>
+    );
     assert_type_eq!(<Bound as BoundAct<GenericActAnimal>>::Input, ());
     assert_type_eq!(<Bound as BoundAct<GenericActAnimal>>::Output, ());
     assert_type_eq!(<GenericActAnimal as Animal>::Id, Id<U910>);
