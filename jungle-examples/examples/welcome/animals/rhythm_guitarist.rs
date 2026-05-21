@@ -16,16 +16,16 @@ impl Animal for RhythmGuitarist {
 
 #[derive(Flow)]
 pub struct Buildup(
-    Triple<58>,
-    Triple<56>,
-    Triple<53>,
-    Triple<51>,
+    BuildupTriplet<58>,
+    BuildupTriplet<56>,
+    BuildupTriplet<53>,
+    BuildupTriplet<51>,
     Step<Pick<49, 96, 96>>,
     Step<Pick<46, 96, 0>>,
 );
 
 #[derive(Flow)]
-pub struct Triple<const NOTE: u8>(
+pub struct BuildupTriplet<const NOTE: u8>(
     Step<Pluck<{ NOTE }, 96, 96>>,
     Step<Pick<{ NOTE }, 96, 96>>,
     Step<Pick<{ NOTE }, 96, 96>>,
