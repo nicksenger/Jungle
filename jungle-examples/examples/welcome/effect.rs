@@ -3,7 +3,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;
 
 use crate::ecosystem::WelcomeEcosystem;
-use crate::instrumentation::{ElectricGuitarArticulation, Instrument, Note};
+use crate::instrumentation::{Instrument, Note};
 
 const TICKS_PER_BEAT: u32 = 384;
 const MIN_LATE_NOTE_DROP_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(20);
@@ -14,7 +14,7 @@ const RHYTHM_VELOCITY: f32 = 37.0 / 127.0;
 
 pub struct Hexad<
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation>,
+    A: Copy,
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_3: u8,
@@ -27,7 +27,7 @@ pub struct Hexad<
 
 pub struct Pentad<
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation>,
+    A: Copy,
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_3: u8,
@@ -39,7 +39,7 @@ pub struct Pentad<
 
 pub struct Tetrad<
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation>,
+    A: Copy,
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_3: u8,
@@ -50,7 +50,7 @@ pub struct Tetrad<
 
 pub struct Triad<
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation>,
+    A: Copy,
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_3: u8,
@@ -60,7 +60,7 @@ pub struct Triad<
 
 pub struct Dyad<
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation>,
+    A: Copy,
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_TICK: u8,
@@ -69,7 +69,7 @@ pub struct Dyad<
 
 pub struct Monad<
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation>,
+    A: Copy,
     const NOTE: u8,
     const NOTE_TICK: u8,
     const REST_TICK: u8,
@@ -91,7 +91,8 @@ impl<
     for Hexad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_6, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation> + Serialize + DeserializeOwned + Send + 'static,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
@@ -109,9 +110,9 @@ where
             let [note_1, note_2, note_3, note_4, note_5, note_6] = rhythm_notes(
                 [NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_6],
                 timing.note_duration(),
-                articulation.into(),
+                articulation,
             );
-            play_six(jungle, note_1, note_2, note_3, note_4, note_5, note_6).await?;
+            play_six::<I>(jungle, note_1, note_2, note_3, note_4, note_5, note_6).await?;
         }
         timing.sleep_until_next_cycle().await;
         Ok(())
@@ -133,7 +134,8 @@ impl<
     for Pentad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation> + Serialize + DeserializeOwned + Send + 'static,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
@@ -151,9 +153,9 @@ where
             let [note_1, note_2, note_3, note_4, note_5] = rhythm_notes(
                 [NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5],
                 timing.note_duration(),
-                articulation.into(),
+                articulation,
             );
-            play_five(jungle, note_1, note_2, note_3, note_4, note_5).await?;
+            play_five::<I>(jungle, note_1, note_2, note_3, note_4, note_5).await?;
         }
         timing.sleep_until_next_cycle().await;
         Ok(())
@@ -174,7 +176,8 @@ impl<
     for Tetrad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation> + Serialize + DeserializeOwned + Send + 'static,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
@@ -192,9 +195,9 @@ where
             let [note_1, note_2, note_3, note_4] = rhythm_notes(
                 [NOTE_1, NOTE_2, NOTE_3, NOTE_4],
                 timing.note_duration(),
-                articulation.into(),
+                articulation,
             );
-            play_four(jungle, note_1, note_2, note_3, note_4).await?;
+            play_four::<I>(jungle, note_1, note_2, note_3, note_4).await?;
         }
         timing.sleep_until_next_cycle().await;
         Ok(())
@@ -207,7 +210,8 @@ impl<I, A, const NOTE_1: u8, const NOTE_2: u8, const NOTE_3: u8, const NOTE_TICK
     for Triad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation> + Serialize + DeserializeOwned + Send + 'static,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
@@ -225,9 +229,9 @@ where
             let [note_1, note_2, note_3] = rhythm_notes(
                 [NOTE_1, NOTE_2, NOTE_3],
                 timing.note_duration(),
-                articulation.into(),
+                articulation,
             );
-            play_three(jungle, note_1, note_2, note_3).await?;
+            play_three::<I>(jungle, note_1, note_2, note_3).await?;
         }
         timing.sleep_until_next_cycle().await;
         Ok(())
@@ -239,7 +243,8 @@ impl<I, A, const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_T
     jungle_sdk::prelude::Effect<WelcomeEcosystem> for Dyad<I, A, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation> + Serialize + DeserializeOwned + Send + 'static,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
@@ -255,8 +260,8 @@ where
         );
         if timing.should_play() {
             let [note_1, note_2] =
-                rhythm_notes([NOTE_1, NOTE_2], timing.note_duration(), articulation.into());
-            play_two(jungle, note_1, note_2).await?;
+                rhythm_notes([NOTE_1, NOTE_2], timing.note_duration(), articulation);
+            play_two::<I>(jungle, note_1, note_2).await?;
         }
         timing.sleep_until_next_cycle().await;
         Ok(())
@@ -268,7 +273,8 @@ impl<I, A, const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>
     jungle_sdk::prelude::Effect<WelcomeEcosystem> for Monad<I, A, NOTE, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    A: Copy + Into<ElectricGuitarArticulation> + Serialize + DeserializeOwned + Send + 'static,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
@@ -283,27 +289,27 @@ where
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
         if timing.should_play() {
-            let [note] = rhythm_notes([NOTE], timing.note_duration(), articulation.into());
-            play_one(jungle, note).await?;
+            let [note] = rhythm_notes([NOTE], timing.note_duration(), articulation);
+            play_one::<I>(jungle, note).await?;
         }
         timing.sleep_until_next_cycle().await;
         Ok(())
     }
 }
 
-fn rhythm_notes<const N: usize>(
+fn rhythm_notes<const N: usize, A: Copy>(
     midi_notes: [u8; N],
     duration: std::time::Duration,
-    articulation: ElectricGuitarArticulation,
-) -> [Note<ElectricGuitarArticulation>; N] {
+    articulation: A,
+) -> [Note<A>; N] {
     midi_notes.map(|n_midi| rhythm_note(n_midi, duration, articulation))
 }
 
-fn rhythm_note(
+fn rhythm_note<A: Copy>(
     n_midi: u8,
     duration: std::time::Duration,
-    articulation: ElectricGuitarArticulation,
-) -> Note<ElectricGuitarArticulation> {
+    articulation: A,
+) -> Note<A> {
     Note {
         n_midi,
         amplitude_multiplier: RHYTHM_AMPLITUDE_MULTIPLIER,
@@ -319,54 +325,74 @@ fn map_playback_err(result: Result<(), crate::instrumentation::Error>) -> Result
     result.map_err(|err| err.to_string())
 }
 
-async fn play_one(
+async fn play_one<I>(
     jungle: &WelcomeEcosystem,
-    note_1: Note<ElectricGuitarArticulation>,
-) -> Result<(), String> {
-    map_playback_err(jungle.rhythm_guitar().play(note_1).await)
+    note_1: Note<I::Articulation>,
+) -> Result<(), String>
+where
+    I: Instrument,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+{
+    let instrument: &I = jungle.into();
+    map_playback_err(instrument.play(note_1).await)
 }
 
-async fn play_two(
+async fn play_two<I>(
     jungle: &WelcomeEcosystem,
-    note_1: Note<ElectricGuitarArticulation>,
-    note_2: Note<ElectricGuitarArticulation>,
-) -> Result<(), String> {
+    note_1: Note<I::Articulation>,
+    note_2: Note<I::Articulation>,
+) -> Result<(), String>
+where
+    I: Instrument,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+{
+    let instrument: &I = jungle.into();
     let (first, second) = tokio::join!(
-        jungle.rhythm_guitar().play(note_1),
-        jungle.rhythm_guitar().play(note_2)
+        instrument.play(note_1),
+        instrument.play(note_2)
     );
     map_playback_err(first)?;
     map_playback_err(second)
 }
 
-async fn play_three(
+async fn play_three<I>(
     jungle: &WelcomeEcosystem,
-    note_1: Note<ElectricGuitarArticulation>,
-    note_2: Note<ElectricGuitarArticulation>,
-    note_3: Note<ElectricGuitarArticulation>,
-) -> Result<(), String> {
+    note_1: Note<I::Articulation>,
+    note_2: Note<I::Articulation>,
+    note_3: Note<I::Articulation>,
+) -> Result<(), String>
+where
+    I: Instrument,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+{
+    let instrument: &I = jungle.into();
     let (first, second, third) = tokio::join!(
-        jungle.rhythm_guitar().play(note_1),
-        jungle.rhythm_guitar().play(note_2),
-        jungle.rhythm_guitar().play(note_3)
+        instrument.play(note_1),
+        instrument.play(note_2),
+        instrument.play(note_3)
     );
     map_playback_err(first)?;
     map_playback_err(second)?;
     map_playback_err(third)
 }
 
-async fn play_four(
+async fn play_four<I>(
     jungle: &WelcomeEcosystem,
-    note_1: Note<ElectricGuitarArticulation>,
-    note_2: Note<ElectricGuitarArticulation>,
-    note_3: Note<ElectricGuitarArticulation>,
-    note_4: Note<ElectricGuitarArticulation>,
-) -> Result<(), String> {
+    note_1: Note<I::Articulation>,
+    note_2: Note<I::Articulation>,
+    note_3: Note<I::Articulation>,
+    note_4: Note<I::Articulation>,
+) -> Result<(), String>
+where
+    I: Instrument,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+{
+    let instrument: &I = jungle.into();
     let (first, second, third, fourth) = tokio::join!(
-        jungle.rhythm_guitar().play(note_1),
-        jungle.rhythm_guitar().play(note_2),
-        jungle.rhythm_guitar().play(note_3),
-        jungle.rhythm_guitar().play(note_4)
+        instrument.play(note_1),
+        instrument.play(note_2),
+        instrument.play(note_3),
+        instrument.play(note_4)
     );
     map_playback_err(first)?;
     map_playback_err(second)?;
@@ -374,20 +400,25 @@ async fn play_four(
     map_playback_err(fourth)
 }
 
-async fn play_five(
+async fn play_five<I>(
     jungle: &WelcomeEcosystem,
-    note_1: Note<ElectricGuitarArticulation>,
-    note_2: Note<ElectricGuitarArticulation>,
-    note_3: Note<ElectricGuitarArticulation>,
-    note_4: Note<ElectricGuitarArticulation>,
-    note_5: Note<ElectricGuitarArticulation>,
-) -> Result<(), String> {
+    note_1: Note<I::Articulation>,
+    note_2: Note<I::Articulation>,
+    note_3: Note<I::Articulation>,
+    note_4: Note<I::Articulation>,
+    note_5: Note<I::Articulation>,
+) -> Result<(), String>
+where
+    I: Instrument,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+{
+    let instrument: &I = jungle.into();
     let (first, second, third, fourth, fifth) = tokio::join!(
-        jungle.rhythm_guitar().play(note_1),
-        jungle.rhythm_guitar().play(note_2),
-        jungle.rhythm_guitar().play(note_3),
-        jungle.rhythm_guitar().play(note_4),
-        jungle.rhythm_guitar().play(note_5)
+        instrument.play(note_1),
+        instrument.play(note_2),
+        instrument.play(note_3),
+        instrument.play(note_4),
+        instrument.play(note_5)
     );
     map_playback_err(first)?;
     map_playback_err(second)?;
@@ -396,22 +427,27 @@ async fn play_five(
     map_playback_err(fifth)
 }
 
-async fn play_six(
+async fn play_six<I>(
     jungle: &WelcomeEcosystem,
-    note_1: Note<ElectricGuitarArticulation>,
-    note_2: Note<ElectricGuitarArticulation>,
-    note_3: Note<ElectricGuitarArticulation>,
-    note_4: Note<ElectricGuitarArticulation>,
-    note_5: Note<ElectricGuitarArticulation>,
-    note_6: Note<ElectricGuitarArticulation>,
-) -> Result<(), String> {
+    note_1: Note<I::Articulation>,
+    note_2: Note<I::Articulation>,
+    note_3: Note<I::Articulation>,
+    note_4: Note<I::Articulation>,
+    note_5: Note<I::Articulation>,
+    note_6: Note<I::Articulation>,
+) -> Result<(), String>
+where
+    I: Instrument,
+    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+{
+    let instrument: &I = jungle.into();
     let (first, second, third, fourth, fifth, sixth) = tokio::join!(
-        jungle.rhythm_guitar().play(note_1),
-        jungle.rhythm_guitar().play(note_2),
-        jungle.rhythm_guitar().play(note_3),
-        jungle.rhythm_guitar().play(note_4),
-        jungle.rhythm_guitar().play(note_5),
-        jungle.rhythm_guitar().play(note_6)
+        instrument.play(note_1),
+        instrument.play(note_2),
+        instrument.play(note_3),
+        instrument.play(note_4),
+        instrument.play(note_5),
+        instrument.play(note_6)
     );
     map_playback_err(first)?;
     map_playback_err(second)?;

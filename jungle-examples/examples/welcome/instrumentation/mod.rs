@@ -62,5 +62,8 @@ pub struct Expression {
 pub trait Instrument {
     type Articulation;
 
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error>;
+    fn play(
+        &self,
+        note: Note<Self::Articulation>,
+    ) -> impl std::future::Future<Output = Result<(), Error>> + Send;
 }

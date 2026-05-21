@@ -37,3 +37,9 @@ impl Ecosystem for WelcomeEcosystem {
     const NAME: &'static str = "welcome";
     type Animals = WelcomeAnimals;
 }
+
+impl<'a> From<&'a WelcomeEcosystem> for &'a ElectricGuitar {
+    fn from(ecosystem: &'a WelcomeEcosystem) -> Self {
+        ecosystem.rhythm_guitar()
+    }
+}
