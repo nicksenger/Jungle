@@ -5,7 +5,6 @@ mod ecosystem;
 mod effect;
 mod instrumentation;
 mod metronome;
-mod score;
 mod ui;
 
 #[cfg(feature = "transport")]
