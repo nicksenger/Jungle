@@ -51,7 +51,7 @@ pub struct Triple<const NOTE: u8>(
 pub struct Pick<const NOTE: u8, const D_TICK: u8>;
 #[jungle::act]
 impl<const NOTE: u8, const D_TICK: u8> Act for Pick<NOTE, D_TICK> {
-    type Effect = Monad<ElectricGuitar, NOTE, D_TICK>;
+    type Effect = Monad<ElectricGuitar, ElectricGuitarArticulation, NOTE, D_TICK>;
     type Input = ();
     type Output = ();
 
@@ -66,27 +66,41 @@ impl<const NOTE: u8, const D_TICK: u8> Act for Pick<NOTE, D_TICK> {
 }
 
 pub struct Monad<
-    I: Instrument<Articulation = ElectricGuitarArticulation>,
+    I: Instrument<Articulation = A>,
+    A: RhythmArticulation,
     const NOTE: u8,
     const D_TICK: u8,
->(PhantomData<I>);
+>(PhantomData<(I, A)>);
+
+pub trait RhythmArticulation: Copy + Into<ElectricGuitarArticulation> {
+    fn rhythm_sustained() -> Self;
+}
+
+impl RhythmArticulation for ElectricGuitarArticulation {
+    fn rhythm_sustained() -> Self {
+        Self::RhythmSustained
+    }
+}
+
 #[effect(id = 500)]
-impl<I: Instrument<Articulation = ElectricGuitarArticulation>, const NOTE: u8, const D_TICK: u8>
-    Effect<WelcomeEcosystem> for Monad<I, NOTE, D_TICK>
+impl<I, A, const NOTE: u8, const D_TICK: u8> Effect<WelcomeEcosystem> for Monad<I, A, NOTE, D_TICK>
+where
+    I: Instrument<Articulation = A>,
+    A: RhythmArticulation,
 {
     type In = ();
     type Out = ();
     type Err = String;
 
     async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
-        let playable_note = Note {
+        let playable_note = Note::<ElectricGuitarArticulation> {
             n_midi: NOTE,
             amplitude_multiplier: 0.5,
             pan: 0.5,
             duration: std::time::Duration::from_secs_f32((D_TICK as f32) / TICKS_PER_SECOND),
             velocity: 37.0 / 127.0,
             expression: None,
-            articulation: ElectricGuitarArticulation::RhythmSustained,
+            articulation: A::rhythm_sustained().into(),
         };
         jungle
             .rhythm_guitar()
