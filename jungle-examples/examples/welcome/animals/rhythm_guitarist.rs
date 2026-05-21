@@ -19,22 +19,50 @@ pub struct RhythmGuitarist;
 impl Animal for RhythmGuitarist {
     type State = RhythmGuitaristState;
     type Seed = RhythmGuitaristSeed;
-    type Journey = flow::RhythmGuitaristJourney;
+    type Journey = TestProbe;
 }
 
-//pub struct Pick<const NOTE: u8, const D_TICK: u8>;
-//#[jungle::act]
-//impl<const NOTE: u8, const D_TICK: u8> Act for Pick<NOTE, D_TICK> {
-//    type Effect = Monad<NOTE, D_TICK>;
-//    type Input = ();
-//    type Output = ();
-//
-//    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
-//
-//    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
-//        output.expect("note playback should succeed");
-//    }
-//}
+#[derive(Flow)]
+pub struct TestProbe(Step<Probe>, Step<Probe>);
+
+#[derive(Flow)]
+pub struct Buildup(
+    Triple<58>,
+    Step<Rest<96>>,
+    Triple<56>,
+    Step<Rest<96>>,
+    Triple<53>,
+    Step<Rest<96>>,
+    Triple<51>,
+    Step<Rest<96>>,
+    Step<Pick<49, 96>>,
+    Step<Rest<96>>,
+    Step<Pick<46, 96>>,
+);
+
+#[derive(Flow)]
+pub struct Triple<const NOTE: u8>(
+    Step<Pick<{ NOTE }, 96>>,
+    Step<Rest<96>>,
+    Step<Pick<{ NOTE }, 96>>,
+    Step<Rest<96>>,
+    Step<Pick<{ NOTE }, 96>>,
+    Step<Rest<96>>,
+);
+
+pub struct Pick<const NOTE: u8, const D_TICK: u8>;
+#[jungle::act]
+impl<const NOTE: u8, const D_TICK: u8> Act for Pick<NOTE, D_TICK> {
+    type Effect = Monad<NOTE, D_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
+
+    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("note playback should succeed");
+    }
+}
 
 pub struct Monad<const NOTE: u8, const D_TICK: u8>;
 #[effect(id = 500)]
@@ -59,5 +87,67 @@ impl<const NOTE: u8, const D_TICK: u8> Effect<WelcomeEcosystem> for Monad<NOTE, 
             .play(playable_note)
             .await
             .map_err(|err| err.to_string())
+    }
+}
+
+pub struct Rest<const D_TICK: u8>;
+#[jungle::act]
+impl<const D_TICK: u8> Act for Rest<D_TICK> {
+    type Effect = Pause<D_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
+
+    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("note playback should succeed");
+    }
+}
+
+pub struct Pause<const D_TICK: u8>;
+#[effect(id = 502)]
+impl<const D_TICK: u8> Effect<WelcomeEcosystem> for Pause<D_TICK> {
+    type In = ();
+    type Out = ();
+    type Err = String;
+
+    async fn effect(jungle: &WelcomeEcosystem, note: Self::In) -> Result<Self::Out, Self::Err> {
+        tokio::time::sleep(std::time::Duration::from_secs_f32(
+            D_TICK as f32 * TICKS_PER_SECOND,
+        ))
+        .await;
+
+        Ok(())
+    }
+}
+
+pub struct Probe;
+#[jungle::act]
+impl Act for Probe {
+    type Effect = EProbe;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
+
+    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("probe should succeed");
+    }
+}
+
+pub struct EProbe;
+#[effect(id = 503)]
+impl Effect<WelcomeEcosystem> for Eprobe {
+    type In = ();
+    type Out = ();
+    type Err = String;
+
+    async fn effect(jungle: &WelcomeEcosystem, note: Self::In) -> Result<Self::Out, Self::Err> {
+        tokio::time::sleep(std::time::Duration::from_secs_f32(
+            D_TICK as f32 * TICKS_PER_SECOND,
+        ))
+        .await;
+
+        Ok(())
     }
 }
