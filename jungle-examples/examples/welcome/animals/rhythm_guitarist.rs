@@ -14,38 +14,18 @@ impl Animal for RhythmGuitarist {
     type Journey = Intro;
 }
 
-pub struct IntroPreludeMeta;
-impl NodeMetadata for IntroPreludeMeta {
-    const METADATA: &'static str = "section:rhythm_guitar/intro_prelude";
-}
-
-pub struct IntroRiffMeta;
-impl NodeMetadata for IntroRiffMeta {
-    const METADATA: &'static str = "section:rhythm_guitar/intro_riff";
-}
-
-pub struct IntroTransitionMeta;
-impl NodeMetadata for IntroTransitionMeta {
-    const METADATA: &'static str = "section:rhythm_guitar/intro_transition";
-}
-
-pub struct IntroSustainMeta;
-impl NodeMetadata for IntroSustainMeta {
-    const METADATA: &'static str = "section:rhythm_guitar/intro_sustain";
-}
-
-pub struct IntroCadenceMeta;
-impl NodeMetadata for IntroCadenceMeta {
-    const METADATA: &'static str = "section:rhythm_guitar/intro_cadence";
+pub struct IntroSectionMeta;
+impl NodeMetadata for IntroSectionMeta {
+    const METADATA: &'static str = "section";
 }
 
 #[derive(Flow)]
 pub struct Intro(
-    Transparent<IntroPreludeMeta, IntroPrelude>,
-    Transparent<IntroRiffMeta, IntroRiffSection>,
-    Transparent<IntroTransitionMeta, IntroTransitionSection>,
-    Transparent<IntroSustainMeta, IntroSustainSection>,
-    Transparent<IntroCadenceMeta, IntroCadence>,
+    Transparent<IntroSectionMeta, IntroPrelude>,
+    Transparent<IntroSectionMeta, IntroRiffSection>,
+    Transparent<IntroSectionMeta, IntroTransitionSection>,
+    Transparent<IntroSectionMeta, IntroSustainSection>,
+    Transparent<IntroSectionMeta, IntroCadence>,
 );
 
 #[derive(Flow)]

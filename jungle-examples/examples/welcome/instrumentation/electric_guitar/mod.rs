@@ -144,8 +144,13 @@ pub struct Strum<
     const REST_TICK: u8,
 >;
 #[jungle::act]
-impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_3: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for Strum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
+impl<
+        const NOTE_1: u8,
+        const NOTE_2: u8,
+        const NOTE_3: u8,
+        const NOTE_TICK: u8,
+        const REST_TICK: u8,
+    > Act for Strum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
 {
     type Effect = Triad<
         ElectricGuitar,

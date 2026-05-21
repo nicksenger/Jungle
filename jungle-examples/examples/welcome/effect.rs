@@ -77,17 +77,17 @@ pub struct Monad<
 
 #[effect(id = 506)]
 impl<
-    I,
-    A,
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_3: u8,
-    const NOTE_4: u8,
-    const NOTE_5: u8,
-    const NOTE_6: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
-> jungle_sdk::prelude::Effect<TheJungle>
+        I,
+        A,
+        const NOTE_1: u8,
+        const NOTE_2: u8,
+        const NOTE_3: u8,
+        const NOTE_4: u8,
+        const NOTE_5: u8,
+        const NOTE_6: u8,
+        const NOTE_TICK: u8,
+        const REST_TICK: u8,
+    > jungle_sdk::prelude::Effect<TheJungle>
     for Hexad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_6, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
@@ -121,16 +121,16 @@ where
 
 #[effect(id = 505)]
 impl<
-    I,
-    A,
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_3: u8,
-    const NOTE_4: u8,
-    const NOTE_5: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
-> jungle_sdk::prelude::Effect<TheJungle>
+        I,
+        A,
+        const NOTE_1: u8,
+        const NOTE_2: u8,
+        const NOTE_3: u8,
+        const NOTE_4: u8,
+        const NOTE_5: u8,
+        const NOTE_TICK: u8,
+        const REST_TICK: u8,
+    > jungle_sdk::prelude::Effect<TheJungle>
     for Pentad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
@@ -164,15 +164,15 @@ where
 
 #[effect(id = 504)]
 impl<
-    I,
-    A,
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_3: u8,
-    const NOTE_4: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
-> jungle_sdk::prelude::Effect<TheJungle>
+        I,
+        A,
+        const NOTE_1: u8,
+        const NOTE_2: u8,
+        const NOTE_3: u8,
+        const NOTE_4: u8,
+        const NOTE_TICK: u8,
+        const REST_TICK: u8,
+    > jungle_sdk::prelude::Effect<TheJungle>
     for Tetrad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
@@ -205,8 +205,15 @@ where
 }
 
 #[effect(id = 502)]
-impl<I, A, const NOTE_1: u8, const NOTE_2: u8, const NOTE_3: u8, const NOTE_TICK: u8, const REST_TICK: u8>
-    jungle_sdk::prelude::Effect<TheJungle>
+impl<
+        I,
+        A,
+        const NOTE_1: u8,
+        const NOTE_2: u8,
+        const NOTE_3: u8,
+        const NOTE_TICK: u8,
+        const REST_TICK: u8,
+    > jungle_sdk::prelude::Effect<TheJungle>
     for Triad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
@@ -305,11 +312,7 @@ fn rhythm_notes<const N: usize, A: Copy>(
     midi_notes.map(|n_midi| rhythm_note(n_midi, duration, articulation))
 }
 
-fn rhythm_note<A: Copy>(
-    n_midi: u8,
-    duration: std::time::Duration,
-    articulation: A,
-) -> Note<A> {
+fn rhythm_note<A: Copy>(n_midi: u8, duration: std::time::Duration, articulation: A) -> Note<A> {
     Note {
         n_midi,
         amplitude_multiplier: RHYTHM_AMPLITUDE_MULTIPLIER,
@@ -325,10 +328,7 @@ fn map_playback_err(result: Result<(), crate::instrumentation::Error>) -> Result
     result.map_err(|err| err.to_string())
 }
 
-async fn play_one<I>(
-    jungle: &TheJungle,
-    note_1: Note<I::Articulation>,
-) -> Result<(), String>
+async fn play_one<I>(jungle: &TheJungle, note_1: Note<I::Articulation>) -> Result<(), String>
 where
     I: Instrument,
     for<'a> &'a I: From<&'a TheJungle>,
@@ -347,10 +347,7 @@ where
     for<'a> &'a I: From<&'a TheJungle>,
 {
     let instrument: &I = jungle.into();
-    let (first, second) = tokio::join!(
-        instrument.play(note_1),
-        instrument.play(note_2)
-    );
+    let (first, second) = tokio::join!(instrument.play(note_1), instrument.play(note_2));
     map_playback_err(first)?;
     map_playback_err(second)
 }
