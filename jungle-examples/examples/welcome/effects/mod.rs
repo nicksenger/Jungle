@@ -17,10 +17,11 @@ pub struct Monad<
     const REST_TICK: u8,
 >(PhantomData<(I, A)>);
 
-pub struct Diad<
+pub struct Dyad<
     I: Instrument<Articulation = A>,
     A: RhythmArticulation,
-    const NOTES: [u8; 2],
+    const NOTE_ONE: u8,
+    const NOTE_TWO: u8,
     const NOTE_TICK: u8,
     const REST_TICK: u8,
 >(PhantomData<(I, A)>);
@@ -82,8 +83,9 @@ where
 }
 
 #[effect(id = 501)]
-impl<I, A, const NOTES: [u8; 2], const NOTE_TICK: u8, const REST_TICK: u8>
-    jungle_sdk::prelude::Effect<WelcomeEcosystem> for Diad<I, A, NOTES, NOTE_TICK, REST_TICK>
+impl<I, A, const NOTE_ONE: u8, const NOTE_TWO: u8, const NOTE_TICK: u8, const REST_TICK: u8>
+    jungle_sdk::prelude::Effect<WelcomeEcosystem>
+    for Dyad<I, A, NOTE_ONE, NOTE_TWO, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
     A: RhythmArticulation,
@@ -103,7 +105,7 @@ where
         let note_duration = duration_for_ticks(tick_duration, NOTE_TICK as u32);
         let articulation = A::rhythm_sustained().into();
         let playable_note_one = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTES[0],
+            n_midi: NOTE_ONE,
             amplitude_multiplier: 0.5,
             pan: 0.5,
             duration: note_duration,
@@ -112,7 +114,7 @@ where
             articulation,
         };
         let playable_note_two = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTES[1],
+            n_midi: NOTE_TWO,
             amplitude_multiplier: 0.5,
             pan: 0.5,
             duration: note_duration,
