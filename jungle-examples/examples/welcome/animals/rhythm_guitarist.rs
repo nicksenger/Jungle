@@ -1,8 +1,6 @@
-use jungle_sdk::effect;
 use jungle_sdk::prelude::*;
 
-use crate::ecosystem::WelcomeEcosystem;
-use crate::effects::Monad;
+use crate::effects::{Dyad, Monad};
 use crate::instrumentation::{ElectricGuitar, ElectricGuitarArticulation};
 
 pub type RhythmGuitaristState = ElectricGuitarArticulation;
@@ -16,9 +14,6 @@ impl Animal for RhythmGuitarist {
     type Seed = RhythmGuitaristSeed;
     type Journey = Buildup;
 }
-
-#[derive(Flow)]
-pub struct TestProbe(Step<Probe>, Step<Probe>);
 
 #[derive(Flow)]
 pub struct Buildup(
@@ -58,32 +53,24 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     }
 }
 
-pub struct Probe;
+pub struct Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
 #[jungle::act]
-impl Act for Probe {
-    type Effect = EProbe;
+impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+    for Pluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
+{
+    type Effect = Dyad<ElectricGuitar, ElectricGuitarArticulation, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> Self::Input {}
+    fn emit(state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        *state
+    }
 
     fn absorb(
         _state: &mut RhythmGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("probe should succeed");
-    }
-}
-
-pub struct EProbe;
-#[effect(id = 503)]
-impl Effect<WelcomeEcosystem> for EProbe {
-    type In = ();
-    type Out = ();
-    type Err = String;
-
-    async fn effect(_jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
-        Ok(())
+        output.expect("note playback should succeed");
     }
 }
 
