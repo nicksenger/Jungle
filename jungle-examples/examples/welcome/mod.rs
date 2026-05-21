@@ -3,7 +3,6 @@ mod assets;
 mod audio;
 mod ecosystem;
 mod effect;
-mod flow;
 mod instrumentation;
 mod metronome;
 mod score;
