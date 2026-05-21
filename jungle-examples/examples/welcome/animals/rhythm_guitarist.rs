@@ -1,9 +1,10 @@
 use jungle_sdk::effect;
 use jungle_sdk::prelude::*;
+use std::marker::PhantomData;
 
 use crate::ecosystem::WelcomeEcosystem;
 use crate::flow;
-use crate::instrumentation::{ElectricGuitarArticulation, Instrument, Note};
+use crate::instrumentation::{ElectricGuitar, ElectricGuitarArticulation, Instrument, Note};
 
 const TICKS_PER_SECOND: f32 = 787.2;
 
@@ -50,7 +51,7 @@ pub struct Triple<const NOTE: u8>(
 pub struct Pick<const NOTE: u8, const D_TICK: u8>;
 #[jungle::act]
 impl<const NOTE: u8, const D_TICK: u8> Act for Pick<NOTE, D_TICK> {
-    type Effect = Monad<NOTE, D_TICK>;
+    type Effect = Monad<ElectricGuitar, NOTE, D_TICK>;
     type Input = ();
     type Output = ();
 
@@ -64,9 +65,15 @@ impl<const NOTE: u8, const D_TICK: u8> Act for Pick<NOTE, D_TICK> {
     }
 }
 
-pub struct Monad<const NOTE: u8, const D_TICK: u8>;
+pub struct Monad<
+    I: Instrument<Articulation = ElectricGuitarArticulation>,
+    const NOTE: u8,
+    const D_TICK: u8,
+>(PhantomData<I>);
 #[effect(id = 500)]
-impl<const NOTE: u8, const D_TICK: u8> Effect<WelcomeEcosystem> for Monad<NOTE, D_TICK> {
+impl<I: Instrument<Articulation = ElectricGuitarArticulation>, const NOTE: u8, const D_TICK: u8>
+    Effect<WelcomeEcosystem> for Monad<I, NOTE, D_TICK>
+{
     type In = ();
     type Out = ();
     type Err = String;
