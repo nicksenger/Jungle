@@ -1,18 +1,8 @@
 use jungle_sdk::prelude::*;
 
 use crate::{
-    animals::{
-        Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist, WelcomeAnimals,
-    },
-    audio::{AudioEngine, AudioHandle},
-    instrumentation::{
-        Bass, BassArticulation, Cymbal, CymbalArticulation, ElectricGuitar,
-        ElectricGuitarArticulation, Error as InstrumentError, HiHat, HiHatArticulation, Instrument,
-        KickDrum, KickDrumArticulation, Note, SnareDrum, SnareDrumArticulation, Toms,
-        TomsArticulation, Vocals, VocalsArticulation,
-    },
+    animals::WelcomeAnimals, audio::AudioHandle, instrumentation::ElectricGuitar,
     metronome::Metronome,
-    score::ScheduledNote,
 };
 
 pub struct WelcomeEcosystem {
@@ -26,7 +16,7 @@ impl WelcomeEcosystem {
         Self {
             rhythm_guitar: ElectricGuitar::new(audio_handle),
             bpm,
-            metronome: Metronome::spawn(bpm, 4),
+            metronome: Metronome::spawn(bpm),
         }
     }
 
