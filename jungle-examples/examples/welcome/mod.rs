@@ -2,7 +2,6 @@ mod animals;
 mod assets;
 mod audio;
 mod ecosystem;
-mod effects;
 mod flow;
 mod instrumentation;
 mod metronome;

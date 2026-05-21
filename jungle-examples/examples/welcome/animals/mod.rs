@@ -4,8 +4,6 @@ use jungle_sdk::prelude::*;
 use num::U255;
 use std::time::Duration;
 
-use crate::flow;
-
 mod rhythm_guitarist;
 pub use rhythm_guitarist::*;
 
