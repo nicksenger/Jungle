@@ -16,7 +16,7 @@ pub struct RhythmGuitarist;
 impl Animal for RhythmGuitarist {
     type State = RhythmGuitaristState;
     type Seed = RhythmGuitaristSeed;
-    type Journey = TestProbe;
+    type Journey = Buildup;
 }
 
 #[derive(Flow)]
@@ -54,9 +54,12 @@ impl<const NOTE: u8, const D_TICK: u8> Act for Pick<NOTE, D_TICK> {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("note playback should succeed");
     }
 }
@@ -93,9 +96,12 @@ impl<const D_TICK: u8> Act for Rest<D_TICK> {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("note playback should succeed");
     }
 }
