@@ -9,6 +9,9 @@ use crate::flow;
 mod rhythm_guitarist;
 pub use rhythm_guitarist::*;
 
+#[derive(Animals)]
+pub struct WelcomeAnimals(LeadVocalist, LeadGuitarist, RhythmGuitarist, Bass, Drums);
+
 pub type LeadVocalistState = ();
 pub type LeadVocalistSeed = ();
 pub type LeadGuitaristState = ();

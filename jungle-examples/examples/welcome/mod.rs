@@ -1,6 +1,7 @@
 mod animals;
 mod assets;
 mod audio;
+mod ecosystem;
 mod effects;
 mod flow;
 mod instrumentation;
@@ -37,6 +38,7 @@ use testcontainers_modules::postgres::Postgres;
 use crate::{
     animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
     audio::{AudioEngine, AudioHandle},
+    ecosystem::WelcomeEcosystem,
     instrumentation::{
         Bass, BassArticulation, Cymbal, CymbalArticulation, ElectricGuitar,
         ElectricGuitarArticulation, Error as InstrumentError, HiHat, HiHatArticulation, Instrument,
@@ -52,15 +54,6 @@ const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 const MIN_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(20);
 const MAX_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(120);
 const MAX_SUBMISSION_ATTEMPTS: u32 = 6;
-
-#[derive(Animals)]
-struct WelcomeAnimals(
-    LeadVocalist,
-    LeadGuitarist,
-    RhythmGuitarist,
-    BassAnimal,
-    Drums,
-);
 
 #[derive(Clone, Default)]
 struct PlaybackClock {
@@ -100,39 +93,6 @@ impl PlaybackClock {
             self.started_notify.notified().await;
         }
     }
-}
-
-struct WelcomeEcosystem {
-    rhythm_guitar: ElectricGuitar,
-    bpm: f32,
-    playback_clock: PlaybackClock,
-}
-
-impl WelcomeEcosystem {
-    fn new(audio_handle: AudioHandle, bpm: f32, playback_clock: PlaybackClock) -> Self {
-        Self {
-            rhythm_guitar: ElectricGuitar::new(audio_handle),
-            bpm,
-            playback_clock,
-        }
-    }
-
-    fn rhythm_guitar(&self) -> &ElectricGuitar {
-        &self.rhythm_guitar
-    }
-
-    fn bpm(&self) -> f32 {
-        self.bpm
-    }
-
-    fn playback_clock(&self) -> &PlaybackClock {
-        &self.playback_clock
-    }
-}
-
-impl Ecosystem for WelcomeEcosystem {
-    const NAME: &'static str = "welcome";
-    type Animals = WelcomeAnimals;
 }
 
 #[cfg(feature = "transport")]
@@ -628,307 +588,307 @@ fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
     Ok(bpm)
 }
 
-fn score_duration(notes: &[ScheduledNote<ElectricGuitarArticulation>]) -> Duration {
-    notes
-        .iter()
-        .map(|note| note.at.saturating_add(note.note.duration))
-        .max()
-        .unwrap_or(Duration::ZERO)
-}
-
-async fn play_lead_guitar_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let lead_guitar = ElectricGuitar::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(&lead_guitar, note, &mut metronome_sync).await?;
-    }
-    Ok(())
-}
-
-async fn play_backup_vocals_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let backup_vocals = Vocals::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &backup_vocals,
-            with_articulation(note, VocalsArticulation::GroupHarmony),
-            &mut metronome_sync,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn play_vocals_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let vocals = Vocals::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &vocals,
-            with_articulation(note, VocalsArticulation::Clean),
-            &mut metronome_sync,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn play_bass_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let bass = Bass::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &bass,
-            with_articulation(note, BassArticulation::Picked),
-            &mut metronome_sync,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn play_kick_drum_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let kick_drum = KickDrum::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &kick_drum,
-            with_articulation(note, KickDrumArticulation::StandardHit),
-            &mut metronome_sync,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn play_hi_hat_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let hi_hat = HiHat::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &hi_hat,
-            with_articulation(note, HiHatArticulation::ClosedTip),
-            &mut metronome_sync,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn play_cymbal_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let cymbal = Cymbal::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &cymbal,
-            with_articulation(note, CymbalArticulation::StandardCrash),
-            &mut metronome_sync,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn play_snare_drum_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let snare_drum = SnareDrum::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &snare_drum,
-            with_articulation(note, SnareDrumArticulation::CenterHit),
-            &mut metronome_sync,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn play_toms_score(
-    audio_handle: AudioHandle,
-    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
-    metronome: Metronome,
-) -> Result<(), InstrumentError> {
-    let toms = Toms::new(audio_handle);
-    let mut metronome_sync = metronome.subscribe();
-    for note in notes {
-        play_with_retry(
-            &toms,
-            with_articulation(note, TomsArticulation::StandardHit),
-            &mut metronome_sync,
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-fn with_articulation<Articulation>(
-    note: ScheduledNote<ElectricGuitarArticulation>,
-    articulation: Articulation,
-) -> ScheduledNote<Articulation> {
-    ScheduledNote {
-        at: note.at,
-        note: Note {
-            n_midi: note.note.n_midi,
-            amplitude_multiplier: note.note.amplitude_multiplier,
-            pan: note.note.pan,
-            duration: note.note.duration,
-            velocity: note.note.velocity,
-            expression: note.note.expression,
-            articulation,
-        },
-    }
-}
-
-async fn play_with_retry<I>(
-    instrument: &I,
-    scheduled_note: ScheduledNote<I::Articulation>,
-    metronome_sync: &mut MetronomeSync,
-) -> Result<(), InstrumentError>
-where
-    I: Instrument,
-    I::Articulation: Copy,
-{
-    let requested_offset = scheduled_note.at;
-    let note = scheduled_note.note;
-    let note_midi = note.n_midi;
-    let note_duration = note.duration;
-    let beat_duration = metronome_sync.beat_duration();
-    let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
-    let target_instant = metronome_sync.target_instant(requested_offset);
-    if target_instant > tokio::time::Instant::now() {
-        tokio::time::sleep_until(target_instant).await;
-    }
-    let mut retry_count = 0_u32;
-    let mut lateness = metronome_sync.elapsed().saturating_sub(requested_offset);
-
-    if lateness > late_note_drop_threshold {
-        debug!(
-            midi = note_midi,
-            lateness_ms = lateness.as_millis(),
-            threshold_ms = late_note_drop_threshold.as_millis(),
-            requested_offset_ms = requested_offset.as_millis(),
-            duration_ms = note_duration.as_millis(),
-            "dropping note that is too late to keep instrument phase aligned"
-        );
-        return Ok(());
-    }
-
-    // Bound retries to prevent queue backpressure from creating a long late-note backlog.
-    loop {
-        let play_started = Instant::now();
-        let play_result = instrument.play(note).await;
-        let play_elapsed = play_started.elapsed();
-        if play_elapsed >= Duration::from_millis(250) {
-            warn!(
-                retries = retry_count,
-                midi = note_midi,
-                play_elapsed_ms = play_elapsed.as_millis(),
-                requested_offset_ms = requested_offset.as_millis(),
-                lateness_ms = lateness.as_millis(),
-                duration_ms = note_duration.as_millis(),
-                "instrument.play is slow; possible compute pressure or enqueue backpressure"
-            );
-        } else if play_elapsed >= Duration::from_millis(50) {
-            debug!(
-                retries = retry_count,
-                midi = note_midi,
-                play_elapsed_ms = play_elapsed.as_millis(),
-                "instrument.play latency spike observed"
-            );
-        }
-
-        match play_result {
-            Ok(()) => {
-                if retry_count > 0 {
-                    debug!(
-                        retries = retry_count,
-                        midi = note_midi,
-                        requested_offset_ms = requested_offset.as_millis(),
-                        lateness_ms = lateness.as_millis(),
-                        duration_ms = note_duration.as_millis(),
-                        "note playback submission eventually succeeded after retries"
-                    );
-                }
-                return Ok(());
-            }
-            Err(InstrumentError::Submission) => {
-                retry_count = retry_count.saturating_add(1);
-
-                lateness = metronome_sync.elapsed().saturating_sub(requested_offset);
-                if retry_count >= MAX_SUBMISSION_ATTEMPTS || lateness > late_note_drop_threshold {
-                    warn!(
-                        retries = retry_count,
-                        midi = note_midi,
-                        play_elapsed_ms = play_elapsed.as_millis(),
-                        requested_offset_ms = requested_offset.as_millis(),
-                        lateness_ms = lateness.as_millis(),
-                        threshold_ms = late_note_drop_threshold.as_millis(),
-                        duration_ms = note_duration.as_millis(),
-                        "dropping note after bounded submission retries to avoid runtime starvation"
-                    );
-                    return Ok(());
-                }
-
-                debug!(
-                    retries = retry_count,
-                    midi = note_midi,
-                    play_elapsed_ms = play_elapsed.as_millis(),
-                    requested_offset_ms = requested_offset.as_millis(),
-                    lateness_ms = lateness.as_millis(),
-                    duration_ms = note_duration.as_millis(),
-                    "note playback submission failed; retrying with bounded backoff"
-                );
-                let backoff_ms = (1_u64 << retry_count.min(4)).min(16);
-                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-            }
-            Err(err) => {
-                error!(
-                    error = %err,
-                    midi = note_midi,
-                    requested_offset_ms = requested_offset.as_millis(),
-                    lateness_ms = lateness.as_millis(),
-                    duration_ms = note_duration.as_millis(),
-                    "non-retryable instrument playback error"
-                );
-                return Err(err);
-            }
-        }
-    }
-}
-
-fn late_note_drop_threshold(beat: Duration) -> Duration {
-    beat.div_f32(4.0)
-        .clamp(MIN_LATE_NOTE_DROP_THRESHOLD, MAX_LATE_NOTE_DROP_THRESHOLD)
-}
+//fn score_duration(notes: &[ScheduledNote<ElectricGuitarArticulation>]) -> Duration {
+//    notes
+//        .iter()
+//        .map(|note| note.at.saturating_add(note.note.duration))
+//        .max()
+//        .unwrap_or(Duration::ZERO)
+//}
+//
+//async fn play_lead_guitar_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let lead_guitar = ElectricGuitar::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(&lead_guitar, note, &mut metronome_sync).await?;
+//    }
+//    Ok(())
+//}
+//
+//async fn play_backup_vocals_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let backup_vocals = Vocals::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(
+//            &backup_vocals,
+//            with_articulation(note, VocalsArticulation::GroupHarmony),
+//            &mut metronome_sync,
+//        )
+//        .await?;
+//    }
+//    Ok(())
+//}
+//
+//async fn play_vocals_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let vocals = Vocals::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(
+//            &vocals,
+//            with_articulation(note, VocalsArticulation::Clean),
+//            &mut metronome_sync,
+//        )
+//        .await?;
+//    }
+//    Ok(())
+//}
+//
+//async fn play_bass_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let bass = Bass::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(
+//            &bass,
+//            with_articulation(note, BassArticulation::Picked),
+//            &mut metronome_sync,
+//        )
+//        .await?;
+//    }
+//    Ok(())
+//}
+//
+//async fn play_kick_drum_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let kick_drum = KickDrum::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(
+//            &kick_drum,
+//            with_articulation(note, KickDrumArticulation::StandardHit),
+//            &mut metronome_sync,
+//        )
+//        .await?;
+//    }
+//    Ok(())
+//}
+//
+//async fn play_hi_hat_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let hi_hat = HiHat::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(
+//            &hi_hat,
+//            with_articulation(note, HiHatArticulation::ClosedTip),
+//            &mut metronome_sync,
+//        )
+//        .await?;
+//    }
+//    Ok(())
+//}
+//
+//async fn play_cymbal_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let cymbal = Cymbal::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(
+//            &cymbal,
+//            with_articulation(note, CymbalArticulation::StandardCrash),
+//            &mut metronome_sync,
+//        )
+//        .await?;
+//    }
+//    Ok(())
+//}
+//
+//async fn play_snare_drum_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let snare_drum = SnareDrum::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(
+//            &snare_drum,
+//            with_articulation(note, SnareDrumArticulation::CenterHit),
+//            &mut metronome_sync,
+//        )
+//        .await?;
+//    }
+//    Ok(())
+//}
+//
+//async fn play_toms_score(
+//    audio_handle: AudioHandle,
+//    notes: Vec<ScheduledNote<ElectricGuitarArticulation>>,
+//    metronome: Metronome,
+//) -> Result<(), InstrumentError> {
+//    let toms = Toms::new(audio_handle);
+//    let mut metronome_sync = metronome.subscribe();
+//    for note in notes {
+//        play_with_retry(
+//            &toms,
+//            with_articulation(note, TomsArticulation::StandardHit),
+//            &mut metronome_sync,
+//        )
+//        .await?;
+//    }
+//    Ok(())
+//}
+//
+//fn with_articulation<Articulation>(
+//    note: ScheduledNote<ElectricGuitarArticulation>,
+//    articulation: Articulation,
+//) -> ScheduledNote<Articulation> {
+//    ScheduledNote {
+//        at: note.at,
+//        note: Note {
+//            n_midi: note.note.n_midi,
+//            amplitude_multiplier: note.note.amplitude_multiplier,
+//            pan: note.note.pan,
+//            duration: note.note.duration,
+//            velocity: note.note.velocity,
+//            expression: note.note.expression,
+//            articulation,
+//        },
+//    }
+//}
+//
+//async fn play_with_retry<I>(
+//    instrument: &I,
+//    scheduled_note: ScheduledNote<I::Articulation>,
+//    metronome_sync: &mut MetronomeSync,
+//) -> Result<(), InstrumentError>
+//where
+//    I: Instrument,
+//    I::Articulation: Copy,
+//{
+//    let requested_offset = scheduled_note.at;
+//    let note = scheduled_note.note;
+//    let note_midi = note.n_midi;
+//    let note_duration = note.duration;
+//    let beat_duration = metronome_sync.beat_duration();
+//    let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
+//    let target_instant = metronome_sync.target_instant(requested_offset);
+//    if target_instant > tokio::time::Instant::now() {
+//        tokio::time::sleep_until(target_instant).await;
+//    }
+//    let mut retry_count = 0_u32;
+//    let mut lateness = metronome_sync.elapsed().saturating_sub(requested_offset);
+//
+//    if lateness > late_note_drop_threshold {
+//        debug!(
+//            midi = note_midi,
+//            lateness_ms = lateness.as_millis(),
+//            threshold_ms = late_note_drop_threshold.as_millis(),
+//            requested_offset_ms = requested_offset.as_millis(),
+//            duration_ms = note_duration.as_millis(),
+//            "dropping note that is too late to keep instrument phase aligned"
+//        );
+//        return Ok(());
+//    }
+//
+//    // Bound retries to prevent queue backpressure from creating a long late-note backlog.
+//    loop {
+//        let play_started = Instant::now();
+//        let play_result = instrument.play(note).await;
+//        let play_elapsed = play_started.elapsed();
+//        if play_elapsed >= Duration::from_millis(250) {
+//            warn!(
+//                retries = retry_count,
+//                midi = note_midi,
+//                play_elapsed_ms = play_elapsed.as_millis(),
+//                requested_offset_ms = requested_offset.as_millis(),
+//                lateness_ms = lateness.as_millis(),
+//                duration_ms = note_duration.as_millis(),
+//                "instrument.play is slow; possible compute pressure or enqueue backpressure"
+//            );
+//        } else if play_elapsed >= Duration::from_millis(50) {
+//            debug!(
+//                retries = retry_count,
+//                midi = note_midi,
+//                play_elapsed_ms = play_elapsed.as_millis(),
+//                "instrument.play latency spike observed"
+//            );
+//        }
+//
+//        match play_result {
+//            Ok(()) => {
+//                if retry_count > 0 {
+//                    debug!(
+//                        retries = retry_count,
+//                        midi = note_midi,
+//                        requested_offset_ms = requested_offset.as_millis(),
+//                        lateness_ms = lateness.as_millis(),
+//                        duration_ms = note_duration.as_millis(),
+//                        "note playback submission eventually succeeded after retries"
+//                    );
+//                }
+//                return Ok(());
+//            }
+//            Err(InstrumentError::Submission) => {
+//                retry_count = retry_count.saturating_add(1);
+//
+//                lateness = metronome_sync.elapsed().saturating_sub(requested_offset);
+//                if retry_count >= MAX_SUBMISSION_ATTEMPTS || lateness > late_note_drop_threshold {
+//                    warn!(
+//                        retries = retry_count,
+//                        midi = note_midi,
+//                        play_elapsed_ms = play_elapsed.as_millis(),
+//                        requested_offset_ms = requested_offset.as_millis(),
+//                        lateness_ms = lateness.as_millis(),
+//                        threshold_ms = late_note_drop_threshold.as_millis(),
+//                        duration_ms = note_duration.as_millis(),
+//                        "dropping note after bounded submission retries to avoid runtime starvation"
+//                    );
+//                    return Ok(());
+//                }
+//
+//                debug!(
+//                    retries = retry_count,
+//                    midi = note_midi,
+//                    play_elapsed_ms = play_elapsed.as_millis(),
+//                    requested_offset_ms = requested_offset.as_millis(),
+//                    lateness_ms = lateness.as_millis(),
+//                    duration_ms = note_duration.as_millis(),
+//                    "note playback submission failed; retrying with bounded backoff"
+//                );
+//                let backoff_ms = (1_u64 << retry_count.min(4)).min(16);
+//                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+//            }
+//            Err(err) => {
+//                error!(
+//                    error = %err,
+//                    midi = note_midi,
+//                    requested_offset_ms = requested_offset.as_millis(),
+//                    lateness_ms = lateness.as_millis(),
+//                    duration_ms = note_duration.as_millis(),
+//                    "non-retryable instrument playback error"
+//                );
+//                return Err(err);
+//            }
+//        }
+//    }
+//}
+//
+//fn late_note_drop_threshold(beat: Duration) -> Duration {
+//    beat.div_f32(4.0)
+//        .clamp(MIN_LATE_NOTE_DROP_THRESHOLD, MAX_LATE_NOTE_DROP_THRESHOLD)
+//}
