@@ -76,7 +76,7 @@ impl<const NOTE: u8, const D_TICK: u8> Effect<WelcomeEcosystem> for Monad<NOTE, 
             n_midi: NOTE,
             amplitude_multiplier: 0.5,
             pan: 0.5,
-            duration: std::time::Duration::from_secs_f32((D_TICK as f32) * TICKS_PER_SECOND),
+            duration: std::time::Duration::from_secs_f32((D_TICK as f32) / TICKS_PER_SECOND),
             velocity: 37.0 / 127.0,
             expression: None,
             articulation: ElectricGuitarArticulation::RhythmSustained,
@@ -115,7 +115,7 @@ impl<const D_TICK: u8> Effect<WelcomeEcosystem> for Pause<D_TICK> {
 
     async fn effect(_jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
         tokio::time::sleep(std::time::Duration::from_secs_f32(
-            D_TICK as f32 * TICKS_PER_SECOND,
+            D_TICK as f32 / TICKS_PER_SECOND,
         ))
         .await;
 
@@ -149,5 +149,68 @@ impl Effect<WelcomeEcosystem> for EProbe {
 
     async fn effect(_jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use jungle_sdk::core::JungleWorker;
+    use jungle_sdk::prelude::JourneyStatus;
+    use jungle_sdk::{JungleClient, LocalClient};
+
+    use super::RhythmGuitarist;
+    use crate::ecosystem::WelcomeEcosystem;
+    use crate::PlaybackClock;
+
+    #[tokio::test]
+    async fn buildup_journey_runs_to_completion_end_to_end() {
+        let client = LocalClient::builder()
+            .namespace("welcome-rhythm-buildup-test")
+            .build()
+            .await
+            .expect("local client should build");
+
+        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::silent_for_tests();
+        let playback_clock = PlaybackClock::default();
+        let _ = playback_clock.start_now();
+        let ecosystem = WelcomeEcosystem::new(audio_handle, 123.0, playback_clock);
+
+        let worker = JungleWorker::new(ecosystem, client.clone());
+        let worker_handle = tokio::spawn(async move {
+            let _ = worker.spawn().await;
+        });
+
+        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let journey_id = client
+            .start_journey::<RhythmGuitarist>(seed)
+            .await
+            .expect("journey should start");
+
+        let completion = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let status = client
+                    .journey_details(journey_id)
+                    .await
+                    .expect("journey details should be available");
+                match status {
+                    JourneyStatus::Completed => break,
+                    JourneyStatus::Dead | JourneyStatus::Stopped => {
+                        panic!("journey reached terminal non-complete status: {status:?}");
+                    }
+                    JourneyStatus::Created | JourneyStatus::Alive => {}
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await;
+        assert!(
+            completion.is_ok(),
+            "buildup journey did not complete before timeout"
+        );
+
+        worker_handle.abort();
+        let _ = worker_handle.await;
     }
 }

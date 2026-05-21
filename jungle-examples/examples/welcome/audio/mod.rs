@@ -128,6 +128,27 @@ impl AudioEngine {
     }
 }
 
+#[cfg(test)]
+pub(crate) struct SilentAudioKeepAlive {
+    _command_rx: mpsc::Receiver<mixer::Command>,
+}
+
+#[cfg(test)]
+impl AudioHandle {
+    pub(crate) fn silent_for_tests() -> (Self, SilentAudioKeepAlive) {
+        let (command_tx, command_rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+        (
+            Self {
+                command_tx,
+                pending_commands: Arc::new(AtomicUsize::new(0)),
+            },
+            SilentAudioKeepAlive {
+                _command_rx: command_rx,
+            },
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PlayRequest {
     pub pcm: Arc<[f32]>,
