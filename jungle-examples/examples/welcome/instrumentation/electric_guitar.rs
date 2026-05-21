@@ -71,6 +71,12 @@ pub enum ElectricGuitarArticulation {
     ChordSlide,
 }
 
+impl Default for ElectricGuitarArticulation {
+    fn default() -> Self {
+        Self::RhythmSustained
+    }
+}
+
 impl Instrument for ElectricGuitar {
     type Articulation = ElectricGuitarArticulation;
 

@@ -3,10 +3,9 @@ use jungle_sdk::prelude::*;
 
 use crate::ecosystem::WelcomeEcosystem;
 use crate::effects::Monad;
-use crate::flow;
 use crate::instrumentation::{ElectricGuitar, ElectricGuitarArticulation};
 
-pub type RhythmGuitaristState = flow::RhythmGuitarIntroState;
+pub type RhythmGuitaristState = ElectricGuitarArticulation;
 pub type RhythmGuitaristSeed = ();
 
 pub struct RhythmGuitarist;
@@ -47,7 +46,9 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> Self::Input {}
+    fn emit(state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        *state
+    }
 
     fn absorb(
         _state: &mut RhythmGuitaristState,
