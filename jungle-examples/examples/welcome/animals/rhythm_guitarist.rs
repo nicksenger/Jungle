@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effects::{Dyad, Monad, Triad};
+use crate::effect::{Dyad, Monad, Triad};
 use crate::instrumentation::{ElectricGuitar, ElectricGuitarArticulation};
 
 pub type RhythmGuitaristState = ElectricGuitarArticulation;
