@@ -14,7 +14,7 @@ mod vocals;
 
 pub use bass::{Bass, BassArticulation};
 pub use cymbal::{Cymbal, CymbalArticulation};
-pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation};
+pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation, Pick, Pluck, Strum};
 pub use hihat::{HiHat, HiHatArticulation};
 pub use kick_drum::{KickDrum, KickDrumArticulation};
 pub use snare_drum::{SnareDrum, SnareDrumArticulation};

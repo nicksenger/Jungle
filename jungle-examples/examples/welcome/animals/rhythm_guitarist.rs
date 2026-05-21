@@ -1,7 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{Dyad, Monad, Triad};
-use crate::instrumentation::{ElectricGuitar, ElectricGuitarArticulation};
+use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck};
 
 pub type RhythmGuitaristState = ElectricGuitarArticulation;
 pub type RhythmGuitaristSeed = ();
@@ -31,86 +30,6 @@ pub struct Triple<const NOTE: u8>(
     Step<Pick<{ NOTE }, 96, 96>>,
     Step<Pick<{ NOTE }, 96, 96>>,
 );
-
-pub struct Pick<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for Pick<NOTE, NOTE_TICK, REST_TICK>
-{
-    type Effect = Monad<ElectricGuitar, ElectricGuitarArticulation, NOTE, NOTE_TICK, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        state: &RhythmGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        *state
-    }
-
-    fn absorb(
-        _state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
-    }
-}
-
-pub struct Pluck<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for Pluck<NOTE, NOTE_TICK, REST_TICK>
-{
-    type Effect =
-        Dyad<ElectricGuitar, ElectricGuitarArticulation, NOTE, NOTE, NOTE_TICK, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        state: &RhythmGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        *state
-    }
-
-    fn absorb(
-        _state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
-    }
-}
-
-pub struct Strum<
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_3: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
->;
-#[jungle::act]
-impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_3: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for Strum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
-{
-    type Effect =
-        Triad<ElectricGuitar, ElectricGuitarArticulation, NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        state: &RhythmGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        *state
-    }
-
-    fn absorb(
-        _state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
-    }
-}
 
 #[cfg(test)]
 mod tests {

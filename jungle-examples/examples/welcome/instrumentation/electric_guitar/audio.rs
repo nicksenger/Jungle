@@ -1,103 +1,27 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
 use crate::audio::{AudioHandle, PlayRequest};
+use crate::instrumentation::{amplitude_gain, Error, Expression, Note};
 
-use super::{amplitude_gain, Error, Expression, Instrument, Note};
+use super::ElectricGuitarArticulation;
 
-pub struct ElectricGuitar {
-    audio: AudioHandle,
-}
-
-impl ElectricGuitar {
-    pub fn new(audio: AudioHandle) -> Self {
-        Self { audio }
-    }
-
-    pub fn audio(&self) -> &AudioHandle {
-        &self.audio
-    }
-}
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum ElectricGuitarArticulation {
-    /// Standard picked note with normal sustain and release.
-    Sustained,
-
-    /// Restricting the string vibration with the side of the picking hand.
-    /// Essential for the driving rhythm fills under the vocals.
-    PalmMuted,
-
-    /// A note sounded entirely by the fretting hand striking the fretboard.
-    /// Crucial for the fluid, rapid note runs in the main solo.
-    HammerOn,
-
-    /// A note sounded by pulling a fretting finger off a string to release a lower note.
-    /// Used in tandem with HammerOns for smooth, unpicked legato phrasing.
-    PullOff,
-
-    /// Gently touching the string at specific nodes (like the 5th, 7th, or 12th frets)
-    /// to get a bell-like chime. Slash uses these for texture.
-    NaturalHarmonic,
-
-    /// "Pinch" harmonics. Pressing the thumb of the picking hand against the string
-    /// instantly after picking it, forcing a screaming, high-pitched squeal.
-    /// Slash peppers these heavily throughout the verses and fills.
-    PinchHarmonic,
-
-    /// Sliding into a note from an indefinite lower or higher pitch.
-    /// The signature entry mechanism for almost every phrase in the song.
-    Slide,
-
-    /// Striking a string that is completely muted by the fretting hand.
-    /// This creates a purely rhythmic, percussive "scratch" or "chug" sound
-    /// right before a big chord hits.
-    RhythmicRake,
-
-    /// A sustained rhythm-guitar chord voice.
-    RhythmSustained,
-
-    /// A tightly palm-muted rhythm-guitar chord voice.
-    RhythmPalmMuted,
-
-    /// Lifting the fretting hand immediately after striking to choke the chord.
-    /// Crucial for the staccato, funky stabs in the verse groove.
-    Choked,
-
-    /// Striking strings completely muted by the left hand.
-    /// Used heavily during the scratchy intro buildup before the full band kicks in.
-    RhythmicScratch,
-
-    /// Sliding an entire chord shape up or down the neck.
-    ChordSlide,
-}
-
-impl Default for ElectricGuitarArticulation {
-    fn default() -> Self {
-        Self::RhythmSustained
-    }
-}
-
-impl Instrument for ElectricGuitar {
-    type Articulation = ElectricGuitarArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate, pan) = {
-            let note_for_synth = note;
-            tokio::task::spawn_blocking(move || synthesize_electric_guitar(&note_for_synth))
-                .await
-                .map_err(|_| Error::Playback)?
-        };
-
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.gain = gain * amplitude_gain(&note);
-        request.playback_rate = playback_rate;
-        request.pan = pan;
-
-        self.audio
-            .play(request)
+pub(super) async fn play(
+    audio: &AudioHandle,
+    note: Note<ElectricGuitarArticulation>,
+) -> Result<(), Error> {
+    let (pcm, gain, playback_rate, pan) = {
+        let note_for_synth = note;
+        tokio::task::spawn_blocking(move || synthesize_electric_guitar(&note_for_synth))
             .await
-            .map_err(|_| Error::Submission)
-    }
+            .map_err(|_| Error::Playback)?
+    };
+
+    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
+    request.gain = gain * amplitude_gain(&note);
+    request.playback_rate = playback_rate;
+    request.pan = pan;
+
+    audio.play(request).await.map_err(|_| Error::Submission)
 }
 
 const SAMPLE_RATE: u32 = 48_000;
