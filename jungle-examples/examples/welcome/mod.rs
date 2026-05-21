@@ -12,10 +12,6 @@ mod ui;
 #[cfg(feature = "transport")]
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
-use std::{
-    sync::{Arc, Mutex},
-    time::Instant as StdInstant,
-};
 
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
@@ -24,7 +20,6 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::JungleClient;
 #[cfg(not(feature = "transport"))]
 use jungle_sdk::LocalClient;
-use tokio::sync::Notify;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 #[cfg(feature = "redb")]
@@ -45,7 +40,6 @@ use crate::{
         KickDrum, KickDrumArticulation, Note, SnareDrum, SnareDrumArticulation, Toms,
         TomsArticulation, Vocals, VocalsArticulation,
     },
-    metronome::{Metronome, MetronomeSync},
     score::ScheduledNote,
 };
 
@@ -54,46 +48,6 @@ const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 const MIN_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(20);
 const MAX_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(120);
 const MAX_SUBMISSION_ATTEMPTS: u32 = 6;
-
-#[derive(Clone, Default)]
-struct PlaybackClock {
-    started_at: Arc<Mutex<Option<StdInstant>>>,
-    started_notify: Arc<Notify>,
-}
-
-impl PlaybackClock {
-    fn start_now(&self) -> StdInstant {
-        let now = StdInstant::now();
-        let mut started_at = self
-            .started_at
-            .lock()
-            .expect("playback clock mutex should not be poisoned");
-        if started_at.is_none() {
-            *started_at = Some(now);
-            self.started_notify.notify_waiters();
-        }
-        started_at.unwrap_or(now)
-    }
-
-    async fn wait_started(&self) -> tokio::time::Instant {
-        loop {
-            let started_at = {
-                *self
-                    .started_at
-                    .lock()
-                    .expect("playback clock mutex should not be poisoned")
-            };
-            if let Some(started_at) = started_at {
-                let elapsed = StdInstant::now().saturating_duration_since(started_at);
-                return tokio::time::Instant::now()
-                    .checked_sub(elapsed)
-                    .unwrap_or_else(tokio::time::Instant::now);
-            }
-
-            self.started_notify.notified().await;
-        }
-    }
-}
 
 #[cfg(feature = "transport")]
 pub(crate) type RuntimeClient = jungle_sdk::Client<WelcomeEcosystem>;
@@ -259,8 +213,7 @@ fn run_runtime_thread(
             let audio_handle = audio_engine.handle();
             (audio_handle, Some(audio_engine), None)
         };
-        let playback_clock = PlaybackClock::default();
-        let ecosystem = WelcomeEcosystem::new(audio_handle, bpm, playback_clock.clone());
+        let ecosystem = WelcomeEcosystem::new(audio_handle, bpm);
         let worker_client = client.clone();
         let _worker_task = tokio::spawn(async move {
             let worker = JungleWorker::new(ecosystem, worker_client);
@@ -310,14 +263,10 @@ fn run_runtime_thread(
 
         keep_alive.audio_engine = audio_engine;
         keep_alive.stub_audio = stub_audio;
-        Ok::<(UiSetup, RuntimeKeepAlive, PlaybackClock), String>((
-            UiSetup { client, journeys },
-            keep_alive,
-            playback_clock,
-        ))
+        Ok::<(UiSetup, RuntimeKeepAlive), String>((UiSetup { client, journeys }, keep_alive))
     });
 
-    let (setup, mut keep_alive, playback_clock) = match setup {
+    let (setup, mut keep_alive) = match setup {
         Ok(value) => value,
         Err(err) => {
             let _ = setup_tx.send(Err(err.clone()));
@@ -344,7 +293,6 @@ fn run_runtime_thread(
         bpm,
         ui_shutdown,
         ui_started_at,
-        playback_clock,
     ));
     keep_alive.shutdown();
     result
@@ -539,9 +487,7 @@ async fn play_audio_and_schedule_shutdown(
     bpm: f32,
     ui_shutdown: ui::ShutdownFlag,
     ui_started_at: Instant,
-    playback_clock: PlaybackClock,
 ) -> Result<(), String> {
-    let _ = playback_clock.start_now();
     info!(
         bpm,
         "starting welcome playback with direct non-flow instruments disabled"
@@ -592,7 +538,11 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         bpm = parse_bpm_value(&arg)?;
     }
 
-    Ok(CliArgs { bpm, headless, mute })
+    Ok(CliArgs {
+        bpm,
+        headless,
+        mute,
+    })
 }
 
 fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {

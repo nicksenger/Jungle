@@ -1,16 +1,20 @@
 use jungle_sdk::effect;
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
+use tokio::time::Instant;
 
 use crate::ecosystem::WelcomeEcosystem;
 use crate::instrumentation::{ElectricGuitarArticulation, Instrument, Note};
 
-const TICKS_PER_SECOND: f32 = 787.2;
+const TICKS_PER_BEAT: u32 = 384;
+const MIN_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(20);
+const MAX_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(120);
 
 pub struct Monad<
     I: Instrument<Articulation = A>,
     A: RhythmArticulation,
     const NOTE: u8,
-    const D_TICK: u8,
+    const NOTE_TICK: u8,
+    const REST_TICK: u8,
 >(PhantomData<(I, A)>);
 
 pub trait RhythmArticulation: Copy + Into<ElectricGuitarArticulation> {
@@ -24,8 +28,8 @@ impl RhythmArticulation for ElectricGuitarArticulation {
 }
 
 #[effect(id = 500)]
-impl<I, A, const NOTE: u8, const D_TICK: u8> jungle_sdk::prelude::Effect<WelcomeEcosystem>
-    for Monad<I, A, NOTE, D_TICK>
+impl<I, A, const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>
+    jungle_sdk::prelude::Effect<WelcomeEcosystem> for Monad<I, A, NOTE, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
     A: RhythmArticulation,
@@ -35,19 +39,72 @@ where
     type Err = String;
 
     async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
+        let metronome = jungle.metronome();
+        let beat_duration = metronome.beat_duration();
+        let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
+        let rest_duration = duration_for_ticks(tick_duration, REST_TICK as u32);
+        let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
+        let phase_offset = current_phase_offset(metronome, rest_duration);
+
         let playable_note = Note::<ElectricGuitarArticulation> {
             n_midi: NOTE,
             amplitude_multiplier: 0.5,
             pan: 0.5,
-            duration: std::time::Duration::from_secs_f32((D_TICK as f32) / TICKS_PER_SECOND),
+            duration: duration_for_ticks(tick_duration, NOTE_TICK as u32),
             velocity: 37.0 / 127.0,
             expression: None,
             articulation: A::rhythm_sustained().into(),
         };
-        jungle
-            .rhythm_guitar()
-            .play(playable_note)
-            .await
-            .map_err(|err| err.to_string())
+
+        if phase_offset <= late_note_drop_threshold {
+            jungle
+                .rhythm_guitar()
+                .play(playable_note)
+                .await
+                .map_err(|err| err.to_string())?;
+        }
+
+        let sleep_for = rest_duration.saturating_sub(phase_offset);
+        if !sleep_for.is_zero() {
+            tokio::time::sleep(sleep_for).await;
+        }
+
+        Ok(())
     }
+}
+
+fn duration_for_ticks(tick_duration: Duration, ticks: u32) -> Duration {
+    tick_duration.mul_f32(ticks as f32)
+}
+
+fn current_phase_offset(metronome: &crate::metronome::Metronome, period: Duration) -> Duration {
+    if period.is_zero() {
+        return Duration::ZERO;
+    }
+
+    let now = Instant::now();
+    let anchor = metronome
+        .latest_beat()
+        .map(|event| event.timestamp)
+        .unwrap_or_else(|| metronome.started_at());
+    let elapsed = now.saturating_duration_since(anchor);
+    duration_mod(elapsed, period)
+}
+
+fn duration_mod(value: Duration, modulus: Duration) -> Duration {
+    if modulus.is_zero() {
+        return Duration::ZERO;
+    }
+    let modulus_nanos = modulus.as_nanos();
+    if modulus_nanos == 0 {
+        return Duration::ZERO;
+    }
+    let remainder_nanos = value.as_nanos() % modulus_nanos;
+    let bounded_nanos = remainder_nanos.min(u64::MAX as u128) as u64;
+    Duration::from_nanos(bounded_nanos)
+}
+
+fn late_note_drop_threshold(beat: Duration) -> Duration {
+    beat.div_f32(4.0)
+        .clamp(MIN_LATE_NOTE_DROP_THRESHOLD, MAX_LATE_NOTE_DROP_THRESHOLD)
 }

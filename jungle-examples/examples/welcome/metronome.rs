@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use tokio::{
     sync::broadcast,
@@ -20,17 +23,20 @@ pub struct Metronome {
     beat: Duration,
     beats_per_bar: u32,
     beat_tx: broadcast::Sender<BeatEvent>,
+    latest_beat: Arc<Mutex<Option<BeatEvent>>>,
 }
 
 impl Metronome {
     pub fn spawn(bpm: f32, beats_per_bar: u32) -> Self {
         let (beat_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
         let beat = beat_duration(bpm);
+        let latest_beat = Arc::new(Mutex::new(None));
         let metronome = Self {
             started_at: Instant::now(),
             beat,
             beats_per_bar: beats_per_bar.max(1),
             beat_tx,
+            latest_beat,
         };
         metronome.start_task();
         metronome
@@ -47,10 +53,36 @@ impl Metronome {
         }
     }
 
+    pub fn started_at(&self) -> Instant {
+        self.started_at
+    }
+
+    pub fn beat_duration(&self) -> Duration {
+        self.beat
+    }
+
+    pub fn latest_beat(&self) -> Option<BeatEvent> {
+        let latest_beat = self
+            .latest_beat
+            .lock()
+            .expect("latest beat mutex should not be poisoned");
+        *latest_beat
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        let now_elapsed = self.started_at.elapsed();
+        let beat_elapsed = self
+            .latest_beat()
+            .map(|event| event.timestamp.saturating_duration_since(self.started_at))
+            .unwrap_or(Duration::ZERO);
+        now_elapsed.max(beat_elapsed)
+    }
+
     fn start_task(&self) {
         let beat = self.beat;
         let beats_per_bar = self.beats_per_bar;
         let beat_tx = self.beat_tx.clone();
+        let latest_beat = self.latest_beat.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(beat);
             interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -60,11 +92,18 @@ impl Metronome {
                 let beat_in_bar = ((beat_index % beats_per_bar as u64) + 1) as u32;
                 let bar = (beat_index / beats_per_bar as u64 + 1) as u32;
                 beat_index = beat_index.saturating_add(1);
-                let _ = beat_tx.send(BeatEvent {
+                let event = BeatEvent {
                     timestamp: Instant::now(),
                     bar,
                     beat: beat_in_bar,
-                });
+                };
+                {
+                    let mut latest_beat_lock = latest_beat
+                        .lock()
+                        .expect("latest beat mutex should not be poisoned");
+                    *latest_beat_lock = Some(event);
+                }
+                let _ = beat_tx.send(event);
             }
         });
     }

@@ -11,23 +11,22 @@ use crate::{
         KickDrum, KickDrumArticulation, Note, SnareDrum, SnareDrumArticulation, Toms,
         TomsArticulation, Vocals, VocalsArticulation,
     },
-    metronome::{Metronome, MetronomeSync},
+    metronome::Metronome,
     score::ScheduledNote,
-    PlaybackClock,
 };
 
 pub struct WelcomeEcosystem {
     rhythm_guitar: ElectricGuitar,
     bpm: f32,
-    playback_clock: PlaybackClock,
+    metronome: Metronome,
 }
 
 impl WelcomeEcosystem {
-    pub fn new(audio_handle: AudioHandle, bpm: f32, playback_clock: PlaybackClock) -> Self {
+    pub fn new(audio_handle: AudioHandle, bpm: f32) -> Self {
         Self {
             rhythm_guitar: ElectricGuitar::new(audio_handle),
             bpm,
-            playback_clock,
+            metronome: Metronome::spawn(bpm, 4),
         }
     }
 
@@ -39,8 +38,8 @@ impl WelcomeEcosystem {
         self.bpm
     }
 
-    pub fn playback_clock(&self) -> &PlaybackClock {
-        &self.playback_clock
+    pub fn metronome(&self) -> &Metronome {
+        &self.metronome
     }
 }
 
