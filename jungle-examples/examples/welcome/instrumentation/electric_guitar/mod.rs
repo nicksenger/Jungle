@@ -111,13 +111,13 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     }
 }
 
-pub struct Pluck<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+pub struct Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for Pluck<NOTE, NOTE_TICK, REST_TICK>
+impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+    for Pluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
 {
     type Effect =
-        Dyad<ElectricGuitar, ElectricGuitarArticulation, NOTE, NOTE, NOTE_TICK, REST_TICK>;
+        Dyad<ElectricGuitar, ElectricGuitarArticulation, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
