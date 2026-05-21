@@ -18,7 +18,7 @@ impl Animal for RhythmGuitarist {
     type Journey = flow::RhythmGuitaristJourney;
 }
 
-pub struct Pick<const NOTE: u8, const TICKS: u8>(NOTE, TICKS);
+pub struct Pick<const NOTE: u8, const TICKS: u8>;
 
 //#[effect(id = 500)]
 //impl<const NOTE: u8, const TICKS: u8> Effect<WelcomeEcosystem> for Pick<NOTE, TICKS> {
