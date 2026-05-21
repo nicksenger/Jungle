@@ -5,13 +5,13 @@ use crate::{
     metronome::Metronome,
 };
 
-pub struct WelcomeEcosystem {
+pub struct TheJungle {
     rhythm_guitar: ElectricGuitar,
     bpm: f32,
     metronome: Metronome,
 }
 
-impl WelcomeEcosystem {
+impl TheJungle {
     pub fn new(audio_handle: AudioHandle, bpm: f32) -> Self {
         Self {
             rhythm_guitar: ElectricGuitar::new(audio_handle),
@@ -33,13 +33,13 @@ impl WelcomeEcosystem {
     }
 }
 
-impl Ecosystem for WelcomeEcosystem {
+impl Ecosystem for TheJungle {
     const NAME: &'static str = "welcome";
     type Animals = WelcomeAnimals;
 }
 
-impl<'a> From<&'a WelcomeEcosystem> for &'a ElectricGuitar {
-    fn from(ecosystem: &'a WelcomeEcosystem) -> Self {
+impl<'a> From<&'a TheJungle> for &'a ElectricGuitar {
+    fn from(ecosystem: &'a TheJungle) -> Self {
         ecosystem.rhythm_guitar()
     }
 }

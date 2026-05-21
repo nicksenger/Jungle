@@ -30,14 +30,14 @@ use testcontainers_modules::postgres::Postgres;
 use crate::{
     animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
     audio::{AudioEngine, AudioHandle, StubAudioKeepAlive},
-    ecosystem::WelcomeEcosystem,
+    ecosystem::TheJungle,
 };
 
 const DEFAULT_BPM: f32 = 123.0;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(feature = "transport")]
-pub(crate) type RuntimeClient = jungle_sdk::Client<WelcomeEcosystem>;
+pub(crate) type RuntimeClient = jungle_sdk::Client<TheJungle>;
 #[cfg(not(feature = "transport"))]
 pub(crate) type RuntimeClient = LocalClient;
 
@@ -200,7 +200,7 @@ fn run_runtime_thread(
             let audio_handle = audio_engine.handle();
             (audio_handle, Some(audio_engine), None)
         };
-        let ecosystem = WelcomeEcosystem::new(audio_handle, bpm);
+        let ecosystem = TheJungle::new(audio_handle, bpm);
         let worker_client = client.clone();
         let _worker_task = tokio::spawn(async move {
             let worker = JungleWorker::new(ecosystem, worker_client);
@@ -449,7 +449,7 @@ async fn setup_transport_runtime_client() -> Result<(RuntimeClient, RuntimeKeepA
 async fn connect_transport_client_with_retry(remote: SocketAddr) -> Result<RuntimeClient, String> {
     for attempt in 0..40 {
         match jungle_sdk::Client::builder()
-            .ecosystem::<WelcomeEcosystem>()
+            .ecosystem::<TheJungle>()
             .remote(remote)
             .server_name("localhost")
             .build()

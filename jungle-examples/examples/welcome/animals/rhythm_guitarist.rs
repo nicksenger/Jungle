@@ -121,7 +121,7 @@ mod tests {
     use jungle_sdk::{JungleClient, LocalClient};
 
     use super::RhythmGuitarist;
-    use crate::ecosystem::WelcomeEcosystem;
+    use crate::ecosystem::TheJungle;
 
     #[tokio::test]
     async fn buildup_journey_runs_to_completion_end_to_end() {
@@ -132,7 +132,7 @@ mod tests {
             .expect("local client should build");
 
         let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
-        let ecosystem = WelcomeEcosystem::new(audio_handle, 123.0);
+        let ecosystem = TheJungle::new(audio_handle, 123.0);
 
         let worker = JungleWorker::new(ecosystem, client.clone());
         let worker_handle = tokio::spawn(async move {

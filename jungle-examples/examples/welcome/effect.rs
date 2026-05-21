@@ -2,7 +2,7 @@ use jungle_sdk::effect;
 use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;
 
-use crate::ecosystem::WelcomeEcosystem;
+use crate::ecosystem::TheJungle;
 use crate::instrumentation::{Instrument, Note};
 
 const TICKS_PER_BEAT: u32 = 384;
@@ -87,18 +87,18 @@ impl<
     const NOTE_6: u8,
     const NOTE_TICK: u8,
     const REST_TICK: u8,
-> jungle_sdk::prelude::Effect<WelcomeEcosystem>
+> jungle_sdk::prelude::Effect<TheJungle>
     for Hexad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_6, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
     A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
         let timing = jungle.metronome().rhythm_timing(
             TICKS_PER_BEAT,
             NOTE_TICK,
@@ -130,18 +130,18 @@ impl<
     const NOTE_5: u8,
     const NOTE_TICK: u8,
     const REST_TICK: u8,
-> jungle_sdk::prelude::Effect<WelcomeEcosystem>
+> jungle_sdk::prelude::Effect<TheJungle>
     for Pentad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
     A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
         let timing = jungle.metronome().rhythm_timing(
             TICKS_PER_BEAT,
             NOTE_TICK,
@@ -172,18 +172,18 @@ impl<
     const NOTE_4: u8,
     const NOTE_TICK: u8,
     const REST_TICK: u8,
-> jungle_sdk::prelude::Effect<WelcomeEcosystem>
+> jungle_sdk::prelude::Effect<TheJungle>
     for Tetrad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
     A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
         let timing = jungle.metronome().rhythm_timing(
             TICKS_PER_BEAT,
             NOTE_TICK,
@@ -206,18 +206,18 @@ where
 
 #[effect(id = 502)]
 impl<I, A, const NOTE_1: u8, const NOTE_2: u8, const NOTE_3: u8, const NOTE_TICK: u8, const REST_TICK: u8>
-    jungle_sdk::prelude::Effect<WelcomeEcosystem>
+    jungle_sdk::prelude::Effect<TheJungle>
     for Triad<I, A, NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
     A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
         let timing = jungle.metronome().rhythm_timing(
             TICKS_PER_BEAT,
             NOTE_TICK,
@@ -240,17 +240,17 @@ where
 
 #[effect(id = 501)]
 impl<I, A, const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8>
-    jungle_sdk::prelude::Effect<WelcomeEcosystem> for Dyad<I, A, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
+    jungle_sdk::prelude::Effect<TheJungle> for Dyad<I, A, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
     A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
         let timing = jungle.metronome().rhythm_timing(
             TICKS_PER_BEAT,
             NOTE_TICK,
@@ -270,17 +270,17 @@ where
 
 #[effect(id = 500)]
 impl<I, A, const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>
-    jungle_sdk::prelude::Effect<WelcomeEcosystem> for Monad<I, A, NOTE, NOTE_TICK, REST_TICK>
+    jungle_sdk::prelude::Effect<TheJungle> for Monad<I, A, NOTE, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
     A: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
     type In = A;
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
         let timing = jungle.metronome().rhythm_timing(
             TICKS_PER_BEAT,
             NOTE_TICK,
@@ -326,25 +326,25 @@ fn map_playback_err(result: Result<(), crate::instrumentation::Error>) -> Result
 }
 
 async fn play_one<I>(
-    jungle: &WelcomeEcosystem,
+    jungle: &TheJungle,
     note_1: Note<I::Articulation>,
 ) -> Result<(), String>
 where
     I: Instrument,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
 {
     let instrument: &I = jungle.into();
     map_playback_err(instrument.play(note_1).await)
 }
 
 async fn play_two<I>(
-    jungle: &WelcomeEcosystem,
+    jungle: &TheJungle,
     note_1: Note<I::Articulation>,
     note_2: Note<I::Articulation>,
 ) -> Result<(), String>
 where
     I: Instrument,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
 {
     let instrument: &I = jungle.into();
     let (first, second) = tokio::join!(
@@ -356,14 +356,14 @@ where
 }
 
 async fn play_three<I>(
-    jungle: &WelcomeEcosystem,
+    jungle: &TheJungle,
     note_1: Note<I::Articulation>,
     note_2: Note<I::Articulation>,
     note_3: Note<I::Articulation>,
 ) -> Result<(), String>
 where
     I: Instrument,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
 {
     let instrument: &I = jungle.into();
     let (first, second, third) = tokio::join!(
@@ -377,7 +377,7 @@ where
 }
 
 async fn play_four<I>(
-    jungle: &WelcomeEcosystem,
+    jungle: &TheJungle,
     note_1: Note<I::Articulation>,
     note_2: Note<I::Articulation>,
     note_3: Note<I::Articulation>,
@@ -385,7 +385,7 @@ async fn play_four<I>(
 ) -> Result<(), String>
 where
     I: Instrument,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
 {
     let instrument: &I = jungle.into();
     let (first, second, third, fourth) = tokio::join!(
@@ -401,7 +401,7 @@ where
 }
 
 async fn play_five<I>(
-    jungle: &WelcomeEcosystem,
+    jungle: &TheJungle,
     note_1: Note<I::Articulation>,
     note_2: Note<I::Articulation>,
     note_3: Note<I::Articulation>,
@@ -410,7 +410,7 @@ async fn play_five<I>(
 ) -> Result<(), String>
 where
     I: Instrument,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
 {
     let instrument: &I = jungle.into();
     let (first, second, third, fourth, fifth) = tokio::join!(
@@ -428,7 +428,7 @@ where
 }
 
 async fn play_six<I>(
-    jungle: &WelcomeEcosystem,
+    jungle: &TheJungle,
     note_1: Note<I::Articulation>,
     note_2: Note<I::Articulation>,
     note_3: Note<I::Articulation>,
@@ -438,7 +438,7 @@ async fn play_six<I>(
 ) -> Result<(), String>
 where
     I: Instrument,
-    for<'a> &'a I: From<&'a WelcomeEcosystem>,
+    for<'a> &'a I: From<&'a TheJungle>,
 {
     let instrument: &I = jungle.into();
     let (first, second, third, fourth, fifth, sixth) = tokio::join!(
