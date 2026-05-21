@@ -1146,15 +1146,6 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
         return err.into_compile_error().into();
     }
 
-    if !item_impl.generics.params.is_empty() {
-        return syn::Error::new_spanned(
-            &item_impl.generics,
-            "`#[act]` currently supports only non-generic impl blocks.",
-        )
-        .to_compile_error()
-        .into();
-    }
-
     let mut effect_assoc: Option<ImplItemType> = None;
     let mut input_assoc: Option<ImplItemType> = None;
     let mut output_assoc: Option<ImplItemType> = None;
@@ -1196,6 +1187,20 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(ident) => ident,
         Err(err) => return err.into_compile_error().into(),
     };
+    let generic_names = item_impl
+        .generics
+        .params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(ty) => ty.ident.to_string(),
+            GenericParam::Lifetime(lifetime) => lifetime.lifetime.ident.to_string(),
+            GenericParam::Const(const_param) => const_param.ident.to_string(),
+        })
+        .collect::<HashSet<_>>();
+    let mut animal_ident = format_ident!("A");
+    while generic_names.contains(&animal_ident.to_string()) {
+        animal_ident = format_ident!("{animal_ident}_");
+    }
     let bound_ident = format_ident!("__JungleActBound{self_ident}");
     let types = jungle_types_path();
     let default_aspect: Type = parse_quote!(#types::Identity);
@@ -1211,11 +1216,12 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     let aspect_ty = attrs.aspect.unwrap_or(default_aspect);
     let bind_assoc: ImplItem = if let Some(bind_ty) = explicit_bind_ty.clone() {
         parse_quote! {
-            type Bind<A: #types::Animal> = #bind_ty;
+            type Bind<#animal_ident: #types::Animal> = #bind_ty;
         }
     } else {
+        let (_, act_ty_generics, _) = item_impl.generics.split_for_impl();
         parse_quote! {
-            type Bind<A: #types::Animal> = #bound_ident<A>;
+            type Bind<#animal_ident: #types::Animal> = #bound_ident #act_ty_generics;
         }
     };
     let effect_ty = effect_assoc.ty.clone();
@@ -1260,16 +1266,33 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
             .to_compile_error()
             .into();
         }
+        let (act_impl_generics, act_ty_generics, act_where_clause) =
+            item_impl.generics.split_for_impl();
+        let mut bound_impl_generics = item_impl.generics.clone();
+        bound_impl_generics
+            .params
+            .push(parse_quote!(#animal_ident: #types::Animal));
+        let (bound_impl_generics, _, _) = bound_impl_generics.split_for_impl();
+        let mut bound_where_predicates = item_impl
+            .generics
+            .where_clause
+            .as_ref()
+            .map(|where_clause| where_clause.predicates.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        bound_where_predicates.push(parse_quote!(
+            #aspect_ty: #types::Aspect<<#animal_ident as #types::Animal>::State, Focus = #emit_view_ty>
+        ));
+        let bound_impl_where_clause = quote! { where #(#bound_where_predicates),* };
 
         quote! {
             #generated_act_impl
 
-            pub struct #bound_ident<A>(::core::marker::PhantomData<fn() -> A>);
+            pub struct #bound_ident #act_impl_generics(
+                ::core::marker::PhantomData<fn() -> #self_ty>
+            ) #act_where_clause;
 
-            impl<A> #types::BoundAct<A> for #bound_ident<A>
-            where
-                A: #types::Animal,
-                #aspect_ty: #types::Aspect<<A as #types::Animal>::State, Focus = #emit_view_ty>,
+            impl #bound_impl_generics #types::BoundAct<#animal_ident> for #bound_ident #act_ty_generics
+                #bound_impl_where_clause
             {
                 type Effect = #effect_ty;
                 type Aspect = #aspect_ty;
