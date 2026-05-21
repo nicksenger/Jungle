@@ -8,6 +8,9 @@ use crate::instrumentation::{ElectricGuitarArticulation, Instrument, Note};
 const TICKS_PER_BEAT: u32 = 384;
 const MIN_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(20);
 const MAX_LATE_NOTE_DROP_THRESHOLD: Duration = Duration::from_millis(120);
+const RHYTHM_AMPLITUDE_MULTIPLIER: f32 = 0.5;
+const RHYTHM_PAN: f32 = 0.5;
+const RHYTHM_VELOCITY: f32 = 37.0 / 127.0;
 
 pub struct Monad<
     I: Instrument<Articulation = A>,
@@ -94,36 +97,12 @@ where
     type Err = String;
 
     async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
-        let metronome = jungle.metronome();
-        let beat_duration = metronome.beat_duration();
-        let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
-        let rest_duration = duration_for_ticks(tick_duration, REST_TICK as u32);
-        let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
-        let phase_offset = current_phase_offset(metronome, rest_duration);
-
-        let playable_note = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: duration_for_ticks(tick_duration, NOTE_TICK as u32),
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation: A::rhythm_sustained().into(),
-        };
-
-        if phase_offset <= late_note_drop_threshold {
-            jungle
-                .rhythm_guitar()
-                .play(playable_note)
-                .await
-                .map_err(|err| err.to_string())?;
+        let timing = rhythm_timing(jungle, NOTE_TICK, REST_TICK);
+        if timing.should_play() {
+            let [note] = rhythm_notes([NOTE], &timing, A::rhythm_sustained().into());
+            play_one(jungle, note).await?;
         }
-
-        let sleep_for = rest_duration.saturating_sub(phase_offset);
-        if !sleep_for.is_zero() {
-            tokio::time::sleep(sleep_for).await;
-        }
-
+        timing.sleep_until_next_cycle().await;
         Ok(())
     }
 }
@@ -141,48 +120,13 @@ where
     type Err = String;
 
     async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
-        let metronome = jungle.metronome();
-        let beat_duration = metronome.beat_duration();
-        let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
-        let rest_duration = duration_for_ticks(tick_duration, REST_TICK as u32);
-        let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
-        let phase_offset = current_phase_offset(metronome, rest_duration);
-
-        let note_duration = duration_for_ticks(tick_duration, NOTE_TICK as u32);
-        let articulation = A::rhythm_sustained().into();
-        let playable_note_one = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_ONE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_two = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_TWO,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-
-        if phase_offset <= late_note_drop_threshold {
-            let (first, second) = tokio::join!(
-                jungle.rhythm_guitar().play(playable_note_one),
-                jungle.rhythm_guitar().play(playable_note_two)
-            );
-            first.map_err(|err| err.to_string())?;
-            second.map_err(|err| err.to_string())?;
+        let timing = rhythm_timing(jungle, NOTE_TICK, REST_TICK);
+        if timing.should_play() {
+            let [note_one, note_two] =
+                rhythm_notes([NOTE_ONE, NOTE_TWO], &timing, A::rhythm_sustained().into());
+            play_two(jungle, note_one, note_two).await?;
         }
-
-        let sleep_for = rest_duration.saturating_sub(phase_offset);
-        if !sleep_for.is_zero() {
-            tokio::time::sleep(sleep_for).await;
-        }
-
+        timing.sleep_until_next_cycle().await;
         Ok(())
     }
 }
@@ -207,59 +151,16 @@ where
     type Err = String;
 
     async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
-        let metronome = jungle.metronome();
-        let beat_duration = metronome.beat_duration();
-        let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
-        let rest_duration = duration_for_ticks(tick_duration, REST_TICK as u32);
-        let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
-        let phase_offset = current_phase_offset(metronome, rest_duration);
-
-        let note_duration = duration_for_ticks(tick_duration, NOTE_TICK as u32);
-        let articulation = A::rhythm_sustained().into();
-        let playable_note_one = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_ONE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_two = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_TWO,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_three = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_THREE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-
-        if phase_offset <= late_note_drop_threshold {
-            let (first, second, third) = tokio::join!(
-                jungle.rhythm_guitar().play(playable_note_one),
-                jungle.rhythm_guitar().play(playable_note_two),
-                jungle.rhythm_guitar().play(playable_note_three)
+        let timing = rhythm_timing(jungle, NOTE_TICK, REST_TICK);
+        if timing.should_play() {
+            let [note_one, note_two, note_three] = rhythm_notes(
+                [NOTE_ONE, NOTE_TWO, NOTE_THREE],
+                &timing,
+                A::rhythm_sustained().into(),
             );
-            first.map_err(|err| err.to_string())?;
-            second.map_err(|err| err.to_string())?;
-            third.map_err(|err| err.to_string())?;
+            play_three(jungle, note_one, note_two, note_three).await?;
         }
-
-        let sleep_for = rest_duration.saturating_sub(phase_offset);
-        if !sleep_for.is_zero() {
-            tokio::time::sleep(sleep_for).await;
-        }
-
+        timing.sleep_until_next_cycle().await;
         Ok(())
     }
 }
@@ -285,70 +186,16 @@ where
     type Err = String;
 
     async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
-        let metronome = jungle.metronome();
-        let beat_duration = metronome.beat_duration();
-        let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
-        let rest_duration = duration_for_ticks(tick_duration, REST_TICK as u32);
-        let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
-        let phase_offset = current_phase_offset(metronome, rest_duration);
-
-        let note_duration = duration_for_ticks(tick_duration, NOTE_TICK as u32);
-        let articulation = A::rhythm_sustained().into();
-        let playable_note_one = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_ONE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_two = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_TWO,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_three = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_THREE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_four = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_FOUR,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-
-        if phase_offset <= late_note_drop_threshold {
-            let (first, second, third, fourth) = tokio::join!(
-                jungle.rhythm_guitar().play(playable_note_one),
-                jungle.rhythm_guitar().play(playable_note_two),
-                jungle.rhythm_guitar().play(playable_note_three),
-                jungle.rhythm_guitar().play(playable_note_four)
+        let timing = rhythm_timing(jungle, NOTE_TICK, REST_TICK);
+        if timing.should_play() {
+            let [note_one, note_two, note_three, note_four] = rhythm_notes(
+                [NOTE_ONE, NOTE_TWO, NOTE_THREE, NOTE_FOUR],
+                &timing,
+                A::rhythm_sustained().into(),
             );
-            first.map_err(|err| err.to_string())?;
-            second.map_err(|err| err.to_string())?;
-            third.map_err(|err| err.to_string())?;
-            fourth.map_err(|err| err.to_string())?;
+            play_four(jungle, note_one, note_two, note_three, note_four).await?;
         }
-
-        let sleep_for = rest_duration.saturating_sub(phase_offset);
-        if !sleep_for.is_zero() {
-            tokio::time::sleep(sleep_for).await;
-        }
-
+        timing.sleep_until_next_cycle().await;
         Ok(())
     }
 }
@@ -375,81 +222,16 @@ where
     type Err = String;
 
     async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
-        let metronome = jungle.metronome();
-        let beat_duration = metronome.beat_duration();
-        let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
-        let rest_duration = duration_for_ticks(tick_duration, REST_TICK as u32);
-        let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
-        let phase_offset = current_phase_offset(metronome, rest_duration);
-
-        let note_duration = duration_for_ticks(tick_duration, NOTE_TICK as u32);
-        let articulation = A::rhythm_sustained().into();
-        let playable_note_one = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_ONE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_two = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_TWO,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_three = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_THREE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_four = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_FOUR,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_five = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_FIVE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-
-        if phase_offset <= late_note_drop_threshold {
-            let (first, second, third, fourth, fifth) = tokio::join!(
-                jungle.rhythm_guitar().play(playable_note_one),
-                jungle.rhythm_guitar().play(playable_note_two),
-                jungle.rhythm_guitar().play(playable_note_three),
-                jungle.rhythm_guitar().play(playable_note_four),
-                jungle.rhythm_guitar().play(playable_note_five)
+        let timing = rhythm_timing(jungle, NOTE_TICK, REST_TICK);
+        if timing.should_play() {
+            let [note_one, note_two, note_three, note_four, note_five] = rhythm_notes(
+                [NOTE_ONE, NOTE_TWO, NOTE_THREE, NOTE_FOUR, NOTE_FIVE],
+                &timing,
+                A::rhythm_sustained().into(),
             );
-            first.map_err(|err| err.to_string())?;
-            second.map_err(|err| err.to_string())?;
-            third.map_err(|err| err.to_string())?;
-            fourth.map_err(|err| err.to_string())?;
-            fifth.map_err(|err| err.to_string())?;
+            play_five(jungle, note_one, note_two, note_three, note_four, note_five).await?;
         }
-
-        let sleep_for = rest_duration.saturating_sub(phase_offset);
-        if !sleep_for.is_zero() {
-            tokio::time::sleep(sleep_for).await;
-        }
-
+        timing.sleep_until_next_cycle().await;
         Ok(())
     }
 }
@@ -488,94 +270,189 @@ where
     type Err = String;
 
     async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
-        let metronome = jungle.metronome();
-        let beat_duration = metronome.beat_duration();
-        let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
-        let rest_duration = duration_for_ticks(tick_duration, REST_TICK as u32);
-        let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
-        let phase_offset = current_phase_offset(metronome, rest_duration);
-
-        let note_duration = duration_for_ticks(tick_duration, NOTE_TICK as u32);
-        let articulation = A::rhythm_sustained().into();
-        let playable_note_one = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_ONE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_two = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_TWO,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_three = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_THREE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_four = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_FOUR,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_five = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_FIVE,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-        let playable_note_six = Note::<ElectricGuitarArticulation> {
-            n_midi: NOTE_SIX,
-            amplitude_multiplier: 0.5,
-            pan: 0.5,
-            duration: note_duration,
-            velocity: 37.0 / 127.0,
-            expression: None,
-            articulation,
-        };
-
-        if phase_offset <= late_note_drop_threshold {
-            let (first, second, third, fourth, fifth, sixth) = tokio::join!(
-                jungle.rhythm_guitar().play(playable_note_one),
-                jungle.rhythm_guitar().play(playable_note_two),
-                jungle.rhythm_guitar().play(playable_note_three),
-                jungle.rhythm_guitar().play(playable_note_four),
-                jungle.rhythm_guitar().play(playable_note_five),
-                jungle.rhythm_guitar().play(playable_note_six)
+        let timing = rhythm_timing(jungle, NOTE_TICK, REST_TICK);
+        if timing.should_play() {
+            let [note_one, note_two, note_three, note_four, note_five, note_six] = rhythm_notes(
+                [NOTE_ONE, NOTE_TWO, NOTE_THREE, NOTE_FOUR, NOTE_FIVE, NOTE_SIX],
+                &timing,
+                A::rhythm_sustained().into(),
             );
-            first.map_err(|err| err.to_string())?;
-            second.map_err(|err| err.to_string())?;
-            third.map_err(|err| err.to_string())?;
-            fourth.map_err(|err| err.to_string())?;
-            fifth.map_err(|err| err.to_string())?;
-            sixth.map_err(|err| err.to_string())?;
+            play_six(
+                jungle, note_one, note_two, note_three, note_four, note_five, note_six,
+            )
+            .await?;
         }
+        timing.sleep_until_next_cycle().await;
+        Ok(())
+    }
+}
 
-        let sleep_for = rest_duration.saturating_sub(phase_offset);
+struct RhythmTiming {
+    note_duration: Duration,
+    rest_duration: Duration,
+    phase_offset: Duration,
+    late_note_drop_threshold: Duration,
+}
+
+impl RhythmTiming {
+    fn should_play(&self) -> bool {
+        self.phase_offset <= self.late_note_drop_threshold
+    }
+
+    async fn sleep_until_next_cycle(&self) {
+        let sleep_for = self.rest_duration.saturating_sub(self.phase_offset);
         if !sleep_for.is_zero() {
             tokio::time::sleep(sleep_for).await;
         }
-
-        Ok(())
     }
+}
+
+fn rhythm_timing(jungle: &WelcomeEcosystem, note_tick: u8, rest_tick: u8) -> RhythmTiming {
+    let metronome = jungle.metronome();
+    let beat_duration = metronome.beat_duration();
+    let tick_duration = beat_duration.div_f32(TICKS_PER_BEAT as f32);
+    let note_duration = duration_for_ticks(tick_duration, note_tick as u32);
+    let rest_duration = duration_for_ticks(tick_duration, rest_tick as u32);
+    let late_note_drop_threshold = late_note_drop_threshold(beat_duration);
+    let phase_offset = current_phase_offset(metronome, rest_duration);
+    RhythmTiming {
+        note_duration,
+        rest_duration,
+        phase_offset,
+        late_note_drop_threshold,
+    }
+}
+
+fn rhythm_notes<const N: usize>(
+    midi_notes: [u8; N],
+    timing: &RhythmTiming,
+    articulation: ElectricGuitarArticulation,
+) -> [Note<ElectricGuitarArticulation>; N] {
+    midi_notes.map(|n_midi| rhythm_note(n_midi, timing.note_duration, articulation))
+}
+
+fn rhythm_note(
+    n_midi: u8,
+    duration: Duration,
+    articulation: ElectricGuitarArticulation,
+) -> Note<ElectricGuitarArticulation> {
+    Note {
+        n_midi,
+        amplitude_multiplier: RHYTHM_AMPLITUDE_MULTIPLIER,
+        pan: RHYTHM_PAN,
+        duration,
+        velocity: RHYTHM_VELOCITY,
+        expression: None,
+        articulation,
+    }
+}
+
+fn map_playback_err(
+    result: Result<(), crate::instrumentation::Error>,
+) -> Result<(), String> {
+    result.map_err(|err| err.to_string())
+}
+
+async fn play_one(
+    jungle: &WelcomeEcosystem,
+    note_one: Note<ElectricGuitarArticulation>,
+) -> Result<(), String> {
+    map_playback_err(jungle.rhythm_guitar().play(note_one).await)
+}
+
+async fn play_two(
+    jungle: &WelcomeEcosystem,
+    note_one: Note<ElectricGuitarArticulation>,
+    note_two: Note<ElectricGuitarArticulation>,
+) -> Result<(), String> {
+    let (first, second) = tokio::join!(
+        jungle.rhythm_guitar().play(note_one),
+        jungle.rhythm_guitar().play(note_two)
+    );
+    map_playback_err(first)?;
+    map_playback_err(second)
+}
+
+async fn play_three(
+    jungle: &WelcomeEcosystem,
+    note_one: Note<ElectricGuitarArticulation>,
+    note_two: Note<ElectricGuitarArticulation>,
+    note_three: Note<ElectricGuitarArticulation>,
+) -> Result<(), String> {
+    let (first, second, third) = tokio::join!(
+        jungle.rhythm_guitar().play(note_one),
+        jungle.rhythm_guitar().play(note_two),
+        jungle.rhythm_guitar().play(note_three)
+    );
+    map_playback_err(first)?;
+    map_playback_err(second)?;
+    map_playback_err(third)
+}
+
+async fn play_four(
+    jungle: &WelcomeEcosystem,
+    note_one: Note<ElectricGuitarArticulation>,
+    note_two: Note<ElectricGuitarArticulation>,
+    note_three: Note<ElectricGuitarArticulation>,
+    note_four: Note<ElectricGuitarArticulation>,
+) -> Result<(), String> {
+    let (first, second, third, fourth) = tokio::join!(
+        jungle.rhythm_guitar().play(note_one),
+        jungle.rhythm_guitar().play(note_two),
+        jungle.rhythm_guitar().play(note_three),
+        jungle.rhythm_guitar().play(note_four)
+    );
+    map_playback_err(first)?;
+    map_playback_err(second)?;
+    map_playback_err(third)?;
+    map_playback_err(fourth)
+}
+
+async fn play_five(
+    jungle: &WelcomeEcosystem,
+    note_one: Note<ElectricGuitarArticulation>,
+    note_two: Note<ElectricGuitarArticulation>,
+    note_three: Note<ElectricGuitarArticulation>,
+    note_four: Note<ElectricGuitarArticulation>,
+    note_five: Note<ElectricGuitarArticulation>,
+) -> Result<(), String> {
+    let (first, second, third, fourth, fifth) = tokio::join!(
+        jungle.rhythm_guitar().play(note_one),
+        jungle.rhythm_guitar().play(note_two),
+        jungle.rhythm_guitar().play(note_three),
+        jungle.rhythm_guitar().play(note_four),
+        jungle.rhythm_guitar().play(note_five)
+    );
+    map_playback_err(first)?;
+    map_playback_err(second)?;
+    map_playback_err(third)?;
+    map_playback_err(fourth)?;
+    map_playback_err(fifth)
+}
+
+async fn play_six(
+    jungle: &WelcomeEcosystem,
+    note_one: Note<ElectricGuitarArticulation>,
+    note_two: Note<ElectricGuitarArticulation>,
+    note_three: Note<ElectricGuitarArticulation>,
+    note_four: Note<ElectricGuitarArticulation>,
+    note_five: Note<ElectricGuitarArticulation>,
+    note_six: Note<ElectricGuitarArticulation>,
+) -> Result<(), String> {
+    let (first, second, third, fourth, fifth, sixth) = tokio::join!(
+        jungle.rhythm_guitar().play(note_one),
+        jungle.rhythm_guitar().play(note_two),
+        jungle.rhythm_guitar().play(note_three),
+        jungle.rhythm_guitar().play(note_four),
+        jungle.rhythm_guitar().play(note_five),
+        jungle.rhythm_guitar().play(note_six)
+    );
+    map_playback_err(first)?;
+    map_playback_err(second)?;
+    map_playback_err(third)?;
+    map_playback_err(fourth)?;
+    map_playback_err(fifth)?;
+    map_playback_err(sixth)
 }
 
 fn duration_for_ticks(tick_duration: Duration, ticks: u32) -> Duration {
