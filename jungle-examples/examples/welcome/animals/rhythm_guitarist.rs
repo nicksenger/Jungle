@@ -1,12 +1,9 @@
 use jungle_sdk::effect;
 use jungle_sdk::prelude::*;
-use num::U255;
-use std::time::Duration;
 
 use crate::ecosystem::WelcomeEcosystem;
 use crate::flow;
 use crate::instrumentation::{ElectricGuitarArticulation, Instrument, Note};
-use crate::score::Kind;
 
 const TICKS_PER_SECOND: f32 = 787.2;
 
@@ -71,8 +68,7 @@ impl<const NOTE: u8, const D_TICK: u8> Effect<WelcomeEcosystem> for Monad<NOTE, 
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, note: Self::In) -> Result<Self::Out, Self::Err> {
-        let bpm = jungle.bpm();
+    async fn effect(jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
         let playable_note = Note {
             n_midi: NOTE,
             amplitude_multiplier: 0.5,
@@ -111,7 +107,7 @@ impl<const D_TICK: u8> Effect<WelcomeEcosystem> for Pause<D_TICK> {
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, note: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(_jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
         tokio::time::sleep(std::time::Duration::from_secs_f32(
             D_TICK as f32 * TICKS_PER_SECOND,
         ))
@@ -128,26 +124,24 @@ impl Act for Probe {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
+    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("probe should succeed");
     }
 }
 
 pub struct EProbe;
 #[effect(id = 503)]
-impl Effect<WelcomeEcosystem> for Eprobe {
+impl Effect<WelcomeEcosystem> for EProbe {
     type In = ();
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &WelcomeEcosystem, note: Self::In) -> Result<Self::Out, Self::Err> {
-        tokio::time::sleep(std::time::Duration::from_secs_f32(
-            D_TICK as f32 * TICKS_PER_SECOND,
-        ))
-        .await;
-
+    async fn effect(_jungle: &WelcomeEcosystem, _note: Self::In) -> Result<Self::Out, Self::Err> {
         Ok(())
     }
 }
