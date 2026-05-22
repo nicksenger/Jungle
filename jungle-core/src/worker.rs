@@ -1,6 +1,8 @@
 use crate::runner::{JungleRunner, RunnerAdvance};
 use futures::channel::mpsc;
 use futures::channel::oneshot;
+use futures::stream::FuturesUnordered;
+use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
@@ -10,12 +12,13 @@ use jungle_types::{
     Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
+use tokio::time::timeout;
 use tokio::time::Instant;
 use typosaurus::collections::list;
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
@@ -23,6 +26,7 @@ use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const OWNER_LEASE_TTL_MS: i64 = 30_000;
+const MAX_IN_FLIGHT_JOURNEYS: usize = 1;
 
 fn heartbeat_interval_for_lease_ttl(lease_ttl_ms: i64) -> Duration {
     // Refresh at ~3x faster than expiration to keep ownership stable without hot-looping.
@@ -34,6 +38,7 @@ pub struct JungleWorker<T> {
     client: Box<dyn JungleClient>,
     runner: JungleRunner<T>,
     owner_lease_ttl_ms: i64,
+    max_in_flight_journeys: usize,
 }
 
 impl<T> JungleWorker<T>
@@ -52,11 +57,17 @@ where
             client: Box::new(client),
             runner: JungleRunner::new(jungle),
             owner_lease_ttl_ms: OWNER_LEASE_TTL_MS,
+            max_in_flight_journeys: MAX_IN_FLIGHT_JOURNEYS,
         }
     }
 
     pub fn with_owner_lease_ttl_ms(mut self, owner_lease_ttl_ms: i64) -> Self {
         self.owner_lease_ttl_ms = owner_lease_ttl_ms.max(0);
+        self
+    }
+
+    pub fn with_max_in_flight_journeys(mut self, max_in_flight_journeys: usize) -> Self {
+        self.max_in_flight_journeys = max_in_flight_journeys.max(1);
         self
     }
 
@@ -130,11 +141,22 @@ where
         });
 
         let mut suspended: HashMap<Uuid, Box<dyn SuspendedJourney<T>>> = HashMap::new();
+        let mut active_journeys: HashSet<Uuid> = HashSet::new();
+        let mut pending_wakes = VecDeque::<Uuid>::new();
+        let mut pending_wake_ids = HashSet::<Uuid>::new();
+        let mut in_flight: FuturesUnordered<InFlightFuture<'_, T>> = FuturesUnordered::new();
         let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
 
         loop {
-            if !suspended.is_empty() && Instant::now() >= next_heartbeat_at {
+            if (!suspended.is_empty() || !active_journeys.is_empty())
+                && Instant::now() >= next_heartbeat_at
+            {
                 for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
+                    self.client
+                        .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
+                        .await?;
+                }
+                for journey_id in active_journeys.iter().copied() {
                     self.client
                         .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
                         .await?;
@@ -145,129 +167,235 @@ where
             let _ = self.client.poll_timers().await?;
 
             if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
-                if let Some(mut journey) = suspended.remove(&wake.journey_id) {
-                    match journey.resume(&self.runner, tx.clone()).await? {
-                        SuspendedOutcome::Completed => {
-                            self.client.complete_journey(wake.journey_id).await?;
-                        }
-                        SuspendedOutcome::Sleeping {
-                            wake_at_unix_ms,
-                            node_id: _,
-                        } => {
-                            let timer_id = Uuid::new_v4();
-                            self.client
-                                .schedule_sleep_timer(wake.journey_id, timer_id, wake_at_unix_ms)
-                                .await?;
-                            self.client
-                                .heartbeat_journey_lease(
-                                    wake.journey_id,
-                                    owner_id,
-                                    self.owner_lease_ttl_ms,
-                                )
-                                .await?;
-                            suspended.insert(wake.journey_id, journey);
-                        }
-                    }
+                if !pending_wake_ids.contains(&wake.journey_id) {
+                    pending_wake_ids.insert(wake.journey_id);
+                    pending_wakes.push_back(wake.journey_id);
                 }
             }
 
-            match self.client.poll_work(supported_animals.clone()).await? {
-                Some(Work::StartJourney {
+            while in_flight.len() < self.max_in_flight_journeys {
+                if let Some(wake_journey_id) = pending_wakes.pop_front() {
+                    pending_wake_ids.remove(&wake_journey_id);
+                    if active_journeys.contains(&wake_journey_id) {
+                        continue;
+                    }
+                    if let Some(journey) = suspended.remove(&wake_journey_id) {
+                        active_journeys.insert(wake_journey_id);
+                        in_flight.push(run_resume_suspended(
+                            wake_journey_id,
+                            journey,
+                            &self.runner,
+                            tx.clone(),
+                        ));
+                    }
+                    continue;
+                }
+
+                let Some(work) = self.client.poll_work(supported_animals.clone()).await? else {
+                    break;
+                };
+
+                let (journey_id, animal_id, generation, seed) = match work {
+                    Work::StartJourney {
+                        journey_id,
+                        animal_id,
+                        generation,
+                        seed,
+                    } => (journey_id, animal_id, generation, seed),
+                    Work::ResumeJourney {
+                        journey_id,
+                        animal_id,
+                        generation,
+                        seed,
+                    } => (journey_id, animal_id, generation, seed),
+                };
+
+                if active_journeys.contains(&journey_id) || suspended.contains_key(&journey_id) {
+                    continue;
+                }
+
+                let history = self.client.journey_history(journey_id).await?;
+                active_journeys.insert(journey_id);
+                in_flight.push(run_claimed_work(
                     journey_id,
                     animal_id,
                     generation,
                     seed,
-                }) => {
-                    let history = self.client.journey_history(journey_id).await?;
-                    match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
-                        animal_id,
-                        generation,
-                        seed,
-                        journey_id,
-                        history,
-                        &self.runner,
-                        tx.clone(),
-                    )
-                    .await?
-                    {
-                        JourneyStartOutcome::NotMatched => {
-                            return Err(ExecutorError::InputDeserialize(format!(
-                                "unknown animal: id={animal_id}, generation={generation}"
-                            )));
-                        }
-                        JourneyStartOutcome::Completed => {
-                            self.client.complete_journey(journey_id).await?;
-                        }
-                        JourneyStartOutcome::Sleeping {
-                            wake_at_unix_ms,
-                            journey,
-                        } => {
-                            let timer_id = Uuid::new_v4();
-                            self.client
-                                .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
-                                .await?;
-                            self.client
-                                .heartbeat_journey_lease(
-                                    journey_id,
-                                    owner_id,
-                                    self.owner_lease_ttl_ms,
-                                )
-                                .await?;
-                            suspended.insert(journey_id, journey);
-                        }
-                    }
-                }
-                Some(Work::ResumeJourney {
-                    journey_id,
-                    animal_id,
-                    generation,
-                    seed,
-                }) => {
-                    let history = self.client.journey_history(journey_id).await?;
-                    match <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
-                        animal_id,
-                        generation,
-                        seed,
-                        journey_id,
-                        history,
-                        &self.runner,
-                        tx.clone(),
-                    )
-                    .await?
-                    {
-                        JourneyStartOutcome::NotMatched => {
-                            return Err(ExecutorError::InputDeserialize(format!(
-                                "unknown animal: id={animal_id}, generation={generation}"
-                            )));
-                        }
-                        JourneyStartOutcome::Completed => {
-                            self.client.complete_journey(journey_id).await?;
-                        }
-                        JourneyStartOutcome::Sleeping {
-                            wake_at_unix_ms,
-                            journey,
-                        } => {
-                            let timer_id = Uuid::new_v4();
-                            self.client
-                                .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
-                                .await?;
-                            self.client
-                                .heartbeat_journey_lease(
-                                    journey_id,
-                                    owner_id,
-                                    self.owner_lease_ttl_ms,
-                                )
-                                .await?;
-                            suspended.insert(journey_id, journey);
-                        }
-                    }
-                }
-                None => {}
+                    history,
+                    &self.runner,
+                    tx.clone(),
+                ));
             }
 
-            sleep(Duration::from_millis(200)).await;
+            while let Some(result) = in_flight.next().now_or_never().flatten() {
+                handle_in_flight_result(
+                    result?,
+                    &mut active_journeys,
+                    &mut suspended,
+                    self.client.as_ref(),
+                    owner_id,
+                    self.owner_lease_ttl_ms,
+                )
+                .await?;
+            }
+
+            if !in_flight.is_empty() {
+                if let Ok(Some(result)) = timeout(Duration::from_millis(25), in_flight.next()).await
+                {
+                    handle_in_flight_result(
+                        result?,
+                        &mut active_journeys,
+                        &mut suspended,
+                        self.client.as_ref(),
+                        owner_id,
+                        self.owner_lease_ttl_ms,
+                    )
+                    .await?;
+                }
+            } else {
+                sleep(Duration::from_millis(200)).await;
+            }
         }
     }
+}
+
+async fn handle_in_flight_result<T>(
+    result: InFlightJourneyResult<T>,
+    active_journeys: &mut HashSet<Uuid>,
+    suspended: &mut HashMap<Uuid, Box<dyn SuspendedJourney<T>>>,
+    client: &dyn JungleClient,
+    owner_id: Uuid,
+    owner_lease_ttl_ms: i64,
+) -> Result<(), ExecutorError> {
+    match result {
+        InFlightJourneyResult::ClaimedWork {
+            journey_id,
+            animal_id,
+            generation,
+            outcome,
+        } => {
+            active_journeys.remove(&journey_id);
+            match outcome {
+                JourneyStartOutcome::NotMatched => {
+                    return Err(ExecutorError::InputDeserialize(format!(
+                        "unknown animal: id={animal_id}, generation={generation}"
+                    )));
+                }
+                JourneyStartOutcome::Completed => {
+                    client.complete_journey(journey_id).await?;
+                }
+                JourneyStartOutcome::Sleeping {
+                    wake_at_unix_ms,
+                    journey,
+                } => {
+                    let timer_id = Uuid::new_v4();
+                    client
+                        .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
+                        .await?;
+                    client
+                        .heartbeat_journey_lease(journey_id, owner_id, owner_lease_ttl_ms)
+                        .await?;
+                    suspended.insert(journey_id, journey);
+                }
+            }
+        }
+        InFlightJourneyResult::ResumedWake {
+            journey_id,
+            journey,
+            outcome,
+        } => {
+            active_journeys.remove(&journey_id);
+            match outcome {
+                SuspendedOutcome::Completed => {
+                    client.complete_journey(journey_id).await?;
+                }
+                SuspendedOutcome::Sleeping {
+                    wake_at_unix_ms,
+                    node_id: _,
+                } => {
+                    let timer_id = Uuid::new_v4();
+                    client
+                        .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
+                        .await?;
+                    client
+                        .heartbeat_journey_lease(journey_id, owner_id, owner_lease_ttl_ms)
+                        .await?;
+                    suspended.insert(journey_id, journey);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+type InFlightFuture<'a, T> =
+    Pin<Box<dyn Future<Output = Result<InFlightJourneyResult<T>, ExecutorError>> + Send + 'a>>;
+
+enum InFlightJourneyResult<T> {
+    ClaimedWork {
+        journey_id: Uuid,
+        animal_id: u32,
+        generation: u32,
+        outcome: JourneyStartOutcome<T>,
+    },
+    ResumedWake {
+        journey_id: Uuid,
+        journey: Box<dyn SuspendedJourney<T>>,
+        outcome: SuspendedOutcome,
+    },
+}
+
+fn run_claimed_work<'a, T>(
+    journey_id: Uuid,
+    animal_id: u32,
+    generation: u32,
+    seed: Vec<u8>,
+    history: Vec<RunnerOut>,
+    runner: &'a JungleRunner<T>,
+    tx: RunnerChannelTx,
+) -> InFlightFuture<'a, T>
+where
+    T: Ecosystem + Send + Sync + 'static,
+    T::Animals: Animals,
+    <T::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<T::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<T::Animals>: SupportedAnimalGenerations<T>,
+{
+    Box::pin(async move {
+        let outcome = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::resume_by_animal(
+            animal_id, generation, seed, journey_id, history, runner, tx,
+        )
+        .await?;
+        Ok(InFlightJourneyResult::ClaimedWork {
+            journey_id,
+            animal_id,
+            generation,
+            outcome,
+        })
+    })
+}
+
+fn run_resume_suspended<'a, T>(
+    journey_id: Uuid,
+    mut journey: Box<dyn SuspendedJourney<T>>,
+    runner: &'a JungleRunner<T>,
+    tx: RunnerChannelTx,
+) -> InFlightFuture<'a, T>
+where
+    T: Ecosystem + Send + Sync + 'static,
+    T::Animals: Animals,
+    <T::Animals as Animals>::List: FlattenNodes,
+    SPFlatten<<T::Animals as Animals>::List>: StripAnimalHeaders,
+    AnimalSet<T::Animals>: SupportedAnimalGenerations<T>,
+{
+    Box::pin(async move {
+        let outcome = journey.resume(runner, tx).await?;
+        Ok(InFlightJourneyResult::ResumedWake {
+            journey_id,
+            journey,
+            outcome,
+        })
+    })
 }
 
 pub enum JourneyStartOutcome<T> {

@@ -291,6 +291,24 @@ impl<J> Effect<J> for RunnerStepTwoEffect {
     }
 }
 
+pub struct SlowRunnerEffect;
+#[jungle::effect(id = 99)]
+impl<J> Effect<J> for SlowRunnerEffect {
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            Ok(1)
+        }
+    }
+}
+
 pub struct RunnerKeepGoing;
 impl LoopCondition<RunnerState> for RunnerKeepGoing {
     type Arg = ();
@@ -335,6 +353,20 @@ impl Act for RunnerStepTwoSpec {
     }
 }
 
+pub struct SlowRunnerStepSpec;
+#[jungle::act]
+impl Act for SlowRunnerStepSpec {
+    type Effect = SlowRunnerEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.0 += output.expect("slow runner step should succeed");
+    }
+}
+
 #[derive(Flow)]
 pub struct RunnerJourneyTemplate(
     While<
@@ -347,6 +379,9 @@ pub struct RunnerJourneyTemplate(
     >,
 );
 
+#[derive(Flow)]
+pub struct SlowRunnerJourneyTemplate(Step<SlowRunnerStepSpec>);
+
 pub struct RunnerAnimal;
 
 #[jungle::animal(id = 16, generation = 0)]
@@ -356,6 +391,15 @@ impl Animal for RunnerAnimal {
     type Journey = RunnerJourneyTemplate;
 }
 
+pub struct SlowRunnerAnimal;
+
+#[jungle::animal(id = 17, generation = 0)]
+impl Animal for SlowRunnerAnimal {
+    type State = RunnerState;
+    type Seed = RunnerState;
+    type Journey = SlowRunnerJourneyTemplate;
+}
+
 #[derive(Animals)]
 pub struct RunnerAnimals(RunnerAnimal);
 
@@ -363,6 +407,15 @@ pub struct RunnerZoo;
 impl Ecosystem for RunnerZoo {
     const NAME: &'static str = "runner-zoo";
     type Animals = RunnerAnimals;
+}
+
+#[derive(Animals)]
+pub struct ConcurrentRunnerAnimals(SlowRunnerAnimal);
+
+pub struct ConcurrentRunnerZoo;
+impl Ecosystem for ConcurrentRunnerZoo {
+    const NAME: &'static str = "concurrent-runner-zoo";
+    type Animals = ConcurrentRunnerAnimals;
 }
 
 #[test]
@@ -939,6 +992,115 @@ async fn jungle_worker_polls_and_completes_start_flow_work() {
     assert_eq!(success_calls.load(Ordering::Relaxed), 2);
     assert_eq!(failure_calls.load(Ordering::Relaxed), 0);
     assert_eq!(flow_complete_calls.load(Ordering::Relaxed), 1);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[tokio::test]
+async fn jungle_worker_can_run_multiple_journeys_in_parallel_when_configured() {
+    use jungle_sdk::client::MockClient;
+    use jungle_sdk::core::JungleWorker;
+    use jungle_sdk::types::Work;
+    use std::time::Duration;
+
+    let history_calls = Arc::new(AtomicUsize::new(0));
+    let flow_complete_calls = Arc::new(AtomicUsize::new(0));
+    let history_calls_at_first_complete = Arc::new(AtomicUsize::new(usize::MAX));
+    let poll_idx = Arc::new(AtomicUsize::new(0));
+    let seed = postcard::to_allocvec(&RunnerState(0)).expect("runner seed should serialize");
+    let first_journey_id = Uuid::from_u128(201);
+    let second_journey_id = Uuid::from_u128(202);
+
+    let client = MockClient::builder()
+        .on_poll_work({
+            let poll_idx = Arc::clone(&poll_idx);
+            let seed = seed.clone();
+            move |_| {
+                let poll_idx = Arc::clone(&poll_idx);
+                let seed = seed.clone();
+                async move {
+                    match poll_idx.fetch_add(1, Ordering::Relaxed) {
+                        0 => Ok(Some(Work::StartJourney {
+                            journey_id: first_journey_id,
+                            animal_id: 17,
+                            generation: 0,
+                            seed: seed.clone(),
+                        })),
+                        1 => Ok(Some(Work::StartJourney {
+                            journey_id: second_journey_id,
+                            animal_id: 17,
+                            generation: 0,
+                            seed: seed.clone(),
+                        })),
+                        _ => Ok(None),
+                    }
+                }
+            }
+        })
+        .on_journey_history({
+            let history_calls = Arc::clone(&history_calls);
+            move |_| {
+                let history_calls = Arc::clone(&history_calls);
+                async move {
+                    history_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(Vec::new())
+                }
+            }
+        })
+        .on_flow_complete({
+            let flow_complete_calls = Arc::clone(&flow_complete_calls);
+            let history_calls = Arc::clone(&history_calls);
+            let history_calls_at_first_complete = Arc::clone(&history_calls_at_first_complete);
+            move |_| {
+                let flow_complete_calls = Arc::clone(&flow_complete_calls);
+                let history_calls = Arc::clone(&history_calls);
+                let history_calls_at_first_complete = Arc::clone(&history_calls_at_first_complete);
+                async move {
+                    let prior = flow_complete_calls.fetch_add(1, Ordering::Relaxed);
+                    if prior == 0 {
+                        let _ = history_calls_at_first_complete.compare_exchange(
+                            usize::MAX,
+                            history_calls.load(Ordering::Relaxed),
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        );
+                    }
+                    Ok(())
+                }
+            }
+        })
+        .build();
+
+    let worker = JungleWorker::new(ConcurrentRunnerZoo, client).with_max_in_flight_journeys(2);
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let finished = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if flow_complete_calls.load(Ordering::Relaxed) >= 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    if finished.is_err() {
+        panic!(
+            "worker did not complete both journeys: history_calls={}, flow_complete_calls={}",
+            history_calls.load(Ordering::Relaxed),
+            flow_complete_calls.load(Ordering::Relaxed),
+        );
+    }
+
+    assert_eq!(flow_complete_calls.load(Ordering::Relaxed), 2);
+    assert_eq!(history_calls.load(Ordering::Relaxed), 2);
+    assert_eq!(
+        history_calls_at_first_complete.load(Ordering::Relaxed),
+        2,
+        "second journey should be claimed before first completion when parallelism > 1",
+    );
 
     worker_handle.abort();
     let _ = worker_handle.await;
