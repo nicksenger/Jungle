@@ -1668,10 +1668,12 @@ where
     container(
         container(graph_widget)
             .width(Length::Fill)
-            .height(Length::Fill),
+            .height(Length::Fill)
+            .clip(true),
     )
     .width(Length::Fill)
     .height(Length::Fill)
+    .clip(true)
     .style(graph_panel_style)
     .into()
 }
