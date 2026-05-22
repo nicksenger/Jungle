@@ -2349,10 +2349,14 @@ impl DefaultThemeState {
         cx: &ClusterViewCtx<'_>,
         now: Instant,
     ) -> bool {
-        if cx.successor_runtime_ids.is_empty() {
+        if !matches!(cx.kind, ClusterKind::While | ClusterKind::Transparent) {
             return false;
         }
-        if !matches!(cx.kind, ClusterKind::While | ClusterKind::Transparent) {
+
+        let Phase::Live(live) = cx.phase else {
+            return false;
+        };
+        if live.has_running {
             return false;
         }
 
@@ -2362,16 +2366,6 @@ impl DefaultThemeState {
             .map(|visual| visual.expanded && visual.border.to == cluster_border_color_completed())
             .unwrap_or(false);
         if !should_collapse {
-            return false;
-        }
-
-        let successor_pending = cx.successor_runtime_ids.iter().any(|runtime_id| {
-            matches!(
-                self.effective_node_target(*runtime_id),
-                RuntimeState::Pending
-            )
-        });
-        if !successor_pending {
             return false;
         }
 
@@ -3485,9 +3479,17 @@ mod tests {
         let successor_pending = successor_completed + Duration::from_millis(1);
         assert!(state.update_node_state(95, RuntimeState::Pending, successor_pending));
 
+        let collapse_cx = ClusterViewCtx {
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: true,
+            }),
+            ..cx.clone()
+        };
         assert!(
             state.maybe_collapse_completed_cluster_for_pending_successor(
-                &cx,
+                &collapse_cx,
                 successor_pending + Duration::from_millis(1)
             )
         );
@@ -3497,5 +3499,56 @@ mod tests {
             .expect("cluster visual should exist");
         assert!(!visual.expanded);
         assert_eq!(visual.border.to, cluster_border_color_gray());
+    }
+
+    #[test]
+    fn completed_cluster_does_not_recollapse_while_still_running() {
+        let mut state = DefaultThemeState {
+            node_visuals: HashMap::new(),
+            condition_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
+        };
+
+        let started_at = Instant::now();
+        let cx = ClusterViewCtx {
+            cluster_id: 33,
+            cluster_index: 0,
+            kind: ClusterKind::While,
+            label: "while: loop",
+            metadata: None,
+            parent_cluster_id: None,
+            depth: 0,
+            member_display_ids: &[],
+            entry_runtime_ids: vec![10],
+            member_runtime_ids: vec![10, 11],
+            successor_runtime_ids: vec![22],
+            phase: Phase::Live(ClusterLive {
+                has_running: true,
+                has_failed: false,
+                has_completed: true,
+            }),
+        };
+        state.register_cluster(&cx, started_at);
+        assert!(state.update_clusters_for_effect_input(10, started_at + Duration::from_millis(1)));
+        assert!(state.update_clusters_for_effect_input(22, started_at + Duration::from_millis(2)));
+
+        assert!(
+            !state.maybe_collapse_completed_cluster_for_pending_successor(
+                &cx,
+                started_at + Duration::from_millis(3)
+            )
+        );
+        assert!(
+            state
+                .cluster_visuals
+                .get(&33)
+                .expect("cluster visual should exist")
+                .expanded
+        );
     }
 }
