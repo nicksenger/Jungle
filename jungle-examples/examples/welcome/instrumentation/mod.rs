@@ -18,7 +18,7 @@ pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation, Pick, Pluc
 pub use hihat::{Chick, HiHat, HiHatArticulation};
 pub use kick_drum::{Kick, KickDrum, KickDrumArticulation};
 pub use snare_drum::{Crack, SnareDrum, SnareDrumArticulation};
-pub use toms::{Toms, TomsArticulation};
+pub use toms::{Tom, Toms, TomsArticulation};
 pub use vocals::{Sing, Vocals, VocalsArticulation};
 
 #[derive(Debug, thiserror::Error)]

@@ -3,7 +3,7 @@ use jungle_sdk::prelude::*;
 use crate::{
     animals::WelcomeAnimals,
     audio::AudioHandle,
-    instrumentation::{Bass, Cymbal, ElectricGuitar, HiHat, KickDrum, SnareDrum, Vocals},
+    instrumentation::{Bass, Cymbal, ElectricGuitar, HiHat, KickDrum, SnareDrum, Toms, Vocals},
     metronome::Metronome,
 };
 
@@ -14,6 +14,7 @@ pub struct TheJungle {
     hihat: HiHat,
     kick_drum: KickDrum,
     snare_drum: SnareDrum,
+    toms: Toms,
     cymbal: Cymbal,
     bpm: f32,
     metronome: Metronome,
@@ -28,6 +29,7 @@ impl TheJungle {
             hihat: HiHat::new(audio_handle.clone()),
             kick_drum: KickDrum::new(audio_handle.clone()),
             snare_drum: SnareDrum::new(audio_handle.clone()),
+            toms: Toms::new(audio_handle.clone()),
             cymbal: Cymbal::new(audio_handle),
             bpm,
             metronome: Metronome::spawn(bpm),
@@ -64,6 +66,10 @@ impl TheJungle {
 
     pub fn cymbal(&self) -> &Cymbal {
         &self.cymbal
+    }
+
+    pub fn toms(&self) -> &Toms {
+        &self.toms
     }
 
     pub fn metronome(&self) -> &Metronome {
@@ -115,5 +121,11 @@ impl<'a> From<&'a TheJungle> for &'a SnareDrum {
 impl<'a> From<&'a TheJungle> for &'a Cymbal {
     fn from(ecosystem: &'a TheJungle) -> Self {
         ecosystem.cymbal()
+    }
+}
+
+impl<'a> From<&'a TheJungle> for &'a Toms {
+    fn from(ecosystem: &'a TheJungle) -> Self {
+        ecosystem.toms()
     }
 }
