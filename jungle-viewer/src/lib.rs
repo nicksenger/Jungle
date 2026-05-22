@@ -20,7 +20,7 @@ const WINDOW_HEIGHT: f32 = 900.0;
 const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-viewer";
-const DEFAULT_CLUSTER_FILL: Color = Color::TRANSPARENT;
+const DEFAULT_CLUSTER_FILL: Color = Color::from_rgba8(20, 46, 30, 0.14);
 const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_BORDER_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const ANIMATION_TICK: Duration = Duration::from_millis(16);
@@ -2618,6 +2618,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
             (false, cluster_border_color_gray())
         };
 
+        let fill = cluster_overlay_fill_color(cx.kind);
         let overlay = container(
             container(text(cx.label.to_string()).size(11).color(border_color))
                 .padding([4, 8])
@@ -2634,7 +2635,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         .align_x(iced::alignment::Horizontal::Left)
         .align_y(iced::alignment::Vertical::Top)
         .style(move |_theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(Color::TRANSPARENT)),
+            background: Some(iced::Background::Color(fill)),
             border: iced::border::rounded(10).color(border_color).width(2.0),
             text_color: Some(border_color),
             ..Default::default()
@@ -2644,7 +2645,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         if expanded {
             ClusterView::Expanded {
                 overlay: Some(overlay),
-                fill: Color::TRANSPARENT,
+                fill,
             }
         } else {
             ClusterView::Collapsed {
@@ -2865,6 +2866,13 @@ fn cluster_fill_color(index: usize) -> Color {
         .ok()
         .and_then(|colors| colors.get(index).copied())
         .unwrap_or(DEFAULT_CLUSTER_FILL)
+}
+
+fn cluster_overlay_fill_color(kind: ClusterKind) -> Color {
+    match kind {
+        ClusterKind::While => Color::from_rgba8(20, 46, 30, 0.14),
+        ClusterKind::Transparent => Color::from_rgba8(20, 46, 30, 0.08),
+    }
 }
 
 fn jungle_text_base() -> Color {
