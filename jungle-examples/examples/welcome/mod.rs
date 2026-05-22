@@ -66,29 +66,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let args = parse_cli_args()?;
     if args.headless {
-        return run_headless(args.bpm, args.mute, args.omit);
+        return run_headless(args.bpm, args.mute, args.enabled_animals);
     }
-    run_with_ui(args.bpm, args.mute, args.omit)
+    run_with_ui(args.bpm, args.mute, args.enabled_animals)
 }
 
 struct CliArgs {
     bpm: f32,
     headless: bool,
     mute: bool,
-    omit: BTreeSet<OmittedAnimal>,
+    enabled_animals: BTreeSet<SelectedAnimal>,
 }
 
 fn run_with_ui(
     bpm: f32,
     mute: bool,
-    omit: BTreeSet<OmittedAnimal>,
+    enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
     let ui_shutdown = ui::ShutdownFlag::new();
     let shutdown_for_runtime = ui_shutdown.clone();
     let runtime_thread = std::thread::spawn(move || {
-        run_runtime_thread(bpm, mute, omit, shutdown_for_runtime, setup_tx, started_rx)
+        run_runtime_thread(
+            bpm,
+            mute,
+            enabled_animals,
+            shutdown_for_runtime,
+            setup_tx,
+            started_rx,
+        )
     });
 
     let setup_result = setup_rx.recv().map_err(|err| {
@@ -126,7 +133,7 @@ fn run_with_ui(
 fn run_headless(
     bpm: f32,
     mute: bool,
-    omit: BTreeSet<OmittedAnimal>,
+    enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(bpm, mute, "running welcome example in headless mode");
 
@@ -135,7 +142,14 @@ fn run_headless(
     let ui_shutdown = ui::ShutdownFlag::new();
     let shutdown_for_runtime = ui_shutdown.clone();
     let runtime_thread = std::thread::spawn(move || {
-        run_runtime_thread(bpm, mute, omit, shutdown_for_runtime, setup_tx, started_rx)
+        run_runtime_thread(
+            bpm,
+            mute,
+            enabled_animals,
+            shutdown_for_runtime,
+            setup_tx,
+            started_rx,
+        )
     });
 
     let setup_result = setup_rx.recv().map_err(|err| {
@@ -187,7 +201,7 @@ struct UiSetup {
 fn run_runtime_thread(
     bpm: f32,
     mute: bool,
-    omit: BTreeSet<OmittedAnimal>,
+    enabled_animals: BTreeSet<SelectedAnimal>,
     ui_shutdown: ui::ShutdownFlag,
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
     started_rx: std::sync::mpsc::Receiver<Instant>,
@@ -224,17 +238,15 @@ fn run_runtime_thread(
             error!(error = %err, "failed serializing journey seed");
             err.to_string()
         })?;
-        if !omit.is_empty() {
-            let omitted = omit
+        if enabled_animals.len() < SelectedAnimal::all().len() {
+            let selected = enabled_animals
                 .iter()
                 .map(|animal| animal.as_cli_name())
                 .collect::<Vec<_>>();
-            info!(animals = ?omitted, "omitting requested welcome animals");
+            info!(animals = ?selected, "running welcome with selected animals");
         }
         let journeys = ui::JourneyIds {
-            lead_vocalist: if omit.contains(&OmittedAnimal::LeadVocalist) {
-                None
-            } else {
+            lead_vocalist: if enabled_animals.contains(&SelectedAnimal::LeadVocalist) {
                 Some(
                     client
                         .start_journey::<LeadVocalist>(seed.clone())
@@ -244,10 +256,10 @@ fn run_runtime_thread(
                             err.to_string()
                         })?,
                 )
-            },
-            lead_guitarist: if omit.contains(&OmittedAnimal::LeadGuitarist) {
-                None
             } else {
+                None
+            },
+            lead_guitarist: if enabled_animals.contains(&SelectedAnimal::LeadGuitarist) {
                 Some(
                     client
                         .start_journey::<LeadGuitarist>(seed.clone())
@@ -257,10 +269,10 @@ fn run_runtime_thread(
                             err.to_string()
                         })?,
                 )
-            },
-            rhythm_guitarist: if omit.contains(&OmittedAnimal::RhythmGuitarist) {
-                None
             } else {
+                None
+            },
+            rhythm_guitarist: if enabled_animals.contains(&SelectedAnimal::RhythmGuitarist) {
                 Some(
                     client
                         .start_journey::<RhythmGuitarist>(seed.clone())
@@ -270,10 +282,10 @@ fn run_runtime_thread(
                             err.to_string()
                         })?,
                 )
-            },
-            bass: if omit.contains(&OmittedAnimal::Bassist) {
-                None
             } else {
+                None
+            },
+            bass: if enabled_animals.contains(&SelectedAnimal::Bassist) {
                 Some(
                     client
                         .start_journey::<BassAnimal>(seed.clone())
@@ -283,14 +295,16 @@ fn run_runtime_thread(
                             err.to_string()
                         })?,
                 )
-            },
-            drums: if omit.contains(&OmittedAnimal::Drummer) {
-                None
             } else {
+                None
+            },
+            drums: if enabled_animals.contains(&SelectedAnimal::Drummer) {
                 Some(client.start_journey::<Drums>(seed).await.map_err(|err| {
                     error!(error = %err, "failed starting drums journey");
                     err.to_string()
                 })?)
+            } else {
+                None
             },
         };
 
@@ -538,7 +552,8 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let mut bpm = DEFAULT_BPM;
     let mut headless = false;
     let mut mute = false;
-    let mut omit = BTreeSet::new();
+    let mut enabled_animals = SelectedAnimal::all();
+    let mut animals_flag_seen = false;
 
     while let Some(arg) = args.next() {
         if arg == "--headless" {
@@ -551,16 +566,16 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             continue;
         }
 
-        if let Some(value) = arg.strip_prefix("--omit=") {
-            parse_omit_list(value, &mut omit)?;
+        if let Some(value) = arg.strip_prefix("--animals=") {
+            parse_animals_list(value, &mut enabled_animals, &mut animals_flag_seen)?;
             continue;
         }
 
-        if arg == "--omit" {
+        if arg == "--animals" {
             let value = args
                 .next()
-                .ok_or_else(|| "--omit requires a value".to_string())?;
-            parse_omit_list(&value, &mut omit)?;
+                .ok_or_else(|| "--animals requires a value".to_string())?;
+            parse_animals_list(&value, &mut enabled_animals, &mut animals_flag_seen)?;
             continue;
         }
 
@@ -589,7 +604,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         bpm,
         headless,
         mute,
-        omit,
+        enabled_animals,
     })
 }
 
@@ -604,7 +619,7 @@ fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum OmittedAnimal {
+enum SelectedAnimal {
     LeadVocalist,
     LeadGuitarist,
     RhythmGuitarist,
@@ -612,7 +627,19 @@ enum OmittedAnimal {
     Drummer,
 }
 
-impl OmittedAnimal {
+impl SelectedAnimal {
+    fn all() -> BTreeSet<Self> {
+        [
+            Self::LeadVocalist,
+            Self::LeadGuitarist,
+            Self::RhythmGuitarist,
+            Self::Bassist,
+            Self::Drummer,
+        ]
+        .into_iter()
+        .collect()
+    }
+
     fn parse(value: &str) -> Option<Self> {
         match value {
             "lead-vocalist" => Some(Self::LeadVocalist),
@@ -635,30 +662,36 @@ impl OmittedAnimal {
     }
 }
 
-fn parse_omit_list(
+fn parse_animals_list(
     value: &str,
-    omit: &mut BTreeSet<OmittedAnimal>,
+    enabled_animals: &mut BTreeSet<SelectedAnimal>,
+    animals_flag_seen: &mut bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if value.is_empty() {
-        return Err("--omit requires a comma-delimited list of animals".into());
+        return Err("--animals requires a comma-delimited list of animals".into());
+    }
+
+    if !*animals_flag_seen {
+        enabled_animals.clear();
+        *animals_flag_seen = true;
     }
 
     for token in value.split(',') {
         if token.is_empty() {
-            return Err(format!("invalid --omit list '{value}': contains an empty entry").into());
+            return Err(format!("invalid --animals list '{value}': contains an empty entry").into());
         }
         if token.chars().any(|ch| ch.is_ascii_uppercase()) {
             return Err(
-                format!("invalid --omit entry '{token}': expected lowercase animal names").into(),
+                format!("invalid --animals entry '{token}': expected lowercase animal names").into(),
             );
         }
-        let Some(animal) = OmittedAnimal::parse(token) else {
+        let Some(animal) = SelectedAnimal::parse(token) else {
             return Err(format!(
-                "unknown --omit entry '{token}'; supported values: lead-vocalist, lead-guitarist, rhythm-guitarist, bassist, drummer"
+                "unknown --animals entry '{token}'; supported values: lead-vocalist, lead-guitarist, rhythm-guitarist, bassist, drummer"
             )
             .into());
         };
-        omit.insert(animal);
+        enabled_animals.insert(animal);
     }
 
     Ok(())

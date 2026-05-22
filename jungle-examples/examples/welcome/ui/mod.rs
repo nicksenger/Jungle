@@ -231,7 +231,7 @@ impl WelcomeUi {
         }
 
         let content: Element<'_, Message> = if panel_count == 0 {
-            text("All welcome animals are omitted. Pass --omit with fewer names to show panels.")
+            text("No animals selected. Pass --animals with one or more names to show panels.")
                 .size(16)
                 .color(Color::from_rgb8(198, 229, 211))
                 .into()
