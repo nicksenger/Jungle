@@ -245,67 +245,89 @@ fn run_runtime_thread(
                 .collect::<Vec<_>>();
             info!(animals = ?selected, "running welcome with selected animals");
         }
+        let lead_vocalist_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::LeadVocalist) {
+                client
+                    .start_journey::<LeadVocalist>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting lead vocalist journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let lead_guitarist_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::LeadGuitarist) {
+                client
+                    .start_journey::<LeadGuitarist>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting lead guitarist journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let rhythm_guitarist_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::RhythmGuitarist) {
+                client
+                    .start_journey::<RhythmGuitarist>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting rhythm guitarist journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let bass_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::Bassist) {
+                client
+                    .start_journey::<BassAnimal>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting bass journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let drums_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::Drummer) {
+                client
+                    .start_journey::<Drums>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting drums journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let (lead_vocalist, lead_guitarist, rhythm_guitarist, bass, drums) = tokio::join!(
+            lead_vocalist_fut,
+            lead_guitarist_fut,
+            rhythm_guitarist_fut,
+            bass_fut,
+            drums_fut,
+        );
         let journeys = ui::JourneyIds {
-            lead_vocalist: if enabled_animals.contains(&SelectedAnimal::LeadVocalist) {
-                Some(
-                    client
-                        .start_journey::<LeadVocalist>(seed.clone())
-                        .await
-                        .map_err(|err| {
-                            error!(error = %err, "failed starting lead vocalist journey");
-                            err.to_string()
-                        })?,
-                )
-            } else {
-                None
-            },
-            lead_guitarist: if enabled_animals.contains(&SelectedAnimal::LeadGuitarist) {
-                Some(
-                    client
-                        .start_journey::<LeadGuitarist>(seed.clone())
-                        .await
-                        .map_err(|err| {
-                            error!(error = %err, "failed starting lead guitarist journey");
-                            err.to_string()
-                        })?,
-                )
-            } else {
-                None
-            },
-            rhythm_guitarist: if enabled_animals.contains(&SelectedAnimal::RhythmGuitarist) {
-                Some(
-                    client
-                        .start_journey::<RhythmGuitarist>(seed.clone())
-                        .await
-                        .map_err(|err| {
-                            error!(error = %err, "failed starting rhythm guitarist journey");
-                            err.to_string()
-                        })?,
-                )
-            } else {
-                None
-            },
-            bass: if enabled_animals.contains(&SelectedAnimal::Bassist) {
-                Some(
-                    client
-                        .start_journey::<BassAnimal>(seed.clone())
-                        .await
-                        .map_err(|err| {
-                            error!(error = %err, "failed starting bass journey");
-                            err.to_string()
-                        })?,
-                )
-            } else {
-                None
-            },
-            drums: if enabled_animals.contains(&SelectedAnimal::Drummer) {
-                Some(client.start_journey::<Drums>(seed).await.map_err(|err| {
-                    error!(error = %err, "failed starting drums journey");
-                    err.to_string()
-                })?)
-            } else {
-                None
-            },
+            lead_vocalist: lead_vocalist?,
+            lead_guitarist: lead_guitarist?,
+            rhythm_guitarist: rhythm_guitarist?,
+            bass: bass?,
+            drums: drums?,
         };
 
         keep_alive.audio_engine = audio_engine;

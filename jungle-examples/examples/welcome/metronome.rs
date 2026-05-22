@@ -114,40 +114,17 @@ impl Metronome {
         self.beat_duration().div_f32(4.0).clamp(min, max)
     }
 
-    pub fn sleep_for_lane_ticks(
-        &self,
-        lane_id: u32,
-        ticks_per_beat: u32,
-        rest_ticks: u32,
-    ) -> Duration {
-        let lane_target_start = {
-            let mut lane_ticks = self
-                .lane_ticks
-                .write()
-                .expect("lane ticks rwlock should not be poisoned");
-            let scheduled_tick = lane_ticks.entry(lane_id).or_insert(0);
-            let scheduled_start_offset = self
-                .tick_duration(ticks_per_beat)
-                .mul_f64(*scheduled_tick as f64);
-            *scheduled_tick = scheduled_tick.saturating_add(rest_ticks as u64);
-            self.started_at + scheduled_start_offset
-        };
-        let cycle_duration = self.duration_for_ticks(ticks_per_beat, rest_ticks);
-        let cycle_end = lane_target_start + cycle_duration;
-        cycle_end.saturating_duration_since(Instant::now())
-    }
-
     pub fn rhythm_timing(
         &self,
         lane_id: u32,
         ticks_per_beat: u32,
-        note_ticks: u8,
-        rest_ticks: u8,
+        note_ticks: u32,
+        rest_ticks: u32,
         min_late_note_drop_threshold: Duration,
         max_late_note_drop_threshold: Duration,
     ) -> RhythmTiming {
-        let note_duration = self.duration_for_ticks(ticks_per_beat, note_ticks as u32);
-        let rest_duration = self.duration_for_ticks(ticks_per_beat, rest_ticks as u32);
+        let note_duration = self.duration_for_ticks(ticks_per_beat, note_ticks);
+        let rest_duration = self.duration_for_ticks(ticks_per_beat, rest_ticks);
         let lane_target_start = {
             let mut lane_ticks = self
                 .lane_ticks

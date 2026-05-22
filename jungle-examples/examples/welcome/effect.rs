@@ -107,10 +107,16 @@ impl<const LANE_ID: u32, const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJ
     type Err = String;
 
     async fn effect(jungle: &TheJungle, _input: Self::In) -> Result<Self::Out, Self::Err> {
-        let duration = jungle
-            .metronome()
-            .sleep_for_lane_ticks(LANE_ID, TICKS_PER_BEAT, REST_TICKS);
-        tokio::time::sleep(duration).await;
+        let timing = jungle.metronome().rhythm_timing(
+            LANE_ID,
+            TICKS_PER_BEAT,
+            0,
+            REST_TICKS,
+            MIN_LATE_NOTE_DROP_THRESHOLD,
+            MAX_LATE_NOTE_DROP_THRESHOLD,
+        );
+        timing.sleep_until_note_window().await;
+        timing.sleep_until_next_cycle().await;
         Ok(())
     }
 }
@@ -143,8 +149,8 @@ where
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
-            NOTE_TICK,
-            REST_TICK,
+            NOTE_TICK as u32,
+            REST_TICK as u32,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
@@ -189,8 +195,8 @@ where
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
-            NOTE_TICK,
-            REST_TICK,
+            NOTE_TICK as u32,
+            REST_TICK as u32,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
@@ -234,8 +240,8 @@ where
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
-            NOTE_TICK,
-            REST_TICK,
+            NOTE_TICK as u32,
+            REST_TICK as u32,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
@@ -278,8 +284,8 @@ where
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
-            NOTE_TICK,
-            REST_TICK,
+            NOTE_TICK as u32,
+            REST_TICK as u32,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
@@ -321,8 +327,8 @@ where
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
-            NOTE_TICK,
-            REST_TICK,
+            NOTE_TICK as u32,
+            REST_TICK as u32,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
@@ -353,8 +359,8 @@ where
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
-            NOTE_TICK,
-            REST_TICK,
+            NOTE_TICK as u32,
+            REST_TICK as u32,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
