@@ -1,3 +1,5 @@
+mod cluster_fill;
+
 use iced::futures::{self, Stream, StreamExt};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
@@ -2162,6 +2164,7 @@ struct ClusterRuntimeIndex {
 struct ClusterVisual {
     expanded: bool,
     border: ClusterBorderVisual,
+    fill: cluster_fill::Transition,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2185,6 +2188,7 @@ pub struct DefaultThemeState {
 
 impl DefaultThemeState {
     fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>, now: Instant) {
+        let fill = cluster_fill::target_color(cx.kind, cx.phase);
         let index = ClusterRuntimeIndex {
             kind: cx.kind,
             entry_runtime_ids: cx.entry_runtime_ids.iter().copied().collect(),
@@ -2201,6 +2205,7 @@ impl DefaultThemeState {
                     to: cluster_border_color_gray(),
                     started_at: now,
                 },
+                fill: cluster_fill::Transition::new(fill, now),
             });
     }
 
@@ -2382,8 +2387,11 @@ impl DefaultThemeState {
 
     fn has_running_cluster_animations(&self, now: Instant) -> bool {
         self.cluster_visuals.values().any(|visual| {
-            visual.border.from != visual.border.to
-                && now.duration_since(visual.border.started_at) < CLUSTER_BORDER_ANIMATION_DURATION
+            (visual.border.from != visual.border.to
+                && now.duration_since(visual.border.started_at) < CLUSTER_BORDER_ANIMATION_DURATION)
+                || visual
+                    .fill
+                    .is_animating(now, CLUSTER_BORDER_ANIMATION_DURATION)
         })
     }
 
@@ -2394,17 +2402,42 @@ impl DefaultThemeState {
             .unwrap_or_else(cluster_border_color_gray)
     }
 
+    fn update_cluster_fill_target(&mut self, cx: &ClusterViewCtx<'_>, now: Instant) -> bool {
+        let target = cluster_fill::target_color(cx.kind, cx.phase);
+        self.cluster_visuals
+            .get_mut(&cx.cluster_id)
+            .map(|visual| {
+                visual
+                    .fill
+                    .update_target(target, now, CLUSTER_BORDER_ANIMATION_DURATION)
+            })
+            .unwrap_or(false)
+    }
+
+    fn cluster_fill_color(&self, cluster_id: u32, now: Instant) -> Color {
+        self.cluster_visuals
+            .get(&cluster_id)
+            .map(|visual| visual.fill.sample(now, CLUSTER_BORDER_ANIMATION_DURATION))
+            .unwrap_or(DEFAULT_CLUSTER_FILL)
+    }
+
     fn settle_cluster_animations(&mut self, now: Instant) -> bool {
         let mut changed = false;
         for visual in self.cluster_visuals.values_mut() {
             let border = &mut visual.border;
             if border.from == border.to {
+                changed |= visual
+                    .fill
+                    .settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
                 continue;
             }
             if now.duration_since(border.started_at) >= CLUSTER_BORDER_ANIMATION_DURATION {
                 border.from = border.to;
                 changed = true;
             }
+            changed |= visual
+                .fill
+                .settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
         }
         changed
     }
@@ -2607,18 +2640,22 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         cx: &ClusterViewCtx<'_>,
     ) -> ClusterView<Self::Message> {
         let now = Instant::now();
-        let (expanded, border_color) = if let Ok(mut guard) = state.try_lock() {
+        let (expanded, border_color, fill) = if let Ok(mut guard) = state.try_lock() {
             guard.register_cluster(cx, now);
             guard.maybe_collapse_completed_cluster_for_pending_successor(cx, now);
+            let _ = guard.update_cluster_fill_target(cx, now);
             (
                 guard.cluster_is_expanded(cx.cluster_id),
                 guard.cluster_border_color(cx.cluster_id, now),
+                guard.cluster_fill_color(cx.cluster_id, now),
             )
         } else {
-            (false, cluster_border_color_gray())
+            (
+                false,
+                cluster_border_color_gray(),
+                cluster_fill::target_color(cx.kind, cx.phase),
+            )
         };
-
-        let fill = cluster_overlay_fill_color(cx.kind);
         let overlay = container(
             container(text(cx.label.to_string()).size(11).color(border_color))
                 .padding([4, 8])
@@ -2866,13 +2903,6 @@ fn cluster_fill_color(index: usize) -> Color {
         .ok()
         .and_then(|colors| colors.get(index).copied())
         .unwrap_or(DEFAULT_CLUSTER_FILL)
-}
-
-fn cluster_overlay_fill_color(kind: ClusterKind) -> Color {
-    match kind {
-        ClusterKind::While => Color::from_rgba8(20, 46, 30, 0.14),
-        ClusterKind::Transparent => Color::from_rgba8(20, 46, 30, 0.08),
-    }
 }
 
 fn jungle_text_base() -> Color {
