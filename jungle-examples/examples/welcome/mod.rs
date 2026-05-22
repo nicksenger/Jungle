@@ -35,7 +35,7 @@ use crate::{
 };
 
 const DEFAULT_BPM: f32 = 123.0;
-const DEFAULT_WORKERS: usize = 1;
+const DEFAULT_WORKERS: usize = 2;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(feature = "transport")]
