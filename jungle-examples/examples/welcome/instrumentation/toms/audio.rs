@@ -1,84 +1,36 @@
 use std::{sync::Arc, time::Duration};
 
-use jungle_sdk::prelude::*;
-
-use crate::audio::{AudioHandle, PlayRequest};
-use crate::effect::Monad;
-
-use super::{
+use crate::audio::PlayRequest;
+use crate::instrumentation::{
     amplitude_gain,
     synthesis::{
         duration_to_frames, hash_noise, midi_to_hz, sine, smoothstep, triangle, SAMPLE_RATE,
     },
-    Error, Instrument, Note,
+    Error, Note,
 };
 
-pub struct Toms {
-    audio: AudioHandle,
-}
+use super::TomsArticulation;
 
-impl Toms {
-    pub fn new(audio: AudioHandle) -> Self {
-        Self { audio }
-    }
-}
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum TomsArticulation {
-    /// A clean, resonant strike to the center of the tom.
-    StandardHit,
-    /// An extra-powerful strike maximizing shell resonance.
-    AccentedHit,
-    /// Striking two different toms simultaneously (e.g., Rack Tom 2 and Floor Tom).
-    /// Used for the massive downbeat punctuation marks in the breakdown.
-    DoubleHit,
-}
-
-impl Instrument for Toms {
-    type Articulation = TomsArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, mut gain, mut playback_rate) = {
-            let note_for_synth = note;
-            tokio::task::spawn_blocking(move || synthesize_toms(&note_for_synth))
-                .await
-                .map_err(|_| Error::Playback)?
-        };
-
-        let velocity = note.velocity.clamp(0.0, 1.0);
-        gain *= 0.86 + velocity * 0.42;
-        playback_rate *= 0.985 + velocity * 0.045;
-
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.gain = gain * amplitude_gain(&note);
-        request.playback_rate = playback_rate;
-        request.pan = -0.14 + (velocity - 0.5) * 0.08;
-        self.audio
-            .play(request)
+pub(super) async fn play(
+    audio: &crate::audio::AudioHandle,
+    note: Note<TomsArticulation>,
+) -> Result<(), Error> {
+    let (pcm, mut gain, mut playback_rate) = {
+        let note_for_synth = note;
+        tokio::task::spawn_blocking(move || synthesize_toms(&note_for_synth))
             .await
-            .map_err(|_| Error::Submission)
-    }
-}
+            .map_err(|_| Error::Playback)?
+    };
 
-pub struct Tom<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32 = 0>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32> Act
-    for Tom<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
-{
-    type Effect = Monad<Toms, TomsArticulation, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
-    type Input = ();
-    type Output = ();
+    let velocity = note.velocity.clamp(0.0, 1.0);
+    gain *= 0.86 + velocity * 0.42;
+    playback_rate *= 0.985 + velocity * 0.045;
 
-    fn emit(state: &TomsArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        *state
-    }
-
-    fn absorb(
-        _state: &mut TomsArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
-    }
+    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
+    request.gain = gain * amplitude_gain(&note);
+    request.playback_rate = playback_rate;
+    request.pan = -0.14 + (velocity - 0.5) * 0.08;
+    audio.play(request).await.map_err(|_| Error::Submission)
 }
 
 fn resolve_articulation(note: &Note<TomsArticulation>) -> TomsArticulation {
