@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::Monad;
+use crate::effect::{Dyad, Monad, Triad};
 
 use super::{Instrument, Note};
 
@@ -46,6 +46,59 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     for Thump<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Monad<Bass, BassArticulation, NOTE, NOTE_TICK, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        *state
+    }
+
+    fn absorb(
+        _state: &mut BassArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("note playback should succeed");
+    }
+}
+
+pub struct DoubleStop<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+#[jungle::act]
+impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+    for DoubleStop<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
+{
+    type Effect = Dyad<Bass, BassArticulation, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        *state
+    }
+
+    fn absorb(
+        _state: &mut BassArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("note playback should succeed");
+    }
+}
+
+pub struct PowerChord<
+    const NOTE_1: u8,
+    const NOTE_2: u8,
+    const NOTE_3: u8,
+    const NOTE_TICK: u8,
+    const REST_TICK: u8,
+>;
+#[jungle::act]
+impl<
+        const NOTE_1: u8,
+        const NOTE_2: u8,
+        const NOTE_3: u8,
+        const NOTE_TICK: u8,
+        const REST_TICK: u8,
+    > Act for PowerChord<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
+{
+    type Effect = Triad<Bass, BassArticulation, NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 

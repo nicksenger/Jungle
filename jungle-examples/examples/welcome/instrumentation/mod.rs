@@ -12,7 +12,7 @@ mod synthesis;
 mod toms;
 mod vocals;
 
-pub use bass::{Bass, BassArticulation, Thump};
+pub use bass::{Bass, BassArticulation, DoubleStop, PowerChord, Thump};
 pub use cymbal::{Crash, Cymbal, CymbalArticulation};
 pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation, Pick, Pluck, Strum};
 pub use hihat::{Chick, HiHat, HiHatArticulation};
