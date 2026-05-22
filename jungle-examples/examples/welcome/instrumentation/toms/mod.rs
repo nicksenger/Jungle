@@ -35,9 +35,9 @@ impl Instrument for Toms {
     }
 }
 
-pub struct Tom<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32 = 0>;
+pub struct Tom<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32 = 0>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32> Act
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32> Act
     for Tom<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
     type Effect = Monad<Toms, TomsArticulation, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;

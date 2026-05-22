@@ -87,9 +87,9 @@ impl Instrument for ElectricGuitar {
     }
 }
 
-pub struct Pick<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32 = 0>;
+pub struct Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32 = 0>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32> Act
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32> Act
     for Pick<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
     type Effect =
@@ -115,16 +115,16 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u3
 pub struct Pluck<
     const NOTE_1: u8,
     const NOTE_2: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
     const LANE_ID: u32 = 0,
 >;
 #[jungle::act]
 impl<
         const NOTE_1: u8,
         const NOTE_2: u8,
-        const NOTE_TICK: u8,
-        const REST_TICK: u8,
+        const NOTE_TICK: u32,
+        const REST_TICK: u32,
         const LANE_ID: u32,
     > Act for Pluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK, LANE_ID>
 {
@@ -159,8 +159,8 @@ pub struct Strum<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_3: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
     const LANE_ID: u32 = 0,
 >;
 #[jungle::act]
@@ -168,8 +168,8 @@ impl<
         const NOTE_1: u8,
         const NOTE_2: u8,
         const NOTE_3: u8,
-        const NOTE_TICK: u8,
-        const REST_TICK: u8,
+        const NOTE_TICK: u32,
+        const REST_TICK: u32,
         const LANE_ID: u32,
     > Act for Strum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK, LANE_ID>
 {

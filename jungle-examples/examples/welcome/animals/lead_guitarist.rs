@@ -7,9 +7,9 @@ use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck
 use super::{DecrementCounter, LeadGuitarist};
 
 const LEAD_GUITAR_LANE_ID: u32 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32;
-type Pick<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePick<NOTE, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
-type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -98,25 +98,25 @@ pub struct LeadPrelude(
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct LeadOpeningPads(
-    Step<Pluck<46, 53, 192, 192>>,
+    Step<Pluck<46, 53, 1536, 1152>>,
     Step<Pick<61, 192, 192>>,
     Step<Pick<63, 192, 192>>,
-    Step<Pick<63, 192, 192>>,
-    Step<Pick<63, 96, 96>>,
-    Step<Pick<61, 192, 192>>,
-    Step<Pick<61, 192, 192>>,
+    Step<Pick<63, 288, 288>>,
+    Step<Pick<63, 672, 672>>,
+    Step<Pick<61, 192, 576>>,
+    Step<Pick<61, 192, 384>>,
     Step<Pick<56, 96, 96>>,
+    Step<Pick<58, 1056, 1248>>,
     Step<Pick<58, 192, 192>>,
-    Step<Pick<58, 192, 192>>,
-    Step<Pick<51, 192, 192>>,
+    Step<Pick<51, 1536, 1344>>,
     Step<Pick<53, 192, 192>>,
+    Step<Pluck<58, 65, 1152, 1344>>,
     Step<Pluck<58, 65, 192, 192>>,
-    Step<Pluck<58, 65, 192, 192>>,
-    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<44, 51, 1536, 1344>>,
     Step<Pick<56, 192, 192>>,
-    Step<Pluck<39, 46, 192, 192>>,
-    Step<Pluck<49, 56, 192, 192>>,
-    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<39, 46, 1536, 1536>>,
+    Step<Pluck<49, 56, 768, 768>>,
+    Step<Pluck<44, 51, 768, 768>>,
 );
 
 #[derive(Flow)]
@@ -137,9 +137,9 @@ pub struct LeadAscentFigure(
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct LeadPreRiffCadence(
-    Step<Pluck<63, 68, 192, 192>>,
-    Step<Pick<61, 192, 192>>,
-    Step<Pick<58, 192, 192>>,
+    Step<Pluck<63, 68, 384, 384>>,
+    Step<Pick<61, 384, 384>>,
+    Step<Pick<58, 384, 384>>,
 );
 
 #[derive(Flow)]
@@ -159,16 +159,16 @@ pub struct LeadIntroRiffCycle(
     Step<Pluck<44, 51, 96, 96>>,
     Step<Pluck<42, 49, 192, 192>>,
     Step<Pluck<41, 48, 192, 192>>,
-    Step<Pluck<39, 46, 192, 192>>,
+    Step<Pluck<39, 46, 192, 384>>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadIntroCadence(Step<Pluck<39, 46, 192, 192>>);
+pub struct LeadIntroCadence(Step<Pluck<39, 46, 384, 384>>);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadIntroTail(Step<Pick<58, 192, 192>>);
+pub struct LeadIntroTail(Step<Pick<58, 384, 384>>);
 
 #[cfg(test)]
 mod tests {

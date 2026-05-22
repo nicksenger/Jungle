@@ -22,8 +22,8 @@ pub struct Hexad<
     const NOTE_4: u8,
     const NOTE_5: u8,
     const NOTE_6: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
 >(PhantomData<(I, A)>);
 
 pub struct Pentad<
@@ -35,8 +35,8 @@ pub struct Pentad<
     const NOTE_3: u8,
     const NOTE_4: u8,
     const NOTE_5: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
 >(PhantomData<(I, A)>);
 
 pub struct Tetrad<
@@ -47,8 +47,8 @@ pub struct Tetrad<
     const NOTE_2: u8,
     const NOTE_3: u8,
     const NOTE_4: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
 >(PhantomData<(I, A)>);
 
 pub struct Triad<
@@ -58,8 +58,8 @@ pub struct Triad<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_3: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
 >(PhantomData<(I, A)>);
 
 pub struct Dyad<
@@ -68,8 +68,8 @@ pub struct Dyad<
     const LANE_ID: u32,
     const NOTE_1: u8,
     const NOTE_2: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
 >(PhantomData<(I, A)>);
 
 pub struct Monad<
@@ -77,8 +77,8 @@ pub struct Monad<
     A: Copy,
     const LANE_ID: u32,
     const NOTE: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
 >(PhantomData<(I, A)>);
 
 pub struct DecrementCounterEffect;
@@ -132,8 +132,8 @@ impl<
         const NOTE_4: u8,
         const NOTE_5: u8,
         const NOTE_6: u8,
-        const NOTE_TICK: u8,
-        const REST_TICK: u8,
+        const NOTE_TICK: u32,
+        const REST_TICK: u32,
     > jungle_sdk::prelude::Effect<TheJungle>
     for Hexad<I, A, LANE_ID, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_6, NOTE_TICK, REST_TICK>
 where
@@ -178,8 +178,8 @@ impl<
         const NOTE_3: u8,
         const NOTE_4: u8,
         const NOTE_5: u8,
-        const NOTE_TICK: u8,
-        const REST_TICK: u8,
+        const NOTE_TICK: u32,
+        const REST_TICK: u32,
     > jungle_sdk::prelude::Effect<TheJungle>
     for Pentad<I, A, LANE_ID, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_5, NOTE_TICK, REST_TICK>
 where
@@ -223,8 +223,8 @@ impl<
         const NOTE_2: u8,
         const NOTE_3: u8,
         const NOTE_4: u8,
-        const NOTE_TICK: u8,
-        const REST_TICK: u8,
+        const NOTE_TICK: u32,
+        const REST_TICK: u32,
     > jungle_sdk::prelude::Effect<TheJungle>
     for Tetrad<I, A, LANE_ID, NOTE_1, NOTE_2, NOTE_3, NOTE_4, NOTE_TICK, REST_TICK>
 where
@@ -267,8 +267,8 @@ impl<
         const NOTE_1: u8,
         const NOTE_2: u8,
         const NOTE_3: u8,
-        const NOTE_TICK: u8,
-        const REST_TICK: u8,
+        const NOTE_TICK: u32,
+        const REST_TICK: u32,
     > jungle_sdk::prelude::Effect<TheJungle>
     for Triad<I, A, LANE_ID, NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
 where
@@ -310,8 +310,8 @@ impl<
         const LANE_ID: u32,
         const NOTE_1: u8,
         const NOTE_2: u8,
-        const NOTE_TICK: u8,
-        const REST_TICK: u8,
+        const NOTE_TICK: u32,
+        const REST_TICK: u32,
     > jungle_sdk::prelude::Effect<TheJungle>
     for Dyad<I, A, LANE_ID, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
 where
@@ -344,7 +344,7 @@ where
 }
 
 #[effect(id = 500)]
-impl<I, A, const LANE_ID: u32, const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>
+impl<I, A, const LANE_ID: u32, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
     jungle_sdk::prelude::Effect<TheJungle> for Monad<I, A, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,

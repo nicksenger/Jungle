@@ -8,7 +8,7 @@ use super::DecrementCounter;
 use super::LeadVocalist;
 
 const LEAD_VOCALS_LANE_ID: u32 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32;
-type Sing<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+type Sing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneSing<NOTE, NOTE_TICK, REST_TICK, LEAD_VOCALS_LANE_ID>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -86,7 +86,7 @@ pub struct IntroBreath(Transparent<IntroSectionMeta, IntroBreathPhrase>);
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroBreathPhrase(Step<Sing<58, 1, 192>>);
+pub struct IntroBreathPhrase(Step<Sing<58, 192, 192>>);
 
 #[derive(Flow)]
 pub struct IntroPickupLoop(While<IntroPickupRemaining, IntroPickupBody>);
@@ -106,14 +106,14 @@ pub struct IntroRest(Transparent<IntroSectionMeta, IntroRestPhrase>);
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroRestPhrase(Step<Sing<58, 1, 192>>);
+pub struct IntroRestPhrase(Step<Sing<58, 192, 192>>);
 
 #[derive(Flow)]
 pub struct IntroRelease(Transparent<IntroSectionMeta, IntroReleasePhrase>);
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroReleasePhrase(Step<Sing<58, 1, 192>>);
+pub struct IntroReleasePhrase(Step<Sing<58, 192, 192>>);
 
 #[cfg(test)]
 mod tests {

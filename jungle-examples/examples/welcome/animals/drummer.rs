@@ -51,9 +51,9 @@ impl Act for MergeJoinUnits {
 #[derive(Flow)]
 pub struct SyncPair<Left, Right>(Join<Left, Right>, Step<MergeJoinUnits>);
 
-pub struct Hat<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+pub struct Hat<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Hat<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Monad<HiHat, HiHatArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
@@ -69,9 +69,9 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     }
 }
 
-pub struct Boot<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+pub struct Boot<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Boot<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Monad<KickDrum, KickDrumArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
@@ -87,9 +87,9 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     }
 }
 
-pub struct Snap<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+pub struct Snap<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Snap<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect =
@@ -106,9 +106,9 @@ impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     }
 }
 
-pub struct Blast<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+pub struct Blast<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Blast<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Monad<Cymbal, CymbalArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;

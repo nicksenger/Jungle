@@ -7,7 +7,7 @@ use crate::instrumentation::{BassArticulation, Thump as LaneThump};
 use super::{Bass, DecrementCounter};
 
 const BASS_LANE_ID: u32 = <<Bass as Animal>::Id as AnimalIdValue>::U32;
-type Thump<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+type Thump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneThump<NOTE, NOTE_TICK, REST_TICK, BASS_LANE_ID>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -96,13 +96,13 @@ pub struct BassIntro(
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPrelude(
-    Step<Thump<46, 192, 192>>,
-    Step<Thump<44, 192, 192>>,
+    Step<Thump<46, 1536, 1536>>,
+    Step<Thump<44, 1344, 1344>>,
     Step<Thump<34, 192, 192>>,
-    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 1152, 1344>>,
     Step<Thump<37, 96, 96>>,
     Step<Thump<38, 96, 96>>,
-    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 1152, 1344>>,
 );
 
 #[derive(Flow)]
@@ -166,8 +166,8 @@ pub struct BassOstinatoCycle(
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassTransition(
-    Step<Thump<37, 192, 192>>,
-    Step<Thump<32, 192, 192>>,
+    Step<Thump<37, 768, 768>>,
+    Step<Thump<32, 768, 768>>,
     Step<Thump<34, 192, 192>>,
     Step<Thump<34, 192, 192>>,
     Step<Thump<34, 192, 192>>,
@@ -182,7 +182,7 @@ pub struct BassTransition(
     Step<Thump<45, 192, 192>>,
     Step<Thump<46, 192, 192>>,
     Step<Thump<27, 192, 192>>,
-    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 384, 384>>,
 );
 
 #[derive(Flow)]
