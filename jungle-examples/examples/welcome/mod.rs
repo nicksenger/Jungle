@@ -35,6 +35,7 @@ use crate::{
 };
 
 const DEFAULT_BPM: f32 = 123.0;
+const DEFAULT_WORKERS: usize = 1;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(feature = "transport")]
@@ -66,21 +67,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let args = parse_cli_args()?;
     if args.headless {
-        return run_headless(args.bpm, args.mute, args.enabled_animals);
+        return run_headless(args.bpm, args.mute, args.workers, args.enabled_animals);
     }
-    run_with_ui(args.bpm, args.mute, args.enabled_animals)
+    run_with_ui(args.bpm, args.mute, args.workers, args.enabled_animals)
 }
 
 struct CliArgs {
     bpm: f32,
     headless: bool,
     mute: bool,
+    workers: usize,
     enabled_animals: BTreeSet<SelectedAnimal>,
 }
 
 fn run_with_ui(
     bpm: f32,
     mute: bool,
+    workers: usize,
     enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -91,6 +94,7 @@ fn run_with_ui(
         run_runtime_thread(
             bpm,
             mute,
+            workers,
             enabled_animals,
             shutdown_for_runtime,
             setup_tx,
@@ -133,9 +137,13 @@ fn run_with_ui(
 fn run_headless(
     bpm: f32,
     mute: bool,
+    workers: usize,
     enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    info!(bpm, mute, "running welcome example in headless mode");
+    info!(
+        bpm,
+        mute, workers, "running welcome example in headless mode"
+    );
 
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
@@ -145,6 +153,7 @@ fn run_headless(
         run_runtime_thread(
             bpm,
             mute,
+            workers,
             enabled_animals,
             shutdown_for_runtime,
             setup_tx,
@@ -201,6 +210,7 @@ struct UiSetup {
 fn run_runtime_thread(
     bpm: f32,
     mute: bool,
+    workers: usize,
     enabled_animals: BTreeSet<SelectedAnimal>,
     ui_shutdown: ui::ShutdownFlag,
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
@@ -225,16 +235,25 @@ fn run_runtime_thread(
             let audio_handle = audio_engine.handle();
             (audio_handle, Some(audio_engine), None)
         };
-        let ecosystem = TheJungle::new(audio_handle, bpm);
-        let metronome = ecosystem.metronome().clone();
-        metronome.arm_start_barrier();
-        let worker_client = client.clone();
-        let _worker_task = tokio::spawn(async move {
-            let worker = JungleWorker::new(ecosystem, worker_client);
-            if let Err(err) = worker.spawn().await {
-                error!(error = %err, "welcome worker task exited with error");
-            }
-        });
+        let mut worker_metronomes = Vec::with_capacity(workers);
+        for worker_index in 0..workers {
+            let ecosystem = TheJungle::new(audio_handle.clone(), bpm);
+            let metronome = ecosystem.metronome().clone();
+            metronome.arm_start_barrier();
+            worker_metronomes.push(metronome);
+            let worker_client = client.clone();
+            tokio::spawn(async move {
+                let worker = JungleWorker::new(ecosystem, worker_client);
+                if let Err(err) = worker.spawn().await {
+                    error!(
+                        error = %err,
+                        worker_index,
+                        "welcome worker task exited with error"
+                    );
+                }
+            });
+        }
+        info!(workers, "started welcome workers");
 
         let seed = postcard::to_allocvec(&()).map_err(|err| {
             error!(error = %err, "failed serializing journey seed");
@@ -331,7 +350,12 @@ fn run_runtime_thread(
             bass: bass?,
             drums: drums?,
         };
-        metronome.release_start_barrier_on_downbeat().await;
+        futures::future::join_all(
+            worker_metronomes
+                .iter()
+                .map(|metronome| metronome.release_start_barrier_on_downbeat()),
+        )
+        .await;
 
         keep_alive.audio_engine = audio_engine;
         keep_alive.stub_audio = stub_audio;
@@ -577,6 +601,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let mut bpm = DEFAULT_BPM;
     let mut headless = false;
     let mut mute = false;
+    let mut workers = DEFAULT_WORKERS;
     let mut enabled_animals = SelectedAnimal::all();
     let mut animals_flag_seen = false;
 
@@ -609,11 +634,24 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             continue;
         }
 
+        if let Some(value) = arg.strip_prefix("--workers=") {
+            workers = parse_workers_value(value)?;
+            continue;
+        }
+
         if arg == "--bpm" {
             let value = args
                 .next()
                 .ok_or_else(|| "--bpm requires a value".to_string())?;
             bpm = parse_bpm_value(&value)?;
+            continue;
+        }
+
+        if arg == "--workers" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--workers requires a value".to_string())?;
+            workers = parse_workers_value(&value)?;
             continue;
         }
 
@@ -629,6 +667,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         bpm,
         headless,
         mute,
+        workers,
         enabled_animals,
     })
 }
@@ -641,6 +680,16 @@ fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
         return Err(format!("BPM must be a positive finite number, got: {value}").into());
     }
     Ok(bpm)
+}
+
+fn parse_workers_value(value: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let workers = value
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid workers argument: {value}"))?;
+    if workers == 0 {
+        return Err("workers must be at least 1".into());
+    }
+    Ok(workers)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -703,12 +752,15 @@ fn parse_animals_list(
 
     for token in value.split(',') {
         if token.is_empty() {
-            return Err(format!("invalid --animals list '{value}': contains an empty entry").into());
+            return Err(
+                format!("invalid --animals list '{value}': contains an empty entry").into(),
+            );
         }
         if token.chars().any(|ch| ch.is_ascii_uppercase()) {
-            return Err(
-                format!("invalid --animals entry '{token}': expected lowercase animal names").into(),
-            );
+            return Err(format!(
+                "invalid --animals entry '{token}': expected lowercase animal names"
+            )
+            .into());
         }
         let Some(animal) = SelectedAnimal::parse(token) else {
             return Err(format!(
