@@ -6,7 +6,26 @@ use crate::instrumentation::{
     Strum as LaneStrum,
 };
 
-pub type RhythmGuitaristState = ElectricGuitarArticulation;
+#[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct RhythmGuitaristState {
+    #[jungle(focus)]
+    articulation: ElectricGuitarArticulation,
+    riff_loops_remaining: u8,
+    transition_loops_remaining: u8,
+    sustain_loops_remaining: u8,
+}
+
+impl Default for RhythmGuitaristState {
+    fn default() -> Self {
+        Self {
+            articulation: ElectricGuitarArticulation::default(),
+            riff_loops_remaining: 5,
+            transition_loops_remaining: 3,
+            sustain_loops_remaining: 1,
+        }
+    }
+}
+
 pub type RhythmGuitaristSeed = ();
 const RHYTHM_GUITAR_LANE_ID: u32 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32;
 const INTRO_START_DELAY_TICKS: u32 = 0;
@@ -65,14 +84,14 @@ impl<
     type Output = ();
 
     fn emit(
-        state: &RhythmGuitaristState,
+        state: &ElectricGuitarArticulation,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
         *state
     }
 
     fn absorb(
-        _state: &mut RhythmGuitaristState,
+        _state: &mut ElectricGuitarArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("note playback should succeed");
@@ -111,14 +130,14 @@ impl<
     type Output = ();
 
     fn emit(
-        state: &RhythmGuitaristState,
+        state: &ElectricGuitarArticulation,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
         (*state, *state)
     }
 
     fn absorb(
-        _state: &mut RhythmGuitaristState,
+        _state: &mut ElectricGuitarArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("note playback should succeed");
