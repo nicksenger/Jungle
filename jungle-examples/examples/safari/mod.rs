@@ -33,7 +33,7 @@ fn main() {
 
     if dump_graph {
         let graph =
-            jungle_viewer::debug_graph_for_animal::<jungle_zoo::animals::gorilla::Gorilla>();
+            jungle_vision::debug_graph_for_animal::<jungle_zoo::animals::gorilla::Gorilla>();
         println!("nodes:");
         for node in &graph.nodes {
             println!("  {} {}", node.id, node.label);
@@ -53,7 +53,7 @@ fn main() {
         return;
     }
 
-    let mut viewer = jungle_viewer::JungleViewerBuilder::new()
+    let mut viewer = jungle_vision::JungleViewerBuilder::new()
         .title("Jungle View Example (zoo::Gorilla)")
         .animation_duration(Duration::from_millis(280));
     if let Some(path) = screenshot {

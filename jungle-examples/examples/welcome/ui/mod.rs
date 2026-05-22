@@ -58,19 +58,19 @@ enum Panel {
 
 #[derive(Debug, Clone)]
 enum Message {
-    Panel(Panel, jungle_viewer::EjectedViewerMessage),
+    Panel(Panel, jungle_vision::EjectedViewerMessage),
     Tick,
 }
 
 struct WelcomeUi {
     lead_vocalist:
-        jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
+        jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
     lead_guitarist:
-        jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
+        jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
     rhythm_guitarist:
-        jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
-    bass: jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
-    drums: jungle_viewer::EjectedViewer<jungle_viewer::DefaultTheme, jungle_viewer::AnyAnimal>,
+        jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
+    bass: jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
+    drums: jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
     shutdown: ShutdownFlag,
 }
 
@@ -80,19 +80,19 @@ impl WelcomeUi {
         journeys: JourneyIds,
         shutdown: ShutdownFlag,
     ) -> (Self, Task<Message>) {
-        let lead_vocalist = jungle_viewer::JungleViewerBuilder::new()
+        let lead_vocalist = jungle_vision::JungleViewerBuilder::new()
             .title("Welcome: Lead Vocalist")
             .eject_live_animal::<LeadVocalist, _>(client.clone(), journeys.lead_vocalist);
-        let lead_guitarist = jungle_viewer::JungleViewerBuilder::new()
+        let lead_guitarist = jungle_vision::JungleViewerBuilder::new()
             .title("Welcome: Lead Guitarist")
             .eject_live_animal::<LeadGuitarist, _>(client.clone(), journeys.lead_guitarist);
-        let rhythm_guitarist = jungle_viewer::JungleViewerBuilder::new()
+        let rhythm_guitarist = jungle_vision::JungleViewerBuilder::new()
             .title("Welcome: Rhythm Guitarist")
             .eject_live_animal::<RhythmGuitarist, _>(client.clone(), journeys.rhythm_guitarist);
-        let bass = jungle_viewer::JungleViewerBuilder::new()
+        let bass = jungle_vision::JungleViewerBuilder::new()
             .title("Welcome: Bass")
             .eject_live_animal::<Bass, _>(client.clone(), journeys.bass);
-        let drums = jungle_viewer::JungleViewerBuilder::new()
+        let drums = jungle_vision::JungleViewerBuilder::new()
             .title("Welcome: Drums")
             .eject_live_animal::<Drums, _>(client, journeys.drums);
 
@@ -198,7 +198,7 @@ impl WelcomeUi {
 
 fn panel<'a>(
     label: &'a str,
-    content: Element<'a, jungle_viewer::EjectedViewerMessage>,
+    content: Element<'a, jungle_vision::EjectedViewerMessage>,
     target: Panel,
 ) -> Element<'a, Message> {
     container(

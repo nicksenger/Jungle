@@ -2647,7 +2647,7 @@ dependencies = [
  "futures",
  "iced",
  "jungle-sdk",
- "jungle-viewer",
+ "jungle-vision",
  "jungle-zoo",
  "postcard",
  "serde",
@@ -2787,7 +2787,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "jungle-viewer"
+name = "jungle-vision"
 version = "0.1.0"
 dependencies = [
  "iced",

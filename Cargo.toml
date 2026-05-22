@@ -11,7 +11,7 @@ members = [
     "jungle-sdk",
     "jungle-persist",
     "jungle-test",
-    "jungle-viewer",
+    "jungle-vision",
     "jungle-types",
     "jungle-zoo",
 ]
