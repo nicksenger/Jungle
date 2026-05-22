@@ -5,19 +5,18 @@ use num::U255;
 use std::time::Duration;
 
 mod bassist;
+mod drummer;
 mod lead_guitarist;
 mod lead_vocalist;
 mod rhythm_guitarist;
 pub use bassist::*;
+pub use drummer::*;
 pub use lead_guitarist::*;
 pub use lead_vocalist::*;
 pub use rhythm_guitarist::*;
 
 #[derive(Animals)]
 pub struct WelcomeAnimals(LeadVocalist, LeadGuitarist, RhythmGuitarist, Bass, Drums);
-
-pub type DrumsState = ();
-pub type DrumsSeed = ();
 
 use crate::effect::DecrementCounterEffect;
 
@@ -119,7 +118,7 @@ pub struct Drums;
 
 #[jungle::animal(id = 4, generation = 0)]
 impl Animal for Drums {
-    type State = DrumsState;
-    type Seed = DrumsSeed;
-    type Journey = BandStubFlow;
+    type State = DrummerState;
+    type Seed = DrummerSeed;
+    type Journey = DrummerIntro;
 }
