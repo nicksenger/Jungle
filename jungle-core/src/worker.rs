@@ -26,7 +26,7 @@ use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const OWNER_LEASE_TTL_MS: i64 = 30_000;
-const MAX_IN_FLIGHT_JOURNEYS: usize = 1;
+const MAX_IN_FLIGHT_JOURNEYS: usize = 8;
 
 fn heartbeat_interval_for_lease_ttl(lease_ttl_ms: i64) -> Duration {
     // Refresh at ~3x faster than expiration to keep ownership stable without hot-looping.
