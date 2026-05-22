@@ -1,58 +1,30 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::audio::{AudioHandle, PlayRequest};
-
-use super::{
+use crate::audio::PlayRequest;
+use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, smoothstep, triangle, SAMPLE_RATE},
-    Error, Instrument, Note,
+    Error, Note,
 };
 
-pub struct HiHat {
-    audio: AudioHandle,
-}
+use super::HiHatArticulation;
 
-impl HiHat {
-    pub fn new(audio: AudioHandle) -> Self {
-        Self { audio }
-    }
-}
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum HiHatArticulation {
-    /// Fully pressed closed, yielding a tight, crisp "chick" sound.
-    ClosedTip,
-    /// Striking the edge of a closed hi-hat with the shoulder of the stick for more bite.
-    ClosedEdge,
-    /// Slightly releasing foot pressure so the cymbals sizzle against each other.
-    /// Essential for building tension in the pre-chorus.
-    HalfOpen,
-    /// Completely open, creating a loud, aggressive, sloshy wash. Used in the choruses.
-    FullOpen,
-    /// Closing the hats purely with the foot pedal, creating a soft "chick" with no stick attack.
-    FootSplash,
-}
-
-impl Instrument for HiHat {
-    type Articulation = HiHatArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate) = {
-            let note_for_synth = note;
-            tokio::task::spawn_blocking(move || synthesize_hihat(&note_for_synth))
-                .await
-                .map_err(|_| Error::Playback)?
-        };
-
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.gain = gain * amplitude_gain(&note);
-        request.playback_rate = playback_rate;
-        request.pan = 0.2;
-        self.audio
-            .play(request)
+pub(super) async fn play(
+    audio: &crate::audio::AudioHandle,
+    note: Note<HiHatArticulation>,
+) -> Result<(), Error> {
+    let (pcm, gain, playback_rate) = {
+        let note_for_synth = note;
+        tokio::task::spawn_blocking(move || synthesize_hihat(&note_for_synth))
             .await
-            .map_err(|_| Error::Submission)
-    }
+            .map_err(|_| Error::Playback)?
+    };
+
+    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
+    request.gain = gain * amplitude_gain(&note);
+    request.playback_rate = playback_rate;
+    request.pan = 0.2;
+    audio.play(request).await.map_err(|_| Error::Submission)
 }
 
 fn synthesize_hihat(note: &Note<HiHatArticulation>) -> (Arc<[f32]>, f32, f32) {

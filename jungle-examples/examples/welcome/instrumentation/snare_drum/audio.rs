@@ -1,65 +1,36 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::audio::{AudioHandle, PlayRequest};
-
-use super::{
+use crate::audio::PlayRequest;
+use crate::instrumentation::{
     amplitude_gain,
     synthesis::{
         duration_to_frames, hash_noise, midi_to_hz, sine, smoothstep, triangle, SAMPLE_RATE,
     },
-    Error, Instrument, Note,
+    Error, Note,
 };
 
-pub struct SnareDrum {
-    audio: AudioHandle,
-}
+use super::SnareDrumArticulation;
 
-impl SnareDrum {
-    pub fn new(audio: AudioHandle) -> Self {
-        Self { audio }
-    }
-}
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum SnareDrumArticulation {
-    /// A standard, clean strike to the center of the drum head.
-    CenterHit,
-    /// Striking the center of the head and the metal rim simultaneously.
-    /// This is the primary articulation for the massive verse/chorus backbeats.
-    Rimshot,
-    /// Laying the stick across the head and striking the rim for a woody click.
-    /// Useful for low-energy dynamic drops.
-    Sidestick,
-    /// A very soft, low-velocity hit. Adler uses these to fill the space between backbeats.
-    GhostNote,
-    /// Two rapid, almost overlapping strikes (one hand trailing the other) to add weight.
-    Flam,
-}
-
-impl Instrument for SnareDrum {
-    type Articulation = SnareDrumArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, mut gain, mut playback_rate) = {
-            let note_for_synth = note;
-            tokio::task::spawn_blocking(move || synthesize_snare_drum(&note_for_synth))
-                .await
-                .map_err(|_| Error::Playback)?
-        };
-
-        let velocity = note.velocity.clamp(0.0, 1.0);
-        gain *= 0.88 + velocity * 0.52;
-        playback_rate *= 0.98 + velocity * 0.06;
-
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.gain = gain * amplitude_gain(&note);
-        request.playback_rate = playback_rate;
-        request.pan = 0.08 + (velocity - 0.5) * 0.06;
-        self.audio
-            .play(request)
+pub(super) async fn play(
+    audio: &crate::audio::AudioHandle,
+    note: Note<SnareDrumArticulation>,
+) -> Result<(), Error> {
+    let (pcm, mut gain, mut playback_rate) = {
+        let note_for_synth = note;
+        tokio::task::spawn_blocking(move || synthesize_snare_drum(&note_for_synth))
             .await
-            .map_err(|_| Error::Submission)
-    }
+            .map_err(|_| Error::Playback)?
+    };
+
+    let velocity = note.velocity.clamp(0.0, 1.0);
+    gain *= 0.88 + velocity * 0.52;
+    playback_rate *= 0.98 + velocity * 0.06;
+
+    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
+    request.gain = gain * amplitude_gain(&note);
+    request.playback_rate = playback_rate;
+    request.pan = 0.08 + (velocity - 0.5) * 0.06;
+    audio.play(request).await.map_err(|_| Error::Submission)
 }
 
 fn resolve_articulation(note: &Note<SnareDrumArticulation>) -> SnareDrumArticulation {

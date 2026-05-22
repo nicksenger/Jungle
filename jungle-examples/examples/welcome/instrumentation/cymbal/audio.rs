@@ -1,56 +1,30 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::audio::{AudioHandle, PlayRequest};
-
-use super::{
+use crate::audio::PlayRequest;
+use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, smoothstep, triangle, SAMPLE_RATE},
-    Error, Instrument, Note,
+    Error, Note,
 };
 
-pub struct Cymbal {
-    audio: AudioHandle,
-}
+use super::CymbalArticulation;
 
-impl Cymbal {
-    pub fn new(audio: AudioHandle) -> Self {
-        Self { audio }
-    }
-}
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum CymbalArticulation {
-    /// A standard, explosive crash on the edge of the cymbal.
-    StandardCrash,
-    /// Grabbing the cymbal with the hand immediately after striking to choke the sound.
-    ChokedCrash,
-    /// Striking the flat surface of the ride cymbal with the tip of the stick for a clear ping.
-    RideTip,
-    /// Striking the dome/bell of the ride cymbal.
-    /// Adds distinct, bright, metallic punctuation to specific grooves.
-    RideBell,
-}
-
-impl Instrument for Cymbal {
-    type Articulation = CymbalArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate) = {
-            let note_for_synth = note;
-            tokio::task::spawn_blocking(move || synthesize_cymbal(&note_for_synth))
-                .await
-                .map_err(|_| Error::Playback)?
-        };
-
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.gain = gain * amplitude_gain(&note);
-        request.playback_rate = playback_rate;
-        request.pan = 0.25;
-        self.audio
-            .play(request)
+pub(super) async fn play(
+    audio: &crate::audio::AudioHandle,
+    note: Note<CymbalArticulation>,
+) -> Result<(), Error> {
+    let (pcm, gain, playback_rate) = {
+        let note_for_synth = note;
+        tokio::task::spawn_blocking(move || synthesize_cymbal(&note_for_synth))
             .await
-            .map_err(|_| Error::Submission)
-    }
+            .map_err(|_| Error::Playback)?
+    };
+
+    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
+    request.gain = gain * amplitude_gain(&note);
+    request.playback_rate = playback_rate;
+    request.pan = 0.25;
+    audio.play(request).await.map_err(|_| Error::Submission)
 }
 
 fn synthesize_cymbal(note: &Note<CymbalArticulation>) -> (Arc<[f32]>, f32, f32) {

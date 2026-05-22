@@ -1,72 +1,37 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use crate::audio::{AudioHandle, PlayRequest};
-
-use super::{
+use crate::audio::PlayRequest;
+use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, SAMPLE_RATE},
-    Error, Expression, Instrument, Note,
+    Error, Expression, Note,
 };
 
-pub struct Vocals {
-    audio: AudioHandle,
-}
+use super::VocalsArticulation;
 
-impl Vocals {
-    pub fn new(audio: AudioHandle) -> Self {
-        Self { audio }
-    }
-}
+pub(super) async fn play(
+    audio: &crate::audio::AudioHandle,
+    note: Note<VocalsArticulation>,
+) -> Result<(), Error> {
+    let (pcm, gain, playback_rate) = {
+        let note_for_synth = note;
+        tokio::task::spawn_blocking(move || synthesize_vocals(&note_for_synth))
+            .await
+            .map_err(|_| Error::Playback)?
+    };
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum VocalsArticulation {
-    /// Clean, melodic singing with standard resonance (e.g., the lower register parts of the verses).
-    Clean,
-    /// Pushing the voice into a distorted, high-register rock belt.
-    /// This is Axl's signature sound for the choruses.
-    GritRasp,
-    /// The chest-voice, semi-spoken, low-register delivery.
-    /// Essential for the "Do you know where you are?" breakdown.
-    SpokenBreakdown,
-    /// Ultra-high, piercing falsetto screams (like the legendary "Welcome to the Jungle!" intro howl).
-    SirenScream,
-    /// Rapid, rhythmic, percussive vocal sound effects (e.g., the stuttering "nn-nn-nn-nn-nn-nn-nn-f-f-freee").
-    StutterStab,
-    /// Clean, unified group harmony backing up a lead line.
-    GroupHarmony,
-    /// Aggressive, chanted, or shouted backing lines (e.g., shouting "Jungle!" in response to Axl).
-    ShoutResponse,
-    /// Sustained, open-vowel vocal beds ("Ahhs" or "Ohhs") used for atmospheric backing texture.
-    VocalBed,
-}
-
-impl Instrument for Vocals {
-    type Articulation = VocalsArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate) = {
-            let note_for_synth = note;
-            tokio::task::spawn_blocking(move || synthesize_vocals(&note_for_synth))
-                .await
-                .map_err(|_| Error::Playback)?
-        };
-
-        for layer in articulation_layers(note.articulation) {
-            if layer.delay_seconds > 0.0 {
-                tokio::time::sleep(Duration::from_secs_f32(layer.delay_seconds)).await;
-            }
-            let mut request = PlayRequest::new(Arc::clone(&pcm), 1, SAMPLE_RATE);
-            request.gain = gain * layer.gain_scale * amplitude_gain(&note);
-            request.playback_rate = playback_rate * layer.playback_rate_scale;
-            request.pan = layer.pan;
-            self.audio
-                .play(request)
-                .await
-                .map_err(|_| Error::Submission)?;
+    for layer in articulation_layers(note.articulation) {
+        if layer.delay_seconds > 0.0 {
+            tokio::time::sleep(Duration::from_secs_f32(layer.delay_seconds)).await;
         }
-
-        Ok(())
+        let mut request = PlayRequest::new(Arc::clone(&pcm), 1, SAMPLE_RATE);
+        request.gain = gain * layer.gain_scale * amplitude_gain(&note);
+        request.playback_rate = playback_rate * layer.playback_rate_scale;
+        request.pan = layer.pan;
+        audio.play(request).await.map_err(|_| Error::Submission)?;
     }
+
+    Ok(())
 }
 
 #[derive(Clone, Copy)]

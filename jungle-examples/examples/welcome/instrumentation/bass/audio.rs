@@ -1,61 +1,32 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use crate::audio::{AudioHandle, PlayRequest};
-
-use super::{
+use crate::audio::PlayRequest;
+use crate::instrumentation::{
     amplitude_gain,
     synthesis::{
         duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, triangle, SAMPLE_RATE,
     },
-    Error, Expression, Instrument, Note,
+    Error, Expression, Note,
 };
 
-pub struct Bass {
-    audio: AudioHandle,
-}
+use super::BassArticulation;
 
-impl Bass {
-    pub fn new(audio: AudioHandle) -> Self {
-        Self { audio }
-    }
-}
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum BassArticulation {
-    /// A hard, aggressive pick strike with normal sustain.
-    Picked,
-    /// Forcing the string down so hard it clanks against the frets on attack.
-    /// Used to accent the downbeats of the chorus.
-    AccentedClank,
-    /// Muting the string immediately with the fretting hand.
-    /// Essential for keeping the fast-moving basslines crisp and preventing mud.
-    StaccatoMute,
-    /// Sliding from one note down into the next, a classic Duff transition tool.
-    SlideDown,
-    /// Striking a completely dead string for a purely percussive thud.
-    GhostNote,
-}
-
-impl Instrument for Bass {
-    type Articulation = BassArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate) = {
-            let note_for_synth = note;
-            tokio::task::spawn_blocking(move || synthesize_bass(&note_for_synth))
-                .await
-                .map_err(|_| Error::Playback)?
-        };
-
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.gain = gain * amplitude_gain(&note);
-        request.playback_rate = playback_rate;
-        request.pan = 0.0;
-        self.audio
-            .play(request)
+pub(super) async fn play(
+    audio: &crate::audio::AudioHandle,
+    note: Note<BassArticulation>,
+) -> Result<(), Error> {
+    let (pcm, gain, playback_rate) = {
+        let note_for_synth = note;
+        tokio::task::spawn_blocking(move || synthesize_bass(&note_for_synth))
             .await
-            .map_err(|_| Error::Submission)
-    }
+            .map_err(|_| Error::Playback)?
+    };
+
+    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
+    request.gain = gain * amplitude_gain(&note);
+    request.playback_rate = playback_rate;
+    request.pan = 0.0;
+    audio.play(request).await.map_err(|_| Error::Submission)
 }
 
 fn synthesize_bass(note: &Note<BassArticulation>) -> (Arc<[f32]>, f32, f32) {

@@ -1,53 +1,30 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::audio::{AudioHandle, PlayRequest};
-
-use super::{
+use crate::audio::PlayRequest;
+use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, midi_to_hz, sine, smoothstep, SAMPLE_RATE},
-    Error, Instrument, Note,
+    Error, Note,
 };
 
-pub struct KickDrum {
-    audio: AudioHandle,
-}
+use super::KickDrumArticulation;
 
-impl KickDrum {
-    pub fn new(audio: AudioHandle) -> Self {
-        Self { audio }
-    }
-}
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum KickDrumArticulation {
-    /// A standard, powerful kick where the beater strikes and bounces off.
-    StandardHit,
-    /// Burying the beater into the head, dampening the sustain for a tighter, punchier thud.
-    BuriedBeater,
-    /// A soft, unaccented hit used in quick double-stroke patterns.
-    GhostHit,
-}
-
-impl Instrument for KickDrum {
-    type Articulation = KickDrumArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate) = {
-            let note_for_synth = note;
-            tokio::task::spawn_blocking(move || synthesize_kick_drum(&note_for_synth))
-                .await
-                .map_err(|_| Error::Playback)?
-        };
-
-        let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-        request.gain = gain * amplitude_gain(&note);
-        request.playback_rate = playback_rate;
-        request.pan = 0.0;
-        self.audio
-            .play(request)
+pub(super) async fn play(
+    audio: &crate::audio::AudioHandle,
+    note: Note<KickDrumArticulation>,
+) -> Result<(), Error> {
+    let (pcm, gain, playback_rate) = {
+        let note_for_synth = note;
+        tokio::task::spawn_blocking(move || synthesize_kick_drum(&note_for_synth))
             .await
-            .map_err(|_| Error::Submission)
-    }
+            .map_err(|_| Error::Playback)?
+    };
+
+    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
+    request.gain = gain * amplitude_gain(&note);
+    request.playback_rate = playback_rate;
+    request.pan = 0.0;
+    audio.play(request).await.map_err(|_| Error::Submission)
 }
 
 fn synthesize_kick_drum(note: &Note<KickDrumArticulation>) -> (Arc<[f32]>, f32, f32) {
