@@ -87,3 +87,63 @@ pub struct IntroRelease(Transparent<IntroSectionMeta, IntroReleasePhrase>);
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
 pub struct IntroReleasePhrase(Step<Sing<58, 1, 192>>);
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use jungle_sdk::core::JungleWorker;
+    use jungle_sdk::prelude::JourneyStatus;
+    use jungle_sdk::{JungleClient, LocalClient};
+
+    use super::super::LeadVocalist;
+    use crate::ecosystem::TheJungle;
+
+    #[tokio::test]
+    async fn intro_journey_runs_to_completion_end_to_end() {
+        let client = LocalClient::builder()
+            .namespace("welcome-lead-vocal-intro-test")
+            .build()
+            .await
+            .expect("local client should build");
+
+        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
+        let ecosystem = TheJungle::new(audio_handle, 123.0);
+
+        let worker = JungleWorker::new(ecosystem, client.clone());
+        let worker_handle = tokio::spawn(async move {
+            let _ = worker.spawn().await;
+        });
+
+        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let journey_id = client
+            .start_journey::<LeadVocalist>(seed)
+            .await
+            .expect("journey should start");
+
+        let completion = tokio::time::timeout(Duration::from_secs(40), async {
+            loop {
+                let status = client
+                    .journey_details(journey_id)
+                    .await
+                    .expect("journey details should be available");
+                match status {
+                    JourneyStatus::Completed => break,
+                    JourneyStatus::Dead | JourneyStatus::Stopped => {
+                        panic!("journey reached terminal non-complete status: {status:?}");
+                    }
+                    JourneyStatus::Created | JourneyStatus::Alive => {}
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await;
+        assert!(
+            completion.is_ok(),
+            "intro journey did not complete before timeout"
+        );
+
+        worker_handle.abort();
+        let _ = worker_handle.await;
+    }
+}
