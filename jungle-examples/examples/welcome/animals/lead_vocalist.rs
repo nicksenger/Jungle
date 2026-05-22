@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::U1;
-use std::time::Duration;
 
+use crate::effect::Rest;
 use crate::instrumentation::{Sing, VocalsArticulation};
 
 use super::DecrementCounter;
@@ -23,7 +23,7 @@ impl Default for LeadVocalistState {
 }
 
 pub type LeadVocalistSeed = ();
-const INTRO_START_DELAY_MS: u64 = 25_854;
+const INTRO_START_DELAY_TICKS: u32 = 20_352;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
@@ -33,12 +33,12 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Sleep;
+    type Effect = Rest<INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        Duration::from_millis(INTRO_START_DELAY_MS)
+        ()
     }
 
     fn absorb(

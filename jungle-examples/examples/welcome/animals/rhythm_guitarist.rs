@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::{U1, U2};
-use std::time::Duration;
 
+use crate::effect::Rest;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck, Strum};
 
 use super::DecrementCounter;
@@ -27,7 +27,7 @@ impl Default for RhythmGuitaristState {
 }
 
 pub type RhythmGuitaristSeed = ();
-const INTRO_START_DELAY_MS: u64 = 0;
+const INTRO_START_DELAY_TICKS: u32 = 0;
 
 pub struct RhythmGuitarist;
 
@@ -46,7 +46,7 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Sleep;
+    type Effect = Rest<INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 
@@ -54,7 +54,7 @@ impl Act for IntroStartDelay {
         _state: &RhythmGuitaristState,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
-        Duration::from_millis(INTRO_START_DELAY_MS)
+        ()
     }
 
     fn absorb(

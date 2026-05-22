@@ -1,7 +1,6 @@
 use jungle_sdk::prelude::*;
-use std::time::Duration;
 
-use crate::effect::{DecrementCounterEffect, Monad};
+use crate::effect::{DecrementCounterEffect, Monad, Rest};
 use crate::instrumentation::{
     Cymbal, CymbalArticulation, HiHat, HiHatArticulation, KickDrum, KickDrumArticulation,
     SnareDrum, SnareDrumArticulation,
@@ -9,7 +8,7 @@ use crate::instrumentation::{
 
 pub type DrummerState = ();
 pub type DrummerSeed = ();
-const INTRO_START_DELAY_MS: u64 = 6_829;
+const INTRO_START_DELAY_TICKS: u32 = 5_376;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
@@ -19,12 +18,12 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Sleep;
+    type Effect = Rest<INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        Duration::from_millis(INTRO_START_DELAY_MS)
+        ()
     }
 
     fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {

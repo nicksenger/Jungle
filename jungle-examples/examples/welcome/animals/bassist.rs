@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::{U1, U2};
-use std::time::Duration;
 
+use crate::effect::Rest;
 use crate::instrumentation::{BassArticulation, Thump};
 
 use super::DecrementCounter;
@@ -25,7 +25,7 @@ impl Default for BassistState {
 }
 
 pub type BassistSeed = ();
-const INTRO_START_DELAY_MS: u64 = 6_829;
+const INTRO_START_DELAY_TICKS: u32 = 5_376;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
@@ -35,12 +35,12 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Sleep;
+    type Effect = Rest<INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        Duration::from_millis(INTRO_START_DELAY_MS)
+        ()
     }
 
     fn absorb(_state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {

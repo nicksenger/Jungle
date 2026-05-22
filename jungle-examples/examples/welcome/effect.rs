@@ -76,6 +76,7 @@ pub struct Monad<
 >(PhantomData<(I, A)>);
 
 pub struct DecrementCounterEffect;
+pub struct Rest<const REST_TICKS: u32>;
 
 #[effect(id = 512)]
 impl<J> jungle_sdk::prelude::Effect<J> for DecrementCounterEffect {
@@ -88,6 +89,21 @@ impl<J> jungle_sdk::prelude::Effect<J> for DecrementCounterEffect {
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> + Send {
         std::future::ready(Ok(()))
+    }
+}
+
+#[effect(id = 513)]
+impl<const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJungle> for Rest<REST_TICKS> {
+    type In = ();
+    type Out = ();
+    type Err = String;
+
+    async fn effect(jungle: &TheJungle, _input: Self::In) -> Result<Self::Out, Self::Err> {
+        let duration = jungle
+            .metronome()
+            .duration_for_ticks(TICKS_PER_BEAT, REST_TICKS);
+        tokio::time::sleep(duration).await;
+        Ok(())
     }
 }
 
