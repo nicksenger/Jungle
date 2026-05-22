@@ -2344,6 +2344,52 @@ impl DefaultThemeState {
         changed
     }
 
+    fn maybe_collapse_completed_cluster_for_pending_successor(
+        &mut self,
+        cx: &ClusterViewCtx<'_>,
+        now: Instant,
+    ) -> bool {
+        if cx.successor_runtime_ids.is_empty() {
+            return false;
+        }
+        if !matches!(cx.kind, ClusterKind::While | ClusterKind::Transparent) {
+            return false;
+        }
+
+        let should_collapse = self
+            .cluster_visuals
+            .get(&cx.cluster_id)
+            .map(|visual| visual.expanded && visual.border.to == cluster_border_color_completed())
+            .unwrap_or(false);
+        if !should_collapse {
+            return false;
+        }
+
+        let successor_pending = cx.successor_runtime_ids.iter().any(|runtime_id| {
+            matches!(
+                self.effective_node_target(*runtime_id),
+                RuntimeState::Pending
+            )
+        });
+        if !successor_pending {
+            return false;
+        }
+
+        let Some(visual) = self.cluster_visuals.get_mut(&cx.cluster_id) else {
+            return false;
+        };
+        visual.expanded = false;
+        let current = current_cluster_border_color(visual.border, now);
+        let mut changed = true;
+        changed |= update_cluster_border_visual(
+            &mut visual.border,
+            current,
+            cluster_border_color_gray(),
+            now,
+        );
+        changed
+    }
+
     fn has_running_cluster_animations(&self, now: Instant) -> bool {
         self.cluster_visuals.values().any(|visual| {
             visual.border.from != visual.border.to
@@ -2573,6 +2619,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         let now = Instant::now();
         let (expanded, border_color) = if let Ok(mut guard) = state.try_lock() {
             guard.register_cluster(cx, now);
+            guard.maybe_collapse_completed_cluster_for_pending_successor(cx, now);
             (
                 guard.cluster_is_expanded(cx.cluster_id),
                 guard.cluster_border_color(cx.cluster_id, now),
@@ -3378,5 +3425,77 @@ mod tests {
             .border;
         assert_eq!(border.from, cluster_border_color_gray());
         assert_eq!(border.to, cluster_border_color_running());
+    }
+
+    #[test]
+    fn completed_cluster_recollapses_when_successor_returns_to_pending() {
+        let mut state = DefaultThemeState {
+            node_visuals: HashMap::new(),
+            condition_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
+        };
+
+        let started_at = Instant::now();
+        let cx = ClusterViewCtx {
+            cluster_id: 12,
+            cluster_index: 0,
+            kind: ClusterKind::Transparent,
+            label: "transparent: section",
+            metadata: None,
+            parent_cluster_id: None,
+            depth: 0,
+            member_display_ids: &[],
+            entry_runtime_ids: vec![70],
+            member_runtime_ids: vec![70, 71],
+            successor_runtime_ids: vec![95],
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: false,
+            }),
+        };
+        state.register_cluster(&cx, started_at);
+
+        let entry = started_at + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(70, entry));
+        assert!(
+            state
+                .cluster_visuals
+                .get(&12)
+                .expect("cluster visual should exist")
+                .expanded
+        );
+
+        let exit = entry + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(95, exit));
+        let border = state
+            .cluster_visuals
+            .get(&12)
+            .expect("cluster visual should exist")
+            .border;
+        assert_eq!(border.to, cluster_border_color_completed());
+
+        let successor_completed = exit + Duration::from_millis(1);
+        assert!(state.update_node_state(95, RuntimeState::Completed, successor_completed));
+        let successor_pending = successor_completed + Duration::from_millis(1);
+        assert!(state.update_node_state(95, RuntimeState::Pending, successor_pending));
+
+        assert!(
+            state.maybe_collapse_completed_cluster_for_pending_successor(
+                &cx,
+                successor_pending + Duration::from_millis(1)
+            )
+        );
+        let visual = state
+            .cluster_visuals
+            .get(&12)
+            .expect("cluster visual should exist");
+        assert!(!visual.expanded);
+        assert_eq!(visual.border.to, cluster_border_color_gray());
     }
 }
