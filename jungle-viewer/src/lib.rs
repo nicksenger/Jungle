@@ -1,4 +1,4 @@
-mod cluster_fill;
+mod cluster_panel;
 
 use iced::futures::{self, Stream, StreamExt};
 use iced::widget::{button, column, container, row, text, Space};
@@ -25,6 +25,7 @@ const GRAPH_WIDGET_ID: &str = "jungle-viewer";
 const DEFAULT_CLUSTER_FILL: Color = Color::from_rgba8(20, 46, 30, 0.14);
 const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_BORDER_ANIMATION_DURATION: Duration = Duration::from_millis(320);
+const CLUSTER_RECOLLAPSE_DELAY: Duration = Duration::from_secs(2);
 const ANIMATION_TICK: Duration = Duration::from_millis(16);
 
 static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
@@ -2164,7 +2165,8 @@ struct ClusterRuntimeIndex {
 struct ClusterVisual {
     expanded: bool,
     border: ClusterBorderVisual,
-    fill: cluster_fill::Transition,
+    fill: cluster_panel::Transition,
+    completed_at: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2188,7 +2190,7 @@ pub struct DefaultThemeState {
 
 impl DefaultThemeState {
     fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>, now: Instant) {
-        let fill = cluster_fill::target_color(cx.kind, cx.phase);
+        let fill = cluster_panel::target_color(cx.kind, cx.phase);
         let index = ClusterRuntimeIndex {
             kind: cx.kind,
             entry_runtime_ids: cx.entry_runtime_ids.iter().copied().collect(),
@@ -2205,7 +2207,8 @@ impl DefaultThemeState {
                     to: cluster_border_color_gray(),
                     started_at: now,
                 },
-                fill: cluster_fill::Transition::new(fill, now),
+                fill: cluster_panel::Transition::new(fill, now),
+                completed_at: None,
             });
     }
 
@@ -2320,6 +2323,7 @@ impl DefaultThemeState {
             if let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) {
                 if (is_while_cluster && contains_entry) || (!visual.expanded && contains_member) {
                     visual.expanded = true;
+                    visual.completed_at = None;
                     changed |= update_cluster_border_visual(
                         &mut visual.border,
                         cluster_border_color_gray(),
@@ -2335,6 +2339,7 @@ impl DefaultThemeState {
                         cluster_border_color_completed(),
                         now,
                     );
+                    visual.completed_at.get_or_insert(now);
                 }
             }
 
@@ -2364,7 +2369,16 @@ impl DefaultThemeState {
         let should_collapse = self
             .cluster_visuals
             .get(&cx.cluster_id)
-            .map(|visual| visual.expanded && visual.border.to == cluster_border_color_completed())
+            .map(|visual| {
+                visual.expanded
+                    && visual.border.to == cluster_border_color_completed()
+                    && visual
+                        .completed_at
+                        .map(|completed_at| {
+                            now.saturating_duration_since(completed_at) >= CLUSTER_RECOLLAPSE_DELAY
+                        })
+                        .unwrap_or(false)
+            })
             .unwrap_or(false);
         if !should_collapse {
             return false;
@@ -2374,6 +2388,7 @@ impl DefaultThemeState {
             return false;
         };
         visual.expanded = false;
+        visual.completed_at = None;
         let current = current_cluster_border_color(visual.border, now);
         let mut changed = true;
         changed |= update_cluster_border_visual(
@@ -2403,7 +2418,7 @@ impl DefaultThemeState {
     }
 
     fn update_cluster_fill_target(&mut self, cx: &ClusterViewCtx<'_>, now: Instant) -> bool {
-        let target = cluster_fill::target_color(cx.kind, cx.phase);
+        let target = cluster_panel::target_color(cx.kind, cx.phase);
         self.cluster_visuals
             .get_mut(&cx.cluster_id)
             .map(|visual| {
@@ -2653,7 +2668,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
             (
                 false,
                 cluster_border_color_gray(),
-                cluster_fill::target_color(cx.kind, cx.phase),
+                cluster_panel::target_color(cx.kind, cx.phase),
             )
         };
         let overlay = container(
@@ -3522,9 +3537,15 @@ mod tests {
             ..cx.clone()
         };
         assert!(
-            state.maybe_collapse_completed_cluster_for_pending_successor(
+            !state.maybe_collapse_completed_cluster_for_pending_successor(
                 &collapse_cx,
                 successor_pending + Duration::from_millis(1)
+            )
+        );
+        assert!(
+            state.maybe_collapse_completed_cluster_for_pending_successor(
+                &collapse_cx,
+                successor_pending + CLUSTER_RECOLLAPSE_DELAY + Duration::from_millis(1)
             )
         );
         let visual = state
