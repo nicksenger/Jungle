@@ -1,13 +1,15 @@
 use jungle_sdk::prelude::*;
+use jungle_sdk::typosaurus::num::consts::{U1, U2};
 
-use crate::effect::{Dyad, Monad, Triad};
-use crate::instrumentation::{ElectricGuitar, ElectricGuitarArticulation};
+use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck, Strum};
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct RhythmGuitaristState {
+    #[jungle(focus)]
     articulation: ElectricGuitarArticulation,
     riff_loops_remaining: u8,
     transition_loops_remaining: u8,
+    sustain_loops_remaining: u8,
 }
 
 impl Default for RhythmGuitaristState {
@@ -16,6 +18,7 @@ impl Default for RhythmGuitaristState {
             articulation: ElectricGuitarArticulation::default(),
             riff_loops_remaining: 5,
             transition_loops_remaining: 3,
+            sustain_loops_remaining: 1,
         }
     }
 }
@@ -61,45 +64,9 @@ impl<In> Condition<(RhythmGuitaristState, In)> for IntroSustainNeeded {
     }
 }
 
-pub struct AdvanceRiffLoop;
-#[jungle::act]
-impl Act for AdvanceRiffLoop {
-    type Effect = StubEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(
-        state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("advance riff loop should succeed");
-        state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
-    }
-}
-
-pub struct AdvanceTransitionLoop;
-#[jungle::act]
-impl Act for AdvanceTransitionLoop {
-    type Effect = StubEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(
-        state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("advance transition loop should succeed");
-        state.transition_loops_remaining = state.transition_loops_remaining.saturating_sub(1);
-    }
-}
-
-pub struct StubEffect;
+pub struct DecrementCounterEffect;
 #[jungle::effect(id = 512)]
-impl<J> Effect<J> for StubEffect {
+impl<J> Effect<J> for DecrementCounterEffect {
     type In = ();
     type Out = ();
     type Err = String;
@@ -112,97 +79,28 @@ impl<J> Effect<J> for StubEffect {
     }
 }
 
-pub struct RPick<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for RPick<NOTE, NOTE_TICK, REST_TICK>
-{
-    type Effect = Monad<ElectricGuitar, ElectricGuitarArticulation, NOTE, NOTE_TICK, REST_TICK>;
+pub struct DecrementCounter<Focus>(core::marker::PhantomData<fn() -> Focus>);
+#[jungle::act(aspect = Focus)]
+impl<Focus> Act for DecrementCounter<Focus> {
+    type Effect = DecrementCounterEffect;
     type Input = ();
     type Output = ();
 
-    fn emit(
-        state: &RhythmGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        state.articulation
-    }
+    fn emit(_view: &u8, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(
-        _state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
+    fn absorb(view: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("counter decrement should succeed");
+        *view = view.saturating_sub(1);
     }
 }
 
-pub struct RPluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
-#[jungle::act]
-impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for RPluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
-{
-    type Effect =
-        Dyad<ElectricGuitar, ElectricGuitarArticulation, NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>;
-    type Input = ();
-    type Output = ();
+type RiffLoopCounter = Lens<RhythmGuitaristState, U1>;
+type TransitionLoopCounter = Lens<RhythmGuitaristState, U2>;
+type SustainLoopCounter = Lens<RhythmGuitaristState, jungle_sdk::typosaurus::num::consts::U3>;
 
-    fn emit(
-        state: &RhythmGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        state.articulation
-    }
-
-    fn absorb(
-        _state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
-    }
-}
-
-pub struct RStrum<
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_3: u8,
-    const NOTE_TICK: u8,
-    const REST_TICK: u8,
->;
-#[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_3: u8,
-        const NOTE_TICK: u8,
-        const REST_TICK: u8,
-    > Act for RStrum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
-{
-    type Effect = Triad<
-        ElectricGuitar,
-        ElectricGuitarArticulation,
-        NOTE_1,
-        NOTE_2,
-        NOTE_3,
-        NOTE_TICK,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        state: &RhythmGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        state.articulation
-    }
-
-    fn absorb(
-        _state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
-    }
-}
+pub type AdvanceRiffLoop = DecrementCounter<RiffLoopCounter>;
+pub type AdvanceTransitionLoop = DecrementCounter<TransitionLoopCounter>;
+pub type AdvanceSustainLoop = DecrementCounter<SustainLoopCounter>;
 
 #[derive(Flow)]
 pub struct Intro(
@@ -216,158 +114,238 @@ pub struct Intro(
 );
 
 #[derive(Flow)]
-pub struct IntroPrelude(PreludeRake, PreludeHold, IntroRiffCycle);
+pub struct IntroPrelude(
+    Transparent<IntroSectionMeta, PreludeRake>,
+    Transparent<IntroSectionMeta, PreludeHold>,
+    Transparent<IntroSectionMeta, IntroRiffCycle>,
+);
 
 #[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
 pub struct PreludeRake(
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
 );
 
 #[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
 pub struct PreludeHold(
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
 );
 
 #[derive(Flow)]
-pub struct IntroRiffLoopBody(IntroRiffCycle, Step<AdvanceRiffLoop>);
+pub struct IntroRiffLoopBody(
+    Transparent<IntroSectionMeta, IntroRiffCycle>,
+    Transparent<IntroSectionMeta, Step<AdvanceRiffLoop>>,
+);
 
 #[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
 pub struct IntroRiffCycle(
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPick<58, 96, 96>>,
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPluck<56, 56, 96, 96>>,
-    Step<RPick<56, 96, 96>>,
-    Step<RPluck<56, 56, 96, 96>>,
-    Step<RPluck<53, 53, 96, 96>>,
-    Step<RPick<53, 96, 96>>,
-    Step<RPluck<53, 53, 96, 96>>,
-    Step<RPluck<51, 51, 96, 96>>,
-    Step<RPick<51, 96, 96>>,
-    Step<RPluck<51, 51, 96, 96>>,
-    Step<RPluck<49, 49, 96, 96>>,
-    Step<RPick<49, 96, 96>>,
-    Step<RStrum<46, 46, 49, 96, 96>>,
-    Step<RPluck<46, 49, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pluck<56, 56, 96, 96>>,
+    Step<Pick<56, 96, 96>>,
+    Step<Pluck<56, 56, 96, 96>>,
+    Step<Pluck<53, 53, 96, 96>>,
+    Step<Pick<53, 96, 96>>,
+    Step<Pluck<53, 53, 96, 96>>,
+    Step<Pluck<51, 51, 96, 96>>,
+    Step<Pick<51, 96, 96>>,
+    Step<Pluck<51, 51, 96, 96>>,
+    Step<Pluck<49, 49, 96, 96>>,
+    Step<Pick<49, 96, 96>>,
+    Step<Strum<46, 46, 49, 96, 96>>,
+    Step<Pluck<46, 49, 96, 96>>,
 );
 
 #[derive(Flow)]
-pub struct IntroTransitionLoopBody(IntroTransitionCycle, Step<AdvanceTransitionLoop>);
+pub struct IntroTransitionLoopBody(
+    Transparent<IntroSectionMeta, IntroTransitionCycle>,
+    Transparent<IntroSectionMeta, Step<AdvanceTransitionLoop>>,
+);
 
 #[derive(Flow)]
 pub struct IntroTransitionCycle(
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPluck<58, 58, 96, 96>>,
-    Step<RPluck<56, 56, 96, 96>>,
-    Step<RPluck<56, 56, 96, 96>>,
-    Step<RPluck<56, 56, 96, 96>>,
-    Step<RPluck<53, 53, 96, 96>>,
-    Step<RPluck<53, 53, 96, 96>>,
-    Step<RPluck<53, 53, 96, 96>>,
-    Step<RPluck<51, 51, 96, 96>>,
-    Step<RPluck<51, 51, 96, 96>>,
-    Step<RPluck<51, 51, 96, 96>>,
-    Step<RPluck<49, 49, 96, 96>>,
-    Step<RPluck<49, 49, 96, 96>>,
-    Step<RStrum<46, 46, 49, 96, 96>>,
-    Step<RStrum<44, 46, 49, 96, 96>>,
+    Transparent<IntroSectionMeta, TransitionBlock58>,
+    Transparent<IntroSectionMeta, TransitionBlock56>,
+    Transparent<IntroSectionMeta, TransitionBlock53>,
+    Transparent<IntroSectionMeta, TransitionEnding>,
 );
 
 #[derive(Flow)]
-pub struct IntroSustainSection(IntroSustainBody, IntroCadence);
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct TransitionBlock58(
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pluck<56, 56, 96, 96>>,
+);
 
 #[derive(Flow)]
-pub struct IntroSustainBody(
-    Step<RPluck<49, 56, 192, 192>>,
-    Step<RPluck<49, 56, 192, 192>>,
-    Step<RPluck<44, 51, 192, 192>>,
-    Step<RPluck<44, 51, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<46, 58, 192, 192>>,
-    Step<RPluck<44, 51, 192, 192>>,
-    Step<RPick<42, 192, 192>>,
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct TransitionBlock56(
+    Step<Pluck<56, 56, 96, 96>>,
+    Step<Pluck<56, 56, 96, 96>>,
+    Step<Pluck<53, 53, 96, 96>>,
+    Step<Pluck<53, 53, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct TransitionBlock53(
+    Step<Pluck<53, 53, 96, 96>>,
+    Step<Pluck<51, 51, 96, 96>>,
+    Step<Pluck<51, 51, 96, 96>>,
+    Step<Pluck<51, 51, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct TransitionEnding(
+    Step<Pluck<49, 49, 96, 96>>,
+    Step<Pluck<49, 49, 96, 96>>,
+    Step<Strum<46, 46, 49, 96, 96>>,
+    Step<Strum<44, 46, 49, 96, 96>>,
+);
+
+#[derive(Flow)]
+pub struct IntroSustainSection(
+    Transparent<IntroSectionMeta, SustainHead>,
+    Transparent<IntroSectionMeta, While<SustainMiddleRemaining, SustainMiddleLoopBody>>,
+    Transparent<IntroSectionMeta, SustainTail>,
+    Transparent<IntroSectionMeta, IntroCadence>,
+);
+
+pub struct SustainMiddleRemaining;
+impl LoopCondition<RhythmGuitaristState> for SustainMiddleRemaining {
+    type Arg = ();
+
+    fn should_continue(state: &RhythmGuitaristState) -> bool {
+        state.sustain_loops_remaining > 0
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct SustainHead(
+    Step<Pluck<49, 56, 192, 192>>,
+    Step<Pluck<49, 56, 192, 192>>,
+    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<44, 51, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct SustainMiddleBars(
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+);
+
+#[derive(Flow)]
+pub struct SustainMiddleLoopBody(
+    Transparent<IntroSectionMeta, SustainMiddleBars>,
+    Transparent<IntroSectionMeta, Step<AdvanceSustainLoop>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct SustainTail(
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<46, 58, 192, 192>>,
+    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pick<42, 192, 192>>,
 );
 
 #[derive(Flow)]
 pub struct IntroCadence(
-    Step<RPluck<44, 49, 96, 96>>,
-    Step<RPluck<44, 49, 96, 192>>,
-    Step<RPluck<49, 54, 96, 96>>,
-    Step<RPick<42, 96, 192>>,
-    Step<RPick<41, 96, 192>>,
-    Step<RPick<44, 192, 192>>,
-    Step<RPluck<44, 51, 192, 192>>,
-    Step<RPluck<44, 49, 96, 96>>,
-    Step<RPluck<44, 49, 96, 96>>,
-    Step<RPick<42, 192, 192>>,
-    Step<RPluck<44, 51, 96, 96>>,
-    Step<RPluck<44, 51, 192, 192>>,
-    Step<RPluck<49, 54, 96, 96>>,
-    Step<RPick<42, 96, 192>>,
-    Step<RPick<41, 96, 192>>,
-    Step<RPick<44, 192, 192>>,
-    Step<RPluck<44, 51, 192, 192>>,
-    Step<RPluck<44, 49, 96, 96>>,
-    Step<RPluck<44, 49, 96, 96>>,
-    Step<RPick<42, 192, 192>>,
-    Step<RPluck<44, 51, 96, 96>>,
-    Step<RPluck<44, 51, 192, 192>>,
-    Step<RPluck<49, 54, 96, 96>>,
-    Step<RPick<42, 96, 192>>,
-    Step<RPick<41, 96, 192>>,
-    Step<RPick<44, 192, 0>>,
+    Transparent<IntroSectionMeta, CadencePhrase>,
+    Transparent<IntroSectionMeta, CadencePhrase>,
+    Transparent<IntroSectionMeta, CadencePhraseFinal>,
 );
 
 #[derive(Flow)]
-pub struct Buildup(
-    BuildupTriplet<58>,
-    BuildupTriplet<56>,
-    BuildupTriplet<53>,
-    BuildupTriplet<51>,
-    Step<RPick<49, 96, 96>>,
-    Step<RPick<46, 96, 0>>,
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct CadencePhrase(
+    Step<Pluck<44, 49, 96, 96>>,
+    Step<Pluck<44, 49, 96, 192>>,
+    Step<Pluck<49, 54, 96, 96>>,
+    Step<Pick<42, 96, 192>>,
+    Step<Pick<41, 96, 192>>,
+    Step<Pick<44, 192, 192>>,
+    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<44, 49, 96, 96>>,
+    Step<Pluck<44, 49, 96, 96>>,
+    Step<Pick<42, 192, 192>>,
+    Step<Pluck<44, 51, 96, 96>>,
+    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<49, 54, 96, 96>>,
+    Step<Pick<42, 96, 192>>,
+    Step<Pick<41, 96, 192>>,
+    Step<Pick<44, 192, 192>>,
+    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<44, 49, 96, 96>>,
+    Step<Pluck<44, 49, 96, 96>>,
+    Step<Pick<42, 192, 192>>,
+    Step<Pluck<44, 51, 96, 96>>,
+    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<49, 54, 96, 96>>,
+    Step<Pick<42, 96, 192>>,
+    Step<Pick<41, 96, 192>>,
+    Step<Pick<44, 192, 192>>,
 );
 
 #[derive(Flow)]
-pub struct BuildupTriplet<const NOTE: u8>(
-    Step<RPluck<{ NOTE }, { NOTE }, 96, 96>>,
-    Step<RPick<{ NOTE }, 96, 96>>,
-    Step<RPick<{ NOTE }, 96, 96>>,
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct CadencePhraseFinal(
+    Step<Pluck<44, 49, 96, 96>>,
+    Step<Pluck<44, 49, 96, 192>>,
+    Step<Pluck<49, 54, 96, 96>>,
+    Step<Pick<42, 96, 192>>,
+    Step<Pick<41, 96, 192>>,
+    Step<Pick<44, 192, 192>>,
+    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<44, 49, 96, 96>>,
+    Step<Pluck<44, 49, 96, 96>>,
+    Step<Pick<42, 192, 192>>,
+    Step<Pluck<44, 51, 96, 96>>,
+    Step<Pluck<44, 51, 192, 192>>,
+    Step<Pluck<49, 54, 96, 96>>,
+    Step<Pick<42, 96, 192>>,
+    Step<Pick<41, 96, 192>>,
+    Step<Pick<44, 192, 0>>,
 );
 
 #[cfg(test)]
