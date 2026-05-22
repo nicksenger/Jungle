@@ -2,9 +2,14 @@ use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::U1;
 
 use crate::effect::Rest;
-use crate::instrumentation::{Sing, VocalsArticulation};
+use crate::instrumentation::{Sing as LaneSing, VocalsArticulation};
 
 use super::DecrementCounter;
+use super::LeadVocalist;
+
+const LEAD_VOCALS_LANE_ID: u32 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32;
+type Sing<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+    LaneSing<NOTE, NOTE_TICK, REST_TICK, LEAD_VOCALS_LANE_ID>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LeadVocalistState {
@@ -33,7 +38,7 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Rest<INTRO_START_DELAY_TICKS>;
+    type Effect = Rest<LEAD_VOCALS_LANE_ID, INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 

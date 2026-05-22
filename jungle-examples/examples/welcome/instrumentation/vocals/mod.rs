@@ -52,12 +52,12 @@ impl Instrument for Vocals {
     }
 }
 
-pub struct Sing<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+pub struct Sing<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32 = 0>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for Sing<NOTE, NOTE_TICK, REST_TICK>
+impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32> Act
+    for Sing<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect = Monad<Vocals, VocalsArticulation, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<Vocals, VocalsArticulation, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 

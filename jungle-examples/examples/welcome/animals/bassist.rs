@@ -2,9 +2,13 @@ use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::{U1, U2};
 
 use crate::effect::Rest;
-use crate::instrumentation::{BassArticulation, Thump};
+use crate::instrumentation::{BassArticulation, Thump as LaneThump};
 
-use super::DecrementCounter;
+use super::{Bass, DecrementCounter};
+
+const BASS_LANE_ID: u32 = <<Bass as Animal>::Id as AnimalIdValue>::U32;
+type Thump<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+    LaneThump<NOTE, NOTE_TICK, REST_TICK, BASS_LANE_ID>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct BassistState {
@@ -35,7 +39,7 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Rest<INTRO_START_DELAY_TICKS>;
+    type Effect = Rest<BASS_LANE_ID, INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 

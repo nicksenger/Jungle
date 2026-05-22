@@ -6,9 +6,12 @@ use crate::instrumentation::{
     SnareDrum, SnareDrumArticulation,
 };
 
+use super::Drums;
+
 pub type DrummerState = ();
 pub type DrummerSeed = ();
 const INTRO_START_DELAY_TICKS: u32 = 5_376;
+const DRUMS_LANE_ID: u32 = <<Drums as Animal>::Id as AnimalIdValue>::U32;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
@@ -18,7 +21,7 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Rest<INTRO_START_DELAY_TICKS>;
+    type Effect = Rest<DRUMS_LANE_ID, INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 
@@ -53,7 +56,7 @@ pub struct Hat<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
 impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     for Hat<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<HiHat, HiHatArticulation, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<HiHat, HiHatArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -71,7 +74,7 @@ pub struct Boot<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
 impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     for Boot<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<KickDrum, KickDrumArticulation, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<KickDrum, KickDrumArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -89,7 +92,8 @@ pub struct Snap<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
 impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     for Snap<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<SnareDrum, SnareDrumArticulation, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect =
+        Monad<SnareDrum, SnareDrumArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -107,7 +111,7 @@ pub struct Blast<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
 impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
     for Blast<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<Cymbal, CymbalArticulation, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<Cymbal, CymbalArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 

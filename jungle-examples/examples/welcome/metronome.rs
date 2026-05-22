@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -13,9 +14,9 @@ pub struct BeatEvent {
 #[derive(Debug, Clone, Copy)]
 pub struct RhythmTiming {
     note_duration: Duration,
-    rest_duration: Duration,
-    phase_offset: Duration,
-    late_note_drop_threshold: Duration,
+    should_play: bool,
+    pre_play_sleep_duration: Duration,
+    post_cycle_sleep_duration: Duration,
 }
 
 impl RhythmTiming {
@@ -24,13 +25,18 @@ impl RhythmTiming {
     }
 
     pub fn should_play(&self) -> bool {
-        self.phase_offset <= self.late_note_drop_threshold
+        self.should_play
+    }
+
+    pub async fn sleep_until_note_window(&self) {
+        if !self.pre_play_sleep_duration.is_zero() {
+            tokio::time::sleep(self.pre_play_sleep_duration).await;
+        }
     }
 
     pub async fn sleep_until_next_cycle(&self) {
-        let sleep_for = self.rest_duration.saturating_sub(self.phase_offset);
-        if !sleep_for.is_zero() {
-            tokio::time::sleep(sleep_for).await;
+        if !self.post_cycle_sleep_duration.is_zero() {
+            tokio::time::sleep(self.post_cycle_sleep_duration).await;
         }
     }
 }
@@ -40,6 +46,7 @@ pub struct Metronome {
     started_at: Instant,
     beat: Duration,
     latest_beat: Arc<RwLock<Option<BeatEvent>>>,
+    lane_ticks: Arc<RwLock<HashMap<u32, u64>>>,
 }
 
 impl Metronome {
@@ -50,6 +57,7 @@ impl Metronome {
             started_at: Instant::now(),
             beat,
             latest_beat,
+            lane_ticks: Arc::new(RwLock::new(HashMap::new())),
         };
         metronome.start_task();
         metronome
@@ -106,8 +114,32 @@ impl Metronome {
         self.beat_duration().div_f32(4.0).clamp(min, max)
     }
 
+    pub fn sleep_for_lane_ticks(
+        &self,
+        lane_id: u32,
+        ticks_per_beat: u32,
+        rest_ticks: u32,
+    ) -> Duration {
+        let lane_target_start = {
+            let mut lane_ticks = self
+                .lane_ticks
+                .write()
+                .expect("lane ticks rwlock should not be poisoned");
+            let scheduled_tick = lane_ticks.entry(lane_id).or_insert(0);
+            let scheduled_start_offset = self
+                .tick_duration(ticks_per_beat)
+                .mul_f64(*scheduled_tick as f64);
+            *scheduled_tick = scheduled_tick.saturating_add(rest_ticks as u64);
+            self.started_at + scheduled_start_offset
+        };
+        let cycle_duration = self.duration_for_ticks(ticks_per_beat, rest_ticks);
+        let cycle_end = lane_target_start + cycle_duration;
+        cycle_end.saturating_duration_since(Instant::now())
+    }
+
     pub fn rhythm_timing(
         &self,
+        lane_id: u32,
         ticks_per_beat: u32,
         note_ticks: u8,
         rest_ticks: u8,
@@ -116,14 +148,32 @@ impl Metronome {
     ) -> RhythmTiming {
         let note_duration = self.duration_for_ticks(ticks_per_beat, note_ticks as u32);
         let rest_duration = self.duration_for_ticks(ticks_per_beat, rest_ticks as u32);
-        let phase_offset = self.phase_offset(rest_duration);
+        let lane_target_start = {
+            let mut lane_ticks = self
+                .lane_ticks
+                .write()
+                .expect("lane ticks rwlock should not be poisoned");
+            let scheduled_tick = lane_ticks.entry(lane_id).or_insert(0);
+            let scheduled_start_offset = self
+                .tick_duration(ticks_per_beat)
+                .mul_f64(*scheduled_tick as f64);
+            *scheduled_tick = scheduled_tick.saturating_add(rest_ticks as u64);
+            self.started_at + scheduled_start_offset
+        };
+        let now = Instant::now();
+        let lateness = now.saturating_duration_since(lane_target_start);
         let late_note_drop_threshold = self
             .late_note_drop_threshold(min_late_note_drop_threshold, max_late_note_drop_threshold);
+        let should_play = lateness <= late_note_drop_threshold;
+        let pre_play_sleep_duration = lane_target_start.saturating_duration_since(now);
+        let cycle_end = lane_target_start + rest_duration;
+        let post_cycle_anchor = now + pre_play_sleep_duration + note_duration;
+        let post_cycle_sleep_duration = cycle_end.saturating_duration_since(post_cycle_anchor);
         RhythmTiming {
             note_duration,
-            rest_duration,
-            phase_offset,
-            late_note_drop_threshold,
+            should_play,
+            pre_play_sleep_duration,
+            post_cycle_sleep_duration,
         }
     }
 

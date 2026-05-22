@@ -2,7 +2,9 @@ use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::{U1, U2};
 
 use crate::effect::Rest;
-use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck, Strum};
+use crate::instrumentation::{
+    ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck, Strum as LaneStrum,
+};
 
 use super::DecrementCounter;
 
@@ -38,6 +40,19 @@ impl Animal for RhythmGuitarist {
     type Journey = Intro;
 }
 
+const RHYTHM_GUITAR_LANE_ID: u32 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32;
+type Pick<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+    LanePick<NOTE, NOTE_TICK, REST_TICK, RHYTHM_GUITAR_LANE_ID>;
+type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+    LanePluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK, RHYTHM_GUITAR_LANE_ID>;
+type Strum<
+    const NOTE_1: u8,
+    const NOTE_2: u8,
+    const NOTE_3: u8,
+    const NOTE_TICK: u8,
+    const REST_TICK: u8,
+> = LaneStrum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK, RHYTHM_GUITAR_LANE_ID>;
+
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
     const METADATA: &'static str = "section";
@@ -46,7 +61,7 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Rest<INTRO_START_DELAY_TICKS>;
+    type Effect = Rest<RHYTHM_GUITAR_LANE_ID, INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 

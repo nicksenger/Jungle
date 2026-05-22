@@ -46,12 +46,12 @@ impl Instrument for Bass {
     }
 }
 
-pub struct Thump<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+pub struct Thump<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32 = 0>;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
-    for Thump<NOTE, NOTE_TICK, REST_TICK>
+impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8, const LANE_ID: u32> Act
+    for Thump<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect = Monad<Bass, BassArticulation, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<Bass, BassArticulation, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 

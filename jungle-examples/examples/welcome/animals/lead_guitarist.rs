@@ -2,9 +2,15 @@ use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::U1;
 
 use crate::effect::Rest;
-use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck};
+use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
-use super::DecrementCounter;
+use super::{DecrementCounter, LeadGuitarist};
+
+const LEAD_GUITAR_LANE_ID: u32 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32;
+type Pick<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+    LanePick<NOTE, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
+type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+    LanePluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LeadGuitaristState {
@@ -33,7 +39,7 @@ impl NodeMetadata for IntroSectionMeta {
 pub struct IntroStartDelay;
 #[jungle::act]
 impl Act for IntroStartDelay {
-    type Effect = Rest<INTRO_START_DELAY_TICKS>;
+    type Effect = Rest<LEAD_GUITAR_LANE_ID, INTRO_START_DELAY_TICKS>;
     type Input = ();
     type Output = ();
 
