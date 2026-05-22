@@ -1,7 +1,9 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::{U1, U2};
 
-use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck, Strum};
+use crate::instrumentation::{
+    ElectricGuitarArticulation, Pick, Pluck, Sing, Strum, VocalsArticulation,
+};
 
 use super::DecrementCounter;
 
@@ -66,6 +68,61 @@ impl<In> Condition<(RhythmGuitaristState, In)> for IntroSustainNeeded {
     }
 }
 
+pub struct IntroBackupVocalsRiffHit;
+impl<In> Condition<(RhythmGuitaristState, In)> for IntroBackupVocalsRiffHit {
+    fn choose(input: &(RhythmGuitaristState, In)) -> bool {
+        input.0.riff_loops_remaining == 1
+    }
+}
+
+pub struct MergeJoinUnits;
+#[jungle::act]
+impl Act for MergeJoinUnits {
+    type Effect = super::StubEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(
+        _state: &RhythmGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+    }
+
+    fn absorb(
+        _state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join merge should succeed");
+    }
+}
+
+pub struct GroupHarmonySing<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8>;
+#[jungle::act]
+impl<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> Act
+    for GroupHarmonySing<NOTE, NOTE_TICK, REST_TICK>
+{
+    type Effect = <Sing<NOTE, NOTE_TICK, REST_TICK> as Act>::Effect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &RhythmGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        VocalsArticulation::GroupHarmony
+    }
+
+    fn absorb(
+        _state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("backup vocal playback should succeed");
+    }
+}
+
+#[derive(Flow)]
+pub struct SyncPair<Left, Right>(Join<Left, Right>, Step<MergeJoinUnits>);
+
 type RiffLoopCounter = Lens<RhythmGuitaristState, U1>;
 type TransitionLoopCounter = Lens<RhythmGuitaristState, U2>;
 type SustainLoopCounter = Lens<RhythmGuitaristState, jungle_sdk::typosaurus::num::consts::U3>;
@@ -128,7 +185,10 @@ pub struct PreludeHold(
 
 #[derive(Flow)]
 pub struct IntroRiffLoopBody(
-    Transparent<IntroSectionMeta, IntroRiffCycle>,
+    Transparent<
+        IntroSectionMeta,
+        Conditional<IntroBackupVocalsRiffHit, IntroRiffCycleWithBackupVocals, IntroRiffCycle>,
+    >,
     Transparent<IntroSectionMeta, Step<AdvanceRiffLoop>>,
 );
 
@@ -138,6 +198,27 @@ pub struct IntroRiffCycle(
     Step<Pluck<58, 58, 96, 96>>,
     Step<Pick<58, 96, 96>>,
     Step<Pluck<58, 58, 96, 96>>,
+    Step<Pluck<56, 56, 96, 96>>,
+    Step<Pick<56, 96, 96>>,
+    Step<Pluck<56, 56, 96, 96>>,
+    Step<Pluck<53, 53, 96, 96>>,
+    Step<Pick<53, 96, 96>>,
+    Step<Pluck<53, 53, 96, 96>>,
+    Step<Pluck<51, 51, 96, 96>>,
+    Step<Pick<51, 96, 96>>,
+    Step<Pluck<51, 51, 96, 96>>,
+    Step<Pluck<49, 49, 96, 96>>,
+    Step<Pick<49, 96, 96>>,
+    Step<Strum<46, 46, 49, 96, 96>>,
+    Step<Pluck<46, 49, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct IntroRiffCycleWithBackupVocals(
+    Step<Pluck<58, 58, 96, 96>>,
+    Step<Pick<58, 96, 96>>,
+    SyncPair<Step<Pluck<58, 58, 96, 96>>, Step<GroupHarmonySing<58, 192, 192>>>,
     Step<Pluck<56, 56, 96, 96>>,
     Step<Pick<56, 96, 96>>,
     Step<Pluck<56, 56, 96, 96>>,
