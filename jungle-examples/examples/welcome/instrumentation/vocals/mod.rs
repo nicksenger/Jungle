@@ -38,6 +38,12 @@ pub enum VocalsArticulation {
     VocalBed,
 }
 
+impl Default for VocalsArticulation {
+    fn default() -> Self {
+        Self::Clean
+    }
+}
+
 impl Instrument for Vocals {
     type Articulation = VocalsArticulation;
 

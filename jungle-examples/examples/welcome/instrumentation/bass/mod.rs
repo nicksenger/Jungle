@@ -32,6 +32,12 @@ pub enum BassArticulation {
     GhostNote,
 }
 
+impl Default for BassArticulation {
+    fn default() -> Self {
+        Self::Picked
+    }
+}
+
 impl Instrument for Bass {
     type Articulation = BassArticulation;
 

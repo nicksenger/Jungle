@@ -4,18 +4,18 @@ use jungle_sdk::prelude::*;
 use num::U255;
 use std::time::Duration;
 
+mod bassist;
+mod lead_guitarist;
+mod lead_vocalist;
 mod rhythm_guitarist;
+pub use bassist::*;
+pub use lead_guitarist::*;
+pub use lead_vocalist::*;
 pub use rhythm_guitarist::*;
 
 #[derive(Animals)]
 pub struct WelcomeAnimals(LeadVocalist, LeadGuitarist, RhythmGuitarist, Bass, Drums);
 
-pub type LeadVocalistState = ();
-pub type LeadVocalistSeed = ();
-pub type LeadGuitaristState = ();
-pub type LeadGuitaristSeed = ();
-pub type BassState = ();
-pub type BassSeed = ();
 pub type DrumsState = ();
 pub type DrumsSeed = ();
 
@@ -76,7 +76,7 @@ pub struct LeadVocalist;
 impl Animal for LeadVocalist {
     type State = LeadVocalistState;
     type Seed = LeadVocalistSeed;
-    type Journey = BandStubFlow;
+    type Journey = LeadVocalIntro;
 }
 
 pub struct LeadGuitarist;
@@ -85,16 +85,16 @@ pub struct LeadGuitarist;
 impl Animal for LeadGuitarist {
     type State = LeadGuitaristState;
     type Seed = LeadGuitaristSeed;
-    type Journey = BandStubFlow;
+    type Journey = LeadGuitarIntro;
 }
 
 pub struct Bass;
 
 #[jungle::animal(id = 3, generation = 0)]
 impl Animal for Bass {
-    type State = BassState;
-    type Seed = BassSeed;
-    type Journey = BandStubFlow;
+    type State = BassistState;
+    type Seed = BassistSeed;
+    type Journey = BassIntro;
 }
 
 pub struct Drums;
