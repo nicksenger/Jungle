@@ -1287,6 +1287,7 @@ pub struct LoopAdvanceSpec;
 pub struct UniqueAlphaSpec;
 pub struct UniqueBetaSpec;
 pub struct FinalizeSpec;
+pub struct UniqueToCarrySpec;
 
 pub struct JoinLeftAct<A>(core::marker::PhantomData<fn() -> A>);
 impl<A> BoundAct<A> for JoinLeftAct<A>
@@ -1493,6 +1494,27 @@ where
     }
 }
 
+pub struct UniqueToCarryAct<A>(core::marker::PhantomData<fn() -> A>);
+impl<A> BoundAct<A> for UniqueToCarryAct<A>
+where
+    A: Animal + ComplexFlowBinding,
+{
+    type Effect = TemplateCommitEffect;
+    type Aspect = Identity;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+
+    fn emit(_state: &A::State, input: Self::Input) -> i32 {
+        match input {
+            Either::Left(value) | Either::Right(value) => value,
+        }
+    }
+
+    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("unique-to-carry should succeed")
+    }
+}
+
 #[jungle::act(bind = JoinLeftAct<A>)]
 impl Act for JoinLeftSpec {
     type Effect = ComplexTimedEffect;
@@ -1563,6 +1585,13 @@ impl Act for FinalizeSpec {
     type Output = i32;
 }
 
+#[jungle::act(bind = UniqueToCarryAct<A>)]
+impl Act for UniqueToCarrySpec {
+    type Effect = TemplateCommitEffect;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+}
+
 #[derive(Flow)]
 struct SharedJoinBranch(
     Join<Step<JoinLeftSpec>, Step<JoinRightSpec>>,
@@ -1592,7 +1621,12 @@ struct LongSharedSegment(Transparent<SharedMeta, SharedComposedSegment>);
 struct UniqueSegment(Conditional<ChooseUniqueAlpha, Step<UniqueAlphaSpec>, Step<UniqueBetaSpec>>);
 
 #[derive(Flow)]
-struct LongMixedFlow(LongSharedSegment, UniqueSegment, Step<FinalizeSpec>);
+struct LongMixedFlow(
+    LongSharedSegment,
+    UniqueSegment,
+    Step<UniqueToCarrySpec>,
+    Step<FinalizeSpec>,
+);
 
 struct ComplexAlphaAnimal;
 #[jungle::animal(observe, id = 50, generation = 0)]

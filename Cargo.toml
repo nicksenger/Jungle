@@ -11,7 +11,7 @@ members = [
     "jungle-sdk",
     "jungle-persist",
     "jungle-test",
-    "jungle-viewer",
+    "jungle-vision",
     "jungle-types",
     "jungle-zoo",
 ]
@@ -25,6 +25,7 @@ futures = "0.3"
 uuid = { version = "1", features = ["serde", "v4"] }
 async-trait = "0.1"
 dyn-clone = "1"
+thiserror = "2"
 
 [workspace.lints.clippy]
 type_complexity = "allow"

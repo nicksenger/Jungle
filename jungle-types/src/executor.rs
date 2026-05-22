@@ -1,6 +1,6 @@
 use crate::{
     Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    Effect, EffectCompletion, EffectSchema, Join, LoopCondition, Running, Scoped, Select,
+    Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Running, Scoped, Select,
     Transparent, While,
 };
 use inception::*;
@@ -18,6 +18,10 @@ type EffectFuture =
 type EffectRunner = Box<dyn FnOnce() -> EffectFuture + Send>;
 type RequestError<State> = (State, ExecutorError);
 type RequestResult<State, Request> = Result<(State, Request), RequestError<State>>;
+
+fn input_deserialize_error(context: &'static str, err: postcard::Error) -> ExecutorError {
+    ExecutorError::InputDeserialize(format!("{context}: {err}"))
+}
 
 pub trait SplitStateCarry<State> {
     type Carry;
@@ -117,9 +121,121 @@ where
         }
     }
 
+    if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(input) {
+        return match either {
+            Either::Left(carry) => {
+                let carry = postcard::from_bytes::<In>(&carry)
+                    .map_err(|err| input_deserialize_error("conditional either left carry", err))?;
+                Ok((true, carry))
+            }
+            Either::Right(carry) => {
+                let carry = postcard::from_bytes::<In>(&carry).map_err(|err| {
+                    input_deserialize_error("conditional either right carry", err)
+                })?;
+                Ok((false, carry))
+            }
+        };
+    }
+
     let carry = postcard::from_bytes::<In>(input)
-        .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+        .map_err(|err| input_deserialize_error("conditional direct carry", err))?;
     Ok((fallback(&carry), carry))
+}
+
+fn decode_loop_input<In, F>(input: &[u8], fallback: F) -> Result<(bool, In), ExecutorError>
+where
+    In: DeserializeOwned + Serialize,
+    F: FnOnce(&In) -> bool,
+{
+    if let Ok((should, carry)) = postcard::from_bytes::<(bool, In)>(input) {
+        let reencoded = postcard::to_allocvec(&(should, &carry))
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
+        if reencoded.as_slice() == input {
+            return Ok((should, carry));
+        }
+    }
+
+    if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(input) {
+        return match either {
+            Either::Left(carry) | Either::Right(carry) => {
+                let carry = postcard::from_bytes::<In>(&carry)
+                    .map_err(|err| input_deserialize_error("while either carry", err))?;
+                Ok((fallback(&carry), carry))
+            }
+        };
+    }
+
+    let carry = postcard::from_bytes::<In>(input)
+        .map_err(|err| input_deserialize_error("while direct carry", err))?;
+    Ok((fallback(&carry), carry))
+}
+
+fn deserialize_exact<T>(bytes: &[u8]) -> Result<T, String>
+where
+    T: DeserializeOwned,
+{
+    let (value, remainder): (T, &[u8]) =
+        postcard::take_from_bytes(bytes).map_err(|err| err.to_string())?;
+    if !remainder.is_empty() {
+        return Err("unexpected trailing bytes".to_string());
+    }
+    Ok(value)
+}
+
+fn try_deserialize_step_input_from_either<T>(bytes: &[u8], depth: usize) -> Option<T>
+where
+    T: DeserializeOwned,
+{
+    if depth > 16 {
+        return None;
+    }
+
+    let (tag, payload) = match postcard::from_bytes::<Either<Serialized, Serialized>>(bytes) {
+        Ok(Either::Left(payload)) => (0_u8, payload),
+        Ok(Either::Right(payload)) => (1_u8, payload),
+        Err(_) => return None,
+    };
+
+    if let Ok(value) = deserialize_exact::<T>(&payload) {
+        return Some(value);
+    }
+    if let Some(value) = try_deserialize_step_input_from_either::<T>(&payload, depth + 1) {
+        return Some(value);
+    }
+
+    let mut tagged = Vec::with_capacity(1 + payload.len());
+    tagged.push(tag);
+    tagged.extend_from_slice(&payload);
+    if let Ok(value) = deserialize_exact::<T>(&tagged) {
+        return Some(value);
+    }
+    try_deserialize_step_input_from_either::<T>(&tagged, depth + 1)
+}
+
+fn deserialize_step_input<T>(bytes: &[u8]) -> Result<T, ExecutorError>
+where
+    T: DeserializeOwned,
+{
+    let direct_err = match deserialize_exact::<T>(bytes) {
+        Ok(value) => return Ok(value),
+        Err(err) => err,
+    };
+
+    if let Some(value) = try_deserialize_step_input_from_either::<T>(bytes, 0) {
+        return Ok(value);
+    }
+
+    if postcard::from_bytes::<Either<Serialized, Serialized>>(bytes).is_ok() {
+        return Err(ExecutorError::InputDeserialize(format!(
+            "step either envelope for {}: {direct_err}",
+            core::any::type_name::<T>()
+        )));
+    }
+
+    Err(ExecutorError::InputDeserialize(format!(
+        "step direct input for {}: {direct_err}",
+        core::any::type_name::<T>()
+    )))
 }
 
 pub type DynFlow<State> = Vec<Box<dyn ErasedFlow<State> + Send>>;
@@ -294,9 +410,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
+        let typed_input = match deserialize_step_input::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+            Err(err) => return Err((state, err)),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
@@ -319,9 +435,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
+        let typed_input = match deserialize_step_input::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+            Err(err) => return Err((state, err)),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
@@ -439,9 +555,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
+        let typed_input = match deserialize_step_input::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+            Err(err) => return Err((state, err)),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let request = match postcard::to_allocvec(&request.into_input()) {
@@ -464,9 +580,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let typed_input = match postcard::from_bytes::<A::Input>(&input) {
+        let typed_input = match deserialize_step_input::<A::Input>(&input) {
             Ok(typed_input) => typed_input,
-            Err(err) => return Err((state, ExecutorError::InputDeserialize(err.to_string()))),
+            Err(err) => return Err((state, err)),
         };
         let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
         let effect_input = request.into_input();
@@ -544,9 +660,18 @@ where
     }
 }
 
+#[derive(Clone, Copy)]
 enum ActiveBranch {
     Left,
     Right,
+}
+
+fn encode_conditional_emitted(active_branch: ActiveBranch, emitted: Serialized) -> Serialized {
+    let tagged = match active_branch {
+        ActiveBranch::Left => Either::Left(emitted),
+        ActiveBranch::Right => Either::Right(emitted),
+    };
+    postcard::to_allocvec(&tagged).expect("conditional emitted envelope should serialize")
 }
 
 struct ConditionalErasedFlow<State, In>
@@ -605,11 +730,22 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        }) {
-            Ok(pair) => pair,
-            Err(err) => return Err((state, err)),
+        let (choose_left, branch_input) = if self.active_branch.is_none() {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.choose_left)(&state, carry)
+            }) {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            }
+        } else {
+            let request_input = input.clone();
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
+            }
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            return node.request(state, request_input);
         };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
@@ -646,8 +782,15 @@ where
             .active_node_mut()
             .expect("cursor was checked against active branch length");
         let (state, emitted) = node.complete(state, completion)?;
-        if node.is_complete() {
+        let node_complete = node.is_complete();
+        if node_complete {
             self.cursor += 1;
+        }
+        if node_complete && self.cursor >= self.branch_len() {
+            let active_branch = self
+                .active_branch
+                .expect("active branch is present while conditional is executing");
+            return Ok((state, encode_conditional_emitted(active_branch, emitted)));
         }
         Ok((state, emitted))
     }
@@ -657,11 +800,22 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
-        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        }) {
-            Ok(pair) => pair,
-            Err(err) => return Err((state, err)),
+        let (choose_left, branch_input) = if self.active_branch.is_none() {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.choose_left)(&state, carry)
+            }) {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            }
+        } else {
+            let request_input = input.clone();
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
+            }
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            return node.request_executable(state, request_input);
         };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
@@ -1413,7 +1567,7 @@ where
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_controlled_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -1428,9 +1582,15 @@ where
                     .expect("deferred state was just set");
                 return Err((state, ExecutorError::Complete));
             }
-            let branch_input = match postcard::to_allocvec(&branch_input) {
-                Ok(branch_input) => branch_input,
-                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -1493,7 +1653,7 @@ where
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_controlled_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -1508,9 +1668,15 @@ where
                     .expect("deferred state was just set");
                 return Err((state, ExecutorError::Complete));
             }
-            let branch_input = match postcard::to_allocvec(&branch_input) {
-                Ok(branch_input) => branch_input,
-                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -1608,6 +1774,99 @@ pub trait BuildFlow<Input> {
     }
 }
 
+trait FlowCarry<State> {
+    type In;
+    type Out;
+}
+
+trait NonEmptyFlowList {}
+
+impl<Head, Tail> NonEmptyFlowList for TList<(Head, Tail)> {}
+
+impl<State> FlowCarry<State> for list::Empty {
+    type In = ();
+    type Out = ();
+}
+
+impl<State, Head> FlowCarry<State> for TList<(Head, list::Empty)>
+where
+    Head: FlowCarry<State>,
+{
+    type In = <Head as FlowCarry<State>>::In;
+    type Out = <Head as FlowCarry<State>>::Out;
+}
+
+impl<State, Head, Tail> FlowCarry<State> for TList<(Head, Tail)>
+where
+    Tail: NonEmptyFlowList,
+    Head: FlowCarry<State>,
+    Tail: FlowCarry<State, In = <Head as FlowCarry<State>>::Out>,
+{
+    type In = <Head as FlowCarry<State>>::In;
+    type Out = <Tail as FlowCarry<State>>::Out;
+}
+
+impl<T, A> FlowCarry<T::State> for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAct<T>,
+{
+    type In = A::Input;
+    type Out = A::Output;
+}
+
+impl<State, P, L, R, M> FlowCarry<State> for Conditional<P, L, R, M>
+where
+    L: FlowCarry<State>,
+    R: FlowCarry<State, In = <L as FlowCarry<State>>::In>,
+{
+    type In = <L as FlowCarry<State>>::In;
+    type Out = Either<<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out>;
+}
+
+impl<State, In, C, F, M> FlowCarry<State> for While<C, F, M>
+where
+    C: LoopCondition<State, Arg = In>,
+    F: FlowCarry<State, In = In>,
+{
+    type In = In;
+    type Out = <F as FlowCarry<State>>::Out;
+}
+
+impl<State, M, F> FlowCarry<State> for Transparent<M, F>
+where
+    F: FlowCarry<State>,
+{
+    type In = <F as FlowCarry<State>>::In;
+    type Out = <F as FlowCarry<State>>::Out;
+}
+
+impl<State, View, F> FlowCarry<State> for Scoped<View, F>
+where
+    F: FlowCarry<State>,
+{
+    type In = <F as FlowCarry<State>>::In;
+    type Out = <F as FlowCarry<State>>::Out;
+}
+
+impl<State, In, L, R, M> FlowCarry<State> for Select<L, R, M>
+where
+    L: FlowCarry<State, In = In>,
+    R: FlowCarry<State, In = In>,
+{
+    type In = In;
+    type Out = Either<<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out>;
+}
+
+impl<State, In, L, R, M> FlowCarry<State> for Join<L, R, M>
+where
+    L: FlowCarry<State, In = In>,
+    R: FlowCarry<State, In = In>,
+{
+    type In = In;
+    type Out = (<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out);
+}
+
 impl<State> BuildFlow<DynFlow<State>> for list::Empty {
     type Output = DynFlow<State>;
 
@@ -1650,6 +1909,7 @@ macro_rules! build_flow_len_impl {
         impl<State, $h0, $($rest,)+> BuildFlow<DynFlow<State>>
             for dynflow_list_chain!($h0, $($rest),+)
         where
+            dynflow_list_chain!($h0, $($rest),+): FlowCarry<State>,
             $h0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
             dynflow_list_chain!($($rest),+): BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
         {
@@ -1671,6 +1931,7 @@ build_flow_len_impl!(H0; H1, H2, H3, H4, H5);
 build_flow_len_impl!(H0; H1, H2, H3, H4, H5, H6);
 impl<State, H0, H1, H2, H3, H4, H5, H6, H7, Tail> BuildFlow<DynFlow<State>> for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
+    dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail): FlowCarry<State>,
     H0: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     H1: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
     H2: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
@@ -1819,9 +2080,21 @@ where
     }
 }
 
+#[derive(Clone, Copy)]
 enum ActiveContextBranch {
     Left,
     Right,
+}
+
+fn encode_conditional_context_emitted(
+    active_branch: ActiveContextBranch,
+    emitted: Serialized,
+) -> Serialized {
+    let tagged = match active_branch {
+        ActiveContextBranch::Left => Either::Left(emitted),
+        ActiveContextBranch::Right => Either::Right(emitted),
+    };
+    postcard::to_allocvec(&tagged).expect("conditional context emitted envelope should serialize")
 }
 
 #[inception(property = JungleDynFlowContext, signature(input = Input, output = Output))]
@@ -1890,6 +2163,7 @@ macro_rules! build_flow_with_context_len_impl {
         impl<Context, State, $h0, $($rest,)+> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
             for dynflow_list_chain!($h0, $($rest),+)
         where
+            dynflow_list_chain!($h0, $($rest),+): FlowCarry<State>,
             $h0: BuildFlowWithContext<
                 (Arc<Context>, DynFlow<State>),
                 Output = (Arc<Context>, DynFlow<State>),
@@ -1923,6 +2197,7 @@ build_flow_with_context_len_impl!(H0; H1, H2, H3, H4, H5, H6);
 impl<Context, State, H0, H1, H2, H3, H4, H5, H6, H7, Tail>
     BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
+    dynflow_list_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail): FlowCarry<State>,
     H0: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
@@ -2056,11 +2331,22 @@ where
     In: DeserializeOwned + Serialize,
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
-        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        }) {
-            Ok(pair) => pair,
-            Err(err) => return Err((state, err)),
+        let (choose_left, branch_input) = if self.active_branch.is_none() {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.choose_left)(&state, carry)
+            }) {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            }
+        } else {
+            let request_input = input.clone();
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
+            }
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            return node.request(state, request_input);
         };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
@@ -2097,8 +2383,18 @@ where
             .active_node_mut()
             .expect("cursor was checked against active branch length");
         let (state, emitted) = node.complete(state, completion)?;
-        if node.is_complete() {
+        let node_complete = node.is_complete();
+        if node_complete {
             self.cursor += 1;
+        }
+        if node_complete && self.cursor >= self.branch_len() {
+            let active_branch = self
+                .active_branch
+                .expect("active branch is present while conditional is executing");
+            return Ok((
+                state,
+                encode_conditional_context_emitted(active_branch, emitted),
+            ));
         }
         Ok((state, emitted))
     }
@@ -2108,11 +2404,22 @@ where
         state: State,
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
-        let (choose_left, branch_input) = match decode_controlled_input::<In, _>(&input, |carry| {
-            (self.choose_left)(&state, carry)
-        }) {
-            Ok(pair) => pair,
-            Err(err) => return Err((state, err)),
+        let (choose_left, branch_input) = if self.active_branch.is_none() {
+            match decode_controlled_input::<In, _>(&input, |carry| {
+                (self.choose_left)(&state, carry)
+            }) {
+                Ok(pair) => pair,
+                Err(err) => return Err((state, err)),
+            }
+        } else {
+            let request_input = input.clone();
+            if self.cursor >= self.branch_len() {
+                return Err((state, ExecutorError::Complete));
+            }
+            let node = self
+                .active_node_mut()
+                .expect("cursor was checked against active branch length");
+            return node.request_executable(state, request_input);
         };
         if self.active_branch.is_none() {
             self.active_branch = Some(if choose_left {
@@ -2273,7 +2580,7 @@ where
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_controlled_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -2288,9 +2595,15 @@ where
                     .expect("deferred state was just set");
                 return Err((state, ExecutorError::Complete));
             }
-            let branch_input = match postcard::to_allocvec(&branch_input) {
-                Ok(branch_input) => branch_input,
-                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -2353,7 +2666,7 @@ where
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_controlled_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -2368,9 +2681,15 @@ where
                     .expect("deferred state was just set");
                 return Err((state, ExecutorError::Complete));
             }
-            let branch_input = match postcard::to_allocvec(&branch_input) {
-                Ok(branch_input) => branch_input,
-                Err(err) => return Err((state, ExecutorError::InputSerialize(err.to_string()))),
+            let branch_input = if self.active_body.is_empty() {
+                match postcard::to_allocvec(&branch_input) {
+                    Ok(branch_input) => branch_input,
+                    Err(err) => {
+                        return Err((state, ExecutorError::InputSerialize(err.to_string())));
+                    }
+                }
+            } else {
+                input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -2572,14 +2891,35 @@ fn deserialize_request<Request>(request: Serialized) -> Result<Request, Executor
 where
     Request: DeserializeOwned,
 {
-    postcard::from_bytes(&request).map_err(|err| ExecutorError::RequestDeserialize(err.to_string()))
+    deserialize_exact(&request).map_err(ExecutorError::RequestDeserialize)
 }
 
 fn deserialize_emitted<Emitted>(emitted: Serialized) -> Result<Emitted, ExecutorError>
 where
     Emitted: DeserializeOwned,
 {
-    postcard::from_bytes(&emitted).map_err(|err| ExecutorError::EmitDeserialize(err.to_string()))
+    if let Ok(parsed) = deserialize_exact::<Emitted>(&emitted) {
+        return Ok(parsed);
+    }
+
+    if let Ok(either) = postcard::from_bytes::<Either<Serialized, Serialized>>(&emitted) {
+        let mut candidate = Vec::new();
+        match either {
+            Either::Left(payload) => {
+                candidate.reserve(1 + payload.len());
+                candidate.push(0_u8);
+                candidate.extend_from_slice(&payload);
+            }
+            Either::Right(payload) => {
+                candidate.reserve(1 + payload.len());
+                candidate.push(1_u8);
+                candidate.extend_from_slice(&payload);
+            }
+        }
+        return deserialize_exact::<Emitted>(&candidate).map_err(ExecutorError::EmitDeserialize);
+    }
+
+    deserialize_exact(&emitted).map_err(ExecutorError::EmitDeserialize)
 }
 
 fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {

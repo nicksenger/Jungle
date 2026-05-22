@@ -2,7 +2,7 @@ use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct HelperState {
+pub(crate) struct HelperState {
     value: i32,
     pulse_count: i32,
 }
@@ -85,6 +85,72 @@ impl Act for UnitSpec {
     type Output = ();
 }
 
+pub struct BridgeToUnitEffect;
+
+#[jungle::effect(id = 72)]
+impl<J> Effect<J> for BridgeToUnitEffect {
+    type In = i32;
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+
+struct BridgeToUnitSpec;
+#[jungle::act]
+impl Act for BridgeToUnitSpec {
+    type Effect = BridgeToUnitEffect;
+    type Input = i32;
+    type Output = ();
+
+    fn emit(_state: &HelperState, input: Self::Input) -> Self::Input {
+        input
+    }
+
+    fn absorb(_state: &mut HelperState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("bridge-to-unit should succeed");
+    }
+}
+
+pub struct BridgeFromUnitEffect;
+
+#[jungle::effect(id = 73)]
+impl<J> Effect<J> for BridgeFromUnitEffect {
+    type In = ();
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _d: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(2))
+    }
+}
+
+struct BridgeFromUnitSpec;
+#[jungle::act]
+impl Act for BridgeFromUnitSpec {
+    type Effect = BridgeFromUnitEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &HelperState, input: Self::Input) -> Self::Input {
+        input
+    }
+
+    fn absorb(state: &mut HelperState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("bridge-from-unit should succeed");
+        state.value += value;
+        value
+    }
+}
+
 struct FunctionEmitSpec;
 #[jungle::act(bind = Fuse<
         EmitFn<Identity, EchoEffect, i32, EmitUsingState>,
@@ -99,7 +165,9 @@ impl Act for FunctionEmitSpec {
 #[derive(Flow)]
 struct AdaptHelpersFlowTemplate(
     Step<PassthroughSpec>,
+    Step<BridgeToUnitSpec>,
     Step<UnitSpec>,
+    Step<BridgeFromUnitSpec>,
     Step<FunctionEmitSpec>,
 );
 
@@ -122,13 +190,27 @@ fn helper_emit_absorb_adapters_work_in_flow() {
     let step0: i32 = executor.next_typed(4, Ok::<i32, ()>(5)).expect("step 0");
     assert_eq!(step0, 5);
 
-    let step1: () = executor.next_typed((), Ok::<i32, ()>(5)).expect("step 1");
+    let step1: () = executor
+        .next_typed(step0, Ok::<(), ()>(()))
+        .expect("step 1");
     assert_eq!(step1, ());
+
+    let step2: () = executor
+        .next_typed(step1, Ok::<i32, ()>(5))
+        .expect("step 2");
+    assert_eq!(step2, ());
     assert_eq!(executor.state().pulse_count, 1);
     assert_eq!(executor.state().value, 10);
 
-    let step2: i32 = executor.next_typed(2, Ok::<i32, ()>(13)).expect("step 2");
-    assert_eq!(step2, 13);
+    let step3: i32 = executor
+        .next_typed(step2, Ok::<i32, ()>(2))
+        .expect("step 3");
+    assert_eq!(step3, 2);
+
+    let step4: i32 = executor
+        .next_typed(step3, Ok::<i32, ()>(13))
+        .expect("step 4");
+    assert_eq!(step4, 13);
     assert_eq!(executor.state().value, 13);
     assert!(executor.is_complete());
 }

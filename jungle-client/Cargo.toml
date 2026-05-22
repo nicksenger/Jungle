@@ -13,7 +13,7 @@ typosaurus = { workspace = true }
 directories-next = "2"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-thiserror = "1"
+thiserror = { workspace = true }
 tracing = "0.1"
 postcard = { workspace = true, features = ["alloc"] }
 tokio = { version = "1", features = ["io-util"] }

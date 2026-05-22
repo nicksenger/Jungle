@@ -1,5 +1,5 @@
 [package]
-name = "jungle-viewer"
+name = "jungle-vision"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,6 +10,7 @@ jungle-client = { path = "../jungle-client" }
 jungle-types = { path = "../jungle-types" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 uuid = { workspace = true }
+tokio = { version = "1", features = ["time", "sync"] }
 
 [lints]
 workspace = true

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use jungle_types::{BackendError, WireIn, WireOut};
 use std::{future::Future, pin::Pin, sync::Arc};
-use tracing::info;
+use tracing::debug;
 
 use crate::{JungleServer, Result, WireRx, WireTx};
 
@@ -31,12 +31,12 @@ impl MockServer {
 impl JungleServer for MockServer {
     async fn handle_request(&self, (mut tx, mut rx): (WireTx, WireRx)) -> Result<()> {
         let request = rx.next().await;
-        info!(has_request = request.is_some(), "received request");
+        debug!(has_request = request.is_some(), "received request");
 
         let response = (self.on_request)(request).await;
         tx.send(response).await?;
         tx.close().await?;
-        info!("complete");
+        debug!("complete");
         Ok(())
     }
 }

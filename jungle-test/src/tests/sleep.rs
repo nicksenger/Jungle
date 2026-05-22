@@ -4,6 +4,8 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::{Animals, JungleClient, Optic};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,17 +100,49 @@ impl Act for AddAfterSleepSpec {
     }
 }
 
+pub struct MergeEitherUnitEffect;
+#[jungle::effect(id = 41)]
+impl<J> Effect<J> for MergeEitherUnitEffect {
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        std::future::ready(Ok(()))
+    }
+}
+
+pub struct MergeEitherUnitSpec;
+#[jungle::act]
+impl Act for MergeEitherUnitSpec {
+    type Effect = MergeEitherUnitEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &SleepState, _input: Self::Input) -> () {}
+
+    fn absorb(_state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("merge either unit should succeed");
+    }
+}
+
 #[derive(Flow)]
-pub struct SleepJourneyTemplate(
-    While<
-        SleepNotComplete,
-        Conditional<
-            SleepPhaseZero,
-            Step<AddBeforeSleepSpec>,
-            Conditional<SleepPhaseOne, Step<SleepForStateWakeSpec>, Step<AddAfterSleepSpec>>,
-        >,
-    >,
+pub struct SleepPhaseOneBranch(
+    Conditional<SleepPhaseOne, Step<SleepForStateWakeSpec>, Step<AddAfterSleepSpec>>,
+    Step<MergeEitherUnitSpec>,
 );
+
+#[derive(Flow)]
+pub struct SleepLoopBody(
+    Conditional<SleepPhaseZero, Step<AddBeforeSleepSpec>, SleepPhaseOneBranch>,
+    Step<MergeEitherUnitSpec>,
+);
+
+#[derive(Flow)]
+pub struct SleepJourneyTemplate(While<SleepNotComplete, SleepLoopBody>);
 
 pub struct SleepAnimal;
 
@@ -158,10 +192,9 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
     });
 
     let client = connect_client_with_retry(listen_addr).await;
-    let worker = JungleWorker::new(SleepZoo, client.clone());
-    let worker_handle = tokio::spawn(async move {
-        let _ = worker.spawn().await;
-    });
+    let worker_client = connect_client_with_retry(listen_addr).await;
+    let worker = JungleWorker::new(SleepZoo, worker_client);
+    let worker_handle = tokio::spawn(async move { worker.spawn().await });
 
     let seed = postcard::to_allocvec(&SleepState {
         counter: 0,
@@ -174,8 +207,15 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
         .await
         .expect("start_journey should succeed for sleep flow");
 
+    let worker_exited_early = Arc::new(AtomicBool::new(false));
     let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        let worker_exited_early = Arc::clone(&worker_exited_early);
         loop {
+            if worker_handle.is_finished() {
+                worker_exited_early.store(true, Ordering::Relaxed);
+                break;
+            }
+
             let status = client
                 .journey_details(journey_id)
                 .await
@@ -187,13 +227,12 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
         }
     })
     .await;
+    if worker_exited_early.load(Ordering::Relaxed) {
+        let joined = worker_handle.await;
+        panic!("worker exited before journey completion: {joined:?}");
+    }
     if completion.is_err() {
         panic!("sleep flow did not complete before timeout");
-    }
-
-    if worker_handle.is_finished() {
-        let joined = worker_handle.await;
-        panic!("worker should continue polling, got: {joined:?}");
     }
 
     let appearance_bytes = client

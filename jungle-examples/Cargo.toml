@@ -5,21 +5,40 @@ edition = "2021"
 
 [features]
 default = ["zoo-delay"]
-zoo-delay = ["jungle-zoo/delay"]
+viewer = ["dep:jungle-vision", "dep:iced"]
+audio = ["dep:cpal"]
+zoo = ["dep:jungle-zoo"]
+zoo-delay = ["zoo", "jungle-zoo/delay"]
+redb = []
+postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
+transport = []
 
 [dependencies]
+futures = { workspace = true }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "local"] }
-jungle-zoo = { path = "../jungle-zoo" }
-jungle-viewer = { path = "../jungle-viewer" }
-iced = { version = "0.14", features = ["tokio"] }
+jungle-zoo = { path = "../jungle-zoo", optional = true }
+jungle-vision = { path = "../jungle-vision", optional = true }
+iced = { version = "0.14", features = ["tokio"], optional = true }
+cpal = { version = "0.17", optional = true }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+thiserror = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
+testcontainers = { version = "0.23", optional = true }
+testcontainers-modules = { version = "0.11", features = ["postgres"], optional = true }
 
-[[bin]]
-name = "jungle-view"
-path = "src/bin/jungle-view.rs"
+[[example]]
+name = "safari"
+path = "examples/safari/mod.rs"
+required-features = ["viewer", "zoo"]
+
+[[example]]
+name = "welcome"
+path = "examples/welcome/mod.rs"
+required-features = ["viewer", "audio"]
 
 [lints]
 workspace = true
