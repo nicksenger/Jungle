@@ -1,8 +1,9 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::U1;
 
-use crate::effect::DecrementCounterEffect;
 use crate::instrumentation::{Sing, VocalsArticulation};
+
+use super::counter::DecrementCounter;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LeadVocalistState {
@@ -43,21 +44,6 @@ impl<In> Condition<(LeadVocalistState, In)> for IntroNeedsPickup {
     }
 }
 
-pub struct DecrementCounter<Focus>(core::marker::PhantomData<fn() -> Focus>);
-#[jungle::act(aspect = Focus)]
-impl<Focus> Act for DecrementCounter<Focus> {
-    type Effect = DecrementCounterEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_view: &u8, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(view: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("counter decrement should succeed");
-        *view = view.saturating_sub(1);
-    }
-}
-
 type IntroPickupCounter = Lens<LeadVocalistState, U1>;
 pub type AdvanceIntroPickup = DecrementCounter<IntroPickupCounter>;
 
@@ -73,7 +59,7 @@ pub struct IntroBreath(Transparent<IntroSectionMeta, IntroBreathPhrase>);
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroBreathPhrase(Step<Sing<58, 1, 0>>);
+pub struct IntroBreathPhrase(Step<Sing<58, 1, 192>>);
 
 #[derive(Flow)]
 pub struct IntroPickupLoop(While<IntroPickupRemaining, IntroPickupBody>);
@@ -86,18 +72,18 @@ pub struct IntroPickupBody(
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroPickupPhrase(Step<Sing<58, 192, 0>>);
+pub struct IntroPickupPhrase(Step<Sing<58, 192, 192>>);
 
 #[derive(Flow)]
 pub struct IntroRest(Transparent<IntroSectionMeta, IntroRestPhrase>);
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroRestPhrase(Step<Sing<58, 1, 0>>);
+pub struct IntroRestPhrase(Step<Sing<58, 1, 192>>);
 
 #[derive(Flow)]
 pub struct IntroRelease(Transparent<IntroSectionMeta, IntroReleasePhrase>);
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroReleasePhrase(Step<Sing<58, 1, 0>>);
+pub struct IntroReleasePhrase(Step<Sing<58, 1, 192>>);

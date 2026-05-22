@@ -1,8 +1,9 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::{U1, U2};
 
-use crate::effect::DecrementCounterEffect;
 use crate::instrumentation::{BassArticulation, Thump};
+
+use super::counter::DecrementCounter;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct BassistState {
@@ -54,21 +55,6 @@ impl<In> Condition<(BassistState, In)> for IntroTailNeeded {
     }
 }
 
-pub struct DecrementCounter<Focus>(core::marker::PhantomData<fn() -> Focus>);
-#[jungle::act(aspect = Focus)]
-impl<Focus> Act for DecrementCounter<Focus> {
-    type Effect = DecrementCounterEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_view: &u8, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(view: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("counter decrement should succeed");
-        *view = view.saturating_sub(1);
-    }
-}
-
 type OstinatoLoopCounter = Lens<BassistState, U1>;
 type RiffLoopCounter = Lens<BassistState, U2>;
 
@@ -87,13 +73,13 @@ pub struct BassIntro(
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPrelude(
-    Step<Thump<46, 192, 0>>,
-    Step<Thump<44, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<30, 192, 0>>,
-    Step<Thump<37, 96, 0>>,
-    Step<Thump<38, 96, 0>>,
-    Step<Thump<39, 192, 0>>,
+    Step<Thump<46, 192, 192>>,
+    Step<Thump<44, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
 );
 
 #[derive(Flow)]
@@ -105,75 +91,75 @@ pub struct BassOstinatoLoopBody(
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassOstinatoCycle(
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<45, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<46, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<44, 96, 0>>,
-    Step<Thump<43, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<39, 96, 0>>,
-    Step<Thump<34, 96, 0>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<45, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<46, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<43, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassTransition(
-    Step<Thump<37, 192, 0>>,
-    Step<Thump<32, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<34, 192, 0>>,
-    Step<Thump<41, 192, 0>>,
-    Step<Thump<44, 192, 0>>,
-    Step<Thump<45, 192, 0>>,
-    Step<Thump<46, 192, 0>>,
-    Step<Thump<27, 192, 0>>,
-    Step<Thump<39, 192, 0>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<41, 192, 192>>,
+    Step<Thump<44, 192, 192>>,
+    Step<Thump<45, 192, 192>>,
+    Step<Thump<46, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
 );
 
 #[derive(Flow)]
@@ -185,31 +171,31 @@ pub struct BassRiffLoopBody(
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassRiffCycle(
-    Step<Thump<32, 192, 0>>,
-    Step<Thump<32, 192, 0>>,
-    Step<Thump<30, 192, 0>>,
-    Step<Thump<27, 96, 0>>,
-    Step<Thump<32, 192, 0>>,
-    Step<Thump<27, 96, 0>>,
-    Step<Thump<30, 192, 0>>,
-    Step<Thump<29, 192, 0>>,
-    Step<Thump<27, 192, 0>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassTail(
-    Step<Thump<32, 192, 0>>,
-    Step<Thump<32, 192, 0>>,
-    Step<Thump<30, 192, 0>>,
-    Step<Thump<27, 96, 0>>,
-    Step<Thump<32, 192, 0>>,
-    Step<Thump<27, 96, 0>>,
-    Step<Thump<30, 192, 0>>,
-    Step<Thump<29, 192, 0>>,
-    Step<Thump<27, 192, 0>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
-pub struct BassRelease(Step<Thump<27, 192, 0>>);
+pub struct BassRelease(Step<Thump<27, 192, 192>>);

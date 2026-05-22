@@ -1,8 +1,9 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::{U1, U2};
 
-use crate::effect::DecrementCounterEffect;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck, Strum};
+
+use super::counter::DecrementCounter;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct RhythmGuitaristState {
@@ -62,21 +63,6 @@ pub struct IntroSustainNeeded;
 impl<In> Condition<(RhythmGuitaristState, In)> for IntroSustainNeeded {
     fn choose(input: &(RhythmGuitaristState, In)) -> bool {
         input.0.transition_loops_remaining == 0
-    }
-}
-
-pub struct DecrementCounter<Focus>(core::marker::PhantomData<fn() -> Focus>);
-#[jungle::act(aspect = Focus)]
-impl<Focus> Act for DecrementCounter<Focus> {
-    type Effect = DecrementCounterEffect;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_view: &u8, _input: Self::Input) -> Self::Input {}
-
-    fn absorb(view: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("counter decrement should succeed");
-        *view = view.saturating_sub(1);
     }
 }
 

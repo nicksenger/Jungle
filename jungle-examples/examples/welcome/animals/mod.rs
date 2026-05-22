@@ -5,6 +5,7 @@ use num::U255;
 use std::time::Duration;
 
 mod bassist;
+mod counter;
 mod lead_guitarist;
 mod lead_vocalist;
 mod rhythm_guitarist;
