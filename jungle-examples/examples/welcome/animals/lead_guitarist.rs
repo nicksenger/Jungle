@@ -1,5 +1,6 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::U1;
+use std::time::Duration;
 
 use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck};
 
@@ -22,10 +23,33 @@ impl Default for LeadGuitaristState {
 }
 
 pub type LeadGuitaristSeed = ();
+const INTRO_START_DELAY_MS: u64 = 6_829;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
     const METADATA: &'static str = "section";
+}
+
+pub struct IntroStartDelay;
+#[jungle::act]
+impl Act for IntroStartDelay {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &LeadGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        Duration::from_millis(INTRO_START_DELAY_MS)
+    }
+
+    fn absorb(
+        _state: &mut LeadGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("intro start delay should complete");
+    }
 }
 
 pub struct LeadIntroRiffRemaining;
@@ -49,6 +73,7 @@ pub type AdvanceLeadIntroRiff = DecrementCounter<RiffLoopCounter>;
 
 #[derive(Flow)]
 pub struct LeadGuitarIntro(
+    Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Transparent<IntroSectionMeta, LeadPrelude>,
     Transparent<IntroSectionMeta, While<LeadIntroRiffRemaining, LeadIntroRiffLoopBody>>,
     Transparent<

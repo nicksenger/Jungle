@@ -1,5 +1,6 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::U1;
+use std::time::Duration;
 
 use crate::instrumentation::{Sing, VocalsArticulation};
 
@@ -22,10 +23,30 @@ impl Default for LeadVocalistState {
 }
 
 pub type LeadVocalistSeed = ();
+const INTRO_START_DELAY_MS: u64 = 25_854;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
     const METADATA: &'static str = "section";
+}
+
+pub struct IntroStartDelay;
+#[jungle::act]
+impl Act for IntroStartDelay {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        Duration::from_millis(INTRO_START_DELAY_MS)
+    }
+
+    fn absorb(
+        _state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("intro start delay should complete");
+    }
 }
 
 pub struct IntroPickupRemaining;
@@ -49,6 +70,7 @@ pub type AdvanceIntroPickup = DecrementCounter<IntroPickupCounter>;
 
 #[derive(Flow)]
 pub struct LeadVocalIntro(
+    Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Transparent<IntroSectionMeta, IntroBreath>,
     Transparent<IntroSectionMeta, IntroPickupLoop>,
     Transparent<IntroSectionMeta, Conditional<IntroNeedsPickup, IntroRelease, IntroRest>>,
