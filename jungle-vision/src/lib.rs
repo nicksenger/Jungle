@@ -2443,18 +2443,14 @@ impl DefaultThemeState {
         for visual in self.cluster_visuals.values_mut() {
             let border = &mut visual.border;
             if border.from == border.to {
-                changed |= visual
-                    .fill
-                    .settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
+                changed |= visual.fill.settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
                 continue;
             }
             if now.duration_since(border.started_at) >= CLUSTER_BORDER_ANIMATION_DURATION {
                 border.from = border.to;
                 changed = true;
             }
-            changed |= visual
-                .fill
-                .settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
+            changed |= visual.fill.settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
         }
         changed
     }

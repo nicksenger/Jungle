@@ -1,3 +1,5 @@
+#![recursion_limit = "16384"]
+
 mod animals;
 mod assets;
 mod audio;

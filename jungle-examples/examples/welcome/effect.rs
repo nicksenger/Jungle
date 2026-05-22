@@ -147,18 +147,7 @@ impl<
         const NOTE_TICK_2: u32,
         const REST_TICK: u32,
     > jungle_sdk::prelude::Effect<TheJungle>
-    for AtomicDualHit<
-        I1,
-        I2,
-        A1,
-        A2,
-        LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_TICK_1,
-        NOTE_TICK_2,
-        REST_TICK,
-    >
+    for AtomicDualHit<I1, I2, A1, A2, LANE_ID, NOTE_1, NOTE_2, NOTE_TICK_1, NOTE_TICK_2, REST_TICK>
 where
     I1: Instrument<Articulation = A1>,
     I2: Instrument<Articulation = A2>,
