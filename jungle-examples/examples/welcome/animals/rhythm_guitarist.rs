@@ -1,6 +1,7 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::typosaurus::num::consts::{U1, U2};
 
+use crate::effect::DecrementCounterEffect;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick, Pluck, Strum};
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -61,21 +62,6 @@ pub struct IntroSustainNeeded;
 impl<In> Condition<(RhythmGuitaristState, In)> for IntroSustainNeeded {
     fn choose(input: &(RhythmGuitaristState, In)) -> bool {
         input.0.transition_loops_remaining == 0
-    }
-}
-
-pub struct DecrementCounterEffect;
-#[jungle::effect(id = 512)]
-impl<J> Effect<J> for DecrementCounterEffect {
-    type In = ();
-    type Out = ();
-    type Err = String;
-
-    fn effect(
-        _jungle: &J,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> + Send {
-        std::future::ready(Ok(()))
     }
 }
 

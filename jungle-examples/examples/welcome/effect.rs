@@ -75,6 +75,22 @@ pub struct Monad<
     const REST_TICK: u8,
 >(PhantomData<(I, A)>);
 
+pub struct DecrementCounterEffect;
+
+#[effect(id = 512)]
+impl<J> jungle_sdk::prelude::Effect<J> for DecrementCounterEffect {
+    type In = ();
+    type Out = ();
+    type Err = String;
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> + Send {
+        std::future::ready(Ok(()))
+    }
+}
+
 #[effect(id = 506)]
 impl<
         I,
