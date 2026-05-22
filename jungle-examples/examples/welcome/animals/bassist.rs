@@ -3,7 +3,7 @@ use jungle_sdk::typosaurus::num::consts::{U1, U2};
 
 use crate::instrumentation::{BassArticulation, Thump};
 
-use super::counter::DecrementCounter;
+use super::DecrementCounter;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct BassistState {

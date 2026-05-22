@@ -3,7 +3,7 @@ use jungle_sdk::typosaurus::num::consts::U1;
 
 use crate::instrumentation::{Sing, VocalsArticulation};
 
-use super::counter::DecrementCounter;
+use super::DecrementCounter;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LeadVocalistState {
