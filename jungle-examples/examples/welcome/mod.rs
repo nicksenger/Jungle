@@ -226,6 +226,8 @@ fn run_runtime_thread(
             (audio_handle, Some(audio_engine), None)
         };
         let ecosystem = TheJungle::new(audio_handle, bpm);
+        let metronome = ecosystem.metronome().clone();
+        metronome.arm_start_barrier();
         let worker_client = client.clone();
         let _worker_task = tokio::spawn(async move {
             let worker = JungleWorker::new(ecosystem, worker_client);
@@ -329,6 +331,7 @@ fn run_runtime_thread(
             bass: bass?,
             drums: drums?,
         };
+        metronome.release_start_barrier_on_downbeat().await;
 
         keep_alive.audio_engine = audio_engine;
         keep_alive.stub_audio = stub_audio;

@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -43,28 +44,37 @@ impl RhythmTiming {
 
 #[derive(Clone)]
 pub struct Metronome {
-    started_at: Instant,
+    started_at: Arc<RwLock<Instant>>,
     beat: Duration,
     latest_beat: Arc<RwLock<Option<BeatEvent>>>,
     lane_ticks: Arc<RwLock<HashMap<u32, u64>>>,
+    start_barrier_open: Arc<AtomicBool>,
+    start_barrier_notify: Arc<tokio::sync::Notify>,
 }
 
 impl Metronome {
     pub fn spawn(bpm: f32) -> Self {
         let beat = beat_duration(bpm);
         let latest_beat = Arc::new(RwLock::new(None));
+        let started_at = Arc::new(RwLock::new(Instant::now()));
         let metronome = Self {
-            started_at: Instant::now(),
+            started_at,
             beat,
             latest_beat,
             lane_ticks: Arc::new(RwLock::new(HashMap::new())),
+            start_barrier_open: Arc::new(AtomicBool::new(true)),
+            start_barrier_notify: Arc::new(tokio::sync::Notify::new()),
         };
         metronome.start_task();
         metronome
     }
 
     pub fn started_at(&self) -> Instant {
-        self.started_at
+        let started_at = self
+            .started_at
+            .read()
+            .expect("started_at rwlock should not be poisoned");
+        *started_at
     }
 
     pub fn beat_duration(&self) -> Duration {
@@ -80,10 +90,10 @@ impl Metronome {
     }
 
     pub fn elapsed(&self) -> Duration {
-        let now_elapsed = self.started_at.elapsed();
+        let now_elapsed = self.started_at().elapsed();
         let beat_elapsed = self
             .latest_beat()
-            .map(|event| event.timestamp.saturating_duration_since(self.started_at))
+            .map(|event| event.timestamp.saturating_duration_since(self.started_at()))
             .unwrap_or(Duration::ZERO);
         now_elapsed.max(beat_elapsed)
     }
@@ -114,6 +124,49 @@ impl Metronome {
         self.beat_duration().div_f32(4.0).clamp(min, max)
     }
 
+    pub fn arm_start_barrier(&self) {
+        self.start_barrier_open.store(false, Ordering::Release);
+    }
+
+    pub async fn wait_for_start_barrier(&self) {
+        if self.start_barrier_open.load(Ordering::Acquire) {
+            return;
+        }
+        loop {
+            let notified = self.start_barrier_notify.notified();
+            if self.start_barrier_open.load(Ordering::Acquire) {
+                return;
+            }
+            notified.await;
+            if self.start_barrier_open.load(Ordering::Acquire) {
+                return;
+            }
+        }
+    }
+
+    pub async fn release_start_barrier_on_downbeat(&self) {
+        let offset = self.phase_offset(self.beat_duration());
+        if !offset.is_zero() {
+            tokio::time::sleep(self.beat_duration().saturating_sub(offset)).await;
+        }
+        {
+            let mut started_at = self
+                .started_at
+                .write()
+                .expect("started_at rwlock should not be poisoned");
+            *started_at = Instant::now();
+        }
+        {
+            let mut lane_ticks = self
+                .lane_ticks
+                .write()
+                .expect("lane ticks rwlock should not be poisoned");
+            lane_ticks.clear();
+        }
+        self.start_barrier_open.store(true, Ordering::Release);
+        self.start_barrier_notify.notify_waiters();
+    }
+
     pub fn rhythm_timing(
         &self,
         lane_id: u32,
@@ -135,7 +188,7 @@ impl Metronome {
                 .tick_duration(ticks_per_beat)
                 .mul_f64(*scheduled_tick as f64);
             *scheduled_tick = scheduled_tick.saturating_add(rest_ticks as u64);
-            self.started_at + scheduled_start_offset
+            self.started_at() + scheduled_start_offset
         };
         let now = Instant::now();
         let lateness = now.saturating_duration_since(lane_target_start);

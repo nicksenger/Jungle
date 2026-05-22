@@ -83,6 +83,18 @@ pub struct Monad<
 
 pub struct DecrementCounterEffect;
 pub struct Rest<const LANE_ID: u32, const REST_TICKS: u32>;
+pub struct AtomicDualHit<
+    I1: Instrument<Articulation = A1>,
+    I2: Instrument<Articulation = A2>,
+    A1: Copy,
+    A2: Copy,
+    const LANE_ID: u32,
+    const NOTE_1: u8,
+    const NOTE_2: u8,
+    const NOTE_TICK_1: u32,
+    const NOTE_TICK_2: u32,
+    const REST_TICK: u32,
+>(PhantomData<(I1, I2, A1, A2)>);
 
 #[effect(id = 512)]
 impl<J> jungle_sdk::prelude::Effect<J> for DecrementCounterEffect {
@@ -107,6 +119,7 @@ impl<const LANE_ID: u32, const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJ
     type Err = String;
 
     async fn effect(jungle: &TheJungle, _input: Self::In) -> Result<Self::Out, Self::Err> {
+        jungle.metronome().wait_for_start_barrier().await;
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
@@ -116,6 +129,76 @@ impl<const LANE_ID: u32, const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJ
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
         timing.sleep_until_note_window().await;
+        timing.sleep_until_next_cycle().await;
+        Ok(())
+    }
+}
+
+#[effect(id = 514)]
+impl<
+        I1,
+        I2,
+        A1,
+        A2,
+        const LANE_ID: u32,
+        const NOTE_1: u8,
+        const NOTE_2: u8,
+        const NOTE_TICK_1: u32,
+        const NOTE_TICK_2: u32,
+        const REST_TICK: u32,
+    > jungle_sdk::prelude::Effect<TheJungle>
+    for AtomicDualHit<
+        I1,
+        I2,
+        A1,
+        A2,
+        LANE_ID,
+        NOTE_1,
+        NOTE_2,
+        NOTE_TICK_1,
+        NOTE_TICK_2,
+        REST_TICK,
+    >
+where
+    I1: Instrument<Articulation = A1>,
+    I2: Instrument<Articulation = A2>,
+    for<'a> &'a I1: From<&'a TheJungle>,
+    for<'a> &'a I2: From<&'a TheJungle>,
+    A1: Copy + Serialize + DeserializeOwned + Send + 'static,
+    A2: Copy + Serialize + DeserializeOwned + Send + 'static,
+{
+    type In = (A1, A2);
+    type Out = ();
+    type Err = String;
+
+    async fn effect(jungle: &TheJungle, input: Self::In) -> Result<Self::Out, Self::Err> {
+        jungle.metronome().wait_for_start_barrier().await;
+        let timing = jungle.metronome().rhythm_timing(
+            LANE_ID,
+            TICKS_PER_BEAT,
+            NOTE_TICK_1.max(NOTE_TICK_2),
+            REST_TICK,
+            MIN_LATE_NOTE_DROP_THRESHOLD,
+            MAX_LATE_NOTE_DROP_THRESHOLD,
+        );
+        timing.sleep_until_note_window().await;
+        if timing.should_play() {
+            let note_1 = rhythm_note(
+                NOTE_1,
+                jungle
+                    .metronome()
+                    .duration_for_ticks(TICKS_PER_BEAT, NOTE_TICK_1),
+                input.0,
+            );
+            let note_2 = rhythm_note(
+                NOTE_2,
+                jungle
+                    .metronome()
+                    .duration_for_ticks(TICKS_PER_BEAT, NOTE_TICK_2),
+                input.1,
+            );
+            play_two_instruments::<I1, I2>(jungle, note_1, note_2).await?;
+        }
         timing.sleep_until_next_cycle().await;
         Ok(())
     }
@@ -146,6 +229,7 @@ where
     type Err = String;
 
     async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+        jungle.metronome().wait_for_start_barrier().await;
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
@@ -192,6 +276,7 @@ where
     type Err = String;
 
     async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+        jungle.metronome().wait_for_start_barrier().await;
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
@@ -237,6 +322,7 @@ where
     type Err = String;
 
     async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+        jungle.metronome().wait_for_start_barrier().await;
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
@@ -281,6 +367,7 @@ where
     type Err = String;
 
     async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+        jungle.metronome().wait_for_start_barrier().await;
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
@@ -324,6 +411,7 @@ where
     type Err = String;
 
     async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+        jungle.metronome().wait_for_start_barrier().await;
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
@@ -356,6 +444,7 @@ where
     type Err = String;
 
     async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+        jungle.metronome().wait_for_start_barrier().await;
         let timing = jungle.metronome().rhythm_timing(
             LANE_ID,
             TICKS_PER_BEAT,
@@ -418,6 +507,24 @@ where
 {
     let instrument: &I = jungle.into();
     let (first, second) = tokio::join!(instrument.play(note_1), instrument.play(note_2));
+    map_playback_err(first)?;
+    map_playback_err(second)
+}
+
+async fn play_two_instruments<I1, I2>(
+    jungle: &TheJungle,
+    note_1: Note<I1::Articulation>,
+    note_2: Note<I2::Articulation>,
+) -> Result<(), String>
+where
+    I1: Instrument,
+    I2: Instrument,
+    for<'a> &'a I1: From<&'a TheJungle>,
+    for<'a> &'a I2: From<&'a TheJungle>,
+{
+    let instrument_1: &I1 = jungle.into();
+    let instrument_2: &I2 = jungle.into();
+    let (first, second) = tokio::join!(instrument_1.play(note_1), instrument_2.play(note_2));
     map_playback_err(first)?;
     map_playback_err(second)
 }

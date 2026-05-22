@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{DecrementCounterEffect, Monad, Rest};
+use crate::effect::{AtomicDualHit, Monad, Rest};
 use crate::instrumentation::{
     Cymbal, CymbalArticulation, HiHat, HiHatArticulation, KickDrum, KickDrumArticulation,
     SnareDrum, SnareDrumArticulation,
@@ -33,23 +33,6 @@ impl Act for IntroStartDelay {
         output.expect("intro start delay should complete");
     }
 }
-
-pub struct MergeJoinUnits;
-#[jungle::act]
-impl Act for MergeJoinUnits {
-    type Effect = DecrementCounterEffect;
-    type Input = ((), ());
-    type Output = ();
-
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("join merge should succeed");
-    }
-}
-
-#[derive(Flow)]
-pub struct SyncPair<Left, Right>(Join<Left, Right>, Step<MergeJoinUnits>);
 
 pub struct Hat<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
@@ -124,9 +107,218 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     }
 }
 
+pub struct HatBoot<
+    const HAT_NOTE: u8,
+    const BOOT_NOTE: u8,
+    const HAT_NOTE_TICK: u32,
+    const BOOT_NOTE_TICK: u32,
+    const REST_TICK: u32,
+>;
+#[jungle::act]
+impl<
+        const HAT_NOTE: u8,
+        const BOOT_NOTE: u8,
+        const HAT_NOTE_TICK: u32,
+        const BOOT_NOTE_TICK: u32,
+        const REST_TICK: u32,
+    > Act for HatBoot<HAT_NOTE, BOOT_NOTE, HAT_NOTE_TICK, BOOT_NOTE_TICK, REST_TICK>
+{
+    type Effect = AtomicDualHit<
+        HiHat,
+        KickDrum,
+        HiHatArticulation,
+        KickDrumArticulation,
+        DRUMS_LANE_ID,
+        HAT_NOTE,
+        BOOT_NOTE,
+        HAT_NOTE_TICK,
+        BOOT_NOTE_TICK,
+        REST_TICK,
+    >;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        (HiHatArticulation::ClosedTip, KickDrumArticulation::StandardHit)
+    }
+
+    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("hat+kick playback should succeed");
+    }
+}
+
+pub struct BootBlast<
+    const BOOT_NOTE: u8,
+    const BLAST_NOTE: u8,
+    const BOOT_NOTE_TICK: u32,
+    const BLAST_NOTE_TICK: u32,
+    const REST_TICK: u32,
+>;
+#[jungle::act]
+impl<
+        const BOOT_NOTE: u8,
+        const BLAST_NOTE: u8,
+        const BOOT_NOTE_TICK: u32,
+        const BLAST_NOTE_TICK: u32,
+        const REST_TICK: u32,
+    > Act for BootBlast<BOOT_NOTE, BLAST_NOTE, BOOT_NOTE_TICK, BLAST_NOTE_TICK, REST_TICK>
+{
+    type Effect = AtomicDualHit<
+        KickDrum,
+        Cymbal,
+        KickDrumArticulation,
+        CymbalArticulation,
+        DRUMS_LANE_ID,
+        BOOT_NOTE,
+        BLAST_NOTE,
+        BOOT_NOTE_TICK,
+        BLAST_NOTE_TICK,
+        REST_TICK,
+    >;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        (
+            KickDrumArticulation::StandardHit,
+            CymbalArticulation::StandardCrash,
+        )
+    }
+
+    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("kick+cymbal playback should succeed");
+    }
+}
+
+pub struct SnapBlast<
+    const SNAP_NOTE: u8,
+    const BLAST_NOTE: u8,
+    const SNAP_NOTE_TICK: u32,
+    const BLAST_NOTE_TICK: u32,
+    const REST_TICK: u32,
+>;
+#[jungle::act]
+impl<
+        const SNAP_NOTE: u8,
+        const BLAST_NOTE: u8,
+        const SNAP_NOTE_TICK: u32,
+        const BLAST_NOTE_TICK: u32,
+        const REST_TICK: u32,
+    > Act for SnapBlast<SNAP_NOTE, BLAST_NOTE, SNAP_NOTE_TICK, BLAST_NOTE_TICK, REST_TICK>
+{
+    type Effect = AtomicDualHit<
+        SnareDrum,
+        Cymbal,
+        SnareDrumArticulation,
+        CymbalArticulation,
+        DRUMS_LANE_ID,
+        SNAP_NOTE,
+        BLAST_NOTE,
+        SNAP_NOTE_TICK,
+        BLAST_NOTE_TICK,
+        REST_TICK,
+    >;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        (
+            SnareDrumArticulation::Rimshot,
+            CymbalArticulation::StandardCrash,
+        )
+    }
+
+    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("snare+cymbal playback should succeed");
+    }
+}
+
+pub struct BootSnap<
+    const BOOT_NOTE: u8,
+    const SNAP_NOTE: u8,
+    const BOOT_NOTE_TICK: u32,
+    const SNAP_NOTE_TICK: u32,
+    const REST_TICK: u32,
+>;
+#[jungle::act]
+impl<
+        const BOOT_NOTE: u8,
+        const SNAP_NOTE: u8,
+        const BOOT_NOTE_TICK: u32,
+        const SNAP_NOTE_TICK: u32,
+        const REST_TICK: u32,
+    > Act for BootSnap<BOOT_NOTE, SNAP_NOTE, BOOT_NOTE_TICK, SNAP_NOTE_TICK, REST_TICK>
+{
+    type Effect = AtomicDualHit<
+        KickDrum,
+        SnareDrum,
+        KickDrumArticulation,
+        SnareDrumArticulation,
+        DRUMS_LANE_ID,
+        BOOT_NOTE,
+        SNAP_NOTE,
+        BOOT_NOTE_TICK,
+        SNAP_NOTE_TICK,
+        REST_TICK,
+    >;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        (
+            KickDrumArticulation::StandardHit,
+            SnareDrumArticulation::Rimshot,
+        )
+    }
+
+    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("kick+snare playback should succeed");
+    }
+}
+
+pub struct HatSnap<
+    const HAT_NOTE: u8,
+    const SNAP_NOTE: u8,
+    const HAT_NOTE_TICK: u32,
+    const SNAP_NOTE_TICK: u32,
+    const REST_TICK: u32,
+>;
+#[jungle::act]
+impl<
+        const HAT_NOTE: u8,
+        const SNAP_NOTE: u8,
+        const HAT_NOTE_TICK: u32,
+        const SNAP_NOTE_TICK: u32,
+        const REST_TICK: u32,
+    > Act for HatSnap<HAT_NOTE, SNAP_NOTE, HAT_NOTE_TICK, SNAP_NOTE_TICK, REST_TICK>
+{
+    type Effect = AtomicDualHit<
+        HiHat,
+        SnareDrum,
+        HiHatArticulation,
+        SnareDrumArticulation,
+        DRUMS_LANE_ID,
+        HAT_NOTE,
+        SNAP_NOTE,
+        HAT_NOTE_TICK,
+        SNAP_NOTE_TICK,
+        REST_TICK,
+    >;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        (HiHatArticulation::ClosedTip, SnareDrumArticulation::Rimshot)
+    }
+
+    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("hat+snare playback should succeed");
+    }
+}
+
 #[derive(Flow)]
 pub struct IntroPart01(
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 96, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 96, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
@@ -145,7 +337,7 @@ pub struct IntroPart02(
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<44, 96, 96>>, Step<Boot<36, 96, 96>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<44, 36, 96, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
@@ -165,7 +357,7 @@ pub struct IntroPart03(
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<44, 96, 96>>, Step<Boot<36, 96, 96>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<44, 36, 96, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
@@ -185,7 +377,7 @@ pub struct IntroPart04(
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 96, 96>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<44, 96, 96>>, Step<Boot<36, 96, 96>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<44, 36, 96, 96, 96>>>,
 );
 
 #[derive(Flow)]
@@ -208,7 +400,7 @@ pub struct IntroPart05(
 pub struct IntroPart06(
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<36, 96, 96>>, Step<Blast<57, 96, 96>>>>,
+    Transparent<IntroSectionMeta, Step<BootBlast<36, 57, 96, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
@@ -228,7 +420,7 @@ pub struct IntroPart07(
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 96, 96>>, Step<Boot<36, 96, 96>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 96, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
@@ -248,7 +440,7 @@ pub struct IntroPart08(
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 96, 96>>, Step<Boot<36, 96, 96>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 96, 96, 96>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 96, 96>>>,
 );
 
@@ -270,30 +462,30 @@ pub struct IntroPart09(
 
 #[derive(Flow)]
 pub struct IntroPart10(
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<36, 192, 192>>, Step<Blast<57, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<36, 192, 192>>, Step<Blast<57, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<BootBlast<36, 57, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootBlast<36, 57, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<36, 192, 192>>, Step<Blast<57, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<36, 192, 192>>, Step<Blast<57, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<BootBlast<36, 57, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootBlast<36, 57, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<44, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Snap<38, 192, 192>>, Step<Blast<57, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<SnapBlast<38, 57, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
 );
 
 #[derive(Flow)]
 pub struct IntroPart11(
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<35, 192, 192>>, Step<Snap<38, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<BootSnap<35, 38, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Snap<38, 48, 48>>>,
     Transparent<IntroSectionMeta, Step<Snap<38, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Boot<36, 192, 192>>>,
@@ -304,38 +496,38 @@ pub struct IntroPart11(
 pub struct IntroPart12(
     Transparent<IntroSectionMeta, Step<Snap<38, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Snap<38, 192, 96>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Boot<36, 192, 192>>, Step<Blast<57, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<BootBlast<36, 57, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Snap<38, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatSnap<46, 38, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatSnap<46, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
 );
 
 #[derive(Flow)]
 pub struct IntroPart13(
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Snap<38, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatSnap<46, 38, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatSnap<46, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Snap<38, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatSnap<46, 38, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 192, 192>>>,
     Transparent<IntroSectionMeta, Step<Hat<46, 192, 192>>>,
 );
 
 #[derive(Flow)]
 pub struct IntroPart14(
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Snap<38, 192, 192>>>>,
-    Transparent<IntroSectionMeta, SyncPair<Step<Hat<46, 192, 192>>, Step<Boot<36, 192, 192>>>>,
+    Transparent<IntroSectionMeta, Step<HatSnap<46, 38, 192, 192, 192>>>,
+    Transparent<IntroSectionMeta, Step<HatBoot<46, 36, 192, 192, 192>>>,
 );
 
 #[derive(Flow)]
