@@ -1055,6 +1055,7 @@ fn node_phase_for_display(
     live_data: Option<&LiveData>,
     display_id: u32,
     runtime_id: Option<u32>,
+    proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> Phase<RuntimeState> {
     let Some(live) = live_data else {
@@ -1069,7 +1070,26 @@ fn node_phase_for_display(
             .unwrap_or(RuntimeState::Pending),
     };
 
-    Phase::Live(state)
+    let mut newest = runtime_id.and_then(|id| {
+        live.runtime_update_sequence
+            .get(&id)
+            .copied()
+            .map(|sequence| (sequence, state))
+    });
+    for proxy_runtime_id in proxy_runtime_ids {
+        let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
+            continue;
+        };
+        let proxy_state = runtime_state_for_live_data(live, *proxy_runtime_id);
+        if newest
+            .map(|(best_sequence, _)| sequence > best_sequence)
+            .unwrap_or(true)
+        {
+            newest = Some((sequence, proxy_state));
+        }
+    }
+
+    Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
 }
 
 fn sidebar<'a>(
@@ -1372,6 +1392,7 @@ where
             live_data,
             node.id,
             node.runtime_node_id,
+            &node.proxy_runtime_ids,
             &condition_successor_runtime_ids,
         );
         let step_ctx = StepViewCtx {
@@ -1507,6 +1528,11 @@ where
         .iter()
         .map(|(display_id, node)| (*display_id, node.runtime_node_id))
         .collect::<HashMap<_, _>>();
+    let proxy_runtime_ids_by_display_id = model
+        .node_map
+        .iter()
+        .map(|(display_id, node)| (*display_id, node.proxy_runtime_ids.clone()))
+        .collect::<HashMap<_, _>>();
 
     let graph_widget = {
         let node_map = model.node_map.clone();
@@ -1521,6 +1547,8 @@ where
         let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids.clone();
         let runtime_ids_for_edge_colors = runtime_by_display_id.clone();
         let runtime_ids_for_edge_strokes = runtime_by_display_id.clone();
+        let proxy_runtime_ids_for_edge_colors = proxy_runtime_ids_by_display_id.clone();
+        let proxy_runtime_ids_for_edge_strokes = proxy_runtime_ids_by_display_id.clone();
         let condition_successors_for_nodes = condition_successor_runtime_ids.clone();
         let condition_successors_for_edge_colors = condition_successor_runtime_ids.clone();
         let condition_successors_for_edge_strokes = condition_successor_runtime_ids.clone();
@@ -1533,6 +1561,7 @@ where
                             live_data,
                             node.id,
                             node.runtime_node_id,
+                            &node.proxy_runtime_ids,
                             &condition_successors_for_nodes,
                         );
                         let step_ctx = StepViewCtx {
@@ -1606,12 +1635,20 @@ where
                             live_data,
                             ctx.edge.0,
                             source_runtime_id,
+                            proxy_runtime_ids_for_edge_colors
+                                .get(&ctx.edge.0)
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             &condition_successors_for_edge_colors,
                         ),
                         target_phase: node_phase_for_display(
                             live_data,
                             ctx.edge.1,
                             target_runtime_id,
+                            proxy_runtime_ids_for_edge_colors
+                                .get(&ctx.edge.1)
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             &condition_successors_for_edge_colors,
                         ),
                         extent: ctx.transition_progress,
@@ -1642,12 +1679,20 @@ where
                             live_data,
                             ctx.edge.0,
                             source_runtime_id,
+                            proxy_runtime_ids_for_edge_strokes
+                                .get(&ctx.edge.0)
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             &condition_successors_for_edge_strokes,
                         ),
                         target_phase: node_phase_for_display(
                             live_data,
                             ctx.edge.1,
                             target_runtime_id,
+                            proxy_runtime_ids_for_edge_strokes
+                                .get(&ctx.edge.1)
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             &condition_successors_for_edge_strokes,
                         ),
                         extent: ctx.transition_progress,
@@ -1784,6 +1829,7 @@ struct NodeDisplay {
     label: String,
     metadata: Option<String>,
     runtime_node_id: Option<u32>,
+    proxy_runtime_ids: Vec<u32>,
     is_conditional_branch: bool,
     is_select: bool,
     is_join: bool,
@@ -2029,7 +2075,7 @@ impl GraphBuilder {
                 left,
                 right,
             } => {
-                let _runtime_id = self.runtime_next_id;
+                let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
                 let _ = (label, metadata);
 
@@ -2045,6 +2091,13 @@ impl GraphBuilder {
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
                 members = dedup(members);
+                for member_id in &members {
+                    self.mark(*member_id, |node| {
+                        if !node.proxy_runtime_ids.contains(&runtime_id) {
+                            node.proxy_runtime_ids.push(runtime_id);
+                        }
+                    });
+                }
 
                 Flattened {
                     roots,
@@ -2058,7 +2111,7 @@ impl GraphBuilder {
                 left,
                 right,
             } => {
-                let _runtime_id = self.runtime_next_id;
+                let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
                 let _ = (label, metadata);
 
@@ -2074,6 +2127,13 @@ impl GraphBuilder {
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
                 members = dedup(members);
+                for member_id in &members {
+                    self.mark(*member_id, |node| {
+                        if !node.proxy_runtime_ids.contains(&runtime_id) {
+                            node.proxy_runtime_ids.push(runtime_id);
+                        }
+                    });
+                }
 
                 Flattened {
                     roots,
@@ -2091,6 +2151,7 @@ impl GraphBuilder {
             label: label.into(),
             metadata: None,
             runtime_node_id: Some(runtime_id),
+            proxy_runtime_ids: Vec::new(),
             is_conditional_branch: false,
             is_select: false,
             is_join: false,
@@ -2110,6 +2171,7 @@ impl GraphBuilder {
             label: label.into(),
             metadata: None,
             runtime_node_id: None,
+            proxy_runtime_ids: Vec::new(),
             is_conditional_branch: false,
             is_select: false,
             is_join: false,
@@ -3074,6 +3136,83 @@ mod tests {
         assert_eq!(
             infer_condition_runtime_state(&live, &[11, 12]),
             RuntimeState::Running
+        );
+    }
+
+    #[test]
+    fn join_children_follow_join_runtime_state_for_live_coloring() {
+        let ast = JourneyAst::Join {
+            label: "Join",
+            metadata: "",
+            left: Box::new(JourneyAst::Step { label: "JoinL" }),
+            right: Box::new(JourneyAst::Step { label: "JoinR" }),
+        };
+        let model = GraphModel::from_ast(ast);
+        let node_for = |label: &str| -> &NodeDisplay {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let join_l = node_for("JoinL");
+        let join_r = node_for("JoinR");
+        let mut live = LiveData::default();
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                join_l.id,
+                join_l.runtime_node_id,
+                &join_l.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Running)
+        );
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                join_r.id,
+                join_r.runtime_node_id,
+                &join_r.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Running)
+        );
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event: RunnerUpdateOut::EffectSuccessOutput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                join_l.id,
+                join_l.runtime_node_id,
+                &join_l.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Completed)
+        );
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                join_r.id,
+                join_r.runtime_node_id,
+                &join_r.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Completed)
         );
     }
 
