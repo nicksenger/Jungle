@@ -2029,36 +2029,26 @@ impl GraphBuilder {
                 left,
                 right,
             } => {
-                let runtime_id = self.runtime_next_id;
+                let _runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let select_label = if metadata.trim().is_empty() {
-                    (*label).to_string()
-                } else {
-                    format!("{label} :: {metadata}")
-                };
-                let select_label = self.unique_label(select_label);
-                let select = self.push_runtime_node(select_label, runtime_id);
-                self.mark(select, |node| node.is_select = true);
-                if !metadata.trim().is_empty() {
-                    self.mark(select, |node| node.metadata = Some((*metadata).to_string()));
-                }
+                let _ = (label, metadata);
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for target in &left_flow.roots {
-                    self.edges.push((select, *target));
-                }
-                for target in &right_flow.roots {
-                    self.edges.push((select, *target));
-                }
-
-                let mut members = vec![select];
+                let mut roots = left_flow.roots;
+                roots.extend(right_flow.roots.iter().copied());
+                roots = dedup(roots);
+                let mut exits = left_flow.exits;
+                exits.extend(right_flow.exits.iter().copied());
+                exits = dedup(exits);
+                let mut members = Vec::new();
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
+                members = dedup(members);
 
                 Flattened {
-                    roots: vec![select],
-                    exits: vec![select],
+                    roots,
+                    exits,
                     members,
                 }
             }
@@ -3217,7 +3207,6 @@ mod tests {
         let join_id = id_for("Join");
         let join_l_id = id_for("JoinL");
         let join_r_id = id_for("JoinR");
-        let select_id = id_for("Select");
         let sel_l_id = id_for("SelL");
         let sel_r_id = id_for("SelR");
         let tail_id = id_for("Tail");
@@ -3225,6 +3214,10 @@ mod tests {
         assert!(
             model.nodes.iter().all(|node| node.label != "LoopCondition"),
             "while loops should not render as standalone nodes"
+        );
+        assert!(
+            model.nodes.iter().all(|node| node.label != "Select"),
+            "select steps should not render as standalone nodes"
         );
 
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
@@ -3239,15 +3232,12 @@ mod tests {
 
         assert!(edges.contains(&(join_id, join_l_id)));
         assert!(edges.contains(&(join_id, join_r_id)));
-        assert!(edges.contains(&(join_id, select_id)));
-        assert!(!edges.contains(&(join_l_id, select_id)));
-        assert!(!edges.contains(&(join_r_id, select_id)));
+        assert!(edges.contains(&(join_id, sel_l_id)));
+        assert!(edges.contains(&(join_id, sel_r_id)));
 
-        assert!(edges.contains(&(select_id, sel_l_id)));
-        assert!(edges.contains(&(select_id, sel_r_id)));
-        assert!(edges.contains(&(select_id, tail_id)));
-        assert!(!edges.contains(&(sel_l_id, tail_id)));
-        assert!(!edges.contains(&(sel_r_id, tail_id)));
+        assert!(edges.contains(&(sel_l_id, tail_id)));
+        assert!(edges.contains(&(sel_r_id, tail_id)));
+        assert!(!edges.contains(&(join_id, tail_id)));
     }
 
     #[test]
@@ -3291,7 +3281,10 @@ mod tests {
         let in_l_id = id_for("InLoopL");
         let in_r_id = id_for("InLoopR");
         let join_id = id_for("Join");
-        let select_id = id_for("Select");
+        assert!(
+            model.nodes.iter().all(|node| node.label != "Select"),
+            "select steps should not render as standalone nodes"
+        );
 
         assert_eq!(model.while_clusters.len(), 1);
         let cluster = &model.while_clusters[0];
@@ -3300,7 +3293,6 @@ mod tests {
         assert!(cluster_nodes.contains(&in_l_id));
         assert!(cluster_nodes.contains(&in_r_id));
         assert!(!cluster_nodes.contains(&join_id));
-        assert!(!cluster_nodes.contains(&select_id));
         assert_eq!(model.while_cluster_labels, vec!["while: LoopCondition"]);
 
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
