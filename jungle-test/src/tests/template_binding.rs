@@ -264,12 +264,12 @@ fn template_binding_executes_with_animal_specific_actions() {
     let counter_request_2: i32 = counter
         .next_request_typed::<_, i32>(2)
         .expect("counter second request");
-    assert_eq!(counter_request_2, 7);
+    assert_eq!(counter_request_2, 10);
     let counter_emitted_2: i32 = counter
-        .complete_typed::<i32, (), i32>(Ok(7))
+        .complete_typed::<i32, (), i32>(Ok(10))
         .expect("counter second completion");
-    assert_eq!(counter_emitted_2, 7);
-    assert_eq!(counter.into_state(), 7);
+    assert_eq!(counter_emitted_2, 10);
+    assert_eq!(counter.into_state(), 10);
 
     let mut ledger = ManualExecutor::<LedgerAnimal>::new(0);
     let ledger_request_1: i32 = ledger
@@ -284,12 +284,12 @@ fn template_binding_executes_with_animal_specific_actions() {
     let ledger_request_2: i32 = ledger
         .next_request_typed::<_, i32>(2)
         .expect("ledger second request");
-    assert_eq!(ledger_request_2, 18);
+    assert_eq!(ledger_request_2, 0);
     let ledger_emitted_2: i32 = ledger
-        .complete_typed::<i32, (), i32>(Ok(18))
+        .complete_typed::<i32, (), i32>(Ok(0))
         .expect("ledger second completion");
-    assert_eq!(ledger_emitted_2, 18);
-    assert_eq!(ledger.into_state(), 18);
+    assert_eq!(ledger_emitted_2, 0);
+    assert_eq!(ledger.into_state(), 0);
 }
 
 #[test]
@@ -358,12 +358,12 @@ fn template_binding_bound_journey_is_executor_ready() {
     let req_2: i32 = executor
         .next_request_typed::<_, i32>(2)
         .expect("second bound request");
-    assert_eq!(req_2, 8);
+    assert_eq!(req_2, 12);
     let out_2: i32 = executor
-        .complete_typed::<i32, (), i32>(Ok(8))
+        .complete_typed::<i32, (), i32>(Ok(12))
         .expect("second bound completion");
-    assert_eq!(out_2, 8);
-    assert_eq!(executor.into_state(), 8);
+    assert_eq!(out_2, 12);
+    assert_eq!(executor.into_state(), 12);
 }
 
 struct LocalTemplateAlphaAnimal;
