@@ -5,7 +5,7 @@ use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
-use iced_sugiyama::{Cluster, Graph, OutgoingEdgeStyle, Sugiyama};
+use iced_sugiyama::{AutoFit, Cluster, Graph, OutgoingEdgeStyle, Sugiyama, ViewportInteraction};
 use jungle_client::JungleClient;
 use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -425,6 +425,7 @@ pub enum EjectedViewerMessage {
     LiveEvent(Result<JourneyUpdateEvent, String>),
     ApplyLiveEvent(JourneyUpdateEvent),
     Theme(ViewerEvent<()>),
+    ViewportInteraction(ViewportInteraction),
     Retry,
 }
 
@@ -440,6 +441,8 @@ where
     animation_duration: Option<Duration>,
     animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
     graph_widget_id: iced_sugiyama::Id,
+    auto_pan_enabled: bool,
+    auto_zoom_enabled: bool,
     _scope: std::marker::PhantomData<Scope>,
 }
 
@@ -470,6 +473,8 @@ where
             animation_duration,
             animation_easing,
             graph_widget_id,
+            auto_pan_enabled: true,
+            auto_zoom_enabled: true,
             _scope: std::marker::PhantomData,
         }
     }
@@ -538,6 +543,17 @@ where
                     ),
                 ])
             }
+            EjectedViewerMessage::ViewportInteraction(interaction) => {
+                match interaction {
+                    ViewportInteraction::UserPanned => {
+                        self.auto_pan_enabled = false;
+                    }
+                    ViewportInteraction::UserZoomed => {
+                        self.auto_zoom_enabled = false;
+                    }
+                }
+                Task::none()
+            }
             EjectedViewerMessage::Retry => {
                 self.retry();
                 Task::none()
@@ -578,11 +594,16 @@ where
             self.animation_duration,
             self.animation_easing,
             self.graph_widget_id.clone(),
+            self.auto_pan_enabled,
+            self.auto_zoom_enabled,
         )
         .map(|message| match message {
             Message::Theme(event) => EjectedViewerMessage::Theme(event),
             Message::LiveEvent(result) => EjectedViewerMessage::LiveEvent(result),
             Message::ApplyLiveEvent(update) => EjectedViewerMessage::ApplyLiveEvent(update),
+            Message::ViewportInteraction(interaction) => {
+                EjectedViewerMessage::ViewportInteraction(interaction)
+            }
             Message::Retry => EjectedViewerMessage::Retry,
             Message::AppStarted
             | Message::CaptureView
@@ -657,6 +678,8 @@ where
     animation_duration: Option<Duration>,
     animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
     graph_widget_id: iced_sugiyama::Id,
+    auto_pan_enabled: bool,
+    auto_zoom_enabled: bool,
     _scope: std::marker::PhantomData<Scope>,
 }
 
@@ -689,6 +712,7 @@ enum Message {
     LiveEvent(Result<JourneyUpdateEvent, String>),
     ApplyLiveEvent(JourneyUpdateEvent),
     Theme(ViewerEvent<()>),
+    ViewportInteraction(ViewportInteraction),
     Retry,
     CaptureView,
     ViewCaptured(Screenshot),
@@ -723,6 +747,8 @@ where
                 animation_duration,
                 animation_easing,
                 graph_widget_id: iced_sugiyama::Id::new(GRAPH_WIDGET_ID),
+                auto_pan_enabled: true,
+                auto_zoom_enabled: true,
                 _scope: std::marker::PhantomData,
             },
             Task::done(Message::AppStarted),
@@ -780,6 +806,17 @@ where
                     theme_task,
                     iced_sugiyama::force_review::<Message>(self.graph_widget_id.clone()),
                 ])
+            }
+            Message::ViewportInteraction(interaction) => {
+                match interaction {
+                    ViewportInteraction::UserPanned => {
+                        self.auto_pan_enabled = false;
+                    }
+                    ViewportInteraction::UserZoomed => {
+                        self.auto_zoom_enabled = false;
+                    }
+                }
+                Task::none()
             }
             Message::Retry => match &self.mode {
                 ViewMode::Live { .. } => {
@@ -865,6 +902,8 @@ where
                 self.animation_duration,
                 self.animation_easing,
                 self.graph_widget_id.clone(),
+                self.auto_pan_enabled,
+                self.auto_zoom_enabled,
             )
         ]
         .height(Length::Fill)
@@ -1125,6 +1164,8 @@ fn graph_panel<'a, T, Scope>(
     animation_duration: Option<Duration>,
     animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
     graph_widget_id: iced_sugiyama::Id,
+    auto_pan_enabled: bool,
+    auto_zoom_enabled: bool,
 ) -> Element<'a, Message>
 where
     T: JunglePanelTheme<Scope, Message = ()>,
@@ -1655,7 +1696,14 @@ where
             }
         })
         .cluster_color(cluster_fill_color)
-        .padding(24);
+        .padding(24)
+        .auto_fit(if auto_zoom_enabled {
+            AutoFit::Ongoing
+        } else {
+            AutoFit::Off
+        })
+        .keep_centered(auto_pan_enabled)
+        .on_viewport_interaction(Message::ViewportInteraction);
         if let Some(duration) = animation_duration {
             widget = widget.animation_duration(duration);
         }
