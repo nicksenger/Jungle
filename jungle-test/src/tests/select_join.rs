@@ -238,6 +238,200 @@ impl Animal for TimeoutAnimal {
     type Journey = TimeoutFlowTemplate;
 }
 
+pub struct SelectBranchPrefixFastSpec;
+#[jungle::act]
+impl Act for SelectBranchPrefixFastSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 0)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("select fast prefix should succeed");
+    }
+}
+
+pub struct SelectBranchPrefixSlowSpec;
+#[jungle::act]
+impl Act for SelectBranchPrefixSlowSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (40, 0)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("select slow prefix should succeed");
+    }
+}
+
+pub struct SelectBranchWinnerFastSpec;
+#[jungle::act]
+impl Act for SelectBranchWinnerFastSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (3, 7)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("select fast winner should succeed")
+    }
+}
+
+pub struct SelectBranchWinnerSlowSpec;
+#[jungle::act]
+impl Act for SelectBranchWinnerSlowSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (60, 9)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("select slow winner should succeed")
+    }
+}
+
+#[derive(Flow)]
+pub struct SelectBranchFastFlow(Step<SelectBranchPrefixFastSpec>, Step<SelectBranchWinnerFastSpec>);
+
+#[derive(Flow)]
+pub struct SelectBranchSlowFlow(Step<SelectBranchPrefixSlowSpec>, Step<SelectBranchWinnerSlowSpec>);
+
+#[derive(Flow)]
+pub struct SelectComposableFlowTemplate(
+    Select<SelectBranchFastFlow, SelectBranchSlowFlow>,
+    Step<CaptureSelectWinnerSpec>,
+);
+
+pub struct SelectComposableAnimal;
+
+#[jungle::animal(id = 3, generation = 0)]
+impl Animal for SelectComposableAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = SelectComposableFlowTemplate;
+}
+
+pub struct JoinBranchLeftPrefixSpec;
+#[jungle::act]
+impl Act for JoinBranchLeftPrefixSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (2, 0)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join left prefix should succeed");
+    }
+}
+
+pub struct JoinBranchRightPrefixSpec;
+#[jungle::act]
+impl Act for JoinBranchRightPrefixSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (2, 0)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join right prefix should succeed");
+    }
+}
+
+pub struct JoinBranchLeftValueSpec;
+#[jungle::act]
+impl Act for JoinBranchLeftValueSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (8, 4)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join left value should succeed")
+    }
+}
+
+pub struct JoinBranchRightValueSpec;
+#[jungle::act]
+impl Act for JoinBranchRightValueSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (10, 5)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join right value should succeed")
+    }
+}
+
+#[derive(Flow)]
+pub struct JoinBranchLeftFlow(Step<JoinBranchLeftPrefixSpec>, Step<JoinBranchLeftValueSpec>);
+
+#[derive(Flow)]
+pub struct JoinBranchRightFlow(Step<JoinBranchRightPrefixSpec>, Step<JoinBranchRightValueSpec>);
+
+#[derive(Flow)]
+pub struct JoinComposableFlowTemplate(
+    Join<JoinBranchLeftFlow, JoinBranchRightFlow>,
+    Step<CaptureJoinSumSpec>,
+);
+
+pub struct JoinComposableAnimal;
+
+#[jungle::animal(id = 4, generation = 0)]
+impl Animal for JoinComposableAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = JoinComposableFlowTemplate;
+}
+
 #[tokio::test]
 async fn select_returns_first_completed_branch() {
     let mut executor = Executor::<SelectAnimal>::new(SelectJoinState {
@@ -303,4 +497,36 @@ async fn select_supports_sleep_as_timeout_branch() {
         .await
         .expect("timeout select executor should complete");
     assert_eq!(executor.state().winner, -1);
+}
+
+#[tokio::test]
+async fn select_supports_composed_multi_step_branches() {
+    let mut executor = Executor::<SelectComposableAnimal>::new(SelectJoinState {
+        fast_ms: 0,
+        slow_ms: 0,
+        winner: 0,
+        joined_sum: 0,
+    });
+
+    let _ = executor
+        .advance_to_end_with(())
+        .await
+        .expect("composed select executor should complete");
+    assert_eq!(executor.state().winner, 7);
+}
+
+#[tokio::test]
+async fn join_supports_composed_multi_step_branches() {
+    let mut executor = Executor::<JoinComposableAnimal>::new(SelectJoinState {
+        fast_ms: 0,
+        slow_ms: 0,
+        winner: 0,
+        joined_sum: 0,
+    });
+
+    let _ = executor
+        .advance_to_end_with(())
+        .await
+        .expect("composed join executor should complete");
+    assert_eq!(executor.state().joined_sum, 9);
 }
