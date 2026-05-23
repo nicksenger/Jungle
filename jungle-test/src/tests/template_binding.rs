@@ -1319,9 +1319,11 @@ struct InheritedAutoFocusMiddleConditionalFlow(
     Conditional<InheritedControlCondition, InheritedAutoFocusLeafFlow, InheritedAutoFocusLeafFlow>,
 );
 
+
 #[derive(Flow)]
 #[jungle(focus = NestedLensBranch)]
 struct InheritedAutoFocusConditionalRootFlow(InheritedAutoFocusMiddleConditionalFlow);
+
 
 struct InheritedAutoFocusConditionalAnimal;
 #[jungle::animal(observe, id = 55, generation = 0)]
@@ -1339,14 +1341,17 @@ impl Observe for InheritedAutoFocusConditionalAnimal {
     }
 }
 
+
 #[derive(Animals)]
 struct InheritedAutoFocusConditionalAnimals(InheritedAutoFocusConditionalAnimal);
+
 
 struct InheritedAutoFocusConditionalZoo;
 impl Ecosystem for InheritedAutoFocusConditionalZoo {
     const NAME: &'static str = "late-bound-inherited-auto-focus-conditional-zoo";
     type Animals = InheritedAutoFocusConditionalAnimals;
 }
+
 
 #[tokio::test]
 async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branch_progression() {
@@ -1400,6 +1405,7 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
     worker_handle.abort();
     let _ = worker_handle.await;
 }
+
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ComplexAlphaState {
