@@ -94,7 +94,6 @@ pub struct ImmediateDyad<
     const NOTE_TICK: u32,
 >(PhantomData<(I, A)>);
 
-pub struct DecrementCounterEffect;
 pub struct Rest<const LANE_ID: u32, const REST_TICKS: u32>;
 pub struct SyncedRest<const LANE_ID: u32, const NOTE_TICK: u32, const REST_TICK: u32>;
 pub struct AtomicDualHit<
@@ -149,20 +148,6 @@ where
             .duration_for_ticks(TICKS_PER_BEAT, NOTE_TICK);
         let [note_1, note_2] = rhythm_notes([NOTE_1, NOTE_2], note_duration, articulation);
         play_two::<I>(jungle, note_1, note_2).await
-    }
-}
-
-#[effect(id = 512)]
-impl<J> jungle_sdk::prelude::Effect<J> for DecrementCounterEffect {
-    type In = ();
-    type Out = ();
-    type Err = String;
-
-    fn effect(
-        _jungle: &J,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> + Send {
-        std::future::ready(Ok(()))
     }
 }
 
