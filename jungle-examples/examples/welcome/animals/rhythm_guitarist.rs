@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{AtomicDualHit, ImmediateDyad, ImmediateMonad, Rest, Tetrad};
+use crate::effect::{AtomicDualHit, ImmediateDyad, ImmediateMonad, Rest, SyncedRest, Tetrad};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
@@ -75,12 +75,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     }
 }
 
-pub struct JoinPluck<
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_TICK: u32,
-    const REST_TICK: u32,
->;
+pub struct JoinPluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
 impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinPluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
@@ -252,7 +247,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
 pub struct MergeJoinUnit;
 #[jungle::act]
 impl Act for MergeJoinUnit {
-    type Effect = Rest<RHYTHM_GUITAR_LANE_ID, 384>;
+    type Effect = SyncedRest<RHYTHM_GUITAR_LANE_ID, 384, 384>;
     type Input = ((), ());
     type Output = ();
 
