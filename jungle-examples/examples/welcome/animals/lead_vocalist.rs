@@ -19,7 +19,7 @@ pub struct LeadVocalistState {
 impl Default for LeadVocalistState {
     fn default() -> Self {
         Self {
-            articulation: VocalsArticulation::SirenScream,
+            articulation: VocalsArticulation::Clean,
             intro_pickup_remaining: 1,
         }
     }

@@ -53,15 +53,15 @@ fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLa
             },
             PlaybackLayer {
                 pan: -0.17,
-                gain_scale: 0.42,
-                playback_rate_scale: 0.996,
-                delay_seconds: 0.013,
+                gain_scale: 0.26,
+                playback_rate_scale: 0.998,
+                delay_seconds: 0.008,
             },
             PlaybackLayer {
                 pan: 0.21,
-                gain_scale: 0.33,
-                playback_rate_scale: 1.007,
-                delay_seconds: 0.021,
+                gain_scale: 0.21,
+                playback_rate_scale: 1.004,
+                delay_seconds: 0.015,
             },
         ],
         VocalsArticulation::GritRasp => &[
@@ -246,7 +246,7 @@ fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Du
 
 fn articulation_output_shape(articulation: VocalsArticulation) -> (f32, f32) {
     match articulation {
-        VocalsArticulation::Clean => (0.9, 1.0),
+        VocalsArticulation::Clean => (0.83, 1.0),
         VocalsArticulation::GritRasp => (0.95, 1.0),
         VocalsArticulation::SpokenBreakdown => (0.84, 1.0),
         VocalsArticulation::SirenScream => (1.0, 1.03),
@@ -270,7 +270,7 @@ fn articulation_sample(
     match articulation {
         VocalsArticulation::Clean => {
             let f = base_hz * (1.0 + bend + vibrato);
-            vocal_formant(f, t, 0.16)
+            reed_formant(f, t, phase)
         }
         VocalsArticulation::GritRasp => {
             let f = base_hz * (1.0 + bend * 0.5 + vibrato * 0.45);
@@ -313,6 +313,14 @@ fn articulation_sample(
             unison * 0.72 + wide + hash_noise(t * 2_500.0) * 0.06
         }
     }
+}
+
+fn reed_formant(frequency_hz: f32, t: f32, phase: f32) -> f32 {
+    let mouthpiece = smoothstep((phase / 0.12).clamp(0.0, 1.0));
+    let body = sine(frequency_hz, t) * 0.62 + saw(frequency_hz, t) * 0.17;
+    let warmth = sine(frequency_hz * 2.0, t) * 0.18 + sine(frequency_hz * 3.0, t) * 0.08;
+    let breath = hash_noise(t * 6_100.0) * (0.03 + 0.03 * (1.0 - mouthpiece));
+    (body + warmth + breath).tanh()
 }
 
 fn vocal_formant(frequency_hz: f32, t: f32, airy: f32) -> f32 {
