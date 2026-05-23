@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{Monad, Rest};
+use crate::effect::{DecrementCounterEffect, Monad, Rest};
 use crate::instrumentation::{BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation};
 
 use super::Bass;
@@ -77,7 +77,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
 pub struct MergeJoinUnit;
 #[jungle::act]
 impl Act for MergeJoinUnit {
-    type Effect = Rest<BASS_LANE_ID, 0>;
+    type Effect = DecrementCounterEffect;
     type Input = ((), ());
     type Output = ();
 

@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{AtomicDualHit, Monad, Rest, Tetrad};
+use crate::effect::{AtomicDualHit, DecrementCounterEffect, Monad, Rest, Tetrad};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
@@ -200,7 +200,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
 pub struct MergeJoinUnit;
 #[jungle::act]
 impl Act for MergeJoinUnit {
-    type Effect = Rest<RHYTHM_GUITAR_LANE_ID, 0>;
+    type Effect = DecrementCounterEffect;
     type Input = ((), ());
     type Output = ();
 
