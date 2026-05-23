@@ -133,15 +133,77 @@ impl Act for PostMergeRest {
     }
 }
 
+pub struct BassRiffLoopRemaining;
+impl LoopCondition<BassistState> for BassRiffLoopRemaining {
+    type Arg = ();
+
+    fn should_continue(state: &BassistState) -> bool {
+        state.riff_loops_remaining > 0
+    }
+}
+
+pub struct UseBassTurnaroundSection;
+impl Condition<(BassistState, ())> for UseBassTurnaroundSection {
+    fn choose((state, _): &(BassistState, ())) -> bool {
+        state.riff_loops_remaining <= 1
+    }
+}
+
+pub struct DecrementBassRiffLoop;
+#[jungle::act]
+impl Act for DecrementBassRiffLoop {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("riff loop decrement should complete");
+        state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
+    }
+}
+
+pub struct MergeBassTurnaroundChoice;
+#[jungle::act]
+impl Act for MergeBassTurnaroundChoice {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(_state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("bass turnaround branch merge should complete");
+    }
+}
+
+#[derive(Flow)]
+pub struct BassRiffLoopNormalTail(
+    Transparent<IntroSectionMeta, BassSection05>,
+    Step<DecrementBassRiffLoop>,
+);
+
+#[derive(Flow)]
+pub struct BassRiffLoopFinalTail(
+    Transparent<IntroSectionMeta, BassSection06>,
+    Step<DecrementBassRiffLoop>,
+);
+
+#[derive(Flow)]
+pub struct BassRiffLoopBody(
+    Transparent<IntroSectionMeta, BassSection02>,
+    Transparent<IntroSectionMeta, BassSection03>,
+    Transparent<IntroSectionMeta, BassSection04>,
+    Conditional<UseBassTurnaroundSection, BassRiffLoopFinalTail, BassRiffLoopNormalTail>,
+    Step<MergeBassTurnaroundChoice>,
+);
+
 #[derive(Flow)]
 pub struct BassIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Transparent<IntroSectionMeta, BassSection01>,
-    Transparent<IntroSectionMeta, BassSection02>,
-    Transparent<IntroSectionMeta, BassSection03>,
-    Transparent<IntroSectionMeta, BassSection04>,
-    Transparent<IntroSectionMeta, BassSection05>,
-    Transparent<IntroSectionMeta, BassSection06>,
+    While<BassRiffLoopRemaining, BassRiffLoopBody>,
     Transparent<IntroSectionMeta, BassSection07>,
     Transparent<IntroSectionMeta, BassSection08>,
 );
