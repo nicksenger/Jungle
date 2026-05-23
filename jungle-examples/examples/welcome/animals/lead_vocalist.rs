@@ -178,17 +178,25 @@ pub struct LeadVocalPart03(
 );
 
 #[derive(Flow)]
+pub struct Sing68Triplet(
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+);
+
+#[derive(Flow)]
+pub struct Sing73Triplet(
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<73, 96, 96>>,
+);
+
+#[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
 pub struct LeadVocalPart04(
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
     Step<Sing<68, 96, 96>>,
     Step<Sing<68, 96, 96>>,
     Step<Sing<70, 384, 672>>,
@@ -385,18 +393,10 @@ pub struct LeadVocalPart10(
 pub struct LeadVocalPart11(
     Step<Sing<68, 384, 384>>,
     Step<Sing<66, 192, 960>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
     Step<Sing<70, 384, 672>>,
     Step<Sing<70, 480, 1056>>,
     Step<Sing<73, 576, 1344>>,
@@ -504,18 +504,10 @@ pub struct LeadVocalPart15(
     Step<Sing<72, 192, 192>>,
     Step<Sing<73, 192, 192>>,
     Step<Sing<72, 96, 576>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
-    Step<Sing<73, 96, 96>>,
+    Sing73Triplet,
+    Sing73Triplet,
+    Sing73Triplet,
+    Sing73Triplet,
     Step<Sing<75, 384, 672>>,
     Step<Sing<75, 480, 480>>,
     Step<Sing<68, 96, 96>>,
@@ -561,18 +553,10 @@ pub struct LeadVocalPart17(
     Step<Sing<66, 192, 192>>,
     Step<Sing<68, 192, 192>>,
     Step<Sing<66, 192, 576>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
     Step<Sing<70, 384, 672>>,
     Step<Sing<70, 288, 288>>,
     Step<Sing<70, 192, 192>>,
@@ -655,4 +639,3 @@ mod tests {
         let _ = worker_handle.await;
     }
 }
-

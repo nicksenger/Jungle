@@ -1084,8 +1084,7 @@ pub struct LeadPart28(
 );
 
 #[derive(Flow)]
-#[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart29(
+pub struct LeadPart29Phrase(
     Step<Pluck<50, 57, 96, 96>>,
     Step<Pluck<50, 57, 96, 96>>,
     Step<Pluck<49, 56, 96, 96>>,
@@ -1111,6 +1110,10 @@ pub struct LeadPart29(
     Step<Pluck<48, 55, 96, 96>>,
     Step<TriadHit<47, 54, 54, 96, 96>>,
 );
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct LeadPart29(LeadPart29Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
@@ -1144,30 +1147,7 @@ pub struct LeadPart30(
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct LeadPart31(
-    Step<Pluck<50, 57, 96, 96>>,
-    Step<Pluck<50, 57, 96, 96>>,
-    Step<Pluck<49, 56, 96, 96>>,
-    Step<Pluck<49, 56, 96, 96>>,
-    Step<Pluck<49, 56, 96, 96>>,
-    Step<Pluck<48, 55, 96, 96>>,
-    Step<Pluck<48, 55, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
-    Step<Pluck<46, 53, 96, 96>>,
-    Step<Pluck<46, 53, 96, 96>>,
-    Step<Pluck<51, 58, 96, 96>>,
-    Step<Pluck<51, 58, 96, 96>>,
-    Step<Pluck<51, 58, 96, 96>>,
-    Step<Pluck<51, 58, 96, 96>>,
-    Step<Pluck<50, 57, 96, 96>>,
-    Step<Pluck<50, 57, 96, 96>>,
-    Step<Pluck<50, 57, 96, 96>>,
-    Step<Pluck<49, 56, 96, 96>>,
-    Step<Pluck<49, 56, 96, 96>>,
-    Step<Pluck<49, 56, 96, 96>>,
-    Step<Pluck<48, 55, 96, 96>>,
-    Step<Pluck<48, 55, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    LeadPart29Phrase,
 );
 
 #[derive(Flow)]
@@ -1372,4 +1352,3 @@ mod tests {
         let _ = worker_handle.await;
     }
 }
-

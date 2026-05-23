@@ -400,8 +400,7 @@ pub struct RhythmPart01(
 );
 
 #[derive(Flow)]
-#[jungle(focus = ElectricGuitarArticulation)]
-pub struct RhythmPart02(
+pub struct RhythmPart02Phrase(
     Step<Pluck<58, 58, 96, 96>>,
     Step<Pick<58, 96, 96>>,
     Step<Pluck<58, 58, 96, 96>>,
@@ -430,7 +429,10 @@ pub struct RhythmPart02(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct RhythmPart03(
+pub struct RhythmPart02(RhythmPart02Phrase);
+
+#[derive(Flow)]
+pub struct RhythmPart03Phrase(
     Step<Pluck<53, 53, 96, 96>>,
     Step<Pluck<51, 51, 96, 96>>,
     Step<Pick<51, 96, 96>>,
@@ -456,63 +458,21 @@ pub struct RhythmPart03(
     Step<Strum<46, 49, 46, 96, 96>>,
     Step<Pluck<49, 46, 96, 96>>,
 );
+
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct RhythmPart03(RhythmPart03Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct RhythmPart04(
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pick<56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pick<53, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pick<51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<49, 49, 96, 96>>,
-    Step<Pick<49, 96, 96>>,
-    Step<Strum<46, 49, 46, 96, 96>>,
-    Step<Pluck<49, 46, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pick<56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pick<53, 96, 96>>,
+    RhythmPart02Phrase,
 );
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct RhythmPart05(
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pick<51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<49, 49, 96, 96>>,
-    Step<Pick<49, 96, 96>>,
-    Step<Strum<46, 49, 46, 96, 96>>,
-    Step<Pluck<49, 46, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pick<56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pick<53, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pick<51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<49, 49, 96, 96>>,
-    Step<Pick<49, 96, 96>>,
-    Step<Strum<46, 49, 46, 96, 96>>,
-    Step<Pluck<49, 46, 96, 96>>,
+    RhythmPart03Phrase,
 );
 
 #[derive(Flow)]
@@ -1748,4 +1708,3 @@ mod tests {
         let _ = worker_handle.await;
     }
 }
-
