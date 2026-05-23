@@ -5,13 +5,16 @@ use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
 };
 
-use super::LeadGuitarist;
+use super::{Double, LeadGuitarist};
 
 const LEAD_GUITAR_LANE_ID: u32 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32;
 type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePick<NOTE, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
 type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
+type Pick44Tick = Step<Pick<44, 96, 96>>;
+type Pick39Tick = Step<Pick<39, 96, 96>>;
+type Pluck4451Hold = Step<Pluck<44, 51, 192, 192>>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LeadGuitaristState {
@@ -348,6 +351,15 @@ pub struct LeadSection06(
 pub struct LeadSection07(Transparent<IntroSectionMeta, LeadPart37>);
 
 #[derive(Flow)]
+pub struct LeadPick44Pair(Double<Pick44Tick>);
+
+#[derive(Flow)]
+pub struct LeadPick39Pair(Double<Pick39Tick>);
+
+#[derive(Flow)]
+pub struct LeadPluck4451Pair(Double<Pluck4451Hold>);
+
+#[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct LeadPart01(
     Step<Pluck<46, 53, 1536, 1152>>,
@@ -386,8 +398,7 @@ pub struct LeadPart02(
     Step<Pluck<63, 68, 384, 384>>,
     Step<Pick<61, 384, 384>>,
     Step<Pick<58, 384, 384>>,
-    Step<Pluck<44, 51, 192, 192>>,
-    Step<Pluck<44, 51, 192, 192>>,
+    LeadPluck4451Pair,
     Step<Pluck<42, 49, 192, 192>>,
     Step<Pluck<44, 51, 96, 96>>,
     Step<Pluck<44, 51, 192, 192>>,
@@ -395,8 +406,7 @@ pub struct LeadPart02(
     Step<Pluck<42, 49, 192, 192>>,
     Step<Pluck<41, 48, 192, 192>>,
     Step<Pluck<39, 46, 192, 192>>,
-    Step<Pluck<44, 51, 192, 192>>,
-    Step<Pluck<44, 51, 192, 192>>,
+    LeadPluck4451Pair,
     Step<Pluck<42, 49, 192, 192>>,
     Step<Pluck<44, 51, 96, 96>>,
     Step<Pluck<44, 51, 192, 192>>,
@@ -409,8 +419,7 @@ pub struct LeadPart02(
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct LeadPart03(
     Step<Pluck<39, 46, 192, 192>>,
-    Step<Pluck<44, 51, 192, 192>>,
-    Step<Pluck<44, 51, 192, 192>>,
+    LeadPluck4451Pair,
     Step<Pluck<42, 49, 192, 192>>,
     Step<Pluck<44, 51, 96, 96>>,
     Step<Pluck<44, 51, 192, 192>>,
@@ -445,10 +454,8 @@ pub struct LeadPart04(
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 192, 192>>,
     Step<Pick<41, 192, 192>>,
-    Step<Pick<39, 96, 96>>,
-    Step<Pick<39, 96, 96>>,
-    Step<Pick<44, 96, 96>>,
-    Step<Pick<44, 96, 96>>,
+    LeadPick39Pair,
+    LeadPick44Pair,
     Step<Pick<44, 96, 192>>,
     Step<Pick<42, 192, 192>>,
     Step<Pick<44, 96, 96>>,
@@ -456,10 +463,8 @@ pub struct LeadPart04(
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 96, 192>>,
     Step<Pick<41, 96, 192>>,
-    Step<Pick<39, 96, 96>>,
-    Step<Pick<39, 96, 96>>,
-    Step<Pick<44, 96, 96>>,
-    Step<Pick<44, 96, 96>>,
+    LeadPick39Pair,
+    LeadPick44Pair,
     Step<Pick<44, 96, 192>>,
 );
 
@@ -472,10 +477,8 @@ pub struct LeadPart05(
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 96, 192>>,
     Step<Pick<41, 96, 192>>,
-    Step<Pick<39, 96, 96>>,
-    Step<Pick<39, 96, 96>>,
-    Step<Pick<44, 96, 96>>,
-    Step<Pick<44, 96, 96>>,
+    LeadPick39Pair,
+    LeadPick44Pair,
     Step<Pick<44, 96, 192>>,
     Step<Pick<42, 192, 192>>,
     Step<Pick<44, 96, 96>>,

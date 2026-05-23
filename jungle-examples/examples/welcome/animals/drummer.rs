@@ -6,7 +6,7 @@ use crate::instrumentation::{
     SnareDrum, SnareDrumArticulation, Toms, TomsArticulation,
 };
 
-use super::Drums;
+use super::{Double, Drums, Octa, Quad};
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DrummerState {
@@ -23,6 +23,8 @@ impl Default for DrummerState {
 pub type DrummerSeed = ();
 const INTRO_START_DELAY_TICKS: u32 = 5_376;
 const DRUMS_LANE_ID: u32 = <<Drums as Animal>::Id as AnimalIdValue>::U32;
+type Hat44Tick = Step<Hat<44, 96, 96>>;
+type Hat46Tick = Step<Hat<46, 96, 96>>;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
@@ -622,82 +624,57 @@ pub struct DrumSection12(
 );
 
 #[derive(Flow)]
+pub struct DrumHat44Six(Quad<Hat44Tick>, Double<Hat44Tick>);
+
+#[derive(Flow)]
+pub struct DrumHat44Nine(Octa<Hat44Tick>, Hat44Tick);
+
+#[derive(Flow)]
+pub struct DrumHat44Eleven(Octa<Hat44Tick>, Double<Hat44Tick>, Hat44Tick);
+
+#[derive(Flow)]
+pub struct DrumHat44Thirteen(Octa<Hat44Tick>, Quad<Hat44Tick>, Hat44Tick);
+
+#[derive(Flow)]
+pub struct DrumHat44Fourteen(Octa<Hat44Tick>, Quad<Hat44Tick>, Double<Hat44Tick>);
+
+#[derive(Flow)]
+pub struct DrumHat46Four(Quad<Hat46Tick>);
+
+#[derive(Flow)]
+pub struct DrumHat46Ten(Octa<Hat46Tick>, Double<Hat46Tick>);
+
+#[derive(Flow)]
+pub struct DrumHat46Eleven(Octa<Hat46Tick>, Double<Hat46Tick>, Hat46Tick);
+
+#[derive(Flow)]
 pub struct DrumPart01(
     Join<Step<Boot<36, 96, 0>>, Step<Hat<46, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
+    DrumHat44Fourteen,
     Join<Step<Boot<36, 96, 0>>, Step<Hat<44, 96, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
+    DrumHat44Six,
 );
 
 #[derive(Flow)]
 pub struct DrumPart02(
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
+    DrumHat44Nine,
     Join<Step<Boot<36, 96, 0>>, Step<Hat<44, 96, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
+    DrumHat44Thirteen,
 );
 
 #[derive(Flow)]
 pub struct DrumPart03(
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
+    Double<Hat44Tick>,
     Join<Step<Boot<36, 96, 0>>, Step<Hat<44, 96, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
-    Step<Hat<44, 96, 96>>,
+    DrumHat44Eleven,
     Step<Hat<46, 192, 192>>,
     Step<Hat<46, 96, 96>>,
     Step<Hat<46, 96, 96>>,
@@ -712,52 +689,20 @@ pub struct DrumPart03(
 
 #[derive(Flow)]
 pub struct DrumPart04(
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
+    DrumHat46Eleven,
     Join<Step<Boot<36, 96, 0>>, Step<Hat<46, 96, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
+    DrumHat46Eleven,
 );
 
 #[derive(Flow)]
 pub struct DrumPart05(
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
+    DrumHat46Four,
     Join<Step<Boot<36, 96, 0>>, Step<Hat<46, 96, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
-    Step<Hat<46, 96, 96>>,
+    DrumHat46Ten,
     Step<Hat<46, 96, 96>>,
     Step<Hat<46, 192, 192>>,
     Step<Hat<46, 192, 192>>,

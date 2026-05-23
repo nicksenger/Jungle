@@ -66,6 +66,15 @@ impl Act for SleepFiveMinutesSpec {
 #[derive(Flow)]
 pub struct BandStubFlow(Step<StubStepSpec>, Step<SleepFiveMinutesSpec>);
 
+#[derive(Flow)]
+pub struct Double<T>(T, T);
+
+#[derive(Flow)]
+pub struct Quad<T>(Double<T>, Double<T>);
+
+#[derive(Flow)]
+pub struct Octa<T>(Quad<T>, Quad<T>);
+
 pub struct LeadVocalist;
 
 #[jungle::animal(id = 0, generation = 0)]

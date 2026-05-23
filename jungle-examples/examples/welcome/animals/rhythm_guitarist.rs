@@ -5,6 +5,7 @@ use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
 };
+use super::{Double, Quad};
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct RhythmGuitaristState {
@@ -43,6 +44,11 @@ type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePick<NOTE, NOTE_TICK, REST_TICK, RHYTHM_GUITAR_LANE_ID>;
 type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK, RHYTHM_GUITAR_LANE_ID>;
+type Pick58Tick = Step<Pick<58, 96, 96>>;
+type Pluck58Tick = Step<Pluck<58, 58, 96, 96>>;
+type Pluck56Tick = Step<Pluck<56, 56, 96, 96>>;
+type Pluck53Tick = Step<Pluck<53, 53, 96, 96>>;
+type Pluck51Tick = Step<Pluck<51, 51, 96, 96>>;
 type Strum<
     const NOTE_1: u8,
     const NOTE_2: u8,
@@ -451,32 +457,34 @@ pub struct RhythmSection07(
 );
 
 #[derive(Flow)]
+pub struct RhythmSevenPick58(Quad<Pick58Tick>, Double<Pick58Tick>, Pick58Tick);
+
+#[derive(Flow)]
+pub struct RhythmTriplePick58(Double<Pick58Tick>, Pick58Tick);
+
+#[derive(Flow)]
+pub struct RhythmTriplePluck58(Double<Pluck58Tick>, Pluck58Tick);
+
+#[derive(Flow)]
+pub struct RhythmTriplePluck56(Double<Pluck56Tick>, Pluck56Tick);
+
+#[derive(Flow)]
+pub struct RhythmTriplePluck53(Double<Pluck53Tick>, Pluck53Tick);
+
+#[derive(Flow)]
+pub struct RhythmTriplePluck51(Double<Pluck51Tick>, Pluck51Tick);
+
+#[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct RhythmPart01(
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
-    Step<Pick<58, 96, 96>>,
+    Pluck58Tick,
+    Pick58Tick,
+    Pluck58Tick,
+    Transparent<IntroSectionMeta, RhythmSevenPick58>,
+    Transparent<IntroSectionMeta, RhythmTriplePluck58>,
+    Transparent<IntroSectionMeta, RhythmTriplePick58>,
+    Pluck58Tick,
+    Transparent<IntroSectionMeta, RhythmSevenPick58>,
 );
 
 #[derive(Flow)]
@@ -558,55 +566,32 @@ pub struct RhythmPart05(
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct RhythmPart06(
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
+    RhythmTriplePluck58,
+    RhythmTriplePluck56,
+    RhythmTriplePluck53,
+    RhythmTriplePluck51,
     Step<Pluck<49, 49, 96, 96>>,
     Step<Pluck<49, 49, 96, 96>>,
     Step<Strum<46, 49, 46, 96, 96>>,
     Step<Strum<44, 49, 46, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
+    RhythmTriplePluck58,
+    RhythmTriplePluck56,
+    Double<Pluck53Tick>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct RhythmPart07(
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
+    Pluck53Tick,
+    RhythmTriplePluck51,
     Step<Pluck<49, 49, 96, 96>>,
     Step<Pluck<49, 49, 96, 96>>,
     Step<Strum<46, 49, 46, 96, 96>>,
     Step<Strum<44, 49, 46, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<58, 58, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<56, 56, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<53, 53, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
-    Step<Pluck<51, 51, 96, 96>>,
+    RhythmTriplePluck58,
+    RhythmTriplePluck56,
+    RhythmTriplePluck53,
+    RhythmTriplePluck51,
     Step<Pluck<49, 49, 96, 96>>,
     Step<Pluck<49, 49, 96, 96>>,
     Step<Strum<46, 49, 46, 96, 96>>,

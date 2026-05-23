@@ -3,11 +3,14 @@ use jungle_sdk::prelude::*;
 use crate::effect::Rest;
 use crate::instrumentation::{Sing as LaneSing, VocalsArticulation};
 
-use super::LeadVocalist;
+use super::{Double, LeadVocalist};
 
 const LEAD_VOCALS_LANE_ID: u32 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32;
 type Sing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneSing<NOTE, NOTE_TICK, REST_TICK, LEAD_VOCALS_LANE_ID>;
+type Sing68Tick = Step<Sing<68, 96, 96>>;
+type Sing68Hold = Step<Sing<68, 192, 192>>;
+type Sing63Hold = Step<Sing<63, 192, 192>>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LeadVocalistState {
@@ -168,9 +171,7 @@ pub struct LeadVocalPart01(
     Step<Sing<68, 96, 96>>,
     Step<Sing<71, 480, 480>>,
     Step<Sing<66, 192, 192>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 192, 192>>,
+    Transparent<IntroSectionMeta, LeadVocalPart01Cadence>,
 );
 
 #[derive(Flow)]
@@ -178,9 +179,7 @@ pub struct LeadVocalPart01(
 pub struct LeadVocalPart02(
     Step<Sing<66, 96, 96>>,
     Step<Sing<68, 288, 288>>,
-    Step<Sing<68, 192, 192>>,
-    Step<Sing<68, 192, 192>>,
-    Step<Sing<68, 192, 192>>,
+    Transparent<IntroSectionMeta, LeadVocalTriple68Hold>,
     Step<Sing<63, 96, 96>>,
     Step<Sing<63, 192, 192>>,
     Step<Sing<63, 192, 192>>,
@@ -194,9 +193,7 @@ pub struct LeadVocalPart02(
     Step<Sing<63, 96, 96>>,
     Step<Sing<61, 288, 672>>,
     Step<Sing<61, 192, 192>>,
-    Step<Sing<63, 192, 192>>,
-    Step<Sing<63, 192, 192>>,
-    Step<Sing<63, 192, 192>>,
+    Transparent<IntroSectionMeta, LeadVocalTriple63Hold>,
     Step<Sing<66, 96, 96>>,
     Step<Sing<66, 288, 288>>,
     Step<Sing<66, 96, 96>>,
@@ -246,11 +243,21 @@ pub struct Sing73Triplet(
 );
 
 #[derive(Flow)]
+pub struct TripleSing68Triplet(Double<Sing68Triplet>, Sing68Triplet);
+
+#[derive(Flow)]
+pub struct LeadVocalPart01Cadence(Double<Sing68Tick>, Sing68Hold);
+
+#[derive(Flow)]
+pub struct LeadVocalTriple68Hold(Double<Sing68Hold>, Sing68Hold);
+
+#[derive(Flow)]
+pub struct LeadVocalTriple63Hold(Double<Sing63Hold>, Sing63Hold);
+
+#[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
 pub struct LeadVocalPart04(
-    Sing68Triplet,
-    Sing68Triplet,
-    Sing68Triplet,
+    TripleSing68Triplet,
     Step<Sing<68, 96, 96>>,
     Step<Sing<68, 96, 96>>,
     Step<Sing<70, 384, 672>>,

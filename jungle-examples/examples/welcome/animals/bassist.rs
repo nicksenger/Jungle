@@ -5,11 +5,15 @@ use crate::instrumentation::{
     Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
 };
 
-use super::Bass;
+use super::{Bass, Double, Octa, Quad};
 
 const BASS_LANE_ID: u32 = <<Bass as Animal>::Id as AnimalIdValue>::U32;
 type Thump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneThump<NOTE, NOTE_TICK, REST_TICK, BASS_LANE_ID>;
+type Thump44Tick = Step<Thump<44, 96, 96>>;
+type Thump46Tick = Step<Thump<46, 96, 96>>;
+type Thump39Tick = Step<Thump<39, 96, 96>>;
+type Thump34Pedal = Step<Thump<34, 192, 192>>;
 
 pub struct JoinThump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
@@ -286,6 +290,30 @@ pub struct BassSection08(
 );
 
 #[derive(Flow)]
+pub struct BassPart01DriveTicks(
+    Octa<Thump46Tick>,
+    Quad<Thump46Tick>,
+    Double<Thump46Tick>,
+);
+
+#[derive(Flow)]
+pub struct BassPart02HighTicks(
+    Octa<Thump44Tick>,
+    Quad<Thump44Tick>,
+    Double<Thump44Tick>,
+    Thump44Tick,
+);
+
+#[derive(Flow)]
+pub struct BassPart02LowTicks(Quad<Thump39Tick>, Double<Thump39Tick>, Thump39Tick);
+
+#[derive(Flow)]
+pub struct BassPart03LeadIn(Octa<Thump39Tick>);
+
+#[derive(Flow)]
+pub struct BassPart03PedalTicks(Octa<Thump34Pedal>, Thump34Pedal);
+
+#[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPart01(
     Step<Thump<46, 1536, 1536>>,
@@ -297,75 +325,26 @@ pub struct BassPart01(
     Step<Thump<39, 1152, 1344>>,
     Step<Thump<44, 96, 96>>,
     Step<Thump<45, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
-    Step<Thump<46, 96, 96>>,
+    Transparent<IntroSectionMeta, BassPart01DriveTicks>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPart02(
     Step<Thump<46, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
-    Step<Thump<44, 96, 96>>,
+    Transparent<IntroSectionMeta, BassPart02HighTicks>,
     Step<Thump<43, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
+    Transparent<IntroSectionMeta, BassPart02LowTicks>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPart03(
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
-    Step<Thump<39, 96, 96>>,
+    Transparent<IntroSectionMeta, BassPart03LeadIn>,
     Step<Thump<34, 96, 96>>,
     Step<Thump<37, 768, 768>>,
     Step<Thump<32, 768, 768>>,
-    Step<Thump<34, 192, 192>>,
-    Step<Thump<34, 192, 192>>,
-    Step<Thump<34, 192, 192>>,
-    Step<Thump<34, 192, 192>>,
-    Step<Thump<34, 192, 192>>,
-    Step<Thump<34, 192, 192>>,
-    Step<Thump<34, 192, 192>>,
-    Step<Thump<34, 192, 192>>,
-    Step<Thump<34, 192, 192>>,
+    Transparent<IntroSectionMeta, BassPart03PedalTicks>,
     Step<Thump<41, 192, 192>>,
     Step<Thump<44, 192, 192>>,
     Step<Thump<45, 192, 192>>,
