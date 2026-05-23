@@ -933,11 +933,25 @@ fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs()
     assert_type_eq!(Replaced, ExpectedReplaced);
 
     type ScopedTraverse = <ScopedLensFlow as TraverseFlow>::Output;
-    type ScopedExpected = Scoped<LensBranch, <ScopedLensFlow as ReplaceFlow>::Output>;
+    type ScopedExpected = Scoped<
+        LensBranch,
+        jungle_sdk::typosaurus::list![
+            jungle_sdk::types::Step<LensReadSpareSpec>,
+            jungle_sdk::types::Step<LensCommitSpec>
+        ],
+    >;
     assert_type_eq!(ScopedTraverse, ScopedExpected);
 
     type ScopedMultiTraverse = <ScopedLensMultiField as TraverseFlow>::Output;
-    type ScopedMultiExpected = Scoped<LensBranch, <ScopedLensMultiField as ReplaceFlow>::Output>;
+    type ScopedMultiExpected = Scoped<
+        LensBranch,
+        jungle_sdk::typosaurus::list![
+            jungle_sdk::types::Step<LensReadSpareSpec>,
+            jungle_sdk::types::Step<LensCommitSpec>,
+            jungle_sdk::types::Step<LensReadSpareSpec>,
+            jungle_sdk::types::Step<LensCommitSpec>
+        ],
+    >;
     assert_type_eq!(ScopedMultiTraverse, ScopedMultiExpected);
 }
 
@@ -1017,6 +1031,7 @@ impl From<i32> for NestedLensRootState {
 struct NestedBranchSpareSpec;
 struct NestedLeafValueSpec;
 struct NestedLeafNoiseSpec;
+struct NestedAutoBranchSpec;
 
 type NestedBranchSpareCarrier = Lens<NestedLensBranch, U1>;
 type NestedLeafValueCarrier = Lens<NestedLensLeaf, U0>;
@@ -1106,6 +1121,24 @@ impl Act for NestedLeafNoiseSpec {
     type Output = i32;
 }
 
+#[allow(private_interfaces)]
+#[jungle::act]
+impl Act for NestedAutoBranchSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &NestedLensBranch, input: Self::Input) -> i32 {
+        state.spare + input
+    }
+
+    fn absorb(state: &mut NestedLensBranch, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("nested auto branch step should succeed");
+        state.spare = out;
+        out
+    }
+}
+
 #[derive(Flow)]
 #[jungle(focus = NestedLensLeaf)]
 struct NestedLeafScopedFlow(Step<NestedLeafValueSpec>, Step<NestedLeafNoiseSpec>);
@@ -1185,6 +1218,184 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
     assert_eq!(appearance.branch.leaf.value, 5);
     assert_eq!(appearance.branch.leaf.noise, 6);
     assert_eq!(appearance.committed, 0);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[derive(Flow)]
+struct InheritedAutoFocusLeafFlow(Step<NestedAutoBranchSpec>);
+
+#[derive(Flow)]
+struct InheritedAutoFocusMiddleFlow(InheritedAutoFocusLeafFlow);
+
+#[derive(Flow)]
+#[jungle(focus = NestedLensBranch)]
+struct InheritedAutoFocusRootFlow(InheritedAutoFocusMiddleFlow);
+
+struct InheritedAutoFocusAnimal;
+#[jungle::animal(observe, id = 54, generation = 0)]
+impl Animal for InheritedAutoFocusAnimal {
+    type State = NestedLensRootState;
+    type Seed = i32;
+    type Journey = InheritedAutoFocusRootFlow;
+}
+
+impl Observe for InheritedAutoFocusAnimal {
+    type Appearance = NestedLensRootState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct InheritedAutoFocusAnimals(InheritedAutoFocusAnimal);
+
+struct InheritedAutoFocusZoo;
+impl Ecosystem for InheritedAutoFocusZoo {
+    const NAME: &'static str = "late-bound-inherited-auto-focus-zoo";
+    type Animals = InheritedAutoFocusAnimals;
+}
+
+#[tokio::test]
+async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_auto_act() {
+    let mut exec = ManualExecutor::<InheritedAutoFocusAnimal>::new(NestedLensRootState::default());
+    let req: i32 = exec
+        .next_request_typed::<_, i32>(3)
+        .expect("request should deserialize");
+    assert_eq!(req, 3);
+    let emitted: i32 = exec
+        .complete_typed::<i32, (), i32>(Ok(4))
+        .expect("completion should deserialize");
+    assert_eq!(emitted, 4);
+    assert!(exec.is_complete(), "single-step focused flow should complete");
+    let state = exec.into_state();
+    assert_eq!(state.branch.spare, 4);
+
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-inherited-auto-focus-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(InheritedAutoFocusZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<InheritedAutoFocusAnimal>(
+            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: NestedLensRootState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    assert_eq!(appearance.branch.spare, 4);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+pub struct InheritedControlCondition;
+impl Condition<(NestedLensRootState, i32)> for InheritedControlCondition {
+    fn choose((_state, _): &(NestedLensRootState, i32)) -> bool {
+        true
+    }
+}
+
+#[derive(Flow)]
+struct InheritedAutoFocusMiddleConditionalFlow(
+    Conditional<InheritedControlCondition, InheritedAutoFocusLeafFlow, InheritedAutoFocusLeafFlow>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = NestedLensBranch)]
+struct InheritedAutoFocusConditionalRootFlow(InheritedAutoFocusMiddleConditionalFlow);
+
+struct InheritedAutoFocusConditionalAnimal;
+#[jungle::animal(observe, id = 55, generation = 0)]
+impl Animal for InheritedAutoFocusConditionalAnimal {
+    type State = NestedLensRootState;
+    type Seed = i32;
+    type Journey = InheritedAutoFocusConditionalRootFlow;
+}
+
+impl Observe for InheritedAutoFocusConditionalAnimal {
+    type Appearance = NestedLensRootState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct InheritedAutoFocusConditionalAnimals(InheritedAutoFocusConditionalAnimal);
+
+struct InheritedAutoFocusConditionalZoo;
+impl Ecosystem for InheritedAutoFocusConditionalZoo {
+    const NAME: &'static str = "late-bound-inherited-auto-focus-conditional-zoo";
+    type Animals = InheritedAutoFocusConditionalAnimals;
+}
+
+#[tokio::test]
+async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branch_progression() {
+    let mut exec =
+        ManualExecutor::<InheritedAutoFocusConditionalAnimal>::new(NestedLensRootState::default());
+    let req: i32 = exec
+        .next_request_typed::<_, i32>(3)
+        .expect("request should deserialize");
+    assert_eq!(req, 3);
+    let emitted: Either<i32, i32> = exec
+        .complete_typed::<i32, (), Either<i32, i32>>(Ok(4))
+        .expect("completion should deserialize");
+    assert_eq!(emitted, Either::Left(4));
+    assert!(
+        exec.is_complete(),
+        "conditional wrapper should progress exactly one chosen branch"
+    );
+    let state = exec.into_state();
+    assert_eq!(state.branch.spare, 4);
+
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-inherited-auto-focus-conditional-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(InheritedAutoFocusConditionalZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<InheritedAutoFocusConditionalAnimal>(
+            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: NestedLensRootState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    assert_eq!(appearance.branch.spare, 4);
 
     worker_handle.abort();
     let _ = worker_handle.await;

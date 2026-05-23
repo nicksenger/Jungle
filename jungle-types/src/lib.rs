@@ -796,6 +796,75 @@ pub trait ReplaceNodesWith<Replacer> {
     type Output;
 }
 
+/// Normalizes a flow fragment into a list-shaped representation suitable for
+/// focused-field concatenation.
+pub trait ScopedFieldListNormalize {
+    type Output;
+}
+
+/// Concatenates two list-shaped flow fragments.
+pub trait FlowListConcat<Rhs> {
+    type Output;
+}
+
+impl<Rhs> FlowListConcat<Rhs> for list::Empty {
+    type Output = Rhs;
+}
+
+impl<Head, Tail, Rhs> FlowListConcat<Rhs> for TList<(Head, Tail)>
+where
+    Tail: FlowListConcat<Rhs>,
+{
+    type Output = TList<(Head, <Tail as FlowListConcat<Rhs>>::Output)>;
+}
+
+impl ScopedFieldListNormalize for list::Empty {
+    type Output = list::Empty;
+}
+
+impl<Head, Tail> ScopedFieldListNormalize for TList<(Head, Tail)> {
+    type Output = TList<(Head, Tail)>;
+}
+
+impl<T, A> ScopedFieldListNormalize for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAct<T>,
+{
+    type Output = TList<(BoundFlowStep<T, A>, list::Empty)>;
+}
+
+impl<S> ScopedFieldListNormalize for Step<S>
+where
+    S: Act,
+{
+    type Output = TList<(Step<S>, list::Empty)>;
+}
+
+impl<P, L, R, M> ScopedFieldListNormalize for Conditional<P, L, R, M> {
+    type Output = TList<(Conditional<P, L, R, M>, list::Empty)>;
+}
+
+impl<C, F, M> ScopedFieldListNormalize for While<C, F, M> {
+    type Output = TList<(While<C, F, M>, list::Empty)>;
+}
+
+impl<L, R, M> ScopedFieldListNormalize for Select<L, R, M> {
+    type Output = TList<(Select<L, R, M>, list::Empty)>;
+}
+
+impl<L, R, M> ScopedFieldListNormalize for Join<L, R, M> {
+    type Output = TList<(Join<L, R, M>, list::Empty)>;
+}
+
+impl<M, F> ScopedFieldListNormalize for Transparent<M, F> {
+    type Output = TList<(Transparent<M, F>, list::Empty)>;
+}
+
+impl<View, F> ScopedFieldListNormalize for Scoped<View, F> {
+    type Output = TList<(Scoped<View, F>, list::Empty)>;
+}
+
 impl<Traversal> TraverseWith<Traversal> for list::Empty {
     type Output = list::Empty;
 }
