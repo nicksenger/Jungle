@@ -64,6 +64,7 @@ pub enum ClusterKind {
 pub struct StepViewCtx<'a> {
     pub display_id: u32,
     pub runtime_id: Option<u32>,
+    pub proxy_runtime_ids: Vec<u32>,
     pub successor_runtime_ids: Vec<u32>,
     pub kind: StepKind,
     pub label: &'a str,
@@ -112,6 +113,8 @@ pub struct EdgeStyleCtx {
     pub target_display_id: u32,
     pub source_runtime_id: Option<u32>,
     pub target_runtime_id: Option<u32>,
+    pub source_has_proxy_runtime: bool,
+    pub target_has_proxy_runtime: bool,
     pub source_phase: Phase<RuntimeState>,
     pub target_phase: Phase<RuntimeState>,
     pub extent: f32,
@@ -1398,6 +1401,7 @@ where
         let step_ctx = StepViewCtx {
             display_id: node.id,
             runtime_id: node.runtime_node_id,
+            proxy_runtime_ids: node.proxy_runtime_ids.clone(),
             successor_runtime_ids: condition_successor_runtime_ids
                 .get(&node.id)
                 .cloned()
@@ -1567,6 +1571,7 @@ where
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
                             runtime_id: node.runtime_node_id,
+                            proxy_runtime_ids: node.proxy_runtime_ids.clone(),
                             successor_runtime_ids: condition_successors_for_nodes
                                 .get(&node.id)
                                 .cloned()
@@ -1622,6 +1627,14 @@ where
                 .get(&ctx.edge.1)
                 .copied()
                 .flatten();
+            let source_has_proxy_runtime = proxy_runtime_ids_for_edge_colors
+                .get(&ctx.edge.0)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
+            let target_has_proxy_runtime = proxy_runtime_ids_for_edge_colors
+                .get(&ctx.edge.1)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
             let style = theme
                 .edge_style(
                     theme_state,
@@ -1631,6 +1644,8 @@ where
                         target_display_id: ctx.edge.1,
                         source_runtime_id,
                         target_runtime_id,
+                        source_has_proxy_runtime,
+                        target_has_proxy_runtime,
                         source_phase: node_phase_for_display(
                             live_data,
                             ctx.edge.0,
@@ -1666,6 +1681,14 @@ where
                 .get(&ctx.edge.1)
                 .copied()
                 .flatten();
+            let source_has_proxy_runtime = proxy_runtime_ids_for_edge_strokes
+                .get(&ctx.edge.0)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
+            let target_has_proxy_runtime = proxy_runtime_ids_for_edge_strokes
+                .get(&ctx.edge.1)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
             let style = theme
                 .edge_style(
                     theme_state,
@@ -1675,6 +1698,8 @@ where
                         target_display_id: ctx.edge.1,
                         source_runtime_id,
                         target_runtime_id,
+                        source_has_proxy_runtime,
+                        target_has_proxy_runtime,
                         source_phase: node_phase_for_display(
                             live_data,
                             ctx.edge.0,
@@ -2650,7 +2675,8 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         let now = Instant::now();
         let fill = if let Some(runtime_id) = cx.runtime_id {
             if let Ok(mut guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
+                    && cx.proxy_runtime_ids.is_empty();
                 let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
                     from: RuntimeState::Pending,
                     to: RuntimeState::Pending,
@@ -2808,7 +2834,9 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         let now = Instant::now();
         let (from_color, to_color) = if let Some(runtime_id) = cx.source_runtime_id {
             if let Ok(mut guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+                let forced_pending =
+                    guard.force_pending_runtime_ids.contains(&runtime_id)
+                        && !cx.source_has_proxy_runtime;
                 let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
                     from: RuntimeState::Pending,
                     to: RuntimeState::Pending,
@@ -3214,6 +3242,41 @@ mod tests {
             ),
             Phase::Live(RuntimeState::Completed)
         );
+    }
+
+    #[test]
+    fn proxy_driven_node_ignores_forced_pending_when_completed() {
+        let theme = DefaultTheme;
+        let state = Mutex::new(DefaultThemeState {
+            node_visuals: HashMap::new(),
+            condition_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
+            force_pending_runtime_ids: HashSet::from([42]),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
+        });
+        let cx = StepViewCtx {
+            display_id: 1,
+            runtime_id: Some(42),
+            proxy_runtime_ids: vec![7],
+            successor_runtime_ids: Vec::new(),
+            kind: StepKind::Step,
+            label: "JoinL",
+            metadata: None,
+            phase: Phase::Live(RuntimeState::Completed),
+        };
+
+        let _ = theme.view_step(&state, &cx);
+
+        let guard = state.try_lock().expect("theme state lock should be available");
+        let visual = guard
+            .node_visuals
+            .get(&42)
+            .copied()
+            .expect("node visual should be created");
+        assert_eq!(visual.to, RuntimeState::Completed);
     }
 
     #[test]
