@@ -1,7 +1,3 @@
-use jungle_sdk::prelude::*;
-
-use crate::effect::Monad;
-
 use super::{Instrument, Note};
 
 mod audio;
@@ -32,26 +28,5 @@ impl Instrument for Toms {
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), super::Error> {
         audio::play(&self.audio, note).await
-    }
-}
-
-pub struct Tom<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32 = 0>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32> Act
-    for Tom<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
-{
-    type Effect = Monad<Toms, TomsArticulation, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(state: &TomsArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        *state
-    }
-
-    fn absorb(
-        _state: &mut TomsArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
     }
 }

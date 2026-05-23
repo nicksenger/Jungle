@@ -13,12 +13,12 @@ mod toms;
 mod vocals;
 
 pub use bass::{Bass, BassArticulation, Thump};
-pub use cymbal::{Crash, Cymbal, CymbalArticulation};
+pub use cymbal::{Cymbal, CymbalArticulation};
 pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation, Pick, Pluck, Strum};
-pub use hihat::{Chick, HiHat, HiHatArticulation};
-pub use kick_drum::{Kick, KickDrum, KickDrumArticulation};
-pub use snare_drum::{Crack, SnareDrum, SnareDrumArticulation};
-pub use toms::{Tom, Toms, TomsArticulation};
+pub use hihat::{HiHat, HiHatArticulation};
+pub use kick_drum::{KickDrum, KickDrumArticulation};
+pub use snare_drum::{SnareDrum, SnareDrumArticulation};
+pub use toms::{Toms, TomsArticulation};
 pub use vocals::{Sing, Vocals, VocalsArticulation};
 
 #[derive(Debug, thiserror::Error)]
