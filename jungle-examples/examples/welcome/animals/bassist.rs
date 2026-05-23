@@ -310,6 +310,33 @@ pub struct BassPart03LeadIn(Octa<Thump39Tick>);
 pub struct BassPart03PedalTicks(Octa<Thump34Pedal>, Thump34Pedal);
 
 #[derive(Flow)]
+pub struct BassDriveCadence(
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
+pub struct BassDriveCadenceLead(
+    Step<Thump<32, 192, 192>>,
+    Transparent<IntroSectionMeta, BassDriveCadence>,
+);
+
+#[derive(Flow)]
+pub struct BassDriveExit(
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPart01(
     Step<Thump<46, 1536, 1536>>,
@@ -393,44 +420,14 @@ pub struct BassPart05(
     Step<Thump<42, 96, 192>>,
     Step<Thump<42, 96, 192>>,
     Step<Thump<42, 96, 192>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<29, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<27, 96, 96>>,
+    Transparent<IntroSectionMeta, BassDriveCadenceLead>,
 );
 
 #[derive(Flow)]
 pub struct BassPart06Phrase(
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<29, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<29, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
+    BassDriveCadenceLead,
+    BassDriveCadenceLead,
+    BassDriveExit,
 );
 
 #[derive(Flow)]
@@ -566,16 +563,7 @@ pub struct BassPart10(
     Step<Thump<32, 192, 192>>,
     Step<Thump<30, 192, 192>>,
     Step<Thump<31, 192, 192>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<32, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<30, 192, 192>>,
-    Step<Thump<29, 192, 192>>,
-    Step<Thump<27, 96, 96>>,
-    Step<Thump<27, 96, 96>>,
+    Transparent<IntroSectionMeta, BassDriveCadence>,
 );
 
 #[derive(Flow)]
