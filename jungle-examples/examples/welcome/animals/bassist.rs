@@ -1,14 +1,36 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{Monad, Rest};
-use crate::instrumentation::{BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation};
+use crate::effect::{ImmediateMonad, Rest};
+use crate::instrumentation::{
+    Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
+};
 
 use super::Bass;
 
 const BASS_LANE_ID: u32 = <<Bass as Animal>::Id as AnimalIdValue>::U32;
-const BASS_BACKUP_VOCALS_LANE_ID: u32 = BASS_LANE_ID + 1;
 type Thump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneThump<NOTE, NOTE_TICK, REST_TICK, BASS_LANE_ID>;
+
+pub struct JoinThump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
+#[jungle::act]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+    for JoinThump<NOTE, NOTE_TICK, REST_TICK>
+{
+    type Effect = ImmediateMonad<BassInstrument, BassArticulation, NOTE, NOTE_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        *state
+    }
+
+    fn absorb(
+        _state: &mut BassArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join bass playback should succeed");
+    }
+}
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct BassistState {
@@ -57,8 +79,7 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect =
-        Monad<Vocals, VocalsArticulation, BASS_BACKUP_VOCALS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = ImmediateMonad<Vocals, VocalsArticulation, NOTE, NOTE_TICK>;
     type Input = ();
     type Output = ();
 
@@ -77,7 +98,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
 pub struct MergeJoinUnit;
 #[jungle::act]
 impl Act for MergeJoinUnit {
-    type Effect = Rest<BASS_LANE_ID, 0>;
+    type Effect = Rest<BASS_LANE_ID, 384>;
     type Input = ((), ());
     type Output = ();
 
@@ -89,7 +110,7 @@ impl Act for MergeJoinUnit {
         _state: &mut BassArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("join merge should complete");
+        output.expect("post-join rest should complete");
     }
 }
 
@@ -406,28 +427,28 @@ pub struct BassPart08(
     Step<Thump<37, 192, 192>>,
     Step<Thump<39, 192, 192>>,
     Step<Thump<32, 192, 192>>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
-    Step<MergeJoinUnit>,
-    Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Join<Step<JoinThump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Join<Step<JoinThump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
     Step<MergeJoinUnit>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPart09(
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<32, 96, 96>>,
     Step<Thump<38, 96, 96>>,
@@ -559,28 +580,28 @@ pub struct BassPart13(
     Step<Thump<37, 192, 192>>,
     Step<Thump<39, 192, 192>>,
     Step<Thump<32, 192, 192>>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
-    Step<MergeJoinUnit>,
-    Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Join<Step<JoinThump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Join<Step<JoinThump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
     Step<MergeJoinUnit>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPart14(
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<32, 96, 96>>,
     Step<Thump<38, 96, 96>>,
@@ -804,28 +825,28 @@ pub struct BassPart21(
     Step<Thump<37, 192, 192>>,
     Step<Thump<39, 192, 192>>,
     Step<Thump<32, 192, 192>>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPart22(
-    Join<Step<Thump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Join<Step<JoinThump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<32, 96, 96>>,
     Step<Thump<38, 96, 96>>,
@@ -1372,23 +1393,23 @@ pub struct BassPart40(
 pub struct BassPart41(
     Step<Thump<33, 192, 192>>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
-    Step<MergeJoinUnit>,
-    Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Join<Step<JoinThump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Join<Step<JoinThump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<JoinThump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<32, 96, 96>>,
     Step<Thump<38, 96, 96>>,
@@ -1415,23 +1436,23 @@ pub struct BassPart42(
     Step<Thump<32, 192, 192>>,
     Step<Thump<30, 192, 192>>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
-    Step<MergeJoinUnit>,
-    Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Join<Step<JoinThump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Join<Step<JoinThump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<JoinThump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<32, 96, 96>>,
     Step<Thump<38, 96, 96>>,
@@ -1458,23 +1479,23 @@ pub struct BassPart43(
     Step<Thump<32, 192, 192>>,
     Step<Thump<30, 192, 192>>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
-    Step<MergeJoinUnit>,
-    Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Join<Step<JoinThump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Join<Step<JoinThump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<JoinThump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
 );
 
@@ -1501,11 +1522,11 @@ pub struct BassPart44(
     Step<Thump<32, 192, 192>>,
     Step<Thump<30, 192, 192>>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<35, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<35, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
 );
@@ -1513,16 +1534,16 @@ pub struct BassPart44(
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassPart45(
-    Join<Step<Thump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
+    Join<Step<JoinThump<30, 192, 192>>, Step<HarmonySing<66, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<27, 192, 192>>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Join<Step<JoinThump<37, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
     Step<MergeJoinUnit>,
-    Join<Step<Thump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
+    Join<Step<JoinThump<37, 192, 192>>, Step<HarmonySing<68, 384, 384>>>,
     Step<MergeJoinUnit>,
     Step<Thump<32, 96, 96>>,
     Step<Thump<38, 96, 96>>,
