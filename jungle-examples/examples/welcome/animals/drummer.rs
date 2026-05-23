@@ -476,14 +476,29 @@ pub struct DrummerIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Conditional<UseHat46GrooveVariant, Hat46SnapCadence, Hat42SnapCadence>,
     Step<MergeGrooveVariantChoice>,
+    Transparent<IntroSectionMeta, DrummerIntroSectionChunk01>,
+    Transparent<IntroSectionMeta, DrummerIntroSectionChunk02>,
+    Transparent<IntroSectionMeta, DrummerIntroSectionChunk03>,
+);
+
+#[derive(Flow)]
+pub struct DrummerIntroSectionChunk01(
     Transparent<IntroSectionMeta, DrumSection01>,
     Transparent<IntroSectionMeta, DrumSection02>,
     Transparent<IntroSectionMeta, DrumSection03>,
     Transparent<IntroSectionMeta, DrumSection04>,
+);
+
+#[derive(Flow)]
+pub struct DrummerIntroSectionChunk02(
     Transparent<IntroSectionMeta, DrumSection05>,
     Transparent<IntroSectionMeta, DrumSection06>,
     Transparent<IntroSectionMeta, DrumSection07>,
     Transparent<IntroSectionMeta, DrumSection08>,
+);
+
+#[derive(Flow)]
+pub struct DrummerIntroSectionChunk03(
     Transparent<IntroSectionMeta, DrumSection09>,
     Transparent<IntroSectionMeta, DrumSection10>,
     Transparent<IntroSectionMeta, DrumSection11>,
