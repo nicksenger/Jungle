@@ -2058,36 +2058,26 @@ impl GraphBuilder {
                 left,
                 right,
             } => {
-                let runtime_id = self.runtime_next_id;
+                let _runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let join_label = if metadata.trim().is_empty() {
-                    (*label).to_string()
-                } else {
-                    format!("{label} :: {metadata}")
-                };
-                let join_label = self.unique_label(join_label);
-                let join = self.push_runtime_node(join_label, runtime_id);
-                self.mark(join, |node| node.is_join = true);
-                if !metadata.trim().is_empty() {
-                    self.mark(join, |node| node.metadata = Some((*metadata).to_string()));
-                }
+                let _ = (label, metadata);
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for target in &left_flow.roots {
-                    self.edges.push((join, *target));
-                }
-                for target in &right_flow.roots {
-                    self.edges.push((join, *target));
-                }
-
-                let mut members = vec![join];
+                let mut roots = left_flow.roots;
+                roots.extend(right_flow.roots.iter().copied());
+                roots = dedup(roots);
+                let mut exits = left_flow.exits;
+                exits.extend(right_flow.exits.iter().copied());
+                exits = dedup(exits);
+                let mut members = Vec::new();
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
+                members = dedup(members);
 
                 Flattened {
-                    roots: vec![join],
-                    exits: vec![join],
+                    roots,
+                    exits,
                     members,
                 }
             }
@@ -3204,7 +3194,6 @@ mod tests {
         let branch_id = id_for("Branch");
         let loop_l_id = id_for("LoopL");
         let loop_r_id = id_for("LoopR");
-        let join_id = id_for("Join");
         let join_l_id = id_for("JoinL");
         let join_r_id = id_for("JoinR");
         let sel_l_id = id_for("SelL");
@@ -3219,6 +3208,10 @@ mod tests {
             model.nodes.iter().all(|node| node.label != "Select"),
             "select steps should not render as standalone nodes"
         );
+        assert!(
+            model.nodes.iter().all(|node| node.label != "Join"),
+            "join steps should not render as standalone nodes"
+        );
 
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
 
@@ -3226,18 +3219,22 @@ mod tests {
         assert!(edges.contains(&(branch_id, loop_r_id)));
         assert!(edges.contains(&(loop_l_id, branch_id)));
         assert!(edges.contains(&(loop_r_id, branch_id)));
-        assert!(edges.contains(&(loop_l_id, join_id)));
-        assert!(edges.contains(&(loop_r_id, join_id)));
-        assert!(!edges.contains(&(branch_id, join_id)));
+        assert!(edges.contains(&(loop_l_id, join_l_id)));
+        assert!(edges.contains(&(loop_l_id, join_r_id)));
+        assert!(edges.contains(&(loop_r_id, join_l_id)));
+        assert!(edges.contains(&(loop_r_id, join_r_id)));
+        assert!(!edges.contains(&(branch_id, join_l_id)));
+        assert!(!edges.contains(&(branch_id, join_r_id)));
 
-        assert!(edges.contains(&(join_id, join_l_id)));
-        assert!(edges.contains(&(join_id, join_r_id)));
-        assert!(edges.contains(&(join_id, sel_l_id)));
-        assert!(edges.contains(&(join_id, sel_r_id)));
+        assert!(edges.contains(&(join_l_id, sel_l_id)));
+        assert!(edges.contains(&(join_l_id, sel_r_id)));
+        assert!(edges.contains(&(join_r_id, sel_l_id)));
+        assert!(edges.contains(&(join_r_id, sel_r_id)));
 
         assert!(edges.contains(&(sel_l_id, tail_id)));
         assert!(edges.contains(&(sel_r_id, tail_id)));
-        assert!(!edges.contains(&(join_id, tail_id)));
+        assert!(!edges.contains(&(join_l_id, tail_id)));
+        assert!(!edges.contains(&(join_r_id, tail_id)));
     }
 
     #[test]
@@ -3280,10 +3277,15 @@ mod tests {
         let cond_id = id_for("StaticCondition");
         let in_l_id = id_for("InLoopL");
         let in_r_id = id_for("InLoopR");
-        let join_id = id_for("Join");
+        let out_join_l_id = id_for("OutJoinL");
+        let out_join_r_id = id_for("OutJoinR");
         assert!(
             model.nodes.iter().all(|node| node.label != "Select"),
             "select steps should not render as standalone nodes"
+        );
+        assert!(
+            model.nodes.iter().all(|node| node.label != "Join"),
+            "join steps should not render as standalone nodes"
         );
 
         assert_eq!(model.while_clusters.len(), 1);
@@ -3292,7 +3294,8 @@ mod tests {
         assert!(cluster_nodes.contains(&cond_id));
         assert!(cluster_nodes.contains(&in_l_id));
         assert!(cluster_nodes.contains(&in_r_id));
-        assert!(!cluster_nodes.contains(&join_id));
+        assert!(!cluster_nodes.contains(&out_join_l_id));
+        assert!(!cluster_nodes.contains(&out_join_r_id));
         assert_eq!(model.while_cluster_labels, vec!["while: LoopCondition"]);
 
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
@@ -3300,9 +3303,12 @@ mod tests {
         assert!(edges.contains(&(cond_id, in_r_id)));
         assert!(edges.contains(&(in_l_id, cond_id)));
         assert!(edges.contains(&(in_r_id, cond_id)));
-        assert!(edges.contains(&(in_l_id, join_id)));
-        assert!(edges.contains(&(in_r_id, join_id)));
-        assert!(!edges.contains(&(cond_id, join_id)));
+        assert!(edges.contains(&(in_l_id, out_join_l_id)));
+        assert!(edges.contains(&(in_l_id, out_join_r_id)));
+        assert!(edges.contains(&(in_r_id, out_join_l_id)));
+        assert!(edges.contains(&(in_r_id, out_join_r_id)));
+        assert!(!edges.contains(&(cond_id, out_join_l_id)));
+        assert!(!edges.contains(&(cond_id, out_join_r_id)));
     }
 
     #[test]
