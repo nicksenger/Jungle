@@ -196,15 +196,91 @@ impl<
     }
 }
 
+pub struct LeadRiffLoopRemaining;
+impl LoopCondition<LeadGuitaristState> for LeadRiffLoopRemaining {
+    type Arg = ();
+
+    fn should_continue(state: &LeadGuitaristState) -> bool {
+        state.riff_loops_remaining > 0
+    }
+}
+
+pub struct UseLeadTurnaroundSection;
+impl Condition<(LeadGuitaristState, ())> for UseLeadTurnaroundSection {
+    fn choose((state, _): &(LeadGuitaristState, ())) -> bool {
+        state.riff_loops_remaining <= 1
+    }
+}
+
+pub struct DecrementLeadRiffLoop;
+#[jungle::act]
+impl Act for DecrementLeadRiffLoop {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &LeadGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+    }
+
+    fn absorb(
+        state: &mut LeadGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("lead riff loop decrement should complete");
+        state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
+    }
+}
+
+pub struct MergeLeadTurnaroundChoice;
+#[jungle::act]
+impl Act for MergeLeadTurnaroundChoice {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(
+        _state: &LeadGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+    }
+
+    fn absorb(
+        _state: &mut LeadGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("lead turnaround branch merge should complete");
+    }
+}
+
+#[derive(Flow)]
+pub struct LeadRiffLoopNormalTail(
+    Transparent<IntroSectionMeta, LeadSection05>,
+    Step<DecrementLeadRiffLoop>,
+);
+
+#[derive(Flow)]
+pub struct LeadRiffLoopFinalTail(
+    Transparent<IntroSectionMeta, LeadSection06>,
+    Step<DecrementLeadRiffLoop>,
+);
+
+#[derive(Flow)]
+pub struct LeadRiffLoopBody(
+    Transparent<IntroSectionMeta, LeadSection02>,
+    Transparent<IntroSectionMeta, LeadSection03>,
+    Transparent<IntroSectionMeta, LeadSection04>,
+    Conditional<UseLeadTurnaroundSection, LeadRiffLoopFinalTail, LeadRiffLoopNormalTail>,
+    Step<MergeLeadTurnaroundChoice>,
+);
+
 #[derive(Flow)]
 pub struct LeadGuitarIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Transparent<IntroSectionMeta, LeadSection01>,
-    Transparent<IntroSectionMeta, LeadSection02>,
-    Transparent<IntroSectionMeta, LeadSection03>,
-    Transparent<IntroSectionMeta, LeadSection04>,
-    Transparent<IntroSectionMeta, LeadSection05>,
-    Transparent<IntroSectionMeta, LeadSection06>,
+    While<LeadRiffLoopRemaining, LeadRiffLoopBody>,
     Transparent<IntroSectionMeta, LeadSection07>,
 );
 

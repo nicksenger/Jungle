@@ -52,10 +52,64 @@ impl Act for IntroStartDelay {
     }
 }
 
+pub struct UseLeadVocalPickup;
+impl Condition<(LeadVocalistState, ())> for UseLeadVocalPickup {
+    fn choose((state, _): &(LeadVocalistState, ())) -> bool {
+        state.intro_pickup_remaining > 0
+    }
+}
+
+pub struct ConsumeLeadVocalPickup;
+#[jungle::act]
+impl Act for ConsumeLeadVocalPickup {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(
+        state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("lead vocal pickup consume should complete");
+        state.intro_pickup_remaining = state.intro_pickup_remaining.saturating_sub(1);
+    }
+}
+
+pub struct MergeLeadVocalPickupChoice;
+#[jungle::act]
+impl Act for MergeLeadVocalPickupChoice {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(
+        _state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("lead vocal pickup branch merge should complete");
+    }
+}
+
+#[derive(Flow)]
+pub struct LeadVocalPickupBranch(
+    Transparent<IntroSectionMeta, LeadVocalSection01>,
+    Step<ConsumeLeadVocalPickup>,
+);
+
+#[derive(Flow)]
+pub struct LeadVocalMainBranch(
+    Step<ConsumeLeadVocalPickup>,
+);
+
 #[derive(Flow)]
 pub struct LeadVocalIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
-    Transparent<IntroSectionMeta, LeadVocalSection01>,
+    Conditional<UseLeadVocalPickup, LeadVocalPickupBranch, LeadVocalMainBranch>,
+    Step<MergeLeadVocalPickupChoice>,
     Transparent<IntroSectionMeta, LeadVocalSection02>,
     Transparent<IntroSectionMeta, LeadVocalSection03>,
 );

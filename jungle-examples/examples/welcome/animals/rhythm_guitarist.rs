@@ -288,15 +288,95 @@ impl Act for PostMergeRest {
     }
 }
 
+pub struct RhythmRiffLoopRemaining;
+impl LoopCondition<RhythmGuitaristState> for RhythmRiffLoopRemaining {
+    type Arg = ();
+
+    fn should_continue(state: &RhythmGuitaristState) -> bool {
+        state.riff_loops_remaining > 0
+    }
+}
+
+pub struct UseRhythmTurnaroundSection;
+impl Condition<(RhythmGuitaristState, ())> for UseRhythmTurnaroundSection {
+    fn choose((state, _): &(RhythmGuitaristState, ())) -> bool {
+        state.riff_loops_remaining <= 1
+    }
+}
+
+pub struct DecrementRhythmRiffLoop;
+#[jungle::act]
+impl Act for DecrementRhythmRiffLoop {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &RhythmGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+    }
+
+    fn absorb(
+        state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("rhythm riff loop decrement should complete");
+        state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
+    }
+}
+
+pub struct MergeRhythmTurnaroundChoice;
+#[jungle::act]
+impl Act for MergeRhythmTurnaroundChoice {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(
+        _state: &RhythmGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+    }
+
+    fn absorb(
+        _state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("rhythm turnaround branch merge should complete");
+    }
+}
+
+#[derive(Flow)]
+pub struct RhythmRiffLoopNormalTail(
+    Transparent<IntroSectionMeta, RhythmSection05>,
+    Step<DecrementRhythmRiffLoop>,
+);
+
+#[derive(Flow)]
+pub struct RhythmRiffLoopFinalTail(
+    Transparent<IntroSectionMeta, RhythmSection06>,
+    Step<DecrementRhythmRiffLoop>,
+);
+
+#[derive(Flow)]
+pub struct RhythmRiffLoopBody(
+    Transparent<IntroSectionMeta, RhythmSection03>,
+    Transparent<IntroSectionMeta, RhythmSection04>,
+    Conditional<
+        UseRhythmTurnaroundSection,
+        RhythmRiffLoopFinalTail,
+        RhythmRiffLoopNormalTail,
+    >,
+    Step<MergeRhythmTurnaroundChoice>,
+);
+
 #[derive(Flow)]
 pub struct RhythmGuitarFlow(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Transparent<IntroSectionMeta, RhythmSection01>,
     Transparent<IntroSectionMeta, RhythmSection02>,
-    Transparent<IntroSectionMeta, RhythmSection03>,
-    Transparent<IntroSectionMeta, RhythmSection04>,
-    Transparent<IntroSectionMeta, RhythmSection05>,
-    Transparent<IntroSectionMeta, RhythmSection06>,
+    While<RhythmRiffLoopRemaining, RhythmRiffLoopBody>,
     Transparent<IntroSectionMeta, RhythmSection07>,
 );
 

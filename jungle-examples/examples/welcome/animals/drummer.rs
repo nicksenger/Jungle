@@ -8,7 +8,18 @@ use crate::instrumentation::{
 
 use super::Drums;
 
-pub type DrummerState = ();
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DrummerState {
+    groove_variant_is_46: bool,
+}
+
+impl Default for DrummerState {
+    fn default() -> Self {
+        Self {
+            groove_variant_is_46: true,
+        }
+    }
+}
 pub type DrummerSeed = ();
 const INTRO_START_DELAY_TICKS: u32 = 5_376;
 const DRUMS_LANE_ID: u32 = <<Drums as Animal>::Id as AnimalIdValue>::U32;
@@ -169,6 +180,27 @@ impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
 
     fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("post-merge rest should complete");
+    }
+}
+
+pub struct UseHat46GrooveVariant;
+impl Condition<(DrummerState, ())> for UseHat46GrooveVariant {
+    fn choose((state, _): &(DrummerState, ())) -> bool {
+        state.groove_variant_is_46
+    }
+}
+
+pub struct MergeGrooveVariantChoice;
+#[jungle::act]
+impl Act for MergeGrooveVariantChoice {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("drum groove variant merge should complete");
     }
 }
 
@@ -442,6 +474,8 @@ impl<
 #[derive(Flow)]
 pub struct DrummerIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
+    Conditional<UseHat46GrooveVariant, Hat46SnapCadence, Hat42SnapCadence>,
+    Step<MergeGrooveVariantChoice>,
     Transparent<IntroSectionMeta, DrumSection01>,
     Transparent<IntroSectionMeta, DrumSection02>,
     Transparent<IntroSectionMeta, DrumSection03>,
