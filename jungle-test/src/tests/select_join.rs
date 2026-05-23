@@ -444,6 +444,248 @@ impl Animal for JoinComposableAnimal {
     type Journey = JoinComposableFlowTemplate;
 }
 
+pub struct ConditionalPrefersLeft;
+impl Condition<(SelectJoinState, ())> for ConditionalPrefersLeft {
+    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+        state.winner == 0
+    }
+}
+
+pub struct ConditionalLeftPassthroughSpec;
+#[jungle::act]
+impl Act for ConditionalLeftPassthroughSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 4)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("conditional left passthrough should succeed")
+    }
+}
+
+pub struct ConditionalRightPassthroughSpec;
+#[jungle::act]
+impl Act for ConditionalRightPassthroughSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 8)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("conditional right passthrough should succeed")
+    }
+}
+
+pub struct JoinFromConditionalLeftSpec;
+#[jungle::act]
+impl Act for JoinFromConditionalLeftSpec {
+    type Effect = TimedValueEffect;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        let value = match input {
+            Either::Left(value) | Either::Right(value) => value,
+        };
+        (1, value)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join from conditional left should succeed")
+    }
+}
+
+pub struct JoinFromConditionalRightSpec;
+#[jungle::act]
+impl Act for JoinFromConditionalRightSpec {
+    type Effect = TimedValueEffect;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        let value = match input {
+            Either::Left(value) | Either::Right(value) => value,
+        };
+        (1, value + 1)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join from conditional right should succeed")
+    }
+}
+
+#[derive(Flow)]
+pub struct ConditionalBranchWithJoinFlow(
+    Join<Step<JoinFromConditionalLeftSpec>, Step<JoinFromConditionalRightSpec>>,
+    Step<CaptureJoinSumSpec>,
+);
+
+#[derive(Flow)]
+pub struct ConditionalThenJoinTemplate(
+    Conditional<
+        ConditionalPrefersLeft,
+        Step<ConditionalLeftPassthroughSpec>,
+        Step<ConditionalRightPassthroughSpec>,
+    >,
+    ConditionalBranchWithJoinFlow,
+);
+
+pub struct ConditionalThenJoinAnimal;
+
+#[jungle::animal(id = 5, generation = 0)]
+impl Animal for ConditionalThenJoinAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = ConditionalThenJoinTemplate;
+}
+
+pub struct JoinMutatesWinnerSpec;
+#[jungle::act]
+impl Act for JoinMutatesWinnerSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 1)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("join mutates winner should succeed");
+        state.winner = value;
+        value
+    }
+}
+
+pub struct RightBranchUsesWinnerZero;
+impl Condition<(SelectJoinState, ())> for RightBranchUsesWinnerZero {
+    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+        state.winner == 0
+    }
+}
+
+pub struct RightZeroPrefixSpec;
+#[jungle::act]
+impl Act for RightZeroPrefixSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 0)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("right zero prefix should succeed");
+    }
+}
+
+pub struct RightZeroValueSpec;
+#[jungle::act]
+impl Act for RightZeroValueSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 20)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("right zero value should succeed")
+    }
+}
+
+pub struct RightNonZeroValueSpec;
+#[jungle::act]
+impl Act for RightNonZeroValueSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 30)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("right non-zero value should succeed")
+    }
+}
+
+#[derive(Flow)]
+pub struct RightZeroFlow(Step<RightZeroPrefixSpec>, Step<RightZeroValueSpec>);
+
+pub struct RightBranchMergeValueSpec;
+#[jungle::act]
+impl Act for RightBranchMergeValueSpec {
+    type Effect = TimedValueEffect;
+    type Input = Either<i32, i32>;
+    type Output = i32;
+
+    fn emit(_state: &SelectJoinState, input: Self::Input) -> (u64, i32) {
+        let value = match input {
+            Either::Left(value) | Either::Right(value) => value,
+        };
+        (0, value)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("right branch merge value should succeed")
+    }
+}
+
+#[derive(Flow)]
+pub struct JoinStateDependentRightFlow(
+    Conditional<RightBranchUsesWinnerZero, RightZeroFlow, Step<RightNonZeroValueSpec>>,
+    Step<RightBranchMergeValueSpec>,
+);
+
+#[derive(Flow)]
+pub struct JoinStateDependentFlowTemplate(
+    Join<Step<JoinMutatesWinnerSpec>, JoinStateDependentRightFlow>,
+    Step<CaptureJoinSumSpec>,
+);
+
+pub struct JoinStateDependentAnimal;
+
+#[jungle::animal(id = 6, generation = 0)]
+impl Animal for JoinStateDependentAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = JoinStateDependentFlowTemplate;
+}
+
 #[tokio::test]
 async fn select_returns_first_completed_branch() {
     let mut executor = Executor::<SelectAnimal>::new(SelectJoinState {
@@ -541,4 +783,37 @@ async fn join_supports_composed_multi_step_branches() {
         .await
         .expect("composed join executor should complete");
     assert_eq!(executor.state().joined_sum, 9);
+}
+
+#[tokio::test]
+async fn conditional_then_join_does_not_hang() {
+    let mut executor = Executor::<ConditionalThenJoinAnimal>::new(SelectJoinState {
+        fast_ms: 0,
+        slow_ms: 0,
+        winner: 0,
+        joined_sum: 0,
+    });
+
+    let _ = executor
+        .advance_to_end_with(())
+        .await
+        .expect("conditional then join executor should complete");
+    assert_eq!(executor.state().joined_sum, 9);
+}
+
+#[tokio::test]
+async fn join_state_dependent_right_branch_does_not_wedge() {
+    let mut executor = Executor::<JoinStateDependentAnimal>::new(SelectJoinState {
+        fast_ms: 0,
+        slow_ms: 0,
+        winner: 0,
+        joined_sum: 0,
+    });
+
+    let _ = executor
+        .advance_to_end_with(())
+        .await
+        .expect("state-dependent join executor should complete");
+    assert_eq!(executor.state().winner, 1);
+    assert_eq!(executor.state().joined_sum, 31);
 }

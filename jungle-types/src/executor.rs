@@ -1154,11 +1154,11 @@ fn subflow_complete_serialized<State>(
     Ok((next_state, emitted))
 }
 
-async fn run_subflow_to_end<State>(
+async fn run_subflow_to_end_with_state<State>(
     mut flow: DynFlow<State>,
     mut state: State,
     input: Serialized,
-) -> Result<FlowCompletionTrace, ExecutorError>
+) -> Result<(State, FlowCompletionTrace), ExecutorError>
 where
     State: Clone,
 {
@@ -1175,11 +1175,14 @@ where
                     state = next_state;
                     request
                 }
-                Err((_next_state, ExecutorError::Complete)) => {
-                    return Ok(FlowCompletionTrace {
-                        completions,
-                        emitted: last_emitted,
-                    });
+                Err((next_state, ExecutorError::Complete)) => {
+                    return Ok((
+                        next_state,
+                        FlowCompletionTrace {
+                            completions,
+                            emitted: last_emitted,
+                        },
+                    ));
                 }
                 Err((_next_state, err)) => return Err(err),
             };
@@ -1195,6 +1198,18 @@ where
         completions.push(completion);
         last_emitted = emitted;
     }
+}
+
+async fn run_subflow_to_end<State>(
+    flow: DynFlow<State>,
+    state: State,
+    input: Serialized,
+) -> Result<FlowCompletionTrace, ExecutorError>
+where
+    State: Clone,
+{
+    let (_state, trace) = run_subflow_to_end_with_state(flow, state, input).await?;
+    Ok(trace)
 }
 
 fn replay_subflow_trace<State>(
@@ -1650,19 +1665,18 @@ where
         let left_flow = (self.build_left)();
         let right_flow = (self.build_right)();
         let left_state = state.clone();
-        let right_state = state.clone();
         let left_input = input.clone();
         let right_input = input.clone();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let (left_trace, right_trace) = futures::join!(
-                    run_subflow_to_end(left_flow, left_state, left_input),
-                    run_subflow_to_end(right_flow, right_state, right_input)
-                );
+                let (left_state, left_trace) =
+                    run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
+                let (_right_state, right_trace) =
+                    run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
                 let envelope = JoinTraceEnvelope {
-                    left: left_trace?,
-                    right: right_trace?,
+                    left: left_trace,
+                    right: right_trace,
                 };
                 let bytes = postcard::to_allocvec(&envelope)
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
@@ -1772,19 +1786,18 @@ where
         let left_flow = (self.build_left)();
         let right_flow = (self.build_right)();
         let left_state = state.clone();
-        let right_state = state.clone();
         let left_input = input.clone();
         let right_input = input.clone();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let (left_trace, right_trace) = futures::join!(
-                    run_subflow_to_end(left_flow, left_state, left_input),
-                    run_subflow_to_end(right_flow, right_state, right_input)
-                );
+                let (left_state, left_trace) =
+                    run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
+                let (_right_state, right_trace) =
+                    run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
                 let envelope = JoinTraceEnvelope {
-                    left: left_trace?,
-                    right: right_trace?,
+                    left: left_trace,
+                    right: right_trace,
                 };
                 let bytes = postcard::to_allocvec(&envelope)
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
