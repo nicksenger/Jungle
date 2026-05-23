@@ -18,6 +18,7 @@ mod tests {
     mod generic_act;
     mod integration;
     mod migration;
+    mod noop;
     mod optic;
     mod progression;
     mod replay;

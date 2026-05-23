@@ -315,10 +315,16 @@ impl Act for SelectBranchWinnerSlowSpec {
 }
 
 #[derive(Flow)]
-pub struct SelectBranchFastFlow(Step<SelectBranchPrefixFastSpec>, Step<SelectBranchWinnerFastSpec>);
+pub struct SelectBranchFastFlow(
+    Step<SelectBranchPrefixFastSpec>,
+    Step<SelectBranchWinnerFastSpec>,
+);
 
 #[derive(Flow)]
-pub struct SelectBranchSlowFlow(Step<SelectBranchPrefixSlowSpec>, Step<SelectBranchWinnerSlowSpec>);
+pub struct SelectBranchSlowFlow(
+    Step<SelectBranchPrefixSlowSpec>,
+    Step<SelectBranchWinnerSlowSpec>,
+);
 
 #[derive(Flow)]
 pub struct SelectComposableFlowTemplate(
@@ -412,10 +418,16 @@ impl Act for JoinBranchRightValueSpec {
 }
 
 #[derive(Flow)]
-pub struct JoinBranchLeftFlow(Step<JoinBranchLeftPrefixSpec>, Step<JoinBranchLeftValueSpec>);
+pub struct JoinBranchLeftFlow(
+    Step<JoinBranchLeftPrefixSpec>,
+    Step<JoinBranchLeftValueSpec>,
+);
 
 #[derive(Flow)]
-pub struct JoinBranchRightFlow(Step<JoinBranchRightPrefixSpec>, Step<JoinBranchRightValueSpec>);
+pub struct JoinBranchRightFlow(
+    Step<JoinBranchRightPrefixSpec>,
+    Step<JoinBranchRightValueSpec>,
+);
 
 #[derive(Flow)]
 pub struct JoinComposableFlowTemplate(

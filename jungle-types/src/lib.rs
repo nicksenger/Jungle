@@ -3,6 +3,7 @@ mod error;
 mod executor;
 mod journey;
 mod meta;
+mod noop;
 mod sleep;
 mod transport;
 mod view;
@@ -32,6 +33,7 @@ pub use meta::{
     HighestGeneration, HighestGenerationForAnimals, IdValue, StripAnimalHeaders,
     StripEffectHeaders, WithEffectFor,
 };
+pub use noop::Noop;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 pub use sleep::{Sleep, SleepError, SleepStep};

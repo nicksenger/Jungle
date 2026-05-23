@@ -1,7 +1,7 @@
 use crate::{
     Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Running, Scoped, Select,
-    Transparent, While,
+    Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Noop, Running, Scoped,
+    Select, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -309,8 +309,8 @@ pub trait ErasedFlow<State>: Send {
     fn try_complete_without_progress(
         &mut self,
         state: State,
-    ) -> Result<(State, bool), ExecutorError> {
-        Ok((state, false))
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        Ok((state, None, false))
     }
 
     fn assign_node_ids(&mut self, _next_id: &mut u32) {}
@@ -365,6 +365,7 @@ pub struct TypedErasedStep<Step> {
     node_id: u32,
     complete: bool,
     waiting_completion: bool,
+    pending_inline_input: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> Step>,
 }
 
@@ -374,6 +375,7 @@ impl<Step> TypedErasedStep<Step> {
             node_id: 0,
             complete: false,
             waiting_completion: false,
+            pending_inline_input: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -398,6 +400,30 @@ where
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
+    fn try_complete_without_progress(
+        &mut self,
+        state: T::State,
+    ) -> Result<(T::State, Option<Serialized>, bool), ExecutorError> {
+        let Some(input) = self.pending_inline_input.take() else {
+            return Ok((state, None, false));
+        };
+
+        if self.complete {
+            return Ok((state, None, true));
+        }
+        if self.waiting_completion {
+            return Ok((state, None, false));
+        }
+
+        let typed_input = deserialize_step_input::<A::Input>(&input)?;
+        let (state, _request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let completion = Ok(postcard::to_allocvec(&())
+            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
+        self.waiting_completion = true;
+        let (state, emitted) = self.complete(state, completion)?;
+        Ok((state, Some(emitted), true))
+    }
+
     fn request(
         &mut self,
         state: T::State,
@@ -408,6 +434,10 @@ where
         }
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            self.pending_inline_input = Some(input);
+            return Err((state, ExecutorError::Complete));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -433,6 +463,10 @@ where
         }
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            self.pending_inline_input = Some(input);
+            return Err((state, ExecutorError::Complete));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -516,6 +550,7 @@ pub struct ContextualTypedErasedStep<Context, R> {
     node_id: u32,
     complete: bool,
     waiting_completion: bool,
+    pending_inline_input: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> R>,
 }
 
@@ -526,6 +561,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
             node_id: 0,
             complete: false,
             waiting_completion: false,
+            pending_inline_input: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -543,6 +579,30 @@ where
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
+    fn try_complete_without_progress(
+        &mut self,
+        state: T::State,
+    ) -> Result<(T::State, Option<Serialized>, bool), ExecutorError> {
+        let Some(input) = self.pending_inline_input.take() else {
+            return Ok((state, None, false));
+        };
+
+        if self.complete {
+            return Ok((state, None, true));
+        }
+        if self.waiting_completion {
+            return Ok((state, None, false));
+        }
+
+        let typed_input = deserialize_step_input::<A::Input>(&input)?;
+        let (state, _request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let completion = Ok(postcard::to_allocvec(&())
+            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
+        self.waiting_completion = true;
+        let (state, emitted) = self.complete(state, completion)?;
+        Ok((state, Some(emitted), true))
+    }
+
     fn request(
         &mut self,
         state: T::State,
@@ -553,6 +613,10 @@ where
         }
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            self.pending_inline_input = Some(input);
+            return Err((state, ExecutorError::Complete));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -578,6 +642,10 @@ where
         }
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            self.pending_inline_input = Some(input);
+            return Err((state, ExecutorError::Complete));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -977,6 +1045,7 @@ fn settle_subflow_without_progress<State>(
     flow: &mut DynFlow<State>,
     cursor: &mut usize,
     mut state: State,
+    last_input: &mut Serialized,
 ) -> Result<State, ExecutorError> {
     loop {
         if *cursor >= flow.len() {
@@ -989,8 +1058,11 @@ fn settle_subflow_without_progress<State>(
         if node.is_waiting_completion() {
             break;
         }
-        let (next, completed) = node.try_complete_without_progress(state)?;
+        let (next, emitted, completed) = node.try_complete_without_progress(state)?;
         state = next;
+        if let Some(emitted) = emitted {
+            *last_input = emitted;
+        }
         if completed {
             *cursor += 1;
             continue;
@@ -1004,13 +1076,13 @@ fn subflow_next_executable_request<State>(
     flow: &mut DynFlow<State>,
     cursor: &mut usize,
     mut state: State,
-    input: &[u8],
+    last_input: &mut Serialized,
 ) -> RequestResult<State, ExecutableEffectRequest>
 where
     State: Clone,
 {
     loop {
-        state = match settle_subflow_without_progress(flow, cursor, state.clone()) {
+        state = match settle_subflow_without_progress(flow, cursor, state.clone(), last_input) {
             Ok(state) => state,
             Err(err) => return Err((state, err)),
         };
@@ -1021,23 +1093,31 @@ where
         let node = flow
             .get_mut(*cursor)
             .expect("cursor was checked against steps len");
-        match node.request_executable(state, input.to_vec()) {
+        match node.request_executable(state, last_input.clone()) {
             Ok((next_state, request)) => {
                 return Ok((next_state, request));
             }
             Err((next_state, ExecutorError::Complete)) => {
                 state = next_state;
-                let (next_state, completed) =
+                let (next_state, emitted, completed) =
                     match node.try_complete_without_progress(state.clone()) {
-                    Ok(result) => result,
-                    Err(err) => return Err((state, err)),
-                };
+                        Ok(result) => result,
+                        Err(err) => return Err((state, err)),
+                    };
                 state = next_state;
+                if let Some(emitted) = emitted {
+                    *last_input = emitted;
+                }
                 if completed {
                     *cursor += 1;
                     continue;
                 }
-                state = match settle_subflow_without_progress(flow, cursor, state.clone()) {
+                state = match settle_subflow_without_progress(
+                    flow,
+                    cursor,
+                    state.clone(),
+                    last_input,
+                ) {
                     Ok(state) => state,
                     Err(err) => return Err((state, err)),
                 };
@@ -1054,9 +1134,10 @@ fn subflow_complete_serialized<State>(
     flow: &mut DynFlow<State>,
     cursor: &mut usize,
     state: State,
+    last_input: &mut Serialized,
     completion: SerializedCompletion,
 ) -> Result<(State, Serialized), ExecutorError> {
-    let state = settle_subflow_without_progress(flow, cursor, state)?;
+    let state = settle_subflow_without_progress(flow, cursor, state, last_input)?;
     if *cursor >= flow.len() {
         return Err(ExecutorError::Complete);
     }
@@ -1068,7 +1149,8 @@ fn subflow_complete_serialized<State>(
     if node.is_complete() {
         *cursor += 1;
     }
-    let next_state = settle_subflow_without_progress(flow, cursor, next_state)?;
+    *last_input = emitted.clone();
+    let next_state = settle_subflow_without_progress(flow, cursor, next_state, last_input)?;
     Ok((next_state, emitted))
 }
 
@@ -1086,22 +1168,29 @@ where
     let mut last_emitted = input;
 
     loop {
-        let request = match subflow_next_executable_request(&mut flow, &mut cursor, state, &last_emitted) {
-            Ok((next_state, request)) => {
-                state = next_state;
-                request
-            }
-            Err((_next_state, ExecutorError::Complete)) => {
-                return Ok(FlowCompletionTrace {
-                    completions,
-                    emitted: last_emitted,
-                });
-            }
-            Err((_next_state, err)) => return Err(err),
-        };
+        let request =
+            match subflow_next_executable_request(&mut flow, &mut cursor, state, &mut last_emitted)
+            {
+                Ok((next_state, request)) => {
+                    state = next_state;
+                    request
+                }
+                Err((_next_state, ExecutorError::Complete)) => {
+                    return Ok(FlowCompletionTrace {
+                        completions,
+                        emitted: last_emitted,
+                    });
+                }
+                Err((_next_state, err)) => return Err(err),
+            };
         let completion = request.run().await?;
-        let (next_state, emitted) =
-            subflow_complete_serialized(&mut flow, &mut cursor, state, completion.clone())?;
+        let (next_state, emitted) = subflow_complete_serialized(
+            &mut flow,
+            &mut cursor,
+            state,
+            &mut last_emitted,
+            completion.clone(),
+        )?;
         state = next_state;
         completions.push(completion);
         last_emitted = emitted;
@@ -1123,16 +1212,16 @@ where
 
     for completion in trace.completions {
         let (next_state, _request) =
-            subflow_next_executable_request(flow, &mut cursor, state, &next_input)
+            subflow_next_executable_request(flow, &mut cursor, state, &mut next_input)
                 .map_err(|(_, err)| err)?;
         state = next_state;
         let (next_state, emitted) =
-            subflow_complete_serialized(flow, &mut cursor, state, completion)?;
+            subflow_complete_serialized(flow, &mut cursor, state, &mut next_input, completion)?;
         state = next_state;
         next_input = emitted;
     }
 
-    state = settle_subflow_without_progress(flow, &mut cursor, state)?;
+    state = settle_subflow_without_progress(flow, &mut cursor, state, &mut next_input)?;
     if cursor < flow.len() {
         return Err(ExecutorError::NoPendingRequest);
     }
@@ -1926,14 +2015,14 @@ where
     fn try_complete_without_progress(
         &mut self,
         state: State,
-    ) -> Result<(State, bool), ExecutorError> {
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
-            return Ok((saved, true));
+            return Ok((saved, None, true));
         }
         if self.complete {
-            return Ok((state, true));
+            return Ok((state, None, true));
         }
-        Ok((state, false))
+        Ok((state, None, false))
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -2953,14 +3042,14 @@ where
     fn try_complete_without_progress(
         &mut self,
         state: State,
-    ) -> Result<(State, bool), ExecutorError> {
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
-            return Ok((saved, true));
+            return Ok((saved, None, true));
         }
         if self.complete {
-            return Ok((state, true));
+            return Ok((state, None, true));
         }
-        Ok((state, false))
+        Ok((state, None, false))
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -3074,8 +3163,7 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Join<L, R, M>
+impl<Context, State, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Join<L, R, M>
 where
     Context: Send + Sync + 'static,
     State: Clone + Send + 'static,
@@ -3226,8 +3314,11 @@ where
                 self.state = Some(state);
                 break;
             }
-            let (state, completed) = node.try_complete_without_progress(state)?;
+            let (state, emitted, completed) = node.try_complete_without_progress(state)?;
             self.state = Some(state);
+            if let Some(emitted) = emitted {
+                self.last_emitted = Some(emitted);
+            }
             if completed {
                 self.cursor += 1;
                 continue;
@@ -3290,7 +3381,7 @@ where
     where
         Initial: Serialize,
     {
-        let input = match self.last_emitted.take() {
+        let mut input = match self.last_emitted.take() {
             Some(input) => input,
             None => serialize_input(initial_input)?,
         };
@@ -3298,6 +3389,9 @@ where
             self.settle_without_progress()?;
             if self.is_complete() {
                 return Err(ExecutorError::Complete);
+            }
+            if let Some(emitted) = self.last_emitted.take() {
+                input = emitted;
             }
 
             let state = self.state.take().expect("executor state is always present");
@@ -3313,8 +3407,11 @@ where
                 Err((state, ExecutorError::Complete)) => {
                     self.state = Some(state);
                     let state = self.state.take().expect("executor state is always present");
-                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    if let Some(emitted) = emitted {
+                        self.last_emitted = Some(emitted);
+                    }
                     if completed {
                         self.cursor += 1;
                         continue;
@@ -3420,10 +3517,14 @@ where
     }
 
     fn next_request_serialized(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
+        let mut input = input;
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
                 return Err(ExecutorError::Complete);
+            }
+            if let Some(emitted) = self.last_emitted.take() {
+                input = emitted;
             }
 
             let state = self.state.take().expect("executor state is always present");
@@ -3439,8 +3540,11 @@ where
                 Err((state, ExecutorError::Complete)) => {
                     self.state = Some(state);
                     let state = self.state.take().expect("executor state is always present");
-                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    if let Some(emitted) = emitted {
+                        self.last_emitted = Some(emitted);
+                    }
                     if completed {
                         self.cursor += 1;
                         continue;
@@ -3465,6 +3569,7 @@ where
     state: Option<A::State>,
     steps: DynFlow<A::State>,
     cursor: usize,
+    last_emitted: Option<Serialized>,
 }
 
 impl<A> ManualExecutor<A>
@@ -3487,8 +3592,11 @@ where
                 self.state = Some(state);
                 break;
             }
-            let (state, completed) = node.try_complete_without_progress(state)?;
+            let (state, emitted, completed) = node.try_complete_without_progress(state)?;
             self.state = Some(state);
+            if let Some(emitted) = emitted {
+                self.last_emitted = Some(emitted);
+            }
             if completed {
                 self.cursor += 1;
                 continue;
@@ -3506,6 +3614,7 @@ where
             state: Some(state),
             steps,
             cursor: 0,
+            last_emitted: None,
         };
         executor
             .settle_without_progress()
@@ -3530,10 +3639,14 @@ where
     }
 
     pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
+        let mut input = self.last_emitted.take().unwrap_or(input);
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
                 return Err(ExecutorError::Complete);
+            }
+            if let Some(emitted) = self.last_emitted.take() {
+                input = emitted;
             }
 
             let state = self.state.take().expect("executor state is always present");
@@ -3549,8 +3662,11 @@ where
                 Err((state, ExecutorError::Complete)) => {
                     self.state = Some(state);
                     let state = self.state.take().expect("executor state is always present");
-                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    if let Some(emitted) = emitted {
+                        self.last_emitted = Some(emitted);
+                    }
                     if completed {
                         self.cursor += 1;
                         continue;
@@ -3570,10 +3686,14 @@ where
         &mut self,
         input: Serialized,
     ) -> Result<ExecutableEffectRequest, ExecutorError> {
+        let mut input = self.last_emitted.take().unwrap_or(input);
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
                 return Err(ExecutorError::Complete);
+            }
+            if let Some(emitted) = self.last_emitted.take() {
+                input = emitted;
             }
 
             let state = self.state.take().expect("executor state is always present");
@@ -3589,8 +3709,11 @@ where
                 Err((state, ExecutorError::Complete)) => {
                     self.state = Some(state);
                     let state = self.state.take().expect("executor state is always present");
-                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    if let Some(emitted) = emitted {
+                        self.last_emitted = Some(emitted);
+                    }
                     if completed {
                         self.cursor += 1;
                         continue;
@@ -3639,6 +3762,7 @@ where
         }
         self.state = Some(state);
         self.settle_without_progress()?;
+        self.last_emitted = Some(emitted.clone());
         deserialize_emitted(emitted)
     }
 
@@ -3662,6 +3786,7 @@ where
         }
         self.state = Some(state);
         self.settle_without_progress()?;
+        self.last_emitted = Some(emitted.clone());
         Ok(emitted)
     }
 
