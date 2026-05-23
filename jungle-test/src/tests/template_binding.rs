@@ -1406,6 +1406,231 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
     let _ = worker_handle.await;
 }
 
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConditionalJoinMergeState {
+    marker: i32,
+    left_join_hits: u8,
+    right_join_hits: u8,
+    join_merge_hits: u8,
+    terminal_merge_hits: u8,
+}
+
+pub struct PreferLeftWhenMarkerNonNegative;
+impl Condition<(ConditionalJoinMergeState, ())> for PreferLeftWhenMarkerNonNegative {
+    fn choose((state, _): &(ConditionalJoinMergeState, ())) -> bool {
+        state.marker != -1
+    }
+}
+
+pub struct LeftJoinFirstSpec;
+#[jungle::act]
+impl Act for LeftJoinFirstSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("left join first should succeed");
+        state.left_join_hits = state.left_join_hits.saturating_add(1);
+    }
+}
+
+pub struct LeftJoinSecondSpec;
+#[jungle::act]
+impl Act for LeftJoinSecondSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("left join second should succeed");
+        state.left_join_hits = state.left_join_hits.saturating_add(1);
+    }
+}
+
+pub struct RightJoinFirstSpec;
+#[jungle::act]
+impl Act for RightJoinFirstSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("right join first should succeed");
+        state.right_join_hits = state.right_join_hits.saturating_add(1);
+    }
+}
+
+pub struct RightJoinSecondSpec;
+#[jungle::act]
+impl Act for RightJoinSecondSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("right join second should succeed");
+        state.right_join_hits = state.right_join_hits.saturating_add(1);
+    }
+}
+
+pub struct MergeJoinedUnitSpec;
+#[jungle::act]
+impl Act for MergeJoinedUnitSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("merge joined unit should succeed");
+        state.join_merge_hits = state.join_merge_hits.saturating_add(1);
+    }
+}
+
+pub struct MergeConditionalUnitSpec;
+#[jungle::act]
+impl Act for MergeConditionalUnitSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("merge conditional unit should succeed");
+        state.terminal_merge_hits = state.terminal_merge_hits.saturating_add(1);
+    }
+}
+
+#[derive(Flow)]
+struct LeftJoinBranch(
+    Join<Step<LeftJoinFirstSpec>, Step<LeftJoinSecondSpec>>,
+    Step<MergeJoinedUnitSpec>,
+);
+
+#[derive(Flow)]
+struct RightJoinBranch(
+    Join<Step<RightJoinFirstSpec>, Step<RightJoinSecondSpec>>,
+    Step<MergeJoinedUnitSpec>,
+);
+
+#[derive(Flow)]
+struct ConditionalJoinMergeFlow(
+    Conditional<PreferLeftWhenMarkerNonNegative, LeftJoinBranch, RightJoinBranch>,
+    Step<MergeConditionalUnitSpec>,
+);
+
+struct ConditionalJoinMergeAnimal;
+#[jungle::animal(observe, id = 56, generation = 0)]
+impl Animal for ConditionalJoinMergeAnimal {
+    type State = ConditionalJoinMergeState;
+    type Seed = ConditionalJoinMergeState;
+    type Journey = ConditionalJoinMergeFlow;
+}
+
+impl Observe for ConditionalJoinMergeAnimal {
+    type Appearance = ConditionalJoinMergeState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct ConditionalJoinMergeAnimals(ConditionalJoinMergeAnimal);
+
+struct ConditionalJoinMergeZoo;
+impl Ecosystem for ConditionalJoinMergeZoo {
+    const NAME: &'static str = "conditional-join-merge-local-client-zoo";
+    type Animals = ConditionalJoinMergeAnimals;
+}
+
+impl From<ConditionalJoinMergeState> for () {
+    fn from(_value: ConditionalJoinMergeState) -> Self {}
+}
+
+#[tokio::test]
+async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_end() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("conditional-join-merge-local-client-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(ConditionalJoinMergeZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<ConditionalJoinMergeAnimal>(
+            postcard::to_allocvec(&ConditionalJoinMergeState {
+                marker: 1,
+                ..ConditionalJoinMergeState::default()
+            })
+            .expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: ConditionalJoinMergeState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    assert_eq!(appearance.left_join_hits + appearance.right_join_hits, 2);
+    assert_eq!(appearance.join_merge_hits, 1);
+    assert_eq!(appearance.terminal_merge_hits, 1);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ComplexAlphaState {
