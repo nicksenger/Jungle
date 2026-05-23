@@ -290,11 +290,7 @@ pub struct BassSection08(
 );
 
 #[derive(Flow)]
-pub struct BassPart01DriveTicks(
-    Octa<Thump46Tick>,
-    Quad<Thump46Tick>,
-    Double<Thump46Tick>,
-);
+pub struct BassPart01DriveTicks(Octa<Thump46Tick>, Quad<Thump46Tick>, Double<Thump46Tick>);
 
 #[derive(Flow)]
 pub struct BassPart02HighTicks(
@@ -588,21 +584,15 @@ pub struct BassPart11(BassPart06Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
-pub struct BassPart12(
-    BassPart07Phrase,
-);
+pub struct BassPart12(BassPart07Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
-pub struct BassPart13(
-    BassPart08Phrase,
-);
+pub struct BassPart13(BassPart08Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
-pub struct BassPart14(
-    BassPart09Phrase,
-);
+pub struct BassPart14(BassPart09Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
@@ -1266,21 +1256,15 @@ pub struct BassPart36(BassPart36Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
-pub struct BassPart37(
-    BassPart35Phrase,
-);
+pub struct BassPart37(BassPart35Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
-pub struct BassPart38(
-    BassPart36Phrase,
-);
+pub struct BassPart38(BassPart36Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
-pub struct BassPart39(
-    BassPart35Phrase,
-);
+pub struct BassPart39(BassPart35Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]

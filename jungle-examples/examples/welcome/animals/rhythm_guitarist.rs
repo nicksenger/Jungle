@@ -1,11 +1,11 @@
 use jungle_sdk::prelude::*;
 
+use super::{Double, Quad};
 use crate::effect::{AtomicDualHit, ImmediateDyad, ImmediateMonad, Rest, SyncedRest, Tetrad};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
 };
-use super::{Double, Quad};
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct RhythmGuitaristState {
@@ -369,11 +369,7 @@ pub struct RhythmRiffLoopFinalTail(
 pub struct RhythmRiffLoopBody(
     Transparent<IntroSectionMeta, RhythmSection03>,
     Transparent<IntroSectionMeta, RhythmSection04>,
-    Conditional<
-        UseRhythmTurnaroundSection,
-        RhythmRiffLoopFinalTail,
-        RhythmRiffLoopNormalTail,
-    >,
+    Conditional<UseRhythmTurnaroundSection, RhythmRiffLoopFinalTail, RhythmRiffLoopNormalTail>,
     Step<MergeRhythmTurnaroundChoice>,
 );
 
@@ -553,15 +549,11 @@ pub struct RhythmPart03(RhythmPart03Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct RhythmPart04(
-    RhythmPart02Phrase,
-);
+pub struct RhythmPart04(RhythmPart02Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct RhythmPart05(
-    RhythmPart03Phrase,
-);
+pub struct RhythmPart05(RhythmPart03Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]

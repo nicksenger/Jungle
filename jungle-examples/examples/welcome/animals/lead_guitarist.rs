@@ -1225,9 +1225,7 @@ pub struct LeadPart30(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart31(
-    LeadPart29Phrase,
-);
+pub struct LeadPart31(LeadPart29Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]

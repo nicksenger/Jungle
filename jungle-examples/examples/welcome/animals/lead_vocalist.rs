@@ -69,7 +69,8 @@ impl Act for ConsumeLeadVocalPickup {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+    }
 
     fn absorb(
         state: &mut LeadVocalistState,
@@ -87,7 +88,8 @@ impl Act for MergeLeadVocalPickupChoice {
     type Input = Either<(), ()>;
     type Output = ();
 
-    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+    }
 
     fn absorb(
         _state: &mut LeadVocalistState,
@@ -104,9 +106,7 @@ pub struct LeadVocalPickupBranch(
 );
 
 #[derive(Flow)]
-pub struct LeadVocalMainBranch(
-    Step<ConsumeLeadVocalPickup>,
-);
+pub struct LeadVocalMainBranch(Step<ConsumeLeadVocalPickup>);
 
 #[derive(Flow)]
 pub struct LeadVocalIntro(

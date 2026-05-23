@@ -28,7 +28,7 @@ pub(super) async fn play(
 }
 
 fn synthesize_hihat(note: &Note<HiHatArticulation>) -> (Arc<[f32]>, f32, f32) {
-    let duration = articulation_duration(note.duration, note.articulation);
+    let duration = articulation_duration(note.duration);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let velocity = note.velocity.clamp(0.0, 1.0);
     let pitch_bias = ((note.n_midi as f32 - 46.0) / 10.0).clamp(-0.35, 0.35);
@@ -37,43 +37,25 @@ fn synthesize_hihat(note: &Note<HiHatArticulation>) -> (Arc<[f32]>, f32, f32) {
     for i in 0..frame_count {
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
-        let sample = articulation_sample(note.articulation, phase, t, velocity, pitch_bias);
-        let env = articulation_envelope(note.articulation, phase, velocity);
+        let sample = articulation_sample(phase, t, velocity, pitch_bias);
+        let env = articulation_envelope(phase, velocity);
         pcm.push((sample * env).clamp(-1.0, 1.0));
     }
 
-    let (gain, playback_rate) = articulation_output_shape(note.articulation);
+    let (gain, playback_rate) = articulation_output_shape();
     (Arc::from(pcm), gain, playback_rate)
 }
 
-fn articulation_duration(base: Duration, articulation: HiHatArticulation) -> Duration {
-    let scale = match articulation {
-        HiHatArticulation::ClosedTip => 0.42,
-        HiHatArticulation::ClosedEdge => 0.54,
-        HiHatArticulation::HalfOpen => 0.78,
-        HiHatArticulation::FullOpen => 1.25,
-        HiHatArticulation::FootSplash => 0.32,
-    };
+fn articulation_duration(base: Duration) -> Duration {
+    let scale = 0.42;
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.025))
 }
 
-fn articulation_output_shape(articulation: HiHatArticulation) -> (f32, f32) {
-    match articulation {
-        HiHatArticulation::ClosedTip => (0.72, 1.0),
-        HiHatArticulation::ClosedEdge => (0.78, 1.0),
-        HiHatArticulation::HalfOpen => (0.82, 1.0),
-        HiHatArticulation::FullOpen => (0.88, 1.0),
-        HiHatArticulation::FootSplash => (0.64, 1.0),
-    }
+fn articulation_output_shape() -> (f32, f32) {
+    (0.72, 1.0)
 }
 
-fn articulation_sample(
-    articulation: HiHatArticulation,
-    phase: f32,
-    t: f32,
-    velocity: f32,
-    pitch_bias: f32,
-) -> f32 {
+fn articulation_sample(phase: f32, t: f32, velocity: f32, pitch_bias: f32) -> f32 {
     let tilt = 1.0 + pitch_bias * 0.08;
     let attack_focus = 1.0 - smoothstep((phase / 0.16).clamp(0.0, 1.0));
     let stick = hash_noise(t * 34_000.0) * (0.16 + 0.44 * velocity) * attack_focus;
@@ -83,46 +65,14 @@ fn articulation_sample(
         + triangle(8_700.0 * tilt, t) * 0.18
         + triangle(11_400.0 * tilt, t) * 0.12;
 
-    match articulation {
-        HiHatArticulation::ClosedTip => {
-            let bark = 1.0 - smoothstep((phase / 0.58).clamp(0.0, 1.0));
-            (bright * 0.54 + metallic * 0.6 + hiss * 0.26 + stick * 0.68) * bark
-        }
-        HiHatArticulation::ClosedEdge => {
-            let lower = triangle(4_800.0 * tilt, t) * 0.18 + triangle(5_900.0 * tilt, t) * 0.12;
-            let bark = 1.0 - smoothstep((phase / 0.7).clamp(0.0, 1.0));
-            (bright * 0.5 + metallic * 0.62 + lower * 0.45 + stick * 0.72) * bark
-        }
-        HiHatArticulation::HalfOpen => {
-            let sizzle = hash_noise(t * 14_500.0) * (0.34 + 0.3 * (phase * 4.8).sin().abs());
-            bright * 0.46 + metallic * 0.3 + hiss * 0.34 + sizzle + stick * 0.5
-        }
-        HiHatArticulation::FullOpen => {
-            let wash = hash_noise(t * 9_600.0) * (0.45 + 0.3 * smoothstep(phase * 1.25));
-            (bright * 0.38 + metallic * 0.24 + hiss * 0.42 + wash + stick * 0.36).tanh()
-        }
-        HiHatArticulation::FootSplash => {
-            let chick = hash_noise(t * 17_000.0) * (1.0 - smoothstep(phase * 4.2));
-            let pedal = triangle(1_250.0, t) * 0.12;
-            (chick * 0.72 + hiss * 0.2 + pedal).tanh()
-        }
-    }
+    let bark = 1.0 - smoothstep((phase / 0.58).clamp(0.0, 1.0));
+    (bright * 0.54 + metallic * 0.6 + hiss * 0.26 + stick * 0.68) * bark
 }
 
-fn articulation_envelope(articulation: HiHatArticulation, phase: f32, velocity: f32) -> f32 {
+fn articulation_envelope(phase: f32, velocity: f32) -> f32 {
     let attack = 0.002;
-    let decay = match articulation {
-        HiHatArticulation::ClosedTip => 1.05 - velocity * 0.14,
-        HiHatArticulation::ClosedEdge => 0.92 - velocity * 0.12,
-        HiHatArticulation::HalfOpen => 0.54 - velocity * 0.06,
-        HiHatArticulation::FullOpen => 0.29,
-        HiHatArticulation::FootSplash => 0.82,
-    };
-    let fast_choke = match articulation {
-        HiHatArticulation::ClosedTip => 1.0 - smoothstep((phase / 0.95).clamp(0.0, 1.0)),
-        HiHatArticulation::ClosedEdge => 1.0 - smoothstep((phase / 1.05).clamp(0.0, 1.0)),
-        _ => 1.0,
-    };
+    let decay = 1.05 - velocity * 0.14;
+    let fast_choke = 1.0 - smoothstep((phase / 0.95).clamp(0.0, 1.0));
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
     let decay_env = (-phase * decay * 5.0).exp();
     (attack_env * decay_env * fast_choke).clamp(0.0, 1.0)

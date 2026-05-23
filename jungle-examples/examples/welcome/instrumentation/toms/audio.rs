@@ -33,26 +33,8 @@ pub(super) async fn play(
     audio.play(request).await.map_err(|_| Error::Submission)
 }
 
-fn resolve_articulation(note: &Note<TomsArticulation>) -> TomsArticulation {
-    if !matches!(note.articulation, TomsArticulation::StandardHit) {
-        return note.articulation;
-    }
-
-    let velocity = note.velocity.clamp(0.0, 1.0);
-    let duration_ms = note.duration.as_secs_f32() * 1_000.0;
-
-    if velocity >= 0.84 && duration_ms <= 120.0 {
-        return TomsArticulation::DoubleHit;
-    }
-    if velocity >= 0.64 {
-        return TomsArticulation::AccentedHit;
-    }
-    TomsArticulation::StandardHit
-}
-
 fn synthesize_toms(note: &Note<TomsArticulation>) -> (Arc<[f32]>, f32, f32) {
-    let articulation = resolve_articulation(note);
-    let duration = articulation_duration(note.duration, articulation);
+    let duration = articulation_duration(note.duration);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let base_hz = midi_to_hz(note.n_midi).clamp(70.0, 220.0);
     let velocity = note.velocity.clamp(0.0, 1.0).powf(0.72);
@@ -61,39 +43,25 @@ fn synthesize_toms(note: &Note<TomsArticulation>) -> (Arc<[f32]>, f32, f32) {
     for i in 0..frame_count {
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
-        let sample = articulation_sample(articulation, base_hz, phase, t, velocity);
-        let env = articulation_envelope(articulation, phase, velocity);
+        let sample = articulation_sample(base_hz, phase, t, velocity);
+        let env = articulation_envelope(phase, velocity);
         pcm.push((sample * env).clamp(-1.0, 1.0));
     }
 
-    let (gain, playback_rate) = articulation_output_shape(articulation);
+    let (gain, playback_rate) = articulation_output_shape();
     (Arc::from(pcm), gain, playback_rate)
 }
 
-fn articulation_duration(base: Duration, articulation: TomsArticulation) -> Duration {
-    let scale = match articulation {
-        TomsArticulation::StandardHit => 0.42,
-        TomsArticulation::AccentedHit => 0.48,
-        TomsArticulation::DoubleHit => 0.56,
-    };
+fn articulation_duration(base: Duration) -> Duration {
+    let scale = 0.42;
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.04))
 }
 
-fn articulation_output_shape(articulation: TomsArticulation) -> (f32, f32) {
-    match articulation {
-        TomsArticulation::StandardHit => (0.98, 1.0),
-        TomsArticulation::AccentedHit => (1.09, 0.998),
-        TomsArticulation::DoubleHit => (1.14, 0.994),
-    }
+fn articulation_output_shape() -> (f32, f32) {
+    (0.98, 1.0)
 }
 
-fn articulation_sample(
-    articulation: TomsArticulation,
-    base_hz: f32,
-    phase: f32,
-    t: f32,
-    velocity: f32,
-) -> f32 {
+fn articulation_sample(base_hz: f32, phase: f32, t: f32, velocity: f32) -> f32 {
     let pitch_env = 1.0 - smoothstep((phase * 6.4).clamp(0.0, 1.0));
     let sweep_hz = base_hz * (1.0 + pitch_env * 0.34 + velocity * 0.08);
 
@@ -110,31 +78,12 @@ fn articulation_sample(
 
     let base = head + second_mode + shell + floor_coupling;
 
-    match articulation {
-        TomsArticulation::StandardHit => (base + transient * 0.38).tanh(),
-        TomsArticulation::AccentedHit => (base * 1.06 + transient * 0.6).tanh(),
-        TomsArticulation::DoubleHit => {
-            let lag_t = (t - 0.0105).max(0.0);
-            let lag_phase = ((phase - 0.052) * 7.0).max(0.0);
-            let lag_pitch_env = 1.0 - smoothstep(lag_phase.clamp(0.0, 1.0));
-            let lag_hz = base_hz * 0.76 * (1.0 + lag_pitch_env * 0.28);
-            let lag_head = sine(lag_hz, lag_t) * 0.62;
-            let lag_mode = sine(lag_hz * 1.48, lag_t) * (-lag_phase * 6.4).exp() * 0.24;
-            let lag_shell = triangle(lag_hz * 2.24, lag_t) * (-lag_phase * 6.9).exp() * 0.17;
-            let lag_attack = (hash_noise(lag_t * 11_100.0) * 0.52 + sine(1_930.0, lag_t) * 0.32)
-                * (1.0 - smoothstep((lag_phase * 3.8).clamp(0.0, 1.0)));
-            (base * 0.94 + transient * 0.52 + lag_head + lag_mode + lag_shell + lag_attack).tanh()
-        }
-    }
+    (base + transient * 0.38).tanh()
 }
 
-fn articulation_envelope(articulation: TomsArticulation, phase: f32, velocity: f32) -> f32 {
+fn articulation_envelope(phase: f32, velocity: f32) -> f32 {
     let attack = 0.0022;
-    let (head_decay, shell_decay) = match articulation {
-        TomsArticulation::StandardHit => (1.08 - velocity * 0.18, 0.78),
-        TomsArticulation::AccentedHit => (0.96 - velocity * 0.14, 0.68),
-        TomsArticulation::DoubleHit => (0.88, 0.58),
-    };
+    let (head_decay, shell_decay) = (1.08 - velocity * 0.18, 0.78);
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
     let head = (-phase * head_decay * 4.4).exp();
     let shell = (-phase * shell_decay * 8.2).exp();
