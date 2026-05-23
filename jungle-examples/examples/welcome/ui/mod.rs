@@ -1,6 +1,6 @@
 use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
 use crate::RuntimeClient;
-use iced::widget::{column, container, text, Row};
+use iced::widget::{column, container, text, Row, Space};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -199,36 +199,28 @@ impl WelcomeUi {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let mut panels = Row::new()
-            .spacing(12)
-            .height(Length::Fill)
-            .width(Length::Fill);
-        let mut panel_count = 0usize;
+        let mut panels: Vec<Element<'_, Message>> = Vec::new();
 
         if let Some(viewer) = self.bass.as_ref() {
-            panels = panels.push(panel("Bass", viewer.view(), Panel::Bass));
-            panel_count += 1;
+            panels.push(panel("Bass", viewer.view(), Panel::Bass));
         }
         if let Some(viewer) = self.lead_guitarist.as_ref() {
-            panels = panels.push(panel("Lead Guitarist", viewer.view(), Panel::LeadGuitarist));
-            panel_count += 1;
+            panels.push(panel("Lead Guitarist", viewer.view(), Panel::LeadGuitarist));
         }
         if let Some(viewer) = self.lead_vocalist.as_ref() {
-            panels = panels.push(panel("Lead Vocalist", viewer.view(), Panel::LeadVocalist));
-            panel_count += 1;
+            panels.push(panel("Lead Vocalist", viewer.view(), Panel::LeadVocalist));
         }
         if let Some(viewer) = self.rhythm_guitarist.as_ref() {
-            panels = panels.push(panel(
+            panels.push(panel(
                 "Rhythm Guitarist",
                 viewer.view(),
                 Panel::RhythmGuitarist,
             ));
-            panel_count += 1;
         }
         if let Some(viewer) = self.drums.as_ref() {
-            panels = panels.push(panel("Drums", viewer.view(), Panel::Drums));
-            panel_count += 1;
+            panels.push(panel("Drums", viewer.view(), Panel::Drums));
         }
+        let panel_count = panels.len();
 
         let content: Element<'_, Message> = if panel_count == 0 {
             text("No animals selected. Pass --animals with one or more names to show panels.")
@@ -236,7 +228,39 @@ impl WelcomeUi {
                 .color(Color::from_rgb8(198, 229, 211))
                 .into()
         } else {
-            panels.into()
+            let mut panel_iter = panels.into_iter();
+            let mut top_row = Row::new()
+                .spacing(12)
+                .width(Length::Fill)
+                .height(Length::FillPortion(1));
+
+            for _ in 0..3 {
+                if let Some(panel) = panel_iter.next() {
+                    top_row = top_row.push(panel);
+                }
+            }
+
+            if panel_count <= 3 {
+                top_row.into()
+            } else {
+                let mut bottom_row = Row::new()
+                    .spacing(12)
+                    .width(Length::Fill)
+                    .height(Length::FillPortion(1))
+                    .push(Space::new().width(Length::FillPortion(1)));
+
+                for panel in panel_iter {
+                    bottom_row = bottom_row.push(panel);
+                }
+
+                bottom_row = bottom_row.push(Space::new().width(Length::FillPortion(1)));
+
+                column![top_row, bottom_row]
+                    .spacing(12)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            }
         };
 
         container(content)
