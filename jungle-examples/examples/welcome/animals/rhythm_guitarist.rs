@@ -1,9 +1,9 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{AtomicDualHit, Rest, Tetrad};
+use crate::effect::{AtomicDualHit, Monad, Rest, Tetrad};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
-    Strum as LaneStrum,
+    Strum as LaneStrum, Vocals, VocalsArticulation,
 };
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -28,6 +28,7 @@ impl Default for RhythmGuitaristState {
 
 pub type RhythmGuitaristSeed = ();
 const RHYTHM_GUITAR_LANE_ID: u32 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32;
+const RHYTHM_BACKUP_VOCALS_LANE_ID: u32 = RHYTHM_GUITAR_LANE_ID + 1;
 const INTRO_START_DELAY_TICKS: u32 = 0;
 
 pub struct RhythmGuitarist;
@@ -168,6 +169,53 @@ impl Act for IntroStartDelay {
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("intro start delay should complete");
+    }
+}
+
+pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
+#[jungle::act]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+    for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
+{
+    type Effect =
+        Monad<Vocals, VocalsArticulation, RHYTHM_BACKUP_VOCALS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &ElectricGuitarArticulation,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        VocalsArticulation::GroupHarmony
+    }
+
+    fn absorb(
+        _state: &mut ElectricGuitarArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("backup vocal playback should succeed");
+    }
+}
+
+pub struct MergeJoinUnit;
+#[jungle::act]
+impl Act for MergeJoinUnit {
+    type Effect = Rest<RHYTHM_GUITAR_LANE_ID, 0>;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(
+        _state: &ElectricGuitarArticulation,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        ()
+    }
+
+    fn absorb(
+        _state: &mut ElectricGuitarArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join merge should complete");
     }
 }
 
@@ -614,14 +662,22 @@ pub struct RhythmPart13(
     Step<Pick<49, 192, 192>>,
     Step<Pick<48, 192, 192>>,
     Step<Pick<46, 192, 192>>,
-    Step<Pluck<54, 47, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
-    Step<Pick<42, 384, 384>>,
-    Step<Pluck<56, 49, 384, 384>>,
-    Step<Pick<48, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
+    Join<Step<Pluck<54, 47, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<42, 384, 384>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pluck<56, 49, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<48, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pick<49, 192, 192>>,
@@ -758,14 +814,22 @@ pub struct RhythmPart18(
     Step<Pick<49, 192, 192>>,
     Step<Pick<48, 192, 192>>,
     Step<Pick<46, 192, 192>>,
-    Step<Pluck<54, 47, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
-    Step<Pick<42, 384, 384>>,
-    Step<Pluck<56, 49, 384, 384>>,
-    Step<Pick<48, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
+    Join<Step<Pluck<54, 47, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<42, 384, 384>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pluck<56, 49, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<48, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pick<49, 192, 192>>,
@@ -982,14 +1046,22 @@ pub struct RhythmPart25(
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct RhythmPart26(
     Step<Pick<46, 192, 192>>,
-    Step<Pluck<54, 47, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
-    Step<Pick<42, 384, 384>>,
-    Step<Pluck<56, 49, 384, 384>>,
-    Step<Pick<48, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
+    Join<Step<Pluck<54, 47, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<42, 384, 384>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pluck<56, 49, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<48, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pick<49, 192, 192>>,
@@ -1358,14 +1430,22 @@ pub struct RhythmPart38(
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct RhythmPart39(
-    Step<Pluck<54, 47, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
-    Step<Pick<42, 384, 384>>,
-    Step<Pluck<56, 49, 384, 384>>,
-    Step<Pick<48, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
+    Join<Step<Pluck<54, 47, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<42, 384, 384>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pluck<56, 49, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<48, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pick<49, 192, 192>>,
@@ -1389,14 +1469,22 @@ pub struct RhythmPart39(
 pub struct RhythmPart40(
     Step<Pick<42, 96, 192>>,
     Step<Pick<39, 96, 192>>,
-    Step<Pluck<54, 47, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
-    Step<Pick<42, 384, 384>>,
-    Step<Pluck<56, 49, 384, 384>>,
-    Step<Pick<48, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
+    Join<Step<Pluck<54, 47, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<42, 384, 384>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pluck<56, 49, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<48, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pick<49, 192, 192>>,
@@ -1420,14 +1508,22 @@ pub struct RhythmPart41(
     Step<Pick<44, 96, 192>>,
     Step<Pick<42, 96, 192>>,
     Step<Pick<39, 96, 192>>,
-    Step<Pluck<54, 47, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
-    Step<Pick<42, 384, 384>>,
-    Step<Pluck<56, 49, 384, 384>>,
-    Step<Pick<48, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
+    Join<Step<Pluck<54, 47, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<42, 384, 384>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pluck<56, 49, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<48, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pluck<58, 51, 192, 192>>,
     Step<Pick<49, 192, 192>>,
@@ -1451,14 +1547,22 @@ pub struct RhythmPart42(
     Step<Pick<44, 96, 192>>,
     Step<Pick<42, 96, 192>>,
     Step<Pick<39, 96, 192>>,
-    Step<Pluck<54, 47, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
-    Step<Pick<42, 384, 384>>,
-    Step<Pluck<56, 49, 384, 384>>,
-    Step<Pick<48, 384, 384>>,
-    Step<Pick<46, 384, 384>>,
-    Step<Pick<44, 384, 384>>,
+    Join<Step<Pluck<54, 47, 384, 384>>, Step<HarmonySing<71, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<42, 384, 384>>, Step<HarmonySing<66, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pluck<56, 49, 384, 384>>, Step<HarmonySing<73, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<48, 384, 384>>, Step<HarmonySing<72, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<46, 384, 384>>, Step<HarmonySing<70, 384, 384>>>,
+    Step<MergeJoinUnit>,
+    Join<Step<Pick<44, 384, 384>>, Step<HarmonySing<68, 384, 384>>>,
+    Step<MergeJoinUnit>,
     Step<Pluck<58, 51, 288, 288>>,
     Step<Pluck<56, 49, 288, 288>>,
     Step<Pluck<52, 45, 288, 288>>,
@@ -1470,7 +1574,6 @@ pub struct RhythmPart42(
     Step<Pluck<46, 39, 192, 576>>,
     Step<Pluck<46, 39, 3456, 0>>,
 );
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
