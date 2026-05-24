@@ -1777,83 +1777,14 @@ impl Act for RhythmTailStub {
 }
 
 #[cfg(test)]
-pub struct RhythmJoinPluckStub<
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_TICK: u32,
-    const REST_TICK: u32,
->;
-
-#[cfg(test)]
-#[jungle::act]
-impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
-    for RhythmJoinPluckStub<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
-{
-    type Effect = Dyad<
-        ElectricGuitar,
-        ElectricGuitarArticulation,
-        RHYTHM_GUITAR_LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_TICK,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
-
-    fn emit(state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        state.articulation
-    }
-
-    fn absorb(_state: &mut RhythmGuitaristState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("test join pluck playback should succeed");
-    }
-}
-
-#[cfg(test)]
-pub struct RhythmHarmonySingStub<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-
-#[cfg(test)]
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
-    for RhythmHarmonySingStub<NOTE, NOTE_TICK, REST_TICK>
-{
-    type Effect = Monad<
-        Vocals,
-        VocalsArticulation,
-        RHYTHM_GUITAR_LANE_ID,
-        NOTE,
-        NOTE_TICK,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        VocalsArticulation::GroupHarmony
-    }
-
-    fn absorb(_state: &mut RhythmGuitaristState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("test harmony playback should succeed");
-    }
-}
-
-#[cfg(test)]
-pub struct RhythmMergeStub;
-
-#[cfg(test)]
-#[jungle::act]
-impl Act for RhythmMergeStub {
-    type Effect = RhythmTailStubEffect;
-    type Input = ((), ());
-    type Output = ();
-
-    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
-
-    fn absorb(_state: &mut RhythmGuitaristState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("test join merge should succeed");
-    }
-}
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct RhythmJoinMonad100JoinAndRest(
+    Step<JoinPick<46, 100, 0>>,
+    Join<Step<JoinPluck<54, 47, 100, 0>>, Step<HarmonySing<71, 100, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+);
 
 #[cfg(test)]
 pub struct RhythmLoopDecrementStub;
@@ -1876,8 +1807,7 @@ impl Act for RhythmLoopDecrementStub {
 #[cfg(test)]
 #[derive(Flow)]
 pub struct RhythmJoinMonad100LoopBody(
-    Join<Step<RhythmJoinPluckStub<54, 47, 100, 0>>, Step<RhythmHarmonySingStub<71, 100, 0>>>,
-    Step<RhythmMergeStub>,
+    Transparent<IntroSectionMeta, RhythmJoinMonad100JoinAndRest>,
     Step<RhythmTailStub>,
     Step<RhythmTailStub>,
     Step<RhythmTailStub>,
