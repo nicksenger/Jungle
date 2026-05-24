@@ -26,6 +26,8 @@ pub struct WelcomeAnimals(
     RhythmGuitarist,
     Bass,
     Drums,
+    BassJoinMonad100Animal,
+    RhythmJoinMonad100Animal,
     ConditionalJoinMonad100Animal,
 );
 

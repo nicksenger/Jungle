@@ -1737,154 +1737,120 @@ pub struct RhythmPart42(
     Step<Pluck<46, 39, 192, 576>>,
     Step<Pluck<46, 39, 3456, 0>>,
 );
+
+#[cfg(test)]
+#[derive(Flow)]
+#[jungle(focus = ElectricGuitarArticulation)]
+pub struct RhythmJoinMonad100Flow(
+    Join<Step<JoinPluck<54, 47, 100, 0>>, Step<HarmonySing<71, 100, 0>>>,
+    Step<MergeUnit>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+    Step<JoinPick<46, 100, 0>>,
+);
+
+#[cfg(test)]
+pub struct RhythmJoinMonad100Animal;
+
+#[cfg(test)]
+#[jungle::animal(id = 79, generation = 0)]
+impl Animal for RhythmJoinMonad100Animal {
+    type State = RhythmGuitaristState;
+    type Seed = RhythmGuitaristState;
+    type Journey = RhythmJoinMonad100Flow;
+}
+
+#[cfg(test)]
+impl From<RhythmGuitaristState> for () {
+    fn from(_value: RhythmGuitaristState) -> Self {}
+}
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
     use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
 
-    use super::RhythmGuitarist;
+    use super::super::RhythmGuitarist;
+    use super::{RhythmGuitaristState, RhythmJoinMonad100Animal};
     use crate::ecosystem::TheJungle;
 
-    #[derive(Optic, Default, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-    pub(super) struct LocalJoinTailState {
-        tail_runs: u32,
+    async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
+        let completion = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let status = client
+                    .journey_details(journey_id)
+                    .await
+                    .expect("journey details should be available");
+                match status {
+                    JourneyStatus::Completed => break,
+                    JourneyStatus::Dead | JourneyStatus::Stopped => {
+                        panic!("journey reached terminal non-complete status: {status:?}");
+                    }
+                    JourneyStatus::Created | JourneyStatus::Alive => {}
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+        assert!(completion.is_ok(), "journey should complete within timeout");
     }
 
-    pub struct LocalTimedEffect;
-    #[jungle::effect(id = 960)]
-    impl<J> Effect<J> for LocalTimedEffect {
-        type In = u64;
-        type Out = ();
-        type Err = ();
+    struct JourneyStreamStats {
+        total_events: u32,
+        failed_count: u32,
+    }
 
-        #[allow(clippy::manual_async_fn)]
-        fn effect(
-            _jungle: &J,
-            delay_ms: Self::In,
-        ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-            async move {
-                std::thread::sleep(Duration::from_millis(delay_ms));
-                Ok(())
+    async fn collect_stream_stats(
+        mut stream: jungle_sdk::client::JourneyUpdateSubscription,
+        journey_id: uuid::Uuid,
+    ) -> JourneyStreamStats {
+        let mut total_events = 0_u32;
+        let mut failed_count = 0_u32;
+        let mut last_sequence_id: Option<u64> = None;
+
+        while let Some(next) = stream.next().await {
+            let update = next.expect("streamed journey update should succeed");
+            if let Some(prev) = last_sequence_id {
+                assert!(
+                    update.sequence_id > prev,
+                    "stream sequence ids should be strictly increasing"
+                );
+            }
+            last_sequence_id = Some(update.sequence_id);
+
+            match update.event {
+                RunnerUpdateOut::EffectInput { uuid, .. }
+                | RunnerUpdateOut::EffectSuccessOutput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    total_events += 1;
+                }
+                RunnerUpdateOut::EffectFailureOutput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    failed_count += 1;
+                    total_events += 1;
+                }
+                RunnerUpdateOut::SleepScheduled { uuid, .. }
+                | RunnerUpdateOut::SleepFired { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    total_events += 1;
+                }
             }
         }
-    }
 
-    struct LocalJoinLeft;
-    #[jungle::act]
-    impl Act for LocalJoinLeft {
-        type Effect = LocalTimedEffect;
-        type Input = ();
-        type Output = ();
-
-        fn emit(
-            _state: &LocalJoinTailState,
-            _input: Self::Input,
-        ) -> <Self::Effect as EffectSchema>::In {
-            1
+        JourneyStreamStats {
+            total_events,
+            failed_count,
         }
-
-        fn absorb(_state: &mut LocalJoinTailState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-            output.expect("left join branch should succeed");
-        }
-    }
-
-    struct LocalJoinRight;
-    #[jungle::act]
-    impl Act for LocalJoinRight {
-        type Effect = LocalTimedEffect;
-        type Input = ();
-        type Output = ();
-
-        fn emit(
-            _state: &LocalJoinTailState,
-            _input: Self::Input,
-        ) -> <Self::Effect as EffectSchema>::In {
-            1
-        }
-
-        fn absorb(_state: &mut LocalJoinTailState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-            output.expect("right join branch should succeed");
-        }
-    }
-
-    struct LocalJoinMerge;
-    #[jungle::act]
-    impl Act for LocalJoinMerge {
-        type Effect = LocalTimedEffect;
-        type Input = ((), ());
-        type Output = ();
-
-        fn emit(
-            _state: &LocalJoinTailState,
-            _input: Self::Input,
-        ) -> <Self::Effect as EffectSchema>::In {
-            1
-        }
-
-        fn absorb(_state: &mut LocalJoinTailState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-            output.expect("join merge should succeed");
-        }
-    }
-
-    struct LocalJoinTailStub;
-    #[jungle::act]
-    impl Act for LocalJoinTailStub {
-        type Effect = LocalTimedEffect;
-        type Input = ();
-        type Output = ();
-
-        fn emit(
-            _state: &LocalJoinTailState,
-            _input: Self::Input,
-        ) -> <Self::Effect as EffectSchema>::In {
-            1
-        }
-
-        fn absorb(state: &mut LocalJoinTailState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-            output.expect("tail stub should succeed");
-            state.tail_runs = state.tail_runs.saturating_add(1);
-        }
-    }
-
-    #[derive(Flow)]
-    struct LocalJoinTailFlow(
-        Join<Step<LocalJoinLeft>, Step<LocalJoinRight>>,
-        Step<LocalJoinMerge>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-        Step<LocalJoinTailStub>,
-    );
-
-    struct LocalRhythmJoinTailAnimal;
-    #[jungle::animal(id = 0, generation = 0)]
-    impl Animal for LocalRhythmJoinTailAnimal {
-        type State = LocalJoinTailState;
-        type Seed = LocalJoinTailState;
-        type Journey = LocalJoinTailFlow;
-    }
-
-    #[derive(Animals)]
-    struct LocalRhythmJoinTailAnimals(LocalRhythmJoinTailAnimal);
-
-    struct LocalRhythmJoinTailZoo;
-    impl Ecosystem for LocalRhythmJoinTailZoo {
-        const NAME: &'static str = "welcome-rhythm-join-tail-zoo";
-        type Animals = LocalRhythmJoinTailAnimals;
-    }
-
-    impl From<LocalJoinTailState> for () {
-        fn from(_value: LocalJoinTailState) -> Self {}
     }
 
     #[tokio::test]
@@ -1924,83 +1890,84 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn join_then_tail_streams_events_and_completes_with_local_client() {
-        let namespace = format!("welcome-rhythm-join-tail-repro-{}", uuid::Uuid::new_v4());
+    async fn join_monad_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client() {
+        const PARALLEL_JOURNEYS: usize = 5;
+
+        let namespace = format!("welcome-rhythm-join-monad-100-test-{}", uuid::Uuid::new_v4());
         let client = LocalClient::builder()
             .namespace(&namespace)
             .build()
             .await
             .expect("local client should build");
 
-        let journey_id = client
-            .start_journey::<LocalRhythmJoinTailAnimal>(
-                postcard::to_allocvec(&LocalJoinTailState::default()).expect("seed should serialize"),
-            )
+        let audio_engine = crate::audio::AudioEngine::start_default()
             .await
-            .expect("journey should start");
-        let mut subscription = client
-            .subscribe_step_updates(journey_id, None)
-            .await
-            .expect("subscribe_step_updates should succeed");
-        let worker = JungleWorker::new(LocalRhythmJoinTailZoo, client.clone());
-        let worker_handle = tokio::spawn(async move {
-            let _ = worker.spawn().await;
-        });
+            .expect("shared real audio engine should start");
+        let shared_audio_handle = audio_engine.handle();
+        let shared_metronome = crate::metronome::Metronome::spawn(123.0);
+        shared_metronome.arm_start_barrier();
 
-        let started_at = Instant::now();
-        let mut step_event_count = 0_u32;
-        let mut last_status = JourneyStatus::Created;
-        loop {
-            assert!(
-                started_at.elapsed() <= Duration::from_secs(8),
-                "journey should complete and publish events before timeout (last status: {last_status:?})"
-            );
-            match tokio::time::timeout(Duration::from_millis(200), subscription.next()).await {
-                Ok(Some(next)) => {
-                    let update = next.expect("streamed journey update should succeed");
-                    let (update_journey_id, should_count) = match update.event {
-                        RunnerUpdateOut::EffectInput { uuid, .. }
-                        | RunnerUpdateOut::EffectSuccessOutput { uuid, .. }
-                        | RunnerUpdateOut::EffectFailureOutput { uuid, .. } => (uuid, true),
-                        RunnerUpdateOut::SleepScheduled { uuid, .. }
-                        | RunnerUpdateOut::SleepFired { uuid, .. } => (uuid, false),
-                    };
-                    assert_eq!(update_journey_id, journey_id, "stream update should match journey");
-                    if should_count {
-                        step_event_count += 1;
-                    }
-                }
-                Ok(None) => break,
-                Err(_) => {
-                    let polled_status = client
-                        .journey_details(journey_id)
-                        .await
-                        .expect("journey details should succeed");
-                    last_status = polled_status;
-                    match polled_status {
-                        JourneyStatus::Completed => break,
-                        JourneyStatus::Dead | JourneyStatus::Stopped => {
-                            panic!(
-                                "journey reached terminal non-complete status: {polled_status:?}"
-                            );
-                        }
-                        JourneyStatus::Created | JourneyStatus::Alive => {}
-                    }
-                }
-            }
+        let mut worker_handles = Vec::with_capacity(PARALLEL_JOURNEYS);
+        for _ in 0..PARALLEL_JOURNEYS {
+            let ecosystem =
+                TheJungle::new_with_metronome(shared_audio_handle.clone(), 123.0, shared_metronome.clone());
+            let worker = JungleWorker::new(ecosystem, client.clone());
+            worker_handles.push(tokio::spawn(async move {
+                let _ = worker.spawn().await;
+            }));
         }
 
-        let status = client
-            .journey_details(journey_id)
-            .await
-            .expect("journey details should succeed");
-        assert_eq!(status, JourneyStatus::Completed);
-        assert!(
-            step_event_count >= 24,
-            "expected at least 24 subscribed journey step events, got {step_event_count}"
-        );
+        let seed = postcard::to_allocvec(&RhythmGuitaristState::default()).expect("seed should serialize");
+        let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
+        for index in 0..PARALLEL_JOURNEYS {
+            let journey_id = client
+                .start_journey::<RhythmJoinMonad100Animal>(seed.clone())
+                .await
+                .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
+            journey_ids.push(journey_id);
+        }
 
-        worker_handle.abort();
-        let _ = worker_handle.await;
+        let mut stream_tasks = Vec::with_capacity(PARALLEL_JOURNEYS);
+        for journey_id in &journey_ids {
+            let stream = client
+                .subscribe_step_updates(*journey_id, None)
+                .await
+                .expect("subscribe_step_updates should succeed");
+            let stream_journey_id = *journey_id;
+            stream_tasks.push(tokio::spawn(async move {
+                collect_stream_stats(stream, stream_journey_id).await
+            }));
+        }
+
+        let release_task = tokio::spawn(async move {
+            shared_metronome.release_start_barrier_on_downbeat().await;
+        });
+
+        let completion_futures = journey_ids
+            .iter()
+            .copied()
+            .map(|journey_id| await_completion(&client, journey_id));
+        futures::future::join_all(completion_futures).await;
+
+        for (index, stream_task) in stream_tasks.into_iter().enumerate() {
+            let stats = stream_task
+                .await
+                .unwrap_or_else(|err| panic!("stream task {index} should join cleanly: {err}"));
+            assert!(
+                stats.total_events >= 24,
+                "journey {index} stream should emit at least 24 updates, got {}",
+                stats.total_events,
+            );
+            assert_eq!(
+                stats.failed_count, 0,
+                "journey {index} should not have failed task transitions"
+            );
+        }
+
+        let _ = release_task.await;
+        for worker_handle in worker_handles {
+            worker_handle.abort();
+            let _ = worker_handle.await;
+        }
     }
 }
