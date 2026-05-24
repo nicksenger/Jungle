@@ -2763,23 +2763,36 @@ mod tests {
 
     #[tokio::test]
     async fn conditional_join_monad_100_ticks_zero_rest_completes_with_local_client() {
+        const PARALLEL_JOURNEYS: usize = 5;
+
         let client = LocalClient::builder()
             .namespace("welcome-conditional-join-monad-test")
             .build()
             .await
             .expect("local client should build");
 
-        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
-        let ecosystem = TheJungle::new(audio_handle, 123.0);
-        let metronome = ecosystem.metronome().clone();
-        metronome.arm_start_barrier();
+        let mut audio_engines = Vec::with_capacity(PARALLEL_JOURNEYS);
+        let mut audio_handles = Vec::with_capacity(PARALLEL_JOURNEYS);
+        for index in 0..PARALLEL_JOURNEYS {
+            let engine = crate::audio::AudioEngine::start_default()
+                .await
+                .unwrap_or_else(|err| panic!("real audio engine {index} should start: {err}"));
+            audio_handles.push(engine.handle());
+            audio_engines.push(engine);
+        }
+        let shared_metronome = crate::metronome::Metronome::spawn(123.0);
+        shared_metronome.arm_start_barrier();
 
-        let worker = JungleWorker::new(ecosystem, client.clone());
-        let worker_handle = tokio::spawn(async move {
-            let _ = worker.spawn().await;
-        });
+        let mut worker_handles = Vec::with_capacity(PARALLEL_JOURNEYS);
+        for audio_handle in audio_handles {
+            let ecosystem =
+                TheJungle::new_with_metronome(audio_handle, 123.0, shared_metronome.clone());
+            let worker = JungleWorker::new(ecosystem, client.clone());
+            worker_handles.push(tokio::spawn(async move {
+                let _ = worker.spawn().await;
+            }));
+        }
 
-        const PARALLEL_JOURNEYS: usize = 5;
         let seeds = [
             super::DrummerState {
                 groove_variant_is_46: true,
@@ -2821,7 +2834,7 @@ mod tests {
         }
 
         let release_task = tokio::spawn(async move {
-            metronome.release_start_barrier_on_downbeat().await;
+            shared_metronome.release_start_barrier_on_downbeat().await;
         });
 
         let completion_futures = journey_ids
@@ -2869,7 +2882,9 @@ mod tests {
         );
 
         let _ = release_task.await;
-        worker_handle.abort();
-        let _ = worker_handle.await;
+        for worker_handle in worker_handles {
+            worker_handle.abort();
+            let _ = worker_handle.await;
+        }
     }
 }

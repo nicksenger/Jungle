@@ -22,6 +22,11 @@ pub struct TheJungle {
 
 impl TheJungle {
     pub fn new(audio_handle: AudioHandle, bpm: f32) -> Self {
+        let metronome = Metronome::spawn(bpm);
+        Self::new_with_metronome(audio_handle, bpm, metronome)
+    }
+
+    pub fn new_with_metronome(audio_handle: AudioHandle, bpm: f32, metronome: Metronome) -> Self {
         Self {
             rhythm_guitar: ElectricGuitar::new(audio_handle.clone()),
             bass: Bass::new(audio_handle.clone()),
@@ -32,7 +37,7 @@ impl TheJungle {
             toms: Toms::new(audio_handle.clone()),
             cymbal: Cymbal::new(audio_handle),
             bpm,
-            metronome: Metronome::spawn(bpm),
+            metronome,
         }
     }
 
