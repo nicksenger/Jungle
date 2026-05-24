@@ -1,15 +1,16 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::typosaurus::num::consts::U1;
 
 use crate::effect::Rest;
 use crate::instrumentation::{Sing as LaneSing, VocalsArticulation};
 
-use super::DecrementCounter;
-use super::LeadVocalist;
+use super::{Double, LeadVocalist};
 
 const LEAD_VOCALS_LANE_ID: u32 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32;
-type Sing<const NOTE: u8, const NOTE_TICK: u8, const REST_TICK: u8> =
+type Sing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneSing<NOTE, NOTE_TICK, REST_TICK, LEAD_VOCALS_LANE_ID>;
+type Sing68Tick = Step<Sing<68, 96, 96>>;
+type Sing68Hold = Step<Sing<68, 192, 192>>;
+type Sing63Hold = Step<Sing<63, 192, 192>>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LeadVocalistState {
@@ -21,7 +22,7 @@ pub struct LeadVocalistState {
 impl Default for LeadVocalistState {
     fn default() -> Self {
         Self {
-            articulation: VocalsArticulation::SirenScream,
+            articulation: VocalsArticulation::Clean,
             intro_pickup_remaining: 1,
         }
     }
@@ -54,66 +55,601 @@ impl Act for IntroStartDelay {
     }
 }
 
-pub struct IntroPickupRemaining;
-impl LoopCondition<LeadVocalistState> for IntroPickupRemaining {
-    type Arg = ();
-
-    fn should_continue(state: &LeadVocalistState) -> bool {
+pub struct UseLeadVocalPickup;
+impl Condition<(LeadVocalistState, ())> for UseLeadVocalPickup {
+    fn choose((state, _): &(LeadVocalistState, ())) -> bool {
         state.intro_pickup_remaining > 0
     }
 }
 
-pub struct IntroNeedsPickup;
-impl<In> Condition<(LeadVocalistState, In)> for IntroNeedsPickup {
-    fn choose(input: &(LeadVocalistState, In)) -> bool {
-        input.0.intro_pickup_remaining == 0
+pub struct ConsumeLeadVocalPickup;
+#[jungle::act]
+impl Act for ConsumeLeadVocalPickup {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+    }
+
+    fn absorb(
+        state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("lead vocal pickup consume should complete");
+        state.intro_pickup_remaining = state.intro_pickup_remaining.saturating_sub(1);
     }
 }
 
-type IntroPickupCounter = Lens<LeadVocalistState, U1>;
-pub type AdvanceIntroPickup = DecrementCounter<IntroPickupCounter>;
+pub struct MergeLeadVocalPickupChoice;
+#[jungle::act]
+impl Act for MergeLeadVocalPickupChoice {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+    }
+
+    fn absorb(
+        _state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("lead vocal pickup branch merge should complete");
+    }
+}
+
+#[derive(Flow)]
+pub struct LeadVocalPickupBranch(
+    Transparent<IntroSectionMeta, LeadVocalSection01>,
+    Step<ConsumeLeadVocalPickup>,
+);
+
+#[derive(Flow)]
+pub struct LeadVocalMainBranch(Step<ConsumeLeadVocalPickup>);
 
 #[derive(Flow)]
 pub struct LeadVocalIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
-    Transparent<IntroSectionMeta, IntroBreath>,
-    Transparent<IntroSectionMeta, IntroPickupLoop>,
-    Transparent<IntroSectionMeta, Conditional<IntroNeedsPickup, IntroRelease, IntroRest>>,
+    Conditional<UseLeadVocalPickup, LeadVocalPickupBranch, LeadVocalMainBranch>,
+    Step<MergeLeadVocalPickupChoice>,
+    Transparent<IntroSectionMeta, LeadVocalSection02>,
+    Transparent<IntroSectionMeta, LeadVocalSection03>,
 );
 
 #[derive(Flow)]
-pub struct IntroBreath(Transparent<IntroSectionMeta, IntroBreathPhrase>);
+pub struct LeadVocalSection01(
+    Transparent<IntroSectionMeta, LeadVocalPart01>,
+    Transparent<IntroSectionMeta, LeadVocalPart02>,
+    Transparent<IntroSectionMeta, LeadVocalPart03>,
+    Transparent<IntroSectionMeta, LeadVocalPart04>,
+    Transparent<IntroSectionMeta, LeadVocalPart05>,
+    Transparent<IntroSectionMeta, LeadVocalPart06>,
+);
 
 #[derive(Flow)]
-#[jungle(focus = VocalsArticulation)]
-pub struct IntroBreathPhrase(Step<Sing<58, 1, 192>>);
+pub struct LeadVocalSection02(
+    Transparent<IntroSectionMeta, LeadVocalPart07>,
+    Transparent<IntroSectionMeta, LeadVocalPart08>,
+    Transparent<IntroSectionMeta, LeadVocalPart09>,
+    Transparent<IntroSectionMeta, LeadVocalPart10>,
+    Transparent<IntroSectionMeta, LeadVocalPart11>,
+    Transparent<IntroSectionMeta, LeadVocalPart12>,
+);
 
 #[derive(Flow)]
-pub struct IntroPickupLoop(While<IntroPickupRemaining, IntroPickupBody>);
-
-#[derive(Flow)]
-pub struct IntroPickupBody(
-    Transparent<IntroSectionMeta, IntroPickupPhrase>,
-    Transparent<IntroSectionMeta, Step<AdvanceIntroPickup>>,
+pub struct LeadVocalSection03(
+    Transparent<IntroSectionMeta, LeadVocalPart13>,
+    Transparent<IntroSectionMeta, LeadVocalPart14>,
+    Transparent<IntroSectionMeta, LeadVocalPart15>,
+    Transparent<IntroSectionMeta, LeadVocalPart16>,
+    Transparent<IntroSectionMeta, LeadVocalPart17>,
+    Transparent<IntroSectionMeta, LeadVocalPart18>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroPickupPhrase(Step<Sing<58, 192, 192>>);
-
-#[derive(Flow)]
-pub struct IntroRest(Transparent<IntroSectionMeta, IntroRestPhrase>);
+pub struct LeadVocalPart01(
+    Step<Sing<58, 192, 6528>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<71, 384, 384>>,
+    Step<Sing<68, 192, 576>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<66, 192, 576>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<71, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<71, 480, 480>>,
+    Step<Sing<66, 192, 192>>,
+    Transparent<IntroSectionMeta, LeadVocalPart01Cadence>,
+);
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroRestPhrase(Step<Sing<58, 1, 192>>);
-
-#[derive(Flow)]
-pub struct IntroRelease(Transparent<IntroSectionMeta, IntroReleasePhrase>);
+pub struct LeadVocalPart02(
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Transparent<IntroSectionMeta, LeadVocalTriple68Hold>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 480, 768>>,
+    Step<Sing<58, 96, 96>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<61, 288, 672>>,
+    Step<Sing<61, 192, 192>>,
+    Transparent<IntroSectionMeta, LeadVocalTriple63Hold>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<66, 96, 96>>,
+);
 
 #[derive(Flow)]
 #[jungle(focus = VocalsArticulation)]
-pub struct IntroReleasePhrase(Step<Sing<58, 1, 192>>);
+pub struct LeadVocalPart03(
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<61, 96, 96>>,
+    Step<Sing<63, 288, 288>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<63, 192, 576>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<70, 384, 384>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 96, 576>>,
+    Step<Sing<68, 96, 96>>,
+);
+
+#[derive(Flow)]
+pub struct Sing68Triplet(
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+);
+
+#[derive(Flow)]
+pub struct Sing73Triplet(
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<73, 96, 96>>,
+);
+
+#[derive(Flow)]
+pub struct TripleSing68Triplet(Double<Sing68Triplet>, Sing68Triplet);
+
+#[derive(Flow)]
+pub struct LeadVocalPart01Cadence(Double<Sing68Tick>, Sing68Hold);
+
+#[derive(Flow)]
+pub struct LeadVocalTriple68Hold(Double<Sing68Hold>, Sing68Hold);
+
+#[derive(Flow)]
+pub struct LeadVocalTriple63Hold(Double<Sing63Hold>, Sing63Hold);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart04(
+    TripleSing68Triplet,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<70, 384, 672>>,
+    Step<Sing<70, 480, 1056>>,
+    Step<Sing<70, 384, 768>>,
+    Step<Sing<70, 384, 672>>,
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<70, 96, 96>>,
+    Step<Sing<70, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<73, 576, 576>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart05(
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<71, 384, 384>>,
+    Step<Sing<68, 192, 384>>,
+    Step<Sing<59, 192, 192>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<66, 192, 576>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<71, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<71, 480, 480>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart06(
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 480, 768>>,
+    Step<Sing<58, 96, 96>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 384, 768>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart07(
+    Step<Sing<61, 96, 96>>,
+    Step<Sing<63, 288, 288>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<63, 192, 576>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<70, 384, 384>>,
+    Step<Sing<68, 192, 384>>,
+    Step<Sing<68, 384, 384>>,
+    Step<Sing<66, 192, 864>>,
+    Step<Sing<68, 96, 768>>,
+    Step<Sing<68, 96, 480>>,
+    Step<Sing<70, 384, 672>>,
+    Step<Sing<70, 480, 1056>>,
+    Step<Sing<70, 384, 768>>,
+    Step<Sing<70, 384, 672>>,
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<70, 96, 96>>,
+    Step<Sing<70, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart08(
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<73, 384, 12864>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<71, 384, 384>>,
+    Step<Sing<68, 192, 384>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<66, 192, 384>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<71, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart09(
+    Step<Sing<71, 288, 288>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<68, 128, 128>>,
+    Step<Sing<68, 129, 129>>,
+    Step<Sing<68, 128, 128>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 480, 768>>,
+    Step<Sing<58, 96, 96>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 384, 768>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart10(
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<61, 96, 96>>,
+    Step<Sing<63, 288, 288>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<66, 288, 288>>,
+    Step<Sing<63, 192, 576>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 96, 96>>,
+    Step<Sing<70, 384, 384>>,
+    Step<Sing<68, 192, 384>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart11(
+    Step<Sing<68, 384, 384>>,
+    Step<Sing<66, 192, 960>>,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
+    Step<Sing<70, 384, 672>>,
+    Step<Sing<70, 480, 1056>>,
+    Step<Sing<73, 576, 1344>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<70, 384, 7488>>,
+    Step<Sing<60, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart12(
+    Step<Sing<65, 192, 192>>,
+    Step<Sing<68, 384, 384>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<63, 384, 384>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<63, 96, 96>>,
+    Step<Sing<61, 288, 288>>,
+    Step<Sing<61, 384, 960>>,
+    Step<Sing<65, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<65, 192, 192>>,
+    Step<Sing<63, 192, 192>>,
+    Step<Sing<61, 192, 192>>,
+    Step<Sing<61, 960, 1344>>,
+    Step<Sing<59, 192, 384>>,
+    Step<Sing<59, 192, 192>>,
+    Step<Sing<58, 576, 960>>,
+    Step<Sing<59, 192, 384>>,
+    Step<Sing<59, 192, 192>>,
+    Step<Sing<58, 576, 960>>,
+    Step<Sing<59, 192, 384>>,
+    Step<Sing<63, 768, 768>>,
+    Step<Sing<68, 384, 768>>,
+    Step<Sing<75, 1536, 1536>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart13(
+    Step<Sing<75, 768, 768>>,
+    Step<Sing<75, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<75, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<73, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<68, 192, 384>>,
+    Step<Sing<70, 384, 40512>>,
+    Step<Sing<73, 192, 192>>,
+    Step<Sing<73, 128, 128>>,
+    Step<Sing<73, 129, 129>>,
+    Step<Sing<73, 128, 128>>,
+    Step<Sing<73, 384, 1152>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart14(
+    Step<Sing<71, 128, 128>>,
+    Step<Sing<73, 129, 129>>,
+    Step<Sing<70, 128, 128>>,
+    Step<Sing<75, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<73, 192, 1152>>,
+    Step<Sing<73, 192, 192>>,
+    Step<Sing<73, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<73, 384, 384>>,
+    Step<Sing<66, 3456, 3456>>,
+    Step<Sing<73, 384, 384>>,
+    Step<Sing<71, 96, 96>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<73, 288, 288>>,
+    Step<Sing<71, 192, 576>>,
+    Step<Sing<75, 192, 192>>,
+    Step<Sing<75, 192, 192>>,
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<71, 96, 96>>,
+    Step<Sing<75, 384, 384>>,
+    Step<Sing<73, 192, 192>>,
+    Step<Sing<73, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart15(
+    Step<Sing<72, 192, 192>>,
+    Step<Sing<73, 192, 192>>,
+    Step<Sing<72, 192, 192>>,
+    Step<Sing<73, 192, 192>>,
+    Step<Sing<72, 96, 576>>,
+    Sing73Triplet,
+    Sing73Triplet,
+    Sing73Triplet,
+    Sing73Triplet,
+    Step<Sing<75, 384, 672>>,
+    Step<Sing<75, 480, 480>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<66, 192, 576>>,
+    Step<Sing<70, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart16(
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 96, 96>>,
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<70, 384, 384>>,
+    Step<Sing<68, 192, 384>>,
+    Step<Sing<68, 384, 384>>,
+    Step<Sing<66, 192, 672>>,
+    Step<Sing<70, 288, 288>>,
+    Step<Sing<70, 192, 672>>,
+    Step<Sing<70, 288, 672>>,
+    Step<Sing<69, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<70, 480, 864>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 576>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 96, 96>>,
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<70, 384, 384>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart17(
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 576>>,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
+    Sing68Triplet,
+    Step<Sing<70, 384, 672>>,
+    Step<Sing<70, 288, 288>>,
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<68, 96, 96>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 288, 288>>,
+    Step<Sing<66, 192, 576>>,
+    Step<Sing<70, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = VocalsArticulation)]
+pub struct LeadVocalPart18(
+    Step<Sing<70, 192, 192>>,
+    Step<Sing<70, 96, 96>>,
+    Step<Sing<73, 96, 96>>,
+    Step<Sing<70, 384, 384>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 192>>,
+    Step<Sing<68, 192, 192>>,
+    Step<Sing<66, 192, 480>>,
+    Step<Sing<75, 192, 192>>,
+    Step<Sing<75, 96, 96>>,
+    Step<Sing<70, 288, 288>>,
+    Step<Sing<73, 288, 288>>,
+    Step<Sing<70, 384, 480>>,
+    Step<Sing<72, 288, 864>>,
+    Step<Sing<73, 192, 192>>,
+);
 
 #[cfg(test)]
 mod tests {
@@ -127,7 +663,7 @@ mod tests {
     use crate::ecosystem::TheJungle;
 
     #[tokio::test]
-    async fn intro_journey_runs_to_completion_end_to_end() {
+    async fn full_song_journey_starts_and_stays_alive() {
         let client = LocalClient::builder()
             .namespace("welcome-lead-vocal-intro-test")
             .build()
@@ -148,27 +684,17 @@ mod tests {
             .await
             .expect("journey should start");
 
-        let completion = tokio::time::timeout(Duration::from_secs(40), async {
-            loop {
-                let status = client
-                    .journey_details(journey_id)
-                    .await
-                    .expect("journey details should be available");
-                match status {
-                    JourneyStatus::Completed => break,
-                    JourneyStatus::Dead | JourneyStatus::Stopped => {
-                        panic!("journey reached terminal non-complete status: {status:?}");
-                    }
-                    JourneyStatus::Created | JourneyStatus::Alive => {}
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .expect("journey details should be available");
+        match status {
+            JourneyStatus::Dead | JourneyStatus::Stopped => {
+                panic!("journey reached terminal non-complete status: {status:?}");
             }
-        })
-        .await;
-        assert!(
-            completion.is_ok(),
-            "intro journey did not complete before timeout"
-        );
+            JourneyStatus::Created | JourneyStatus::Alive | JourneyStatus::Completed => {}
+        }
 
         worker_handle.abort();
         let _ = worker_handle.await;

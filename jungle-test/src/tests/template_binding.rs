@@ -264,12 +264,12 @@ fn template_binding_executes_with_animal_specific_actions() {
     let counter_request_2: i32 = counter
         .next_request_typed::<_, i32>(2)
         .expect("counter second request");
-    assert_eq!(counter_request_2, 7);
+    assert_eq!(counter_request_2, 10);
     let counter_emitted_2: i32 = counter
-        .complete_typed::<i32, (), i32>(Ok(7))
+        .complete_typed::<i32, (), i32>(Ok(10))
         .expect("counter second completion");
-    assert_eq!(counter_emitted_2, 7);
-    assert_eq!(counter.into_state(), 7);
+    assert_eq!(counter_emitted_2, 10);
+    assert_eq!(counter.into_state(), 10);
 
     let mut ledger = ManualExecutor::<LedgerAnimal>::new(0);
     let ledger_request_1: i32 = ledger
@@ -284,12 +284,12 @@ fn template_binding_executes_with_animal_specific_actions() {
     let ledger_request_2: i32 = ledger
         .next_request_typed::<_, i32>(2)
         .expect("ledger second request");
-    assert_eq!(ledger_request_2, 18);
+    assert_eq!(ledger_request_2, 0);
     let ledger_emitted_2: i32 = ledger
-        .complete_typed::<i32, (), i32>(Ok(18))
+        .complete_typed::<i32, (), i32>(Ok(0))
         .expect("ledger second completion");
-    assert_eq!(ledger_emitted_2, 18);
-    assert_eq!(ledger.into_state(), 18);
+    assert_eq!(ledger_emitted_2, 0);
+    assert_eq!(ledger.into_state(), 0);
 }
 
 #[test]
@@ -358,12 +358,12 @@ fn template_binding_bound_journey_is_executor_ready() {
     let req_2: i32 = executor
         .next_request_typed::<_, i32>(2)
         .expect("second bound request");
-    assert_eq!(req_2, 8);
+    assert_eq!(req_2, 12);
     let out_2: i32 = executor
-        .complete_typed::<i32, (), i32>(Ok(8))
+        .complete_typed::<i32, (), i32>(Ok(12))
         .expect("second bound completion");
-    assert_eq!(out_2, 8);
-    assert_eq!(executor.into_state(), 8);
+    assert_eq!(out_2, 12);
+    assert_eq!(executor.into_state(), 12);
 }
 
 struct LocalTemplateAlphaAnimal;
@@ -933,11 +933,25 @@ fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs()
     assert_type_eq!(Replaced, ExpectedReplaced);
 
     type ScopedTraverse = <ScopedLensFlow as TraverseFlow>::Output;
-    type ScopedExpected = Scoped<LensBranch, <ScopedLensFlow as ReplaceFlow>::Output>;
+    type ScopedExpected = Scoped<
+        LensBranch,
+        jungle_sdk::typosaurus::list![
+            jungle_sdk::types::Step<LensReadSpareSpec>,
+            jungle_sdk::types::Step<LensCommitSpec>
+        ],
+    >;
     assert_type_eq!(ScopedTraverse, ScopedExpected);
 
     type ScopedMultiTraverse = <ScopedLensMultiField as TraverseFlow>::Output;
-    type ScopedMultiExpected = Scoped<LensBranch, <ScopedLensMultiField as ReplaceFlow>::Output>;
+    type ScopedMultiExpected = Scoped<
+        LensBranch,
+        jungle_sdk::typosaurus::list![
+            jungle_sdk::types::Step<LensReadSpareSpec>,
+            jungle_sdk::types::Step<LensCommitSpec>,
+            jungle_sdk::types::Step<LensReadSpareSpec>,
+            jungle_sdk::types::Step<LensCommitSpec>
+        ],
+    >;
     assert_type_eq!(ScopedMultiTraverse, ScopedMultiExpected);
 }
 
@@ -1017,6 +1031,7 @@ impl From<i32> for NestedLensRootState {
 struct NestedBranchSpareSpec;
 struct NestedLeafValueSpec;
 struct NestedLeafNoiseSpec;
+struct NestedAutoBranchSpec;
 
 type NestedBranchSpareCarrier = Lens<NestedLensBranch, U1>;
 type NestedLeafValueCarrier = Lens<NestedLensLeaf, U0>;
@@ -1106,6 +1121,24 @@ impl Act for NestedLeafNoiseSpec {
     type Output = i32;
 }
 
+#[allow(private_interfaces)]
+#[jungle::act]
+impl Act for NestedAutoBranchSpec {
+    type Effect = TemplateAddEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &NestedLensBranch, input: Self::Input) -> i32 {
+        state.spare + input
+    }
+
+    fn absorb(state: &mut NestedLensBranch, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let out = output.expect("nested auto branch step should succeed");
+        state.spare = out;
+        out
+    }
+}
+
 #[derive(Flow)]
 #[jungle(focus = NestedLensLeaf)]
 struct NestedLeafScopedFlow(Step<NestedLeafValueSpec>, Step<NestedLeafNoiseSpec>);
@@ -1189,6 +1222,415 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
     worker_handle.abort();
     let _ = worker_handle.await;
 }
+
+#[derive(Flow)]
+struct InheritedAutoFocusLeafFlow(Step<NestedAutoBranchSpec>);
+
+#[derive(Flow)]
+struct InheritedAutoFocusMiddleFlow(InheritedAutoFocusLeafFlow);
+
+#[derive(Flow)]
+#[jungle(focus = NestedLensBranch)]
+struct InheritedAutoFocusRootFlow(InheritedAutoFocusMiddleFlow);
+
+struct InheritedAutoFocusAnimal;
+#[jungle::animal(observe, id = 54, generation = 0)]
+impl Animal for InheritedAutoFocusAnimal {
+    type State = NestedLensRootState;
+    type Seed = i32;
+    type Journey = InheritedAutoFocusRootFlow;
+}
+
+impl Observe for InheritedAutoFocusAnimal {
+    type Appearance = NestedLensRootState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct InheritedAutoFocusAnimals(InheritedAutoFocusAnimal);
+
+struct InheritedAutoFocusZoo;
+impl Ecosystem for InheritedAutoFocusZoo {
+    const NAME: &'static str = "late-bound-inherited-auto-focus-zoo";
+    type Animals = InheritedAutoFocusAnimals;
+}
+
+#[tokio::test]
+async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_auto_act() {
+    let mut exec = ManualExecutor::<InheritedAutoFocusAnimal>::new(NestedLensRootState::default());
+    let req: i32 = exec
+        .next_request_typed::<_, i32>(3)
+        .expect("request should deserialize");
+    assert_eq!(req, 3);
+    let emitted: i32 = exec
+        .complete_typed::<i32, (), i32>(Ok(4))
+        .expect("completion should deserialize");
+    assert_eq!(emitted, 4);
+    assert!(exec.is_complete(), "single-step focused flow should complete");
+    let state = exec.into_state();
+    assert_eq!(state.branch.spare, 4);
+
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-inherited-auto-focus-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(InheritedAutoFocusZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<InheritedAutoFocusAnimal>(
+            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: NestedLensRootState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    assert_eq!(appearance.branch.spare, 4);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+pub struct InheritedControlCondition;
+impl Condition<(NestedLensRootState, i32)> for InheritedControlCondition {
+    fn choose((_state, _): &(NestedLensRootState, i32)) -> bool {
+        true
+    }
+}
+
+#[derive(Flow)]
+struct InheritedAutoFocusMiddleConditionalFlow(
+    Conditional<InheritedControlCondition, InheritedAutoFocusLeafFlow, InheritedAutoFocusLeafFlow>,
+);
+
+
+#[derive(Flow)]
+#[jungle(focus = NestedLensBranch)]
+struct InheritedAutoFocusConditionalRootFlow(InheritedAutoFocusMiddleConditionalFlow);
+
+
+struct InheritedAutoFocusConditionalAnimal;
+#[jungle::animal(observe, id = 55, generation = 0)]
+impl Animal for InheritedAutoFocusConditionalAnimal {
+    type State = NestedLensRootState;
+    type Seed = i32;
+    type Journey = InheritedAutoFocusConditionalRootFlow;
+}
+
+impl Observe for InheritedAutoFocusConditionalAnimal {
+    type Appearance = NestedLensRootState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+
+#[derive(Animals)]
+struct InheritedAutoFocusConditionalAnimals(InheritedAutoFocusConditionalAnimal);
+
+
+struct InheritedAutoFocusConditionalZoo;
+impl Ecosystem for InheritedAutoFocusConditionalZoo {
+    const NAME: &'static str = "late-bound-inherited-auto-focus-conditional-zoo";
+    type Animals = InheritedAutoFocusConditionalAnimals;
+}
+
+
+#[tokio::test]
+async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branch_progression() {
+    let mut exec =
+        ManualExecutor::<InheritedAutoFocusConditionalAnimal>::new(NestedLensRootState::default());
+    let req: i32 = exec
+        .next_request_typed::<_, i32>(3)
+        .expect("request should deserialize");
+    assert_eq!(req, 3);
+    let emitted: Either<i32, i32> = exec
+        .complete_typed::<i32, (), Either<i32, i32>>(Ok(4))
+        .expect("completion should deserialize");
+    assert_eq!(emitted, Either::Left(4));
+    assert!(
+        exec.is_complete(),
+        "conditional wrapper should progress exactly one chosen branch"
+    );
+    let state = exec.into_state();
+    assert_eq!(state.branch.spare, 4);
+
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-inherited-auto-focus-conditional-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(InheritedAutoFocusConditionalZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<InheritedAutoFocusConditionalAnimal>(
+            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: NestedLensRootState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    assert_eq!(appearance.branch.spare, 4);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConditionalJoinMergeState {
+    marker: i32,
+    left_join_hits: u8,
+    right_join_hits: u8,
+    join_merge_hits: u8,
+    terminal_merge_hits: u8,
+}
+
+pub struct PreferLeftWhenMarkerNonNegative;
+impl Condition<(ConditionalJoinMergeState, ())> for PreferLeftWhenMarkerNonNegative {
+    fn choose((state, _): &(ConditionalJoinMergeState, ())) -> bool {
+        state.marker != -1
+    }
+}
+
+pub struct LeftJoinFirstSpec;
+#[jungle::act]
+impl Act for LeftJoinFirstSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("left join first should succeed");
+        state.left_join_hits = state.left_join_hits.saturating_add(1);
+    }
+}
+
+pub struct LeftJoinSecondSpec;
+#[jungle::act]
+impl Act for LeftJoinSecondSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("left join second should succeed");
+        state.left_join_hits = state.left_join_hits.saturating_add(1);
+    }
+}
+
+pub struct RightJoinFirstSpec;
+#[jungle::act]
+impl Act for RightJoinFirstSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("right join first should succeed");
+        state.right_join_hits = state.right_join_hits.saturating_add(1);
+    }
+}
+
+pub struct RightJoinSecondSpec;
+#[jungle::act]
+impl Act for RightJoinSecondSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("right join second should succeed");
+        state.right_join_hits = state.right_join_hits.saturating_add(1);
+    }
+}
+
+pub struct MergeJoinedUnitSpec;
+#[jungle::act]
+impl Act for MergeJoinedUnitSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("merge joined unit should succeed");
+        state.join_merge_hits = state.join_merge_hits.saturating_add(1);
+    }
+}
+
+pub struct MergeConditionalUnitSpec;
+#[jungle::act]
+impl Act for MergeConditionalUnitSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(
+        state: &mut ConditionalJoinMergeState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("merge conditional unit should succeed");
+        state.terminal_merge_hits = state.terminal_merge_hits.saturating_add(1);
+    }
+}
+
+#[derive(Flow)]
+struct LeftJoinBranch(
+    Join<Step<LeftJoinFirstSpec>, Step<LeftJoinSecondSpec>>,
+    Step<MergeJoinedUnitSpec>,
+);
+
+#[derive(Flow)]
+struct RightJoinBranch(
+    Join<Step<RightJoinFirstSpec>, Step<RightJoinSecondSpec>>,
+    Step<MergeJoinedUnitSpec>,
+);
+
+#[derive(Flow)]
+struct ConditionalJoinMergeFlow(
+    Conditional<PreferLeftWhenMarkerNonNegative, LeftJoinBranch, RightJoinBranch>,
+    Step<MergeConditionalUnitSpec>,
+);
+
+struct ConditionalJoinMergeAnimal;
+#[jungle::animal(observe, id = 56, generation = 0)]
+impl Animal for ConditionalJoinMergeAnimal {
+    type State = ConditionalJoinMergeState;
+    type Seed = ConditionalJoinMergeState;
+    type Journey = ConditionalJoinMergeFlow;
+}
+
+impl Observe for ConditionalJoinMergeAnimal {
+    type Appearance = ConditionalJoinMergeState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct ConditionalJoinMergeAnimals(ConditionalJoinMergeAnimal);
+
+struct ConditionalJoinMergeZoo;
+impl Ecosystem for ConditionalJoinMergeZoo {
+    const NAME: &'static str = "conditional-join-merge-local-client-zoo";
+    type Animals = ConditionalJoinMergeAnimals;
+}
+
+impl From<ConditionalJoinMergeState> for () {
+    fn from(_value: ConditionalJoinMergeState) -> Self {}
+}
+
+#[tokio::test]
+async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_end() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("conditional-join-merge-local-client-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(ConditionalJoinMergeZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<ConditionalJoinMergeAnimal>(
+            postcard::to_allocvec(&ConditionalJoinMergeState {
+                marker: 1,
+                ..ConditionalJoinMergeState::default()
+            })
+            .expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: ConditionalJoinMergeState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+
+    assert_eq!(appearance.left_join_hits + appearance.right_join_hits, 2);
+    assert_eq!(appearance.join_merge_hits, 1);
+    assert_eq!(appearance.terminal_merge_hits, 1);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ComplexAlphaState {

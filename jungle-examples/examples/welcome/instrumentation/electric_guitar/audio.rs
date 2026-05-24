@@ -40,14 +40,7 @@ fn synthesize_electric_guitar(
 
 impl ElectricGuitarArticulation {
     fn is_rhythm_voice(self) -> bool {
-        matches!(
-            self,
-            Self::RhythmSustained
-                | Self::RhythmPalmMuted
-                | Self::Choked
-                | Self::RhythmicScratch
-                | Self::ChordSlide
-        )
+        matches!(self, Self::RhythmSustained)
     }
 }
 
@@ -107,53 +100,7 @@ fn lead_tone(articulation: ElectricGuitarArticulation) -> ElectricTone {
             cab_smoothing: 0.16,
             body_mix: 0.06,
         },
-        ElectricGuitarArticulation::PalmMuted => ElectricTone {
-            drive: 2.6,
-            pick_amount: 0.36,
-            cab_smoothing: 0.12,
-            body_mix: 0.05,
-        },
-        ElectricGuitarArticulation::HammerOn => ElectricTone {
-            drive: 2.4,
-            pick_amount: 0.08,
-            cab_smoothing: 0.14,
-            body_mix: 0.05,
-        },
-        ElectricGuitarArticulation::PullOff => ElectricTone {
-            drive: 2.2,
-            pick_amount: 0.04,
-            cab_smoothing: 0.14,
-            body_mix: 0.05,
-        },
-        ElectricGuitarArticulation::NaturalHarmonic => ElectricTone {
-            drive: 1.9,
-            pick_amount: 0.12,
-            cab_smoothing: 0.17,
-            body_mix: 0.04,
-        },
-        ElectricGuitarArticulation::PinchHarmonic => ElectricTone {
-            drive: 3.4,
-            pick_amount: 0.22,
-            cab_smoothing: 0.12,
-            body_mix: 0.08,
-        },
-        ElectricGuitarArticulation::Slide => ElectricTone {
-            drive: 2.8,
-            pick_amount: 0.2,
-            cab_smoothing: 0.15,
-            body_mix: 0.06,
-        },
-        ElectricGuitarArticulation::RhythmicRake => ElectricTone {
-            drive: 2.5,
-            pick_amount: 0.46,
-            cab_smoothing: 0.09,
-            body_mix: 0.1,
-        },
-        ElectricGuitarArticulation::RhythmSustained
-        | ElectricGuitarArticulation::RhythmPalmMuted
-        | ElectricGuitarArticulation::Choked
-        | ElectricGuitarArticulation::RhythmicScratch
-        | ElectricGuitarArticulation::ChordSlide => ElectricTone {
+        ElectricGuitarArticulation::RhythmSustained => ElectricTone {
             drive: 2.6,
             pick_amount: 0.3,
             cab_smoothing: 0.12,
@@ -165,18 +112,7 @@ fn lead_tone(articulation: ElectricGuitarArticulation) -> ElectricTone {
 fn lead_duration(base: Duration, articulation: ElectricGuitarArticulation) -> Duration {
     let scale = match articulation {
         ElectricGuitarArticulation::Sustained => 1.15,
-        ElectricGuitarArticulation::PalmMuted => 0.38,
-        ElectricGuitarArticulation::HammerOn => 0.9,
-        ElectricGuitarArticulation::PullOff => 0.82,
-        ElectricGuitarArticulation::NaturalHarmonic => 1.2,
-        ElectricGuitarArticulation::PinchHarmonic => 0.95,
-        ElectricGuitarArticulation::Slide => 1.0,
-        ElectricGuitarArticulation::RhythmicRake => 0.22,
-        ElectricGuitarArticulation::RhythmSustained
-        | ElectricGuitarArticulation::RhythmPalmMuted
-        | ElectricGuitarArticulation::Choked
-        | ElectricGuitarArticulation::RhythmicScratch
-        | ElectricGuitarArticulation::ChordSlide => 0.8,
+        ElectricGuitarArticulation::RhythmSustained => 0.8,
     };
 
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.03))
@@ -185,25 +121,14 @@ fn lead_duration(base: Duration, articulation: ElectricGuitarArticulation) -> Du
 fn lead_output_shape(articulation: ElectricGuitarArticulation) -> (f32, f32) {
     match articulation {
         ElectricGuitarArticulation::Sustained => (0.86, 1.0),
-        ElectricGuitarArticulation::PalmMuted => (0.73, 1.0),
-        ElectricGuitarArticulation::HammerOn => (0.8, 1.01),
-        ElectricGuitarArticulation::PullOff => (0.72, 0.995),
-        ElectricGuitarArticulation::NaturalHarmonic => (0.8, 2.0),
-        ElectricGuitarArticulation::PinchHarmonic => (0.9, 1.0),
-        ElectricGuitarArticulation::Slide => (0.84, 1.0),
-        ElectricGuitarArticulation::RhythmicRake => (0.66, 1.0),
-        ElectricGuitarArticulation::RhythmSustained
-        | ElectricGuitarArticulation::RhythmPalmMuted
-        | ElectricGuitarArticulation::Choked
-        | ElectricGuitarArticulation::RhythmicScratch
-        | ElectricGuitarArticulation::ChordSlide => (0.8, 1.0),
+        ElectricGuitarArticulation::RhythmSustained => (0.8, 1.0),
     }
 }
 
 fn lead_sample(
     articulation: ElectricGuitarArticulation,
     base_hz: f32,
-    phase: f32,
+    _phase: f32,
     t: f32,
     expression: Expression,
     tone: ElectricTone,
@@ -217,61 +142,18 @@ fn lead_sample(
             let f = base_hz * (1.0 + bend + vibrato);
             lead_stack(f, t, 0.95, tone.drive)
         }
-        ElectricGuitarArticulation::PalmMuted => {
-            let f = base_hz * (1.0 + bend * 0.2);
-            lead_stack(f, t, 0.65, tone.drive) * (1.0 - phase * 0.82)
-        }
-        ElectricGuitarArticulation::HammerOn => {
-            let attack_f = base_hz * (0.94 + 0.06 * smoothstep(phase * 6.0));
-            lead_stack(attack_f * (1.0 + vibrato * 0.7), t, 0.74, tone.drive)
-        }
-        ElectricGuitarArticulation::PullOff => {
-            let f = base_hz * (1.0 + bend * 0.18 + vibrato * 0.85);
-            lead_stack(f, t, 0.68, tone.drive) * (1.0 - phase * 0.42)
-        }
-        ElectricGuitarArticulation::NaturalHarmonic => {
-            let f = base_hz * 2.0 * (1.0 + vibrato * 0.4);
-            let bell = sine(f, t) * 0.68 + sine(f * 2.0, t) * 0.24 + sine(f * 3.0, t) * 0.1;
-            (bell * 1.35).tanh()
-        }
-        ElectricGuitarArticulation::PinchHarmonic => {
-            let f = base_hz * 3.8 * (1.0 + bend * 0.6 + vibrato * 0.5);
-            let squeal = saw(f, t) * 0.75 + sine(f * 1.5, t) * 0.26 + sine(f * 2.5, t) * 0.17;
-            lead_amp_distortion(squeal, tone.drive + 0.8)
-        }
-        ElectricGuitarArticulation::Slide => {
-            let glide = smoothstep(phase);
-            let f = base_hz * (0.74 + glide * 0.26) * (1.0 + vibrato * 0.9);
-            lead_stack(f, t, 0.86, tone.drive)
-        }
-        ElectricGuitarArticulation::RhythmicRake => {
-            let noise = hash_noise(t * 20_000.0) * 0.78;
-            let muted_tone = lead_stack(base_hz * 0.5, t, 0.4, tone.drive) * 0.42;
-            (noise + muted_tone) * (1.0 - phase).max(0.0)
-        }
-        ElectricGuitarArticulation::RhythmSustained
-        | ElectricGuitarArticulation::RhythmPalmMuted
-        | ElectricGuitarArticulation::Choked
-        | ElectricGuitarArticulation::RhythmicScratch
-        | ElectricGuitarArticulation::ChordSlide => lead_stack(base_hz, t, 0.7, tone.drive),
+        ElectricGuitarArticulation::RhythmSustained => lead_stack(base_hz, t, 0.7, tone.drive),
     }
 }
 
 fn lead_envelope(articulation: ElectricGuitarArticulation, phase: f32) -> f32 {
     let attack = match articulation {
-        ElectricGuitarArticulation::HammerOn => 0.07,
-        ElectricGuitarArticulation::PullOff => 0.03,
-        ElectricGuitarArticulation::RhythmicRake => 0.01,
-        ElectricGuitarArticulation::PinchHarmonic => 0.015,
-        _ => 0.018,
+        ElectricGuitarArticulation::Sustained => 0.018,
+        ElectricGuitarArticulation::RhythmSustained => 0.018,
     };
-
     let decay = match articulation {
-        ElectricGuitarArticulation::PalmMuted => 0.96,
-        ElectricGuitarArticulation::RhythmicRake => 1.35,
-        ElectricGuitarArticulation::NaturalHarmonic => 0.38,
-        ElectricGuitarArticulation::PinchHarmonic => 0.58,
-        _ => 0.5,
+        ElectricGuitarArticulation::Sustained => 0.5,
+        ElectricGuitarArticulation::RhythmSustained => 0.5,
     };
 
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
@@ -375,42 +257,7 @@ fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) ->
             cab_smoothing: 0.14,
             body_mix: 0.06,
         },
-        ElectricGuitarArticulation::RhythmPalmMuted => RhythmTone {
-            drive: 2.25 + groove.amp_jitter,
-            pick_amount: 0.34 * groove.downstroke,
-            pre_gain: 0.96,
-            cab_smoothing: 0.11,
-            body_mix: 0.09,
-        },
-        ElectricGuitarArticulation::Choked => RhythmTone {
-            drive: 2.0 + groove.amp_jitter * 0.8,
-            pick_amount: 0.3,
-            pre_gain: 0.92,
-            cab_smoothing: 0.1,
-            body_mix: 0.08,
-        },
-        ElectricGuitarArticulation::RhythmicScratch => RhythmTone {
-            drive: 1.65 + groove.amp_jitter * 0.7,
-            pick_amount: 0.48,
-            pre_gain: 0.9,
-            cab_smoothing: 0.08,
-            body_mix: 0.12,
-        },
-        ElectricGuitarArticulation::ChordSlide => RhythmTone {
-            drive: 2.45 + groove.amp_jitter,
-            pick_amount: 0.24,
-            pre_gain: 1.02,
-            cab_smoothing: 0.13,
-            body_mix: 0.06,
-        },
-        ElectricGuitarArticulation::Sustained
-        | ElectricGuitarArticulation::PalmMuted
-        | ElectricGuitarArticulation::HammerOn
-        | ElectricGuitarArticulation::PullOff
-        | ElectricGuitarArticulation::NaturalHarmonic
-        | ElectricGuitarArticulation::PinchHarmonic
-        | ElectricGuitarArticulation::Slide
-        | ElectricGuitarArticulation::RhythmicRake => RhythmTone {
+        ElectricGuitarArticulation::Sustained => RhythmTone {
             drive: 2.4,
             pick_amount: 0.3,
             pre_gain: 1.0,
@@ -423,11 +270,7 @@ fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) ->
 fn rhythm_duration(base: Duration, articulation: ElectricGuitarArticulation) -> Duration {
     let scale = match articulation {
         ElectricGuitarArticulation::RhythmSustained => 1.1,
-        ElectricGuitarArticulation::RhythmPalmMuted => 0.34,
-        ElectricGuitarArticulation::Choked => 0.2,
-        ElectricGuitarArticulation::RhythmicScratch => 0.16,
-        ElectricGuitarArticulation::ChordSlide => 0.95,
-        _ => 1.0,
+        ElectricGuitarArticulation::Sustained => 1.0,
     };
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.025))
 }
@@ -435,18 +278,14 @@ fn rhythm_duration(base: Duration, articulation: ElectricGuitarArticulation) -> 
 fn rhythm_output_shape(articulation: ElectricGuitarArticulation) -> (f32, f32) {
     match articulation {
         ElectricGuitarArticulation::RhythmSustained => (0.9, 1.0),
-        ElectricGuitarArticulation::RhythmPalmMuted => (0.78, 1.0),
-        ElectricGuitarArticulation::Choked => (0.74, 1.0),
-        ElectricGuitarArticulation::RhythmicScratch => (0.69, 1.0),
-        ElectricGuitarArticulation::ChordSlide => (0.88, 1.0),
-        _ => (0.84, 1.0),
+        ElectricGuitarArticulation::Sustained => (0.84, 1.0),
     }
 }
 
 fn rhythm_sample(
     articulation: ElectricGuitarArticulation,
     root_hz: f32,
-    phase: f32,
+    _phase: f32,
     t: f32,
     expression: Expression,
     groove: GrooveShape,
@@ -460,27 +299,7 @@ fn rhythm_sample(
             let f = root_hz * (1.0 + bend + wobble);
             rhythm_stack(f, t, 0.88, 0.45 * groove.downstroke)
         }
-        ElectricGuitarArticulation::RhythmPalmMuted => {
-            let f = root_hz * (1.0 + bend * 0.25);
-            rhythm_stack(f, t, 0.68, 0.22 * groove.downstroke) * (1.0 - phase * 0.92)
-        }
-        ElectricGuitarArticulation::Choked => {
-            let f = root_hz * (1.0 + bend * 0.14);
-            let gate = (1.0 - smoothstep(phase * 3.6)).max(0.0);
-            rhythm_stack(f, t, 0.72, 0.34) * gate
-        }
-        ElectricGuitarArticulation::RhythmicScratch => {
-            let noise = hash_noise((t + root_hz * 0.0002) * 20_000.0) * 0.72;
-            let muted = rhythm_stack(root_hz * 0.48, t, 0.4, 0.0) * 0.34;
-            (noise + muted) * (1.0 - phase * 1.2).max(0.0)
-        }
-        ElectricGuitarArticulation::ChordSlide => {
-            let glide = smoothstep(phase);
-            let ratio = 0.82 + glide * 0.18;
-            let f = root_hz * ratio * (1.0 + wobble * 0.6);
-            rhythm_stack(f, t, 0.83, 0.38)
-        }
-        _ => rhythm_stack(root_hz, t, 0.82, 0.28),
+        ElectricGuitarArticulation::Sustained => rhythm_stack(root_hz, t, 0.82, 0.28),
     }
 }
 
@@ -496,19 +315,13 @@ fn rhythm_stack(frequency_hz: f32, t: f32, body: f32, top_end: f32) -> f32 {
 
 fn rhythm_envelope(articulation: ElectricGuitarArticulation, phase: f32) -> f32 {
     let attack = match articulation {
-        ElectricGuitarArticulation::RhythmicScratch => 0.006,
-        ElectricGuitarArticulation::RhythmPalmMuted => 0.008,
-        ElectricGuitarArticulation::Choked => 0.009,
-        _ => 0.014,
+        ElectricGuitarArticulation::RhythmSustained => 0.014,
+        ElectricGuitarArticulation::Sustained => 0.014,
     };
 
     let decay = match articulation {
         ElectricGuitarArticulation::RhythmSustained => 0.5,
-        ElectricGuitarArticulation::ChordSlide => 0.56,
-        ElectricGuitarArticulation::RhythmPalmMuted => 1.26,
-        ElectricGuitarArticulation::Choked => 1.62,
-        ElectricGuitarArticulation::RhythmicScratch => 1.78,
-        _ => 0.7,
+        ElectricGuitarArticulation::Sustained => 0.7,
     };
 
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));

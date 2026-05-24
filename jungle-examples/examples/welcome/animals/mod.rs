@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use jungle_sdk::prelude::*;
-use num::U255;
 use std::time::Duration;
 
 mod bassist;
@@ -15,16 +14,28 @@ pub use lead_guitarist::*;
 pub use lead_vocalist::*;
 pub use rhythm_guitarist::*;
 
+#[cfg(not(test))]
 #[derive(Animals)]
 pub struct WelcomeAnimals(LeadVocalist, LeadGuitarist, RhythmGuitarist, Bass, Drums);
 
-use crate::effect::DecrementCounterEffect;
+#[cfg(test)]
+#[derive(Animals)]
+pub struct WelcomeAnimals(
+    LeadVocalist,
+    LeadGuitarist,
+    RhythmGuitarist,
+    Bass,
+    Drums,
+    BassJoinMonad100Animal,
+    RhythmJoinMonad100Animal,
+    ConditionalJoinMonad100Animal,
+);
 
 pub struct DecrementCounter<Focus>(core::marker::PhantomData<fn() -> Focus>);
 
 #[jungle::act(aspect = Focus)]
 impl<Focus> Act for DecrementCounter<Focus> {
-    type Effect = DecrementCounterEffect;
+    type Effect = Noop;
     type Input = ();
     type Output = ();
 
@@ -36,29 +47,11 @@ impl<Focus> Act for DecrementCounter<Focus> {
     }
 }
 
-pub struct StubEffect;
-
-impl EffectSchema for StubEffect {
-    type Id = Id<U255>;
-    type In = ();
-    type Out = ();
-    type Err = ();
-}
-
-impl<J> Effect<J> for StubEffect {
-    fn effect(
-        _jungle: &J,
-        _input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(()))
-    }
-}
-
 pub struct StubStepSpec;
 
 #[jungle::act]
 impl Act for StubStepSpec {
-    type Effect = StubEffect;
+    type Effect = Noop;
     type Input = ();
     type Output = ();
 
@@ -86,6 +79,15 @@ impl Act for SleepFiveMinutesSpec {
 
 #[derive(Flow)]
 pub struct BandStubFlow(Step<StubStepSpec>, Step<SleepFiveMinutesSpec>);
+
+#[derive(Flow)]
+pub struct Double<T>(T, T);
+
+#[derive(Flow)]
+pub struct Quad<T>(Double<T>, Double<T>);
+
+#[derive(Flow)]
+pub struct Octa<T>(Quad<T>, Quad<T>);
 
 pub struct LeadVocalist;
 

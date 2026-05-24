@@ -1,3 +1,5 @@
+#![recursion_limit = "16384"]
+
 mod animals;
 mod assets;
 mod audio;
@@ -7,6 +9,7 @@ mod instrumentation;
 mod metronome;
 mod ui;
 
+use std::collections::BTreeSet;
 #[cfg(feature = "transport")]
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
@@ -34,6 +37,7 @@ use crate::{
 };
 
 const DEFAULT_BPM: f32 = 123.0;
+const DEFAULT_WORKERS: usize = 2;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(feature = "transport")]
@@ -65,24 +69,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let args = parse_cli_args()?;
     if args.headless {
-        return run_headless(args.bpm, args.mute);
+        return run_headless(args.bpm, args.mute, args.workers, args.enabled_animals);
     }
-    run_with_ui(args.bpm, args.mute)
+    run_with_ui(args.bpm, args.mute, args.workers, args.enabled_animals)
 }
 
 struct CliArgs {
     bpm: f32,
     headless: bool,
     mute: bool,
+    workers: usize,
+    enabled_animals: BTreeSet<SelectedAnimal>,
 }
 
-fn run_with_ui(bpm: f32, mute: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn run_with_ui(
+    bpm: f32,
+    mute: bool,
+    workers: usize,
+    enabled_animals: BTreeSet<SelectedAnimal>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
     let ui_shutdown = ui::ShutdownFlag::new();
     let shutdown_for_runtime = ui_shutdown.clone();
     let runtime_thread = std::thread::spawn(move || {
-        run_runtime_thread(bpm, mute, shutdown_for_runtime, setup_tx, started_rx)
+        run_runtime_thread(
+            bpm,
+            mute,
+            workers,
+            enabled_animals,
+            shutdown_for_runtime,
+            setup_tx,
+            started_rx,
+        )
     });
 
     let setup_result = setup_rx.recv().map_err(|err| {
@@ -117,15 +136,31 @@ fn run_with_ui(bpm: f32, mute: bool) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn run_headless(bpm: f32, mute: bool) -> Result<(), Box<dyn std::error::Error>> {
-    info!(bpm, mute, "running welcome example in headless mode");
+fn run_headless(
+    bpm: f32,
+    mute: bool,
+    workers: usize,
+    enabled_animals: BTreeSet<SelectedAnimal>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    info!(
+        bpm,
+        mute, workers, "running welcome example in headless mode"
+    );
 
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
     let ui_shutdown = ui::ShutdownFlag::new();
     let shutdown_for_runtime = ui_shutdown.clone();
     let runtime_thread = std::thread::spawn(move || {
-        run_runtime_thread(bpm, mute, shutdown_for_runtime, setup_tx, started_rx)
+        run_runtime_thread(
+            bpm,
+            mute,
+            workers,
+            enabled_animals,
+            shutdown_for_runtime,
+            setup_tx,
+            started_rx,
+        )
     });
 
     let setup_result = setup_rx.recv().map_err(|err| {
@@ -177,6 +212,8 @@ struct UiSetup {
 fn run_runtime_thread(
     bpm: f32,
     mute: bool,
+    workers: usize,
+    enabled_animals: BTreeSet<SelectedAnimal>,
     ui_shutdown: ui::ShutdownFlag,
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
     started_rx: std::sync::mpsc::Receiver<Instant>,
@@ -200,53 +237,127 @@ fn run_runtime_thread(
             let audio_handle = audio_engine.handle();
             (audio_handle, Some(audio_engine), None)
         };
-        let ecosystem = TheJungle::new(audio_handle, bpm);
-        let worker_client = client.clone();
-        let _worker_task = tokio::spawn(async move {
-            let worker = JungleWorker::new(ecosystem, worker_client);
-            if let Err(err) = worker.spawn().await {
-                error!(error = %err, "welcome worker task exited with error");
-            }
-        });
+        let mut worker_metronomes = Vec::with_capacity(workers);
+        for worker_index in 0..workers {
+            let ecosystem = TheJungle::new(audio_handle.clone(), bpm);
+            let metronome = ecosystem.metronome().clone();
+            metronome.arm_start_barrier();
+            worker_metronomes.push(metronome);
+            let worker_client = client.clone();
+            tokio::spawn(async move {
+                let worker = JungleWorker::new(ecosystem, worker_client);
+                if let Err(err) = worker.spawn().await {
+                    error!(
+                        error = %err,
+                        worker_index,
+                        "welcome worker task exited with error"
+                    );
+                }
+            });
+        }
+        info!(workers, "started welcome workers");
 
         let seed = postcard::to_allocvec(&()).map_err(|err| {
             error!(error = %err, "failed serializing journey seed");
             err.to_string()
         })?;
-        let journeys = ui::JourneyIds {
-            lead_vocalist: client
-                .start_journey::<LeadVocalist>(seed.clone())
-                .await
-                .map_err(|err| {
-                    error!(error = %err, "failed starting lead vocalist journey");
-                    err.to_string()
-                })?,
-            lead_guitarist: client
-                .start_journey::<LeadGuitarist>(seed.clone())
-                .await
-                .map_err(|err| {
-                    error!(error = %err, "failed starting lead guitarist journey");
-                    err.to_string()
-                })?,
-            rhythm_guitarist: client
-                .start_journey::<RhythmGuitarist>(seed.clone())
-                .await
-                .map_err(|err| {
-                    error!(error = %err, "failed starting rhythm guitarist journey");
-                    err.to_string()
-                })?,
-            bass: client
-                .start_journey::<BassAnimal>(seed.clone())
-                .await
-                .map_err(|err| {
-                    error!(error = %err, "failed starting bass journey");
-                    err.to_string()
-                })?,
-            drums: client.start_journey::<Drums>(seed).await.map_err(|err| {
-                error!(error = %err, "failed starting drums journey");
-                err.to_string()
-            })?,
+        if enabled_animals.len() < SelectedAnimal::all().len() {
+            let selected = enabled_animals
+                .iter()
+                .map(|animal| animal.as_cli_name())
+                .collect::<Vec<_>>();
+            info!(animals = ?selected, "running welcome with selected animals");
+        }
+        let lead_vocalist_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::LeadVocalist) {
+                client
+                    .start_journey::<LeadVocalist>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting lead vocalist journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
         };
+        let lead_guitarist_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::LeadGuitarist) {
+                client
+                    .start_journey::<LeadGuitarist>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting lead guitarist journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let rhythm_guitarist_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::RhythmGuitarist) {
+                client
+                    .start_journey::<RhythmGuitarist>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting rhythm guitarist journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let bass_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::Bassist) {
+                client
+                    .start_journey::<BassAnimal>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting bass journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let drums_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::Drummer) {
+                client
+                    .start_journey::<Drums>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting drums journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let (lead_vocalist, lead_guitarist, rhythm_guitarist, bass, drums) = tokio::join!(
+            lead_vocalist_fut,
+            lead_guitarist_fut,
+            rhythm_guitarist_fut,
+            bass_fut,
+            drums_fut,
+        );
+        let journeys = ui::JourneyIds {
+            lead_vocalist: lead_vocalist?,
+            lead_guitarist: lead_guitarist?,
+            rhythm_guitarist: rhythm_guitarist?,
+            bass: bass?,
+            drums: drums?,
+        };
+        futures::future::join_all(
+            worker_metronomes
+                .iter()
+                .map(|metronome| metronome.release_start_barrier_on_downbeat()),
+        )
+        .await;
 
         keep_alive.audio_engine = audio_engine;
         keep_alive.stub_audio = stub_audio;
@@ -492,6 +603,9 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let mut bpm = DEFAULT_BPM;
     let mut headless = false;
     let mut mute = false;
+    let mut workers = DEFAULT_WORKERS;
+    let mut enabled_animals = SelectedAnimal::all();
+    let mut animals_flag_seen = false;
 
     while let Some(arg) = args.next() {
         if arg == "--headless" {
@@ -504,8 +618,26 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             continue;
         }
 
+        if let Some(value) = arg.strip_prefix("--animals=") {
+            parse_animals_list(value, &mut enabled_animals, &mut animals_flag_seen)?;
+            continue;
+        }
+
+        if arg == "--animals" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--animals requires a value".to_string())?;
+            parse_animals_list(&value, &mut enabled_animals, &mut animals_flag_seen)?;
+            continue;
+        }
+
         if let Some(value) = arg.strip_prefix("--bpm=") {
             bpm = parse_bpm_value(value)?;
+            continue;
+        }
+
+        if let Some(value) = arg.strip_prefix("--workers=") {
+            workers = parse_workers_value(value)?;
             continue;
         }
 
@@ -514,6 +646,14 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
                 .next()
                 .ok_or_else(|| "--bpm requires a value".to_string())?;
             bpm = parse_bpm_value(&value)?;
+            continue;
+        }
+
+        if arg == "--workers" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--workers requires a value".to_string())?;
+            workers = parse_workers_value(&value)?;
             continue;
         }
 
@@ -529,6 +669,8 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         bpm,
         headless,
         mute,
+        workers,
+        enabled_animals,
     })
 }
 
@@ -540,4 +682,96 @@ fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
         return Err(format!("BPM must be a positive finite number, got: {value}").into());
     }
     Ok(bpm)
+}
+
+fn parse_workers_value(value: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let workers = value
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid workers argument: {value}"))?;
+    if workers == 0 {
+        return Err("workers must be at least 1".into());
+    }
+    Ok(workers)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SelectedAnimal {
+    LeadVocalist,
+    LeadGuitarist,
+    RhythmGuitarist,
+    Bassist,
+    Drummer,
+}
+
+impl SelectedAnimal {
+    fn all() -> BTreeSet<Self> {
+        [
+            Self::LeadVocalist,
+            Self::LeadGuitarist,
+            Self::RhythmGuitarist,
+            Self::Bassist,
+            Self::Drummer,
+        ]
+        .into_iter()
+        .collect()
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "lead-vocalist" => Some(Self::LeadVocalist),
+            "lead-guitarist" => Some(Self::LeadGuitarist),
+            "rhythm-guitarist" => Some(Self::RhythmGuitarist),
+            "bassist" | "bass" => Some(Self::Bassist),
+            "drummer" | "drums" => Some(Self::Drummer),
+            _ => None,
+        }
+    }
+
+    fn as_cli_name(self) -> &'static str {
+        match self {
+            Self::LeadVocalist => "lead-vocalist",
+            Self::LeadGuitarist => "lead-guitarist",
+            Self::RhythmGuitarist => "rhythm-guitarist",
+            Self::Bassist => "bassist",
+            Self::Drummer => "drummer",
+        }
+    }
+}
+
+fn parse_animals_list(
+    value: &str,
+    enabled_animals: &mut BTreeSet<SelectedAnimal>,
+    animals_flag_seen: &mut bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if value.is_empty() {
+        return Err("--animals requires a comma-delimited list of animals".into());
+    }
+
+    if !*animals_flag_seen {
+        enabled_animals.clear();
+        *animals_flag_seen = true;
+    }
+
+    for token in value.split(',') {
+        if token.is_empty() {
+            return Err(
+                format!("invalid --animals list '{value}': contains an empty entry").into(),
+            );
+        }
+        if token.chars().any(|ch| ch.is_ascii_uppercase()) {
+            return Err(format!(
+                "invalid --animals entry '{token}': expected lowercase animal names"
+            )
+            .into());
+        }
+        let Some(animal) = SelectedAnimal::parse(token) else {
+            return Err(format!(
+                "unknown --animals entry '{token}'; supported values: lead-vocalist, lead-guitarist, rhythm-guitarist, bassist, drummer"
+            )
+            .into());
+        };
+        enabled_animals.insert(animal);
+    }
+
+    Ok(())
 }

@@ -5,7 +5,7 @@ use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
-use iced_sugiyama::{Cluster, Graph, OutgoingEdgeStyle, Sugiyama};
+use iced_sugiyama::{AutoFit, Cluster, Graph, OutgoingEdgeStyle, Sugiyama, ViewportInteraction};
 use jungle_client::JungleClient;
 use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -64,6 +64,7 @@ pub enum ClusterKind {
 pub struct StepViewCtx<'a> {
     pub display_id: u32,
     pub runtime_id: Option<u32>,
+    pub proxy_runtime_ids: Vec<u32>,
     pub successor_runtime_ids: Vec<u32>,
     pub kind: StepKind,
     pub label: &'a str,
@@ -112,6 +113,8 @@ pub struct EdgeStyleCtx {
     pub target_display_id: u32,
     pub source_runtime_id: Option<u32>,
     pub target_runtime_id: Option<u32>,
+    pub source_has_proxy_runtime: bool,
+    pub target_has_proxy_runtime: bool,
     pub source_phase: Phase<RuntimeState>,
     pub target_phase: Phase<RuntimeState>,
     pub extent: f32,
@@ -425,6 +428,7 @@ pub enum EjectedViewerMessage {
     LiveEvent(Result<JourneyUpdateEvent, String>),
     ApplyLiveEvent(JourneyUpdateEvent),
     Theme(ViewerEvent<()>),
+    ViewportInteraction(ViewportInteraction),
     Retry,
 }
 
@@ -440,6 +444,8 @@ where
     animation_duration: Option<Duration>,
     animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
     graph_widget_id: iced_sugiyama::Id,
+    auto_pan_enabled: bool,
+    auto_zoom_enabled: bool,
     _scope: std::marker::PhantomData<Scope>,
 }
 
@@ -470,6 +476,8 @@ where
             animation_duration,
             animation_easing,
             graph_widget_id,
+            auto_pan_enabled: true,
+            auto_zoom_enabled: true,
             _scope: std::marker::PhantomData,
         }
     }
@@ -538,6 +546,17 @@ where
                     ),
                 ])
             }
+            EjectedViewerMessage::ViewportInteraction(interaction) => {
+                match interaction {
+                    ViewportInteraction::UserPanned => {
+                        self.auto_pan_enabled = false;
+                    }
+                    ViewportInteraction::UserZoomed => {
+                        self.auto_zoom_enabled = false;
+                    }
+                }
+                Task::none()
+            }
             EjectedViewerMessage::Retry => {
                 self.retry();
                 Task::none()
@@ -578,11 +597,16 @@ where
             self.animation_duration,
             self.animation_easing,
             self.graph_widget_id.clone(),
+            self.auto_pan_enabled,
+            self.auto_zoom_enabled,
         )
         .map(|message| match message {
             Message::Theme(event) => EjectedViewerMessage::Theme(event),
             Message::LiveEvent(result) => EjectedViewerMessage::LiveEvent(result),
             Message::ApplyLiveEvent(update) => EjectedViewerMessage::ApplyLiveEvent(update),
+            Message::ViewportInteraction(interaction) => {
+                EjectedViewerMessage::ViewportInteraction(interaction)
+            }
             Message::Retry => EjectedViewerMessage::Retry,
             Message::AppStarted
             | Message::CaptureView
@@ -657,6 +681,8 @@ where
     animation_duration: Option<Duration>,
     animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
     graph_widget_id: iced_sugiyama::Id,
+    auto_pan_enabled: bool,
+    auto_zoom_enabled: bool,
     _scope: std::marker::PhantomData<Scope>,
 }
 
@@ -689,6 +715,7 @@ enum Message {
     LiveEvent(Result<JourneyUpdateEvent, String>),
     ApplyLiveEvent(JourneyUpdateEvent),
     Theme(ViewerEvent<()>),
+    ViewportInteraction(ViewportInteraction),
     Retry,
     CaptureView,
     ViewCaptured(Screenshot),
@@ -723,6 +750,8 @@ where
                 animation_duration,
                 animation_easing,
                 graph_widget_id: iced_sugiyama::Id::new(GRAPH_WIDGET_ID),
+                auto_pan_enabled: true,
+                auto_zoom_enabled: true,
                 _scope: std::marker::PhantomData,
             },
             Task::done(Message::AppStarted),
@@ -780,6 +809,17 @@ where
                     theme_task,
                     iced_sugiyama::force_review::<Message>(self.graph_widget_id.clone()),
                 ])
+            }
+            Message::ViewportInteraction(interaction) => {
+                match interaction {
+                    ViewportInteraction::UserPanned => {
+                        self.auto_pan_enabled = false;
+                    }
+                    ViewportInteraction::UserZoomed => {
+                        self.auto_zoom_enabled = false;
+                    }
+                }
+                Task::none()
             }
             Message::Retry => match &self.mode {
                 ViewMode::Live { .. } => {
@@ -865,6 +905,8 @@ where
                 self.animation_duration,
                 self.animation_easing,
                 self.graph_widget_id.clone(),
+                self.auto_pan_enabled,
+                self.auto_zoom_enabled,
             )
         ]
         .height(Length::Fill)
@@ -1016,6 +1058,7 @@ fn node_phase_for_display(
     live_data: Option<&LiveData>,
     display_id: u32,
     runtime_id: Option<u32>,
+    proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> Phase<RuntimeState> {
     let Some(live) = live_data else {
@@ -1030,7 +1073,26 @@ fn node_phase_for_display(
             .unwrap_or(RuntimeState::Pending),
     };
 
-    Phase::Live(state)
+    let mut newest = runtime_id.and_then(|id| {
+        live.runtime_update_sequence
+            .get(&id)
+            .copied()
+            .map(|sequence| (sequence, state))
+    });
+    for proxy_runtime_id in proxy_runtime_ids {
+        let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
+            continue;
+        };
+        let proxy_state = runtime_state_for_live_data(live, *proxy_runtime_id);
+        if newest
+            .map(|(best_sequence, _)| sequence > best_sequence)
+            .unwrap_or(true)
+        {
+            newest = Some((sequence, proxy_state));
+        }
+    }
+
+    Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
 }
 
 fn sidebar<'a>(
@@ -1125,6 +1187,8 @@ fn graph_panel<'a, T, Scope>(
     animation_duration: Option<Duration>,
     animation_easing: Option<&'static iced_sugiyama::motion::easing::Easing>,
     graph_widget_id: iced_sugiyama::Id,
+    auto_pan_enabled: bool,
+    auto_zoom_enabled: bool,
 ) -> Element<'a, Message>
 where
     T: JunglePanelTheme<Scope, Message = ()>,
@@ -1331,11 +1395,13 @@ where
             live_data,
             node.id,
             node.runtime_node_id,
+            &node.proxy_runtime_ids,
             &condition_successor_runtime_ids,
         );
         let step_ctx = StepViewCtx {
             display_id: node.id,
             runtime_id: node.runtime_node_id,
+            proxy_runtime_ids: node.proxy_runtime_ids.clone(),
             successor_runtime_ids: condition_successor_runtime_ids
                 .get(&node.id)
                 .cloned()
@@ -1466,6 +1532,11 @@ where
         .iter()
         .map(|(display_id, node)| (*display_id, node.runtime_node_id))
         .collect::<HashMap<_, _>>();
+    let proxy_runtime_ids_by_display_id = model
+        .node_map
+        .iter()
+        .map(|(display_id, node)| (*display_id, node.proxy_runtime_ids.clone()))
+        .collect::<HashMap<_, _>>();
 
     let graph_widget = {
         let node_map = model.node_map.clone();
@@ -1480,6 +1551,8 @@ where
         let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids.clone();
         let runtime_ids_for_edge_colors = runtime_by_display_id.clone();
         let runtime_ids_for_edge_strokes = runtime_by_display_id.clone();
+        let proxy_runtime_ids_for_edge_colors = proxy_runtime_ids_by_display_id.clone();
+        let proxy_runtime_ids_for_edge_strokes = proxy_runtime_ids_by_display_id.clone();
         let condition_successors_for_nodes = condition_successor_runtime_ids.clone();
         let condition_successors_for_edge_colors = condition_successor_runtime_ids.clone();
         let condition_successors_for_edge_strokes = condition_successor_runtime_ids.clone();
@@ -1492,11 +1565,13 @@ where
                             live_data,
                             node.id,
                             node.runtime_node_id,
+                            &node.proxy_runtime_ids,
                             &condition_successors_for_nodes,
                         );
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
                             runtime_id: node.runtime_node_id,
+                            proxy_runtime_ids: node.proxy_runtime_ids.clone(),
                             successor_runtime_ids: condition_successors_for_nodes
                                 .get(&node.id)
                                 .cloned()
@@ -1552,6 +1627,14 @@ where
                 .get(&ctx.edge.1)
                 .copied()
                 .flatten();
+            let source_has_proxy_runtime = proxy_runtime_ids_for_edge_colors
+                .get(&ctx.edge.0)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
+            let target_has_proxy_runtime = proxy_runtime_ids_for_edge_colors
+                .get(&ctx.edge.1)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
             let style = theme
                 .edge_style(
                     theme_state,
@@ -1561,16 +1644,26 @@ where
                         target_display_id: ctx.edge.1,
                         source_runtime_id,
                         target_runtime_id,
+                        source_has_proxy_runtime,
+                        target_has_proxy_runtime,
                         source_phase: node_phase_for_display(
                             live_data,
                             ctx.edge.0,
                             source_runtime_id,
+                            proxy_runtime_ids_for_edge_colors
+                                .get(&ctx.edge.0)
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             &condition_successors_for_edge_colors,
                         ),
                         target_phase: node_phase_for_display(
                             live_data,
                             ctx.edge.1,
                             target_runtime_id,
+                            proxy_runtime_ids_for_edge_colors
+                                .get(&ctx.edge.1)
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             &condition_successors_for_edge_colors,
                         ),
                         extent: ctx.transition_progress,
@@ -1588,6 +1681,14 @@ where
                 .get(&ctx.edge.1)
                 .copied()
                 .flatten();
+            let source_has_proxy_runtime = proxy_runtime_ids_for_edge_strokes
+                .get(&ctx.edge.0)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
+            let target_has_proxy_runtime = proxy_runtime_ids_for_edge_strokes
+                .get(&ctx.edge.1)
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
             let style = theme
                 .edge_style(
                     theme_state,
@@ -1597,16 +1698,26 @@ where
                         target_display_id: ctx.edge.1,
                         source_runtime_id,
                         target_runtime_id,
+                        source_has_proxy_runtime,
+                        target_has_proxy_runtime,
                         source_phase: node_phase_for_display(
                             live_data,
                             ctx.edge.0,
                             source_runtime_id,
+                            proxy_runtime_ids_for_edge_strokes
+                                .get(&ctx.edge.0)
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             &condition_successors_for_edge_strokes,
                         ),
                         target_phase: node_phase_for_display(
                             live_data,
                             ctx.edge.1,
                             target_runtime_id,
+                            proxy_runtime_ids_for_edge_strokes
+                                .get(&ctx.edge.1)
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             &condition_successors_for_edge_strokes,
                         ),
                         extent: ctx.transition_progress,
@@ -1655,7 +1766,14 @@ where
             }
         })
         .cluster_color(cluster_fill_color)
-        .padding(24);
+        .padding(24)
+        .auto_fit(if auto_zoom_enabled {
+            AutoFit::Ongoing
+        } else {
+            AutoFit::Off
+        })
+        .keep_centered(auto_pan_enabled)
+        .on_viewport_interaction(Message::ViewportInteraction);
         if let Some(duration) = animation_duration {
             widget = widget.animation_duration(duration);
         }
@@ -1736,6 +1854,7 @@ struct NodeDisplay {
     label: String,
     metadata: Option<String>,
     runtime_node_id: Option<u32>,
+    proxy_runtime_ids: Vec<u32>,
     is_conditional_branch: bool,
     is_select: bool,
     is_join: bool,
@@ -1983,34 +2102,31 @@ impl GraphBuilder {
             } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let select_label = if metadata.trim().is_empty() {
-                    (*label).to_string()
-                } else {
-                    format!("{label} :: {metadata}")
-                };
-                let select_label = self.unique_label(select_label);
-                let select = self.push_runtime_node(select_label, runtime_id);
-                self.mark(select, |node| node.is_select = true);
-                if !metadata.trim().is_empty() {
-                    self.mark(select, |node| node.metadata = Some((*metadata).to_string()));
-                }
+                let _ = (label, metadata);
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for target in &left_flow.roots {
-                    self.edges.push((select, *target));
-                }
-                for target in &right_flow.roots {
-                    self.edges.push((select, *target));
-                }
-
-                let mut members = vec![select];
+                let mut roots = left_flow.roots;
+                roots.extend(right_flow.roots.iter().copied());
+                roots = dedup(roots);
+                let mut exits = left_flow.exits;
+                exits.extend(right_flow.exits.iter().copied());
+                exits = dedup(exits);
+                let mut members = Vec::new();
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
+                members = dedup(members);
+                for member_id in &members {
+                    self.mark(*member_id, |node| {
+                        if !node.proxy_runtime_ids.contains(&runtime_id) {
+                            node.proxy_runtime_ids.push(runtime_id);
+                        }
+                    });
+                }
 
                 Flattened {
-                    roots: vec![select],
-                    exits: vec![select],
+                    roots,
+                    exits,
                     members,
                 }
             }
@@ -2022,34 +2138,31 @@ impl GraphBuilder {
             } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let join_label = if metadata.trim().is_empty() {
-                    (*label).to_string()
-                } else {
-                    format!("{label} :: {metadata}")
-                };
-                let join_label = self.unique_label(join_label);
-                let join = self.push_runtime_node(join_label, runtime_id);
-                self.mark(join, |node| node.is_join = true);
-                if !metadata.trim().is_empty() {
-                    self.mark(join, |node| node.metadata = Some((*metadata).to_string()));
-                }
+                let _ = (label, metadata);
 
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for target in &left_flow.roots {
-                    self.edges.push((join, *target));
-                }
-                for target in &right_flow.roots {
-                    self.edges.push((join, *target));
-                }
-
-                let mut members = vec![join];
+                let mut roots = left_flow.roots;
+                roots.extend(right_flow.roots.iter().copied());
+                roots = dedup(roots);
+                let mut exits = left_flow.exits;
+                exits.extend(right_flow.exits.iter().copied());
+                exits = dedup(exits);
+                let mut members = Vec::new();
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
+                members = dedup(members);
+                for member_id in &members {
+                    self.mark(*member_id, |node| {
+                        if !node.proxy_runtime_ids.contains(&runtime_id) {
+                            node.proxy_runtime_ids.push(runtime_id);
+                        }
+                    });
+                }
 
                 Flattened {
-                    roots: vec![join],
-                    exits: vec![join],
+                    roots,
+                    exits,
                     members,
                 }
             }
@@ -2063,6 +2176,7 @@ impl GraphBuilder {
             label: label.into(),
             metadata: None,
             runtime_node_id: Some(runtime_id),
+            proxy_runtime_ids: Vec::new(),
             is_conditional_branch: false,
             is_select: false,
             is_join: false,
@@ -2082,6 +2196,7 @@ impl GraphBuilder {
             label: label.into(),
             metadata: None,
             runtime_node_id: None,
+            proxy_runtime_ids: Vec::new(),
             is_conditional_branch: false,
             is_select: false,
             is_join: false,
@@ -2443,18 +2558,14 @@ impl DefaultThemeState {
         for visual in self.cluster_visuals.values_mut() {
             let border = &mut visual.border;
             if border.from == border.to {
-                changed |= visual
-                    .fill
-                    .settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
+                changed |= visual.fill.settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
                 continue;
             }
             if now.duration_since(border.started_at) >= CLUSTER_BORDER_ANIMATION_DURATION {
                 border.from = border.to;
                 changed = true;
             }
-            changed |= visual
-                .fill
-                .settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
+            changed |= visual.fill.settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
         }
         changed
     }
@@ -2564,7 +2675,8 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         let now = Instant::now();
         let fill = if let Some(runtime_id) = cx.runtime_id {
             if let Ok(mut guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
+                    && cx.proxy_runtime_ids.is_empty();
                 let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
                     from: RuntimeState::Pending,
                     to: RuntimeState::Pending,
@@ -2722,7 +2834,9 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         let now = Instant::now();
         let (from_color, to_color) = if let Some(runtime_id) = cx.source_runtime_id {
             if let Ok(mut guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+                let forced_pending =
+                    guard.force_pending_runtime_ids.contains(&runtime_id)
+                        && !cx.source_has_proxy_runtime;
                 let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
                     from: RuntimeState::Pending,
                     to: RuntimeState::Pending,
@@ -3054,6 +3168,118 @@ mod tests {
     }
 
     #[test]
+    fn join_children_follow_join_runtime_state_for_live_coloring() {
+        let ast = JourneyAst::Join {
+            label: "Join",
+            metadata: "",
+            left: Box::new(JourneyAst::Step { label: "JoinL" }),
+            right: Box::new(JourneyAst::Step { label: "JoinR" }),
+        };
+        let model = GraphModel::from_ast(ast);
+        let node_for = |label: &str| -> &NodeDisplay {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let join_l = node_for("JoinL");
+        let join_r = node_for("JoinR");
+        let mut live = LiveData::default();
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                join_l.id,
+                join_l.runtime_node_id,
+                &join_l.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Running)
+        );
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                join_r.id,
+                join_r.runtime_node_id,
+                &join_r.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Running)
+        );
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event: RunnerUpdateOut::EffectSuccessOutput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                join_l.id,
+                join_l.runtime_node_id,
+                &join_l.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Completed)
+        );
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                join_r.id,
+                join_r.runtime_node_id,
+                &join_r.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Completed)
+        );
+    }
+
+    #[test]
+    fn proxy_driven_node_ignores_forced_pending_when_completed() {
+        let theme = DefaultTheme;
+        let state = Mutex::new(DefaultThemeState {
+            node_visuals: HashMap::new(),
+            condition_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
+            force_pending_runtime_ids: HashSet::from([42]),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
+        });
+        let cx = StepViewCtx {
+            display_id: 1,
+            runtime_id: Some(42),
+            proxy_runtime_ids: vec![7],
+            successor_runtime_ids: Vec::new(),
+            kind: StepKind::Step,
+            label: "JoinL",
+            metadata: None,
+            phase: Phase::Live(RuntimeState::Completed),
+        };
+
+        let _ = theme.view_step(&state, &cx);
+
+        let guard = state.try_lock().expect("theme state lock should be available");
+        let visual = guard
+            .node_visuals
+            .get(&42)
+            .copied()
+            .expect("node visual should be created");
+        assert_eq!(visual.to, RuntimeState::Completed);
+    }
+
+    #[test]
     fn graph_model_uses_unique_display_node_ids() {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::While {
@@ -3170,10 +3396,8 @@ mod tests {
         let branch_id = id_for("Branch");
         let loop_l_id = id_for("LoopL");
         let loop_r_id = id_for("LoopR");
-        let join_id = id_for("Join");
         let join_l_id = id_for("JoinL");
         let join_r_id = id_for("JoinR");
-        let select_id = id_for("Select");
         let sel_l_id = id_for("SelL");
         let sel_r_id = id_for("SelR");
         let tail_id = id_for("Tail");
@@ -3182,6 +3406,14 @@ mod tests {
             model.nodes.iter().all(|node| node.label != "LoopCondition"),
             "while loops should not render as standalone nodes"
         );
+        assert!(
+            model.nodes.iter().all(|node| node.label != "Select"),
+            "select steps should not render as standalone nodes"
+        );
+        assert!(
+            model.nodes.iter().all(|node| node.label != "Join"),
+            "join steps should not render as standalone nodes"
+        );
 
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
 
@@ -3189,21 +3421,22 @@ mod tests {
         assert!(edges.contains(&(branch_id, loop_r_id)));
         assert!(edges.contains(&(loop_l_id, branch_id)));
         assert!(edges.contains(&(loop_r_id, branch_id)));
-        assert!(edges.contains(&(loop_l_id, join_id)));
-        assert!(edges.contains(&(loop_r_id, join_id)));
-        assert!(!edges.contains(&(branch_id, join_id)));
+        assert!(edges.contains(&(loop_l_id, join_l_id)));
+        assert!(edges.contains(&(loop_l_id, join_r_id)));
+        assert!(edges.contains(&(loop_r_id, join_l_id)));
+        assert!(edges.contains(&(loop_r_id, join_r_id)));
+        assert!(!edges.contains(&(branch_id, join_l_id)));
+        assert!(!edges.contains(&(branch_id, join_r_id)));
 
-        assert!(edges.contains(&(join_id, join_l_id)));
-        assert!(edges.contains(&(join_id, join_r_id)));
-        assert!(edges.contains(&(join_id, select_id)));
-        assert!(!edges.contains(&(join_l_id, select_id)));
-        assert!(!edges.contains(&(join_r_id, select_id)));
+        assert!(edges.contains(&(join_l_id, sel_l_id)));
+        assert!(edges.contains(&(join_l_id, sel_r_id)));
+        assert!(edges.contains(&(join_r_id, sel_l_id)));
+        assert!(edges.contains(&(join_r_id, sel_r_id)));
 
-        assert!(edges.contains(&(select_id, sel_l_id)));
-        assert!(edges.contains(&(select_id, sel_r_id)));
-        assert!(edges.contains(&(select_id, tail_id)));
-        assert!(!edges.contains(&(sel_l_id, tail_id)));
-        assert!(!edges.contains(&(sel_r_id, tail_id)));
+        assert!(edges.contains(&(sel_l_id, tail_id)));
+        assert!(edges.contains(&(sel_r_id, tail_id)));
+        assert!(!edges.contains(&(join_l_id, tail_id)));
+        assert!(!edges.contains(&(join_r_id, tail_id)));
     }
 
     #[test]
@@ -3246,8 +3479,16 @@ mod tests {
         let cond_id = id_for("StaticCondition");
         let in_l_id = id_for("InLoopL");
         let in_r_id = id_for("InLoopR");
-        let join_id = id_for("Join");
-        let select_id = id_for("Select");
+        let out_join_l_id = id_for("OutJoinL");
+        let out_join_r_id = id_for("OutJoinR");
+        assert!(
+            model.nodes.iter().all(|node| node.label != "Select"),
+            "select steps should not render as standalone nodes"
+        );
+        assert!(
+            model.nodes.iter().all(|node| node.label != "Join"),
+            "join steps should not render as standalone nodes"
+        );
 
         assert_eq!(model.while_clusters.len(), 1);
         let cluster = &model.while_clusters[0];
@@ -3255,8 +3496,8 @@ mod tests {
         assert!(cluster_nodes.contains(&cond_id));
         assert!(cluster_nodes.contains(&in_l_id));
         assert!(cluster_nodes.contains(&in_r_id));
-        assert!(!cluster_nodes.contains(&join_id));
-        assert!(!cluster_nodes.contains(&select_id));
+        assert!(!cluster_nodes.contains(&out_join_l_id));
+        assert!(!cluster_nodes.contains(&out_join_r_id));
         assert_eq!(model.while_cluster_labels, vec!["while: LoopCondition"]);
 
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
@@ -3264,9 +3505,12 @@ mod tests {
         assert!(edges.contains(&(cond_id, in_r_id)));
         assert!(edges.contains(&(in_l_id, cond_id)));
         assert!(edges.contains(&(in_r_id, cond_id)));
-        assert!(edges.contains(&(in_l_id, join_id)));
-        assert!(edges.contains(&(in_r_id, join_id)));
-        assert!(!edges.contains(&(cond_id, join_id)));
+        assert!(edges.contains(&(in_l_id, out_join_l_id)));
+        assert!(edges.contains(&(in_l_id, out_join_r_id)));
+        assert!(edges.contains(&(in_r_id, out_join_l_id)));
+        assert!(edges.contains(&(in_r_id, out_join_r_id)));
+        assert!(!edges.contains(&(cond_id, out_join_l_id)));
+        assert!(!edges.contains(&(cond_id, out_join_r_id)));
     }
 
     #[test]

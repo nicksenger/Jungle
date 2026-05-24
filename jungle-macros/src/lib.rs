@@ -218,6 +218,7 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
         }
     };
     let traverse_flow = jungle_type("TraverseFlow");
+    let scoped_field_list_normalize = jungle_type("ScopedFieldListNormalize");
     let scoped = jungle_type("Scoped");
     let list_empty: Path = parse_quote!(jungle_sdk::typosaurus::collections::list::Empty);
     let field_types = match &data {
@@ -244,14 +245,21 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     };
     let field_traverse_outputs = field_types
         .iter()
-        .map(|ty| quote!(<#ty as #traverse_flow>::Output))
+        .map(|ty| {
+            quote!(
+                <<#ty as #traverse_flow>::Output as #scoped_field_list_normalize>::Output
+            )
+        })
         .collect::<Vec<_>>();
-    let scoped_inner = nested_tlist(&field_traverse_outputs, &list_empty);
+    let scoped_inner = concat_tlist(&field_traverse_outputs, &list_empty);
     let traverse_impl = if let Some(focus) = &focus_ty {
         quote! {
             impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
             where
-                #(#field_types: #traverse_flow,)*
+                #(
+                    #field_types: #traverse_flow,
+                    <#field_types as #traverse_flow>::Output: #scoped_field_list_normalize,
+                )*
             {
                 type Output = #scoped<#focus, #scoped_inner>;
             }
@@ -415,13 +423,16 @@ fn parse_jungle_focus_attr(attrs: &[Attribute]) -> Option<Type> {
     None
 }
 
-fn nested_tlist(items: &[proc_macro2::TokenStream], empty: &Path) -> proc_macro2::TokenStream {
+fn concat_tlist(items: &[proc_macro2::TokenStream], empty: &Path) -> proc_macro2::TokenStream {
     if items.is_empty() {
         return quote!(#empty);
     }
-    let head = &items[0];
-    let tail = nested_tlist(&items[1..], empty);
-    quote!(jungle_sdk::typosaurus::collections::list::List<(#head, #tail)>)
+    let flow_list_concat = jungle_type("FlowListConcat");
+    let mut acc = quote!(#empty);
+    for item in items.iter().rev() {
+        acc = quote!(<#item as #flow_list_concat<#acc>>::Output);
+    }
+    acc
 }
 
 struct PrimitiveAttributes {

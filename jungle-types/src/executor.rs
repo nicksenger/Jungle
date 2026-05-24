@@ -1,7 +1,7 @@
 use crate::{
     Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Running, Scoped, Select,
-    Transparent, While,
+    Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Noop, Running, Scoped,
+    Select, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -309,8 +309,8 @@ pub trait ErasedFlow<State>: Send {
     fn try_complete_without_progress(
         &mut self,
         state: State,
-    ) -> Result<(State, bool), ExecutorError> {
-        Ok((state, false))
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        Ok((state, None, false))
     }
 
     fn assign_node_ids(&mut self, _next_id: &mut u32) {}
@@ -365,6 +365,7 @@ pub struct TypedErasedStep<Step> {
     node_id: u32,
     complete: bool,
     waiting_completion: bool,
+    pending_inline_input: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> Step>,
 }
 
@@ -374,6 +375,7 @@ impl<Step> TypedErasedStep<Step> {
             node_id: 0,
             complete: false,
             waiting_completion: false,
+            pending_inline_input: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -398,6 +400,30 @@ where
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
+    fn try_complete_without_progress(
+        &mut self,
+        state: T::State,
+    ) -> Result<(T::State, Option<Serialized>, bool), ExecutorError> {
+        let Some(input) = self.pending_inline_input.take() else {
+            return Ok((state, None, false));
+        };
+
+        if self.complete {
+            return Ok((state, None, true));
+        }
+        if self.waiting_completion {
+            return Ok((state, None, false));
+        }
+
+        let typed_input = deserialize_step_input::<A::Input>(&input)?;
+        let (state, _request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let completion = Ok(postcard::to_allocvec(&())
+            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
+        self.waiting_completion = true;
+        let (state, emitted) = self.complete(state, completion)?;
+        Ok((state, Some(emitted), true))
+    }
+
     fn request(
         &mut self,
         state: T::State,
@@ -408,6 +434,10 @@ where
         }
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            self.pending_inline_input = Some(input);
+            return Err((state, ExecutorError::Complete));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -433,6 +463,10 @@ where
         }
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            self.pending_inline_input = Some(input);
+            return Err((state, ExecutorError::Complete));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -516,6 +550,7 @@ pub struct ContextualTypedErasedStep<Context, R> {
     node_id: u32,
     complete: bool,
     waiting_completion: bool,
+    pending_inline_input: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> R>,
 }
 
@@ -526,6 +561,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
             node_id: 0,
             complete: false,
             waiting_completion: false,
+            pending_inline_input: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -543,6 +579,30 @@ where
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
+    fn try_complete_without_progress(
+        &mut self,
+        state: T::State,
+    ) -> Result<(T::State, Option<Serialized>, bool), ExecutorError> {
+        let Some(input) = self.pending_inline_input.take() else {
+            return Ok((state, None, false));
+        };
+
+        if self.complete {
+            return Ok((state, None, true));
+        }
+        if self.waiting_completion {
+            return Ok((state, None, false));
+        }
+
+        let typed_input = deserialize_step_input::<A::Input>(&input)?;
+        let (state, _request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let completion = Ok(postcard::to_allocvec(&())
+            .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
+        self.waiting_completion = true;
+        let (state, emitted) = self.complete(state, completion)?;
+        Ok((state, Some(emitted), true))
+    }
+
     fn request(
         &mut self,
         state: T::State,
@@ -553,6 +613,10 @@ where
         }
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            self.pending_inline_input = Some(input);
+            return Err((state, ExecutorError::Complete));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -578,6 +642,10 @@ where
         }
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
+        }
+        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            self.pending_inline_input = Some(input);
+            return Err((state, ExecutorError::Complete));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -729,6 +797,41 @@ impl<State, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        if self.active_branch.is_none() {
+            return Ok((state, None, false));
+        }
+        if self.cursor >= self.branch_len() {
+            return Ok((state, None, true));
+        }
+
+        let node = self
+            .active_node_mut()
+            .expect("cursor was checked against active branch length");
+        if node.is_waiting_completion() {
+            return Ok((state, None, false));
+        }
+
+        let (state, emitted, completed) = node.try_complete_without_progress(state)?;
+        if !completed {
+            return Ok((state, emitted, false));
+        }
+
+        self.cursor += 1;
+        if self.cursor >= self.branch_len() {
+            let active_branch = self
+                .active_branch
+                .expect("active branch is present while conditional is executing");
+            let emitted = emitted.map(|bytes| encode_conditional_emitted(active_branch, bytes));
+            return Ok((state, emitted, true));
+        }
+
+        Ok((state, emitted, false))
+    }
+
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let (choose_left, branch_input) = if self.active_branch.is_none() {
             match decode_controlled_input::<In, _>(&input, |carry| {
@@ -888,12 +991,6 @@ where
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-enum SelectCompletionEnvelope {
-    Left(SerializedCompletion),
-    Right(SerializedCompletion),
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
 struct SelectRequestEnvelope {
     left: Serialized,
     right: Serialized,
@@ -903,16 +1000,27 @@ struct SelectErasedFlow<State> {
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
+    build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
+    build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+    pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
 }
 
 impl<State> SelectErasedFlow<State> {
-    fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
+        build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+    ) -> Self {
         Self {
             node_id: 0,
             left,
             right,
+            build_left,
+            build_right,
+            pending_input: None,
             waiting_completion: false,
             complete: false,
         }
@@ -923,25 +1031,256 @@ struct SelectContextErasedFlow<State> {
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
+    build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
+    build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+    pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
 }
 
 impl<State> SelectContextErasedFlow<State> {
-    fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
+        build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+    ) -> Self {
         Self {
             node_id: 0,
             left,
             right,
+            build_left,
+            build_right,
+            pending_input: None,
             waiting_completion: false,
             complete: false,
         }
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct FlowCompletionTrace {
+    completions: Vec<SerializedCompletion>,
+    emitted: Serialized,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+enum SelectTraceEnvelope {
+    Left(FlowCompletionTrace),
+    Right(FlowCompletionTrace),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct JoinTraceEnvelope {
+    left: FlowCompletionTrace,
+    right: FlowCompletionTrace,
+}
+
+fn settle_subflow_without_progress<State>(
+    flow: &mut DynFlow<State>,
+    cursor: &mut usize,
+    mut state: State,
+    last_input: &mut Serialized,
+) -> Result<State, ExecutorError> {
+    loop {
+        if *cursor >= flow.len() {
+            break;
+        }
+
+        let node = flow
+            .get_mut(*cursor)
+            .expect("cursor was checked against steps len");
+        if node.is_waiting_completion() {
+            break;
+        }
+        let (next, emitted, completed) = node.try_complete_without_progress(state)?;
+        state = next;
+        if let Some(emitted) = emitted {
+            *last_input = emitted;
+        }
+        if completed {
+            *cursor += 1;
+            continue;
+        }
+        break;
+    }
+    Ok(state)
+}
+
+fn subflow_next_executable_request<State>(
+    flow: &mut DynFlow<State>,
+    cursor: &mut usize,
+    mut state: State,
+    last_input: &mut Serialized,
+) -> RequestResult<State, ExecutableEffectRequest>
+where
+    State: Clone,
+{
+    loop {
+        state = match settle_subflow_without_progress(flow, cursor, state.clone(), last_input) {
+            Ok(state) => state,
+            Err(err) => return Err((state, err)),
+        };
+        if *cursor >= flow.len() {
+            return Err((state, ExecutorError::Complete));
+        }
+
+        let node = flow
+            .get_mut(*cursor)
+            .expect("cursor was checked against steps len");
+        match node.request_executable(state, last_input.clone()) {
+            Ok((next_state, request)) => {
+                return Ok((next_state, request));
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                state = next_state;
+                let (next_state, emitted, completed) =
+                    match node.try_complete_without_progress(state.clone()) {
+                        Ok(result) => result,
+                        Err(err) => return Err((state, err)),
+                    };
+                state = next_state;
+                if let Some(emitted) = emitted {
+                    *last_input = emitted;
+                }
+                if completed {
+                    *cursor += 1;
+                    continue;
+                }
+                state = match settle_subflow_without_progress(
+                    flow,
+                    cursor,
+                    state.clone(),
+                    last_input,
+                ) {
+                    Ok(state) => state,
+                    Err(err) => return Err((state, err)),
+                };
+                return Err((state, ExecutorError::Complete));
+            }
+            Err((next_state, err)) => {
+                return Err((next_state, err));
+            }
+        }
+    }
+}
+
+fn subflow_complete_serialized<State>(
+    flow: &mut DynFlow<State>,
+    cursor: &mut usize,
+    state: State,
+    last_input: &mut Serialized,
+    completion: SerializedCompletion,
+) -> Result<(State, Serialized), ExecutorError> {
+    let state = settle_subflow_without_progress(flow, cursor, state, last_input)?;
+    if *cursor >= flow.len() {
+        return Err(ExecutorError::Complete);
+    }
+
+    let node = flow
+        .get_mut(*cursor)
+        .expect("cursor was checked against steps len");
+    let (next_state, emitted) = node.complete(state, completion)?;
+    if node.is_complete() {
+        *cursor += 1;
+    }
+    *last_input = emitted.clone();
+    let next_state = settle_subflow_without_progress(flow, cursor, next_state, last_input)?;
+    Ok((next_state, emitted))
+}
+
+async fn run_subflow_to_end_with_state<State>(
+    mut flow: DynFlow<State>,
+    mut state: State,
+    input: Serialized,
+) -> Result<(State, FlowCompletionTrace), ExecutorError>
+where
+    State: Clone,
+{
+    assign_flow_node_ids(&mut flow);
+    let mut cursor = 0_usize;
+    let mut completions = Vec::new();
+    let mut last_emitted = input;
+
+    loop {
+        let request =
+            match subflow_next_executable_request(&mut flow, &mut cursor, state, &mut last_emitted)
+            {
+                Ok((next_state, request)) => {
+                    state = next_state;
+                    request
+                }
+                Err((next_state, ExecutorError::Complete)) => {
+                    return Ok((
+                        next_state,
+                        FlowCompletionTrace {
+                            completions,
+                            emitted: last_emitted,
+                        },
+                    ));
+                }
+                Err((_next_state, err)) => return Err(err),
+            };
+        let completion = request.run().await?;
+        let (next_state, emitted) = subflow_complete_serialized(
+            &mut flow,
+            &mut cursor,
+            state,
+            &mut last_emitted,
+            completion.clone(),
+        )?;
+        state = next_state;
+        completions.push(completion);
+        last_emitted = emitted;
+    }
+}
+
+async fn run_subflow_to_end<State>(
+    flow: DynFlow<State>,
+    state: State,
+    input: Serialized,
+) -> Result<FlowCompletionTrace, ExecutorError>
+where
+    State: Clone,
+{
+    let (_state, trace) = run_subflow_to_end_with_state(flow, state, input).await?;
+    Ok(trace)
+}
+
+fn replay_subflow_trace<State>(
+    flow: &mut DynFlow<State>,
+    state: State,
+    input: Serialized,
+    trace: FlowCompletionTrace,
+) -> Result<(State, Serialized), ExecutorError>
+where
+    State: Clone,
+{
+    let mut cursor = 0_usize;
+    let mut state = state;
+    let mut next_input = input;
+
+    for completion in trace.completions {
+        let (next_state, _request) =
+            subflow_next_executable_request(flow, &mut cursor, state, &mut next_input)
+                .map_err(|(_, err)| err)?;
+        state = next_state;
+        let (next_state, emitted) =
+            subflow_complete_serialized(flow, &mut cursor, state, &mut next_input, completion)?;
+        state = next_state;
+        next_input = emitted;
+    }
+
+    state = settle_subflow_without_progress(flow, &mut cursor, state, &mut next_input)?;
+    if cursor < flow.len() {
+        return Err(ExecutorError::NoPendingRequest);
+    }
+    Ok((state, trace.emitted))
+}
+
 impl<State> ErasedFlow<State> for SelectErasedFlow<State>
 where
-    State: Clone + 'static,
+    State: Clone + Send + 'static,
 {
     fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
@@ -962,7 +1301,7 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let envelope: SelectCompletionEnvelope = match completion {
+        let envelope: SelectTraceEnvelope = match completion {
             Ok(bytes) => postcard::from_bytes(&bytes)
                 .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             Err(bytes) => {
@@ -973,24 +1312,22 @@ where
             }
         };
 
+        let input = self
+            .pending_input
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
         let emitted = match envelope {
-            SelectCompletionEnvelope::Left(left_completion) => {
-                let (left_state, left_emitted) = self
-                    .left
-                    .get_mut(0)
-                    .ok_or(ExecutorError::Complete)?
-                    .complete(state, left_completion)?;
+            SelectTraceEnvelope::Left(left_trace) => {
+                let (left_state, left_emitted) =
+                    replay_subflow_trace(&mut self.left, state, input.clone(), left_trace)?;
                 let mut serialized = Vec::with_capacity(1 + left_emitted.len());
                 serialized.push(0);
                 serialized.extend_from_slice(&left_emitted);
                 (left_state, serialized)
             }
-            SelectCompletionEnvelope::Right(right_completion) => {
-                let (right_state, right_emitted) = self
-                    .right
-                    .get_mut(0)
-                    .ok_or(ExecutorError::Complete)?
-                    .complete(state, right_completion)?;
+            SelectTraceEnvelope::Right(right_trace) => {
+                let (right_state, right_emitted) =
+                    replay_subflow_trace(&mut self.right, state, input.clone(), right_trace)?;
                 let mut serialized = Vec::with_capacity(1 + right_emitted.len());
                 serialized.push(1);
                 serialized.extend_from_slice(&right_emitted);
@@ -1015,41 +1352,36 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let left_node = match self.left.get_mut(0) {
-            Some(left_node) => left_node,
-            None => return Err((state, ExecutorError::Complete)),
-        };
-        let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
-        let right_node = match self.right.get_mut(0) {
-            Some(right_node) => right_node,
-            None => return Err((state, ExecutorError::Complete)),
-        };
-        let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
-
         let payload = SelectRequestEnvelope {
-            left: left_req.request_bytes().to_vec(),
-            right: right_req.request_bytes().to_vec(),
+            left: input.clone(),
+            right: input.clone(),
         };
         let request = match postcard::to_allocvec(&payload) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
+        let left_flow = (self.build_left)();
+        let right_flow = (self.build_right)();
+        let left_state = state.clone();
+        let right_state = state.clone();
+        let left_input = input.clone();
+        let right_input = input.clone();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let left = left_req.run();
-                let right = right_req.run();
+                let left = run_subflow_to_end(left_flow, left_state, left_input);
+                let right = run_subflow_to_end(right_flow, right_state, right_input);
                 let selected = futures::future::select(
                     Box::pin(left) as Pin<Box<_>>,
                     Box::pin(right) as Pin<Box<_>>,
                 )
                 .await;
                 let envelope = match selected {
-                    futures::future::Either::Left((left_completion, _)) => {
-                        SelectCompletionEnvelope::Left(left_completion?)
+                    futures::future::Either::Left((left_trace, _)) => {
+                        SelectTraceEnvelope::Left(left_trace?)
                     }
-                    futures::future::Either::Right((right_completion, _)) => {
-                        SelectCompletionEnvelope::Right(right_completion?)
+                    futures::future::Either::Right((right_trace, _)) => {
+                        SelectTraceEnvelope::Right(right_trace?)
                     }
                 };
                 let bytes = postcard::to_allocvec(&envelope)
@@ -1059,6 +1391,7 @@ where
         });
 
         self.waiting_completion = true;
+        self.pending_input = Some(input);
         Ok((
             state,
             ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner),
@@ -1087,7 +1420,7 @@ where
 
 impl<State> ErasedFlow<State> for SelectContextErasedFlow<State>
 where
-    State: Clone + 'static,
+    State: Clone + Send + 'static,
 {
     fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
@@ -1108,7 +1441,7 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let envelope: SelectCompletionEnvelope = match completion {
+        let envelope: SelectTraceEnvelope = match completion {
             Ok(bytes) => postcard::from_bytes(&bytes)
                 .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             Err(bytes) => {
@@ -1119,24 +1452,22 @@ where
             }
         };
 
+        let input = self
+            .pending_input
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
         let emitted = match envelope {
-            SelectCompletionEnvelope::Left(left_completion) => {
-                let (left_state, left_emitted) = self
-                    .left
-                    .get_mut(0)
-                    .ok_or(ExecutorError::Complete)?
-                    .complete(state, left_completion)?;
+            SelectTraceEnvelope::Left(left_trace) => {
+                let (left_state, left_emitted) =
+                    replay_subflow_trace(&mut self.left, state, input.clone(), left_trace)?;
                 let mut serialized = Vec::with_capacity(1 + left_emitted.len());
                 serialized.push(0);
                 serialized.extend_from_slice(&left_emitted);
                 (left_state, serialized)
             }
-            SelectCompletionEnvelope::Right(right_completion) => {
-                let (right_state, right_emitted) = self
-                    .right
-                    .get_mut(0)
-                    .ok_or(ExecutorError::Complete)?
-                    .complete(state, right_completion)?;
+            SelectTraceEnvelope::Right(right_trace) => {
+                let (right_state, right_emitted) =
+                    replay_subflow_trace(&mut self.right, state, input.clone(), right_trace)?;
                 let mut serialized = Vec::with_capacity(1 + right_emitted.len());
                 serialized.push(1);
                 serialized.extend_from_slice(&right_emitted);
@@ -1161,41 +1492,36 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let left_node = match self.left.get_mut(0) {
-            Some(left_node) => left_node,
-            None => return Err((state, ExecutorError::Complete)),
-        };
-        let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
-        let right_node = match self.right.get_mut(0) {
-            Some(right_node) => right_node,
-            None => return Err((state, ExecutorError::Complete)),
-        };
-        let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
-
         let payload = SelectRequestEnvelope {
-            left: left_req.request_bytes().to_vec(),
-            right: right_req.request_bytes().to_vec(),
+            left: input.clone(),
+            right: input.clone(),
         };
         let request = match postcard::to_allocvec(&payload) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
+        let left_flow = (self.build_left)();
+        let right_flow = (self.build_right)();
+        let left_state = state.clone();
+        let right_state = state.clone();
+        let left_input = input.clone();
+        let right_input = input.clone();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let left = left_req.run();
-                let right = right_req.run();
+                let left = run_subflow_to_end(left_flow, left_state, left_input);
+                let right = run_subflow_to_end(right_flow, right_state, right_input);
                 let selected = futures::future::select(
                     Box::pin(left) as Pin<Box<_>>,
                     Box::pin(right) as Pin<Box<_>>,
                 )
                 .await;
                 let envelope = match selected {
-                    futures::future::Either::Left((left_completion, _)) => {
-                        SelectCompletionEnvelope::Left(left_completion?)
+                    futures::future::Either::Left((left_trace, _)) => {
+                        SelectTraceEnvelope::Left(left_trace?)
                     }
-                    futures::future::Either::Right((right_completion, _)) => {
-                        SelectCompletionEnvelope::Right(right_completion?)
+                    futures::future::Either::Right((right_trace, _)) => {
+                        SelectTraceEnvelope::Right(right_trace?)
                     }
                 };
                 let bytes = postcard::to_allocvec(&envelope)
@@ -1205,6 +1531,7 @@ where
         });
 
         self.waiting_completion = true;
+        self.pending_input = Some(input);
         Ok((
             state,
             ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner),
@@ -1232,12 +1559,6 @@ where
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-struct JoinCompletionEnvelope {
-    left: SerializedCompletion,
-    right: SerializedCompletion,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
 struct JoinRequestEnvelope {
     left: Serialized,
     right: Serialized,
@@ -1247,16 +1568,27 @@ struct JoinErasedFlow<State> {
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
+    build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
+    build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+    pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
 }
 
 impl<State> JoinErasedFlow<State> {
-    fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
+        build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+    ) -> Self {
         Self {
             node_id: 0,
             left,
             right,
+            build_left,
+            build_right,
+            pending_input: None,
             waiting_completion: false,
             complete: false,
         }
@@ -1267,16 +1599,27 @@ struct JoinContextErasedFlow<State> {
     node_id: u32,
     left: DynFlow<State>,
     right: DynFlow<State>,
+    build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
+    build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+    pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
 }
 
 impl<State> JoinContextErasedFlow<State> {
-    fn new(left: DynFlow<State>, right: DynFlow<State>) -> Self {
+    fn new(
+        left: DynFlow<State>,
+        right: DynFlow<State>,
+        build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
+        build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+    ) -> Self {
         Self {
             node_id: 0,
             left,
             right,
+            build_left,
+            build_right,
+            pending_input: None,
             waiting_completion: false,
             complete: false,
         }
@@ -1285,7 +1628,7 @@ impl<State> JoinContextErasedFlow<State> {
 
 impl<State> ErasedFlow<State> for JoinErasedFlow<State>
 where
-    State: Clone + 'static,
+    State: Clone + Send + 'static,
 {
     fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
@@ -1306,7 +1649,7 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let envelope: JoinCompletionEnvelope = match completion {
+        let envelope: JoinTraceEnvelope = match completion {
             Ok(bytes) => postcard::from_bytes(&bytes)
                 .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             Err(bytes) => {
@@ -1317,10 +1660,14 @@ where
             }
         };
 
-        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
-        let (left_state, left_emitted) = left_node.complete(state, envelope.left)?;
-        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
-        let (right_state, right_emitted) = right_node.complete(left_state, envelope.right)?;
+        let input = self
+            .pending_input
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
+        let (left_state, left_emitted) =
+            replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
+        let (right_state, right_emitted) =
+            replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
         let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
         emitted.extend_from_slice(&left_emitted);
         emitted.extend_from_slice(&right_emitted);
@@ -1342,33 +1689,29 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let left_node = match self.left.get_mut(0) {
-            Some(left_node) => left_node,
-            None => return Err((state, ExecutorError::Complete)),
-        };
-        let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
-        let right_node = match self.right.get_mut(0) {
-            Some(right_node) => right_node,
-            None => return Err((state, ExecutorError::Complete)),
-        };
-        let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
-
         let payload = JoinRequestEnvelope {
-            left: left_req.request_bytes().to_vec(),
-            right: right_req.request_bytes().to_vec(),
+            left: input.clone(),
+            right: input.clone(),
         };
         let request = match postcard::to_allocvec(&payload) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
+        let left_flow = (self.build_left)();
+        let right_flow = (self.build_right)();
+        let left_state = state.clone();
+        let left_input = input.clone();
+        let right_input = input.clone();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let (left_completion, right_completion) =
-                    futures::join!(left_req.run(), right_req.run());
-                let envelope = JoinCompletionEnvelope {
-                    left: left_completion?,
-                    right: right_completion?,
+                let (left_state, left_trace) =
+                    run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
+                let (_right_state, right_trace) =
+                    run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                let envelope = JoinTraceEnvelope {
+                    left: left_trace,
+                    right: right_trace,
                 };
                 let bytes = postcard::to_allocvec(&envelope)
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
@@ -1377,6 +1720,7 @@ where
         });
 
         self.waiting_completion = true;
+        self.pending_input = Some(input);
         Ok((
             state,
             ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner),
@@ -1405,7 +1749,7 @@ where
 
 impl<State> ErasedFlow<State> for JoinContextErasedFlow<State>
 where
-    State: Clone + 'static,
+    State: Clone + Send + 'static,
 {
     fn request(&mut self, state: State, _input: Serialized) -> RequestResult<State, Serialized> {
         Err((
@@ -1426,7 +1770,7 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let envelope: JoinCompletionEnvelope = match completion {
+        let envelope: JoinTraceEnvelope = match completion {
             Ok(bytes) => postcard::from_bytes(&bytes)
                 .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?,
             Err(bytes) => {
@@ -1437,10 +1781,14 @@ where
             }
         };
 
-        let left_node = self.left.get_mut(0).ok_or(ExecutorError::Complete)?;
-        let (left_state, left_emitted) = left_node.complete(state, envelope.left)?;
-        let right_node = self.right.get_mut(0).ok_or(ExecutorError::Complete)?;
-        let (right_state, right_emitted) = right_node.complete(left_state, envelope.right)?;
+        let input = self
+            .pending_input
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
+        let (left_state, left_emitted) =
+            replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
+        let (right_state, right_emitted) =
+            replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
         let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
         emitted.extend_from_slice(&left_emitted);
         emitted.extend_from_slice(&right_emitted);
@@ -1462,33 +1810,29 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
 
-        let left_node = match self.left.get_mut(0) {
-            Some(left_node) => left_node,
-            None => return Err((state, ExecutorError::Complete)),
-        };
-        let (_left_state, left_req) = left_node.request_executable(state.clone(), input.clone())?;
-        let right_node = match self.right.get_mut(0) {
-            Some(right_node) => right_node,
-            None => return Err((state, ExecutorError::Complete)),
-        };
-        let (_right_state, right_req) = right_node.request_executable(state.clone(), input)?;
-
         let payload = JoinRequestEnvelope {
-            left: left_req.request_bytes().to_vec(),
-            right: right_req.request_bytes().to_vec(),
+            left: input.clone(),
+            right: input.clone(),
         };
         let request = match postcard::to_allocvec(&payload) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
         };
+        let left_flow = (self.build_left)();
+        let right_flow = (self.build_right)();
+        let left_state = state.clone();
+        let left_input = input.clone();
+        let right_input = input.clone();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let (left_completion, right_completion) =
-                    futures::join!(left_req.run(), right_req.run());
-                let envelope = JoinCompletionEnvelope {
-                    left: left_completion?,
-                    right: right_completion?,
+                let (left_state, left_trace) =
+                    run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
+                let (_right_state, right_trace) =
+                    run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                let envelope = JoinTraceEnvelope {
+                    left: left_trace,
+                    right: right_trace,
                 };
                 let bytes = postcard::to_allocvec(&envelope)
                     .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
@@ -1497,6 +1841,7 @@ where
         });
 
         self.waiting_completion = true;
+        self.pending_input = Some(input);
         Ok((
             state,
             ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner),
@@ -1680,26 +2025,50 @@ where
             };
 
             self.ensure_iteration_ready();
+            enum NodeAdvance<S> {
+                Request((S, ExecutableEffectRequest)),
+                Completed(S),
+                Bubble((S, ExecutorError)),
+            }
 
-            let node = self
-                .active_body
-                .get_mut(self.body_cursor)
-                .expect("body cursor always points to an active body node");
-            match node.request_executable(state, branch_input) {
-                Ok((next_state, request)) => return Ok((next_state, request)),
-                Err((next_state, ExecutorError::Complete)) => {
-                    if node.is_complete() {
-                        self.body_cursor += 1;
-                        if self.body_cursor >= self.active_body.len() {
-                            self.active_body.clear();
-                            self.body_cursor = 0;
+            let advance = {
+                let node = self
+                    .active_body
+                    .get_mut(self.body_cursor)
+                    .expect("body cursor always points to an active body node");
+                match node.request_executable(state, branch_input) {
+                    Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
+                    Err((next_state, ExecutorError::Complete)) => {
+                        if node.is_complete() {
+                            NodeAdvance::Completed(next_state)
+                        } else {
+                            // Handles inline-completable children (e.g. Noop) inside While bodies.
+                            let (next_state, _emitted, completed) = node
+                                .try_complete_without_progress(next_state)
+                                .expect("while child inline completion should succeed");
+                            if completed {
+                                NodeAdvance::Completed(next_state)
+                            } else {
+                                NodeAdvance::Bubble((next_state, ExecutorError::Complete))
+                            }
                         }
-                        state = next_state;
-                        continue;
                     }
-                    return Err((next_state, ExecutorError::Complete));
+                    Err((next_state, err)) => NodeAdvance::Bubble((next_state, err)),
                 }
-                Err((next_state, err)) => return Err((next_state, err)),
+            };
+
+            match advance {
+                NodeAdvance::Request(ok) => return Ok(ok),
+                NodeAdvance::Completed(next_state) => {
+                    self.body_cursor += 1;
+                    if self.body_cursor >= self.active_body.len() {
+                        self.active_body.clear();
+                        self.body_cursor = 0;
+                    }
+                    state = next_state;
+                    continue;
+                }
+                NodeAdvance::Bubble(err) => return Err(err),
             }
         }
     }
@@ -1718,14 +2087,14 @@ where
     fn try_complete_without_progress(
         &mut self,
         state: State,
-    ) -> Result<(State, bool), ExecutorError> {
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
-            return Ok((saved, true));
+            return Ok((saved, None, true));
         }
         if self.complete {
-            return Ok((state, true));
+            return Ok((state, None, true));
         }
-        Ok((state, false))
+        Ok((state, None, false))
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -2045,37 +2414,51 @@ where
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, L, R, M> BuildFlow<DynFlow<State>> for Select<L, R, M>
+impl<State, L, R, M> BuildFlow<DynFlow<State>> for Select<L, R, M>
 where
-    State: Clone + 'static,
-    In: DeserializeOwned + 'static,
-    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
-    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    State: Clone + Send + 'static,
+    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + ArgputForState<State>,
+    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
+        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let left = <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
-        steps.push(Box::new(SelectErasedFlow::<State>::new(left, right)));
+        let build_left = Box::new(|| <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        let build_right = Box::new(|| <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        steps.push(Box::new(SelectErasedFlow::<State>::new(
+            left,
+            right,
+            build_left,
+            build_right,
+        )));
         steps
     }
 }
 
 #[inception::primitive(property = crate::JungleDynFlow)]
-impl<State, In, L, R, M> BuildFlow<DynFlow<State>> for Join<L, R, M>
+impl<State, L, R, M> BuildFlow<DynFlow<State>> for Join<L, R, M>
 where
-    State: Clone + 'static,
-    In: DeserializeOwned + 'static,
-    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
-    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + Running<In = (State, In)>,
+    State: Clone + Send + 'static,
+    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + ArgputForState<State>,
+    R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
+        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
     type Output = DynFlow<State>;
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let left = <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
-        steps.push(Box::new(JoinErasedFlow::<State>::new(left, right)));
+        let build_left = Box::new(|| <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        let build_right = Box::new(|| <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        steps.push(Box::new(JoinErasedFlow::<State>::new(
+            left,
+            right,
+            build_left,
+            build_right,
+        )));
         steps
     }
 }
@@ -2330,6 +2713,41 @@ impl<State, In> ErasedFlow<State> for ConditionalContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        if self.active_branch.is_none() {
+            return Ok((state, None, false));
+        }
+        if self.cursor >= self.branch_len() {
+            return Ok((state, None, true));
+        }
+
+        let node = self
+            .active_node_mut()
+            .expect("cursor was checked against active branch length");
+        if node.is_waiting_completion() {
+            return Ok((state, None, false));
+        }
+
+        let (state, emitted, completed) = node.try_complete_without_progress(state)?;
+        if !completed {
+            return Ok((state, emitted, false));
+        }
+
+        self.cursor += 1;
+        if self.cursor >= self.branch_len() {
+            let active_branch = self
+                .active_branch
+                .expect("active branch is present while conditional is executing");
+            let emitted = emitted.map(|bytes| encode_conditional_context_emitted(active_branch, bytes));
+            return Ok((state, emitted, true));
+        }
+
+        Ok((state, emitted, false))
+    }
+
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let (choose_left, branch_input) = if self.active_branch.is_none() {
             match decode_controlled_input::<In, _>(&input, |carry| {
@@ -2481,8 +2899,8 @@ where
 impl<Context, State, P, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
     for Conditional<P, L, R, M>
 where
-    Context: 'static,
-    State: Clone + 'static,
+    Context: Send + Sync + 'static,
+    State: Clone + Send + 'static,
     L: ArgputForState<State>,
     <L as ArgputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
     P: crate::Condition<(State, <L as ArgputForState<State>>::Carry)> + 'static,
@@ -2693,26 +3111,50 @@ where
             };
 
             self.ensure_iteration_ready();
+            enum NodeAdvance<S> {
+                Request((S, ExecutableEffectRequest)),
+                Completed(S),
+                Bubble((S, ExecutorError)),
+            }
 
-            let node = self
-                .active_body
-                .get_mut(self.body_cursor)
-                .expect("body cursor always points to an active body node");
-            match node.request_executable(state, branch_input) {
-                Ok((next_state, request)) => return Ok((next_state, request)),
-                Err((next_state, ExecutorError::Complete)) => {
-                    if node.is_complete() {
-                        self.body_cursor += 1;
-                        if self.body_cursor >= self.active_body.len() {
-                            self.active_body.clear();
-                            self.body_cursor = 0;
+            let advance = {
+                let node = self
+                    .active_body
+                    .get_mut(self.body_cursor)
+                    .expect("body cursor always points to an active body node");
+                match node.request_executable(state, branch_input) {
+                    Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
+                    Err((next_state, ExecutorError::Complete)) => {
+                        if node.is_complete() {
+                            NodeAdvance::Completed(next_state)
+                        } else {
+                            // Handles inline-completable children (e.g. Noop) inside While bodies.
+                            let (next_state, _emitted, completed) = node
+                                .try_complete_without_progress(next_state)
+                                .expect("while child inline completion should succeed");
+                            if completed {
+                                NodeAdvance::Completed(next_state)
+                            } else {
+                                NodeAdvance::Bubble((next_state, ExecutorError::Complete))
+                            }
                         }
-                        state = next_state;
-                        continue;
                     }
-                    return Err((next_state, ExecutorError::Complete));
+                    Err((next_state, err)) => NodeAdvance::Bubble((next_state, err)),
                 }
-                Err((next_state, err)) => return Err((next_state, err)),
+            };
+
+            match advance {
+                NodeAdvance::Request(ok) => return Ok(ok),
+                NodeAdvance::Completed(next_state) => {
+                    self.body_cursor += 1;
+                    if self.body_cursor >= self.active_body.len() {
+                        self.active_body.clear();
+                        self.body_cursor = 0;
+                    }
+                    state = next_state;
+                    continue;
+                }
+                NodeAdvance::Bubble(err) => return Err(err),
             }
         }
     }
@@ -2731,14 +3173,14 @@ where
     fn try_complete_without_progress(
         &mut self,
         state: State,
-    ) -> Result<(State, bool), ExecutorError> {
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
-            return Ok((saved, true));
+            return Ok((saved, None, true));
         }
         if self.complete {
-            return Ok((state, true));
+            return Ok((state, None, true));
         }
-        Ok((state, false))
+        Ok((state, None, false))
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -2802,20 +3244,19 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+impl<Context, State, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
     for Select<L, R, M>
 where
-    Context: 'static,
-    State: Clone + 'static,
-    In: DeserializeOwned + 'static,
+    Context: Send + Sync + 'static,
+    State: Clone + Send + 'static,
     L: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + Running<In = (State, In)>,
+        > + ArgputForState<State>,
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + Running<In = (State, In)>,
+        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -2828,26 +3269,43 @@ where
             Arc::clone(&context),
             Vec::new(),
         ));
-        steps.push(Box::new(SelectContextErasedFlow::<State>::new(left, right)));
+        let context_for_left = Arc::clone(&context);
+        let context_for_right = Arc::clone(&context);
+        let build_left = Box::new(move || {
+            let (_, flow) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
+                (Arc::clone(&context_for_left), Vec::new()),
+            );
+            flow
+        });
+        let build_right = Box::new(move || {
+            let (_, flow) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
+                (Arc::clone(&context_for_right), Vec::new()),
+            );
+            flow
+        });
+        steps.push(Box::new(SelectContextErasedFlow::<State>::new(
+            left,
+            right,
+            build_left,
+            build_right,
+        )));
         (context, steps)
     }
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
-impl<Context, State, In, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
-    for Join<L, R, M>
+impl<Context, State, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Join<L, R, M>
 where
-    Context: 'static,
-    State: Clone + 'static,
-    In: DeserializeOwned + 'static,
+    Context: Send + Sync + 'static,
+    State: Clone + Send + 'static,
     L: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + Running<In = (State, In)>,
+        > + ArgputForState<State>,
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + Running<In = (State, In)>,
+        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -2860,7 +3318,26 @@ where
             Arc::clone(&context),
             Vec::new(),
         ));
-        steps.push(Box::new(JoinContextErasedFlow::<State>::new(left, right)));
+        let context_for_left = Arc::clone(&context);
+        let context_for_right = Arc::clone(&context);
+        let build_left = Box::new(move || {
+            let (_, flow) = <L as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
+                (Arc::clone(&context_for_left), Vec::new()),
+            );
+            flow
+        });
+        let build_right = Box::new(move || {
+            let (_, flow) = <R as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(
+                (Arc::clone(&context_for_right), Vec::new()),
+            );
+            flow
+        });
+        steps.push(Box::new(JoinContextErasedFlow::<State>::new(
+            left,
+            right,
+            build_left,
+            build_right,
+        )));
         (context, steps)
     }
 }
@@ -2968,8 +3445,11 @@ where
                 self.state = Some(state);
                 break;
             }
-            let (state, completed) = node.try_complete_without_progress(state)?;
+            let (state, emitted, completed) = node.try_complete_without_progress(state)?;
             self.state = Some(state);
+            if let Some(emitted) = emitted {
+                self.last_emitted = Some(emitted);
+            }
             if completed {
                 self.cursor += 1;
                 continue;
@@ -3032,7 +3512,7 @@ where
     where
         Initial: Serialize,
     {
-        let input = match self.last_emitted.take() {
+        let mut input = match self.last_emitted.take() {
             Some(input) => input,
             None => serialize_input(initial_input)?,
         };
@@ -3040,6 +3520,9 @@ where
             self.settle_without_progress()?;
             if self.is_complete() {
                 return Err(ExecutorError::Complete);
+            }
+            if let Some(emitted) = self.last_emitted.take() {
+                input = emitted;
             }
 
             let state = self.state.take().expect("executor state is always present");
@@ -3055,10 +3538,17 @@ where
                 Err((state, ExecutorError::Complete)) => {
                     self.state = Some(state);
                     let state = self.state.take().expect("executor state is always present");
-                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    let made_progress = emitted.is_some();
+                    if let Some(emitted) = emitted {
+                        self.last_emitted = Some(emitted);
+                    }
                     if completed {
                         self.cursor += 1;
+                        continue;
+                    }
+                    if made_progress {
                         continue;
                     }
                     self.settle_without_progress()?;
@@ -3162,10 +3652,14 @@ where
     }
 
     fn next_request_serialized(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
+        let mut input = input;
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
                 return Err(ExecutorError::Complete);
+            }
+            if let Some(emitted) = self.last_emitted.take() {
+                input = emitted;
             }
 
             let state = self.state.take().expect("executor state is always present");
@@ -3181,10 +3675,17 @@ where
                 Err((state, ExecutorError::Complete)) => {
                     self.state = Some(state);
                     let state = self.state.take().expect("executor state is always present");
-                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    let made_progress = emitted.is_some();
+                    if let Some(emitted) = emitted {
+                        self.last_emitted = Some(emitted);
+                    }
                     if completed {
                         self.cursor += 1;
+                        continue;
+                    }
+                    if made_progress {
                         continue;
                     }
                     self.settle_without_progress()?;
@@ -3207,6 +3708,7 @@ where
     state: Option<A::State>,
     steps: DynFlow<A::State>,
     cursor: usize,
+    last_emitted: Option<Serialized>,
 }
 
 impl<A> ManualExecutor<A>
@@ -3229,8 +3731,11 @@ where
                 self.state = Some(state);
                 break;
             }
-            let (state, completed) = node.try_complete_without_progress(state)?;
+            let (state, emitted, completed) = node.try_complete_without_progress(state)?;
             self.state = Some(state);
+            if let Some(emitted) = emitted {
+                self.last_emitted = Some(emitted);
+            }
             if completed {
                 self.cursor += 1;
                 continue;
@@ -3248,6 +3753,7 @@ where
             state: Some(state),
             steps,
             cursor: 0,
+            last_emitted: None,
         };
         executor
             .settle_without_progress()
@@ -3272,10 +3778,14 @@ where
     }
 
     pub fn next_request(&mut self, input: Serialized) -> Result<Serialized, ExecutorError> {
+        let mut input = self.last_emitted.take().unwrap_or(input);
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
                 return Err(ExecutorError::Complete);
+            }
+            if let Some(emitted) = self.last_emitted.take() {
+                input = emitted;
             }
 
             let state = self.state.take().expect("executor state is always present");
@@ -3291,10 +3801,17 @@ where
                 Err((state, ExecutorError::Complete)) => {
                     self.state = Some(state);
                     let state = self.state.take().expect("executor state is always present");
-                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    let made_progress = emitted.is_some();
+                    if let Some(emitted) = emitted {
+                        self.last_emitted = Some(emitted);
+                    }
                     if completed {
                         self.cursor += 1;
+                        continue;
+                    }
+                    if made_progress {
                         continue;
                     }
                     self.settle_without_progress()?;
@@ -3312,10 +3829,14 @@ where
         &mut self,
         input: Serialized,
     ) -> Result<ExecutableEffectRequest, ExecutorError> {
+        let mut input = self.last_emitted.take().unwrap_or(input);
         loop {
             self.settle_without_progress()?;
             if self.is_complete() {
                 return Err(ExecutorError::Complete);
+            }
+            if let Some(emitted) = self.last_emitted.take() {
+                input = emitted;
             }
 
             let state = self.state.take().expect("executor state is always present");
@@ -3331,10 +3852,17 @@ where
                 Err((state, ExecutorError::Complete)) => {
                     self.state = Some(state);
                     let state = self.state.take().expect("executor state is always present");
-                    let (state, completed) = node.try_complete_without_progress(state)?;
+                    let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    let made_progress = emitted.is_some();
+                    if let Some(emitted) = emitted {
+                        self.last_emitted = Some(emitted);
+                    }
                     if completed {
                         self.cursor += 1;
+                        continue;
+                    }
+                    if made_progress {
                         continue;
                     }
                     self.settle_without_progress()?;
@@ -3381,6 +3909,7 @@ where
         }
         self.state = Some(state);
         self.settle_without_progress()?;
+        self.last_emitted = Some(emitted.clone());
         deserialize_emitted(emitted)
     }
 
@@ -3404,6 +3933,7 @@ where
         }
         self.state = Some(state);
         self.settle_without_progress()?;
+        self.last_emitted = Some(emitted.clone());
         Ok(emitted)
     }
 
