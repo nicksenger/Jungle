@@ -1535,7 +1535,6 @@ impl Act for BassTailStub {
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
 pub struct BassJoinMonad100JoinAndRest(
-    Step<JoinThump<35, 100, 0>>,
     Join<Step<JoinThump<35, 100, 0>>, Step<HarmonySing<71, 100, 0>>>,
     Step<MergeUnit>,
 );
