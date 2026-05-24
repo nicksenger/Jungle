@@ -1823,7 +1823,7 @@ pub struct RhythmJoinMonad100LoopBody(
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct RhythmJoinMonad100Flow(While<RhythmRiffLoopRemaining, RhythmJoinMonad100LoopBody>);
+pub struct RhythmJoinMonad100Flow(RhythmJoinMonad100LoopBody);
 
 #[cfg(test)]
 pub struct RhythmJoinMonad100Animal;
