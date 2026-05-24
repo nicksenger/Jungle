@@ -774,13 +774,11 @@ impl Act for LocalJoinRightStubBSpec {
 pub struct FlattenJoinedUnitTupleSpec;
 #[jungle::act]
 impl Act for FlattenJoinedUnitTupleSpec {
-    type Effect = TimedValueEffect;
+    type Effect = Noop;
     type Input = ((), ());
     type Output = ();
 
-    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
-        (0, 0)
-    }
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> () {}
 
     fn absorb(
         _state: &mut SelectJoinState,
@@ -793,13 +791,11 @@ impl Act for FlattenJoinedUnitTupleSpec {
 pub struct FlattenConditionalEitherSpec;
 #[jungle::act]
 impl Act for FlattenConditionalEitherSpec {
-    type Effect = TimedValueEffect;
+    type Effect = Noop;
     type Input = Either<(), ()>;
     type Output = ();
 
-    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
-        (0, 0)
-    }
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> () {}
 
     fn absorb(
         _state: &mut SelectJoinState,
@@ -809,9 +805,9 @@ impl Act for FlattenConditionalEitherSpec {
     }
 }
 
-pub struct LocalTailStubSpec;
+pub struct LocalTailStub1Spec;
 #[jungle::act]
-impl Act for LocalTailStubSpec {
+impl Act for LocalTailStub1Spec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -821,7 +817,160 @@ impl Act for LocalTailStubSpec {
     }
 
     fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("local tail stub should succeed");
+        output.expect("local tail stub 1 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub2Spec;
+#[jungle::act]
+impl Act for LocalTailStub2Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 6)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 2 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub3Spec;
+#[jungle::act]
+impl Act for LocalTailStub3Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 7)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 3 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub4Spec;
+#[jungle::act]
+impl Act for LocalTailStub4Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 8)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 4 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub5Spec;
+#[jungle::act]
+impl Act for LocalTailStub5Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 9)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 5 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub6Spec;
+#[jungle::act]
+impl Act for LocalTailStub6Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 10)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 6 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub7Spec;
+#[jungle::act]
+impl Act for LocalTailStub7Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 11)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 7 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub8Spec;
+#[jungle::act]
+impl Act for LocalTailStub8Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 12)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 8 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub9Spec;
+#[jungle::act]
+impl Act for LocalTailStub9Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 13)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 9 should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+pub struct LocalTailStub10Spec;
+#[jungle::act]
+impl Act for LocalTailStub10Spec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 14)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub 10 should succeed");
         state.joined_sum = state.joined_sum.saturating_add(1);
     }
 }
@@ -839,19 +988,42 @@ pub struct LocalConditionalRightBranch(
 );
 
 #[derive(Flow)]
+pub struct LocalTail10Flow(Step<LocalTailStub10Spec>);
+
+#[derive(Flow)]
+pub struct LocalTail9Flow(Step<LocalTailStub9Spec>, LocalTail10Flow);
+
+#[derive(Flow)]
+pub struct LocalTail8Flow(Step<LocalTailStub8Spec>, LocalTail9Flow);
+
+#[derive(Flow)]
+pub struct LocalTail7Flow(Step<LocalTailStub7Spec>, LocalTail8Flow);
+
+#[derive(Flow)]
+pub struct LocalTail6Flow(Step<LocalTailStub6Spec>, LocalTail7Flow);
+
+#[derive(Flow)]
+pub struct LocalTail5Flow(Step<LocalTailStub5Spec>, LocalTail6Flow);
+
+#[derive(Flow)]
+pub struct LocalTail4Flow(Step<LocalTailStub4Spec>, LocalTail5Flow);
+
+#[derive(Flow)]
+pub struct LocalTail3Flow(Step<LocalTailStub3Spec>, LocalTail4Flow);
+
+#[derive(Flow)]
+pub struct LocalTail2Flow(Step<LocalTailStub2Spec>, LocalTail3Flow);
+
+#[derive(Flow)]
+pub struct LocalTail1Flow(Step<LocalTailStub1Spec>, LocalTail2Flow);
+
+#[derive(Flow)]
+pub struct LocalPostConditionalFlow(Step<FlattenConditionalEitherSpec>, LocalTail1Flow);
+
+#[derive(Flow)]
 pub struct LocalConditionalJoinTailFlow(
     Conditional<LocalConditionalPrefersLeft, LocalConditionalLeftBranch, LocalConditionalRightBranch>,
-    Step<FlattenConditionalEitherSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
-    Step<LocalTailStubSpec>,
+    LocalPostConditionalFlow,
 );
 
 pub struct LocalConditionalJoinTailAnimal;
@@ -1010,6 +1182,8 @@ async fn join_state_dependent_right_branch_does_not_wedge() {
 
 #[tokio::test]
 async fn conditional_join_then_tail_streams_events_and_completes_with_local_client() {
+    const PARALLEL_JOURNEYS: usize = 5;
+
     let client = jungle_sdk::LocalClient::builder()
         .namespace("select-join-conditional-join-tail")
         .build()
@@ -1021,45 +1195,61 @@ async fn conditional_join_then_tail_streams_events_and_completes_with_local_clie
         let _ = worker.spawn().await;
     });
 
-    let journey_id = client
-        .start_journey::<LocalConditionalJoinTailAnimal>(
-            postcard::to_allocvec(&SelectJoinState::default()).expect("seed should serialize"),
-        )
-        .await
-        .expect("journey should start");
+    let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
+    let mut subscriptions = Vec::with_capacity(PARALLEL_JOURNEYS);
+    for index in 0..PARALLEL_JOURNEYS {
+        let journey_id = client
+            .start_journey::<LocalConditionalJoinTailAnimal>(
+                postcard::to_allocvec(&SelectJoinState::default()).expect("seed should serialize"),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
+        let subscription = client
+            .subscribe_step_updates(journey_id, None)
+            .await
+            .unwrap_or_else(|err| panic!("journey {index} subscribe_step_updates should succeed: {err}"));
+        journey_ids.push(journey_id);
+        subscriptions.push(subscription);
+    }
 
-    let mut subscription = client
-        .subscribe_step_updates(journey_id, None)
-        .await
-        .expect("subscribe_step_updates should succeed");
-
-    let event_count = tokio::time::timeout(Duration::from_secs(8), async {
-        let mut count = 0_u32;
-        while let Some(next) = subscription.next().await {
-            let update = next.expect("streamed journey update should succeed");
-            let update_journey_id = match update.event {
-                RunnerUpdateOut::EffectInput { uuid, .. }
-                | RunnerUpdateOut::EffectSuccessOutput { uuid, .. }
-                | RunnerUpdateOut::EffectFailureOutput { uuid, .. }
-                | RunnerUpdateOut::SleepScheduled { uuid, .. }
-                | RunnerUpdateOut::SleepFired { uuid, .. } => uuid,
-            };
-            assert_eq!(update_journey_id, journey_id, "stream update should match journey");
-            count += 1;
+    let step_event_count = tokio::time::timeout(Duration::from_secs(8), async {
+        let mut total_count = 0_u32;
+        for (index, mut subscription) in subscriptions.into_iter().enumerate() {
+            let journey_id = journey_ids[index];
+            while let Some(next) = subscription.next().await {
+                let update = next.expect("streamed journey update should succeed");
+                let (update_journey_id, should_count) = match update.event {
+                    RunnerUpdateOut::EffectInput { uuid, .. }
+                    | RunnerUpdateOut::EffectSuccessOutput { uuid, .. }
+                    | RunnerUpdateOut::EffectFailureOutput { uuid, .. } => (uuid, true),
+                    RunnerUpdateOut::SleepScheduled { uuid, .. }
+                    | RunnerUpdateOut::SleepFired { uuid, .. } => (uuid, false),
+                };
+                assert_eq!(update_journey_id, journey_id, "stream update should match journey");
+                if should_count {
+                    total_count += 1;
+                }
+            }
         }
-        count
+        total_count
     })
     .await
     .expect("journey update stream should finish before timeout");
 
-    let status = client
-        .journey_details(journey_id)
-        .await
-        .expect("journey_details should succeed after stream completion");
-    assert_eq!(status, JourneyStatus::Completed);
+    for (index, journey_id) in journey_ids.into_iter().enumerate() {
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .unwrap_or_else(|err| panic!("journey {index} details should succeed: {err}"));
+        assert_eq!(
+            status,
+            JourneyStatus::Completed,
+            "journey {index} should complete"
+        );
+    }
     assert!(
-        event_count >= 10,
-        "expected at least 10 subscribed journey events, got {event_count}"
+        step_event_count >= 10,
+        "expected at least 10 subscribed journey step events, got {step_event_count}"
     );
 
     worker_handle.abort();
