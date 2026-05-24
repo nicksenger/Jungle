@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use super::{Double, Quad};
-use crate::effect::{AtomicDualHit, ImmediateDyad, ImmediateMonad, Rest, SyncedRest, Tetrad};
+use crate::effect::{AtomicDualHit, Dyad, Monad, Rest, Tetrad};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
@@ -62,7 +62,14 @@ pub struct JoinPick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinPick<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = ImmediateMonad<ElectricGuitar, ElectricGuitarArticulation, NOTE, NOTE_TICK>;
+    type Effect = Monad<
+        ElectricGuitar,
+        ElectricGuitarArticulation,
+        RHYTHM_GUITAR_LANE_ID,
+        NOTE,
+        NOTE_TICK,
+        REST_TICK,
+    >;
     type Input = ();
     type Output = ();
 
@@ -86,8 +93,15 @@ pub struct JoinPluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, c
 impl<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinPluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK>
 {
-    type Effect =
-        ImmediateDyad<ElectricGuitar, ElectricGuitarArticulation, NOTE_1, NOTE_2, NOTE_TICK>;
+    type Effect = Dyad<
+        ElectricGuitar,
+        ElectricGuitarArticulation,
+        RHYTHM_GUITAR_LANE_ID,
+        NOTE_1,
+        NOTE_2,
+        NOTE_TICK,
+        REST_TICK,
+    >;
     type Input = ();
     type Output = ();
 
@@ -231,7 +245,14 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = ImmediateMonad<Vocals, VocalsArticulation, NOTE, NOTE_TICK>;
+    type Effect = Monad<
+        Vocals,
+        VocalsArticulation,
+        RHYTHM_GUITAR_LANE_ID,
+        NOTE,
+        NOTE_TICK,
+        REST_TICK,
+    >;
     type Input = ();
     type Output = ();
 
@@ -275,7 +296,7 @@ impl Act for MergeUnit {
 pub struct PostMergeRest;
 #[jungle::act]
 impl Act for PostMergeRest {
-    type Effect = SyncedRest<RHYTHM_GUITAR_LANE_ID, 384, 384>;
+    type Effect = Rest<RHYTHM_GUITAR_LANE_ID, 384>;
     type Input = ();
     type Output = ();
 
