@@ -9,6 +9,8 @@ use std::time::Duration;
 const WORKER_COUNT: usize = 5;
 const JOURNEY_COUNT: usize = 2;
 const EXPECTED_STEPS_PER_JOURNEY: usize = 104;
+const SINGLE_WORKER_COUNT: usize = 1;
+const SINGLE_JOURNEY_COUNT: usize = 1;
 
 pub struct MultiWorkerAnimal;
 
@@ -119,6 +121,70 @@ async fn local_client_multi_worker_example_flow_has_expected_events_without_repl
             .journey_details(journey_two)
             .await
             .expect("second journey_details should succeed"),
+        JourneyStatus::Completed
+    );
+
+    for worker_handle in worker_handles {
+        worker_handle.abort();
+        let _ = worker_handle.await;
+    }
+}
+
+#[tokio::test]
+async fn local_client_single_worker_single_journey_example_flow_has_expected_events_without_replays(
+) {
+    let client = LocalClient::builder()
+        .namespace("single-worker-regression")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let mut worker_handles = Vec::with_capacity(SINGLE_WORKER_COUNT);
+    for _ in 0..SINGLE_WORKER_COUNT {
+        let worker = JungleWorker::new(MultiWorkerZoo, client.clone());
+        worker_handles.push(tokio::spawn(async move {
+            let _ = worker.spawn().await;
+        }));
+    }
+
+    let seed = postcard::to_allocvec(&NestedState::default()).expect("seed should serialize");
+    let mut journey_ids = Vec::with_capacity(SINGLE_JOURNEY_COUNT);
+    for _ in 0..SINGLE_JOURNEY_COUNT {
+        let journey_id = client
+            .start_journey::<MultiWorkerAnimal>(seed.clone())
+            .await
+            .expect("journey should start");
+        journey_ids.push(journey_id);
+    }
+
+    let journey_id = journey_ids[0];
+
+    let mut journey_stream = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("journey subscribe_step_updates should succeed");
+
+    let journey_counts = tokio::time::timeout(Duration::from_secs(45), async {
+        consume_journey_updates(&mut journey_stream, journey_id).await
+    })
+    .await
+    .expect("journey update stream should complete before timeout");
+
+    assert_eq!(
+        journey_counts.started, EXPECTED_STEPS_PER_JOURNEY,
+        "journey should emit expected started-step count"
+    );
+    assert_eq!(
+        journey_counts.succeeded, EXPECTED_STEPS_PER_JOURNEY,
+        "journey should emit expected succeeded-step count"
+    );
+    assert_eq!(journey_counts.failed, 0, "journey should not fail any step");
+
+    assert_eq!(
+        client
+            .journey_details(journey_id)
+            .await
+            .expect("journey_details should succeed"),
         JourneyStatus::Completed
     );
 
