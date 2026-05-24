@@ -2025,26 +2025,50 @@ where
             };
 
             self.ensure_iteration_ready();
+            enum NodeAdvance<S> {
+                Request((S, ExecutableEffectRequest)),
+                Completed(S),
+                Bubble((S, ExecutorError)),
+            }
 
-            let node = self
-                .active_body
-                .get_mut(self.body_cursor)
-                .expect("body cursor always points to an active body node");
-            match node.request_executable(state, branch_input) {
-                Ok((next_state, request)) => return Ok((next_state, request)),
-                Err((next_state, ExecutorError::Complete)) => {
-                    if node.is_complete() {
-                        self.body_cursor += 1;
-                        if self.body_cursor >= self.active_body.len() {
-                            self.active_body.clear();
-                            self.body_cursor = 0;
+            let advance = {
+                let node = self
+                    .active_body
+                    .get_mut(self.body_cursor)
+                    .expect("body cursor always points to an active body node");
+                match node.request_executable(state, branch_input) {
+                    Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
+                    Err((next_state, ExecutorError::Complete)) => {
+                        if node.is_complete() {
+                            NodeAdvance::Completed(next_state)
+                        } else {
+                            // Handles inline-completable children (e.g. Noop) inside While bodies.
+                            let (next_state, _emitted, completed) = node
+                                .try_complete_without_progress(next_state)
+                                .expect("while child inline completion should succeed");
+                            if completed {
+                                NodeAdvance::Completed(next_state)
+                            } else {
+                                NodeAdvance::Bubble((next_state, ExecutorError::Complete))
+                            }
                         }
-                        state = next_state;
-                        continue;
                     }
-                    return Err((next_state, ExecutorError::Complete));
+                    Err((next_state, err)) => NodeAdvance::Bubble((next_state, err)),
                 }
-                Err((next_state, err)) => return Err((next_state, err)),
+            };
+
+            match advance {
+                NodeAdvance::Request(ok) => return Ok(ok),
+                NodeAdvance::Completed(next_state) => {
+                    self.body_cursor += 1;
+                    if self.body_cursor >= self.active_body.len() {
+                        self.active_body.clear();
+                        self.body_cursor = 0;
+                    }
+                    state = next_state;
+                    continue;
+                }
+                NodeAdvance::Bubble(err) => return Err(err),
             }
         }
     }
@@ -3087,26 +3111,50 @@ where
             };
 
             self.ensure_iteration_ready();
+            enum NodeAdvance<S> {
+                Request((S, ExecutableEffectRequest)),
+                Completed(S),
+                Bubble((S, ExecutorError)),
+            }
 
-            let node = self
-                .active_body
-                .get_mut(self.body_cursor)
-                .expect("body cursor always points to an active body node");
-            match node.request_executable(state, branch_input) {
-                Ok((next_state, request)) => return Ok((next_state, request)),
-                Err((next_state, ExecutorError::Complete)) => {
-                    if node.is_complete() {
-                        self.body_cursor += 1;
-                        if self.body_cursor >= self.active_body.len() {
-                            self.active_body.clear();
-                            self.body_cursor = 0;
+            let advance = {
+                let node = self
+                    .active_body
+                    .get_mut(self.body_cursor)
+                    .expect("body cursor always points to an active body node");
+                match node.request_executable(state, branch_input) {
+                    Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
+                    Err((next_state, ExecutorError::Complete)) => {
+                        if node.is_complete() {
+                            NodeAdvance::Completed(next_state)
+                        } else {
+                            // Handles inline-completable children (e.g. Noop) inside While bodies.
+                            let (next_state, _emitted, completed) = node
+                                .try_complete_without_progress(next_state)
+                                .expect("while child inline completion should succeed");
+                            if completed {
+                                NodeAdvance::Completed(next_state)
+                            } else {
+                                NodeAdvance::Bubble((next_state, ExecutorError::Complete))
+                            }
                         }
-                        state = next_state;
-                        continue;
                     }
-                    return Err((next_state, ExecutorError::Complete));
+                    Err((next_state, err)) => NodeAdvance::Bubble((next_state, err)),
                 }
-                Err((next_state, err)) => return Err((next_state, err)),
+            };
+
+            match advance {
+                NodeAdvance::Request(ok) => return Ok(ok),
+                NodeAdvance::Completed(next_state) => {
+                    self.body_cursor += 1;
+                    if self.body_cursor >= self.active_body.len() {
+                        self.active_body.clear();
+                        self.body_cursor = 0;
+                    }
+                    state = next_state;
+                    continue;
+                }
+                NodeAdvance::Bubble(err) => return Err(err),
             }
         }
     }
