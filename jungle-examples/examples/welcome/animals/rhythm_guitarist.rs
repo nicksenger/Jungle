@@ -1783,7 +1783,6 @@ pub struct RhythmJoinMonad100JoinAndRest(
     Step<JoinPick<46, 100, 0>>,
     Join<Step<JoinPluck<54, 47, 100, 0>>, Step<HarmonySing<71, 100, 0>>>,
     Step<MergeUnit>,
-    Step<PostMergeRest<384>>,
 );
 
 #[cfg(test)]
