@@ -201,6 +201,9 @@ fn run_headless(
 fn init_tracing() {
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,welcome=debug"));
+    let env_filter = env_filter
+        .add_directive("iced_sugiyama=off".parse().unwrap())
+        .add_directive("iced_winit=off".parse().unwrap());
     let _ = fmt().with_env_filter(env_filter).compact().try_init();
 }
 
