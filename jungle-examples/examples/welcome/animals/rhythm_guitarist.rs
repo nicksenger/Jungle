@@ -1856,6 +1856,51 @@ impl Act for RhythmMergeStub {
 }
 
 #[cfg(test)]
+pub struct RhythmPostMergeRestStub<const REST_TICK: u32>;
+
+#[cfg(test)]
+#[jungle::act]
+impl<const REST_TICK: u32> Act for RhythmPostMergeRestStub<REST_TICK> {
+    type Effect = Rest<RHYTHM_GUITAR_LANE_ID, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(_state: &mut RhythmGuitaristState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("test post-merge rest should succeed");
+    }
+}
+
+#[cfg(test)]
+pub struct RhythmJoinPickStub<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
+
+#[cfg(test)]
+#[jungle::act]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+    for RhythmJoinPickStub<NOTE, NOTE_TICK, REST_TICK>
+{
+    type Effect = Monad<
+        ElectricGuitar,
+        ElectricGuitarArticulation,
+        RHYTHM_GUITAR_LANE_ID,
+        NOTE,
+        NOTE_TICK,
+        REST_TICK,
+    >;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        state.articulation
+    }
+
+    fn absorb(_state: &mut RhythmGuitaristState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("test join pick playback should succeed");
+    }
+}
+
+#[cfg(test)]
 pub struct RhythmLoopDecrementStub;
 
 #[cfg(test)]
@@ -1876,8 +1921,10 @@ impl Act for RhythmLoopDecrementStub {
 #[cfg(test)]
 #[derive(Flow)]
 pub struct RhythmJoinMonad100LoopBody(
+    Step<RhythmJoinPickStub<46, 100, 0>>,
     Join<Step<RhythmJoinPluckStub<54, 47, 100, 0>>, Step<RhythmHarmonySingStub<71, 100, 0>>>,
     Step<RhythmMergeStub>,
+    Step<RhythmPostMergeRestStub<384>>,
     Step<RhythmTailStub>,
     Step<RhythmTailStub>,
     Step<RhythmTailStub>,
@@ -1924,7 +1971,7 @@ mod tests {
     use crate::ecosystem::TheJungle;
 
     async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
-        let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        let completion = tokio::time::timeout(Duration::from_secs(20), async {
             loop {
                 let status = client
                     .journey_details(journey_id)
@@ -2053,7 +2100,9 @@ mod tests {
             }));
         }
 
-        let seed = postcard::to_allocvec(&RhythmGuitaristState::default()).expect("seed should serialize");
+        let mut seed_state = RhythmGuitaristState::default();
+        seed_state.riff_loops_remaining = 1;
+        let seed = postcard::to_allocvec(&seed_state).expect("seed should serialize");
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client

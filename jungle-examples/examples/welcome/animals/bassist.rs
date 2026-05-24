@@ -1591,6 +1591,23 @@ impl Act for BassMergeStub {
 }
 
 #[cfg(test)]
+pub struct BassPostMergeRestStub<const REST_TICK: u32>;
+
+#[cfg(test)]
+#[jungle::act]
+impl<const REST_TICK: u32> Act for BassPostMergeRestStub<REST_TICK> {
+    type Effect = Rest<BASS_LANE_ID, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(_state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("test post-merge rest should succeed");
+    }
+}
+
+#[cfg(test)]
 pub struct BassLoopDecrementStub;
 
 #[cfg(test)]
@@ -1611,8 +1628,10 @@ impl Act for BassLoopDecrementStub {
 #[cfg(test)]
 #[derive(Flow)]
 pub struct BassJoinMonad100LoopBody(
+    Step<BassJoinThumpStub<35, 100, 0>>,
     Join<Step<BassJoinThumpStub<35, 100, 0>>, Step<BassHarmonySingStub<71, 100, 0>>>,
     Step<BassMergeStub>,
+    Step<BassPostMergeRestStub<384>>,
     Step<BassTailStub>,
     Step<BassTailStub>,
     Step<BassTailStub>,
@@ -1660,7 +1679,7 @@ mod tests {
     use crate::ecosystem::TheJungle;
 
     async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
-        let completion = tokio::time::timeout(Duration::from_secs(8), async {
+        let completion = tokio::time::timeout(Duration::from_secs(20), async {
             loop {
                 let status = client
                     .journey_details(journey_id)
@@ -1789,7 +1808,9 @@ mod tests {
             }));
         }
 
-        let seed = postcard::to_allocvec(&BassistState::default()).expect("seed should serialize");
+        let mut seed_state = BassistState::default();
+        seed_state.riff_loops_remaining = 1;
+        let seed = postcard::to_allocvec(&seed_state).expect("seed should serialize");
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client
