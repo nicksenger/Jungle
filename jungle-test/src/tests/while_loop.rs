@@ -202,36 +202,39 @@ pub struct NestedOuterBodyTemplate(
 #[derive(Flow)]
 pub struct NestedLoopFlowTemplate(While<OuterContinue, NestedOuterBodyTemplate>);
 
+#[derive(Flow)]
+pub struct ExampleFlow(While<OuterContinue, ExampleWhileBody>);
+
+#[derive(Flow)]
+pub struct ExampleWhileBody(
+    AnotherExampleFlow,
+    AnotherExampleFlow,
+    AnotherExampleFlow,
+    AnotherExampleFlow,
+    AnotherExampleFlow,
+    AnotherExampleFlow,
+    AnotherExampleFlow,
+    AnotherExampleFlow,
+);
+
+#[derive(Flow)]
+pub struct AnotherExampleFlow(
+    While<InnerContinue, Step<InnerWorkSpec>>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+    Step<FinishOuterRoundSpec>,
+);
+
 #[test]
-fn example_flow_for_dump_robot() {
-    #[derive(Flow)]
-    pub struct ExampleFlow(While<OuterContinue, ExampleWhileBody>);
-
-    #[derive(Flow)]
-    pub struct ExampleWhileBody(
-        NestedOuterBodyTemplate,
-        NestedOuterBodyTemplate,
-        NestedOuterBodyTemplate,
-        NestedOuterBodyTemplate,
-        NestedOuterBodyTemplate,
-    );
-
-    #[derive(Flow)]
-    pub struct NestedOuterBodyTemplate(
-        While<InnerContinue, Step<InnerWorkSpec>>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-        Step<FinishOuterRoundSpec>,
-    );
-}
+fn example_flow_for_dumb_robot() {}
 
 #[test]
 fn while_running_checks_state_before_iteration() {
