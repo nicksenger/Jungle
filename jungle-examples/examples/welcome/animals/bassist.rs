@@ -1656,10 +1656,7 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let audio_engine = crate::audio::AudioEngine::start_default()
-            .await
-            .expect("shared real audio engine should start");
-        let shared_audio_handle = audio_engine.handle();
+        let (shared_audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
         let shared_metronome = crate::metronome::Metronome::spawn(123.0);
         shared_metronome.arm_start_barrier();
 
