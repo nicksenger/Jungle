@@ -2582,30 +2582,30 @@ pub struct DrumPart68(
 );
 
 #[cfg(test)]
-pub struct MergeConditionalJoinTupleChoice;
+#[derive(Flow)]
+pub struct ConditionalJoinMonad100LeftArm(
+    Join<Step<Hat<46, 100, 0>>, Step<Hat<42, 100, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<0>>,
+);
+
 #[cfg(test)]
-#[jungle::act]
-impl Act for MergeConditionalJoinTupleChoice {
-    type Effect = Noop;
-    type Input = Either<((), ()), ((), ())>;
-    type Output = ();
-
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("conditional join tuple merge should complete");
-    }
-}
+#[derive(Flow)]
+pub struct ConditionalJoinMonad100RightArm(
+    Join<Step<Boot<36, 100, 0>>, Step<Hat<44, 100, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<0>>,
+);
 
 #[cfg(test)]
 #[derive(Flow)]
 pub struct ConditionalJoinMonad100Flow(
     Conditional<
         UseHat46GrooveVariant,
-        Join<Step<Hat<46, 100, 0>>, Step<Hat<42, 100, 0>>>,
-        Join<Step<Boot<36, 100, 0>>, Step<Hat<44, 100, 0>>>,
+        ConditionalJoinMonad100LeftArm,
+        ConditionalJoinMonad100RightArm,
     >,
-    Step<MergeConditionalJoinTupleChoice>,
+    Step<MergeGrooveVariantChoice>,
 );
 
 #[cfg(test)]
