@@ -1522,21 +1522,97 @@ impl Act for BassTailStub {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+    fn emit(_state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
         ()
     }
 
-    fn absorb(_state: &mut BassArticulation, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(_state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("bass tail stub should succeed");
     }
 }
 
 #[cfg(test)]
+pub struct BassJoinThumpStub<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
+
+#[cfg(test)]
+#[jungle::act]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+    for BassJoinThumpStub<NOTE, NOTE_TICK, REST_TICK>
+{
+    type Effect = Monad<BassInstrument, BassArticulation, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        state.articulation
+    }
+
+    fn absorb(_state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("test join bass playback should succeed");
+    }
+}
+
+#[cfg(test)]
+pub struct BassHarmonySingStub<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
+
+#[cfg(test)]
+#[jungle::act]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+    for BassHarmonySingStub<NOTE, NOTE_TICK, REST_TICK>
+{
+    type Effect = Monad<Vocals, VocalsArticulation, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        VocalsArticulation::GroupHarmony
+    }
+
+    fn absorb(_state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("test harmony playback should succeed");
+    }
+}
+
+#[cfg(test)]
+pub struct BassMergeStub;
+
+#[cfg(test)]
+#[jungle::act]
+impl Act for BassMergeStub {
+    type Effect = BassTailStubEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(_state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("test join merge should succeed");
+    }
+}
+
+#[cfg(test)]
+pub struct BassLoopDecrementStub;
+
+#[cfg(test)]
+#[jungle::act]
+impl Act for BassLoopDecrementStub {
+    type Effect = BassTailStubEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &BassistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(state: &mut BassistState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("test loop decrement should succeed");
+        state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
+    }
+}
+
+#[cfg(test)]
 #[derive(Flow)]
-#[jungle(focus = BassArticulation)]
-pub struct BassJoinMonad100Flow(
-    Join<Step<JoinThump<35, 100, 0>>, Step<HarmonySing<71, 100, 0>>>,
-    Step<MergeUnit>,
+pub struct BassJoinMonad100LoopBody(
+    Join<Step<BassJoinThumpStub<35, 100, 0>>, Step<BassHarmonySingStub<71, 100, 0>>>,
+    Step<BassMergeStub>,
     Step<BassTailStub>,
     Step<BassTailStub>,
     Step<BassTailStub>,
@@ -1547,7 +1623,12 @@ pub struct BassJoinMonad100Flow(
     Step<BassTailStub>,
     Step<BassTailStub>,
     Step<BassTailStub>,
+    Step<BassLoopDecrementStub>,
 );
+
+#[cfg(test)]
+#[derive(Flow)]
+pub struct BassJoinMonad100Flow(While<BassRiffLoopRemaining, BassJoinMonad100LoopBody>);
 
 #[cfg(test)]
 pub struct BassJoinMonad100Animal;
