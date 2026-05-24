@@ -2627,6 +2627,7 @@ impl From<DrummerState> for () {
 mod tests {
     use std::time::Duration;
 
+    use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
     use jungle_sdk::{JungleClient, LocalClient};
@@ -2734,8 +2735,43 @@ mod tests {
             .await
             .expect("right journey should start");
 
+        let mut left_stream = client
+            .subscribe_step_updates(left_id, None)
+            .await
+            .expect("left subscribe_step_updates should succeed");
+        let mut right_stream = client
+            .subscribe_step_updates(right_id, None)
+            .await
+            .expect("right subscribe_step_updates should succeed");
+
+        let left_stream_task = tokio::spawn(async move {
+            let mut count = 0_u32;
+            while let Some(next) = left_stream.next().await {
+                next.expect("left streamed journey update should succeed");
+                count += 1;
+            }
+            count
+        });
+        let right_stream_task = tokio::spawn(async move {
+            let mut count = 0_u32;
+            while let Some(next) = right_stream.next().await {
+                next.expect("right streamed journey update should succeed");
+                count += 1;
+            }
+            count
+        });
+
         await_completion(&client, left_id).await;
         await_completion(&client, right_id).await;
+
+        let left_count = left_stream_task
+            .await
+            .expect("left stream task should join cleanly");
+        let right_count = right_stream_task
+            .await
+            .expect("right stream task should join cleanly");
+        assert!(left_count > 0, "left stream should emit journey events");
+        assert!(right_count > 0, "right stream should emit journey events");
 
         let _ = release_task.await;
         worker_handle.abort();
