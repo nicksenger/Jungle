@@ -797,6 +797,40 @@ impl<State, In> ErasedFlow<State> for ConditionalErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        let Some(active_branch) = self.active_branch else {
+            return Ok((state, None, false));
+        };
+        if self.cursor >= self.branch_len() {
+            return Ok((state, None, true));
+        }
+        if self
+            .active_node_mut()
+            .expect("cursor was checked against active branch length")
+            .is_waiting_completion()
+        {
+            return Ok((state, None, false));
+        }
+
+        let node = self
+            .active_node_mut()
+            .expect("cursor was checked against active branch length");
+        let (state, emitted, completed) = node.try_complete_without_progress(state)?;
+        if !completed {
+            return Ok((state, emitted, false));
+        }
+
+        self.cursor += 1;
+        if self.cursor >= self.branch_len() {
+            let emitted = emitted.map(|value| encode_conditional_emitted(active_branch, value));
+            return Ok((state, emitted, true));
+        }
+        Ok((state, emitted, false))
+    }
+
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let (choose_left, branch_input) = if self.active_branch.is_none() {
             match decode_controlled_input::<In, _>(&input, |carry| {
@@ -2654,6 +2688,41 @@ impl<State, In> ErasedFlow<State> for ConditionalContextErasedFlow<State, In>
 where
     In: DeserializeOwned + Serialize,
 {
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        let Some(active_branch) = self.active_branch else {
+            return Ok((state, None, false));
+        };
+        if self.cursor >= self.branch_len() {
+            return Ok((state, None, true));
+        }
+        if self
+            .active_node_mut()
+            .expect("cursor was checked against active branch length")
+            .is_waiting_completion()
+        {
+            return Ok((state, None, false));
+        }
+
+        let node = self
+            .active_node_mut()
+            .expect("cursor was checked against active branch length");
+        let (state, emitted, completed) = node.try_complete_without_progress(state)?;
+        if !completed {
+            return Ok((state, emitted, false));
+        }
+
+        self.cursor += 1;
+        if self.cursor >= self.branch_len() {
+            let emitted =
+                emitted.map(|value| encode_conditional_context_emitted(active_branch, value));
+            return Ok((state, emitted, true));
+        }
+        Ok((state, emitted, false))
+    }
+
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let (choose_left, branch_input) = if self.active_branch.is_none() {
             match decode_controlled_input::<In, _>(&input, |carry| {
