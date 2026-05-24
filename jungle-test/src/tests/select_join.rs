@@ -1059,3 +1059,29 @@ async fn conditional_join_tail_direct_executor_runs_all_tail_steps() {
         "all 10 tail stub steps should run"
     );
 }
+
+#[tokio::test]
+async fn conditional_join_tail_does_not_complete_early_before_tail_progress_finishes() {
+    let mut executor = Executor::<LocalConditionalJoinTailAnimal>::new(SelectJoinState::default());
+    let mut observed_tail_progress = 0_i32;
+
+    while !executor.is_complete() {
+        let before = executor.state().joined_sum;
+        let _ = executor
+            .next_and_complete_with(())
+            .await
+            .expect("step should complete while journey is active");
+        let after = executor.state().joined_sum;
+        observed_tail_progress = observed_tail_progress.saturating_add(after.saturating_sub(before));
+    }
+
+    assert_eq!(
+        observed_tail_progress, 10,
+        "executor should report completion only after all 10 tail steps progress"
+    );
+    assert_eq!(
+        executor.state().joined_sum,
+        10,
+        "final joined_sum should reflect every tail step"
+    );
+}
