@@ -7,14 +7,10 @@ use super::ElectricGuitarArticulation;
 
 pub(super) async fn play(
     audio: &AudioHandle,
+    synth: &crate::instrumentation::SynthHandle,
     note: Note<ElectricGuitarArticulation>,
 ) -> Result<(), Error> {
-    let (pcm, gain, playback_rate, pan) = {
-        let note_for_synth = note;
-        tokio::task::spawn_blocking(move || synthesize_electric_guitar(&note_for_synth))
-            .await
-            .map_err(|_| Error::Playback)?
-    };
+    let (pcm, gain, playback_rate, pan) = synth.electric_guitar(note).await?;
 
     let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
     request.gain = gain * amplitude_gain(&note);
@@ -26,7 +22,7 @@ pub(super) async fn play(
 
 const SAMPLE_RATE: u32 = 48_000;
 
-fn synthesize_electric_guitar(
+pub(in crate::instrumentation) fn synthesize_electric_guitar(
     note: &Note<ElectricGuitarArticulation>,
 ) -> (Arc<[f32]>, f32, f32, f32) {
     if note.articulation.is_rhythm_voice() {

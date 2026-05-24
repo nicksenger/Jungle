@@ -1,14 +1,15 @@
-use super::{Instrument, Note};
+use super::{Instrument, Note, SynthHandle};
 
-mod audio;
+pub(super) mod audio;
 
 pub struct SnareDrum {
     audio: crate::audio::AudioHandle,
+    synth: SynthHandle,
 }
 
 impl SnareDrum {
-    pub fn new(audio: crate::audio::AudioHandle) -> Self {
-        Self { audio }
+    pub fn new(audio: crate::audio::AudioHandle, synth: SynthHandle) -> Self {
+        Self { audio, synth }
     }
 }
 
@@ -23,6 +24,6 @@ impl Instrument for SnareDrum {
     type Articulation = SnareDrumArticulation;
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), super::Error> {
-        audio::play(&self.audio, note).await
+        audio::play(&self.audio, &self.synth, note).await
     }
 }

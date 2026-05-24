@@ -11,14 +11,10 @@ use super::KickDrumArticulation;
 
 pub(super) async fn play(
     audio: &crate::audio::AudioHandle,
+    synth: &crate::instrumentation::SynthHandle,
     note: Note<KickDrumArticulation>,
 ) -> Result<(), Error> {
-    let (pcm, gain, playback_rate) = {
-        let note_for_synth = note;
-        tokio::task::spawn_blocking(move || synthesize_kick_drum(&note_for_synth))
-            .await
-            .map_err(|_| Error::Playback)?
-    };
+    let (pcm, gain, playback_rate) = synth.kick_drum(note).await?;
 
     let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
     request.gain = gain * amplitude_gain(&note);
@@ -27,7 +23,9 @@ pub(super) async fn play(
     audio.play(request).await.map_err(|_| Error::Submission)
 }
 
-fn synthesize_kick_drum(note: &Note<KickDrumArticulation>) -> (Arc<[f32]>, f32, f32) {
+pub(in crate::instrumentation) fn synthesize_kick_drum(
+    note: &Note<KickDrumArticulation>,
+) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let base_hz = midi_to_hz(note.n_midi).clamp(48.0, 74.0);

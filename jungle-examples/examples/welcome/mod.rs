@@ -34,6 +34,7 @@ use crate::{
     animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
     audio::{AudioEngine, AudioHandle, StubAudioKeepAlive},
     ecosystem::TheJungle,
+    instrumentation::SynthHandle,
 };
 
 const DEFAULT_BPM: f32 = 123.0;
@@ -240,9 +241,16 @@ fn run_runtime_thread(
             let audio_handle = audio_engine.handle();
             (audio_handle, Some(audio_engine), None)
         };
+        let synth_handle = SynthHandle::new();
         let mut worker_metronomes = Vec::with_capacity(workers);
         for worker_index in 0..workers {
-            let ecosystem = TheJungle::new(audio_handle.clone(), bpm);
+            let metronome = metronome::Metronome::spawn(bpm);
+            let ecosystem = TheJungle::new_with_metronome_and_synth(
+                audio_handle.clone(),
+                synth_handle.clone(),
+                bpm,
+                metronome,
+            );
             let metronome = ecosystem.metronome().clone();
             metronome.arm_start_barrier();
             worker_metronomes.push(metronome);

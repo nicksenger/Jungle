@@ -2,17 +2,18 @@ use jungle_sdk::prelude::*;
 
 use crate::effect::Monad;
 
-use super::{Instrument, Note};
+use super::{Instrument, Note, SynthHandle};
 
-mod audio;
+pub(super) mod audio;
 
 pub struct Vocals {
     audio: crate::audio::AudioHandle,
+    synth: SynthHandle,
 }
 
 impl Vocals {
-    pub fn new(audio: crate::audio::AudioHandle) -> Self {
-        Self { audio }
+    pub fn new(audio: crate::audio::AudioHandle, synth: SynthHandle) -> Self {
+        Self { audio, synth }
     }
 }
 
@@ -34,7 +35,7 @@ impl Instrument for Vocals {
     type Articulation = VocalsArticulation;
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), super::Error> {
-        audio::play(&self.audio, note).await
+        audio::play(&self.audio, &self.synth, note).await
     }
 }
 

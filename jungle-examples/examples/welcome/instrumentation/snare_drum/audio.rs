@@ -13,14 +13,10 @@ use super::SnareDrumArticulation;
 
 pub(super) async fn play(
     audio: &crate::audio::AudioHandle,
+    synth: &crate::instrumentation::SynthHandle,
     note: Note<SnareDrumArticulation>,
 ) -> Result<(), Error> {
-    let (pcm, mut gain, mut playback_rate) = {
-        let note_for_synth = note;
-        tokio::task::spawn_blocking(move || synthesize_snare_drum(&note_for_synth))
-            .await
-            .map_err(|_| Error::Playback)?
-    };
+    let (pcm, mut gain, mut playback_rate) = synth.snare_drum(note).await?;
 
     let velocity = note.velocity.clamp(0.0, 1.0);
     gain *= 0.88 + velocity * 0.52;
@@ -33,7 +29,9 @@ pub(super) async fn play(
     audio.play(request).await.map_err(|_| Error::Submission)
 }
 
-fn synthesize_snare_drum(note: &Note<SnareDrumArticulation>) -> (Arc<[f32]>, f32, f32) {
+pub(in crate::instrumentation) fn synthesize_snare_drum(
+    note: &Note<SnareDrumArticulation>,
+) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let body_hz = midi_to_hz(note.n_midi).clamp(145.0, 262.0);

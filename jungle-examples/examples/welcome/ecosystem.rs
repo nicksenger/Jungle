@@ -3,7 +3,9 @@ use jungle_sdk::prelude::*;
 use crate::{
     animals::WelcomeAnimals,
     audio::AudioHandle,
-    instrumentation::{Bass, Cymbal, ElectricGuitar, HiHat, KickDrum, SnareDrum, Toms, Vocals},
+    instrumentation::{
+        Bass, Cymbal, ElectricGuitar, HiHat, KickDrum, SnareDrum, SynthHandle, Toms, Vocals,
+    },
     metronome::Metronome,
 };
 
@@ -22,20 +24,31 @@ pub struct TheJungle {
 
 impl TheJungle {
     pub fn new(audio_handle: AudioHandle, bpm: f32) -> Self {
+        let synth_handle = SynthHandle::new();
         let metronome = Metronome::spawn(bpm);
-        Self::new_with_metronome(audio_handle, bpm, metronome)
+        Self::new_with_metronome_and_synth(audio_handle, synth_handle, bpm, metronome)
     }
 
     pub fn new_with_metronome(audio_handle: AudioHandle, bpm: f32, metronome: Metronome) -> Self {
+        let synth_handle = SynthHandle::new();
+        Self::new_with_metronome_and_synth(audio_handle, synth_handle, bpm, metronome)
+    }
+
+    pub fn new_with_metronome_and_synth(
+        audio_handle: AudioHandle,
+        synth_handle: SynthHandle,
+        bpm: f32,
+        metronome: Metronome,
+    ) -> Self {
         Self {
-            rhythm_guitar: ElectricGuitar::new(audio_handle.clone()),
-            bass: Bass::new(audio_handle.clone()),
-            vocals: Vocals::new(audio_handle.clone()),
-            hihat: HiHat::new(audio_handle.clone()),
-            kick_drum: KickDrum::new(audio_handle.clone()),
-            snare_drum: SnareDrum::new(audio_handle.clone()),
-            toms: Toms::new(audio_handle.clone()),
-            cymbal: Cymbal::new(audio_handle),
+            rhythm_guitar: ElectricGuitar::new(audio_handle.clone(), synth_handle.clone()),
+            bass: Bass::new(audio_handle.clone(), synth_handle.clone()),
+            vocals: Vocals::new(audio_handle.clone(), synth_handle.clone()),
+            hihat: HiHat::new(audio_handle.clone(), synth_handle.clone()),
+            kick_drum: KickDrum::new(audio_handle.clone(), synth_handle.clone()),
+            snare_drum: SnareDrum::new(audio_handle.clone(), synth_handle.clone()),
+            toms: Toms::new(audio_handle.clone(), synth_handle.clone()),
+            cymbal: Cymbal::new(audio_handle, synth_handle),
             bpm,
             metronome,
         }
