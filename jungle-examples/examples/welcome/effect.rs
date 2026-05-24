@@ -53,22 +53,8 @@ pub struct Monad<
     const NOTE_TICK: u32,
     const REST_TICK: u32,
 >(PhantomData<(I, A)>);
-pub struct ImmediateMonad<
-    I: Instrument<Articulation = A>,
-    A: Copy,
-    const NOTE: u8,
-    const NOTE_TICK: u32,
->(PhantomData<(I, A)>);
-pub struct ImmediateDyad<
-    I: Instrument<Articulation = A>,
-    A: Copy,
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_TICK: u32,
->(PhantomData<(I, A)>);
 
 pub struct Rest<const LANE_ID: u32, const REST_TICKS: u32>;
-pub struct SyncedRest<const LANE_ID: u32, const NOTE_TICK: u32, const REST_TICK: u32>;
 pub struct AtomicDualHit<
     I1: Instrument<Articulation = A1>,
     I2: Instrument<Articulation = A2>,
@@ -81,48 +67,6 @@ pub struct AtomicDualHit<
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
 >(PhantomData<(I1, I2, A1, A2)>);
-
-#[effect(id = 515)]
-impl<I, A, const NOTE: u8, const NOTE_TICK: u32> jungle_sdk::prelude::Effect<TheJungle>
-    for ImmediateMonad<I, A, NOTE, NOTE_TICK>
-where
-    I: Instrument<Articulation = A>,
-    for<'a> &'a I: From<&'a TheJungle>,
-    A: Copy + Serialize + DeserializeOwned + Send + 'static,
-{
-    type In = A;
-    type Out = ();
-    type Err = String;
-
-    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
-        let note_duration = jungle
-            .metronome()
-            .duration_for_ticks(TICKS_PER_BEAT, NOTE_TICK);
-        let [note] = rhythm_notes([NOTE], note_duration, articulation);
-        play_one::<I>(jungle, note).await
-    }
-}
-
-#[effect(id = 516)]
-impl<I, A, const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32>
-    jungle_sdk::prelude::Effect<TheJungle> for ImmediateDyad<I, A, NOTE_1, NOTE_2, NOTE_TICK>
-where
-    I: Instrument<Articulation = A>,
-    for<'a> &'a I: From<&'a TheJungle>,
-    A: Copy + Serialize + DeserializeOwned + Send + 'static,
-{
-    type In = A;
-    type Out = ();
-    type Err = String;
-
-    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
-        let note_duration = jungle
-            .metronome()
-            .duration_for_ticks(TICKS_PER_BEAT, NOTE_TICK);
-        let [note_1, note_2] = rhythm_notes([NOTE_1, NOTE_2], note_duration, articulation);
-        play_two::<I>(jungle, note_1, note_2).await
-    }
-}
 
 #[effect(id = 513)]
 impl<const LANE_ID: u32, const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJungle>
@@ -139,30 +83,6 @@ impl<const LANE_ID: u32, const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJ
             TICKS_PER_BEAT,
             0,
             REST_TICKS,
-            MIN_LATE_NOTE_DROP_THRESHOLD,
-            MAX_LATE_NOTE_DROP_THRESHOLD,
-        );
-        timing.sleep_until_note_window().await;
-        timing.sleep_until_next_cycle().await;
-        Ok(())
-    }
-}
-
-#[effect(id = 517)]
-impl<const LANE_ID: u32, const NOTE_TICK: u32, const REST_TICK: u32>
-    jungle_sdk::prelude::Effect<TheJungle> for SyncedRest<LANE_ID, NOTE_TICK, REST_TICK>
-{
-    type In = ();
-    type Out = ();
-    type Err = String;
-
-    async fn effect(jungle: &TheJungle, _input: Self::In) -> Result<Self::Out, Self::Err> {
-        jungle.metronome().wait_for_start_barrier().await;
-        let timing = jungle.metronome().rhythm_timing(
-            LANE_ID,
-            TICKS_PER_BEAT,
-            NOTE_TICK,
-            REST_TICK,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
