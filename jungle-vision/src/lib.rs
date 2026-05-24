@@ -2834,9 +2834,8 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         let now = Instant::now();
         let (from_color, to_color) = if let Some(runtime_id) = cx.source_runtime_id {
             if let Ok(mut guard) = state.try_lock() {
-                let forced_pending =
-                    guard.force_pending_runtime_ids.contains(&runtime_id)
-                        && !cx.source_has_proxy_runtime;
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
+                    && !cx.source_has_proxy_runtime;
                 let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
                     from: RuntimeState::Pending,
                     to: RuntimeState::Pending,
@@ -3270,7 +3269,9 @@ mod tests {
 
         let _ = theme.view_step(&state, &cx);
 
-        let guard = state.try_lock().expect("theme state lock should be available");
+        let guard = state
+            .try_lock()
+            .expect("theme state lock should be available");
         let visual = guard
             .node_visuals
             .get(&42)

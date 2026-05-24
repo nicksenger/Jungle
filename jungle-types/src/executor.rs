@@ -2741,7 +2741,8 @@ where
             let active_branch = self
                 .active_branch
                 .expect("active branch is present while conditional is executing");
-            let emitted = emitted.map(|bytes| encode_conditional_context_emitted(active_branch, bytes));
+            let emitted =
+                emitted.map(|bytes| encode_conditional_context_emitted(active_branch, bytes));
             return Ok((state, emitted, true));
         }
 

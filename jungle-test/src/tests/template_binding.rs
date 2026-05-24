@@ -1132,7 +1132,10 @@ impl Act for NestedAutoBranchSpec {
         state.spare + input
     }
 
-    fn absorb(state: &mut NestedLensBranch, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut NestedLensBranch,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         let out = output.expect("nested auto branch step should succeed");
         state.spare = out;
         out
@@ -1269,7 +1272,10 @@ async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_
         .complete_typed::<i32, (), i32>(Ok(4))
         .expect("completion should deserialize");
     assert_eq!(emitted, 4);
-    assert!(exec.is_complete(), "single-step focused flow should complete");
+    assert!(
+        exec.is_complete(),
+        "single-step focused flow should complete"
+    );
     let state = exec.into_state();
     assert_eq!(state.branch.spare, 4);
 
@@ -1319,11 +1325,9 @@ struct InheritedAutoFocusMiddleConditionalFlow(
     Conditional<InheritedControlCondition, InheritedAutoFocusLeafFlow, InheritedAutoFocusLeafFlow>,
 );
 
-
 #[derive(Flow)]
 #[jungle(focus = NestedLensBranch)]
 struct InheritedAutoFocusConditionalRootFlow(InheritedAutoFocusMiddleConditionalFlow);
-
 
 struct InheritedAutoFocusConditionalAnimal;
 #[jungle::animal(observe, id = 55, generation = 0)]
@@ -1341,17 +1345,14 @@ impl Observe for InheritedAutoFocusConditionalAnimal {
     }
 }
 
-
 #[derive(Animals)]
 struct InheritedAutoFocusConditionalAnimals(InheritedAutoFocusConditionalAnimal);
-
 
 struct InheritedAutoFocusConditionalZoo;
 impl Ecosystem for InheritedAutoFocusConditionalZoo {
     const NAME: &'static str = "late-bound-inherited-auto-focus-conditional-zoo";
     type Animals = InheritedAutoFocusConditionalAnimals;
 }
-
 
 #[tokio::test]
 async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branch_progression() {
@@ -1378,7 +1379,8 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
         .await
         .expect("local client should build");
 
-    let worker = jungle_sdk::core::JungleWorker::new(InheritedAutoFocusConditionalZoo, client.clone());
+    let worker =
+        jungle_sdk::core::JungleWorker::new(InheritedAutoFocusConditionalZoo, client.clone());
     let worker_handle = tokio::spawn(async move {
         let _ = worker.spawn().await;
     });
@@ -1630,7 +1632,6 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
     worker_handle.abort();
     let _ = worker_handle.await;
 }
-
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ComplexAlphaState {

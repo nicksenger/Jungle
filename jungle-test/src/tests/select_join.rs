@@ -820,7 +820,11 @@ pub struct LocalConditionalRightBranch(
 
 #[derive(Flow)]
 pub struct LocalConditionalJoinTailFlow(
-    Conditional<LocalConditionalPrefersLeft, LocalConditionalLeftBranch, LocalConditionalRightBranch>,
+    Conditional<
+        LocalConditionalPrefersLeft,
+        LocalConditionalLeftBranch,
+        LocalConditionalRightBranch,
+    >,
     Step<LocalTailStubSpec>,
     Step<LocalTailStubSpec>,
     Step<LocalTailStubSpec>,
@@ -1022,7 +1026,10 @@ async fn conditional_join_then_tail_streams_events_and_completes_with_local_clie
                 RunnerUpdateOut::SleepScheduled { uuid, .. }
                 | RunnerUpdateOut::SleepFired { uuid, .. } => (uuid, false),
             };
-            assert_eq!(update_journey_id, journey_id, "stream update should match journey");
+            assert_eq!(
+                update_journey_id, journey_id,
+                "stream update should match journey"
+            );
             if should_count {
                 total_count += 1;
             }
@@ -1072,7 +1079,8 @@ async fn conditional_join_tail_does_not_complete_early_before_tail_progress_fini
             .await
             .expect("step should complete while journey is active");
         let after = executor.state().joined_sum;
-        observed_tail_progress = observed_tail_progress.saturating_add(after.saturating_sub(before));
+        observed_tail_progress =
+            observed_tail_progress.saturating_add(after.saturating_sub(before));
     }
 
     assert_eq!(
