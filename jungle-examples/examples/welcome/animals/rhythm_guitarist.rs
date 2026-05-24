@@ -1739,21 +1739,65 @@ pub struct RhythmPart42(
 );
 
 #[cfg(test)]
+pub struct RhythmTailStubEffect;
+
+#[cfg(test)]
+#[jungle::effect(id = 963)]
+impl<J> Effect<J> for RhythmTailStubEffect {
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    #[allow(clippy::manual_async_fn)]
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        async move { Ok(()) }
+    }
+}
+
+#[cfg(test)]
+pub struct RhythmTailStub;
+
+#[cfg(test)]
+#[jungle::act]
+impl Act for RhythmTailStub {
+    type Effect = RhythmTailStubEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &ElectricGuitarArticulation,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        ()
+    }
+
+    fn absorb(
+        _state: &mut ElectricGuitarArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("rhythm tail stub should succeed");
+    }
+}
+
+#[cfg(test)]
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct RhythmJoinMonad100Flow(
     Join<Step<JoinPluck<54, 47, 100, 0>>, Step<HarmonySing<71, 100, 0>>>,
     Step<MergeUnit>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
-    Step<JoinPick<46, 100, 0>>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
+    Step<RhythmTailStub>,
 );
 
 #[cfg(test)]
