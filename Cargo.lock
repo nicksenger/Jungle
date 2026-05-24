@@ -2648,7 +2648,6 @@ dependencies = [
  "iced",
  "jungle-sdk",
  "jungle-vision",
- "jungle-zoo",
  "postcard",
  "serde",
  "testcontainers",
@@ -2761,7 +2760,6 @@ dependencies = [
  "futures",
  "jungle-persist",
  "jungle-sdk",
- "jungle-zoo",
  "postcard",
  "redb",
  "serde",
@@ -2797,16 +2795,6 @@ dependencies = [
  "jungle-types",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "jungle-zoo"
-version = "0.1.0"
-dependencies = [
- "jungle-sdk",
- "jungle-types",
- "serde",
- "tokio",
 ]
 
 [[package]]
