@@ -2630,7 +2630,7 @@ mod tests {
     use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
-    use jungle_sdk::{JungleClient, LocalClient};
+    use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
 
     use super::super::{ConditionalJoinMonad100Animal, Drums};
     use crate::ecosystem::TheJungle;
@@ -2654,6 +2654,73 @@ mod tests {
         })
         .await;
         assert!(completion.is_ok(), "journey should complete within timeout");
+    }
+
+    struct JourneyStreamStats {
+        total_events: u32,
+        started_count: u32,
+        succeeded_count: u32,
+        failed_count: u32,
+        started_nodes: std::collections::BTreeSet<u32>,
+        succeeded_nodes: std::collections::BTreeSet<u32>,
+    }
+
+    async fn collect_stream_stats(
+        mut stream: jungle_sdk::client::JourneyUpdateSubscription,
+        journey_id: uuid::Uuid,
+    ) -> JourneyStreamStats {
+        let mut total_events = 0_u32;
+        let mut started_count = 0_u32;
+        let mut succeeded_count = 0_u32;
+        let mut failed_count = 0_u32;
+        let mut started_nodes = std::collections::BTreeSet::new();
+        let mut succeeded_nodes = std::collections::BTreeSet::new();
+        let mut last_sequence_id: Option<u64> = None;
+
+        while let Some(next) = stream.next().await {
+            let update = next.expect("streamed journey update should succeed");
+            if let Some(prev) = last_sequence_id {
+                assert!(
+                    update.sequence_id > prev,
+                    "stream sequence ids should be strictly increasing"
+                );
+            }
+            last_sequence_id = Some(update.sequence_id);
+
+            match update.event {
+                RunnerUpdateOut::EffectInput { uuid, node_id } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    started_count += 1;
+                    started_nodes.insert(node_id);
+                    total_events += 1;
+                }
+                RunnerUpdateOut::EffectSuccessOutput { uuid, node_id } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    succeeded_count += 1;
+                    succeeded_nodes.insert(node_id);
+                    total_events += 1;
+                }
+                RunnerUpdateOut::EffectFailureOutput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    failed_count += 1;
+                    total_events += 1;
+                }
+                RunnerUpdateOut::SleepScheduled { uuid, .. }
+                | RunnerUpdateOut::SleepFired { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    total_events += 1;
+                }
+            }
+        }
+
+        JourneyStreamStats {
+            total_events,
+            started_count,
+            succeeded_count,
+            failed_count,
+            started_nodes,
+            succeeded_nodes,
+        }
     }
 
     #[tokio::test]
@@ -2712,66 +2779,94 @@ mod tests {
             let _ = worker.spawn().await;
         });
 
+        const PARALLEL_JOURNEYS: usize = 5;
+        let seeds = [
+            super::DrummerState {
+                groove_variant_is_46: true,
+            },
+            super::DrummerState {
+                groove_variant_is_46: false,
+            },
+            super::DrummerState {
+                groove_variant_is_46: true,
+            },
+            super::DrummerState {
+                groove_variant_is_46: false,
+            },
+            super::DrummerState {
+                groove_variant_is_46: true,
+            },
+        ];
+
+        let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
+        for (index, seed_state) in seeds.iter().enumerate() {
+            let seed = postcard::to_allocvec(seed_state).expect("seed should serialize");
+            let journey_id = client
+                .start_journey::<ConditionalJoinMonad100Animal>(seed)
+                .await
+                .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
+            journey_ids.push(journey_id);
+        }
+
+        let mut stream_tasks = Vec::with_capacity(PARALLEL_JOURNEYS);
+        for journey_id in &journey_ids {
+            let stream = client
+                .subscribe_step_updates(*journey_id, None)
+                .await
+                .expect("subscribe_step_updates should succeed");
+            let stream_journey_id = *journey_id;
+            stream_tasks.push(tokio::spawn(async move {
+                collect_stream_stats(stream, stream_journey_id).await
+            }));
+        }
+
         let release_task = tokio::spawn(async move {
             metronome.release_start_barrier_on_downbeat().await;
         });
 
-        let left_id = client
-            .start_journey::<ConditionalJoinMonad100Animal>(
-                postcard::to_allocvec(&super::DrummerState {
-                    groove_variant_is_46: true,
-                })
-                .expect("left seed should serialize"),
-            )
-            .await
-            .expect("left journey should start");
-        let right_id = client
-            .start_journey::<ConditionalJoinMonad100Animal>(
-                postcard::to_allocvec(&super::DrummerState {
-                    groove_variant_is_46: false,
-                })
-                .expect("right seed should serialize"),
-            )
-            .await
-            .expect("right journey should start");
+        let completion_futures = journey_ids
+            .iter()
+            .copied()
+            .map(|journey_id| await_completion(&client, journey_id));
+        futures::future::join_all(completion_futures).await;
 
-        let mut left_stream = client
-            .subscribe_step_updates(left_id, None)
-            .await
-            .expect("left subscribe_step_updates should succeed");
-        let mut right_stream = client
-            .subscribe_step_updates(right_id, None)
-            .await
-            .expect("right subscribe_step_updates should succeed");
-
-        let left_stream_task = tokio::spawn(async move {
-            let mut count = 0_u32;
-            while let Some(next) = left_stream.next().await {
-                next.expect("left streamed journey update should succeed");
-                count += 1;
-            }
-            count
-        });
-        let right_stream_task = tokio::spawn(async move {
-            let mut count = 0_u32;
-            while let Some(next) = right_stream.next().await {
-                next.expect("right streamed journey update should succeed");
-                count += 1;
-            }
-            count
-        });
-
-        await_completion(&client, left_id).await;
-        await_completion(&client, right_id).await;
-
-        let left_count = left_stream_task
-            .await
-            .expect("left stream task should join cleanly");
-        let right_count = right_stream_task
-            .await
-            .expect("right stream task should join cleanly");
-        assert!(left_count > 0, "left stream should emit journey events");
-        assert!(right_count > 0, "right stream should emit journey events");
+        let mut all_started_nodes = std::collections::BTreeSet::new();
+        let mut all_succeeded_nodes = std::collections::BTreeSet::new();
+        for (index, stream_task) in stream_tasks.into_iter().enumerate() {
+            let stats = stream_task
+                .await
+                .unwrap_or_else(|err| panic!("stream task {index} should join cleanly: {err}"));
+            assert!(
+                stats.total_events > 0,
+                "journey {index} stream should emit updates"
+            );
+            assert_eq!(
+                stats.failed_count, 0,
+                "journey {index} should not have failed task transitions"
+            );
+            assert!(
+                stats.started_count > 0,
+                "journey {index} should receive effect-input transitions"
+            );
+            assert!(
+                stats.succeeded_count > 0,
+                "journey {index} should receive effect-success transitions"
+            );
+            assert_eq!(
+                stats.started_count, stats.succeeded_count,
+                "journey {index} should have matching input/success transition counts"
+            );
+            assert_eq!(
+                stats.started_nodes, stats.succeeded_nodes,
+                "journey {index} should report matching started/succeeded task node transitions"
+            );
+            all_started_nodes.extend(stats.started_nodes.into_iter());
+            all_succeeded_nodes.extend(stats.succeeded_nodes.into_iter());
+        }
+        assert_eq!(
+            all_started_nodes, all_succeeded_nodes,
+            "aggregate started/succeeded task transitions should match across all journeys"
+        );
 
         let _ = release_task.await;
         worker_handle.abort();
