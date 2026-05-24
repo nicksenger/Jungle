@@ -1578,7 +1578,7 @@ pub struct BassJoinMonad100LoopBody(
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct BassJoinMonad100Flow(BassJoinMonad100LoopBody);
+pub struct BassJoinMonad100Flow(While<BassRiffLoopRemaining, BassJoinMonad100LoopBody>);
 
 #[cfg(test)]
 pub struct BassJoinMonad100Animal;
