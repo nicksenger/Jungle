@@ -14,8 +14,20 @@ pub use lead_guitarist::*;
 pub use lead_vocalist::*;
 pub use rhythm_guitarist::*;
 
+#[cfg(not(test))]
 #[derive(Animals)]
 pub struct WelcomeAnimals(LeadVocalist, LeadGuitarist, RhythmGuitarist, Bass, Drums);
+
+#[cfg(test)]
+#[derive(Animals)]
+pub struct WelcomeAnimals(
+    LeadVocalist,
+    LeadGuitarist,
+    RhythmGuitarist,
+    Bass,
+    Drums,
+    ConditionalJoinMonad100Animal,
+);
 
 pub struct DecrementCounter<Focus>(core::marker::PhantomData<fn() -> Focus>);
 

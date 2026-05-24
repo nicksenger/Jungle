@@ -2582,15 +2582,78 @@ pub struct DrumPart68(
 );
 
 #[cfg(test)]
+pub struct MergeConditionalJoinTupleChoice;
+#[cfg(test)]
+#[jungle::act]
+impl Act for MergeConditionalJoinTupleChoice {
+    type Effect = Noop;
+    type Input = Either<((), ()), ((), ())>;
+    type Output = ();
+
+    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("conditional join tuple merge should complete");
+    }
+}
+
+#[cfg(test)]
+#[derive(Flow)]
+pub struct ConditionalJoinMonad100Flow(
+    Conditional<
+        UseHat46GrooveVariant,
+        Join<Step<Hat<46, 100, 0>>, Step<Hat<42, 100, 0>>>,
+        Join<Step<Boot<36, 100, 0>>, Step<Hat<44, 100, 0>>>,
+    >,
+    Step<MergeConditionalJoinTupleChoice>,
+);
+
+#[cfg(test)]
+pub struct ConditionalJoinMonad100Animal;
+#[cfg(test)]
+#[jungle::animal(id = 77, generation = 0)]
+impl Animal for ConditionalJoinMonad100Animal {
+    type State = DrummerState;
+    type Seed = DrummerState;
+    type Journey = ConditionalJoinMonad100Flow;
+}
+
+#[cfg(test)]
+impl From<DrummerState> for () {
+    fn from(_value: DrummerState) -> Self {}
+}
+
+#[cfg(test)]
 mod tests {
     use std::time::Duration;
 
     use jungle_sdk::core::JungleWorker;
-    use jungle_sdk::prelude::JourneyStatus;
+    use jungle_sdk::prelude::*;
     use jungle_sdk::{JungleClient, LocalClient};
 
-    use super::super::Drums;
+    use super::super::{ConditionalJoinMonad100Animal, Drums};
     use crate::ecosystem::TheJungle;
+
+    async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
+        let completion = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let status = client
+                    .journey_details(journey_id)
+                    .await
+                    .expect("journey details should be available");
+                match status {
+                    JourneyStatus::Completed => break,
+                    JourneyStatus::Dead | JourneyStatus::Stopped => {
+                        panic!("journey reached terminal non-complete status: {status:?}");
+                    }
+                    JourneyStatus::Created | JourneyStatus::Alive => {}
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+        assert!(completion.is_ok(), "journey should complete within timeout");
+    }
 
     #[tokio::test]
     async fn full_song_journey_starts_and_stays_alive() {
@@ -2626,6 +2689,55 @@ mod tests {
             JourneyStatus::Created | JourneyStatus::Alive | JourneyStatus::Completed => {}
         }
 
+        worker_handle.abort();
+        let _ = worker_handle.await;
+    }
+
+    #[tokio::test]
+    async fn conditional_join_monad_100_ticks_zero_rest_completes_with_local_client() {
+        let client = LocalClient::builder()
+            .namespace("welcome-conditional-join-monad-test")
+            .build()
+            .await
+            .expect("local client should build");
+
+        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
+        let ecosystem = TheJungle::new(audio_handle, 123.0);
+        let metronome = ecosystem.metronome().clone();
+        metronome.arm_start_barrier();
+
+        let worker = JungleWorker::new(ecosystem, client.clone());
+        let worker_handle = tokio::spawn(async move {
+            let _ = worker.spawn().await;
+        });
+
+        let release_task = tokio::spawn(async move {
+            metronome.release_start_barrier_on_downbeat().await;
+        });
+
+        let left_id = client
+            .start_journey::<ConditionalJoinMonad100Animal>(
+                postcard::to_allocvec(&super::DrummerState {
+                    groove_variant_is_46: true,
+                })
+                .expect("left seed should serialize"),
+            )
+            .await
+            .expect("left journey should start");
+        let right_id = client
+            .start_journey::<ConditionalJoinMonad100Animal>(
+                postcard::to_allocvec(&super::DrummerState {
+                    groove_variant_is_46: false,
+                })
+                .expect("right seed should serialize"),
+            )
+            .await
+            .expect("right journey should start");
+
+        await_completion(&client, left_id).await;
+        await_completion(&client, right_id).await;
+
+        let _ = release_task.await;
         worker_handle.abort();
         let _ = worker_handle.await;
     }
