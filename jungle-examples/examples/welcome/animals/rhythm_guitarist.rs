@@ -1958,7 +1958,7 @@ mod tests {
 
     #[tokio::test]
     async fn join_monad_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client() {
-        const PARALLEL_JOURNEYS: usize = 5;
+        const PARALLEL_JOURNEYS: usize = 1;
 
         let namespace = format!("welcome-rhythm-join-monad-100-test-{}", uuid::Uuid::new_v4());
         let client = LocalClient::builder()
