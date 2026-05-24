@@ -206,6 +206,23 @@ impl Act for MergeGrooveVariantChoice {
     }
 }
 
+pub struct ConditionalJoinTailStub;
+#[jungle::act]
+impl Act for ConditionalJoinTailStub {
+    type Effect = Monad<HiHat, HiHatArticulation, DRUMS_LANE_ID, 46, 1, 0>;
+    type Input = Either<(), ()>;
+    type Output = Either<(), ()>;
+
+    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        HiHatArticulation::ClosedTip
+    }
+
+    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("conditional join tail stub should succeed");
+        Either::Left(())
+    }
+}
+
 #[derive(Flow)]
 pub struct Hat46SnapCadence(
     Join<Step<Hat<46, 192, 0>>, Step<Snap<38, 192, 0>>>,
@@ -2605,7 +2622,16 @@ pub struct ConditionalJoinMonad100Flow(
         ConditionalJoinMonad100LeftArm,
         ConditionalJoinMonad100RightArm,
     >,
-    Step<MergeGrooveVariantChoice>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
+    Step<ConditionalJoinTailStub>,
 );
 
 #[cfg(test)]
@@ -2845,8 +2871,9 @@ mod tests {
                 .await
                 .unwrap_or_else(|err| panic!("stream task {index} should join cleanly: {err}"));
             assert!(
-                stats.total_events > 0,
-                "journey {index} stream should emit updates"
+                stats.total_events >= 10,
+                "journey {index} stream should emit at least 10 updates, got {}",
+                stats.total_events,
             );
             assert_eq!(
                 stats.failed_count, 0,

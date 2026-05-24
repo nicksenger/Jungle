@@ -801,23 +801,20 @@ where
         &mut self,
         state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
-        let Some(active_branch) = self.active_branch else {
+        if self.active_branch.is_none() {
             return Ok((state, None, false));
-        };
+        }
         if self.cursor >= self.branch_len() {
             return Ok((state, None, true));
-        }
-        if self
-            .active_node_mut()
-            .expect("cursor was checked against active branch length")
-            .is_waiting_completion()
-        {
-            return Ok((state, None, false));
         }
 
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
+        if node.is_waiting_completion() {
+            return Ok((state, None, false));
+        }
+
         let (state, emitted, completed) = node.try_complete_without_progress(state)?;
         if !completed {
             return Ok((state, emitted, false));
@@ -825,9 +822,13 @@ where
 
         self.cursor += 1;
         if self.cursor >= self.branch_len() {
-            let emitted = emitted.map(|value| encode_conditional_emitted(active_branch, value));
+            let active_branch = self
+                .active_branch
+                .expect("active branch is present while conditional is executing");
+            let emitted = emitted.map(|bytes| encode_conditional_emitted(active_branch, bytes));
             return Ok((state, emitted, true));
         }
+
         Ok((state, emitted, false))
     }
 
@@ -2692,23 +2693,20 @@ where
         &mut self,
         state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
-        let Some(active_branch) = self.active_branch else {
+        if self.active_branch.is_none() {
             return Ok((state, None, false));
-        };
+        }
         if self.cursor >= self.branch_len() {
             return Ok((state, None, true));
-        }
-        if self
-            .active_node_mut()
-            .expect("cursor was checked against active branch length")
-            .is_waiting_completion()
-        {
-            return Ok((state, None, false));
         }
 
         let node = self
             .active_node_mut()
             .expect("cursor was checked against active branch length");
+        if node.is_waiting_completion() {
+            return Ok((state, None, false));
+        }
+
         let (state, emitted, completed) = node.try_complete_without_progress(state)?;
         if !completed {
             return Ok((state, emitted, false));
@@ -2716,10 +2714,13 @@ where
 
         self.cursor += 1;
         if self.cursor >= self.branch_len() {
-            let emitted =
-                emitted.map(|value| encode_conditional_context_emitted(active_branch, value));
+            let active_branch = self
+                .active_branch
+                .expect("active branch is present while conditional is executing");
+            let emitted = emitted.map(|bytes| encode_conditional_context_emitted(active_branch, bytes));
             return Ok((state, emitted, true));
         }
+
         Ok((state, emitted, false))
     }
 
@@ -3491,11 +3492,15 @@ where
                     let state = self.state.take().expect("executor state is always present");
                     let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    let made_progress = emitted.is_some();
                     if let Some(emitted) = emitted {
                         self.last_emitted = Some(emitted);
                     }
                     if completed {
                         self.cursor += 1;
+                        continue;
+                    }
+                    if made_progress {
                         continue;
                     }
                     self.settle_without_progress()?;
@@ -3624,11 +3629,15 @@ where
                     let state = self.state.take().expect("executor state is always present");
                     let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    let made_progress = emitted.is_some();
                     if let Some(emitted) = emitted {
                         self.last_emitted = Some(emitted);
                     }
                     if completed {
                         self.cursor += 1;
+                        continue;
+                    }
+                    if made_progress {
                         continue;
                     }
                     self.settle_without_progress()?;
@@ -3746,11 +3755,15 @@ where
                     let state = self.state.take().expect("executor state is always present");
                     let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    let made_progress = emitted.is_some();
                     if let Some(emitted) = emitted {
                         self.last_emitted = Some(emitted);
                     }
                     if completed {
                         self.cursor += 1;
+                        continue;
+                    }
+                    if made_progress {
                         continue;
                     }
                     self.settle_without_progress()?;
@@ -3793,11 +3806,15 @@ where
                     let state = self.state.take().expect("executor state is always present");
                     let (state, emitted, completed) = node.try_complete_without_progress(state)?;
                     self.state = Some(state);
+                    let made_progress = emitted.is_some();
                     if let Some(emitted) = emitted {
                         self.last_emitted = Some(emitted);
                     }
                     if completed {
                         self.cursor += 1;
+                        continue;
+                    }
+                    if made_progress {
                         continue;
                     }
                     self.settle_without_progress()?;

@@ -1045,3 +1045,17 @@ async fn conditional_join_then_tail_streams_events_and_completes_with_local_clie
     worker_handle.abort();
     let _ = worker_handle.await;
 }
+
+#[tokio::test]
+async fn conditional_join_tail_direct_executor_runs_all_tail_steps() {
+    let mut executor = Executor::<LocalConditionalJoinTailAnimal>::new(SelectJoinState::default());
+    let _ = executor
+        .advance_to_end_with(())
+        .await
+        .expect("direct executor should complete");
+    assert_eq!(
+        executor.state().joined_sum,
+        10,
+        "all 10 tail stub steps should run"
+    );
+}
