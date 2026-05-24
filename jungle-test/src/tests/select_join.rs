@@ -1,5 +1,7 @@
+use futures::StreamExt;
 use jungle_sdk::prelude::*;
 use jungle_sdk::Optic;
+use jungle_sdk::{Animals, JungleClient};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -686,6 +688,194 @@ impl Animal for JoinStateDependentAnimal {
     type Journey = JoinStateDependentFlowTemplate;
 }
 
+pub struct LocalConditionalPrefersLeft;
+impl Condition<(SelectJoinState, ())> for LocalConditionalPrefersLeft {
+    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+        state.winner == 0
+    }
+}
+
+pub struct LocalJoinLeftStubASpec;
+#[jungle::act]
+impl Act for LocalJoinLeftStubASpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 1)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("local left join stub A should succeed");
+    }
+}
+
+pub struct LocalJoinLeftStubBSpec;
+#[jungle::act]
+impl Act for LocalJoinLeftStubBSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 2)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("local left join stub B should succeed");
+    }
+}
+
+pub struct LocalJoinRightStubASpec;
+#[jungle::act]
+impl Act for LocalJoinRightStubASpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 3)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("local right join stub A should succeed");
+    }
+}
+
+pub struct LocalJoinRightStubBSpec;
+#[jungle::act]
+impl Act for LocalJoinRightStubBSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (1, 4)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("local right join stub B should succeed");
+    }
+}
+
+pub struct FlattenJoinedUnitTupleSpec;
+#[jungle::act]
+impl Act for FlattenJoinedUnitTupleSpec {
+    type Effect = TimedValueEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 0)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("flatten joined unit tuple should succeed");
+    }
+}
+
+pub struct FlattenConditionalEitherSpec;
+#[jungle::act]
+impl Act for FlattenConditionalEitherSpec {
+    type Effect = TimedValueEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 0)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("flatten conditional either should succeed");
+    }
+}
+
+pub struct LocalTailStubSpec;
+#[jungle::act]
+impl Act for LocalTailStubSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 5)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("local tail stub should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(1);
+    }
+}
+
+#[derive(Flow)]
+pub struct LocalConditionalLeftBranch(
+    Join<Step<LocalJoinLeftStubASpec>, Step<LocalJoinLeftStubBSpec>>,
+    Step<FlattenJoinedUnitTupleSpec>,
+);
+
+#[derive(Flow)]
+pub struct LocalConditionalRightBranch(
+    Join<Step<LocalJoinRightStubASpec>, Step<LocalJoinRightStubBSpec>>,
+    Step<FlattenJoinedUnitTupleSpec>,
+);
+
+#[derive(Flow)]
+pub struct LocalConditionalJoinTailFlow(
+    Conditional<LocalConditionalPrefersLeft, LocalConditionalLeftBranch, LocalConditionalRightBranch>,
+    Step<FlattenConditionalEitherSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+    Step<LocalTailStubSpec>,
+);
+
+pub struct LocalConditionalJoinTailAnimal;
+
+#[jungle::animal(id = 7, generation = 0)]
+impl Animal for LocalConditionalJoinTailAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = LocalConditionalJoinTailFlow;
+}
+
+#[derive(Animals)]
+struct SelectJoinLocalClientAnimals(LocalConditionalJoinTailAnimal);
+
+struct SelectJoinLocalClientZoo;
+impl Ecosystem for SelectJoinLocalClientZoo {
+    const NAME: &'static str = "select-join-local-client-zoo";
+    type Animals = SelectJoinLocalClientAnimals;
+}
+
+impl From<SelectJoinState> for () {
+    fn from(_value: SelectJoinState) -> Self {}
+}
+
 #[tokio::test]
 async fn select_returns_first_completed_branch() {
     let mut executor = Executor::<SelectAnimal>::new(SelectJoinState {
@@ -816,4 +1006,62 @@ async fn join_state_dependent_right_branch_does_not_wedge() {
         .expect("state-dependent join executor should complete");
     assert_eq!(executor.state().winner, 1);
     assert_eq!(executor.state().joined_sum, 31);
+}
+
+#[tokio::test]
+async fn conditional_join_then_tail_streams_events_and_completes_with_local_client() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("select-join-conditional-join-tail")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(SelectJoinLocalClientZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<LocalConditionalJoinTailAnimal>(
+            postcard::to_allocvec(&SelectJoinState::default()).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    let mut subscription = client
+        .subscribe_step_updates(journey_id, None)
+        .await
+        .expect("subscribe_step_updates should succeed");
+
+    let event_count = tokio::time::timeout(Duration::from_secs(8), async {
+        let mut count = 0_u32;
+        while let Some(next) = subscription.next().await {
+            let update = next.expect("streamed journey update should succeed");
+            let update_journey_id = match update.event {
+                RunnerUpdateOut::EffectInput { uuid, .. }
+                | RunnerUpdateOut::EffectSuccessOutput { uuid, .. }
+                | RunnerUpdateOut::EffectFailureOutput { uuid, .. }
+                | RunnerUpdateOut::SleepScheduled { uuid, .. }
+                | RunnerUpdateOut::SleepFired { uuid, .. } => uuid,
+            };
+            assert_eq!(update_journey_id, journey_id, "stream update should match journey");
+            count += 1;
+        }
+        count
+    })
+    .await
+    .expect("journey update stream should finish before timeout");
+
+    let status = client
+        .journey_details(journey_id)
+        .await
+        .expect("journey_details should succeed after stream completion");
+    assert_eq!(status, JourneyStatus::Completed);
+    assert!(
+        event_count >= 10,
+        "expected at least 10 subscribed journey events, got {event_count}"
+    );
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 }
