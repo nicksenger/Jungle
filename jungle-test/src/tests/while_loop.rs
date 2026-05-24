@@ -203,6 +203,37 @@ pub struct NestedOuterBodyTemplate(
 pub struct NestedLoopFlowTemplate(While<OuterContinue, NestedOuterBodyTemplate>);
 
 #[test]
+fn example_flow_for_dump_robot() {
+    #[derive(Flow)]
+    pub struct ExampleFlow(While<OuterContinue, ExampleWhileBody>);
+
+    #[derive(Flow)]
+    pub struct ExampleWhileBody(
+        NestedOuterBodyTemplate,
+        NestedOuterBodyTemplate,
+        NestedOuterBodyTemplate,
+        NestedOuterBodyTemplate,
+        NestedOuterBodyTemplate,
+    );
+
+    #[derive(Flow)]
+    pub struct NestedOuterBodyTemplate(
+        While<InnerContinue, Step<InnerWorkSpec>>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+        Step<FinishOuterRoundSpec>,
+    );
+}
+
+#[test]
 fn while_running_checks_state_before_iteration() {
     let run = <WhileTickFlow as Running>::run((true, (0, 1)));
     match run {
