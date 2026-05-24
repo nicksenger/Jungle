@@ -2771,22 +2771,17 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let mut audio_engines = Vec::with_capacity(PARALLEL_JOURNEYS);
-        let mut audio_handles = Vec::with_capacity(PARALLEL_JOURNEYS);
-        for index in 0..PARALLEL_JOURNEYS {
-            let engine = crate::audio::AudioEngine::start_default()
-                .await
-                .unwrap_or_else(|err| panic!("real audio engine {index} should start: {err}"));
-            audio_handles.push(engine.handle());
-            audio_engines.push(engine);
-        }
+        let audio_engine = crate::audio::AudioEngine::start_default()
+            .await
+            .expect("shared real audio engine should start");
+        let shared_audio_handle = audio_engine.handle();
         let shared_metronome = crate::metronome::Metronome::spawn(123.0);
         shared_metronome.arm_start_barrier();
 
         let mut worker_handles = Vec::with_capacity(PARALLEL_JOURNEYS);
-        for audio_handle in audio_handles {
+        for _ in 0..PARALLEL_JOURNEYS {
             let ecosystem =
-                TheJungle::new_with_metronome(audio_handle, 123.0, shared_metronome.clone());
+                TheJungle::new_with_metronome(shared_audio_handle.clone(), 123.0, shared_metronome.clone());
             let worker = JungleWorker::new(ecosystem, client.clone());
             worker_handles.push(tokio::spawn(async move {
                 let _ = worker.spawn().await;
