@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncRead, ReadBuf};
 use tracing::{error, info};
@@ -852,6 +853,39 @@ where
             | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for poll_work".to_string(),
+            )),
+        }
+    }
+
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: Uuid,
+        supported_animals: Vec<SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError> {
+        let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        let response = self
+            .send_wire_message(WireIn::WaitForWorkerWake {
+                owner_id,
+                namespace: self.namespace.clone(),
+                supported_animals,
+                timeout_ms,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedPerturbable(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected response for wait_for_worker_wake".to_string(),
             )),
         }
     }

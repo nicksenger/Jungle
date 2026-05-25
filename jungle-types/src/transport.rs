@@ -173,6 +173,12 @@ pub enum WireIn {
         namespace: String,
         supported_animals: Vec<SupportedAnimal>,
     },
+    WaitForWorkerWake {
+        owner_id: Uuid,
+        namespace: String,
+        supported_animals: Vec<SupportedAnimal>,
+        timeout_ms: u64,
+    },
     PollTimers,
     HistoryEvent(RunnerOut),
 }

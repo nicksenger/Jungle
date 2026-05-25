@@ -7,6 +7,7 @@ use jungle_types::{
     Animal, AnimalIdValue, ClaimedPerturbable, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
     SupportedAnimal, Work,
 };
+use std::time::Duration;
 use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
@@ -64,6 +65,12 @@ pub trait JungleClient: DynClone + Send + Sync {
         &self,
         supported_animals: Vec<SupportedAnimal>,
     ) -> Result<Option<Work>, ExecutorError>;
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: Uuid,
+        supported_animals: Vec<SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError>;
     async fn effect_input(
         &self,
         id: Uuid,

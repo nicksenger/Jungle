@@ -7,6 +7,7 @@ use jungle_types::{
     OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::sync::Arc;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::mpsc;
 use typosaurus::num::Unsigned;
@@ -387,6 +388,29 @@ impl JungleClient for LocalClient {
             WireOut::PendingStep(work) => Ok(Some(work)),
             _ => Err(ExecutorError::ClientTransport(
                 "unexpected response for poll_work".to_string(),
+            )),
+        }
+    }
+
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: Uuid,
+        supported_animals: Vec<SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError> {
+        let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        let response = self
+            .send_wire_message(WireIn::WaitForWorkerWake {
+                owner_id,
+                namespace: self.namespace.clone(),
+                supported_animals,
+                timeout_ms,
+            })
+            .await?;
+        match response {
+            WireOut::Ack => Ok(()),
+            _ => Err(ExecutorError::ClientTransport(
+                "unexpected response for wait_for_worker_wake".to_string(),
             )),
         }
     }
