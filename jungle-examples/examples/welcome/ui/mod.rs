@@ -11,6 +11,8 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+const DEFERRED_EVENT_LEAD_TIME_MS: i64 = 200;
+
 #[derive(Debug, Clone, Copy)]
 pub struct JourneyIds {
     pub lead_vocalist: Option<Uuid>,
@@ -76,7 +78,8 @@ where
             if let Ok(update) = &next {
                 let target_unix_ms = update
                     .event_unix_ms
-                    .saturating_add(i64::try_from(playback_delay.as_millis()).unwrap_or(i64::MAX));
+                    .saturating_add(i64::try_from(playback_delay.as_millis()).unwrap_or(i64::MAX))
+                    .saturating_sub(DEFERRED_EVENT_LEAD_TIME_MS);
                 let now_unix_ms = current_unix_ms();
                 if target_unix_ms > now_unix_ms {
                     let wait_ms = u64::try_from(target_unix_ms - now_unix_ms).unwrap_or(u64::MAX);
