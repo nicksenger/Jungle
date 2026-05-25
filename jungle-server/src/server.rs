@@ -9,12 +9,13 @@ use jungle_types::{BackendError, WireIn, WireOut};
 use sqlx::postgres::PgListener;
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::sync::Arc;
+use std::time::Instant;
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[cfg(feature = "redb")]
 use tokio::sync::Notify;
 #[cfg(any(feature = "postgres", feature = "redb"))]
-use tokio::time::Instant;
+use tokio::time::Instant as TokioInstant;
 use tracing::{debug, warn};
 
 use crate::{JungleServer, Result, WireRx, WireTx};
@@ -27,6 +28,8 @@ const SUBSCRIPTION_LOG_INTERVAL: u64 = 256;
 const SUBSCRIPTION_SLOW_FETCH_WARN_THRESHOLD: Duration = Duration::from_millis(100);
 #[cfg(any(feature = "postgres", feature = "redb"))]
 const WORKER_WAKE_WAIT_WARN_THRESHOLD: Duration = Duration::from_millis(150);
+const SERVER_REQUEST_SLOW_WARN_MS: u128 = 100;
+const SERVER_RESPONSE_SEND_SLOW_WARN_MS: u128 = 50;
 
 #[derive(Clone)]
 pub struct Server {
@@ -106,8 +109,13 @@ impl ServerBuilder {
 #[async_trait]
 impl JungleServer for Server {
     async fn handle_request(&self, (mut tx, mut rx): (WireTx, WireRx)) -> Result<()> {
+        let request_started_at = Instant::now();
         let request = rx.next().await;
-        debug!(has_request = request.is_some(), "received request");
+        let request_kind = request.as_ref().map(wire_in_kind).unwrap_or("NoRequest");
+        debug!(
+            has_request = request.is_some(),
+            request_kind, "received request"
+        );
 
         let response = match request {
             Some(WireIn::CreateJourney {
@@ -191,7 +199,7 @@ impl JungleServer for Server {
                     let mut pg_listener = pg_listener_for_store(self.store.as_ref()).await;
                     loop {
                         fetch_iterations = fetch_iterations.saturating_add(1);
-                        let fetch_started_at = Instant::now();
+                        let fetch_started_at = TokioInstant::now();
                         let updates = self
                             .store
                             .journey_update_events_since(journey_id, cursor)
@@ -480,7 +488,7 @@ impl JungleServer for Server {
             }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let claim_started_at = Instant::now();
+                    let claim_started_at = TokioInstant::now();
                     let claimed = self
                         .store
                         .claim_work(namespace, supported_animals)
@@ -521,7 +529,7 @@ impl JungleServer for Server {
                             .min(Duration::from_secs(30).as_millis() as u64),
                     );
                     let _ = (owner_id, namespace, supported_animals);
-                    let wait_started_at = Instant::now();
+                    let wait_started_at = TokioInstant::now();
                     wait_for_worker_wake(self, timeout).await?;
                     let wait_elapsed = wait_started_at.elapsed();
                     if wait_elapsed > WORKER_WAKE_WAIT_WARN_THRESHOLD {
@@ -582,7 +590,7 @@ impl JungleServer for Server {
                         })?;
                     match history {
                         jungle_types::RunnerOut::Appearance { data, uuid } => {
-                            let appearance_started_at = Instant::now();
+                            let appearance_started_at = TokioInstant::now();
                             self.store
                                 .upsert_animal_appearance(uuid, data)
                                 .await
@@ -604,7 +612,7 @@ impl JungleServer for Server {
                             }
                         }
                         event => {
-                            let append_started_at = Instant::now();
+                            let append_started_at = TokioInstant::now();
                             self.store
                                 .append_history(event, event_unix_ms)
                                 .await
@@ -645,16 +653,32 @@ impl JungleServer for Server {
             }
             None => WireOut::NoAvailableSteps,
         };
+        let response_send_started_at = Instant::now();
         tx.send(Ok(response)).await?;
+        let response_send_elapsed_ms = response_send_started_at.elapsed().as_millis();
+        if response_send_elapsed_ms > SERVER_RESPONSE_SEND_SLOW_WARN_MS {
+            warn!(
+                request_kind,
+                response_send_elapsed_ms, "slow server response send"
+            );
+        }
         tx.close().await?;
-        debug!("complete");
+        let request_elapsed_ms = request_started_at.elapsed().as_millis();
+        if request_elapsed_ms > SERVER_REQUEST_SLOW_WARN_MS {
+            warn!(
+                request_kind,
+                request_elapsed_ms, "slow server request handling"
+            );
+        } else {
+            debug!(request_kind, request_elapsed_ms, "complete");
+        }
         Ok(())
     }
 }
 
 #[cfg(any(feature = "postgres", feature = "redb"))]
 async fn wait_for_worker_wake(server: &Server, timeout: Duration) -> Result<()> {
-    let deadline = Instant::now() + timeout;
+    let deadline = TokioInstant::now() + timeout;
     let mut wait_iterations = 0_u64;
 
     #[cfg(feature = "postgres")]
@@ -666,7 +690,7 @@ async fn wait_for_worker_wake(server: &Server, timeout: Duration) -> Result<()> 
             return Ok(());
         }
 
-        let remaining = deadline.saturating_duration_since(Instant::now());
+        let remaining = deadline.saturating_duration_since(TokioInstant::now());
         if remaining.is_zero() {
             return Ok(());
         }
@@ -777,6 +801,27 @@ fn now_unix_ms() -> i64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
         Err(_) => 0,
+    }
+}
+
+fn wire_in_kind(input: &WireIn) -> &'static str {
+    match input {
+        WireIn::CreateJourney { .. } => "CreateJourney",
+        WireIn::JourneyHistory(..) => "JourneyHistory",
+        WireIn::JourneyStatus(..) => "JourneyStatus",
+        WireIn::SubscribeJourneyUpdates { .. } => "SubscribeJourneyUpdates",
+        WireIn::AnimalAppearance(..) => "AnimalAppearance",
+        WireIn::PerturbAnimal { .. } => "PerturbAnimal",
+        WireIn::ClaimPerturbable(..) => "ClaimPerturbable",
+        WireIn::AckPerturbable { .. } => "AckPerturbable",
+        WireIn::HeartbeatJourneyLease { .. } => "HeartbeatJourneyLease",
+        WireIn::PollOwnerWake { .. } => "PollOwnerWake",
+        WireIn::ScheduleSleep { .. } => "ScheduleSleep",
+        WireIn::JourneyComplete(..) => "JourneyComplete",
+        WireIn::PollStep { .. } => "PollStep",
+        WireIn::WaitForWorkerWake { .. } => "WaitForWorkerWake",
+        WireIn::PollTimers => "PollTimers",
+        WireIn::HistoryEvent { .. } => "HistoryEvent",
     }
 }
 

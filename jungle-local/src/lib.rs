@@ -21,6 +21,8 @@ const LOCAL_SUBSCRIPTION_LOG_INTERVAL: usize = 512;
 const LOCAL_SUBSCRIPTION_LAG_WARN_MS: i64 = 1_000;
 const LOCAL_SUBSCRIPTION_BACKLOG_WARN: usize = 256;
 const LOCAL_SUBSCRIPTION_SLOW_RECV_WARN_MS: u128 = 20;
+const LOCAL_REQUEST_SLOW_BACKEND_HANDLE_WARN_MS: u128 = 100;
+const LOCAL_REQUEST_SLOW_RESPONSE_WAIT_WARN_MS: u128 = 50;
 
 static LOCAL_SUBSCRIPTION_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static LOCAL_SUBSCRIPTION_MAX_BACKLOG: AtomicUsize = AtomicUsize::new(0);
@@ -110,6 +112,7 @@ impl LocalClient {
     }
 
     async fn send_wire_message(&self, input: WireIn) -> Result<WireOut, ExecutorError> {
+        let request_kind = wire_in_kind(&input);
         let (req_tx, req_rx) = mpsc::unbounded_channel::<WireIn>();
         let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<Result<WireOut, BackendError>>();
 
@@ -122,16 +125,44 @@ impl LocalClient {
 
         let tx = wire_tx_from_channel(resp_tx);
         let rx = wire_rx_from_channel(req_rx);
+        let backend_handle_started_at = Instant::now();
         self.backend
             .handle_request((tx, rx))
             .await
             .map_err(|err| ExecutorError::ClientTransport(err.to_string()))?;
+        let backend_handle_elapsed_ms = backend_handle_started_at.elapsed().as_millis();
+        if backend_handle_elapsed_ms > LOCAL_REQUEST_SLOW_BACKEND_HANDLE_WARN_MS {
+            warn!(
+                namespace = %self.namespace,
+                request_kind,
+                backend_handle_elapsed_ms,
+                "local request backend handle was slow"
+            );
+        }
 
+        let response_wait_started_at = Instant::now();
         let response = resp_rx.recv().await.ok_or_else(|| {
             ExecutorError::ClientTransport(
                 "in-process backend returned no response for request".to_string(),
             )
         })?;
+        let response_wait_elapsed_ms = response_wait_started_at.elapsed().as_millis();
+        if response_wait_elapsed_ms > LOCAL_REQUEST_SLOW_RESPONSE_WAIT_WARN_MS {
+            warn!(
+                namespace = %self.namespace,
+                request_kind,
+                response_wait_elapsed_ms,
+                "local request response channel wait was slow"
+            );
+        }
+
+        debug!(
+            namespace = %self.namespace,
+            request_kind,
+            backend_handle_elapsed_ms,
+            response_wait_elapsed_ms,
+            "local request timing"
+        );
         response.map_err(ExecutorError::Backend)
     }
 
@@ -155,12 +186,28 @@ impl LocalClient {
 
         let backend = Arc::clone(&self.backend);
         let error_tx = resp_tx.clone();
+        let namespace = self.namespace.clone();
         tokio::spawn(async move {
             let tx = wire_tx_from_channel(resp_tx);
             let rx = wire_rx_from_channel(req_rx);
+            let backend_handle_started_at = Instant::now();
             if let Err(err) = backend.handle_request((tx, rx)).await {
                 let _ = error_tx.send(Err(BackendError::Message(err.to_string())));
+                warn!(
+                    namespace = %namespace,
+                    journey_id = ?subscribed_journey_id,
+                    backend_handle_elapsed_ms = backend_handle_started_at.elapsed().as_millis(),
+                    "local subscription backend task failed"
+                );
+                return;
             }
+
+            debug!(
+                namespace = %namespace,
+                journey_id = ?subscribed_journey_id,
+                backend_handle_elapsed_ms = backend_handle_started_at.elapsed().as_millis(),
+                "local subscription backend task completed"
+            );
         });
 
         let stream = stream::unfold(resp_rx, move |mut rx| {
@@ -256,6 +303,27 @@ fn current_unix_ms() -> i64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
         Err(_) => 0,
+    }
+}
+
+fn wire_in_kind(input: &WireIn) -> &'static str {
+    match input {
+        WireIn::CreateJourney { .. } => "CreateJourney",
+        WireIn::JourneyHistory(..) => "JourneyHistory",
+        WireIn::JourneyStatus(..) => "JourneyStatus",
+        WireIn::SubscribeJourneyUpdates { .. } => "SubscribeJourneyUpdates",
+        WireIn::AnimalAppearance(..) => "AnimalAppearance",
+        WireIn::PerturbAnimal { .. } => "PerturbAnimal",
+        WireIn::ClaimPerturbable(..) => "ClaimPerturbable",
+        WireIn::AckPerturbable { .. } => "AckPerturbable",
+        WireIn::HeartbeatJourneyLease { .. } => "HeartbeatJourneyLease",
+        WireIn::PollOwnerWake { .. } => "PollOwnerWake",
+        WireIn::ScheduleSleep { .. } => "ScheduleSleep",
+        WireIn::JourneyComplete(..) => "JourneyComplete",
+        WireIn::PollStep { .. } => "PollStep",
+        WireIn::WaitForWorkerWake { .. } => "WaitForWorkerWake",
+        WireIn::PollTimers => "PollTimers",
+        WireIn::HistoryEvent { .. } => "HistoryEvent",
     }
 }
 
