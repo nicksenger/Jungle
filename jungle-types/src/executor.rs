@@ -2399,7 +2399,7 @@ where
     State: Send + 'static,
     C: LoopCondition<State, Arg = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
-    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + FlowCarry<State, In = In> + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -3224,7 +3224,8 @@ where
     F: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + 'static,
+        > + FlowCarry<State, In = In>
+        + 'static,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
