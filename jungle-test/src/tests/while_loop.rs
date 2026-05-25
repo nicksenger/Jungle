@@ -300,6 +300,91 @@ impl Animal for NestedWhileInlineNoopThenEffectAnimal {
     type Journey = NestedWhileInlineNoopThenEffectFlow;
 }
 
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NestedInlineCarryState {
+    inner_done: bool,
+    outer_done: bool,
+}
+
+pub struct NestedInlineInnerRunOnce;
+impl LoopCondition<NestedInlineCarryState> for NestedInlineInnerRunOnce {
+    type Arg = ();
+
+    fn should_continue(state: &NestedInlineCarryState) -> bool {
+        !state.inner_done
+    }
+}
+
+pub struct NestedInlineOuterRunOnce;
+impl LoopCondition<NestedInlineCarryState> for NestedInlineOuterRunOnce {
+    type Arg = ();
+
+    fn should_continue(state: &NestedInlineCarryState) -> bool {
+        !state.outer_done
+    }
+}
+
+pub struct NestedInlineInnerNoopFalseSpec;
+#[jungle::act]
+impl Act for NestedInlineInnerNoopFalseSpec {
+    type Effect = Noop;
+    type Input = ();
+    type Output = bool;
+
+    fn emit(_state: &NestedInlineCarryState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut NestedInlineCarryState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("nested inner noop should succeed");
+        state.inner_done = true;
+        false
+    }
+}
+
+pub struct NestedInlineOuterEchoBoolSpec;
+#[jungle::act]
+impl Act for NestedInlineOuterEchoBoolSpec {
+    type Effect = EchoBoolEffect;
+    type Input = bool;
+    type Output = ();
+
+    fn emit(_state: &NestedInlineCarryState, input: Self::Input) -> Self::Input {
+        input
+    }
+
+    fn absorb(
+        state: &mut NestedInlineCarryState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        let echoed = output.expect("nested outer echo bool should succeed");
+        assert!(!echoed, "nested outer step should receive inline false");
+        state.outer_done = true;
+    }
+}
+
+#[derive(Flow)]
+pub struct NestedInlineInnerOnlyBody(Step<NestedInlineInnerNoopFalseSpec>);
+
+#[derive(Flow)]
+pub struct NestedInlineOuterBody(
+    While<NestedInlineInnerRunOnce, NestedInlineInnerOnlyBody>,
+    Step<NestedInlineOuterEchoBoolSpec>,
+);
+
+#[derive(Flow)]
+pub struct NestedInlineWhileCarryFlow(While<NestedInlineOuterRunOnce, NestedInlineOuterBody>);
+
+pub struct NestedInlineWhileCarryAnimal;
+
+#[jungle::animal(id = 93, generation = 0)]
+impl Animal for NestedInlineWhileCarryAnimal {
+    type State = NestedInlineCarryState;
+    type Seed = NestedInlineCarryState;
+    type Journey = NestedInlineWhileCarryFlow;
+}
+
 #[derive(Flow)]
 pub struct NestedOuterBodyTemplate(
     While<InnerContinue, Step<InnerWorkSpec>>,
@@ -582,4 +667,49 @@ fn nested_while_context_executable_inline_noop_then_effect_keeps_request_complet
     let _emitted = executor
         .complete_serialized(completion.expect("effect should run"))
         .expect("completing nested context while requested effect should not fail with no pending request");
+}
+
+#[test]
+fn nested_inline_while_executable_propagates_inner_emitted_to_outer_sibling() {
+    let mut executor = Executor::<NestedInlineWhileCarryAnimal>::new(NestedInlineCarryState::default());
+    let request = executor
+        .next_executable_request(())
+        .expect("nested inline while should still produce outer sibling effect request");
+    assert_eq!(
+        request.effect_type(),
+        core::any::type_name::<EchoBoolEffect>()
+    );
+    let request_input: bool = request
+        .deserialize_request()
+        .expect("nested outer sibling request should deserialize as bool");
+    assert!(!request_input);
+
+    let completion = futures::executor::block_on(request.run());
+    let _emitted = executor
+        .complete_serialized(completion.expect("effect should run"))
+        .expect("nested inline while completion should not fail with no pending request");
+}
+
+#[test]
+fn nested_inline_while_context_executable_propagates_inner_emitted_to_outer_sibling() {
+    let mut executor = ContextExecutor::<(), NestedInlineWhileCarryAnimal>::new(
+        Arc::new(()),
+        NestedInlineCarryState::default(),
+    );
+    let request = executor
+        .next_executable_request(())
+        .expect("nested context inline while should still produce outer sibling effect request");
+    assert_eq!(
+        request.effect_type(),
+        core::any::type_name::<EchoBoolEffect>()
+    );
+    let request_input: bool = request
+        .deserialize_request()
+        .expect("nested context outer sibling request should deserialize as bool");
+    assert!(!request_input);
+
+    let completion = futures::executor::block_on(request.run());
+    let _emitted = executor
+        .complete_serialized(completion.expect("effect should run"))
+        .expect("nested context inline while completion should not fail with no pending request");
 }

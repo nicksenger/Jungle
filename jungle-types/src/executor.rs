@@ -999,6 +999,7 @@ where
     body_cursor: usize,
     complete: bool,
     deferred_state: Option<State>,
+    deferred_emitted: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
@@ -1896,6 +1897,7 @@ where
             body_cursor: 0,
             complete: false,
             deferred_state: None,
+            deferred_emitted: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -2054,7 +2056,10 @@ where
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
                         if node.is_complete() {
-                            NodeAdvance::Completed(next_state, None)
+                            let (next_state, emitted, _completed) = node
+                                .try_complete_without_progress(next_state)
+                                .expect("while child post-complete settle should succeed");
+                            NodeAdvance::Completed(next_state, emitted)
                         } else {
                             // Handles inline-completable children (e.g. Noop) inside While bodies.
                             let (next_state, emitted, completed) = node
@@ -2072,7 +2077,10 @@ where
             };
 
             match advance {
-                NodeAdvance::Request(ok) => return Ok(ok),
+                NodeAdvance::Request(ok) => {
+                    self.deferred_emitted = None;
+                    return Ok(ok);
+                }
                 NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
                     if self.body_cursor >= self.active_body.len() {
@@ -2081,6 +2089,7 @@ where
                     }
                     state = next_state;
                     if let Some(emitted) = emitted {
+                        self.deferred_emitted = Some(emitted.clone());
                         body_input = emitted;
                     }
                     continue;
@@ -2106,10 +2115,15 @@ where
         state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
-            return Ok((saved, None, true));
+            let emitted = self.deferred_emitted.take();
+            return Ok((saved, emitted, true));
         }
         if self.complete {
-            return Ok((state, None, true));
+            let emitted = self.deferred_emitted.take();
+            return Ok((state, emitted, true));
+        }
+        if let Some(emitted) = self.deferred_emitted.take() {
+            return Ok((state, Some(emitted), false));
         }
         Ok((state, None, false))
     }
@@ -2969,6 +2983,7 @@ where
     body_cursor: usize,
     complete: bool,
     deferred_state: Option<State>,
+    deferred_emitted: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
@@ -2988,6 +3003,7 @@ where
             body_cursor: 0,
             complete: false,
             deferred_state: None,
+            deferred_emitted: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -3146,7 +3162,10 @@ where
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
                         if node.is_complete() {
-                            NodeAdvance::Completed(next_state, None)
+                            let (next_state, emitted, _completed) = node
+                                .try_complete_without_progress(next_state)
+                                .expect("while child post-complete settle should succeed");
+                            NodeAdvance::Completed(next_state, emitted)
                         } else {
                             // Handles inline-completable children (e.g. Noop) inside While bodies.
                             let (next_state, emitted, completed) = node
@@ -3164,7 +3183,10 @@ where
             };
 
             match advance {
-                NodeAdvance::Request(ok) => return Ok(ok),
+                NodeAdvance::Request(ok) => {
+                    self.deferred_emitted = None;
+                    return Ok(ok);
+                }
                 NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
                     if self.body_cursor >= self.active_body.len() {
@@ -3173,6 +3195,7 @@ where
                     }
                     state = next_state;
                     if let Some(emitted) = emitted {
+                        self.deferred_emitted = Some(emitted.clone());
                         body_input = emitted;
                     }
                     continue;
@@ -3198,10 +3221,15 @@ where
         state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
-            return Ok((saved, None, true));
+            let emitted = self.deferred_emitted.take();
+            return Ok((saved, emitted, true));
         }
         if self.complete {
-            return Ok((state, None, true));
+            let emitted = self.deferred_emitted.take();
+            return Ok((state, emitted, true));
+        }
+        if let Some(emitted) = self.deferred_emitted.take() {
+            return Ok((state, Some(emitted), false));
         }
         Ok((state, None, false))
     }
