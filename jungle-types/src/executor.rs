@@ -2005,13 +2005,14 @@ where
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
         let mut state = state;
-        let mut iteration_input = input;
+        let control_input = input.clone();
+        let mut body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&iteration_input, |carry| {
+                match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -2034,7 +2035,7 @@ where
                     }
                 }
             } else {
-                iteration_input.clone()
+                body_input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -2080,7 +2081,7 @@ where
                     }
                     state = next_state;
                     if let Some(emitted) = emitted {
-                        iteration_input = emitted;
+                        body_input = emitted;
                     }
                     continue;
                 }
@@ -3096,13 +3097,14 @@ where
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
         let mut state = state;
-        let mut iteration_input = input;
+        let control_input = input.clone();
+        let mut body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&iteration_input, |carry| {
+                match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -3125,7 +3127,7 @@ where
                     }
                 }
             } else {
-                iteration_input.clone()
+                body_input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -3171,7 +3173,7 @@ where
                     }
                     state = next_state;
                     if let Some(emitted) = emitted {
-                        iteration_input = emitted;
+                        body_input = emitted;
                     }
                     continue;
                 }
