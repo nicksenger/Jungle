@@ -172,23 +172,49 @@ impl Act for MultiWorkerAdvanceIterationSpec {
     }
 }
 
-#[derive(Flow)]
-pub struct ExampleFlow(While<MultiWorkerContinue, ExampleFlowIteration>);
+pub struct MultiWorkerMetaLoop;
+pub struct MultiWorkerMetaConditional;
+pub struct MultiWorkerMetaJoin;
+pub struct MultiWorkerMetaTail;
+pub struct MultiWorkerMetaIteration;
 
-#[derive(Flow)]
-pub struct ExampleFlowIteration(
+type MultiWorkerConditionalSegment = Transparent<
+    MultiWorkerMetaConditional,
     Conditional<
         MultiWorkerChooseLeft,
         Step<MultiWorkerConditionalLeftSpec>,
         Step<MultiWorkerConditionalRightSpec>,
     >,
+>;
+
+#[derive(Flow)]
+pub struct MultiWorkerJoinSegment(
     Join<Step<MultiWorkerJoinLeftSpec>, Step<MultiWorkerJoinRightSpec>>,
     Step<MultiWorkerJoinMergeSpec>,
+);
+
+#[derive(Flow)]
+pub struct MultiWorkerTailSegment(
     Step<MultiWorkerWorkSpec>,
     Step<MultiWorkerWorkSpec>,
     Step<MultiWorkerWorkSpec>,
     Step<MultiWorkerWorkSpec>,
     Step<MultiWorkerAdvanceIterationSpec>,
+);
+
+#[derive(Flow)]
+pub struct ExampleFlow(
+    Transparent<
+        MultiWorkerMetaLoop,
+        While<MultiWorkerContinue, Transparent<MultiWorkerMetaIteration, ExampleFlowIteration>>,
+    >,
+);
+
+#[derive(Flow)]
+pub struct ExampleFlowIteration(
+    MultiWorkerConditionalSegment,
+    Transparent<MultiWorkerMetaJoin, MultiWorkerJoinSegment>,
+    Transparent<MultiWorkerMetaTail, MultiWorkerTailSegment>,
 );
 
 pub struct MultiWorkerAnimal;
