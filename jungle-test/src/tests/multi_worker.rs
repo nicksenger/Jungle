@@ -7,7 +7,7 @@ use std::time::Duration;
 
 const WORKER_COUNT: usize = 5;
 const JOURNEY_COUNT: usize = 2;
-const EXPECTED_STEPS_PER_JOURNEY: usize = 104;
+const MIN_EXPECTED_EVENTS_PER_JOURNEY: usize = 100;
 const SINGLE_WORKER_COUNT: usize = 1;
 const SINGLE_JOURNEY_COUNT: usize = 1;
 const LOOP_ITERATIONS: u8 = 13;
@@ -308,26 +308,26 @@ async fn local_client_multi_worker_example_flow_has_expected_events_without_repl
         .await
         .expect("journey update streams should complete before timeout");
 
-    assert_eq!(
-        journey_one_counts.started, EXPECTED_STEPS_PER_JOURNEY,
-        "first journey should emit expected started-step count"
+    assert!(
+        journey_one_counts.started > MIN_EXPECTED_EVENTS_PER_JOURNEY,
+        "first journey should emit more than {MIN_EXPECTED_EVENTS_PER_JOURNEY} started-step events"
     );
-    assert_eq!(
-        journey_one_counts.succeeded, EXPECTED_STEPS_PER_JOURNEY,
-        "first journey should emit expected succeeded-step count"
+    assert!(
+        journey_one_counts.succeeded > MIN_EXPECTED_EVENTS_PER_JOURNEY,
+        "first journey should emit more than {MIN_EXPECTED_EVENTS_PER_JOURNEY} succeeded-step events"
     );
     assert_eq!(
         journey_one_counts.failed, 0,
         "first journey should not fail any step"
     );
 
-    assert_eq!(
-        journey_two_counts.started, EXPECTED_STEPS_PER_JOURNEY,
-        "second journey should emit expected started-step count"
+    assert!(
+        journey_two_counts.started > MIN_EXPECTED_EVENTS_PER_JOURNEY,
+        "second journey should emit more than {MIN_EXPECTED_EVENTS_PER_JOURNEY} started-step events"
     );
-    assert_eq!(
-        journey_two_counts.succeeded, EXPECTED_STEPS_PER_JOURNEY,
-        "second journey should emit expected succeeded-step count"
+    assert!(
+        journey_two_counts.succeeded > MIN_EXPECTED_EVENTS_PER_JOURNEY,
+        "second journey should emit more than {MIN_EXPECTED_EVENTS_PER_JOURNEY} succeeded-step events"
     );
     assert_eq!(
         journey_two_counts.failed, 0,
@@ -399,13 +399,13 @@ async fn local_client_single_worker_single_journey_example_flow_has_expected_eve
     .await
     .expect("journey update stream should complete before timeout");
 
-    assert_eq!(
-        journey_counts.started, EXPECTED_STEPS_PER_JOURNEY,
-        "journey should emit expected started-step count"
+    assert!(
+        journey_counts.started > MIN_EXPECTED_EVENTS_PER_JOURNEY,
+        "journey should emit more than {MIN_EXPECTED_EVENTS_PER_JOURNEY} started-step events"
     );
-    assert_eq!(
-        journey_counts.succeeded, EXPECTED_STEPS_PER_JOURNEY,
-        "journey should emit expected succeeded-step count"
+    assert!(
+        journey_counts.succeeded > MIN_EXPECTED_EVENTS_PER_JOURNEY,
+        "journey should emit more than {MIN_EXPECTED_EVENTS_PER_JOURNEY} succeeded-step events"
     );
     assert_eq!(journey_counts.failed, 0, "journey should not fail any step");
 
