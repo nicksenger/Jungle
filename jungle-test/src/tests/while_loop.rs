@@ -1,6 +1,7 @@
 use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::future::ready;
+use std::sync::Arc;
 
 pub struct TickEffect;
 
@@ -191,6 +192,79 @@ impl Act for FinishOuterRoundSpec {
         state.outer_round = state.outer_round.saturating_add(1);
         state.inner_step = 0;
     }
+}
+
+pub struct EchoBoolEffect;
+
+#[jungle::effect(id = 91)]
+impl<J> Effect<J> for EchoBoolEffect {
+    type In = bool;
+    type Out = bool;
+    type Err = ();
+
+    fn effect(
+        _dependency: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        ready(Ok(input))
+    }
+}
+
+pub struct InlineNoopFalseSpec;
+#[jungle::act]
+impl Act for InlineNoopFalseSpec {
+    type Effect = Noop;
+    type Input = ();
+    type Output = bool;
+
+    fn emit(_state: &u8, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(_state: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("noop should succeed");
+        false
+    }
+}
+
+pub struct EchoBoolSpec;
+#[jungle::act]
+impl Act for EchoBoolSpec {
+    type Effect = EchoBoolEffect;
+    type Input = bool;
+    type Output = ();
+
+    fn emit(_state: &u8, input: Self::Input) -> Self::Input {
+        input
+    }
+
+    fn absorb(state: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let echoed = output.expect("echo bool should succeed");
+        assert!(!echoed, "expected inline noop output to feed false");
+        *state = state.saturating_add(1);
+    }
+}
+
+pub struct RunOnce;
+impl LoopCondition<u8> for RunOnce {
+    type Arg = ();
+
+    fn should_continue(state: &u8) -> bool {
+        *state == 0
+    }
+}
+
+#[derive(Flow)]
+pub struct WhileInlineNoopThenEffectFlow(While<RunOnce, WhileInlineNoopThenEffectBody>);
+
+#[derive(Flow)]
+pub struct WhileInlineNoopThenEffectBody(Step<InlineNoopFalseSpec>, Step<EchoBoolSpec>);
+
+pub struct WhileInlineNoopThenEffectAnimal;
+
+#[jungle::animal(id = 91, generation = 0)]
+impl Animal for WhileInlineNoopThenEffectAnimal {
+    type State = u8;
+    type Seed = u8;
+    type Journey = WhileInlineNoopThenEffectFlow;
 }
 
 #[derive(Flow)]
@@ -389,4 +463,47 @@ fn nested_while_with_trailing_step_repeats_outer_iterations() {
     assert_eq!(final_state.outer_iterations_done, 3);
     assert_eq!(final_state.outer_round, 3);
     assert_eq!(final_state.inner_step, 0);
+}
+
+#[test]
+fn while_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
+    let mut executor = Executor::<WhileInlineNoopThenEffectAnimal>::new(0);
+    let request = executor
+        .next_executable_request(())
+        .expect("while body should advance from inline noop to effect request");
+    assert_eq!(
+        request.effect_type(),
+        core::any::type_name::<EchoBoolEffect>()
+    );
+    let request_input: bool = request
+        .deserialize_request()
+        .expect("request input should deserialize as bool");
+    assert!(!request_input);
+
+    let completion = futures::executor::block_on(request.run());
+    let _emitted = executor
+        .complete_serialized(completion.expect("effect should run"))
+        .expect("completing requested effect should not fail with no pending request");
+}
+
+#[test]
+fn while_context_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
+    let mut executor =
+        ContextExecutor::<(), WhileInlineNoopThenEffectAnimal>::new(Arc::new(()), 0);
+    let request = executor
+        .next_executable_request(())
+        .expect("context while body should advance from inline noop to effect request");
+    assert_eq!(
+        request.effect_type(),
+        core::any::type_name::<EchoBoolEffect>()
+    );
+    let request_input: bool = request
+        .deserialize_request()
+        .expect("request input should deserialize as bool");
+    assert!(!request_input);
+
+    let completion = futures::executor::block_on(request.run());
+    let _emitted = executor
+        .complete_serialized(completion.expect("effect should run"))
+        .expect("completing requested effect should not fail with no pending request");
 }
