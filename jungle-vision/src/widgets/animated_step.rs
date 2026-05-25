@@ -112,6 +112,10 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for AnimatedStepNode<Messag
 where
     Message: Clone + 'static,
 {
+    fn tag(&self) -> tree::Tag {
+        tree::Tag::of::<TweenState>()
+    }
+
     fn children(&self) -> Vec<Tree> {
         vec![Tree::new(self.as_element(Color::TRANSPARENT).as_widget())]
     }
