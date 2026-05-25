@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use crate::audio::PlayRequest;
+use crate::audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, SAMPLE_RATE},
@@ -24,6 +24,7 @@ pub(super) async fn play(
         request.gain = gain * layer.gain_scale * amplitude_gain(&note);
         request.playback_rate = playback_rate * layer.playback_rate_scale;
         request.pan = layer.pan;
+        request.priority = PlayPriority::Low;
         audio.play(request).await.map_err(|_| Error::Submission)?;
     }
 

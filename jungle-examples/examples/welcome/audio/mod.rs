@@ -1,23 +1,20 @@
 mod mixer;
 
-use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant},
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleFormat, Stream,
 };
-use futures::{channel::mpsc, SinkExt};
+use futures::channel::mpsc;
 use tracing::{debug, error, warn};
 
-const COMMAND_CHANNEL_CAPACITY: usize = 1024;
-const ENQUEUE_WARN_THRESHOLD: Duration = Duration::from_millis(250);
-const ENQUEUE_DEBUG_THRESHOLD: Duration = Duration::from_millis(50);
+const COMMAND_CHANNEL_CAPACITY_CRITICAL: usize = 512;
+const COMMAND_CHANNEL_CAPACITY_STANDARD: usize = 1024;
+const DROP_LOG_INTERVAL: usize = 128;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
@@ -37,51 +34,64 @@ pub enum AudioError {
 
 #[derive(Clone)]
 pub struct AudioHandle {
-    command_tx: mpsc::Sender<mixer::Command>,
+    critical_command_tx: mpsc::Sender<mixer::Command>,
+    standard_command_tx: mpsc::Sender<mixer::Command>,
     pending_commands: Arc<AtomicUsize>,
+    dropped_commands: Arc<AtomicUsize>,
 }
 
 impl AudioHandle {
     pub async fn play(&self, request: PlayRequest) -> Result<(), AudioError> {
+        let priority = request.priority;
         let pending_before_send = self.pending_commands.fetch_add(1, Ordering::Relaxed) + 1;
-        let mut command_tx = self.command_tx.clone();
-        let send_started = Instant::now();
-        let send_result = command_tx
-            .send(mixer::Command::Play {
-                request,
-                pending_commands: Arc::clone(&self.pending_commands),
-            })
-            .await;
-        let send_elapsed = send_started.elapsed();
-
-        if send_elapsed >= ENQUEUE_WARN_THRESHOLD {
-            warn!(
-                enqueue_wait_ms = send_elapsed.as_millis(),
-                pending_before_send,
-                current_pending = self.pending_commands.load(Ordering::Relaxed),
-                "audio command enqueue is slow; queue may be backpressured"
-            );
-        } else if send_elapsed >= ENQUEUE_DEBUG_THRESHOLD {
-            debug!(
-                enqueue_wait_ms = send_elapsed.as_millis(),
-                pending_before_send,
-                current_pending = self.pending_commands.load(Ordering::Relaxed),
-                "audio command enqueue delay observed"
-            );
+        let mut command_tx = match priority {
+            PlayPriority::Critical => self.critical_command_tx.clone(),
+            PlayPriority::Normal | PlayPriority::Low => self.standard_command_tx.clone(),
+        };
+        let command = mixer::Command::Play {
+            request,
+            pending_commands: Arc::clone(&self.pending_commands),
+        };
+        match command_tx.try_send(command) {
+            Ok(()) => Ok(()),
+            Err(err) if err.is_full() => {
+                let pending_after_drop = self
+                    .pending_commands
+                    .fetch_sub(1, Ordering::Relaxed)
+                    .saturating_sub(1);
+                let dropped_total = self.dropped_commands.fetch_add(1, Ordering::Relaxed) + 1;
+                if dropped_total % DROP_LOG_INTERVAL == 0 {
+                    warn!(
+                        dropped_total,
+                        pending_before_send,
+                        pending_after_drop,
+                        priority = ?priority,
+                        "audio command queue full; dropping queued note"
+                    );
+                } else {
+                    debug!(
+                        dropped_total,
+                        pending_before_send,
+                        pending_after_drop,
+                        priority = ?priority,
+                        "audio command dropped due to queue pressure"
+                    );
+                }
+                Ok(())
+            }
+            Err(err) => {
+                let pending_after_error = self
+                    .pending_commands
+                    .fetch_sub(1, Ordering::Relaxed)
+                    .saturating_sub(1);
+                debug!(error = %err, "failed submitting audio command to mixer");
+                debug!(
+                    pending_after_error,
+                    "decremented pending audio command count after failed enqueue"
+                );
+                Err(AudioError::Submission)
+            }
         }
-
-        send_result.map_err(|err| {
-            let pending_after_error = self
-                .pending_commands
-                .fetch_sub(1, Ordering::Relaxed)
-                .saturating_sub(1);
-            debug!(error = %err, "failed submitting audio command to mixer");
-            debug!(
-                pending_after_error,
-                "decremented pending audio command count after failed enqueue"
-            );
-            AudioError::Submission
-        })
     }
 }
 
@@ -101,17 +111,38 @@ impl AudioEngine {
             .map_err(AudioError::DefaultConfig)?;
         let stream_config: cpal::StreamConfig = supported_config.config();
 
-        let (command_tx, command_rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+        let (critical_command_tx, critical_command_rx) =
+            mpsc::channel(COMMAND_CHANNEL_CAPACITY_CRITICAL);
+        let (standard_command_tx, standard_command_rx) =
+            mpsc::channel(COMMAND_CHANNEL_CAPACITY_STANDARD);
         let pending_commands = Arc::new(AtomicUsize::new(0));
+        let dropped_commands = Arc::new(AtomicUsize::new(0));
         let handle = AudioHandle {
-            command_tx,
+            critical_command_tx,
+            standard_command_tx,
             pending_commands,
+            dropped_commands,
         };
 
         let stream = match supported_config.sample_format() {
-            SampleFormat::F32 => build_stream_f32(&device, &stream_config, command_rx)?,
-            SampleFormat::I16 => build_stream_i16(&device, &stream_config, command_rx)?,
-            SampleFormat::U16 => build_stream_u16(&device, &stream_config, command_rx)?,
+            SampleFormat::F32 => build_stream_f32(
+                &device,
+                &stream_config,
+                critical_command_rx,
+                standard_command_rx,
+            )?,
+            SampleFormat::I16 => build_stream_i16(
+                &device,
+                &stream_config,
+                critical_command_rx,
+                standard_command_rx,
+            )?,
+            SampleFormat::U16 => build_stream_u16(
+                &device,
+                &stream_config,
+                critical_command_rx,
+                standard_command_rx,
+            )?,
             sample_format => return Err(AudioError::UnsupportedSampleFormat(sample_format)),
         };
 
@@ -129,19 +160,26 @@ impl AudioEngine {
 }
 
 pub(crate) struct StubAudioKeepAlive {
-    _command_rx: mpsc::Receiver<mixer::Command>,
+    _critical_command_rx: mpsc::Receiver<mixer::Command>,
+    _standard_command_rx: mpsc::Receiver<mixer::Command>,
 }
 
 impl AudioHandle {
     pub(crate) fn stub() -> (Self, StubAudioKeepAlive) {
-        let (command_tx, command_rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
+        let (critical_command_tx, critical_command_rx) =
+            mpsc::channel(COMMAND_CHANNEL_CAPACITY_CRITICAL);
+        let (standard_command_tx, standard_command_rx) =
+            mpsc::channel(COMMAND_CHANNEL_CAPACITY_STANDARD);
         (
             Self {
-                command_tx,
+                critical_command_tx,
+                standard_command_tx,
                 pending_commands: Arc::new(AtomicUsize::new(0)),
+                dropped_commands: Arc::new(AtomicUsize::new(0)),
             },
             StubAudioKeepAlive {
-                _command_rx: command_rx,
+                _critical_command_rx: critical_command_rx,
+                _standard_command_rx: standard_command_rx,
             },
         )
     }
@@ -155,6 +193,14 @@ pub struct PlayRequest {
     pub gain: f32,
     pub pan: f32,
     pub playback_rate: f32,
+    pub priority: PlayPriority,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayPriority {
+    Critical,
+    Normal,
+    Low,
 }
 
 impl PlayRequest {
@@ -166,6 +212,7 @@ impl PlayRequest {
             gain: 1.0,
             pan: 0.0,
             playback_rate: 1.0,
+            priority: PlayPriority::Normal,
         }
     }
 }
@@ -173,7 +220,8 @@ impl PlayRequest {
 fn build_stream_f32(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
-    mut command_rx: mpsc::Receiver<mixer::Command>,
+    mut critical_command_rx: mpsc::Receiver<mixer::Command>,
+    mut standard_command_rx: mpsc::Receiver<mixer::Command>,
 ) -> Result<Stream, AudioError> {
     let mut mixer = mixer::AudioMixer::new(config.channels as usize, config.sample_rate);
     let error_callback = |err: cpal::StreamError| {
@@ -184,7 +232,7 @@ fn build_stream_f32(
         .build_output_stream(
             config,
             move |data: &mut [f32], _| {
-                mixer.render_interleaved(data, &mut command_rx);
+                mixer.render_interleaved(data, &mut critical_command_rx, &mut standard_command_rx);
             },
             error_callback,
             None,
@@ -195,7 +243,8 @@ fn build_stream_f32(
 fn build_stream_i16(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
-    mut command_rx: mpsc::Receiver<mixer::Command>,
+    mut critical_command_rx: mpsc::Receiver<mixer::Command>,
+    mut standard_command_rx: mpsc::Receiver<mixer::Command>,
 ) -> Result<Stream, AudioError> {
     let mut mixer = mixer::AudioMixer::new(config.channels as usize, config.sample_rate);
     let mut scratch = Vec::<f32>::new();
@@ -208,7 +257,11 @@ fn build_stream_i16(
             config,
             move |data: &mut [i16], _| {
                 scratch.resize(data.len(), 0.0);
-                mixer.render_interleaved(&mut scratch, &mut command_rx);
+                mixer.render_interleaved(
+                    &mut scratch,
+                    &mut critical_command_rx,
+                    &mut standard_command_rx,
+                );
                 for (dst, mixed) in data.iter_mut().zip(scratch.iter().copied()) {
                     *dst = (mixed.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
                 }
@@ -222,7 +275,8 @@ fn build_stream_i16(
 fn build_stream_u16(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
-    mut command_rx: mpsc::Receiver<mixer::Command>,
+    mut critical_command_rx: mpsc::Receiver<mixer::Command>,
+    mut standard_command_rx: mpsc::Receiver<mixer::Command>,
 ) -> Result<Stream, AudioError> {
     let mut mixer = mixer::AudioMixer::new(config.channels as usize, config.sample_rate);
     let mut scratch = Vec::<f32>::new();
@@ -235,7 +289,11 @@ fn build_stream_u16(
             config,
             move |data: &mut [u16], _| {
                 scratch.resize(data.len(), 0.0);
-                mixer.render_interleaved(&mut scratch, &mut command_rx);
+                mixer.render_interleaved(
+                    &mut scratch,
+                    &mut critical_command_rx,
+                    &mut standard_command_rx,
+                );
                 for (dst, mixed) in data.iter_mut().zip(scratch.iter().copied()) {
                     let normalized = mixed.clamp(-1.0, 1.0);
                     *dst = (((normalized + 1.0) * 0.5) * u16::MAX as f32) as u16;

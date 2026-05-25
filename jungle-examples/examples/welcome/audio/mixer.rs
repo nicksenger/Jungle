@@ -32,10 +32,12 @@ impl AudioMixer {
     pub(crate) fn render_interleaved(
         &mut self,
         output: &mut [f32],
-        command_rx: &mut Receiver<Command>,
+        critical_command_rx: &mut Receiver<Command>,
+        standard_command_rx: &mut Receiver<Command>,
     ) {
         output.fill(0.0);
-        self.drain_commands(command_rx);
+        self.drain_commands(critical_command_rx);
+        self.drain_commands(standard_command_rx);
 
         let frame_count = output.len() / self.output_channels;
         for frame_index in 0..frame_count {
@@ -192,7 +194,8 @@ mod tests {
     #[test]
     fn mixes_mono_voice_into_stereo_output() {
         let mut mixer = AudioMixer::new(2, 48_000);
-        let (mut tx, mut rx) = mpsc::channel(8);
+        let (mut critical_tx, mut critical_rx) = mpsc::channel(8);
+        let (_standard_tx, mut standard_rx) = mpsc::channel(8);
         let request = PlayRequest {
             pcm: Arc::from([1.0_f32, 1.0, 1.0]),
             source_channels: 1,
@@ -200,12 +203,14 @@ mod tests {
             gain: 1.0,
             pan: 0.0,
             playback_rate: 1.0,
+            priority: super::PlayPriority::Normal,
         };
-        tx.try_send(play_command(request))
+        critical_tx
+            .try_send(play_command(request))
             .expect("command send should succeed");
 
         let mut output = vec![0.0_f32; 6];
-        mixer.render_interleaved(&mut output, &mut rx);
+        mixer.render_interleaved(&mut output, &mut critical_rx, &mut standard_rx);
 
         assert!(output[0] > 0.0);
         assert_eq!(output[0], output[1]);
@@ -215,7 +220,8 @@ mod tests {
     #[test]
     fn overlaps_multiple_notes_in_same_render_window() {
         let mut mixer = AudioMixer::new(2, 10);
-        let (mut tx, mut rx) = mpsc::channel(8);
+        let (mut critical_tx, mut critical_rx) = mpsc::channel(8);
+        let (_standard_tx, mut standard_rx) = mpsc::channel(8);
         let first = PlayRequest {
             pcm: Arc::from([1.0_f32, 1.0, 1.0, 1.0]),
             source_channels: 1,
@@ -223,16 +229,19 @@ mod tests {
             gain: 0.4,
             pan: 0.0,
             playback_rate: 1.0,
+            priority: super::PlayPriority::Normal,
         };
         let second = first.clone();
 
-        tx.try_send(play_command(first))
+        critical_tx
+            .try_send(play_command(first))
             .expect("first command send should succeed");
-        tx.try_send(play_command(second))
+        critical_tx
+            .try_send(play_command(second))
             .expect("second command send should succeed");
 
         let mut output = vec![0.0_f32; 10];
-        mixer.render_interleaved(&mut output, &mut rx);
+        mixer.render_interleaved(&mut output, &mut critical_rx, &mut standard_rx);
 
         // Both notes start immediately and overlap in frame 0.
         assert!(output[0] > 0.0);
@@ -243,7 +252,8 @@ mod tests {
     #[test]
     fn overlaps_same_note_when_submitted_back_to_back() {
         let mut mixer = AudioMixer::new(2, 10);
-        let (mut tx, mut rx) = mpsc::channel(8);
+        let (mut critical_tx, mut critical_rx) = mpsc::channel(8);
+        let (_standard_tx, mut standard_rx) = mpsc::channel(8);
         let request = PlayRequest {
             pcm: Arc::from([1.0_f32, 1.0, 1.0]),
             source_channels: 1,
@@ -251,15 +261,18 @@ mod tests {
             gain: 0.35,
             pan: 0.0,
             playback_rate: 1.0,
+            priority: super::PlayPriority::Normal,
         };
 
-        tx.try_send(play_command(request.clone()))
+        critical_tx
+            .try_send(play_command(request.clone()))
             .expect("first command send should succeed");
-        tx.try_send(play_command(request))
+        critical_tx
+            .try_send(play_command(request))
             .expect("second command send should succeed");
 
         let mut output = vec![0.0_f32; 6];
-        mixer.render_interleaved(&mut output, &mut rx);
+        mixer.render_interleaved(&mut output, &mut critical_rx, &mut standard_rx);
 
         // Both notes start at the same frame and should both be present.
         let first_frame_left = output[0];

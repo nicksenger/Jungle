@@ -7,6 +7,12 @@ use std::{
 
 use tokio::time::{Instant, MissedTickBehavior};
 
+const LATE_EMA_ALPHA: f32 = 0.25;
+const LATE_MODE_ENTER_CONSECUTIVE_MISSES: u8 = 3;
+const LATE_MODE_ENTER_THRESHOLD_MULTIPLIER: f32 = 1.35;
+const LATE_MODE_EXIT_THRESHOLD_MULTIPLIER: f32 = 0.75;
+const HARD_DROP_THRESHOLD_MULTIPLIER: f32 = 2.5;
+
 #[derive(Debug, Clone, Copy)]
 pub struct BeatEvent {
     pub timestamp: Instant,
@@ -48,8 +54,16 @@ pub struct Metronome {
     beat: Duration,
     latest_beat: Arc<RwLock<Option<BeatEvent>>>,
     lane_ticks: Arc<RwLock<HashMap<u32, u64>>>,
+    lane_timing_states: Arc<RwLock<HashMap<u32, LaneTimingState>>>,
     start_barrier_open: Arc<AtomicBool>,
     start_barrier_notify: Arc<tokio::sync::Notify>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct LaneTimingState {
+    ema_lateness_secs: f32,
+    consecutive_late_cycles: u8,
+    drop_mode: bool,
 }
 
 impl Metronome {
@@ -62,6 +76,7 @@ impl Metronome {
             beat,
             latest_beat,
             lane_ticks: Arc::new(RwLock::new(HashMap::new())),
+            lane_timing_states: Arc::new(RwLock::new(HashMap::new())),
             start_barrier_open: Arc::new(AtomicBool::new(true)),
             start_barrier_notify: Arc::new(tokio::sync::Notify::new()),
         };
@@ -163,6 +178,13 @@ impl Metronome {
                 .expect("lane ticks rwlock should not be poisoned");
             lane_ticks.clear();
         }
+        {
+            let mut lane_timing_states = self
+                .lane_timing_states
+                .write()
+                .expect("lane timing states rwlock should not be poisoned");
+            lane_timing_states.clear();
+        }
         self.start_barrier_open.store(true, Ordering::Release);
         self.start_barrier_notify.notify_waiters();
     }
@@ -194,7 +216,7 @@ impl Metronome {
         let lateness = now.saturating_duration_since(lane_target_start);
         let late_note_drop_threshold = self
             .late_note_drop_threshold(min_late_note_drop_threshold, max_late_note_drop_threshold);
-        let should_play = lateness <= late_note_drop_threshold;
+        let should_play = self.should_play_note(lane_id, lateness, late_note_drop_threshold);
         let pre_play_sleep_duration = lane_target_start.saturating_duration_since(now);
         let cycle_end = lane_target_start + rest_duration;
         let post_cycle_anchor = now + pre_play_sleep_duration + note_duration;
@@ -205,6 +227,61 @@ impl Metronome {
             pre_play_sleep_duration,
             post_cycle_sleep_duration,
         }
+    }
+
+    fn should_play_note(
+        &self,
+        lane_id: u32,
+        lateness: Duration,
+        late_note_drop_threshold: Duration,
+    ) -> bool {
+        let lateness_secs = lateness.as_secs_f32();
+        let threshold_secs = late_note_drop_threshold.as_secs_f32();
+        let hard_drop_threshold = late_note_drop_threshold.mul_f32(HARD_DROP_THRESHOLD_MULTIPLIER);
+        let enter_threshold_secs = threshold_secs * LATE_MODE_ENTER_THRESHOLD_MULTIPLIER;
+        let exit_threshold_secs = threshold_secs * LATE_MODE_EXIT_THRESHOLD_MULTIPLIER;
+
+        let mut lane_timing_states = self
+            .lane_timing_states
+            .write()
+            .expect("lane timing states rwlock should not be poisoned");
+        let state = lane_timing_states.entry(lane_id).or_default();
+
+        if state.ema_lateness_secs <= 0.0 {
+            state.ema_lateness_secs = lateness_secs;
+        } else {
+            state.ema_lateness_secs =
+                state.ema_lateness_secs * (1.0 - LATE_EMA_ALPHA) + lateness_secs * LATE_EMA_ALPHA;
+        }
+
+        let is_late = lateness > late_note_drop_threshold;
+        if is_late {
+            state.consecutive_late_cycles = state.consecutive_late_cycles.saturating_add(1);
+        } else {
+            state.consecutive_late_cycles = 0;
+        }
+
+        if lateness > hard_drop_threshold {
+            state.drop_mode = true;
+            return false;
+        }
+
+        if state.drop_mode {
+            if !is_late && state.ema_lateness_secs <= exit_threshold_secs {
+                state.drop_mode = false;
+                return true;
+            }
+            return false;
+        }
+
+        if state.consecutive_late_cycles >= LATE_MODE_ENTER_CONSECUTIVE_MISSES
+            && state.ema_lateness_secs >= enter_threshold_secs
+        {
+            state.drop_mode = true;
+            return false;
+        }
+
+        true
     }
 
     fn start_task(&self) {

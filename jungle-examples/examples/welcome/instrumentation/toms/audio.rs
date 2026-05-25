@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::audio::PlayRequest;
+use crate::audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
     synthesis::{
@@ -26,6 +26,7 @@ pub(super) async fn play(
     request.gain = gain * amplitude_gain(&note);
     request.playback_rate = playback_rate;
     request.pan = -0.14 + (velocity - 0.5) * 0.08;
+    request.priority = PlayPriority::Normal;
     audio.play(request).await.map_err(|_| Error::Submission)
 }
 
