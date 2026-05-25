@@ -42,7 +42,7 @@ const DEFAULT_WORKERS: usize = 2;
 const DEFAULT_SYNTH_WORKERS: usize = 9;
 const DEFAULT_SYNTH_QUEUE_SIZE: usize = 128;
 const DEFAULT_PLAYBACK_DELAY_MS: u64 = 1_000;
-const DEFAULT_EVENT_LEAD_TIME_MS: u64 = 200;
+const DEFAULT_EVENT_LEAD_TIME_MS: u64 = 128;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(feature = "transport")]
