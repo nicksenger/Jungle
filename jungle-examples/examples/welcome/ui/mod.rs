@@ -282,7 +282,7 @@ pub fn run_ui(
     journeys: JourneyIds,
     shutdown: ShutdownFlag,
 ) -> iced::Result {
-    let title = "Welcome Example";
+    let title = "Welcome to the Jungle";
     iced::application(
         move || WelcomeUi::new(client.clone(), journeys, shutdown.clone()),
         WelcomeUi::update,

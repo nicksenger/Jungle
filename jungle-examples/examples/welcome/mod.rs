@@ -111,14 +111,11 @@ struct CliArgs {
 }
 
 #[derive(Debug, Parser)]
-#[clap(name = "welcome")]
+#[clap(name = "Welcome to the Jungle")]
 struct WelcomeCliArgs {
     /// Tempo in BPM.
     #[clap(long = "bpm", value_parser = parse_bpm_value, default_value_t = DEFAULT_BPM)]
     bpm: f32,
-    /// Legacy positional BPM argument retained for compatibility.
-    #[clap(value_name = "BPM", value_parser = parse_bpm_value)]
-    legacy_bpm: Option<f32>,
     /// Run without the viewer UI and exit after playback.
     #[clap(long = "headless")]
     headless: bool,
@@ -735,7 +732,6 @@ async fn play_audio_and_schedule_shutdown(
 
 fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let parsed = WelcomeCliArgs::parse();
-    let bpm = parsed.legacy_bpm.unwrap_or(parsed.bpm);
     let enabled_animals = if parsed.animals.is_empty() {
         SelectedAnimal::all()
     } else {
@@ -746,7 +742,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             .collect::<BTreeSet<_>>()
     };
     Ok(CliArgs {
-        bpm,
+        bpm: parsed.bpm,
         headless: parsed.headless,
         mute: parsed.mute,
         workers: parsed.workers,
