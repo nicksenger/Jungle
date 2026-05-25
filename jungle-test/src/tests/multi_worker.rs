@@ -154,6 +154,25 @@ impl Act for MultiWorkerWorkSpec {
     }
 }
 
+pub struct MultiWorkerShortSleepSpec;
+#[jungle::act]
+impl Act for MultiWorkerShortSleepSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &MultiWorkerState, _input: Self::Input) -> Duration {
+        Duration::from_millis(5)
+    }
+
+    fn absorb(
+        _state: &mut MultiWorkerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("short sleep step should succeed");
+    }
+}
+
 pub struct MultiWorkerAdvanceIterationSpec;
 #[jungle::act]
 impl Act for MultiWorkerAdvanceIterationSpec {
@@ -196,8 +215,9 @@ pub struct MultiWorkerJoinSegment(
 #[derive(Flow)]
 pub struct MultiWorkerTailSegment(
     Step<MultiWorkerWorkSpec>,
+    Step<MultiWorkerShortSleepSpec>,
     Step<MultiWorkerWorkSpec>,
-    Step<MultiWorkerWorkSpec>,
+    Step<MultiWorkerShortSleepSpec>,
     Step<MultiWorkerWorkSpec>,
     Step<MultiWorkerAdvanceIterationSpec>,
 );
@@ -313,6 +333,10 @@ async fn local_client_multi_worker_example_flow_has_expected_events_without_repl
         journey_two_counts.failed, 0,
         "second journey should not fail any step"
     );
+    assert_eq!(
+        journey_one_counts.total_events, journey_two_counts.total_events,
+        "both journeys should receive the same total event count"
+    );
 
     assert_eq!(
         client
@@ -400,6 +424,7 @@ async fn local_client_single_worker_single_journey_example_flow_has_expected_eve
 }
 
 struct JourneyCounts {
+    total_events: usize,
     started: usize,
     succeeded: usize,
     failed: usize,
@@ -409,6 +434,7 @@ async fn consume_journey_updates(
     stream: &mut JourneyUpdateSubscription,
     journey_id: uuid::Uuid,
 ) -> JourneyCounts {
+    let mut total_events = 0_usize;
     let mut started = 0_usize;
     let mut succeeded = 0_usize;
     let mut failed = 0_usize;
@@ -416,6 +442,7 @@ async fn consume_journey_updates(
 
     while let Some(next) = stream.next().await {
         let update = next.expect("streamed journey update should succeed");
+        total_events += 1;
         if let Some(previous) = last_sequence_id {
             assert!(
                 update.sequence_id > previous,
@@ -448,6 +475,7 @@ async fn consume_journey_updates(
     }
 
     JourneyCounts {
+        total_events,
         started,
         succeeded,
         failed,
