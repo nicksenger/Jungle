@@ -193,6 +193,42 @@ impl Act for FinishOuterRoundSpec {
     }
 }
 
+pub struct InlineNoopMismatchSpec;
+#[jungle::act]
+impl Act for InlineNoopMismatchSpec {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &bool, _input: Self::Input) -> () {
+    }
+
+    fn absorb(state: &mut bool, _output: EffectCompletion<Self::Effect>) -> Self::Output {
+        *state = true;
+    }
+}
+
+pub struct InlineNoopMismatchContinue;
+impl LoopCondition<bool> for InlineNoopMismatchContinue {
+    type Arg = ();
+
+    fn should_continue(state: &bool) -> bool {
+        !*state
+    }
+}
+
+#[derive(Flow)]
+pub struct InlineNoopMismatchFlow(While<InlineNoopMismatchContinue, Step<InlineNoopMismatchSpec>>);
+
+pub struct InlineNoopMismatchAnimal;
+
+#[jungle::animal(id = 900, generation = 0)]
+impl Animal for InlineNoopMismatchAnimal {
+    type State = bool;
+    type Seed = bool;
+    type Journey = InlineNoopMismatchFlow;
+}
+
 #[derive(Flow)]
 pub struct NestedOuterBodyTemplate(
     While<InnerContinue, Step<InnerWorkSpec>>,
@@ -389,4 +425,22 @@ fn nested_while_with_trailing_step_repeats_outer_iterations() {
     assert_eq!(final_state.outer_iterations_done, 3);
     assert_eq!(final_state.outer_round, 3);
     assert_eq!(final_state.inner_step, 0);
+}
+
+#[test]
+fn while_inline_noop_input_deserialize_error_is_returned_without_panicking() {
+    let mut executor = Executor::<InlineNoopMismatchAnimal>::new(false);
+    let err = match executor.next_executable_request(()) {
+        Ok(_) => panic!("mismatched inline noop input should fail"),
+        Err(err) => err,
+    };
+    match err {
+        ExecutorError::InputDeserialize(message) => {
+            assert!(
+                message.contains("jungle_types::Either<(), ()>"),
+                "unexpected message: {message}"
+            );
+        }
+        other => panic!("expected input deserialize error, got {other:?}"),
+    }
 }

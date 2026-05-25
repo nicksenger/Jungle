@@ -436,6 +436,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
         if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
+                return Err((state, err));
+            }
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -465,6 +468,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
         if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
+                return Err((state, err));
+            }
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -615,6 +621,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
         if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
+                return Err((state, err));
+            }
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -644,6 +653,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
         if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
+                return Err((state, err));
+            }
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -1993,12 +2005,13 @@ where
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
         let mut state = state;
+        let mut iteration_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&iteration_input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -2021,13 +2034,13 @@ where
                     }
                 }
             } else {
-                input.clone()
+                iteration_input.clone()
             };
 
             self.ensure_iteration_ready();
             enum NodeAdvance<S> {
                 Request((S, ExecutableEffectRequest)),
-                Completed(S),
+                Completed(S, Option<Serialized>),
                 Bubble((S, ExecutorError)),
             }
 
@@ -2040,14 +2053,14 @@ where
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
                         if node.is_complete() {
-                            NodeAdvance::Completed(next_state)
+                            NodeAdvance::Completed(next_state, None)
                         } else {
                             // Handles inline-completable children (e.g. Noop) inside While bodies.
-                            let (next_state, _emitted, completed) = node
+                            let (next_state, emitted, completed) = node
                                 .try_complete_without_progress(next_state)
                                 .expect("while child inline completion should succeed");
                             if completed {
-                                NodeAdvance::Completed(next_state)
+                                NodeAdvance::Completed(next_state, emitted)
                             } else {
                                 NodeAdvance::Bubble((next_state, ExecutorError::Complete))
                             }
@@ -2059,13 +2072,16 @@ where
 
             match advance {
                 NodeAdvance::Request(ok) => return Ok(ok),
-                NodeAdvance::Completed(next_state) => {
+                NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
                     if self.body_cursor >= self.active_body.len() {
                         self.active_body.clear();
                         self.body_cursor = 0;
                     }
                     state = next_state;
+                    if let Some(emitted) = emitted {
+                        iteration_input = emitted;
+                    }
                     continue;
                 }
                 NodeAdvance::Bubble(err) => return Err(err),
@@ -3080,12 +3096,13 @@ where
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
         let mut state = state;
+        let mut iteration_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&iteration_input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -3108,13 +3125,13 @@ where
                     }
                 }
             } else {
-                input.clone()
+                iteration_input.clone()
             };
 
             self.ensure_iteration_ready();
             enum NodeAdvance<S> {
                 Request((S, ExecutableEffectRequest)),
-                Completed(S),
+                Completed(S, Option<Serialized>),
                 Bubble((S, ExecutorError)),
             }
 
@@ -3127,14 +3144,14 @@ where
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
                         if node.is_complete() {
-                            NodeAdvance::Completed(next_state)
+                            NodeAdvance::Completed(next_state, None)
                         } else {
                             // Handles inline-completable children (e.g. Noop) inside While bodies.
-                            let (next_state, _emitted, completed) = node
+                            let (next_state, emitted, completed) = node
                                 .try_complete_without_progress(next_state)
                                 .expect("while child inline completion should succeed");
                             if completed {
-                                NodeAdvance::Completed(next_state)
+                                NodeAdvance::Completed(next_state, emitted)
                             } else {
                                 NodeAdvance::Bubble((next_state, ExecutorError::Complete))
                             }
@@ -3146,13 +3163,16 @@ where
 
             match advance {
                 NodeAdvance::Request(ok) => return Ok(ok),
-                NodeAdvance::Completed(next_state) => {
+                NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
                     if self.body_cursor >= self.active_body.len() {
                         self.active_body.clear();
                         self.body_cursor = 0;
                     }
                     state = next_state;
+                    if let Some(emitted) = emitted {
+                        iteration_input = emitted;
+                    }
                     continue;
                 }
                 NodeAdvance::Bubble(err) => return Err(err),
