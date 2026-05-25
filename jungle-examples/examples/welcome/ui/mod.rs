@@ -8,17 +8,22 @@ use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
 const DEFERRED_STREAM_LOG_INTERVAL: usize = 512;
 const DEFERRED_STREAM_SLOW_WAIT_WARN_MS: u64 = 400;
 const DEFERRED_STREAM_LAG_WARN_MS: u64 = 150;
+const DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS: i64 = 2_000;
+const DEFERRED_STREAM_SLOW_DECISION_WARN_US: u128 = 500;
 
 static DEFERRED_STREAM_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static DEFERRED_STREAM_WAIT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static DEFERRED_STREAM_MAX_WAIT_MS: AtomicUsize = AtomicUsize::new(0);
+static DEFERRED_STREAM_MAX_LAG_MS: AtomicUsize = AtomicUsize::new(0);
+static DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS: AtomicUsize = AtomicUsize::new(0);
+static DEFERRED_STREAM_MAX_DECISION_US: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, Copy)]
 pub struct JourneyIds {
@@ -86,12 +91,23 @@ where
         let stream = futures::stream::unfold(subscription, move |mut subscription| async move {
             let next = subscription.next().await?;
             if let Ok(update) = &next {
+                let decision_started_at = Instant::now();
                 let event_count = DEFERRED_STREAM_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
                 let target_unix_ms = update
                     .event_unix_ms
                     .saturating_add(i64::try_from(playback_delay.as_millis()).unwrap_or(i64::MAX))
                     .saturating_sub(i64::try_from(event_lead_time.as_millis()).unwrap_or(i64::MAX));
                 let now_unix_ms = current_unix_ms();
+                let source_event_age_ms = now_unix_ms.saturating_sub(update.event_unix_ms);
+                update_max_usize(
+                    &DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS,
+                    usize::try_from(source_event_age_ms.max(0)).unwrap_or(usize::MAX),
+                );
+                let decision_elapsed_us = decision_started_at.elapsed().as_micros();
+                update_max_usize(
+                    &DEFERRED_STREAM_MAX_DECISION_US,
+                    usize::try_from(decision_elapsed_us).unwrap_or(usize::MAX),
+                );
                 if target_unix_ms > now_unix_ms {
                     let wait_ms = u64::try_from(target_unix_ms - now_unix_ms).unwrap_or(u64::MAX);
                     DEFERRED_STREAM_WAIT_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -102,17 +118,51 @@ where
                     if wait_ms >= DEFERRED_STREAM_SLOW_WAIT_WARN_MS {
                         warn!(
                             journey_id = %journey_id,
+                            sequence_id = update.sequence_id,
                             wait_ms,
+                            source_event_age_ms,
+                            decision_elapsed_us,
+                            max_source_event_age_ms = DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS.load(Ordering::Relaxed),
                             max_wait_ms = DEFERRED_STREAM_MAX_WAIT_MS.load(Ordering::Relaxed),
+                            max_decision_us = DEFERRED_STREAM_MAX_DECISION_US.load(Ordering::Relaxed),
                             "deferred welcome stream waiting a long time for playback alignment"
+                        );
+                    } else if source_event_age_ms >= DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS {
+                        warn!(
+                            journey_id = %journey_id,
+                            sequence_id = update.sequence_id,
+                            wait_ms,
+                            source_event_age_ms,
+                            decision_elapsed_us,
+                            max_source_event_age_ms = DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS.load(Ordering::Relaxed),
+                            max_wait_ms = DEFERRED_STREAM_MAX_WAIT_MS.load(Ordering::Relaxed),
+                            max_decision_us = DEFERRED_STREAM_MAX_DECISION_US.load(Ordering::Relaxed),
+                            "deferred welcome stream source event age is high before waiting"
+                        );
+                    } else if decision_elapsed_us >= DEFERRED_STREAM_SLOW_DECISION_WARN_US {
+                        warn!(
+                            journey_id = %journey_id,
+                            sequence_id = update.sequence_id,
+                            wait_ms,
+                            source_event_age_ms,
+                            decision_elapsed_us,
+                            max_source_event_age_ms = DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS.load(Ordering::Relaxed),
+                            max_wait_ms = DEFERRED_STREAM_MAX_WAIT_MS.load(Ordering::Relaxed),
+                            max_decision_us = DEFERRED_STREAM_MAX_DECISION_US.load(Ordering::Relaxed),
+                            "deferred welcome stream timing decision path was unexpectedly slow"
                         );
                     } else if event_count % DEFERRED_STREAM_LOG_INTERVAL == 0 {
                         debug!(
                             journey_id = %journey_id,
                             event_count,
+                            sequence_id = update.sequence_id,
                             wait_ms,
+                            source_event_age_ms,
+                            decision_elapsed_us,
                             wait_count = DEFERRED_STREAM_WAIT_COUNT.load(Ordering::Relaxed),
+                            max_source_event_age_ms = DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS.load(Ordering::Relaxed),
                             max_wait_ms = DEFERRED_STREAM_MAX_WAIT_MS.load(Ordering::Relaxed),
+                            max_decision_us = DEFERRED_STREAM_MAX_DECISION_US.load(Ordering::Relaxed),
                             "deferred welcome stream heartbeat"
                         );
                     }
@@ -120,20 +170,62 @@ where
                 } else {
                     let lag_ms = u64::try_from(now_unix_ms.saturating_sub(target_unix_ms))
                         .unwrap_or(u64::MAX);
+                    update_max_usize(
+                        &DEFERRED_STREAM_MAX_LAG_MS,
+                        usize::try_from(lag_ms).unwrap_or(usize::MAX),
+                    );
                     if lag_ms >= DEFERRED_STREAM_LAG_WARN_MS {
                         warn!(
                             journey_id = %journey_id,
+                            sequence_id = update.sequence_id,
                             lag_ms,
                             event_count,
+                            source_event_age_ms,
+                            decision_elapsed_us,
+                            max_lag_ms = DEFERRED_STREAM_MAX_LAG_MS.load(Ordering::Relaxed),
+                            max_source_event_age_ms = DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS.load(Ordering::Relaxed),
+                            max_decision_us = DEFERRED_STREAM_MAX_DECISION_US.load(Ordering::Relaxed),
                             "deferred welcome stream is behind target playback timestamp"
+                        );
+                    } else if source_event_age_ms >= DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS {
+                        warn!(
+                            journey_id = %journey_id,
+                            sequence_id = update.sequence_id,
+                            lag_ms,
+                            event_count,
+                            source_event_age_ms,
+                            decision_elapsed_us,
+                            max_lag_ms = DEFERRED_STREAM_MAX_LAG_MS.load(Ordering::Relaxed),
+                            max_source_event_age_ms = DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS.load(Ordering::Relaxed),
+                            max_decision_us = DEFERRED_STREAM_MAX_DECISION_US.load(Ordering::Relaxed),
+                            "deferred welcome stream source event age is high while behind target"
+                        );
+                    } else if decision_elapsed_us >= DEFERRED_STREAM_SLOW_DECISION_WARN_US {
+                        warn!(
+                            journey_id = %journey_id,
+                            sequence_id = update.sequence_id,
+                            lag_ms,
+                            event_count,
+                            source_event_age_ms,
+                            decision_elapsed_us,
+                            max_lag_ms = DEFERRED_STREAM_MAX_LAG_MS.load(Ordering::Relaxed),
+                            max_source_event_age_ms = DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS.load(Ordering::Relaxed),
+                            max_decision_us = DEFERRED_STREAM_MAX_DECISION_US.load(Ordering::Relaxed),
+                            "deferred welcome stream timing decision path was unexpectedly slow"
                         );
                     } else if event_count % DEFERRED_STREAM_LOG_INTERVAL == 0 {
                         debug!(
                             journey_id = %journey_id,
                             event_count,
+                            sequence_id = update.sequence_id,
                             lag_ms,
+                            source_event_age_ms,
+                            decision_elapsed_us,
                             wait_count = DEFERRED_STREAM_WAIT_COUNT.load(Ordering::Relaxed),
+                            max_lag_ms = DEFERRED_STREAM_MAX_LAG_MS.load(Ordering::Relaxed),
+                            max_source_event_age_ms = DEFERRED_STREAM_MAX_SOURCE_EVENT_AGE_MS.load(Ordering::Relaxed),
                             max_wait_ms = DEFERRED_STREAM_MAX_WAIT_MS.load(Ordering::Relaxed),
+                            max_decision_us = DEFERRED_STREAM_MAX_DECISION_US.load(Ordering::Relaxed),
                             "deferred welcome stream heartbeat (no wait)"
                         );
                     }

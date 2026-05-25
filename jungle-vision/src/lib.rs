@@ -31,12 +31,17 @@ const CLUSTER_RECOLLAPSE_DELAY: Duration = Duration::from_secs(2);
 const ANIMATION_TICK: Duration = Duration::from_millis(16);
 const VISION_LIVE_EVENT_LOG_INTERVAL: usize = 512;
 const VISION_STALE_EVENT_WARN_MS: i64 = 1_000;
+const VISION_APPLY_QUEUE_DELAY_WARN_MS: i64 = 100;
+const VISION_END_TO_END_AGE_WARN_MS: i64 = 2_000;
 const VISION_SLOW_APPLY_WARN_MS: u128 = 20;
 const VISION_SLOW_THEME_UPDATE_WARN_MS: u128 = 20;
 
 static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
 static VISION_LIVE_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static VISION_APPLY_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+static VISION_MAX_APPLY_QUEUE_DELAY_MS: AtomicUsize = AtomicUsize::new(0);
+static VISION_MAX_END_TO_END_EVENT_AGE_MS: AtomicUsize = AtomicUsize::new(0);
+static VISION_MAX_APPLY_ELAPSED_MS: AtomicUsize = AtomicUsize::new(0);
 
 pub struct AnyAnimal;
 
@@ -434,7 +439,10 @@ where
 #[derive(Debug, Clone)]
 pub enum EjectedViewerMessage {
     LiveEvent(Result<JourneyUpdateEvent, String>),
-    ApplyLiveEvent(JourneyUpdateEvent),
+    ApplyLiveEvent {
+        update: JourneyUpdateEvent,
+        received_unix_ms: i64,
+    },
     Theme(ViewerEvent<()>),
     ViewportInteraction(ViewportInteraction),
     Retry,
@@ -533,7 +541,12 @@ where
                         return iced_sugiyama::invalidate::<EjectedViewerMessage>(
                             self.graph_widget_id.clone(),
                         )
-                        .chain(Task::done(EjectedViewerMessage::ApplyLiveEvent(update)));
+                        .chain(Task::done(
+                            EjectedViewerMessage::ApplyLiveEvent {
+                                update,
+                                received_unix_ms: current_unix_ms(),
+                            },
+                        ));
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -541,8 +554,22 @@ where
                 }
                 Task::none()
             }
-            EjectedViewerMessage::ApplyLiveEvent(update) => {
+            EjectedViewerMessage::ApplyLiveEvent {
+                update,
+                received_unix_ms,
+            } => {
                 let apply_started_at = Instant::now();
+                let now_unix_ms = current_unix_ms();
+                let apply_queue_delay_ms = now_unix_ms.saturating_sub(received_unix_ms);
+                let end_to_end_age_ms = now_unix_ms.saturating_sub(update.event_unix_ms);
+                update_max_usize(
+                    &VISION_MAX_APPLY_QUEUE_DELAY_MS,
+                    usize::try_from(apply_queue_delay_ms.max(0)).unwrap_or(usize::MAX),
+                );
+                update_max_usize(
+                    &VISION_MAX_END_TO_END_EVENT_AGE_MS,
+                    usize::try_from(end_to_end_age_ms.max(0)).unwrap_or(usize::MAX),
+                );
                 let theme_task = self
                     .theme
                     .update(
@@ -563,15 +590,65 @@ where
                 let _ = data.apply_update(update);
                 let apply_elapsed_ms = apply_started_at.elapsed().as_millis();
                 let apply_count = VISION_APPLY_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                update_max_usize(
+                    &VISION_MAX_APPLY_ELAPSED_MS,
+                    usize::try_from(apply_elapsed_ms).unwrap_or(usize::MAX),
+                );
                 if apply_elapsed_ms > VISION_SLOW_APPLY_WARN_MS {
                     warn!(
                         journey = self.journey_name(),
-                        apply_count, apply_elapsed_ms, "slow jungle-vision ApplyLiveEvent handling"
+                        apply_count,
+                        apply_elapsed_ms,
+                        apply_queue_delay_ms,
+                        end_to_end_age_ms,
+                        max_apply_queue_delay_ms =
+                            VISION_MAX_APPLY_QUEUE_DELAY_MS.load(Ordering::Relaxed),
+                        max_end_to_end_event_age_ms =
+                            VISION_MAX_END_TO_END_EVENT_AGE_MS.load(Ordering::Relaxed),
+                        max_apply_elapsed_ms = VISION_MAX_APPLY_ELAPSED_MS.load(Ordering::Relaxed),
+                        "slow jungle-vision ApplyLiveEvent handling"
+                    );
+                } else if apply_queue_delay_ms > VISION_APPLY_QUEUE_DELAY_WARN_MS {
+                    warn!(
+                        journey = self.journey_name(),
+                        apply_count,
+                        apply_elapsed_ms,
+                        apply_queue_delay_ms,
+                        end_to_end_age_ms,
+                        max_apply_queue_delay_ms =
+                            VISION_MAX_APPLY_QUEUE_DELAY_MS.load(Ordering::Relaxed),
+                        max_end_to_end_event_age_ms =
+                            VISION_MAX_END_TO_END_EVENT_AGE_MS.load(Ordering::Relaxed),
+                        max_apply_elapsed_ms = VISION_MAX_APPLY_ELAPSED_MS.load(Ordering::Relaxed),
+                        "jungle-vision ApplyLiveEvent queueing delay is growing"
+                    );
+                } else if end_to_end_age_ms > VISION_END_TO_END_AGE_WARN_MS {
+                    warn!(
+                        journey = self.journey_name(),
+                        apply_count,
+                        apply_elapsed_ms,
+                        apply_queue_delay_ms,
+                        end_to_end_age_ms,
+                        max_apply_queue_delay_ms =
+                            VISION_MAX_APPLY_QUEUE_DELAY_MS.load(Ordering::Relaxed),
+                        max_end_to_end_event_age_ms =
+                            VISION_MAX_END_TO_END_EVENT_AGE_MS.load(Ordering::Relaxed),
+                        max_apply_elapsed_ms = VISION_MAX_APPLY_ELAPSED_MS.load(Ordering::Relaxed),
+                        "jungle-vision end-to-end event age is high at apply"
                     );
                 } else if apply_count % VISION_LIVE_EVENT_LOG_INTERVAL == 0 {
                     debug!(
                         journey = self.journey_name(),
-                        apply_count, apply_elapsed_ms, "jungle-vision apply heartbeat"
+                        apply_count,
+                        apply_elapsed_ms,
+                        apply_queue_delay_ms,
+                        end_to_end_age_ms,
+                        max_apply_queue_delay_ms =
+                            VISION_MAX_APPLY_QUEUE_DELAY_MS.load(Ordering::Relaxed),
+                        max_end_to_end_event_age_ms =
+                            VISION_MAX_END_TO_END_EVENT_AGE_MS.load(Ordering::Relaxed),
+                        max_apply_elapsed_ms = VISION_MAX_APPLY_ELAPSED_MS.load(Ordering::Relaxed),
+                        "jungle-vision apply heartbeat"
                     );
                 }
                 theme_task
@@ -653,7 +730,10 @@ where
         .map(|message| match message {
             Message::Theme(event) => EjectedViewerMessage::Theme(event),
             Message::LiveEvent(result) => EjectedViewerMessage::LiveEvent(result),
-            Message::ApplyLiveEvent(update) => EjectedViewerMessage::ApplyLiveEvent(update),
+            Message::ApplyLiveEvent(update) => EjectedViewerMessage::ApplyLiveEvent {
+                update,
+                received_unix_ms: current_unix_ms(),
+            },
             Message::ViewportInteraction(interaction) => {
                 EjectedViewerMessage::ViewportInteraction(interaction)
             }
@@ -1108,6 +1188,21 @@ fn current_unix_ms() -> i64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
         Err(_) => 0,
+    }
+}
+
+fn update_max_usize(max_value: &AtomicUsize, candidate: usize) {
+    let mut current = max_value.load(Ordering::Relaxed);
+    while candidate > current {
+        match max_value.compare_exchange_weak(
+            current,
+            candidate,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(updated) => current = updated,
+        }
     }
 }
 
