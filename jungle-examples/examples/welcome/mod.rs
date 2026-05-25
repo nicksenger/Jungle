@@ -188,6 +188,7 @@ fn run_with_ui(
             playback_delay_ms,
             event_lead_time_ms,
             enabled_animals,
+            false,
             shutdown_for_runtime,
             setup_tx,
             started_rx,
@@ -261,6 +262,7 @@ fn run_headless(
             playback_delay_ms,
             event_lead_time_ms,
             enabled_animals,
+            true,
             shutdown_for_runtime,
             setup_tx,
             started_rx,
@@ -511,6 +513,7 @@ fn run_runtime_thread(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    enable_headless_lag_probe: bool,
     ui_shutdown: ui::ShutdownFlag,
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
     started_rx: std::sync::mpsc::Receiver<Instant>,
@@ -687,6 +690,9 @@ fn run_runtime_thread(
             Duration::from_millis(playback_delay_ms),
             Duration::from_millis(event_lead_time_ms),
         );
+        if enable_headless_lag_probe {
+            spawn_headless_lag_probe(ui_client.clone(), journeys);
+        }
         Ok::<(UiSetup, RuntimeKeepAlive), String>((
             UiSetup {
                 client: ui_client,
@@ -726,6 +732,68 @@ fn run_runtime_thread(
     ));
     keep_alive.shutdown();
     result
+}
+
+fn spawn_headless_lag_probe(client: ui::DeferredJungleClient<UiClient>, journeys: ui::JourneyIds) {
+    let mut probe_journeys = Vec::new();
+    if let Some(id) = journeys.lead_vocalist {
+        probe_journeys.push(id);
+    }
+    if let Some(id) = journeys.lead_guitarist {
+        probe_journeys.push(id);
+    }
+    if let Some(id) = journeys.rhythm_guitarist {
+        probe_journeys.push(id);
+    }
+    if let Some(id) = journeys.bass {
+        probe_journeys.push(id);
+    }
+    if let Some(id) = journeys.drums {
+        probe_journeys.push(id);
+    }
+
+    if probe_journeys.is_empty() {
+        return;
+    }
+
+    info!(
+        journey_count = probe_journeys.len(),
+        "headless lag probe enabled: draining deferred journey streams"
+    );
+
+    for journey_id in probe_journeys {
+        let probe_client = client.clone();
+        tokio::spawn(async move {
+            let mut subscription = match probe_client.subscribe_step_updates(journey_id, None).await
+            {
+                Ok(stream) => stream,
+                Err(err) => {
+                    error!(
+                        %journey_id,
+                        error = %err,
+                        "headless lag probe failed to open journey subscription"
+                    );
+                    return;
+                }
+            };
+
+            while let Some(next) = subscription.next().await {
+                if let Err(err) = next {
+                    error!(
+                        %journey_id,
+                        error = %err,
+                        "headless lag probe stream produced error"
+                    );
+                    break;
+                }
+            }
+
+            info!(
+                %journey_id,
+                "headless lag probe stream exited"
+            );
+        });
+    }
 }
 
 fn spawn_ui_subscription_forwarders(
