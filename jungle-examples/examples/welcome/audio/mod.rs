@@ -4,18 +4,20 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleFormat, Stream,
 };
 use futures::channel::mpsc;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 const COMMAND_CHANNEL_CAPACITY_CRITICAL: usize = 512;
 const COMMAND_CHANNEL_CAPACITY_STANDARD: usize = 1024;
 const DROP_LOG_INTERVAL: usize = 128;
+const AUDIO_ENQUEUE_LOG_INTERVAL: usize = 512;
+const AUDIO_ENQUEUE_SLOW_WARN_THRESHOLD: Duration = Duration::from_millis(5);
 
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
@@ -39,15 +41,21 @@ pub struct AudioHandle {
     standard_command_tx: mpsc::Sender<mixer::Command>,
     pending_commands: Arc<AtomicUsize>,
     dropped_commands: Arc<AtomicUsize>,
+    enqueue_attempts: Arc<AtomicUsize>,
+    enqueue_successes: Arc<AtomicUsize>,
+    max_pending_commands: Arc<AtomicUsize>,
     playback_delay: Duration,
 }
 
 impl AudioHandle {
     pub async fn play(&self, request: PlayRequest) -> Result<(), AudioError> {
+        let enqueue_started_at = Instant::now();
         let mut request = request;
         request.start_delay = self.playback_delay;
         let priority = request.priority;
+        let enqueue_attempt = self.enqueue_attempts.fetch_add(1, Ordering::Relaxed) + 1;
         let pending_before_send = self.pending_commands.fetch_add(1, Ordering::Relaxed) + 1;
+        update_max_pending(&self.max_pending_commands, pending_before_send);
         let mut command_tx = match priority {
             PlayPriority::Critical => self.critical_command_tx.clone(),
             PlayPriority::Normal | PlayPriority::Low => self.standard_command_tx.clone(),
@@ -57,7 +65,36 @@ impl AudioHandle {
             pending_commands: Arc::clone(&self.pending_commands),
         };
         match command_tx.try_send(command) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                let enqueue_elapsed = enqueue_started_at.elapsed();
+                let success_count = self.enqueue_successes.fetch_add(1, Ordering::Relaxed) + 1;
+                if enqueue_elapsed > AUDIO_ENQUEUE_SLOW_WARN_THRESHOLD {
+                    warn!(
+                        priority = ?priority,
+                        enqueue_elapsed_ms = enqueue_elapsed.as_millis(),
+                        pending_before_send,
+                        max_pending_commands = self.max_pending_commands.load(Ordering::Relaxed),
+                        "slow audio enqueue observed"
+                    );
+                } else if success_count % AUDIO_ENQUEUE_LOG_INTERVAL == 0 {
+                    debug!(
+                        priority = ?priority,
+                        enqueue_attempt,
+                        success_count,
+                        pending_before_send,
+                        max_pending_commands = self.max_pending_commands.load(Ordering::Relaxed),
+                        dropped_commands = self.dropped_commands.load(Ordering::Relaxed),
+                        "audio enqueue heartbeat"
+                    );
+                } else {
+                    trace!(
+                        priority = ?priority,
+                        enqueue_elapsed_us = enqueue_elapsed.as_micros(),
+                        "audio enqueue complete"
+                    );
+                }
+                Ok(())
+            }
             Err(err) if err.is_full() => {
                 let pending_after_drop = self
                     .pending_commands
@@ -67,16 +104,20 @@ impl AudioHandle {
                 if dropped_total % DROP_LOG_INTERVAL == 0 {
                     warn!(
                         dropped_total,
+                        enqueue_attempt,
                         pending_before_send,
                         pending_after_drop,
+                        max_pending_commands = self.max_pending_commands.load(Ordering::Relaxed),
                         priority = ?priority,
                         "audio command queue full; dropping queued note"
                     );
                 } else {
                     debug!(
                         dropped_total,
+                        enqueue_attempt,
                         pending_before_send,
                         pending_after_drop,
+                        max_pending_commands = self.max_pending_commands.load(Ordering::Relaxed),
                         priority = ?priority,
                         "audio command dropped due to queue pressure"
                     );
@@ -90,6 +131,7 @@ impl AudioHandle {
                     .saturating_sub(1);
                 debug!(error = %err, "failed submitting audio command to mixer");
                 debug!(
+                    enqueue_attempt,
                     pending_after_error,
                     "decremented pending audio command count after failed enqueue"
                 );
@@ -131,6 +173,9 @@ impl AudioEngine {
             standard_command_tx,
             pending_commands,
             dropped_commands,
+            enqueue_attempts: Arc::new(AtomicUsize::new(0)),
+            enqueue_successes: Arc::new(AtomicUsize::new(0)),
+            max_pending_commands: Arc::new(AtomicUsize::new(0)),
             playback_delay: Duration::ZERO,
         };
 
@@ -186,6 +231,9 @@ impl AudioHandle {
                 standard_command_tx,
                 pending_commands: Arc::new(AtomicUsize::new(0)),
                 dropped_commands: Arc::new(AtomicUsize::new(0)),
+                enqueue_attempts: Arc::new(AtomicUsize::new(0)),
+                enqueue_successes: Arc::new(AtomicUsize::new(0)),
+                max_pending_commands: Arc::new(AtomicUsize::new(0)),
                 playback_delay: Duration::ZERO,
             },
             StubAudioKeepAlive {
@@ -226,6 +274,21 @@ impl PlayRequest {
             playback_rate: 1.0,
             start_delay: Duration::ZERO,
             priority: PlayPriority::Normal,
+        }
+    }
+}
+
+fn update_max_pending(max_pending_commands: &AtomicUsize, pending: usize) {
+    let mut current = max_pending_commands.load(Ordering::Relaxed);
+    while pending > current {
+        match max_pending_commands.compare_exchange_weak(
+            current,
+            pending,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(updated) => current = updated,
         }
     }
 }

@@ -1,17 +1,20 @@
 use std::{
     collections::HashMap,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     sync::{Arc, RwLock},
     time::Duration,
 };
 
 use tokio::time::{Instant, MissedTickBehavior};
+use tracing::{debug, warn};
 
 const LATE_EMA_ALPHA: f32 = 0.25;
 const LATE_MODE_ENTER_CONSECUTIVE_MISSES: u8 = 3;
 const LATE_MODE_ENTER_THRESHOLD_MULTIPLIER: f32 = 1.35;
 const LATE_MODE_EXIT_THRESHOLD_MULTIPLIER: f32 = 0.75;
 const HARD_DROP_THRESHOLD_MULTIPLIER: f32 = 2.5;
+const RHYTHM_TIMING_LOG_INTERVAL: usize = 512;
+const DROP_NOTE_LOG_INTERVAL: usize = 128;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BeatEvent {
@@ -57,6 +60,8 @@ pub struct Metronome {
     lane_timing_states: Arc<RwLock<HashMap<u32, LaneTimingState>>>,
     start_barrier_open: Arc<AtomicBool>,
     start_barrier_notify: Arc<tokio::sync::Notify>,
+    rhythm_timing_calls: Arc<AtomicUsize>,
+    dropped_notes: Arc<AtomicUsize>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -79,6 +84,8 @@ impl Metronome {
             lane_timing_states: Arc::new(RwLock::new(HashMap::new())),
             start_barrier_open: Arc::new(AtomicBool::new(true)),
             start_barrier_notify: Arc::new(tokio::sync::Notify::new()),
+            rhythm_timing_calls: Arc::new(AtomicUsize::new(0)),
+            dropped_notes: Arc::new(AtomicUsize::new(0)),
         };
         metronome.start_task();
         metronome
@@ -217,10 +224,23 @@ impl Metronome {
         let late_note_drop_threshold = self
             .late_note_drop_threshold(min_late_note_drop_threshold, max_late_note_drop_threshold);
         let should_play = self.should_play_note(lane_id, lateness, late_note_drop_threshold);
+        let timing_call = self.rhythm_timing_calls.fetch_add(1, Ordering::Relaxed) + 1;
         let pre_play_sleep_duration = lane_target_start.saturating_duration_since(now);
         let cycle_end = lane_target_start + rest_duration;
         let post_cycle_anchor = now + pre_play_sleep_duration + note_duration;
         let post_cycle_sleep_duration = cycle_end.saturating_duration_since(post_cycle_anchor);
+        if timing_call % RHYTHM_TIMING_LOG_INTERVAL == 0 {
+            debug!(
+                lane_id,
+                timing_call,
+                lateness_ms = lateness.as_millis(),
+                drop_threshold_ms = late_note_drop_threshold.as_millis(),
+                should_play,
+                pre_play_sleep_ms = pre_play_sleep_duration.as_millis(),
+                post_cycle_sleep_ms = post_cycle_sleep_duration.as_millis(),
+                "metronome rhythm timing heartbeat"
+            );
+        }
         RhythmTiming {
             note_duration,
             should_play,
@@ -246,6 +266,7 @@ impl Metronome {
             .write()
             .expect("lane timing states rwlock should not be poisoned");
         let state = lane_timing_states.entry(lane_id).or_default();
+        let prev_drop_mode = state.drop_mode;
 
         if state.ema_lateness_secs <= 0.0 {
             state.ema_lateness_secs = lateness_secs;
@@ -263,14 +284,31 @@ impl Metronome {
 
         if lateness > hard_drop_threshold {
             state.drop_mode = true;
+            self.record_drop(lane_id, lateness, late_note_drop_threshold, state);
+            if !prev_drop_mode {
+                warn!(
+                    lane_id,
+                    lateness_ms = lateness.as_millis(),
+                    threshold_ms = late_note_drop_threshold.as_millis(),
+                    "metronome lane entered drop mode due to hard lateness spike"
+                );
+            }
             return false;
         }
 
         if state.drop_mode {
             if !is_late && state.ema_lateness_secs <= exit_threshold_secs {
                 state.drop_mode = false;
+                debug!(
+                    lane_id,
+                    lateness_ms = lateness.as_millis(),
+                    threshold_ms = late_note_drop_threshold.as_millis(),
+                    ema_lateness_ms = (state.ema_lateness_secs * 1_000.0) as u64,
+                    "metronome lane exited drop mode"
+                );
                 return true;
             }
+            self.record_drop(lane_id, lateness, late_note_drop_threshold, state);
             return false;
         }
 
@@ -278,10 +316,49 @@ impl Metronome {
             && state.ema_lateness_secs >= enter_threshold_secs
         {
             state.drop_mode = true;
+            warn!(
+                lane_id,
+                lateness_ms = lateness.as_millis(),
+                threshold_ms = late_note_drop_threshold.as_millis(),
+                ema_lateness_ms = (state.ema_lateness_secs * 1_000.0) as u64,
+                consecutive_late_cycles = state.consecutive_late_cycles,
+                "metronome lane entered drop mode due to sustained lateness"
+            );
+            self.record_drop(lane_id, lateness, late_note_drop_threshold, state);
             return false;
         }
 
         true
+    }
+
+    fn record_drop(
+        &self,
+        lane_id: u32,
+        lateness: Duration,
+        late_note_drop_threshold: Duration,
+        state: &LaneTimingState,
+    ) {
+        let dropped_total = self.dropped_notes.fetch_add(1, Ordering::Relaxed) + 1;
+        if dropped_total % DROP_NOTE_LOG_INTERVAL == 0 {
+            warn!(
+                lane_id,
+                dropped_total,
+                lateness_ms = lateness.as_millis(),
+                threshold_ms = late_note_drop_threshold.as_millis(),
+                ema_lateness_ms = (state.ema_lateness_secs * 1_000.0) as u64,
+                consecutive_late_cycles = state.consecutive_late_cycles,
+                drop_mode = state.drop_mode,
+                "metronome dropped note due to lane lateness policy"
+            );
+        } else {
+            debug!(
+                lane_id,
+                dropped_total,
+                lateness_ms = lateness.as_millis(),
+                threshold_ms = late_note_drop_threshold.as_millis(),
+                "metronome note drop event"
+            );
+        }
     }
 
     fn start_task(&self) {

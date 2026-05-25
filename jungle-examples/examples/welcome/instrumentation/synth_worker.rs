@@ -2,8 +2,10 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
+use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, oneshot};
+use tracing::{debug, info, trace, warn};
 
 use super::{
     bass::{self, BassArticulation},
@@ -19,11 +21,18 @@ use super::{
 
 const DEFAULT_SYNTH_WORKER_THREADS: usize = 9;
 const DEFAULT_SYNTH_QUEUE_CAPACITY_PER_WORKER: usize = 128;
+const SYNTH_DISPATCH_LOG_INTERVAL: usize = 256;
+const SYNTH_SLOW_REQUEST_WARN_THRESHOLD: Duration = Duration::from_millis(20);
+const SYNTH_SLOW_FALLBACK_WARN_THRESHOLD: Duration = Duration::from_millis(10);
 
 #[derive(Clone)]
 pub struct SynthHandle {
     request_txs: Arc<[mpsc::Sender<SynthRequest>]>,
     next_worker: Arc<AtomicUsize>,
+    queue_capacity_per_worker: usize,
+    dispatch_attempts: Arc<AtomicUsize>,
+    overload_fallbacks: Arc<AtomicUsize>,
+    closed_dispatch_failures: Arc<AtomicUsize>,
 }
 
 impl SynthHandle {
@@ -37,6 +46,10 @@ impl SynthHandle {
     pub fn new_with_config(worker_threads: usize, queue_capacity_per_worker: usize) -> Self {
         let worker_threads = worker_threads.max(1);
         let queue_capacity_per_worker = queue_capacity_per_worker.max(1);
+        info!(
+            worker_threads,
+            queue_capacity_per_worker, "starting welcome synth worker pool"
+        );
         let mut request_txs = Vec::with_capacity(worker_threads);
         for worker_index in 0..worker_threads {
             let (request_tx, mut request_rx) =
@@ -45,7 +58,7 @@ impl SynthHandle {
                 .name(format!("welcome-synth-worker-{worker_index}"))
                 .spawn(move || {
                     while let Some(request) = request_rx.blocking_recv() {
-                        run_synth_request(request);
+                        run_synth_request(worker_index, request);
                     }
                 })
                 .expect("welcome synth worker thread should start");
@@ -55,6 +68,10 @@ impl SynthHandle {
         Self {
             request_txs: Arc::from(request_txs),
             next_worker: Arc::new(AtomicUsize::new(0)),
+            queue_capacity_per_worker,
+            dispatch_attempts: Arc::new(AtomicUsize::new(0)),
+            overload_fallbacks: Arc::new(AtomicUsize::new(0)),
+            closed_dispatch_failures: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -63,6 +80,7 @@ impl SynthHandle {
         note: Note<BassArticulation>,
     ) -> Result<(Arc<[f32]>, f32, f32), Error> {
         self.dispatch_with_fallback(
+            "bass",
             move |response| SynthRequest::Bass { note, response },
             move || bass::audio::synthesize_bass(&note),
         )
@@ -74,6 +92,7 @@ impl SynthHandle {
         note: Note<CymbalArticulation>,
     ) -> Result<(Arc<[f32]>, f32, f32), Error> {
         self.dispatch_with_fallback(
+            "cymbal",
             move |response| SynthRequest::Cymbal { note, response },
             move || cymbal::audio::synthesize_cymbal(&note),
         )
@@ -85,6 +104,7 @@ impl SynthHandle {
         note: Note<ElectricGuitarArticulation>,
     ) -> Result<(Arc<[f32]>, f32, f32, f32), Error> {
         self.dispatch_with_fallback(
+            "electric_guitar",
             move |response| SynthRequest::ElectricGuitar { note, response },
             move || electric_guitar::audio::synthesize_electric_guitar(&note),
         )
@@ -96,6 +116,7 @@ impl SynthHandle {
         note: Note<HiHatArticulation>,
     ) -> Result<(Arc<[f32]>, f32, f32), Error> {
         self.dispatch_with_fallback(
+            "hihat",
             move |response| SynthRequest::HiHat { note, response },
             move || hihat::audio::synthesize_hihat(&note),
         )
@@ -107,6 +128,7 @@ impl SynthHandle {
         note: Note<KickDrumArticulation>,
     ) -> Result<(Arc<[f32]>, f32, f32), Error> {
         self.dispatch_with_fallback(
+            "kick_drum",
             move |response| SynthRequest::KickDrum { note, response },
             move || kick_drum::audio::synthesize_kick_drum(&note),
         )
@@ -118,6 +140,7 @@ impl SynthHandle {
         note: Note<SnareDrumArticulation>,
     ) -> Result<(Arc<[f32]>, f32, f32), Error> {
         self.dispatch_with_fallback(
+            "snare_drum",
             move |response| SynthRequest::SnareDrum { note, response },
             move || snare_drum::audio::synthesize_snare_drum(&note),
         )
@@ -129,6 +152,7 @@ impl SynthHandle {
         note: Note<TomsArticulation>,
     ) -> Result<(Arc<[f32]>, f32, f32), Error> {
         self.dispatch_with_fallback(
+            "toms",
             move |response| SynthRequest::Toms { note, response },
             move || toms::audio::synthesize_toms(&note),
         )
@@ -140,6 +164,7 @@ impl SynthHandle {
         note: Note<VocalsArticulation>,
     ) -> Result<(Arc<[f32]>, f32, f32), Error> {
         self.dispatch_with_fallback(
+            "vocals",
             move |response| SynthRequest::Vocals { note, response },
             move || vocals::audio::synthesize_vocals(&note),
         )
@@ -148,6 +173,7 @@ impl SynthHandle {
 
     async fn dispatch_with_fallback<T, FBuild, FFallback>(
         &self,
+        synth: &'static str,
         build_request: FBuild,
         fallback: FFallback,
     ) -> Result<T, Error>
@@ -156,13 +182,74 @@ impl SynthHandle {
         FBuild: FnOnce(oneshot::Sender<T>) -> SynthRequest,
         FFallback: FnOnce() -> T,
     {
+        let dispatch_started_at = Instant::now();
+        let dispatch_attempt = self.dispatch_attempts.fetch_add(1, Ordering::Relaxed) + 1;
         let (tx, rx) = oneshot::channel();
         let request = build_request(tx);
 
         match self.try_dispatch(request) {
-            Ok(()) => rx.await.map_err(|_| Error::Playback),
-            Err(SynthDispatchError::Overloaded(_request)) => Ok(fallback()),
-            Err(SynthDispatchError::Closed(_request)) => Err(Error::Playback),
+            Ok(()) => {
+                let output = rx.await.map_err(|_| Error::Playback)?;
+                let dispatch_elapsed = dispatch_started_at.elapsed();
+                if dispatch_elapsed > SYNTH_SLOW_REQUEST_WARN_THRESHOLD {
+                    warn!(
+                        synth,
+                        dispatch_attempt,
+                        dispatch_elapsed_ms = dispatch_elapsed.as_millis(),
+                        "slow synth request turnaround"
+                    );
+                } else if dispatch_attempt % SYNTH_DISPATCH_LOG_INTERVAL == 0 {
+                    let (max_depth, avg_depth) = self.queue_depth_snapshot();
+                    debug!(
+                        synth,
+                        dispatch_attempt,
+                        worker_count = self.request_txs.len(),
+                        queue_capacity_per_worker = self.queue_capacity_per_worker,
+                        max_depth,
+                        avg_depth,
+                        "synth dispatch heartbeat"
+                    );
+                }
+                Ok(output)
+            }
+            Err(SynthDispatchError::Overloaded(_request)) => {
+                let fallback_started_at = Instant::now();
+                let output = fallback();
+                let fallback_elapsed = fallback_started_at.elapsed();
+                let fallback_count = self.overload_fallbacks.fetch_add(1, Ordering::Relaxed) + 1;
+                let (max_depth, avg_depth) = self.queue_depth_snapshot();
+                if fallback_elapsed > SYNTH_SLOW_FALLBACK_WARN_THRESHOLD
+                    || fallback_count % SYNTH_DISPATCH_LOG_INTERVAL == 0
+                {
+                    warn!(
+                        synth,
+                        fallback_count,
+                        fallback_elapsed_ms = fallback_elapsed.as_millis(),
+                        worker_count = self.request_txs.len(),
+                        queue_capacity_per_worker = self.queue_capacity_per_worker,
+                        max_depth,
+                        avg_depth,
+                        "synth worker queues overloaded; used inline synth fallback"
+                    );
+                } else {
+                    debug!(
+                        synth,
+                        fallback_count, max_depth, avg_depth, "synth overload fallback engaged"
+                    );
+                }
+                Ok(output)
+            }
+            Err(SynthDispatchError::Closed(_request)) => {
+                let closed_count = self
+                    .closed_dispatch_failures
+                    .fetch_add(1, Ordering::Relaxed)
+                    + 1;
+                warn!(
+                    synth,
+                    closed_count, "synth worker channel closed during dispatch"
+                );
+                Err(Error::Playback)
+            }
         }
     }
 
@@ -190,6 +277,25 @@ impl SynthHandle {
         } else {
             Err(SynthDispatchError::Overloaded(request))
         }
+    }
+
+    fn queue_depth_snapshot(&self) -> (usize, usize) {
+        let mut max_depth = 0usize;
+        let mut total_depth = 0usize;
+        for tx in self.request_txs.iter() {
+            let remaining_capacity = tx.capacity();
+            let depth = self
+                .queue_capacity_per_worker
+                .saturating_sub(remaining_capacity);
+            max_depth = max_depth.max(depth);
+            total_depth = total_depth.saturating_add(depth);
+        }
+        let avg_depth = if self.request_txs.is_empty() {
+            0
+        } else {
+            total_depth / self.request_txs.len()
+        };
+        (max_depth, avg_depth)
     }
 }
 
@@ -233,7 +339,9 @@ enum SynthRequest {
     },
 }
 
-fn run_synth_request(request: SynthRequest) {
+fn run_synth_request(worker_index: usize, request: SynthRequest) {
+    let synth = request_kind(&request);
+    let started_at = Instant::now();
     match request {
         SynthRequest::Bass { note, response } => {
             let _ = response.send(bass::audio::synthesize_bass(&note));
@@ -259,5 +367,34 @@ fn run_synth_request(request: SynthRequest) {
         SynthRequest::Vocals { note, response } => {
             let _ = response.send(vocals::audio::synthesize_vocals(&note));
         }
+    }
+    let elapsed = started_at.elapsed();
+    if elapsed > SYNTH_SLOW_REQUEST_WARN_THRESHOLD {
+        warn!(
+            synth,
+            worker_index,
+            elapsed_ms = elapsed.as_millis(),
+            "slow synth worker request"
+        );
+    } else {
+        trace!(
+            synth,
+            worker_index,
+            elapsed_us = elapsed.as_micros(),
+            "synth worker request complete"
+        );
+    }
+}
+
+fn request_kind(request: &SynthRequest) -> &'static str {
+    match request {
+        SynthRequest::Bass { .. } => "bass",
+        SynthRequest::Cymbal { .. } => "cymbal",
+        SynthRequest::ElectricGuitar { .. } => "electric_guitar",
+        SynthRequest::HiHat { .. } => "hihat",
+        SynthRequest::KickDrum { .. } => "kick_drum",
+        SynthRequest::SnareDrum { .. } => "snare_drum",
+        SynthRequest::Toms { .. } => "toms",
+        SynthRequest::Vocals { .. } => "vocals",
     }
 }

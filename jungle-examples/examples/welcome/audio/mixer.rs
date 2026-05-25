@@ -2,10 +2,15 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
+use std::time::{Duration, Instant};
 
 use futures::channel::mpsc::{Receiver, TryRecvError};
+use tracing::{debug, warn};
 
 use super::PlayRequest;
+
+const MIXER_LOG_INTERVAL_CALLBACKS: u64 = 256;
+const MIXER_SLOW_CALLBACK_WARN_THRESHOLD: Duration = Duration::from_millis(8);
 
 pub(crate) enum Command {
     Play {
@@ -19,6 +24,8 @@ pub(crate) struct AudioMixer {
     output_sample_rate: u32,
     output_frame_cursor: u64,
     active: Vec<Voice>,
+    render_callbacks: u64,
+    max_active_voices: usize,
 }
 
 impl AudioMixer {
@@ -28,6 +35,8 @@ impl AudioMixer {
             output_sample_rate,
             output_frame_cursor: 0,
             active: Vec::new(),
+            render_callbacks: 0,
+            max_active_voices: 0,
         }
     }
 
@@ -37,9 +46,14 @@ impl AudioMixer {
         critical_command_rx: &mut Receiver<Command>,
         standard_command_rx: &mut Receiver<Command>,
     ) {
+        let render_started_at = Instant::now();
+        self.render_callbacks = self.render_callbacks.saturating_add(1);
+        let callback_index = self.render_callbacks;
+        let active_before = self.active.len();
         output.fill(0.0);
-        self.drain_commands(critical_command_rx);
-        self.drain_commands(standard_command_rx);
+        let (critical_received, critical_accepted) = self.drain_commands(critical_command_rx);
+        let (standard_received, standard_accepted) = self.drain_commands(standard_command_rx);
+        self.max_active_voices = self.max_active_voices.max(self.active.len());
 
         let frame_count = output.len() / self.output_channels;
         for frame_index in 0..frame_count {
@@ -61,6 +75,37 @@ impl AudioMixer {
             self.write_frame(output, frame_index, mixed_l, mixed_r);
         }
         self.output_frame_cursor = self.output_frame_cursor.saturating_add(frame_count as u64);
+        let active_after = self.active.len();
+        let render_elapsed = render_started_at.elapsed();
+        if render_elapsed > MIXER_SLOW_CALLBACK_WARN_THRESHOLD {
+            warn!(
+                callback_index,
+                render_elapsed_ms = render_elapsed.as_millis(),
+                frame_count,
+                active_before,
+                active_after,
+                critical_received,
+                critical_accepted,
+                standard_received,
+                standard_accepted,
+                max_active_voices = self.max_active_voices,
+                "slow audio mixer callback"
+            );
+        } else if callback_index % MIXER_LOG_INTERVAL_CALLBACKS == 0 {
+            debug!(
+                callback_index,
+                render_elapsed_us = render_elapsed.as_micros(),
+                frame_count,
+                active_before,
+                active_after,
+                critical_received,
+                critical_accepted,
+                standard_received,
+                standard_accepted,
+                max_active_voices = self.max_active_voices,
+                "audio mixer callback heartbeat"
+            );
+        }
     }
 
     fn write_frame(&self, output: &mut [f32], frame_index: usize, left: f32, right: f32) {
@@ -78,13 +123,16 @@ impl AudioMixer {
         }
     }
 
-    fn drain_commands(&mut self, command_rx: &mut Receiver<Command>) {
+    fn drain_commands(&mut self, command_rx: &mut Receiver<Command>) -> (usize, usize) {
+        let mut received = 0usize;
+        let mut accepted = 0usize;
         loop {
             match command_rx.try_recv() {
                 Ok(Command::Play {
                     request,
                     pending_commands,
                 }) => {
+                    received = received.saturating_add(1);
                     let _ = pending_commands.fetch_sub(1, Ordering::Relaxed);
                     if let Some(voice) = Voice::from_request(
                         request,
@@ -92,12 +140,14 @@ impl AudioMixer {
                         self.output_frame_cursor,
                     ) {
                         self.active.push(voice);
+                        accepted = accepted.saturating_add(1);
                     }
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Closed) => break,
             }
         }
+        (received, accepted)
     }
 }
 

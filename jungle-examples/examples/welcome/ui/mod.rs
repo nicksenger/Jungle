@@ -6,10 +6,19 @@ use iced::widget::{column, container, text, Row};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tracing::{debug, warn};
 use uuid::Uuid;
+
+const DEFERRED_STREAM_LOG_INTERVAL: usize = 512;
+const DEFERRED_STREAM_SLOW_WAIT_WARN_MS: u64 = 400;
+const DEFERRED_STREAM_LAG_WARN_MS: u64 = 150;
+
+static DEFERRED_STREAM_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+static DEFERRED_STREAM_WAIT_COUNT: AtomicUsize = AtomicUsize::new(0);
+static DEFERRED_STREAM_MAX_WAIT_MS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, Copy)]
 pub struct JourneyIds {
@@ -77,6 +86,7 @@ where
         let stream = futures::stream::unfold(subscription, move |mut subscription| async move {
             let next = subscription.next().await?;
             if let Ok(update) = &next {
+                let event_count = DEFERRED_STREAM_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
                 let target_unix_ms = update
                     .event_unix_ms
                     .saturating_add(i64::try_from(playback_delay.as_millis()).unwrap_or(i64::MAX))
@@ -84,7 +94,49 @@ where
                 let now_unix_ms = current_unix_ms();
                 if target_unix_ms > now_unix_ms {
                     let wait_ms = u64::try_from(target_unix_ms - now_unix_ms).unwrap_or(u64::MAX);
+                    DEFERRED_STREAM_WAIT_COUNT.fetch_add(1, Ordering::Relaxed);
+                    update_max_usize(
+                        &DEFERRED_STREAM_MAX_WAIT_MS,
+                        usize::try_from(wait_ms).unwrap_or(usize::MAX),
+                    );
+                    if wait_ms >= DEFERRED_STREAM_SLOW_WAIT_WARN_MS {
+                        warn!(
+                            journey_id = %journey_id,
+                            wait_ms,
+                            max_wait_ms = DEFERRED_STREAM_MAX_WAIT_MS.load(Ordering::Relaxed),
+                            "deferred welcome stream waiting a long time for playback alignment"
+                        );
+                    } else if event_count % DEFERRED_STREAM_LOG_INTERVAL == 0 {
+                        debug!(
+                            journey_id = %journey_id,
+                            event_count,
+                            wait_ms,
+                            wait_count = DEFERRED_STREAM_WAIT_COUNT.load(Ordering::Relaxed),
+                            max_wait_ms = DEFERRED_STREAM_MAX_WAIT_MS.load(Ordering::Relaxed),
+                            "deferred welcome stream heartbeat"
+                        );
+                    }
                     tokio::time::sleep(Duration::from_millis(wait_ms)).await;
+                } else {
+                    let lag_ms = u64::try_from(now_unix_ms.saturating_sub(target_unix_ms))
+                        .unwrap_or(u64::MAX);
+                    if lag_ms >= DEFERRED_STREAM_LAG_WARN_MS {
+                        warn!(
+                            journey_id = %journey_id,
+                            lag_ms,
+                            event_count,
+                            "deferred welcome stream is behind target playback timestamp"
+                        );
+                    } else if event_count % DEFERRED_STREAM_LOG_INTERVAL == 0 {
+                        debug!(
+                            journey_id = %journey_id,
+                            event_count,
+                            lag_ms,
+                            wait_count = DEFERRED_STREAM_WAIT_COUNT.load(Ordering::Relaxed),
+                            max_wait_ms = DEFERRED_STREAM_MAX_WAIT_MS.load(Ordering::Relaxed),
+                            "deferred welcome stream heartbeat (no wait)"
+                        );
+                    }
                 }
             }
             Some((next, subscription))
@@ -480,5 +532,20 @@ fn panel_style(_theme: &iced::Theme) -> iced::widget::container::Style {
             .color(Color::from_rgb8(24, 63, 43))
             .width(1.0),
         ..Default::default()
+    }
+}
+
+fn update_max_usize(max_value: &AtomicUsize, candidate: usize) {
+    let mut current = max_value.load(Ordering::Relaxed);
+    while candidate > current {
+        match max_value.compare_exchange_weak(
+            current,
+            candidate,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(updated) => current = updated,
+        }
     }
 }
