@@ -86,6 +86,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let args = parse_cli_args()?;
     #[cfg(feature = "transport")]
+    if args.server_only {
+        return run_server_only(args.server_addr);
+    }
+    #[cfg(feature = "transport")]
     if args.worker_only {
         return run_worker_only(
             args.bpm,
@@ -155,6 +159,8 @@ struct CliArgs {
     worker_only: bool,
     #[cfg(feature = "transport")]
     ui_only: bool,
+    #[cfg(feature = "transport")]
+    server_only: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -225,6 +231,13 @@ struct WelcomeCliArgs {
         conflicts_with_all = ["worker_only", "headless"]
     )]
     ui_only: bool,
+    /// Run server only indefinitely; optionally bind to --server-addr.
+    #[cfg(feature = "transport")]
+    #[clap(
+        long = "server-only",
+        conflicts_with_all = ["worker_only", "ui_only", "headless"]
+    )]
+    server_only: bool,
 }
 
 fn run_with_ui(
@@ -291,6 +304,77 @@ fn run_with_ui(
         std::io::Error::other(err)
     })?;
     Ok(())
+}
+
+#[cfg(feature = "transport")]
+fn run_server_only(server_addr: Option<SocketAddr>) -> Result<(), Box<dyn std::error::Error>> {
+    let listen_addr = server_addr.unwrap_or_else(reserve_local_addr);
+    info!(%listen_addr, "running welcome example in server-only mode");
+
+    let runtime = tokio::runtime::Runtime::new().map_err(|err| {
+        error!(error = %err, "failed creating tokio runtime for server-only mode");
+        std::io::Error::other(err)
+    })?;
+
+    runtime
+        .block_on(async move { run_transport_server(listen_addr).await })
+        .map_err(|err| {
+            error!(error = %err, %listen_addr, "welcome server-only mode exited with error");
+            std::io::Error::other(err)
+        })?;
+    Ok(())
+}
+
+#[cfg(feature = "transport")]
+async fn run_transport_server(listen_addr: SocketAddr) -> Result<(), String> {
+    #[cfg(feature = "postgres")]
+    {
+        let postgres = Postgres::default().start().await.map_err(|err| {
+            error!(error = %err, "failed starting postgres testcontainer");
+            err.to_string()
+        })?;
+        let pg_port = postgres.get_host_port_ipv4(5432).await.map_err(|err| {
+            error!(error = %err, "failed resolving postgres mapped port");
+            err.to_string()
+        })?;
+        let connection_string =
+            format!("postgres://postgres:postgres@127.0.0.1:{pg_port}/postgres");
+        info!(%listen_addr, "starting welcome transport server in postgres mode");
+        let result = ServerBuilder::new()
+            .listen(listen_addr)
+            .postgres_connection_string(connection_string)
+            .run()
+            .await;
+        drop(postgres);
+        return result.map_err(|err| err.to_string());
+    }
+
+    #[cfg(all(feature = "redb", not(feature = "postgres")))]
+    {
+        let db_path = std::env::temp_dir().join(format!("jungle-welcome-{}.redb", Uuid::new_v4()));
+        info!(
+            %listen_addr,
+            db_path = %db_path.display(),
+            "starting welcome transport server in redb mode"
+        );
+        return ServerBuilder::new()
+            .listen(listen_addr)
+            .redb_path(db_path)
+            .run()
+            .await
+            .map_err(|err| err.to_string());
+    }
+
+    #[cfg(not(any(feature = "redb", feature = "postgres")))]
+    {
+        info!(%listen_addr, "starting welcome transport server in memory mode");
+        ServerBuilder::new()
+            .listen(listen_addr)
+            .memory()
+            .run()
+            .await
+            .map_err(|err| err.to_string())
+    }
 }
 
 #[cfg(feature = "transport")]
@@ -1294,6 +1378,8 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         worker_only: parsed.worker_only,
         #[cfg(feature = "transport")]
         ui_only: parsed.ui_only,
+        #[cfg(feature = "transport")]
+        server_only: parsed.server_only,
     })
 }
 
