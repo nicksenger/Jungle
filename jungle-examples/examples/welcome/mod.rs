@@ -85,6 +85,32 @@ impl RuntimeKeepAlive {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let args = parse_cli_args()?;
+    #[cfg(feature = "transport")]
+    if args.worker_only {
+        return run_worker_only(
+            args.bpm,
+            args.mute,
+            args.workers,
+            args.synth_workers,
+            args.synth_queue_size,
+            args.server_addr
+                .expect("clap requires --server-addr when --worker-only is set"),
+        );
+    }
+    #[cfg(feature = "transport")]
+    if args.ui_only {
+        return run_with_ui(
+            args.bpm,
+            args.mute,
+            0,
+            args.synth_workers,
+            args.synth_queue_size,
+            args.playback_delay_ms,
+            args.event_lead_time_ms,
+            args.enabled_animals,
+            args.server_addr,
+        );
+    }
     if args.headless {
         return run_headless(
             args.bpm,
@@ -125,6 +151,10 @@ struct CliArgs {
     enabled_animals: BTreeSet<SelectedAnimal>,
     #[cfg(feature = "transport")]
     server_addr: Option<SocketAddr>,
+    #[cfg(feature = "transport")]
+    worker_only: bool,
+    #[cfg(feature = "transport")]
+    ui_only: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -179,6 +209,22 @@ struct WelcomeCliArgs {
     #[cfg(feature = "transport")]
     #[clap(long = "server-addr", value_parser = parse_server_addr_value)]
     server_addr: Option<SocketAddr>,
+    /// Run worker(s) only against --server-addr and do not start journeys or UI.
+    #[cfg(feature = "transport")]
+    #[clap(
+        long = "worker-only",
+        requires = "server_addr",
+        conflicts_with_all = ["ui_only", "headless"]
+    )]
+    worker_only: bool,
+    /// Run UI only against --server-addr and do not spawn workers.
+    #[cfg(feature = "transport")]
+    #[clap(
+        long = "ui-only",
+        requires = "server_addr",
+        conflicts_with_all = ["worker_only", "headless"]
+    )]
+    ui_only: bool,
 }
 
 fn run_with_ui(
@@ -245,6 +291,89 @@ fn run_with_ui(
         std::io::Error::other(err)
     })?;
     Ok(())
+}
+
+#[cfg(feature = "transport")]
+fn run_worker_only(
+    bpm: f32,
+    mute: bool,
+    workers: usize,
+    synth_workers: usize,
+    synth_queue_size: usize,
+    server_addr: SocketAddr,
+) -> Result<(), Box<dyn std::error::Error>> {
+    info!(
+        bpm,
+        mute,
+        workers,
+        synth_workers,
+        synth_queue_size,
+        %server_addr,
+        "running welcome example in worker-only mode"
+    );
+
+    let runtime = tokio::runtime::Runtime::new().map_err(|err| {
+        error!(error = %err, "failed creating tokio runtime for worker-only mode");
+        std::io::Error::other(err)
+    })?;
+
+    runtime.block_on(async move {
+        let (client, mut keep_alive) = setup_runtime_client(Some(server_addr)).await?;
+        keep_alive.runtime_probe_task = Some(spawn_runtime_heartbeat_probe());
+
+        let (audio_handle, audio_engine, stub_audio) = if mute {
+            info!("starting worker-only runtime in muted mode using audio stub");
+            let (audio_handle, stub_audio) = AudioHandle::stub();
+            (audio_handle, None, Some(stub_audio))
+        } else {
+            let audio_engine = AudioEngine::start_default().await.map_err(|err| {
+                error!(error = %err, "failed starting audio engine");
+                err.to_string()
+            })?;
+            (audio_engine.handle(), Some(audio_engine), None)
+        };
+
+        keep_alive.audio_engine = audio_engine;
+        keep_alive.stub_audio = stub_audio;
+
+        let synth_handle = SynthHandle::new_with_config(synth_workers, synth_queue_size);
+        let mut worker_metronomes = Vec::with_capacity(workers);
+        for worker_index in 0..workers {
+            let metronome = metronome::Metronome::spawn(bpm);
+            let ecosystem = TheJungle::new_with_metronome_and_synth(
+                audio_handle.clone(),
+                synth_handle.clone(),
+                bpm,
+                metronome,
+            );
+            let metronome = ecosystem.metronome().clone();
+            metronome.arm_start_barrier();
+            worker_metronomes.push(metronome);
+            let worker_client = client.clone();
+            tokio::spawn(async move {
+                let worker = JungleWorker::new(ecosystem, worker_client);
+                if let Err(err) = worker.spawn().await {
+                    error!(
+                        error = %err,
+                        worker_index,
+                        "welcome worker-only task exited with error"
+                    );
+                }
+            });
+        }
+
+        futures::future::join_all(
+            worker_metronomes
+                .iter()
+                .map(|metronome| metronome.release_start_barrier_on_downbeat()),
+        )
+        .await;
+
+        info!(workers, "worker-only mode is running workers indefinitely");
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
+    })
 }
 
 fn run_headless(
@@ -1161,6 +1290,10 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         enabled_animals,
         #[cfg(feature = "transport")]
         server_addr: parsed.server_addr,
+        #[cfg(feature = "transport")]
+        worker_only: parsed.worker_only,
+        #[cfg(feature = "transport")]
+        ui_only: parsed.ui_only,
     })
 }
 
