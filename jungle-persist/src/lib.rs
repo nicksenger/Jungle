@@ -201,6 +201,7 @@ pub trait JungleStore: DynClone + Send + Sync {
         timer_id: Uuid,
         wake_at_unix_ms: i64,
     ) -> Result<()>;
+    async fn next_timer_due_at(&self) -> Result<Option<i64>>;
     async fn poll_timers(&self) -> Result<Option<()>>;
 
     #[cfg(feature = "postgres")]

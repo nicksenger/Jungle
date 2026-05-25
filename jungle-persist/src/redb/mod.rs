@@ -1139,6 +1139,69 @@ impl JungleStore for RedbStore {
         .await
     }
 
+    async fn next_timer_due_at(&self) -> Result<Option<i64>> {
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb next_timer_due_at begin read failed: {err}"
+            ))
+        })?;
+        let timers = read_tx.open_table(TIMER_TASKS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb next_timer_due_at open timer_tasks table failed: {err}"
+            ))
+        })?;
+        let due_index = read_tx.open_table(TIMER_DUE_INDEX_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb next_timer_due_at open timer_due_index table failed: {err}"
+            ))
+        })?;
+        let due_start = encode_timer_due_index_key(i64::MIN, Uuid::nil());
+        let due_end = encode_timer_due_index_bound_key(i64::MAX, true);
+        let due_iter = due_index
+            .range(due_start.as_slice()..=due_end.as_slice())
+            .map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb next_timer_due_at range timer_due_index failed: {err}"
+                ))
+            })?;
+
+        for due_entry in due_iter {
+            let (due_key, _) = due_entry.map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb next_timer_due_at read timer_due_index entry failed: {err}"
+                ))
+            })?;
+            let (indexed_visible_at_unix_ms, timer_id) = decode_timer_due_index_key(
+                due_key.value(),
+                "redb next_timer_due_at decode timer_due_index key",
+            )?;
+
+            let Some(timer_value) = timers.get(&timer_id.as_bytes()[..]).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb next_timer_due_at read timer task by due index failed: {err}"
+                ))
+            })?
+            else {
+                continue;
+            };
+
+            let timer = decode_timer_task(
+                timer_value.value(),
+                "redb next_timer_due_at decode timer task by due index",
+            )?;
+            let timer_visible_at_unix_ms = timer.visible_at.timestamp_millis();
+            if timer.status != TIMER_STATUS_PENDING
+                || timer_visible_at_unix_ms != indexed_visible_at_unix_ms
+            {
+                continue;
+            }
+
+            return Ok(Some(timer_visible_at_unix_ms));
+        }
+
+        Ok(None)
+    }
+
     async fn poll_timers(&self) -> Result<Option<()>> {
         let now = Utc::now();
         let now_millis = now.timestamp_millis();

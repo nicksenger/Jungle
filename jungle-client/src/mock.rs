@@ -473,9 +473,10 @@ impl MockClientBuilder {
         F: Fn(Uuid, Vec<SupportedAnimal>, Duration) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
     {
-        self.on_wait_for_worker_wake = Some(Arc::new(move |owner_id, supported_animals, timeout| {
-            Box::pin(f(owner_id, supported_animals, timeout))
-        }));
+        self.on_wait_for_worker_wake =
+            Some(Arc::new(move |owner_id, supported_animals, timeout| {
+                Box::pin(f(owner_id, supported_animals, timeout))
+            }));
         self
     }
 
@@ -547,7 +548,12 @@ impl MockClientBuilder {
         let default_poll_owner_wake_handler: PollOwnerWakeHandler =
             Arc::new(|_| Box::pin(async { Ok(None) }));
         let default_wait_for_worker_wake_handler: WaitForWorkerWakeHandler =
-            Arc::new(|_, _, _| Box::pin(async { Ok(()) }));
+            Arc::new(|_, _, timeout| {
+                Box::pin(async move {
+                    tokio::time::sleep(timeout).await;
+                    Ok(())
+                })
+            });
         let default_schedule_sleep_timer_handler: ScheduleSleepTimerHandler =
             Arc::new(|_, _, _| Box::pin(async { Ok(()) }));
         let default_flow_complete_handler: FlowCompleteHandler =

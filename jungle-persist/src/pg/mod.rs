@@ -163,6 +163,8 @@ impl JungleStore for PgStore {
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
 
+        self.notify_journey_event(journey_id).await?;
+
         Ok(journey_id)
     }
 
@@ -916,6 +918,23 @@ impl JungleStore for PgStore {
         self.notify_journey_event(due.journey_id).await?;
 
         Ok(Some(()))
+    }
+
+    async fn next_timer_due_at(&self) -> Result<Option<i64>> {
+        let due = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT FLOOR(EXTRACT(EPOCH FROM visible_at) * 1000)::BIGINT
+            FROM timer_tasks
+            WHERE status = $1
+            ORDER BY visible_at, id
+            LIMIT 1
+            "#,
+        )
+        .bind(0_i16)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+        Ok(due)
     }
 
     fn postgres_pool(&self) -> Option<sqlx::PgPool> {

@@ -10,9 +10,11 @@ use sqlx::postgres::PgListener;
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use std::sync::Arc;
 #[cfg(any(feature = "postgres", feature = "redb"))]
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[cfg(feature = "redb")]
 use tokio::sync::Notify;
+#[cfg(any(feature = "postgres", feature = "redb"))]
+use tokio::time::Instant;
 use tracing::debug;
 #[cfg(feature = "postgres")]
 use tracing::warn;
@@ -447,8 +449,11 @@ impl JungleServer for Server {
             }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    let timeout =
-                        Duration::from_millis(timeout_ms.max(1).min(Duration::from_secs(30).as_millis() as u64));
+                    let timeout = Duration::from_millis(
+                        timeout_ms
+                            .max(1)
+                            .min(Duration::from_secs(30).as_millis() as u64),
+                    );
                     let _ = (owner_id, namespace, supported_animals);
                     wait_for_worker_wake(self, timeout).await?;
                     WireOut::Ack
@@ -532,39 +537,119 @@ impl JungleServer for Server {
 }
 
 #[cfg(any(feature = "postgres", feature = "redb"))]
-async fn wait_for_worker_wake(
-    server: &Server,
-    timeout: Duration,
-) -> Result<()> {
-    if server.store.poll_timers().await.map_err(|err| {
-        crate::ServerError::Backend(BackendError::Message(err.to_string()))
-    })?
-    .is_some()
-    {
-        #[cfg(feature = "redb")]
-        server.journey_update_notify.notify_waiters();
-        return Ok(());
-    }
+async fn wait_for_worker_wake(server: &Server, timeout: Duration) -> Result<()> {
+    let deadline = Instant::now() + timeout;
 
     #[cfg(feature = "postgres")]
-    {
-        if let Some(mut listener) = pg_listener_for_store(server.store.as_ref()).await {
-            let _ = tokio::time::timeout(timeout, listener.recv()).await;
+    let mut pg_listener = pg_listener_for_store(server.store.as_ref()).await;
+
+    loop {
+        if progress_due_timers(server).await? {
             return Ok(());
         }
+
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(());
+        }
+
+        let wait_for = wait_duration_until_next_timer(server, remaining).await?;
+
+        #[cfg(feature = "postgres")]
+        let mut waited_on_pg_listener = false;
+
+        #[cfg(feature = "postgres")]
+        if let Some(listener) = pg_listener.as_mut() {
+            waited_on_pg_listener = true;
+            match tokio::time::timeout(wait_for, listener.recv()).await {
+                Ok(Ok(_)) => return Ok(()),
+                Ok(Err(err)) => {
+                    warn!("worker wake listener recv failed: {err}");
+                    pg_listener = None;
+                }
+                Err(_) => {}
+            }
+        }
+
+        #[cfg(feature = "postgres")]
+        if waited_on_pg_listener {
+            continue;
+        }
+
+        #[cfg(feature = "redb")]
+        {
+            let notified = server.journey_update_notify.notified();
+            if tokio::time::timeout(wait_for, notified).await.is_ok() {
+                return Ok(());
+            }
+        }
+
+        #[cfg(not(any(feature = "postgres", feature = "redb")))]
+        {
+            tokio::time::sleep(wait_for).await;
+        }
+    }
+}
+
+#[cfg(any(feature = "postgres", feature = "redb"))]
+async fn progress_due_timers(server: &Server) -> Result<bool> {
+    let mut advanced = false;
+    loop {
+        let Some(next_due_at_unix_ms) =
+            server.store.next_timer_due_at().await.map_err(|err| {
+                crate::ServerError::Backend(BackendError::Message(err.to_string()))
+            })?
+        else {
+            break;
+        };
+
+        if next_due_at_unix_ms > now_unix_ms() {
+            break;
+        }
+
+        let polled =
+            server.store.poll_timers().await.map_err(|err| {
+                crate::ServerError::Backend(BackendError::Message(err.to_string()))
+            })?;
+        if polled.is_none() {
+            break;
+        }
+
+        advanced = true;
+
+        #[cfg(feature = "redb")]
+        server.journey_update_notify.notify_waiters();
     }
 
-    #[cfg(feature = "redb")]
-    {
-        let notified = server.journey_update_notify.notified();
-        let _ = tokio::time::timeout(timeout, notified).await;
-        Ok(())
+    Ok(advanced)
+}
+
+#[cfg(any(feature = "postgres", feature = "redb"))]
+async fn wait_duration_until_next_timer(server: &Server, max_wait: Duration) -> Result<Duration> {
+    let Some(next_due_at_unix_ms) = server
+        .store
+        .next_timer_due_at()
+        .await
+        .map_err(|err| crate::ServerError::Backend(BackendError::Message(err.to_string())))?
+    else {
+        return Ok(max_wait);
+    };
+
+    let now_unix_ms = now_unix_ms();
+    if next_due_at_unix_ms <= now_unix_ms {
+        return Ok(Duration::from_millis(1));
     }
 
-    #[cfg(not(feature = "redb"))]
-    {
-        tokio::time::sleep(timeout).await;
-        Ok(())
+    let due_wait_ms =
+        u64::try_from(next_due_at_unix_ms.saturating_sub(now_unix_ms)).unwrap_or(u64::MAX);
+    Ok(std::cmp::min(max_wait, Duration::from_millis(due_wait_ms)))
+}
+
+#[cfg(any(feature = "postgres", feature = "redb"))]
+fn now_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
     }
 }
 

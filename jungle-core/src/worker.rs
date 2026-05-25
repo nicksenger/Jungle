@@ -27,7 +27,7 @@ use uuid::Uuid;
 const OWNER_LEASE_TTL_MS: i64 = 30_000;
 const MAX_IN_FLIGHT_JOURNEYS: usize = 8;
 const ACTIVE_WAKE_WAIT_TIMEOUT: Duration = Duration::from_millis(250);
-const IDLE_WAKE_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+const IDLE_WAKE_WAIT_TIMEOUT: Duration = Duration::from_millis(250);
 
 fn heartbeat_interval_for_lease_ttl(lease_ttl_ms: i64) -> Duration {
     // Refresh at ~3x faster than expiration to keep ownership stable without hot-looping.
@@ -167,8 +167,6 @@ where
             }
 
             if should_poll {
-                let _ = self.client.poll_timers().await?;
-
                 if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
                     if !pending_wake_ids.contains(&wake.journey_id) {
                         pending_wake_ids.insert(wake.journey_id);
@@ -213,7 +211,8 @@ where
                         } => (journey_id, animal_id, generation, seed),
                     };
 
-                    if active_journeys.contains(&journey_id) || suspended.contains_key(&journey_id) {
+                    if active_journeys.contains(&journey_id) || suspended.contains_key(&journey_id)
+                    {
                         continue;
                     }
 
