@@ -18,7 +18,7 @@ use super::{
 };
 
 const SYNTH_WORKER_THREADS: usize = 3;
-const SYNTH_QUEUE_CAPACITY_PER_WORKER: usize = 128;
+const SYNTH_QUEUE_CAPACITY_PER_WORKER: usize = 512;
 
 #[derive(Clone)]
 pub struct SynthHandle {
