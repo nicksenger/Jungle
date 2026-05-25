@@ -446,6 +446,42 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
 }
 
 #[tokio::test]
+async fn dropping_one_client_clone_does_not_close_transport_for_others() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+
+    let listen_addr = super::reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let survivor = client.clone();
+    drop(client);
+
+    let journey_id = survivor
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .await
+        .expect("remaining client clone should still open streams");
+
+    let status = survivor
+        .journey_details(journey_id)
+        .await
+        .expect("journey_details should succeed after clone drop");
+    assert_eq!(status, JourneyStatus::Created);
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
 async fn poll_timers_promotes_due_sleep_to_resume_work() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
