@@ -208,6 +208,7 @@ impl JungleStore for PgStore {
             r#"
             SELECT
                 sequence_id,
+                event_unix_ms,
                 kind,
                 node_id,
                 CASE
@@ -235,6 +236,10 @@ impl JungleStore for PgStore {
             let kind = row
                 .try_get::<i16, _>("kind")
                 .map_err(crate::PersistenceError::PostgresQuery)?;
+            let event_unix_ms = row
+                .try_get::<Option<i64>, _>("event_unix_ms")
+                .map_err(crate::PersistenceError::PostgresQuery)?
+                .unwrap_or(0);
             let node_id = row
                 .try_get::<Option<i32>, _>("node_id")
                 .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -250,6 +255,7 @@ impl JungleStore for PgStore {
             })?;
             updates.push(JourneyUpdateEvent {
                 sequence_id,
+                event_unix_ms,
                 event: decode_journey_update_row(journey_id, kind, node_id, data)?,
             });
         }
@@ -663,7 +669,7 @@ impl JungleStore for PgStore {
         Ok(Some(work))
     }
 
-    async fn append_history(&self, history: RunnerOut) -> Result<()> {
+    async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()> {
         let (journey_id, kind, node_id, data) = match history {
             RunnerOut::EffectInput {
                 node_id,
@@ -749,8 +755,8 @@ impl JungleStore for PgStore {
                 FROM events
                 WHERE journey_id = $1
             )
-            INSERT INTO events (journey_id, sequence_id, kind, node_id, data)
-            SELECT $1, next_sequence.sequence_id, $2, $3, $4
+            INSERT INTO events (journey_id, sequence_id, kind, node_id, data, event_unix_ms)
+            SELECT $1, next_sequence.sequence_id, $2, $3, $4, $5
             FROM next_sequence
             "#,
         )
@@ -758,6 +764,7 @@ impl JungleStore for PgStore {
         .bind(kind)
         .bind(node_id)
         .bind(data)
+        .bind(event_unix_ms)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -788,11 +795,14 @@ impl JungleStore for PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        self.append_history(RunnerOut::SleepScheduled {
-            uuid: journey_id,
-            timer_id,
-            wake_at_unix_ms,
-        })
+        self.append_history(
+            RunnerOut::SleepScheduled {
+                uuid: journey_id,
+                timer_id,
+                wake_at_unix_ms,
+            },
+            chrono::Utc::now().timestamp_millis(),
+        )
         .await?;
 
         Ok(())
@@ -855,8 +865,8 @@ impl JungleStore for PgStore {
                 FROM events
                 WHERE journey_id = $1
             )
-            INSERT INTO events (journey_id, sequence_id, kind, node_id, data)
-            SELECT $1, next_sequence.sequence_id, $2, $3, $4
+            INSERT INTO events (journey_id, sequence_id, kind, node_id, data, event_unix_ms)
+            SELECT $1, next_sequence.sequence_id, $2, $3, $4, $5
             FROM next_sequence
             "#,
         )
@@ -864,6 +874,7 @@ impl JungleStore for PgStore {
         .bind(4_i16)
         .bind(Option::<i32>::None)
         .bind(sleep_fired_data)
+        .bind(fired_at_unix_ms)
         .execute(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;

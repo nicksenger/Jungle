@@ -39,6 +39,7 @@ use crate::{
 
 const DEFAULT_BPM: f32 = 123.0;
 const DEFAULT_WORKERS: usize = 2;
+const DEFAULT_PLAYBACK_DELAY_MS: u64 = 1_000;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(feature = "transport")]
@@ -70,9 +71,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let args = parse_cli_args()?;
     if args.headless {
-        return run_headless(args.bpm, args.mute, args.workers, args.enabled_animals);
+        return run_headless(
+            args.bpm,
+            args.mute,
+            args.workers,
+            args.playback_delay_ms,
+            args.enabled_animals,
+        );
     }
-    run_with_ui(args.bpm, args.mute, args.workers, args.enabled_animals)
+    run_with_ui(
+        args.bpm,
+        args.mute,
+        args.workers,
+        args.playback_delay_ms,
+        args.enabled_animals,
+    )
 }
 
 struct CliArgs {
@@ -80,6 +93,7 @@ struct CliArgs {
     headless: bool,
     mute: bool,
     workers: usize,
+    playback_delay_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 }
 
@@ -87,6 +101,7 @@ fn run_with_ui(
     bpm: f32,
     mute: bool,
     workers: usize,
+    playback_delay_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -98,6 +113,7 @@ fn run_with_ui(
             bpm,
             mute,
             workers,
+            playback_delay_ms,
             enabled_animals,
             shutdown_for_runtime,
             setup_tx,
@@ -141,11 +157,12 @@ fn run_headless(
     bpm: f32,
     mute: bool,
     workers: usize,
+    playback_delay_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
         bpm,
-        mute, workers, "running welcome example in headless mode"
+        mute, workers, playback_delay_ms, "running welcome example in headless mode"
     );
 
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -157,6 +174,7 @@ fn run_headless(
             bpm,
             mute,
             workers,
+            playback_delay_ms,
             enabled_animals,
             shutdown_for_runtime,
             setup_tx,
@@ -209,7 +227,7 @@ fn init_tracing() {
 }
 
 struct UiSetup {
-    client: RuntimeClient,
+    client: ui::DeferredJungleClient<RuntimeClient>,
     journeys: ui::JourneyIds,
 }
 
@@ -217,6 +235,7 @@ fn run_runtime_thread(
     bpm: f32,
     mute: bool,
     workers: usize,
+    playback_delay_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
     ui_shutdown: ui::ShutdownFlag,
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
@@ -232,13 +251,17 @@ fn run_runtime_thread(
         let (audio_handle, audio_engine, stub_audio) = if mute {
             info!("starting welcome runtime in muted mode using audio stub");
             let (audio_handle, stub_audio) = AudioHandle::stub();
+            let audio_handle =
+                audio_handle.with_playback_delay(Duration::from_millis(playback_delay_ms));
             (audio_handle, None, Some(stub_audio))
         } else {
             let audio_engine = AudioEngine::start_default().await.map_err(|err| {
                 error!(error = %err, "failed starting audio engine");
                 err.to_string()
             })?;
-            let audio_handle = audio_engine.handle();
+            let audio_handle = audio_engine
+                .handle()
+                .with_playback_delay(Duration::from_millis(playback_delay_ms));
             (audio_handle, Some(audio_engine), None)
         };
         let synth_handle = SynthHandle::new();
@@ -372,7 +395,15 @@ fn run_runtime_thread(
 
         keep_alive.audio_engine = audio_engine;
         keep_alive.stub_audio = stub_audio;
-        Ok::<(UiSetup, RuntimeKeepAlive), String>((UiSetup { client, journeys }, keep_alive))
+        let ui_client =
+            ui::DeferredJungleClient::new(client.clone(), Duration::from_millis(playback_delay_ms));
+        Ok::<(UiSetup, RuntimeKeepAlive), String>((
+            UiSetup {
+                client: ui_client,
+                journeys,
+            },
+            keep_alive,
+        ))
     });
 
     let (setup, mut keep_alive) = match setup {
@@ -615,6 +646,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let mut headless = false;
     let mut mute = false;
     let mut workers = DEFAULT_WORKERS;
+    let mut playback_delay_ms = DEFAULT_PLAYBACK_DELAY_MS;
     let mut enabled_animals = SelectedAnimal::all();
     let mut animals_flag_seen = false;
 
@@ -652,6 +684,11 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             continue;
         }
 
+        if let Some(value) = arg.strip_prefix("--playback-delay-ms=") {
+            playback_delay_ms = parse_playback_delay_ms_value(value)?;
+            continue;
+        }
+
         if arg == "--bpm" {
             let value = args
                 .next()
@@ -668,6 +705,14 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             continue;
         }
 
+        if arg == "--playback-delay-ms" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--playback-delay-ms requires a value".to_string())?;
+            playback_delay_ms = parse_playback_delay_ms_value(&value)?;
+            continue;
+        }
+
         if arg.starts_with("--") {
             return Err(format!("Unknown argument: {arg}").into());
         }
@@ -681,6 +726,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         headless,
         mute,
         workers,
+        playback_delay_ms,
         enabled_animals,
     })
 }
@@ -703,6 +749,13 @@ fn parse_workers_value(value: &str) -> Result<usize, Box<dyn std::error::Error>>
         return Err("workers must be at least 1".into());
     }
     Ok(workers)
+}
+
+fn parse_playback_delay_ms_value(value: &str) -> Result<u64, Box<dyn std::error::Error>> {
+    let playback_delay_ms = value
+        .parse::<u64>()
+        .map_err(|_| format!("Invalid playback delay argument: {value}"))?;
+    Ok(playback_delay_ms)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

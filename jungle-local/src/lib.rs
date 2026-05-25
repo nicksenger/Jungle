@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::stream;
 use jungle_client::{JourneyUpdateSubscription, JungleClient};
 use jungle_server::{JungleServer, Server, ServerError, WireRx, WireTx};
@@ -238,11 +239,12 @@ impl JungleClient for LocalClient {
     }
 
     async fn animal_appearance_update(&self, id: Uuid, data: Vec<u8>) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::Appearance {
-                data,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::Appearance { data, uuid: id },
+                event_unix_ms,
+            })
             .await?;
         match response {
             WireOut::Ack => Ok(()),
@@ -421,12 +423,16 @@ impl JungleClient for LocalClient {
         node_id: u32,
         input: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectInput {
-                node_id,
-                data: input,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectInput {
+                    node_id,
+                    data: input,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await?;
         match response {
             WireOut::Ack => Ok(()),
@@ -442,12 +448,16 @@ impl JungleClient for LocalClient {
         node_id: u32,
         output: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectSuccessOutput {
-                node_id,
-                data: output,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectSuccessOutput {
+                    node_id,
+                    data: output,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await?;
         match response {
             WireOut::Ack => Ok(()),
@@ -463,12 +473,16 @@ impl JungleClient for LocalClient {
         node_id: u32,
         err: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectFailureOutput {
-                node_id,
-                data: err,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectFailureOutput {
+                    node_id,
+                    data: err,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await?;
         match response {
             WireOut::Ack => Ok(()),

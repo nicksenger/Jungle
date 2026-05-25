@@ -483,7 +483,10 @@ impl JungleServer for Server {
                     WireOut::Ack
                 }
             }
-            Some(WireIn::HistoryEvent(history)) => {
+            Some(WireIn::HistoryEvent {
+                event: history,
+                event_unix_ms,
+            }) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
                     let journey_id = match &history {
@@ -512,9 +515,14 @@ impl JungleServer for Server {
                                 })?;
                         }
                         event => {
-                            self.store.append_history(event).await.map_err(|err| {
-                                crate::ServerError::Backend(BackendError::Message(err.to_string()))
-                            })?;
+                            self.store
+                                .append_history(event, event_unix_ms)
+                                .await
+                                .map_err(|err| {
+                                    crate::ServerError::Backend(BackendError::Message(
+                                        err.to_string(),
+                                    ))
+                                })?;
                             #[cfg(feature = "redb")]
                             self.journey_update_notify.notify_waiters();
                         }
@@ -523,7 +531,7 @@ impl JungleServer for Server {
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
                 {
-                    let _ = history;
+                    let _ = (history, event_unix_ms);
                     WireOut::Ack
                 }
             }

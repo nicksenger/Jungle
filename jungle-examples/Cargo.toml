@@ -26,6 +26,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
 testcontainers = { version = "0.23", optional = true }
 testcontainers-modules = { version = "0.11", features = ["postgres"], optional = true }
+async-trait = { workspace = true }
 
 [[example]]
 name = "welcome"

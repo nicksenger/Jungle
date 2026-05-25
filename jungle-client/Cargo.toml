@@ -17,6 +17,7 @@ thiserror = { workspace = true }
 tracing = "0.1"
 postcard = { workspace = true, features = ["alloc"] }
 tokio = { version = "1", features = ["io-util"] }
+chrono = "0.4"
 
 [lints]
 workspace = true

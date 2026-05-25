@@ -17,6 +17,7 @@ pub(crate) enum Command {
 pub(crate) struct AudioMixer {
     output_channels: usize,
     output_sample_rate: u32,
+    output_frame_cursor: u64,
     active: Vec<Voice>,
 }
 
@@ -25,6 +26,7 @@ impl AudioMixer {
         Self {
             output_channels: output_channels.max(1),
             output_sample_rate,
+            output_frame_cursor: 0,
             active: Vec::new(),
         }
     }
@@ -41,21 +43,24 @@ impl AudioMixer {
 
         let frame_count = output.len() / self.output_channels;
         for frame_index in 0..frame_count {
+            let output_frame_index = self.output_frame_cursor.saturating_add(frame_index as u64);
             let mut mixed_l = 0.0;
             let mut mixed_r = 0.0;
             let mut i = 0;
             while i < self.active.len() {
-                if let Some((voice_l, voice_r)) = self.active[i].next_sample() {
+                let (voice_l, voice_r, finished) = self.active[i].sample_at(output_frame_index);
+                if finished {
+                    self.active.swap_remove(i);
+                } else {
                     mixed_l += voice_l;
                     mixed_r += voice_r;
                     i += 1;
-                } else {
-                    self.active.swap_remove(i);
                 }
             }
 
             self.write_frame(output, frame_index, mixed_l, mixed_r);
         }
+        self.output_frame_cursor = self.output_frame_cursor.saturating_add(frame_count as u64);
     }
 
     fn write_frame(&self, output: &mut [f32], frame_index: usize, left: f32, right: f32) {
@@ -81,7 +86,11 @@ impl AudioMixer {
                     pending_commands,
                 }) => {
                     let _ = pending_commands.fetch_sub(1, Ordering::Relaxed);
-                    if let Some(voice) = Voice::from_request(request, self.output_sample_rate) {
+                    if let Some(voice) = Voice::from_request(
+                        request,
+                        self.output_sample_rate,
+                        self.output_frame_cursor,
+                    ) {
                         self.active.push(voice);
                     }
                 }
@@ -100,10 +109,15 @@ struct Voice {
     frame_step: f64,
     left_gain: f32,
     right_gain: f32,
+    start_frame: u64,
 }
 
 impl Voice {
-    fn from_request(request: PlayRequest, output_sample_rate: u32) -> Option<Self> {
+    fn from_request(
+        request: PlayRequest,
+        output_sample_rate: u32,
+        output_frame_cursor: u64,
+    ) -> Option<Self> {
         if request.pcm.is_empty() {
             return None;
         }
@@ -140,6 +154,8 @@ impl Voice {
         let right_pan = ((1.0 + pan) * 0.5).sqrt();
         let left_gain = request.gain * left_pan;
         let right_gain = request.gain * right_pan;
+        let delay_frames = duration_to_frames(request.start_delay, output_sample_rate);
+        let start_frame = output_frame_cursor.saturating_add(delay_frames as u64);
 
         Some(Voice {
             pcm: request.pcm,
@@ -149,29 +165,45 @@ impl Voice {
             frame_step,
             left_gain,
             right_gain,
+            start_frame,
         })
     }
 
-    fn next_sample(&mut self) -> Option<(f32, f32)> {
+    fn sample_at(&mut self, output_frame_index: u64) -> (f32, f32, bool) {
+        if output_frame_index < self.start_frame {
+            return (0.0, 0.0, false);
+        }
         if self.frame_cursor >= self.source_frames as f64 {
-            return None;
+            return (0.0, 0.0, true);
         }
 
         let frame_index = self.frame_cursor.floor() as usize;
         let base = frame_index * self.source_channels;
 
         let (source_l, source_r) = if self.source_channels == 1 {
-            let mono = *self.pcm.get(base)?;
+            let Some(mono) = self.pcm.get(base).copied() else {
+                return (0.0, 0.0, true);
+            };
             (mono, mono)
         } else {
-            let left = *self.pcm.get(base)?;
-            let right = *self.pcm.get(base + 1)?;
+            let Some(left) = self.pcm.get(base).copied() else {
+                return (0.0, 0.0, true);
+            };
+            let Some(right) = self.pcm.get(base + 1).copied() else {
+                return (0.0, 0.0, true);
+            };
             (left, right)
         };
 
         self.frame_cursor += self.frame_step;
-        Some((source_l * self.left_gain, source_r * self.right_gain))
+        (source_l * self.left_gain, source_r * self.right_gain, false)
     }
+}
+
+fn duration_to_frames(duration: std::time::Duration, sample_rate: u32) -> usize {
+    let seconds = duration.as_secs() as usize * sample_rate as usize;
+    let nanos = (duration.subsec_nanos() as usize * sample_rate as usize) / 1_000_000_000usize;
+    seconds.saturating_add(nanos)
 }
 
 fn clamp_unit(sample: f32) -> f32 {
@@ -203,7 +235,8 @@ mod tests {
             gain: 1.0,
             pan: 0.0,
             playback_rate: 1.0,
-            priority: super::PlayPriority::Normal,
+            start_delay: std::time::Duration::ZERO,
+            priority: crate::audio::PlayPriority::Normal,
         };
         critical_tx
             .try_send(play_command(request))
@@ -229,7 +262,8 @@ mod tests {
             gain: 0.4,
             pan: 0.0,
             playback_rate: 1.0,
-            priority: super::PlayPriority::Normal,
+            start_delay: std::time::Duration::ZERO,
+            priority: crate::audio::PlayPriority::Normal,
         };
         let second = first.clone();
 
@@ -261,7 +295,8 @@ mod tests {
             gain: 0.35,
             pan: 0.0,
             playback_rate: 1.0,
-            priority: super::PlayPriority::Normal,
+            start_delay: std::time::Duration::ZERO,
+            priority: crate::audio::PlayPriority::Normal,
         };
 
         critical_tx

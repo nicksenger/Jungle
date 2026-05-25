@@ -80,6 +80,7 @@ pub enum RunnerUpdateOut {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JourneyUpdateEvent {
     pub sequence_id: u64,
+    pub event_unix_ms: i64,
     pub event: RunnerUpdateOut,
 }
 
@@ -180,7 +181,10 @@ pub enum WireIn {
         timeout_ms: u64,
     },
     PollTimers,
-    HistoryEvent(RunnerOut),
+    HistoryEvent {
+        event: RunnerOut,
+        event_unix_ms: i64,
+    },
 }
 
 /// Wire-level messages sent from runners to external clients.

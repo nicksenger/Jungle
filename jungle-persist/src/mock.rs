@@ -27,7 +27,7 @@ type HeartbeatJourneyLeaseHandler =
 type ClaimOwnerWakeHandler = Arc<dyn Fn(Uuid) -> Result<Option<OwnerWake>> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
-type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
+type AppendHistoryHandler = Arc<dyn Fn(RunnerOut, i64) -> Result<()> + Send + Sync + 'static>;
 type ScheduleSleepTimerHandler = Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
 type NextTimerDueAtHandler = Arc<dyn Fn() -> Result<Option<i64>> + Send + Sync + 'static>;
 type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'static>;
@@ -150,8 +150,8 @@ impl JungleStore for MockStore {
         (self.on_claim_work)(namespace, supported_animals)
     }
 
-    async fn append_history(&self, history: RunnerOut) -> Result<()> {
-        (self.on_append_history)(history)
+    async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()> {
+        (self.on_append_history)(history, event_unix_ms)
     }
 
     async fn schedule_sleep_timer(
@@ -309,7 +309,7 @@ impl MockStoreBuilder {
 
     pub fn on_append_history<F>(mut self, f: F) -> Self
     where
-        F: Fn(RunnerOut) -> Result<()> + Send + Sync + 'static,
+        F: Fn(RunnerOut, i64) -> Result<()> + Send + Sync + 'static,
     {
         self.on_append_history = Some(Arc::new(f));
         self
@@ -356,7 +356,7 @@ impl MockStoreBuilder {
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|_, _| Ok(None));
-        let default_append_history: AppendHistoryHandler = Arc::new(|_| Ok(()));
+        let default_append_history: AppendHistoryHandler = Arc::new(|_, _| Ok(()));
         let default_schedule_sleep_timer: ScheduleSleepTimerHandler = Arc::new(|_, _, _| Ok(()));
         let default_next_timer_due_at: NextTimerDueAtHandler = Arc::new(|| Ok(None));
         let default_poll_timers: PollTimersHandler = Arc::new(|| Ok(None));

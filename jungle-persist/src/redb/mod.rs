@@ -15,6 +15,8 @@ use uuid::Uuid;
 
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
+const EVENT_TIMESTAMPS_TABLE: TableDefinition<&[u8], i64> =
+    TableDefinition::new("event_timestamps");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 const TIMER_TASKS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("timer_tasks");
 const TIMER_DUE_INDEX_TABLE: TableDefinition<&[u8], &[u8]> =
@@ -327,6 +329,7 @@ impl JungleStore for RedbStore {
                 "redb journey_events_since open events table failed: {err}"
             ))
         })?;
+        let event_timestamps = read_tx.open_table(EVENT_TIMESTAMPS_TABLE).ok();
         let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
         let start_key = encode_event_key(journey_id, start_sequence_id);
         let end_key = encode_event_key(journey_id, u64::MAX);
@@ -338,7 +341,7 @@ impl JungleStore for RedbStore {
                 ))
             })?;
 
-        let mut rows: Vec<(u64, u8, Vec<u8>)> = Vec::new();
+        let mut rows: Vec<(u64, i64, u8, Vec<u8>)> = Vec::new();
         for entry in iter {
             let (key, value) = entry.map_err(|err| {
                 crate::PersistenceError::Message(format!(
@@ -347,17 +350,23 @@ impl JungleStore for RedbStore {
             })?;
             let (_, sequence_id) =
                 decode_event_key(key.value(), "redb journey_events_since decode event key")?;
+            let event_unix_ms = event_timestamps
+                .as_ref()
+                .and_then(|timestamps| timestamps.get(key.value()).ok().flatten())
+                .map(|value| value.value())
+                .unwrap_or(0);
             let (kind, data) = decode_event_value(
                 value.value(),
                 "redb journey_events_since decode event value",
             )?;
-            rows.push((sequence_id, kind, data));
+            rows.push((sequence_id, event_unix_ms, kind, data));
         }
 
         let mut updates = Vec::with_capacity(rows.len());
-        for (sequence_id, kind, data) in rows {
+        for (sequence_id, event_unix_ms, kind, data) in rows {
             updates.push(JourneyUpdateEvent {
                 sequence_id,
+                event_unix_ms,
                 event: decode_runner_update_out(journey_id, kind, data)?,
             });
         }
@@ -919,7 +928,7 @@ impl JungleStore for RedbStore {
         Ok(Some(work))
     }
 
-    async fn append_history(&self, history: RunnerOut) -> Result<()> {
+    async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()> {
         let (journey_id, kind, data) = match history {
             RunnerOut::EffectInput {
                 node_id,
@@ -991,6 +1000,12 @@ impl JungleStore for RedbStore {
                     "redb append_history open events table failed: {err}"
                 ))
             })?;
+            let mut event_timestamps =
+                write_tx.open_table(EVENT_TIMESTAMPS_TABLE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb append_history open event_timestamps table failed: {err}"
+                    ))
+                })?;
             let mut sequences =
                 write_tx
                     .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
@@ -1040,6 +1055,13 @@ impl JungleStore for RedbStore {
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
                         "redb append_history insert event failed: {err}"
+                    ))
+                })?;
+            event_timestamps
+                .insert(event_key.as_slice(), event_unix_ms)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb append_history insert event timestamp failed: {err}"
                     ))
                 })?;
             sequences
@@ -1131,11 +1153,14 @@ impl JungleStore for RedbStore {
             ))
         })?;
 
-        self.append_history(RunnerOut::SleepScheduled {
-            uuid: journey_id,
-            timer_id,
-            wake_at_unix_ms,
-        })
+        self.append_history(
+            RunnerOut::SleepScheduled {
+                uuid: journey_id,
+                timer_id,
+                wake_at_unix_ms,
+            },
+            Utc::now().timestamp_millis(),
+        )
         .await
     }
 
@@ -1373,6 +1398,12 @@ impl JungleStore for RedbStore {
                     "redb poll_timers open events table failed: {err}"
                 ))
             })?;
+            let mut event_timestamps =
+                write_tx.open_table(EVENT_TIMESTAMPS_TABLE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb poll_timers open event_timestamps table failed: {err}"
+                    ))
+                })?;
             let mut sequences =
                 write_tx
                     .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
@@ -1424,6 +1455,13 @@ impl JungleStore for RedbStore {
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
                         "redb poll_timers insert sleep fired event failed: {err}"
+                    ))
+                })?;
+            event_timestamps
+                .insert(event_key.as_slice(), now_millis)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb poll_timers insert sleep fired event timestamp failed: {err}"
                     ))
                 })?;
             sequences

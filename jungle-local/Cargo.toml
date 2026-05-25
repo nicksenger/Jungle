@@ -13,6 +13,7 @@ thiserror = { workspace = true }
 tokio = { version = "1", features = ["sync", "rt"] }
 typosaurus = { workspace = true }
 uuid = { workspace = true }
+chrono = "0.4"
 
 [lints]
 workspace = true

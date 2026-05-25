@@ -1,9 +1,14 @@
 use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
 use crate::RuntimeClient;
+use async_trait::async_trait;
+use futures::StreamExt;
 use iced::widget::{column, container, text, Row};
 use iced::{Color, Element, Font, Length, Subscription, Task};
+use jungle_sdk::client::JourneyUpdateSubscription;
+use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy)]
@@ -13,6 +18,190 @@ pub struct JourneyIds {
     pub rhythm_guitarist: Option<Uuid>,
     pub bass: Option<Uuid>,
     pub drums: Option<Uuid>,
+}
+
+#[derive(Clone)]
+pub struct DeferredJungleClient<C> {
+    inner: C,
+    playback_delay: Duration,
+}
+
+impl<C> DeferredJungleClient<C> {
+    pub fn new(inner: C, playback_delay: Duration) -> Self {
+        Self {
+            inner,
+            playback_delay,
+        }
+    }
+}
+
+fn current_unix_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+}
+
+#[async_trait]
+impl<C> JungleClient for DeferredJungleClient<C>
+where
+    C: JungleClient + Clone + 'static,
+{
+    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    where
+        Self: Sized,
+        A: jungle_sdk::Animal,
+        A::Id: jungle_sdk::AnimalIdValue,
+        A::Generation: jungle_sdk::typosaurus::num::Unsigned,
+    {
+        self.inner.start_journey::<A>(seed).await
+    }
+
+    async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
+        self.inner.journey_history(id).await
+    }
+
+    async fn subscribe_step_updates(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        let subscription = self
+            .inner
+            .subscribe_step_updates(journey_id, after_sequence_id)
+            .await?;
+        let playback_delay = self.playback_delay;
+        let stream = futures::stream::unfold(subscription, move |mut subscription| async move {
+            let next = subscription.next().await?;
+            if let Ok(update) = &next {
+                let target_unix_ms = update
+                    .event_unix_ms
+                    .saturating_add(i64::try_from(playback_delay.as_millis()).unwrap_or(i64::MAX));
+                let now_unix_ms = current_unix_ms();
+                if target_unix_ms > now_unix_ms {
+                    let wait_ms = u64::try_from(target_unix_ms - now_unix_ms).unwrap_or(u64::MAX);
+                    tokio::time::sleep(Duration::from_millis(wait_ms)).await;
+                }
+            }
+            Some((next, subscription))
+        });
+        Ok(JourneyUpdateSubscription::from_stream(stream))
+    }
+
+    async fn journey_details(&self, id: Uuid) -> Result<jungle_sdk::JourneyStatus, ExecutorError> {
+        self.inner.journey_details(id).await
+    }
+
+    async fn animal_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError> {
+        self.inner.animal_appearance(id).await
+    }
+
+    async fn animal_appearance_update(&self, id: Uuid, data: Vec<u8>) -> Result<(), ExecutorError> {
+        self.inner.animal_appearance_update(id, data).await
+    }
+
+    async fn perturb_animal(&self, id: Uuid, payload: Vec<u8>) -> Result<(), ExecutorError> {
+        self.inner.perturb_animal(id, payload).await
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<jungle_sdk::ClaimedPerturbable>, ExecutorError> {
+        self.inner.claim_animal_perturbation(id).await
+    }
+
+    async fn ack_animal_perturbation(
+        &self,
+        id: Uuid,
+        perturbation_id: u64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .ack_animal_perturbation(id, perturbation_id)
+            .await
+    }
+
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .heartbeat_journey_lease(journey_id, owner_id, lease_ttl_ms)
+            .await
+    }
+
+    async fn poll_owner_wake(
+        &self,
+        owner_id: Uuid,
+    ) -> Result<Option<jungle_sdk::OwnerWake>, ExecutorError> {
+        self.inner.poll_owner_wake(owner_id).await
+    }
+
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
+            .await
+    }
+
+    async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
+        self.inner.complete_journey(id).await
+    }
+
+    async fn poll_timers(&self) -> Result<Option<()>, ExecutorError> {
+        self.inner.poll_timers().await
+    }
+
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<SupportedAnimal>,
+    ) -> Result<Option<Work>, ExecutorError> {
+        self.inner.poll_work(supported_animals).await
+    }
+
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: Uuid,
+        supported_animals: Vec<SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .wait_for_worker_wake(owner_id, supported_animals, timeout)
+            .await
+    }
+
+    async fn effect_input(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_input(id, node_id, input).await
+    }
+
+    async fn effect_success_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_success_output(id, node_id, output).await
+    }
+
+    async fn effect_failure_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_failure_output(id, node_id, err).await
+    }
 }
 
 #[derive(Clone)]
@@ -32,7 +221,11 @@ impl ShutdownFlag {
     }
 }
 
-pub fn run_ui(client: RuntimeClient, journeys: JourneyIds, shutdown: ShutdownFlag) -> iced::Result {
+pub fn run_ui(
+    client: DeferredJungleClient<RuntimeClient>,
+    journeys: JourneyIds,
+    shutdown: ShutdownFlag,
+) -> iced::Result {
     let title = "Welcome Example";
     iced::application(
         move || WelcomeUi::new(client.clone(), journeys, shutdown.clone()),
@@ -78,7 +271,7 @@ struct WelcomeUi {
 
 impl WelcomeUi {
     fn new(
-        client: RuntimeClient,
+        client: DeferredJungleClient<RuntimeClient>,
         journeys: JourneyIds,
         shutdown: ShutdownFlag,
     ) -> (Self, Task<Message>) {

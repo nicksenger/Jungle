@@ -4,6 +4,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
+use std::time::Duration;
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
@@ -38,10 +39,13 @@ pub struct AudioHandle {
     standard_command_tx: mpsc::Sender<mixer::Command>,
     pending_commands: Arc<AtomicUsize>,
     dropped_commands: Arc<AtomicUsize>,
+    playback_delay: Duration,
 }
 
 impl AudioHandle {
     pub async fn play(&self, request: PlayRequest) -> Result<(), AudioError> {
+        let mut request = request;
+        request.start_delay = self.playback_delay;
         let priority = request.priority;
         let pending_before_send = self.pending_commands.fetch_add(1, Ordering::Relaxed) + 1;
         let mut command_tx = match priority {
@@ -93,6 +97,11 @@ impl AudioHandle {
             }
         }
     }
+
+    pub fn with_playback_delay(mut self, playback_delay: Duration) -> Self {
+        self.playback_delay = playback_delay;
+        self
+    }
 }
 
 pub struct AudioEngine {
@@ -122,6 +131,7 @@ impl AudioEngine {
             standard_command_tx,
             pending_commands,
             dropped_commands,
+            playback_delay: Duration::ZERO,
         };
 
         let stream = match supported_config.sample_format() {
@@ -176,6 +186,7 @@ impl AudioHandle {
                 standard_command_tx,
                 pending_commands: Arc::new(AtomicUsize::new(0)),
                 dropped_commands: Arc::new(AtomicUsize::new(0)),
+                playback_delay: Duration::ZERO,
             },
             StubAudioKeepAlive {
                 _critical_command_rx: critical_command_rx,
@@ -193,6 +204,7 @@ pub struct PlayRequest {
     pub gain: f32,
     pub pan: f32,
     pub playback_rate: f32,
+    pub start_delay: Duration,
     pub priority: PlayPriority,
 }
 
@@ -212,6 +224,7 @@ impl PlayRequest {
             gain: 1.0,
             pan: 0.0,
             playback_rate: 1.0,
+            start_delay: Duration::ZERO,
             priority: PlayPriority::Normal,
         }
     }

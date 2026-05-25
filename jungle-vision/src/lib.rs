@@ -3084,6 +3084,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 1,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
@@ -3093,6 +3094,7 @@ mod tests {
 
         assert!(!live.apply_update(JourneyUpdateEvent {
             sequence_id: 2,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
@@ -3101,6 +3103,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 3,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectSuccessOutput {
                 node_id: 9,
                 uuid: Uuid::nil(),
@@ -3111,6 +3114,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 4,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
@@ -3121,6 +3125,7 @@ mod tests {
 
         assert!(!live.apply_update(JourneyUpdateEvent {
             sequence_id: 5,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::SleepScheduled {
                 uuid: Uuid::nil(),
                 timer_id: Uuid::nil(),
@@ -3136,6 +3141,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 1,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 11,
                 uuid: Uuid::nil(),
@@ -3143,6 +3149,7 @@ mod tests {
         }));
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 2,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectSuccessOutput {
                 node_id: 11,
                 uuid: Uuid::nil(),
@@ -3155,6 +3162,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 3,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 12,
                 uuid: Uuid::nil(),
@@ -3188,6 +3196,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 1,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 0,
                 uuid: Uuid::nil(),
@@ -3216,6 +3225,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 2,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectSuccessOutput {
                 node_id: 0,
                 uuid: Uuid::nil(),

@@ -194,7 +194,7 @@ pub trait JungleStore: DynClone + Send + Sync {
         namespace: String,
         supported_animals: Vec<SupportedAnimal>,
     ) -> Result<Option<Work>>;
-    async fn append_history(&self, history: RunnerOut) -> Result<()>;
+    async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()>;
     async fn schedule_sleep_timer(
         &self,
         journey_id: Uuid,
