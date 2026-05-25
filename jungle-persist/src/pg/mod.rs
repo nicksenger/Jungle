@@ -9,9 +9,17 @@ use jungle_types::{
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Row;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 const PG_JOURNEY_EVENTS_CHANNEL: &str = "jungle_journey_events";
+const PG_UPDATES_LOG_INTERVAL: usize = 256;
+const PG_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
+const PG_STALE_EVENT_WARN_MS: i64 = 1_000;
+
+static PG_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone)]
 pub struct PgStore {
@@ -194,6 +202,7 @@ impl JungleStore for PgStore {
         journey_id: Uuid,
         after_sequence_id: Option<u64>,
     ) -> Result<Vec<JourneyUpdateEvent>> {
+        let fetch_started_at = Instant::now();
         let after_sequence_id = after_sequence_id
             .map(|seq| {
                 i64::try_from(seq).map_err(|_| {
@@ -258,6 +267,41 @@ impl JungleStore for PgStore {
                 event_unix_ms,
                 event: decode_journey_update_row(journey_id, kind, node_id, data)?,
             });
+        }
+        let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
+        let fetch_count = PG_UPDATES_FETCH_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        let now_ms = now_unix_ms();
+        let mut max_event_age_ms = 0_i64;
+        for update in updates.iter() {
+            max_event_age_ms = max_event_age_ms.max(now_ms.saturating_sub(update.event_unix_ms));
+        }
+        if fetch_elapsed_ms > PG_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+            warn!(
+                journey_id = %journey_id,
+                fetch_count,
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "slow postgres journey_update_events_since query"
+            );
+        } else if max_event_age_ms > PG_STALE_EVENT_WARN_MS {
+            warn!(
+                journey_id = %journey_id,
+                fetch_count,
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "postgres journey_update_events_since returned stale events"
+            );
+        } else if fetch_count % PG_UPDATES_LOG_INTERVAL == 0 {
+            debug!(
+                journey_id = %journey_id,
+                fetch_count,
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "postgres journey_update_events_since heartbeat"
+            );
         }
         Ok(updates)
     }
@@ -1134,5 +1178,12 @@ fn decode_journey_status(status: i16) -> Result<JourneyStatus> {
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported journey status in postgres: {other}"
         ))),
+    }
+}
+
+fn now_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
     }
 }

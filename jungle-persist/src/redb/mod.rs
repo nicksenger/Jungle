@@ -10,7 +10,10 @@ use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
@@ -48,6 +51,11 @@ const EVENT_KIND_ACTION_SUCCESS_OUTPUT: u8 = 1;
 const EVENT_KIND_ACTION_FAILURE_OUTPUT: u8 = 2;
 const EVENT_KIND_SLEEP_SCHEDULED: u8 = 3;
 const EVENT_KIND_SLEEP_FIRED: u8 = 4;
+const REDB_UPDATES_LOG_INTERVAL: usize = 256;
+const REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
+const REDB_STALE_EVENT_WARN_MS: i64 = 1_000;
+
+static REDB_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone)]
 pub struct RedbStore {
@@ -315,6 +323,7 @@ impl JungleStore for RedbStore {
         journey_id: Uuid,
         after_sequence_id: Option<u64>,
     ) -> Result<Vec<JourneyUpdateEvent>> {
+        let fetch_started_at = Instant::now();
         if after_sequence_id == Some(u64::MAX) {
             return Ok(Vec::new());
         }
@@ -369,6 +378,44 @@ impl JungleStore for RedbStore {
                 event_unix_ms,
                 event: decode_runner_update_out(journey_id, kind, data)?,
             });
+        }
+        let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
+        let fetch_count = REDB_UPDATES_FETCH_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        let now_ms = now_unix_ms();
+        let mut max_event_age_ms = 0_i64;
+        for update in updates.iter() {
+            max_event_age_ms = max_event_age_ms.max(now_ms.saturating_sub(update.event_unix_ms));
+        }
+        if fetch_elapsed_ms > REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+            warn!(
+                journey_id = %journey_id,
+                fetch_count,
+                after_sequence_id = after_sequence_id.unwrap_or(0),
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "slow redb journey_update_events_since query"
+            );
+        } else if max_event_age_ms > REDB_STALE_EVENT_WARN_MS {
+            warn!(
+                journey_id = %journey_id,
+                fetch_count,
+                after_sequence_id = after_sequence_id.unwrap_or(0),
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "redb journey_update_events_since returned stale events"
+            );
+        } else if fetch_count % REDB_UPDATES_LOG_INTERVAL == 0 {
+            debug!(
+                journey_id = %journey_id,
+                fetch_count,
+                after_sequence_id = after_sequence_id.unwrap_or(0),
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "redb journey_update_events_since heartbeat"
+            );
         }
         Ok(updates)
     }
@@ -1478,6 +1525,13 @@ impl JungleStore for RedbStore {
         })?;
 
         Ok(Some(()))
+    }
+}
+
+fn now_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
     }
 }
 

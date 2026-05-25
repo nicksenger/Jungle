@@ -473,6 +473,14 @@ fn run_runtime_thread(
             bass: bass?,
             drums: drums?,
         };
+        info!(
+            lead_vocalist = ?journeys.lead_vocalist,
+            lead_guitarist = ?journeys.lead_guitarist,
+            rhythm_guitarist = ?journeys.rhythm_guitarist,
+            bass = ?journeys.bass,
+            drums = ?journeys.drums,
+            "welcome journey id mapping"
+        );
         futures::future::join_all(
             worker_metronomes
                 .iter()

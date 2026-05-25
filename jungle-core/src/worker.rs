@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio::time::Instant;
+use tracing::{debug, warn};
 use typosaurus::collections::list;
 use typosaurus::collections::sp::{FlattenNodes, SPFlatten};
 use typosaurus::num::Unsigned;
@@ -28,6 +29,11 @@ const OWNER_LEASE_TTL_MS: i64 = 30_000;
 const MAX_IN_FLIGHT_JOURNEYS: usize = 8;
 const ACTIVE_WAKE_WAIT_TIMEOUT: Duration = Duration::from_millis(250);
 const IDLE_WAKE_WAIT_TIMEOUT: Duration = Duration::from_millis(250);
+const WORKER_ACTIVITY_LOG_INTERVAL: u64 = 256;
+const WORKER_SLOW_POLL_WARN_THRESHOLD: Duration = Duration::from_millis(100);
+const WORKER_SLOW_HISTORY_WARN_THRESHOLD: Duration = Duration::from_millis(200);
+const WORKER_SLOW_WAKE_WAIT_WARN_THRESHOLD: Duration = Duration::from_millis(120);
+const WORKER_SLOW_HISTORY_SUBMIT_WARN_THRESHOLD: Duration = Duration::from_millis(80);
 
 fn heartbeat_interval_for_lease_ttl(lease_ttl_ms: i64) -> Duration {
     // Refresh at ~3x faster than expiration to keep ownership stable without hot-looping.
@@ -87,9 +93,12 @@ where
         let (tx, mut rx): (RunnerChannelTx, _) = mpsc::channel(64);
         let client_for_transport = self.client.clone();
         tokio::spawn(async move {
+            let mut history_submissions = 0_u64;
             while let Some((message, done)) = rx.next().await {
                 let result: Result<RunnerChannelResponse, ExecutorError> = match message {
                     RunnerChannelMessage::History(history) => {
+                        let history_kind = runner_out_kind(&history);
+                        let submit_started_at = Instant::now();
                         let out = match history {
                             RunnerOut::EffectInput {
                                 node_id,
@@ -123,6 +132,25 @@ where
                                 Ok(())
                             }
                         };
+                        history_submissions = history_submissions.saturating_add(1);
+                        let submit_elapsed = submit_started_at.elapsed();
+                        if submit_elapsed > WORKER_SLOW_HISTORY_SUBMIT_WARN_THRESHOLD {
+                            warn!(
+                                owner_id = %owner_id,
+                                history_kind,
+                                submit_elapsed_ms = submit_elapsed.as_millis(),
+                                history_submissions,
+                                "slow worker history submission"
+                            );
+                        } else if history_submissions % WORKER_ACTIVITY_LOG_INTERVAL == 0 {
+                            debug!(
+                                owner_id = %owner_id,
+                                history_kind,
+                                submit_elapsed_ms = submit_elapsed.as_millis(),
+                                history_submissions,
+                                "worker history submission heartbeat"
+                            );
+                        }
                         out.map(|_| RunnerChannelResponse::Ack)
                     }
                     RunnerChannelMessage::ClaimPerturbable { journey_id } => client_for_transport
@@ -148,6 +176,10 @@ where
         let mut in_flight: FuturesUnordered<InFlightFuture<'_, T>> = FuturesUnordered::new();
         let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
         let mut should_poll = true;
+        let mut poll_attempts = 0_u64;
+        let mut wake_waits = 0_u64;
+        let mut claimed_work_total = 0_u64;
+        let mut in_flight_completions = 0_u64;
 
         loop {
             if (!suspended.is_empty() || !active_journeys.is_empty())
@@ -192,9 +224,35 @@ where
                         continue;
                     }
 
+                    poll_attempts = poll_attempts.saturating_add(1);
+                    let poll_started_at = Instant::now();
                     let Some(work) = self.client.poll_work(supported_animals.clone()).await? else {
+                        let poll_elapsed = poll_started_at.elapsed();
+                        if poll_elapsed > WORKER_SLOW_POLL_WARN_THRESHOLD {
+                            warn!(
+                                owner_id = %owner_id,
+                                poll_attempts,
+                                poll_elapsed_ms = poll_elapsed.as_millis(),
+                                suspended_count = suspended.len(),
+                                active_count = active_journeys.len(),
+                                in_flight_count = in_flight.len(),
+                                "slow poll_work with no available work"
+                            );
+                        }
                         break;
                     };
+                    let poll_elapsed = poll_started_at.elapsed();
+                    if poll_elapsed > WORKER_SLOW_POLL_WARN_THRESHOLD {
+                        warn!(
+                            owner_id = %owner_id,
+                            poll_attempts,
+                            poll_elapsed_ms = poll_elapsed.as_millis(),
+                            suspended_count = suspended.len(),
+                            active_count = active_journeys.len(),
+                            in_flight_count = in_flight.len(),
+                            "slow poll_work while claiming work"
+                        );
+                    }
 
                     let (journey_id, animal_id, generation, seed) = match work {
                         Work::StartJourney {
@@ -216,7 +274,32 @@ where
                         continue;
                     }
 
+                    claimed_work_total = claimed_work_total.saturating_add(1);
+                    let history_started_at = Instant::now();
                     let history = self.client.journey_history(journey_id).await?;
+                    let history_elapsed = history_started_at.elapsed();
+                    if history_elapsed > WORKER_SLOW_HISTORY_WARN_THRESHOLD {
+                        warn!(
+                            owner_id = %owner_id,
+                            journey_id = %journey_id,
+                            claimed_work_total,
+                            history_len = history.len(),
+                            history_elapsed_ms = history_elapsed.as_millis(),
+                            "slow journey_history fetch"
+                        );
+                    } else if claimed_work_total % WORKER_ACTIVITY_LOG_INTERVAL == 0 {
+                        debug!(
+                            owner_id = %owner_id,
+                            journey_id = %journey_id,
+                            claimed_work_total,
+                            history_len = history.len(),
+                            history_elapsed_ms = history_elapsed.as_millis(),
+                            suspended_count = suspended.len(),
+                            active_count = active_journeys.len(),
+                            in_flight_count = in_flight.len(),
+                            "worker claim/rehydrate heartbeat"
+                        );
+                    }
                     active_journeys.insert(journey_id);
                     in_flight.push(run_claimed_work(
                         journey_id,
@@ -231,6 +314,7 @@ where
             }
 
             while let Some(result) = in_flight.next().now_or_never().flatten() {
+                in_flight_completions = in_flight_completions.saturating_add(1);
                 handle_in_flight_result(
                     result?,
                     &mut active_journeys,
@@ -240,6 +324,16 @@ where
                     self.owner_lease_ttl_ms,
                 )
                 .await?;
+                if in_flight_completions % WORKER_ACTIVITY_LOG_INTERVAL == 0 {
+                    debug!(
+                        owner_id = %owner_id,
+                        in_flight_completions,
+                        suspended_count = suspended.len(),
+                        active_count = active_journeys.len(),
+                        in_flight_count = in_flight.len(),
+                        "worker in-flight completion heartbeat"
+                    );
+                }
             }
 
             should_poll = false;
@@ -264,9 +358,33 @@ where
                 } else {
                     IDLE_WAKE_WAIT_TIMEOUT
                 };
+                wake_waits = wake_waits.saturating_add(1);
+                let wake_wait_started_at = Instant::now();
                 self.client
                     .wait_for_worker_wake(owner_id, supported_animals.clone(), wake_timeout)
                     .await?;
+                let wake_wait_elapsed = wake_wait_started_at.elapsed();
+                if wake_wait_elapsed > WORKER_SLOW_WAKE_WAIT_WARN_THRESHOLD {
+                    warn!(
+                        owner_id = %owner_id,
+                        wake_waits,
+                        wake_timeout_ms = wake_timeout.as_millis(),
+                        wake_wait_elapsed_ms = wake_wait_elapsed.as_millis(),
+                        suspended_count = suspended.len(),
+                        active_count = active_journeys.len(),
+                        "slow wait_for_worker_wake"
+                    );
+                } else if wake_waits % WORKER_ACTIVITY_LOG_INTERVAL == 0 {
+                    debug!(
+                        owner_id = %owner_id,
+                        wake_waits,
+                        wake_timeout_ms = wake_timeout.as_millis(),
+                        wake_wait_elapsed_ms = wake_wait_elapsed.as_millis(),
+                        suspended_count = suspended.len(),
+                        active_count = active_journeys.len(),
+                        "worker wake wait heartbeat"
+                    );
+                }
                 should_poll = true;
             }
 
@@ -274,6 +392,17 @@ where
                 should_poll = true;
             }
         }
+    }
+}
+
+fn runner_out_kind(history: &RunnerOut) -> &'static str {
+    match history {
+        RunnerOut::EffectInput { .. } => "effect_input",
+        RunnerOut::EffectSuccessOutput { .. } => "effect_success_output",
+        RunnerOut::EffectFailureOutput { .. } => "effect_failure_output",
+        RunnerOut::Appearance { .. } => "appearance",
+        RunnerOut::SleepScheduled { .. } => "sleep_scheduled",
+        RunnerOut::SleepFired { .. } => "sleep_fired",
     }
 }
 

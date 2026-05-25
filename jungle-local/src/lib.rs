@@ -7,14 +7,21 @@ use jungle_types::{
     Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyStatus,
     OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::mpsc;
+use tracing::{debug, warn};
 use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const DEFAULT_NAMESPACE: &str = "default";
+const LOCAL_SUBSCRIPTION_LOG_INTERVAL: usize = 512;
+const LOCAL_SUBSCRIPTION_LAG_WARN_MS: i64 = 1_000;
+const LOCAL_SUBSCRIPTION_BACKLOG_WARN: usize = 256;
+
+static LOCAL_SUBSCRIPTION_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone)]
 pub struct LocalClient {
@@ -149,9 +156,40 @@ impl LocalClient {
         });
 
         let stream = stream::unfold(resp_rx, |mut rx| async move {
+            let queued_before_recv = rx.len();
             let next = rx.recv().await?;
             let mapped = match next {
-                Ok(WireOut::JourneyUpdate(update)) => Ok(update),
+                Ok(WireOut::JourneyUpdate(update)) => {
+                    let event_count =
+                        LOCAL_SUBSCRIPTION_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                    let event_age_ms = current_unix_ms().saturating_sub(update.event_unix_ms);
+                    if event_age_ms > LOCAL_SUBSCRIPTION_LAG_WARN_MS {
+                        warn!(
+                            event_count,
+                            sequence_id = update.sequence_id,
+                            event_age_ms,
+                            queued_before_recv,
+                            "local subscription received stale journey update"
+                        );
+                    } else if queued_before_recv >= LOCAL_SUBSCRIPTION_BACKLOG_WARN {
+                        warn!(
+                            event_count,
+                            sequence_id = update.sequence_id,
+                            event_age_ms,
+                            queued_before_recv,
+                            "local subscription queue backlog is growing"
+                        );
+                    } else if event_count % LOCAL_SUBSCRIPTION_LOG_INTERVAL == 0 {
+                        debug!(
+                            event_count,
+                            sequence_id = update.sequence_id,
+                            event_age_ms,
+                            queued_before_recv,
+                            "local subscription heartbeat"
+                        );
+                    }
+                    Ok(update)
+                }
                 Ok(other) => Err(ExecutorError::ClientTransport(format!(
                     "unexpected response for journey update subscription: {other:?}"
                 ))),
@@ -161,6 +199,13 @@ impl LocalClient {
         });
 
         Ok(JourneyUpdateSubscription::from_stream(stream))
+    }
+}
+
+fn current_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
     }
 }
 

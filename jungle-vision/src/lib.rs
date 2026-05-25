@@ -12,9 +12,11 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1360.0;
@@ -27,8 +29,14 @@ const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_BORDER_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_RECOLLAPSE_DELAY: Duration = Duration::from_secs(2);
 const ANIMATION_TICK: Duration = Duration::from_millis(16);
+const VISION_LIVE_EVENT_LOG_INTERVAL: usize = 512;
+const VISION_STALE_EVENT_WARN_MS: i64 = 1_000;
+const VISION_SLOW_APPLY_WARN_MS: u128 = 20;
+const VISION_SLOW_THEME_UPDATE_WARN_MS: u128 = 20;
 
 static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
+static VISION_LIVE_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+static VISION_APPLY_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 pub struct AnyAnimal;
 
@@ -502,6 +510,26 @@ where
             EjectedViewerMessage::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
+                        let event_count =
+                            VISION_LIVE_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                        let event_age_ms = current_unix_ms().saturating_sub(update.event_unix_ms);
+                        if event_age_ms > VISION_STALE_EVENT_WARN_MS {
+                            warn!(
+                                journey = self.journey_name(),
+                                event_count,
+                                sequence_id = update.sequence_id,
+                                event_age_ms,
+                                "jungle-vision received stale live update"
+                            );
+                        } else if event_count % VISION_LIVE_EVENT_LOG_INTERVAL == 0 {
+                            debug!(
+                                journey = self.journey_name(),
+                                event_count,
+                                sequence_id = update.sequence_id,
+                                event_age_ms,
+                                "jungle-vision live event heartbeat"
+                            );
+                        }
                         return iced_sugiyama::invalidate::<EjectedViewerMessage>(
                             self.graph_widget_id.clone(),
                         )
@@ -514,6 +542,7 @@ where
                 Task::none()
             }
             EjectedViewerMessage::ApplyLiveEvent(update) => {
+                let apply_started_at = Instant::now();
                 let theme_task = self
                     .theme
                     .update(
@@ -532,13 +561,34 @@ where
                     }
                 };
                 let _ = data.apply_update(update);
+                let apply_elapsed_ms = apply_started_at.elapsed().as_millis();
+                let apply_count = VISION_APPLY_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                if apply_elapsed_ms > VISION_SLOW_APPLY_WARN_MS {
+                    warn!(
+                        journey = self.journey_name(),
+                        apply_count, apply_elapsed_ms, "slow jungle-vision ApplyLiveEvent handling"
+                    );
+                } else if apply_count % VISION_LIVE_EVENT_LOG_INTERVAL == 0 {
+                    debug!(
+                        journey = self.journey_name(),
+                        apply_count, apply_elapsed_ms, "jungle-vision apply heartbeat"
+                    );
+                }
                 theme_task
             }
             EjectedViewerMessage::Theme(event) => {
+                let theme_started_at = Instant::now();
                 let theme_task = self
                     .theme
                     .update(&mut self.theme_state, event)
                     .map(EjectedViewerMessage::Theme);
+                let theme_elapsed_ms = theme_started_at.elapsed().as_millis();
+                if theme_elapsed_ms > VISION_SLOW_THEME_UPDATE_WARN_MS {
+                    warn!(
+                        journey = self.journey_name(),
+                        theme_elapsed_ms, "slow jungle-vision theme update"
+                    );
+                }
                 Task::batch(vec![
                     theme_task,
                     iced_sugiyama::force_review::<EjectedViewerMessage>(
@@ -1052,6 +1102,13 @@ fn infer_condition_runtime_state(live: &LiveData, successor_runtime_ids: &[u32])
     newest
         .map(|(_, state)| state)
         .unwrap_or(RuntimeState::Pending)
+}
+
+fn current_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
+    }
 }
 
 fn node_phase_for_display(

@@ -2636,6 +2636,7 @@ dependencies = [
  "postcard",
  "serde",
  "tokio",
+ "tracing",
  "typosaurus",
  "uuid",
 ]
@@ -2674,6 +2675,7 @@ dependencies = [
  "jungle-types",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "typosaurus",
  "uuid",
 ]
@@ -2798,6 +2800,7 @@ dependencies = [
  "jungle-client",
  "jungle-types",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
