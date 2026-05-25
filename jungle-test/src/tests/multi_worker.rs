@@ -1,4 +1,3 @@
-use super::while_loop::{ExampleFlow, NestedState};
 use futures::StreamExt;
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::core::JungleWorker;
@@ -11,13 +10,193 @@ const JOURNEY_COUNT: usize = 2;
 const EXPECTED_STEPS_PER_JOURNEY: usize = 104;
 const SINGLE_WORKER_COUNT: usize = 1;
 const SINGLE_JOURNEY_COUNT: usize = 1;
+const LOOP_ITERATIONS: u8 = 13;
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MultiWorkerState {
+    iteration: u8,
+}
+
+pub struct MultiWorkerSleepEffect;
+
+#[jungle::effect(id = 510)]
+impl<J> Effect<J> for MultiWorkerSleepEffect {
+    type In = ();
+    type Out = ();
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            Ok(())
+        }
+    }
+}
+
+pub struct MultiWorkerContinue;
+impl LoopCondition<MultiWorkerState> for MultiWorkerContinue {
+    type Arg = ();
+
+    fn should_continue(state: &MultiWorkerState) -> bool {
+        state.iteration < LOOP_ITERATIONS
+    }
+}
+
+pub struct MultiWorkerChooseLeft;
+impl Condition<(MultiWorkerState, ())> for MultiWorkerChooseLeft {
+    fn choose((state, _): &(MultiWorkerState, ())) -> bool {
+        state.iteration % 2 == 0
+    }
+}
+
+pub struct MultiWorkerConditionalLeftSpec;
+#[jungle::act]
+impl Act for MultiWorkerConditionalLeftSpec {
+    type Effect = MultiWorkerSleepEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &MultiWorkerState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        _state: &mut MultiWorkerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("conditional left step should succeed");
+    }
+}
+
+pub struct MultiWorkerConditionalRightSpec;
+#[jungle::act]
+impl Act for MultiWorkerConditionalRightSpec {
+    type Effect = MultiWorkerSleepEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &MultiWorkerState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        _state: &mut MultiWorkerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("conditional right step should succeed");
+    }
+}
+
+pub struct MultiWorkerJoinLeftSpec;
+#[jungle::act]
+impl Act for MultiWorkerJoinLeftSpec {
+    type Effect = MultiWorkerSleepEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &MultiWorkerState, _input: Self::Input) -> () {}
+
+    fn absorb(
+        _state: &mut MultiWorkerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join left step should succeed");
+    }
+}
+
+pub struct MultiWorkerJoinRightSpec;
+#[jungle::act]
+impl Act for MultiWorkerJoinRightSpec {
+    type Effect = MultiWorkerSleepEffect;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &MultiWorkerState, _input: Self::Input) -> () {}
+
+    fn absorb(
+        _state: &mut MultiWorkerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join right step should succeed");
+    }
+}
+
+pub struct MultiWorkerJoinMergeSpec;
+#[jungle::act]
+impl Act for MultiWorkerJoinMergeSpec {
+    type Effect = MultiWorkerSleepEffect;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &MultiWorkerState, _input: Self::Input) -> () {}
+
+    fn absorb(
+        _state: &mut MultiWorkerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join merge step should succeed");
+    }
+}
+
+pub struct MultiWorkerWorkSpec;
+#[jungle::act]
+impl Act for MultiWorkerWorkSpec {
+    type Effect = MultiWorkerSleepEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &MultiWorkerState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        _state: &mut MultiWorkerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("work step should succeed");
+    }
+}
+
+pub struct MultiWorkerAdvanceIterationSpec;
+#[jungle::act]
+impl Act for MultiWorkerAdvanceIterationSpec {
+    type Effect = MultiWorkerSleepEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &MultiWorkerState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut MultiWorkerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("advance iteration step should succeed");
+        state.iteration = state.iteration.saturating_add(1);
+    }
+}
+
+#[derive(Flow)]
+pub struct ExampleFlow(While<MultiWorkerContinue, ExampleFlowIteration>);
+
+#[derive(Flow)]
+pub struct ExampleFlowIteration(
+    Conditional<
+        MultiWorkerChooseLeft,
+        Step<MultiWorkerConditionalLeftSpec>,
+        Step<MultiWorkerConditionalRightSpec>,
+    >,
+    Join<Step<MultiWorkerJoinLeftSpec>, Step<MultiWorkerJoinRightSpec>>,
+    Step<MultiWorkerJoinMergeSpec>,
+    Step<MultiWorkerWorkSpec>,
+    Step<MultiWorkerWorkSpec>,
+    Step<MultiWorkerWorkSpec>,
+    Step<MultiWorkerWorkSpec>,
+    Step<MultiWorkerAdvanceIterationSpec>,
+);
 
 pub struct MultiWorkerAnimal;
 
 #[jungle::animal(id = 91, generation = 0)]
 impl Animal for MultiWorkerAnimal {
-    type State = NestedState;
-    type Seed = NestedState;
+    type State = MultiWorkerState;
+    type Seed = MultiWorkerState;
     type Journey = ExampleFlow;
 }
 
@@ -31,8 +210,8 @@ impl Ecosystem for MultiWorkerZoo {
     type Animals = MultiWorkerAnimals;
 }
 
-impl From<NestedState> for () {
-    fn from(_value: NestedState) -> Self {}
+impl From<MultiWorkerState> for () {
+    fn from(_value: MultiWorkerState) -> Self {}
 }
 
 #[tokio::test]
@@ -51,7 +230,7 @@ async fn local_client_multi_worker_example_flow_has_expected_events_without_repl
         }));
     }
 
-    let seed = postcard::to_allocvec(&NestedState::default()).expect("seed should serialize");
+    let seed = postcard::to_allocvec(&MultiWorkerState::default()).expect("seed should serialize");
     let mut journey_ids = Vec::with_capacity(JOURNEY_COUNT);
     for _ in 0..JOURNEY_COUNT {
         let journey_id = client
@@ -147,7 +326,7 @@ async fn local_client_single_worker_single_journey_example_flow_has_expected_eve
         }));
     }
 
-    let seed = postcard::to_allocvec(&NestedState::default()).expect("seed should serialize");
+    let seed = postcard::to_allocvec(&MultiWorkerState::default()).expect("seed should serialize");
     let mut journey_ids = Vec::with_capacity(SINGLE_JOURNEY_COUNT);
     for _ in 0..SINGLE_JOURNEY_COUNT {
         let journey_id = client
