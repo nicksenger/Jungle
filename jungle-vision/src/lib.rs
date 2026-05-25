@@ -77,8 +77,8 @@ pub enum ClusterKind {
 pub struct StepViewCtx<'a> {
     pub display_id: u32,
     pub runtime_id: Option<u32>,
-    pub proxy_runtime_ids: Vec<u32>,
-    pub successor_runtime_ids: Vec<u32>,
+    pub proxy_runtime_ids: &'a [u32],
+    pub successor_runtime_ids: &'a [u32],
     pub kind: StepKind,
     pub label: &'a str,
     pub metadata: Option<&'a str>,
@@ -102,9 +102,9 @@ pub struct ClusterViewCtx<'a> {
     pub parent_cluster_id: Option<u32>,
     pub depth: usize,
     pub member_display_ids: &'a [u32],
-    pub entry_runtime_ids: Vec<u32>,
-    pub member_runtime_ids: Vec<u32>,
-    pub successor_runtime_ids: Vec<u32>,
+    pub entry_runtime_ids: &'a [u32],
+    pub member_runtime_ids: &'a [u32],
+    pub successor_runtime_ids: &'a [u32],
     pub phase: Phase<ClusterLive>,
 }
 
@@ -1472,9 +1472,9 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
-            entry_runtime_ids: cluster_entry_runtime_ids[index].clone(),
-            member_runtime_ids: cluster_member_runtime_ids[index].clone(),
-            successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
+            entry_runtime_ids: &cluster_entry_runtime_ids[index],
+            member_runtime_ids: &cluster_member_runtime_ids[index],
+            successor_runtime_ids: &cluster_successor_runtime_ids[index],
             phase: cluster_phase(cluster),
         };
         if matches!(
@@ -1553,11 +1553,11 @@ where
         let step_ctx = StepViewCtx {
             display_id: node.id,
             runtime_id: node.runtime_node_id,
-            proxy_runtime_ids: node.proxy_runtime_ids.clone(),
+            proxy_runtime_ids: &node.proxy_runtime_ids,
             successor_runtime_ids: condition_successor_runtime_ids
                 .get(&node.id)
-                .cloned()
-                .unwrap_or_default(),
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
             kind: node.kind(),
             label: &node.label,
             metadata: node.metadata.as_deref(),
@@ -1591,9 +1591,9 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
-            entry_runtime_ids: cluster_entry_runtime_ids[index].clone(),
-            member_runtime_ids: cluster_member_runtime_ids[index].clone(),
-            successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
+            entry_runtime_ids: &cluster_entry_runtime_ids[index],
+            member_runtime_ids: &cluster_member_runtime_ids[index],
+            successor_runtime_ids: &cluster_successor_runtime_ids[index],
             phase: cluster_phase(cluster),
         };
         if let ClusterView::Collapsed { element, size } = theme.view_cluster(theme_state, &cx) {
@@ -1639,9 +1639,9 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
-            entry_runtime_ids: cluster_entry_runtime_ids[source_index].clone(),
-            member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
-            successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
+            entry_runtime_ids: &cluster_entry_runtime_ids[source_index],
+            member_runtime_ids: &cluster_member_runtime_ids[source_index],
+            successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
             phase: cluster_phase(cluster),
         };
         let ClusterView::Expanded { overlay, fill } = theme.view_cluster(theme_state, &cx) else {
@@ -1723,11 +1723,11 @@ where
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
                             runtime_id: node.runtime_node_id,
-                            proxy_runtime_ids: node.proxy_runtime_ids.clone(),
+                            proxy_runtime_ids: &node.proxy_runtime_ids,
                             successor_runtime_ids: condition_successors_for_nodes
                                 .get(&node.id)
-                                .cloned()
-                                .unwrap_or_default(),
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             kind: node.kind(),
                             label: &node.label,
                             metadata: node.metadata.as_deref(),
@@ -1750,13 +1750,11 @@ where
                             }),
                             depth: cluster.depth,
                             member_display_ids: &cluster.nodes,
-                            entry_runtime_ids: cluster_entry_runtime_ids_for_nodes[cluster_index]
-                                .clone(),
-                            member_runtime_ids: cluster_member_runtime_ids_for_nodes[cluster_index]
-                                .clone(),
-                            successor_runtime_ids: cluster_successor_runtime_ids_for_nodes
-                                [cluster_index]
-                                .clone(),
+                            entry_runtime_ids: &cluster_entry_runtime_ids_for_nodes[cluster_index],
+                            member_runtime_ids: &cluster_member_runtime_ids_for_nodes
+                                [cluster_index],
+                            successor_runtime_ids: &cluster_successor_runtime_ids_for_nodes
+                                [cluster_index],
                             phase: cluster_phase(cluster),
                         };
                         if let ClusterView::Collapsed { element, .. } =
@@ -1906,9 +1904,9 @@ where
                     .and_then(|parent| cluster_info_for_clusters.get(parent).map(|info| info.id)),
                 depth: cluster.depth,
                 member_display_ids: &cluster.nodes,
-                entry_runtime_ids: cluster_entry_runtime_ids[source_index].clone(),
-                member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
-                successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
+                entry_runtime_ids: &cluster_entry_runtime_ids[source_index],
+                member_runtime_ids: &cluster_member_runtime_ids[source_index],
+                successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
                 phase: cluster_phase(cluster),
             };
             match theme.view_cluster(theme_state, &cx) {
@@ -2859,9 +2857,16 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         } else if matches!(cx.kind, StepKind::Conditional) {
             if let Ok(mut guard) = state.try_lock() {
                 if !cx.successor_runtime_ids.is_empty() {
-                    guard
+                    let should_update = guard
                         .condition_successor_runtime_ids
-                        .insert(cx.display_id, cx.successor_runtime_ids.clone());
+                        .get(&cx.display_id)
+                        .map(Vec::as_slice)
+                        != Some(cx.successor_runtime_ids);
+                    if should_update {
+                        guard
+                            .condition_successor_runtime_ids
+                            .insert(cx.display_id, cx.successor_runtime_ids.to_vec());
+                    }
                 }
                 let phase_target = guard.infer_condition_target(cx.display_id, cx.phase);
                 let visual = guard
@@ -3421,8 +3426,8 @@ mod tests {
         let cx = StepViewCtx {
             display_id: 1,
             runtime_id: Some(42),
-            proxy_runtime_ids: vec![7],
-            successor_runtime_ids: Vec::new(),
+            proxy_runtime_ids: &[7],
+            successor_runtime_ids: &[],
             kind: StepKind::Step,
             label: "JoinL",
             metadata: None,
@@ -3838,9 +3843,9 @@ mod tests {
             parent_cluster_id: Some(1),
             depth: 1,
             member_display_ids: &[],
-            entry_runtime_ids: vec![18],
-            member_runtime_ids: vec![18, 19],
-            successor_runtime_ids: vec![32],
+            entry_runtime_ids: &[18],
+            member_runtime_ids: &[18, 19],
+            successor_runtime_ids: &[32],
             phase: Phase::Live(ClusterLive {
                 has_running: false,
                 has_failed: false,
@@ -3902,9 +3907,9 @@ mod tests {
             parent_cluster_id: None,
             depth: 0,
             member_display_ids: &[],
-            entry_runtime_ids: vec![70],
-            member_runtime_ids: vec![70, 71],
-            successor_runtime_ids: vec![95],
+            entry_runtime_ids: &[70],
+            member_runtime_ids: &[70, 71],
+            successor_runtime_ids: &[95],
             phase: Phase::Live(ClusterLive {
                 has_running: false,
                 has_failed: false,
@@ -3988,9 +3993,9 @@ mod tests {
             parent_cluster_id: None,
             depth: 0,
             member_display_ids: &[],
-            entry_runtime_ids: vec![10],
-            member_runtime_ids: vec![10, 11],
-            successor_runtime_ids: vec![22],
+            entry_runtime_ids: &[10],
+            member_runtime_ids: &[10, 11],
+            successor_runtime_ids: &[22],
             phase: Phase::Live(ClusterLive {
                 has_running: true,
                 has_failed: false,
