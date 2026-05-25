@@ -1153,11 +1153,15 @@ where
                         Err(err) => return Err((state, err)),
                     };
                 state = next_state;
+                let made_progress = emitted.is_some();
                 if let Some(emitted) = emitted {
                     *last_input = emitted;
                 }
                 if completed {
                     *cursor += 1;
+                    continue;
+                }
+                if made_progress {
                     continue;
                 }
                 state = match settle_subflow_without_progress(
