@@ -17,7 +17,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::sleep;
 use tokio::time::timeout;
 use tokio::time::Instant;
 use typosaurus::collections::list;
@@ -27,6 +26,8 @@ use uuid::Uuid;
 
 const OWNER_LEASE_TTL_MS: i64 = 30_000;
 const MAX_IN_FLIGHT_JOURNEYS: usize = 8;
+const ACTIVE_WAKE_WAIT_TIMEOUT: Duration = Duration::from_millis(250);
+const IDLE_WAKE_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn heartbeat_interval_for_lease_ttl(lease_ttl_ms: i64) -> Duration {
     // Refresh at ~3x faster than expiration to keep ownership stable without hot-looping.
@@ -146,6 +147,7 @@ where
         let mut pending_wake_ids = HashSet::<Uuid>::new();
         let mut in_flight: FuturesUnordered<InFlightFuture<'_, T>> = FuturesUnordered::new();
         let supported_animals = <AnimalSet<T::Animals> as SupportedAnimalGenerations<T>>::collect();
+        let mut should_poll = true;
 
         loop {
             if (!suspended.is_empty() || !active_journeys.is_empty())
@@ -164,67 +166,69 @@ where
                 next_heartbeat_at = Instant::now() + heartbeat_interval;
             }
 
-            let _ = self.client.poll_timers().await?;
+            if should_poll {
+                let _ = self.client.poll_timers().await?;
 
-            if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
-                if !pending_wake_ids.contains(&wake.journey_id) {
-                    pending_wake_ids.insert(wake.journey_id);
-                    pending_wakes.push_back(wake.journey_id);
+                if let Some(wake) = self.client.poll_owner_wake(owner_id).await? {
+                    if !pending_wake_ids.contains(&wake.journey_id) {
+                        pending_wake_ids.insert(wake.journey_id);
+                        pending_wakes.push_back(wake.journey_id);
+                    }
                 }
-            }
 
-            while in_flight.len() < self.max_in_flight_journeys {
-                if let Some(wake_journey_id) = pending_wakes.pop_front() {
-                    pending_wake_ids.remove(&wake_journey_id);
-                    if active_journeys.contains(&wake_journey_id) {
+                while in_flight.len() < self.max_in_flight_journeys {
+                    if let Some(wake_journey_id) = pending_wakes.pop_front() {
+                        pending_wake_ids.remove(&wake_journey_id);
+                        if active_journeys.contains(&wake_journey_id) {
+                            continue;
+                        }
+                        if let Some(journey) = suspended.remove(&wake_journey_id) {
+                            active_journeys.insert(wake_journey_id);
+                            in_flight.push(run_resume_suspended(
+                                wake_journey_id,
+                                journey,
+                                &self.runner,
+                                tx.clone(),
+                            ));
+                        }
                         continue;
                     }
-                    if let Some(journey) = suspended.remove(&wake_journey_id) {
-                        active_journeys.insert(wake_journey_id);
-                        in_flight.push(run_resume_suspended(
-                            wake_journey_id,
-                            journey,
-                            &self.runner,
-                            tx.clone(),
-                        ));
+
+                    let Some(work) = self.client.poll_work(supported_animals.clone()).await? else {
+                        break;
+                    };
+
+                    let (journey_id, animal_id, generation, seed) = match work {
+                        Work::StartJourney {
+                            journey_id,
+                            animal_id,
+                            generation,
+                            seed,
+                        } => (journey_id, animal_id, generation, seed),
+                        Work::ResumeJourney {
+                            journey_id,
+                            animal_id,
+                            generation,
+                            seed,
+                        } => (journey_id, animal_id, generation, seed),
+                    };
+
+                    if active_journeys.contains(&journey_id) || suspended.contains_key(&journey_id) {
+                        continue;
                     }
-                    continue;
-                }
 
-                let Some(work) = self.client.poll_work(supported_animals.clone()).await? else {
-                    break;
-                };
-
-                let (journey_id, animal_id, generation, seed) = match work {
-                    Work::StartJourney {
+                    let history = self.client.journey_history(journey_id).await?;
+                    active_journeys.insert(journey_id);
+                    in_flight.push(run_claimed_work(
                         journey_id,
                         animal_id,
                         generation,
                         seed,
-                    } => (journey_id, animal_id, generation, seed),
-                    Work::ResumeJourney {
-                        journey_id,
-                        animal_id,
-                        generation,
-                        seed,
-                    } => (journey_id, animal_id, generation, seed),
-                };
-
-                if active_journeys.contains(&journey_id) || suspended.contains_key(&journey_id) {
-                    continue;
+                        history,
+                        &self.runner,
+                        tx.clone(),
+                    ));
                 }
-
-                let history = self.client.journey_history(journey_id).await?;
-                active_journeys.insert(journey_id);
-                in_flight.push(run_claimed_work(
-                    journey_id,
-                    animal_id,
-                    generation,
-                    seed,
-                    history,
-                    &self.runner,
-                    tx.clone(),
-                ));
             }
 
             while let Some(result) = in_flight.next().now_or_never().flatten() {
@@ -239,6 +243,7 @@ where
                 .await?;
             }
 
+            should_poll = false;
             if !in_flight.is_empty() {
                 if let Ok(Some(result)) = timeout(Duration::from_millis(25), in_flight.next()).await
                 {
@@ -251,9 +256,23 @@ where
                         self.owner_lease_ttl_ms,
                     )
                     .await?;
+                    should_poll = true;
                 }
             } else {
-                sleep(Duration::from_millis(200)).await;
+                let has_owned_journeys = !suspended.is_empty() || !active_journeys.is_empty();
+                let wake_timeout = if has_owned_journeys {
+                    ACTIVE_WAKE_WAIT_TIMEOUT
+                } else {
+                    IDLE_WAKE_WAIT_TIMEOUT
+                };
+                self.client
+                    .wait_for_worker_wake(owner_id, supported_animals.clone(), wake_timeout)
+                    .await?;
+                should_poll = true;
+            }
+
+            if !pending_wakes.is_empty() {
+                should_poll = true;
             }
         }
     }

@@ -4,7 +4,7 @@ use futures::{SinkExt, StreamExt};
 use jungle_persist::{JungleStore, Kind, StoreBuilder};
 #[cfg(any(feature = "postgres", feature = "redb"))]
 use jungle_types::JourneyStatus;
-use jungle_types::{BackendError, SupportedAnimal, WireIn, WireOut};
+use jungle_types::{BackendError, WireIn, WireOut};
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgListener;
 #[cfg(any(feature = "postgres", feature = "redb"))]
@@ -449,14 +449,8 @@ impl JungleServer for Server {
                 {
                     let timeout =
                         Duration::from_millis(timeout_ms.max(1).min(Duration::from_secs(30).as_millis() as u64));
-                    wait_for_worker_wake(
-                        self,
-                        owner_id,
-                        namespace,
-                        supported_animals,
-                        timeout,
-                    )
-                    .await?;
+                    let _ = (owner_id, namespace, supported_animals);
+                    wait_for_worker_wake(self, timeout).await?;
                     WireOut::Ack
                 }
                 #[cfg(not(any(feature = "postgres", feature = "redb")))]
@@ -540,9 +534,6 @@ impl JungleServer for Server {
 #[cfg(any(feature = "postgres", feature = "redb"))]
 async fn wait_for_worker_wake(
     server: &Server,
-    _owner_id: uuid::Uuid,
-    _namespace: String,
-    _supported_animals: Vec<SupportedAnimal>,
     timeout: Duration,
 ) -> Result<()> {
     if server.store.poll_timers().await.map_err(|err| {
@@ -567,15 +558,14 @@ async fn wait_for_worker_wake(
     {
         let notified = server.journey_update_notify.notified();
         let _ = tokio::time::timeout(timeout, notified).await;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(feature = "redb"))]
     {
         tokio::time::sleep(timeout).await;
+        Ok(())
     }
-
-    Ok(())
 }
 
 #[cfg(feature = "postgres")]
