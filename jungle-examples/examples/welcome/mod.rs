@@ -39,6 +39,8 @@ use crate::{
 
 const DEFAULT_BPM: f32 = 123.0;
 const DEFAULT_WORKERS: usize = 2;
+const DEFAULT_SYNTH_WORKERS: usize = 9;
+const DEFAULT_SYNTH_QUEUE_SIZE: usize = 128;
 const DEFAULT_PLAYBACK_DELAY_MS: u64 = 1_000;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
@@ -75,6 +77,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.bpm,
             args.mute,
             args.workers,
+            args.synth_workers,
+            args.synth_queue_size,
             args.playback_delay_ms,
             args.enabled_animals,
         );
@@ -83,6 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.bpm,
         args.mute,
         args.workers,
+        args.synth_workers,
+        args.synth_queue_size,
         args.playback_delay_ms,
         args.enabled_animals,
     )
@@ -93,6 +99,8 @@ struct CliArgs {
     headless: bool,
     mute: bool,
     workers: usize,
+    synth_workers: usize,
+    synth_queue_size: usize,
     playback_delay_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 }
@@ -101,6 +109,8 @@ fn run_with_ui(
     bpm: f32,
     mute: bool,
     workers: usize,
+    synth_workers: usize,
+    synth_queue_size: usize,
     playback_delay_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -113,6 +123,8 @@ fn run_with_ui(
             bpm,
             mute,
             workers,
+            synth_workers,
+            synth_queue_size,
             playback_delay_ms,
             enabled_animals,
             shutdown_for_runtime,
@@ -157,12 +169,19 @@ fn run_headless(
     bpm: f32,
     mute: bool,
     workers: usize,
+    synth_workers: usize,
+    synth_queue_size: usize,
     playback_delay_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
         bpm,
-        mute, workers, playback_delay_ms, "running welcome example in headless mode"
+        mute,
+        workers,
+        synth_workers,
+        synth_queue_size,
+        playback_delay_ms,
+        "running welcome example in headless mode"
     );
 
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -174,6 +193,8 @@ fn run_headless(
             bpm,
             mute,
             workers,
+            synth_workers,
+            synth_queue_size,
             playback_delay_ms,
             enabled_animals,
             shutdown_for_runtime,
@@ -235,6 +256,8 @@ fn run_runtime_thread(
     bpm: f32,
     mute: bool,
     workers: usize,
+    synth_workers: usize,
+    synth_queue_size: usize,
     playback_delay_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
     ui_shutdown: ui::ShutdownFlag,
@@ -264,7 +287,7 @@ fn run_runtime_thread(
                 .with_playback_delay(Duration::from_millis(playback_delay_ms));
             (audio_handle, Some(audio_engine), None)
         };
-        let synth_handle = SynthHandle::new();
+        let synth_handle = SynthHandle::new_with_config(synth_workers, synth_queue_size);
         let mut worker_metronomes = Vec::with_capacity(workers);
         for worker_index in 0..workers {
             let metronome = metronome::Metronome::spawn(bpm);
@@ -289,7 +312,10 @@ fn run_runtime_thread(
                 }
             });
         }
-        info!(workers, "started welcome workers");
+        info!(
+            workers,
+            synth_workers, synth_queue_size, "started welcome workers"
+        );
 
         let seed = postcard::to_allocvec(&()).map_err(|err| {
             error!(error = %err, "failed serializing journey seed");
@@ -646,6 +672,8 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let mut headless = false;
     let mut mute = false;
     let mut workers = DEFAULT_WORKERS;
+    let mut synth_workers = DEFAULT_SYNTH_WORKERS;
+    let mut synth_queue_size = DEFAULT_SYNTH_QUEUE_SIZE;
     let mut playback_delay_ms = DEFAULT_PLAYBACK_DELAY_MS;
     let mut enabled_animals = SelectedAnimal::all();
     let mut animals_flag_seen = false;
@@ -689,6 +717,16 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             continue;
         }
 
+        if let Some(value) = arg.strip_prefix("--synth-workers=") {
+            synth_workers = parse_synth_workers_value(value)?;
+            continue;
+        }
+
+        if let Some(value) = arg.strip_prefix("--synth-queue-size=") {
+            synth_queue_size = parse_synth_queue_size_value(value)?;
+            continue;
+        }
+
         if arg == "--bpm" {
             let value = args
                 .next()
@@ -713,6 +751,22 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             continue;
         }
 
+        if arg == "--synth-workers" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--synth-workers requires a value".to_string())?;
+            synth_workers = parse_synth_workers_value(&value)?;
+            continue;
+        }
+
+        if arg == "--synth-queue-size" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--synth-queue-size requires a value".to_string())?;
+            synth_queue_size = parse_synth_queue_size_value(&value)?;
+            continue;
+        }
+
         if arg.starts_with("--") {
             return Err(format!("Unknown argument: {arg}").into());
         }
@@ -726,6 +780,8 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         headless,
         mute,
         workers,
+        synth_workers,
+        synth_queue_size,
         playback_delay_ms,
         enabled_animals,
     })
@@ -756,6 +812,26 @@ fn parse_playback_delay_ms_value(value: &str) -> Result<u64, Box<dyn std::error:
         .parse::<u64>()
         .map_err(|_| format!("Invalid playback delay argument: {value}"))?;
     Ok(playback_delay_ms)
+}
+
+fn parse_synth_workers_value(value: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let synth_workers = value
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid synth workers argument: {value}"))?;
+    if synth_workers == 0 {
+        return Err("synth workers must be at least 1".into());
+    }
+    Ok(synth_workers)
+}
+
+fn parse_synth_queue_size_value(value: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let synth_queue_size = value
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid synth queue size argument: {value}"))?;
+    if synth_queue_size == 0 {
+        return Err("synth queue size must be at least 1".into());
+    }
+    Ok(synth_queue_size)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

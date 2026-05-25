@@ -17,8 +17,8 @@ use super::{
     Error, Note,
 };
 
-const SYNTH_WORKER_THREADS: usize = 3;
-const SYNTH_QUEUE_CAPACITY_PER_WORKER: usize = 512;
+const DEFAULT_SYNTH_WORKER_THREADS: usize = 9;
+const DEFAULT_SYNTH_QUEUE_CAPACITY_PER_WORKER: usize = 128;
 
 #[derive(Clone)]
 pub struct SynthHandle {
@@ -28,10 +28,19 @@ pub struct SynthHandle {
 
 impl SynthHandle {
     pub fn new() -> Self {
-        let mut request_txs = Vec::with_capacity(SYNTH_WORKER_THREADS);
-        for worker_index in 0..SYNTH_WORKER_THREADS {
+        Self::new_with_config(
+            DEFAULT_SYNTH_WORKER_THREADS,
+            DEFAULT_SYNTH_QUEUE_CAPACITY_PER_WORKER,
+        )
+    }
+
+    pub fn new_with_config(worker_threads: usize, queue_capacity_per_worker: usize) -> Self {
+        let worker_threads = worker_threads.max(1);
+        let queue_capacity_per_worker = queue_capacity_per_worker.max(1);
+        let mut request_txs = Vec::with_capacity(worker_threads);
+        for worker_index in 0..worker_threads {
             let (request_tx, mut request_rx) =
-                mpsc::channel::<SynthRequest>(SYNTH_QUEUE_CAPACITY_PER_WORKER);
+                mpsc::channel::<SynthRequest>(queue_capacity_per_worker);
             std::thread::Builder::new()
                 .name(format!("welcome-synth-worker-{worker_index}"))
                 .spawn(move || {
