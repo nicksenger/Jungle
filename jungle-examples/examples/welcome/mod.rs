@@ -10,20 +10,23 @@ mod metronome;
 mod ui;
 
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 #[cfg(feature = "transport")]
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
+use async_trait::async_trait;
 use clap::{Parser, ValueEnum};
+use futures::StreamExt;
 use jungle_sdk::core::JungleWorker;
 #[cfg(feature = "transport")]
 use jungle_sdk::server::ServerBuilder;
-use jungle_sdk::JungleClient;
 #[cfg(not(feature = "transport"))]
 use jungle_sdk::LocalClient;
+use jungle_sdk::{ExecutorError, JourneyUpdateEvent, JungleClient};
+use tokio::sync::broadcast;
 use tracing::{error, info};
 use tracing_subscriber::{fmt, EnvFilter};
-#[cfg(feature = "redb")]
 use uuid::Uuid;
 
 #[cfg(feature = "postgres")]
@@ -44,6 +47,7 @@ const DEFAULT_SYNTH_WORKERS: usize = 9;
 const DEFAULT_SYNTH_QUEUE_SIZE: usize = 128;
 const DEFAULT_PLAYBACK_DELAY_MS: u64 = 1_000;
 const DEFAULT_EVENT_LEAD_TIME_MS: u64 = 128;
+const UI_SUBSCRIPTION_BRIDGE_CHANNEL_CAPACITY: usize = 1024;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(feature = "transport")]
@@ -308,8 +312,194 @@ fn init_tracing() {
 }
 
 struct UiSetup {
-    client: ui::DeferredJungleClient<RuntimeClient>,
+    client: ui::DeferredJungleClient<UiClient>,
     journeys: ui::JourneyIds,
+}
+
+#[derive(Clone)]
+struct UiClient {
+    inner: RuntimeClient,
+    subscriptions: HashMap<Uuid, broadcast::Sender<JourneyUpdateEvent>>,
+}
+
+impl UiClient {
+    fn new(
+        inner: RuntimeClient,
+        subscriptions: HashMap<Uuid, broadcast::Sender<JourneyUpdateEvent>>,
+    ) -> Self {
+        Self {
+            inner,
+            subscriptions,
+        }
+    }
+}
+
+#[async_trait]
+impl JungleClient for UiClient {
+    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    where
+        Self: Sized,
+        A: jungle_sdk::Animal,
+        A::Id: jungle_sdk::AnimalIdValue,
+        A::Generation: jungle_sdk::typosaurus::num::Unsigned,
+    {
+        self.inner.start_journey::<A>(seed).await
+    }
+
+    async fn journey_history(&self, id: Uuid) -> Result<Vec<jungle_sdk::RunnerOut>, ExecutorError> {
+        self.inner.journey_history(id).await
+    }
+
+    async fn subscribe_step_updates(
+        &self,
+        journey_id: Uuid,
+        after_sequence_id: Option<u64>,
+    ) -> Result<jungle_sdk::client::JourneyUpdateSubscription, ExecutorError> {
+        if let Some(tx) = self.subscriptions.get(&journey_id) {
+            if after_sequence_id.is_some() {
+                info!(
+                    %journey_id,
+                    ?after_sequence_id,
+                    "UI subscription bridge ignores after_sequence_id and starts from live tail"
+                );
+            }
+            let rx = tx.subscribe();
+            let stream = futures::stream::unfold(rx, |mut rx| async move {
+                match rx.recv().await {
+                    Ok(update) => Some((Ok(update), rx)),
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => Some((
+                        Err(ExecutorError::ClientTransport(format!(
+                            "UI subscription bridge lagged and dropped {skipped} updates"
+                        ))),
+                        rx,
+                    )),
+                    Err(broadcast::error::RecvError::Closed) => None,
+                }
+            });
+            return Ok(jungle_sdk::client::JourneyUpdateSubscription::from_stream(
+                stream,
+            ));
+        }
+
+        self.inner
+            .subscribe_step_updates(journey_id, after_sequence_id)
+            .await
+    }
+
+    async fn journey_details(&self, id: Uuid) -> Result<jungle_sdk::JourneyStatus, ExecutorError> {
+        self.inner.journey_details(id).await
+    }
+
+    async fn animal_appearance(&self, id: Uuid) -> Result<Option<Vec<u8>>, ExecutorError> {
+        self.inner.animal_appearance(id).await
+    }
+
+    async fn animal_appearance_update(&self, id: Uuid, data: Vec<u8>) -> Result<(), ExecutorError> {
+        self.inner.animal_appearance_update(id, data).await
+    }
+
+    async fn perturb_animal(&self, id: Uuid, payload: Vec<u8>) -> Result<(), ExecutorError> {
+        self.inner.perturb_animal(id, payload).await
+    }
+
+    async fn claim_animal_perturbation(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<jungle_sdk::ClaimedPerturbable>, ExecutorError> {
+        self.inner.claim_animal_perturbation(id).await
+    }
+
+    async fn ack_animal_perturbation(
+        &self,
+        id: Uuid,
+        perturbation_id: u64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .ack_animal_perturbation(id, perturbation_id)
+            .await
+    }
+
+    async fn heartbeat_journey_lease(
+        &self,
+        journey_id: Uuid,
+        owner_id: Uuid,
+        lease_ttl_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .heartbeat_journey_lease(journey_id, owner_id, lease_ttl_ms)
+            .await
+    }
+
+    async fn poll_owner_wake(
+        &self,
+        owner_id: Uuid,
+    ) -> Result<Option<jungle_sdk::OwnerWake>, ExecutorError> {
+        self.inner.poll_owner_wake(owner_id).await
+    }
+
+    async fn schedule_sleep_timer(
+        &self,
+        journey_id: Uuid,
+        timer_id: Uuid,
+        wake_at_unix_ms: i64,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
+            .await
+    }
+
+    async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
+        self.inner.complete_journey(id).await
+    }
+
+    async fn poll_timers(&self) -> Result<Option<()>, ExecutorError> {
+        self.inner.poll_timers().await
+    }
+
+    async fn poll_work(
+        &self,
+        supported_animals: Vec<jungle_sdk::SupportedAnimal>,
+    ) -> Result<Option<jungle_sdk::Work>, ExecutorError> {
+        self.inner.poll_work(supported_animals).await
+    }
+
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: Uuid,
+        supported_animals: Vec<jungle_sdk::SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError> {
+        self.inner
+            .wait_for_worker_wake(owner_id, supported_animals, timeout)
+            .await
+    }
+
+    async fn effect_input(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        input: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_input(id, node_id, input).await
+    }
+
+    async fn effect_success_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        output: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_success_output(id, node_id, output).await
+    }
+
+    async fn effect_failure_output(
+        &self,
+        id: Uuid,
+        node_id: u32,
+        err: Vec<u8>,
+    ) -> Result<(), ExecutorError> {
+        self.inner.effect_failure_output(id, node_id, err).await
+    }
 }
 
 fn run_runtime_thread(
@@ -490,8 +680,10 @@ fn run_runtime_thread(
 
         keep_alive.audio_engine = audio_engine;
         keep_alive.stub_audio = stub_audio;
+        let ui_subscription_bridge = spawn_ui_subscription_forwarders(client.clone(), &journeys);
+        let ui_runtime_client = UiClient::new(client.clone(), ui_subscription_bridge);
         let ui_client = ui::DeferredJungleClient::new(
-            client.clone(),
+            ui_runtime_client,
             Duration::from_millis(playback_delay_ms),
             Duration::from_millis(event_lead_time_ms),
         );
@@ -534,6 +726,75 @@ fn run_runtime_thread(
     ));
     keep_alive.shutdown();
     result
+}
+
+fn spawn_ui_subscription_forwarders(
+    client: RuntimeClient,
+    journeys: &ui::JourneyIds,
+) -> HashMap<Uuid, broadcast::Sender<JourneyUpdateEvent>> {
+    let mut bridge = HashMap::new();
+    let mut journey_ids = Vec::new();
+    if let Some(id) = journeys.lead_vocalist {
+        journey_ids.push(id);
+    }
+    if let Some(id) = journeys.lead_guitarist {
+        journey_ids.push(id);
+    }
+    if let Some(id) = journeys.rhythm_guitarist {
+        journey_ids.push(id);
+    }
+    if let Some(id) = journeys.bass {
+        journey_ids.push(id);
+    }
+    if let Some(id) = journeys.drums {
+        journey_ids.push(id);
+    }
+
+    for journey_id in journey_ids {
+        let (tx, _) = broadcast::channel(UI_SUBSCRIPTION_BRIDGE_CHANNEL_CAPACITY);
+        let forward_tx = tx.clone();
+        let subscription_client = client.clone();
+        tokio::spawn(async move {
+            let mut subscription = match subscription_client
+                .subscribe_step_updates(journey_id, None)
+                .await
+            {
+                Ok(stream) => stream,
+                Err(err) => {
+                    error!(
+                        %journey_id,
+                        error = %err,
+                        "failed starting runtime-thread UI subscription forwarder"
+                    );
+                    return;
+                }
+            };
+
+            while let Some(next) = subscription.next().await {
+                match next {
+                    Ok(update) => {
+                        let _ = forward_tx.send(update);
+                    }
+                    Err(err) => {
+                        error!(
+                            %journey_id,
+                            error = %err,
+                            "runtime-thread UI subscription forwarder received stream error"
+                        );
+                        break;
+                    }
+                }
+            }
+
+            info!(
+                %journey_id,
+                "runtime-thread UI subscription forwarder exited"
+            );
+        });
+        bridge.insert(journey_id, tx);
+    }
+
+    bridge
 }
 
 #[cfg(feature = "transport")]

@@ -1,5 +1,5 @@
 use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
-use crate::RuntimeClient;
+use crate::UiClient;
 use async_trait::async_trait;
 use futures::StreamExt;
 use iced::widget::{column, container, text, Row};
@@ -370,7 +370,7 @@ impl ShutdownFlag {
 }
 
 pub fn run_ui(
-    client: DeferredJungleClient<RuntimeClient>,
+    client: DeferredJungleClient<UiClient>,
     journeys: JourneyIds,
     shutdown: ShutdownFlag,
 ) -> iced::Result {
@@ -419,7 +419,7 @@ struct WelcomeUi {
 
 impl WelcomeUi {
     fn new(
-        client: DeferredJungleClient<RuntimeClient>,
+        client: DeferredJungleClient<UiClient>,
         journeys: JourneyIds,
         shutdown: ShutdownFlag,
     ) -> (Self, Task<Message>) {
