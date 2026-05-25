@@ -1169,7 +1169,10 @@ where
                     Ok(state) => state,
                     Err(err) => return Err((state, err)),
                 };
-                return Err((state, ExecutorError::Complete));
+                if *cursor >= flow.len() {
+                    return Err((state, ExecutorError::Complete));
+                }
+                continue;
             }
             Err((next_state, err)) => {
                 return Err((next_state, err));
@@ -1224,8 +1227,17 @@ where
                     request
                 }
                 Err((next_state, ExecutorError::Complete)) => {
-                    return Ok((
+                    let settled = settle_subflow_without_progress(
+                        &mut flow,
+                        &mut cursor,
                         next_state,
+                        &mut last_emitted,
+                    )?;
+                    if cursor < flow.len() {
+                        return Err(ExecutorError::NoPendingRequest);
+                    }
+                    return Ok((
+                        settled,
                         FlowCompletionTrace {
                             completions,
                             emitted: last_emitted,
@@ -1282,6 +1294,24 @@ where
             subflow_complete_serialized(flow, &mut cursor, state, &mut next_input, completion)?;
         state = next_state;
         next_input = emitted;
+    }
+
+    loop {
+        match subflow_next_executable_request(flow, &mut cursor, state, &mut next_input) {
+            Ok((_next_state, _request)) => {
+                // Trace replay has no extra completions to apply; seeing another external
+                // request means the trace did not include all required completions.
+                return Err(ExecutorError::NoPendingRequest);
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                state = next_state;
+                break;
+            }
+            Err((next_state, err)) => {
+                let _ = next_state;
+                return Err(err);
+            }
+        }
     }
 
     state = settle_subflow_without_progress(flow, &mut cursor, state, &mut next_input)?;

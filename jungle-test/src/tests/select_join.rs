@@ -846,6 +846,136 @@ impl Animal for LocalConditionalJoinTailAnimal {
     type Journey = LocalConditionalJoinTailFlow;
 }
 
+pub struct NestedJoinInnerLeftSpec;
+#[jungle::act]
+impl Act for NestedJoinInnerLeftSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 1)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        let _ = output.expect("nested join inner left should succeed");
+    }
+}
+
+pub struct NestedJoinInnerRightSpec;
+#[jungle::act]
+impl Act for NestedJoinInnerRightSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 2)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        let _ = output.expect("nested join inner right should succeed");
+    }
+}
+
+pub struct NestedJoinInnerMergeSpec;
+#[jungle::act]
+impl Act for NestedJoinInnerMergeSpec {
+    type Effect = Noop;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> () {}
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("nested join inner merge should succeed");
+    }
+}
+
+pub struct NestedJoinOuterRightSpec;
+#[jungle::act]
+impl Act for NestedJoinOuterRightSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 3)
+    }
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        let _ = output.expect("nested join outer right should succeed");
+    }
+}
+
+pub struct NestedJoinOuterMergeSpec;
+#[jungle::act]
+impl Act for NestedJoinOuterMergeSpec {
+    type Effect = Noop;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> () {}
+
+    fn absorb(
+        _state: &mut SelectJoinState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("nested join outer merge should succeed");
+    }
+}
+
+pub struct NestedJoinTailCaptureSpec;
+#[jungle::act]
+impl Act for NestedJoinTailCaptureSpec {
+    type Effect = TimedValueEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &SelectJoinState, _input: Self::Input) -> (u64, i32) {
+        (0, 1)
+    }
+
+    fn absorb(state: &mut SelectJoinState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("nested join tail capture should succeed");
+        state.joined_sum = state.joined_sum.saturating_add(value);
+    }
+}
+
+#[derive(Flow)]
+pub struct NestedJoinInnerFlow(
+    Join<Step<NestedJoinInnerLeftSpec>, Step<NestedJoinInnerRightSpec>>,
+    Step<NestedJoinInnerMergeSpec>,
+);
+
+#[derive(Flow)]
+pub struct NestedJoinWithInnerNoopFlow(
+    Join<NestedJoinInnerFlow, Step<NestedJoinOuterRightSpec>>,
+    Step<NestedJoinOuterMergeSpec>,
+    Step<NestedJoinTailCaptureSpec>,
+);
+
+pub struct NestedJoinWithInnerNoopAnimal;
+
+#[jungle::animal(id = 8, generation = 0)]
+impl Animal for NestedJoinWithInnerNoopAnimal {
+    type State = SelectJoinState;
+    type Seed = SelectJoinState;
+    type Journey = NestedJoinWithInnerNoopFlow;
+}
+
 #[derive(Animals)]
 struct SelectJoinLocalClientAnimals(LocalConditionalJoinTailAnimal);
 
@@ -1091,5 +1221,29 @@ async fn conditional_join_tail_does_not_complete_early_before_tail_progress_fini
         executor.state().joined_sum,
         10,
         "final joined_sum should reflect every tail step"
+    );
+}
+
+#[tokio::test]
+async fn nested_join_with_inner_join_ending_in_noop_does_not_hang() {
+    let mut executor = Executor::<NestedJoinWithInnerNoopAnimal>::new(SelectJoinState::default());
+
+    let run = tokio::time::timeout(Duration::from_secs(2), async {
+        while !executor.is_complete() {
+            let request = executor
+                .next_executable_request(())
+                .expect("nested join flow should yield a request");
+            let completion = request.run().await.expect("effect should run");
+            executor
+                .complete_serialized(completion)
+                .expect("request completion should advance nested join flow");
+        }
+    })
+    .await;
+    run.expect("nested join flow should not hang");
+    assert_eq!(
+        executor.state().joined_sum,
+        1,
+        "tail step should run after nested join completion"
     );
 }
