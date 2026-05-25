@@ -267,6 +267,39 @@ impl Animal for WhileInlineNoopThenEffectAnimal {
     type Journey = WhileInlineNoopThenEffectFlow;
 }
 
+pub struct InnerRunOnce;
+impl LoopCondition<u8> for InnerRunOnce {
+    type Arg = ();
+
+    fn should_continue(state: &u8) -> bool {
+        *state == 0
+    }
+}
+
+pub struct OuterRunOnce;
+impl LoopCondition<u8> for OuterRunOnce {
+    type Arg = ();
+
+    fn should_continue(state: &u8) -> bool {
+        *state == 0
+    }
+}
+
+#[derive(Flow)]
+pub struct NestedWhileInlineNoopThenEffectFlow(While<OuterRunOnce, NestedWhileOuterBody>);
+
+#[derive(Flow)]
+pub struct NestedWhileOuterBody(While<InnerRunOnce, WhileInlineNoopThenEffectBody>);
+
+pub struct NestedWhileInlineNoopThenEffectAnimal;
+
+#[jungle::animal(id = 92, generation = 0)]
+impl Animal for NestedWhileInlineNoopThenEffectAnimal {
+    type State = u8;
+    type Seed = u8;
+    type Journey = NestedWhileInlineNoopThenEffectFlow;
+}
+
 #[derive(Flow)]
 pub struct NestedOuterBodyTemplate(
     While<InnerContinue, Step<InnerWorkSpec>>,
@@ -506,4 +539,47 @@ fn while_context_executable_inline_noop_then_effect_keeps_request_completion_han
     let _emitted = executor
         .complete_serialized(completion.expect("effect should run"))
         .expect("completing requested effect should not fail with no pending request");
+}
+
+#[test]
+fn nested_while_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
+    let mut executor = Executor::<NestedWhileInlineNoopThenEffectAnimal>::new(0);
+    let request = executor
+        .next_executable_request(())
+        .expect("nested while body should advance from inline noop to effect request");
+    assert_eq!(
+        request.effect_type(),
+        core::any::type_name::<EchoBoolEffect>()
+    );
+    let request_input: bool = request
+        .deserialize_request()
+        .expect("request input should deserialize as bool");
+    assert!(!request_input);
+
+    let completion = futures::executor::block_on(request.run());
+    let _emitted = executor
+        .complete_serialized(completion.expect("effect should run"))
+        .expect("completing nested while requested effect should not fail with no pending request");
+}
+
+#[test]
+fn nested_while_context_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
+    let mut executor =
+        ContextExecutor::<(), NestedWhileInlineNoopThenEffectAnimal>::new(Arc::new(()), 0);
+    let request = executor
+        .next_executable_request(())
+        .expect("nested context while body should advance from inline noop to effect request");
+    assert_eq!(
+        request.effect_type(),
+        core::any::type_name::<EchoBoolEffect>()
+    );
+    let request_input: bool = request
+        .deserialize_request()
+        .expect("request input should deserialize as bool");
+    assert!(!request_input);
+
+    let completion = futures::executor::block_on(request.run());
+    let _emitted = executor
+        .complete_serialized(completion.expect("effect should run"))
+        .expect("completing nested context while requested effect should not fail with no pending request");
 }
