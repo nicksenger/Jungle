@@ -88,6 +88,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.playback_delay_ms,
             args.event_lead_time_ms,
             args.enabled_animals,
+            #[cfg(feature = "transport")]
+            args.server_addr,
         );
     }
     run_with_ui(
@@ -99,6 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.playback_delay_ms,
         args.event_lead_time_ms,
         args.enabled_animals,
+        #[cfg(feature = "transport")]
+        args.server_addr,
     )
 }
 
@@ -112,6 +116,8 @@ struct CliArgs {
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    #[cfg(feature = "transport")]
+    server_addr: Option<SocketAddr>,
 }
 
 #[derive(Debug, Parser)]
@@ -162,6 +168,10 @@ struct WelcomeCliArgs {
     /// Comma-delimited or repeatable list of enabled animals.
     #[clap(long = "animals", value_enum, value_delimiter = ',')]
     animals: Vec<SelectedAnimalCli>,
+    /// Connect to an already-running jungle transport server instead of starting one locally.
+    #[cfg(feature = "transport")]
+    #[clap(long = "server-addr", value_parser = parse_server_addr_value)]
+    server_addr: Option<SocketAddr>,
 }
 
 fn run_with_ui(
@@ -173,6 +183,7 @@ fn run_with_ui(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Instant>(1);
@@ -188,6 +199,8 @@ fn run_with_ui(
             playback_delay_ms,
             event_lead_time_ms,
             enabled_animals,
+            #[cfg(feature = "transport")]
+            server_addr,
             false,
             shutdown_for_runtime,
             setup_tx,
@@ -236,6 +249,7 @@ fn run_headless(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
         bpm,
@@ -262,6 +276,8 @@ fn run_headless(
             playback_delay_ms,
             event_lead_time_ms,
             enabled_animals,
+            #[cfg(feature = "transport")]
+            server_addr,
             true,
             shutdown_for_runtime,
             setup_tx,
@@ -513,6 +529,7 @@ fn run_runtime_thread(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
     enable_headless_lag_probe: bool,
     ui_shutdown: ui::ShutdownFlag,
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
@@ -524,7 +541,11 @@ fn run_runtime_thread(
     })?;
 
     let setup = runtime.block_on(async {
-        let (client, mut keep_alive) = setup_runtime_client().await?;
+        let (client, mut keep_alive) = setup_runtime_client(
+            #[cfg(feature = "transport")]
+            server_addr,
+        )
+        .await?;
         let (audio_handle, audio_engine, stub_audio) = if mute {
             info!("starting welcome runtime in muted mode using audio stub");
             let (audio_handle, stub_audio) = AudioHandle::stub();
@@ -874,10 +895,12 @@ fn reserve_local_addr() -> SocketAddr {
         .expect("temporary udp socket should expose local address")
 }
 
-async fn setup_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive), String> {
+async fn setup_runtime_client(
+    #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
+) -> Result<(RuntimeClient, RuntimeKeepAlive), String> {
     #[cfg(feature = "transport")]
     {
-        setup_transport_runtime_client().await
+        setup_transport_runtime_client(server_addr).await
     }
     #[cfg(not(feature = "transport"))]
     {
@@ -957,8 +980,17 @@ async fn setup_local_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive
 }
 
 #[cfg(feature = "transport")]
-async fn setup_transport_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive), String> {
+async fn setup_transport_runtime_client(
+    server_addr: Option<SocketAddr>,
+) -> Result<(RuntimeClient, RuntimeKeepAlive), String> {
     let mut keep_alive = RuntimeKeepAlive::default();
+
+    if let Some(remote_addr) = server_addr {
+        info!(%remote_addr, "connecting welcome runtime to pre-existing transport server");
+        let client = connect_transport_client_with_retry(remote_addr).await?;
+        return Ok((client, keep_alive));
+    }
+
     let listen_addr = reserve_local_addr();
 
     #[cfg(feature = "postgres")]
@@ -1088,7 +1120,16 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         playback_delay_ms: parsed.playback_delay_ms,
         event_lead_time_ms: parsed.event_lead_time_ms,
         enabled_animals,
+        #[cfg(feature = "transport")]
+        server_addr: parsed.server_addr,
     })
+}
+
+#[cfg(feature = "transport")]
+fn parse_server_addr_value(value: &str) -> Result<SocketAddr, String> {
+    value
+        .parse::<SocketAddr>()
+        .map_err(|_| format!("invalid server address argument: {value}"))
 }
 
 fn parse_bpm_value(value: &str) -> Result<f32, String> {
