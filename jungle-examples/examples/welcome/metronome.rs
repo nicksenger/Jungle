@@ -15,6 +15,7 @@ const LATE_MODE_EXIT_THRESHOLD_MULTIPLIER: f32 = 0.75;
 const HARD_DROP_THRESHOLD_MULTIPLIER: f32 = 2.5;
 const RHYTHM_TIMING_LOG_INTERVAL: usize = 512;
 const DROP_NOTE_LOG_INTERVAL: usize = 128;
+const RHYTHM_TIMING_SCHEDULE_DRIFT_WARN_MS: u128 = 200;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BeatEvent {
@@ -25,6 +26,10 @@ pub struct BeatEvent {
 pub struct RhythmTiming {
     note_duration: Duration,
     should_play: bool,
+    note_window_target_at: Instant,
+    cycle_end_target_at: Instant,
+    lateness: Duration,
+    late_note_drop_threshold: Duration,
     pre_play_sleep_duration: Duration,
     post_cycle_sleep_duration: Duration,
 }
@@ -36,6 +41,30 @@ impl RhythmTiming {
 
     pub fn should_play(&self) -> bool {
         self.should_play
+    }
+
+    pub fn note_window_target_at(&self) -> Instant {
+        self.note_window_target_at
+    }
+
+    pub fn cycle_end_target_at(&self) -> Instant {
+        self.cycle_end_target_at
+    }
+
+    pub fn lateness(&self) -> Duration {
+        self.lateness
+    }
+
+    pub fn late_note_drop_threshold(&self) -> Duration {
+        self.late_note_drop_threshold
+    }
+
+    pub fn expected_pre_play_sleep_duration(&self) -> Duration {
+        self.pre_play_sleep_duration
+    }
+
+    pub fn expected_post_cycle_sleep_duration(&self) -> Duration {
+        self.post_cycle_sleep_duration
     }
 
     pub async fn sleep_until_note_window(&self) {
@@ -229,11 +258,13 @@ impl Metronome {
         let cycle_end = lane_target_start + rest_duration;
         let post_cycle_anchor = now + pre_play_sleep_duration + note_duration;
         let post_cycle_sleep_duration = cycle_end.saturating_duration_since(post_cycle_anchor);
+        let schedule_drift = now.saturating_duration_since(lane_target_start);
         if timing_call % RHYTHM_TIMING_LOG_INTERVAL == 0 {
             debug!(
                 lane_id,
                 timing_call,
                 lateness_ms = lateness.as_millis(),
+                schedule_drift_ms = schedule_drift.as_millis(),
                 drop_threshold_ms = late_note_drop_threshold.as_millis(),
                 should_play,
                 pre_play_sleep_ms = pre_play_sleep_duration.as_millis(),
@@ -241,9 +272,24 @@ impl Metronome {
                 "metronome rhythm timing heartbeat"
             );
         }
+        if schedule_drift.as_millis() > RHYTHM_TIMING_SCHEDULE_DRIFT_WARN_MS {
+            warn!(
+                lane_id,
+                timing_call,
+                schedule_drift_ms = schedule_drift.as_millis(),
+                lateness_ms = lateness.as_millis(),
+                drop_threshold_ms = late_note_drop_threshold.as_millis(),
+                should_play,
+                "metronome rhythm scheduling drift is high"
+            );
+        }
         RhythmTiming {
             note_duration,
             should_play,
+            note_window_target_at: lane_target_start,
+            cycle_end_target_at: cycle_end,
+            lateness,
+            late_note_drop_threshold,
             pre_play_sleep_duration,
             post_cycle_sleep_duration,
         }

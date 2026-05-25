@@ -25,7 +25,7 @@ use jungle_sdk::server::ServerBuilder;
 use jungle_sdk::LocalClient;
 use jungle_sdk::{ExecutorError, JourneyUpdateEvent, JungleClient};
 use tokio::sync::broadcast;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 use uuid::Uuid;
 
@@ -49,6 +49,9 @@ const DEFAULT_PLAYBACK_DELAY_MS: u64 = 1_000;
 const DEFAULT_EVENT_LEAD_TIME_MS: u64 = 128;
 const UI_SUBSCRIPTION_BRIDGE_CHANNEL_CAPACITY: usize = 1024;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
+const RUNTIME_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
+const RUNTIME_HEARTBEAT_STALL_WARN_THRESHOLD: Duration = Duration::from_millis(250);
+const RUNTIME_HEARTBEAT_LOG_INTERVAL: u64 = 300;
 
 #[cfg(feature = "transport")]
 pub(crate) type RuntimeClient = jungle_sdk::Client<TheJungle>;
@@ -63,6 +66,7 @@ struct RuntimeKeepAlive {
     audio_engine: Option<AudioEngine>,
     stub_audio: Option<StubAudioKeepAlive>,
     server_task: Option<tokio::task::JoinHandle<()>>,
+    runtime_probe_task: Option<tokio::task::JoinHandle<()>>,
     #[cfg(feature = "postgres")]
     postgres_container: Option<PostgresContainer>,
 }
@@ -70,6 +74,9 @@ struct RuntimeKeepAlive {
 impl RuntimeKeepAlive {
     fn shutdown(&mut self) {
         if let Some(task) = self.server_task.take() {
+            task.abort();
+        }
+        if let Some(task) = self.runtime_probe_task.take() {
             task.abort();
         }
     }
@@ -546,6 +553,7 @@ fn run_runtime_thread(
             server_addr,
         )
         .await?;
+        keep_alive.runtime_probe_task = Some(spawn_runtime_heartbeat_probe());
         let (audio_handle, audio_engine, stub_audio) = if mute {
             info!("starting welcome runtime in muted mode using audio stub");
             let (audio_handle, stub_audio) = AudioHandle::stub();
@@ -1097,6 +1105,37 @@ async fn play_audio_and_schedule_shutdown(
     }
     ui_shutdown.request_shutdown();
     Ok(())
+}
+
+fn spawn_runtime_heartbeat_probe() -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(RUNTIME_HEARTBEAT_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut tick_count = 0_u64;
+        let mut last_tick_at = Instant::now();
+        loop {
+            interval.tick().await;
+            let now = Instant::now();
+            let gap = now.saturating_duration_since(last_tick_at);
+            last_tick_at = now;
+            tick_count = tick_count.saturating_add(1);
+            if gap > RUNTIME_HEARTBEAT_STALL_WARN_THRESHOLD {
+                warn!(
+                    tick_count,
+                    heartbeat_gap_ms = gap.as_millis(),
+                    heartbeat_interval_ms = RUNTIME_HEARTBEAT_INTERVAL.as_millis(),
+                    "welcome runtime heartbeat observed executor stall"
+                );
+            } else if tick_count % RUNTIME_HEARTBEAT_LOG_INTERVAL == 0 {
+                debug!(
+                    tick_count,
+                    heartbeat_gap_ms = gap.as_millis(),
+                    heartbeat_interval_ms = RUNTIME_HEARTBEAT_INTERVAL.as_millis(),
+                    "welcome runtime heartbeat"
+                );
+            }
+        }
+    })
 }
 
 fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {

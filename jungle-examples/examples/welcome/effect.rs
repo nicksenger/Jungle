@@ -16,6 +16,8 @@ const RHYTHM_PAN: f32 = 0.5;
 const RHYTHM_VELOCITY: f32 = 37.0 / 127.0;
 const EFFECT_CYCLE_LOG_INTERVAL: usize = 512;
 const EFFECT_SLOW_CYCLE_WARN_THRESHOLD: Duration = Duration::from_millis(150);
+const EFFECT_SLEEP_OVERSHOOT_WARN_THRESHOLD: Duration = Duration::from_millis(40);
+const EFFECT_WAKE_DRIFT_WARN_THRESHOLD: Duration = Duration::from_millis(200);
 
 static EFFECT_CYCLE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static EFFECT_SKIPPED_NOTES: AtomicUsize = AtomicUsize::new(0);
@@ -507,14 +509,38 @@ async fn measure_note_window_sleep(
     lane_id: u32,
     timing: &crate::metronome::RhythmTiming,
 ) -> Duration {
+    let expected_sleep = timing.expected_pre_play_sleep_duration();
     let started_at = Instant::now();
     timing.sleep_until_note_window().await;
-    let elapsed = started_at.elapsed();
+    let woke_at = Instant::now();
+    let elapsed = woke_at.saturating_duration_since(started_at);
+    let overshoot = elapsed.saturating_sub(expected_sleep);
+    let note_window_target_at: Instant = timing.note_window_target_at().into();
+    let drift_from_target = woke_at.saturating_duration_since(note_window_target_at);
     trace!(
         lane_id,
+        expected_pre_play_sleep_ms = expected_sleep.as_millis(),
         pre_play_sleep_elapsed_ms = elapsed.as_millis(),
+        pre_play_sleep_overshoot_ms = overshoot.as_millis(),
+        note_window_drift_ms = drift_from_target.as_millis(),
+        metronome_lateness_ms = timing.lateness().as_millis(),
+        metronome_drop_threshold_ms = timing.late_note_drop_threshold().as_millis(),
         "effect note window sleep complete"
     );
+    if overshoot > EFFECT_SLEEP_OVERSHOOT_WARN_THRESHOLD
+        || drift_from_target > EFFECT_WAKE_DRIFT_WARN_THRESHOLD
+    {
+        warn!(
+            lane_id,
+            expected_pre_play_sleep_ms = expected_sleep.as_millis(),
+            pre_play_sleep_elapsed_ms = elapsed.as_millis(),
+            pre_play_sleep_overshoot_ms = overshoot.as_millis(),
+            note_window_drift_ms = drift_from_target.as_millis(),
+            metronome_lateness_ms = timing.lateness().as_millis(),
+            metronome_drop_threshold_ms = timing.late_note_drop_threshold().as_millis(),
+            "effect note window wake drift exceeded threshold"
+        );
+    }
     elapsed
 }
 
@@ -522,14 +548,34 @@ async fn measure_next_cycle_sleep(
     lane_id: u32,
     timing: &crate::metronome::RhythmTiming,
 ) -> Duration {
+    let expected_sleep = timing.expected_post_cycle_sleep_duration();
     let started_at = Instant::now();
     timing.sleep_until_next_cycle().await;
-    let elapsed = started_at.elapsed();
+    let woke_at = Instant::now();
+    let elapsed = woke_at.saturating_duration_since(started_at);
+    let overshoot = elapsed.saturating_sub(expected_sleep);
+    let cycle_end_target_at: Instant = timing.cycle_end_target_at().into();
+    let drift_from_cycle_end = woke_at.saturating_duration_since(cycle_end_target_at);
     trace!(
         lane_id,
+        expected_post_cycle_sleep_ms = expected_sleep.as_millis(),
         post_cycle_sleep_elapsed_ms = elapsed.as_millis(),
+        post_cycle_sleep_overshoot_ms = overshoot.as_millis(),
+        cycle_end_drift_ms = drift_from_cycle_end.as_millis(),
         "effect post-cycle sleep complete"
     );
+    if overshoot > EFFECT_SLEEP_OVERSHOOT_WARN_THRESHOLD
+        || drift_from_cycle_end > EFFECT_WAKE_DRIFT_WARN_THRESHOLD
+    {
+        warn!(
+            lane_id,
+            expected_post_cycle_sleep_ms = expected_sleep.as_millis(),
+            post_cycle_sleep_elapsed_ms = elapsed.as_millis(),
+            post_cycle_sleep_overshoot_ms = overshoot.as_millis(),
+            cycle_end_drift_ms = drift_from_cycle_end.as_millis(),
+            "effect post-cycle wake drift exceeded threshold"
+        );
+    }
     elapsed
 }
 
