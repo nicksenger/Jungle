@@ -14,6 +14,7 @@ use std::collections::BTreeSet;
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
+use clap::{Parser, ValueEnum};
 use jungle_sdk::core::JungleWorker;
 #[cfg(feature = "transport")]
 use jungle_sdk::server::ServerBuilder;
@@ -107,6 +108,59 @@ struct CliArgs {
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+}
+
+#[derive(Debug, Parser)]
+#[clap(name = "welcome")]
+struct WelcomeCliArgs {
+    /// Tempo in BPM.
+    #[clap(long = "bpm", value_parser = parse_bpm_value, default_value_t = DEFAULT_BPM)]
+    bpm: f32,
+    /// Legacy positional BPM argument retained for compatibility.
+    #[clap(value_name = "BPM", value_parser = parse_bpm_value)]
+    legacy_bpm: Option<f32>,
+    /// Run without the viewer UI and exit after playback.
+    #[clap(long = "headless")]
+    headless: bool,
+    /// Disable live audio output and run with a stub audio clock.
+    #[clap(long = "mute")]
+    mute: bool,
+    /// Number of runtime workers to spawn.
+    #[clap(
+        long = "workers",
+        default_value_t = DEFAULT_WORKERS,
+        value_parser = parse_workers_value
+    )]
+    workers: usize,
+    /// Number of synth workers to spawn.
+    #[clap(
+        long = "synth-workers",
+        default_value_t = DEFAULT_SYNTH_WORKERS,
+        value_parser = parse_synth_workers_value
+    )]
+    synth_workers: usize,
+    /// Queue capacity per synth worker.
+    #[clap(
+        long = "synth-queue-size",
+        default_value_t = DEFAULT_SYNTH_QUEUE_SIZE,
+        value_parser = parse_synth_queue_size_value
+    )]
+    synth_queue_size: usize,
+    /// Playback delay in milliseconds.
+    #[clap(
+        long = "playback-delay-ms",
+        default_value_t = DEFAULT_PLAYBACK_DELAY_MS
+    )]
+    playback_delay_ms: u64,
+    /// Event lead time in milliseconds.
+    #[clap(
+        long = "event-lead-time",
+        default_value_t = DEFAULT_EVENT_LEAD_TIME_MS
+    )]
+    event_lead_time_ms: u64,
+    /// Comma-delimited or repeatable list of enabled animals.
+    #[clap(long = "animals", value_enum, value_delimiter = ',')]
+    animals: Vec<SelectedAnimalCli>,
 }
 
 fn run_with_ui(
@@ -680,191 +734,68 @@ async fn play_audio_and_schedule_shutdown(
 }
 
 fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
-    let mut bpm = DEFAULT_BPM;
-    let mut headless = false;
-    let mut mute = false;
-    let mut workers = DEFAULT_WORKERS;
-    let mut synth_workers = DEFAULT_SYNTH_WORKERS;
-    let mut synth_queue_size = DEFAULT_SYNTH_QUEUE_SIZE;
-    let mut playback_delay_ms = DEFAULT_PLAYBACK_DELAY_MS;
-    let mut event_lead_time_ms = DEFAULT_EVENT_LEAD_TIME_MS;
-    let mut enabled_animals = SelectedAnimal::all();
-    let mut animals_flag_seen = false;
-
-    while let Some(arg) = args.next() {
-        if arg == "--headless" {
-            headless = true;
-            continue;
-        }
-
-        if arg == "--mute" {
-            mute = true;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--animals=") {
-            parse_animals_list(value, &mut enabled_animals, &mut animals_flag_seen)?;
-            continue;
-        }
-
-        if arg == "--animals" {
-            let value = args
-                .next()
-                .ok_or_else(|| "--animals requires a value".to_string())?;
-            parse_animals_list(&value, &mut enabled_animals, &mut animals_flag_seen)?;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--bpm=") {
-            bpm = parse_bpm_value(value)?;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--workers=") {
-            workers = parse_workers_value(value)?;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--playback-delay-ms=") {
-            playback_delay_ms = parse_playback_delay_ms_value(value)?;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--event-lead-time=") {
-            event_lead_time_ms = parse_event_lead_time_ms_value(value)?;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--synth-workers=") {
-            synth_workers = parse_synth_workers_value(value)?;
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--synth-queue-size=") {
-            synth_queue_size = parse_synth_queue_size_value(value)?;
-            continue;
-        }
-
-        if arg == "--bpm" {
-            let value = args
-                .next()
-                .ok_or_else(|| "--bpm requires a value".to_string())?;
-            bpm = parse_bpm_value(&value)?;
-            continue;
-        }
-
-        if arg == "--workers" {
-            let value = args
-                .next()
-                .ok_or_else(|| "--workers requires a value".to_string())?;
-            workers = parse_workers_value(&value)?;
-            continue;
-        }
-
-        if arg == "--playback-delay-ms" {
-            let value = args
-                .next()
-                .ok_or_else(|| "--playback-delay-ms requires a value".to_string())?;
-            playback_delay_ms = parse_playback_delay_ms_value(&value)?;
-            continue;
-        }
-
-        if arg == "--event-lead-time" {
-            let value = args
-                .next()
-                .ok_or_else(|| "--event-lead-time requires a value".to_string())?;
-            event_lead_time_ms = parse_event_lead_time_ms_value(&value)?;
-            continue;
-        }
-
-        if arg == "--synth-workers" {
-            let value = args
-                .next()
-                .ok_or_else(|| "--synth-workers requires a value".to_string())?;
-            synth_workers = parse_synth_workers_value(&value)?;
-            continue;
-        }
-
-        if arg == "--synth-queue-size" {
-            let value = args
-                .next()
-                .ok_or_else(|| "--synth-queue-size requires a value".to_string())?;
-            synth_queue_size = parse_synth_queue_size_value(&value)?;
-            continue;
-        }
-
-        if arg.starts_with("--") {
-            return Err(format!("Unknown argument: {arg}").into());
-        }
-
-        // Keep supporting the legacy positional form for compatibility.
-        bpm = parse_bpm_value(&arg)?;
-    }
-
+    let parsed = WelcomeCliArgs::parse();
+    let bpm = parsed.legacy_bpm.unwrap_or(parsed.bpm);
+    let enabled_animals = if parsed.animals.is_empty() {
+        SelectedAnimal::all()
+    } else {
+        parsed
+            .animals
+            .into_iter()
+            .map(SelectedAnimal::from)
+            .collect::<BTreeSet<_>>()
+    };
     Ok(CliArgs {
         bpm,
-        headless,
-        mute,
-        workers,
-        synth_workers,
-        synth_queue_size,
-        playback_delay_ms,
-        event_lead_time_ms,
+        headless: parsed.headless,
+        mute: parsed.mute,
+        workers: parsed.workers,
+        synth_workers: parsed.synth_workers,
+        synth_queue_size: parsed.synth_queue_size,
+        playback_delay_ms: parsed.playback_delay_ms,
+        event_lead_time_ms: parsed.event_lead_time_ms,
         enabled_animals,
     })
 }
 
-fn parse_bpm_value(value: &str) -> Result<f32, Box<dyn std::error::Error>> {
+fn parse_bpm_value(value: &str) -> Result<f32, String> {
     let bpm = value
         .parse::<f32>()
-        .map_err(|_| format!("Invalid BPM argument: {value}"))?;
+        .map_err(|_| format!("invalid BPM argument: {value}"))?;
     if !bpm.is_finite() || bpm <= 0.0 {
-        return Err(format!("BPM must be a positive finite number, got: {value}").into());
+        return Err(format!(
+            "BPM must be a positive finite number, got: {value}"
+        ));
     }
     Ok(bpm)
 }
 
-fn parse_workers_value(value: &str) -> Result<usize, Box<dyn std::error::Error>> {
+fn parse_workers_value(value: &str) -> Result<usize, String> {
     let workers = value
         .parse::<usize>()
-        .map_err(|_| format!("Invalid workers argument: {value}"))?;
+        .map_err(|_| format!("invalid workers argument: {value}"))?;
     if workers == 0 {
-        return Err("workers must be at least 1".into());
+        return Err("workers must be at least 1".to_string());
     }
     Ok(workers)
 }
 
-fn parse_playback_delay_ms_value(value: &str) -> Result<u64, Box<dyn std::error::Error>> {
-    let playback_delay_ms = value
-        .parse::<u64>()
-        .map_err(|_| format!("Invalid playback delay argument: {value}"))?;
-    Ok(playback_delay_ms)
-}
-
-fn parse_event_lead_time_ms_value(value: &str) -> Result<u64, Box<dyn std::error::Error>> {
-    let event_lead_time_ms = value
-        .parse::<u64>()
-        .map_err(|_| format!("Invalid event lead time argument: {value}"))?;
-    Ok(event_lead_time_ms)
-}
-
-fn parse_synth_workers_value(value: &str) -> Result<usize, Box<dyn std::error::Error>> {
+fn parse_synth_workers_value(value: &str) -> Result<usize, String> {
     let synth_workers = value
         .parse::<usize>()
-        .map_err(|_| format!("Invalid synth workers argument: {value}"))?;
+        .map_err(|_| format!("invalid synth workers argument: {value}"))?;
     if synth_workers == 0 {
-        return Err("synth workers must be at least 1".into());
+        return Err("synth workers must be at least 1".to_string());
     }
     Ok(synth_workers)
 }
 
-fn parse_synth_queue_size_value(value: &str) -> Result<usize, Box<dyn std::error::Error>> {
+fn parse_synth_queue_size_value(value: &str) -> Result<usize, String> {
     let synth_queue_size = value
         .parse::<usize>()
-        .map_err(|_| format!("Invalid synth queue size argument: {value}"))?;
+        .map_err(|_| format!("invalid synth queue size argument: {value}"))?;
     if synth_queue_size == 0 {
-        return Err("synth queue size must be at least 1".into());
+        return Err("synth queue size must be at least 1".to_string());
     }
     Ok(synth_queue_size)
 }
@@ -891,17 +822,6 @@ impl SelectedAnimal {
         .collect()
     }
 
-    fn parse(value: &str) -> Option<Self> {
-        match value {
-            "lead-vocalist" => Some(Self::LeadVocalist),
-            "lead-guitarist" => Some(Self::LeadGuitarist),
-            "rhythm-guitarist" => Some(Self::RhythmGuitarist),
-            "bassist" | "bass" => Some(Self::Bassist),
-            "drummer" | "drums" => Some(Self::Drummer),
-            _ => None,
-        }
-    }
-
     fn as_cli_name(self) -> &'static str {
         match self {
             Self::LeadVocalist => "lead-vocalist",
@@ -913,40 +833,26 @@ impl SelectedAnimal {
     }
 }
 
-fn parse_animals_list(
-    value: &str,
-    enabled_animals: &mut BTreeSet<SelectedAnimal>,
-    animals_flag_seen: &mut bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if value.is_empty() {
-        return Err("--animals requires a comma-delimited list of animals".into());
-    }
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum SelectedAnimalCli {
+    LeadVocalist,
+    LeadGuitarist,
+    RhythmGuitarist,
+    #[value(alias = "bass")]
+    Bassist,
+    #[value(alias = "drums")]
+    Drummer,
+}
 
-    if !*animals_flag_seen {
-        enabled_animals.clear();
-        *animals_flag_seen = true;
-    }
-
-    for token in value.split(',') {
-        if token.is_empty() {
-            return Err(
-                format!("invalid --animals list '{value}': contains an empty entry").into(),
-            );
+impl From<SelectedAnimalCli> for SelectedAnimal {
+    fn from(value: SelectedAnimalCli) -> Self {
+        match value {
+            SelectedAnimalCli::LeadVocalist => Self::LeadVocalist,
+            SelectedAnimalCli::LeadGuitarist => Self::LeadGuitarist,
+            SelectedAnimalCli::RhythmGuitarist => Self::RhythmGuitarist,
+            SelectedAnimalCli::Bassist => Self::Bassist,
+            SelectedAnimalCli::Drummer => Self::Drummer,
         }
-        if token.chars().any(|ch| ch.is_ascii_uppercase()) {
-            return Err(format!(
-                "invalid --animals entry '{token}': expected lowercase animal names"
-            )
-            .into());
-        }
-        let Some(animal) = SelectedAnimal::parse(token) else {
-            return Err(format!(
-                "unknown --animals entry '{token}'; supported values: lead-vocalist, lead-guitarist, rhythm-guitarist, bassist, drummer"
-            )
-            .into());
-        };
-        enabled_animals.insert(animal);
     }
-
-    Ok(())
 }

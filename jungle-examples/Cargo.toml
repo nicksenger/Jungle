@@ -27,6 +27,7 @@ uuid = { workspace = true }
 testcontainers = { version = "0.23", optional = true }
 testcontainers-modules = { version = "0.11", features = ["postgres"], optional = true }
 async-trait = { workspace = true }
+clap = { version = "4.6", features = ["derive"] }
 
 [[example]]
 name = "welcome"
