@@ -11,8 +11,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-const DEFERRED_EVENT_LEAD_TIME_MS: i64 = 200;
-
 #[derive(Debug, Clone, Copy)]
 pub struct JourneyIds {
     pub lead_vocalist: Option<Uuid>,
@@ -26,13 +24,15 @@ pub struct JourneyIds {
 pub struct DeferredJungleClient<C> {
     inner: C,
     playback_delay: Duration,
+    event_lead_time: Duration,
 }
 
 impl<C> DeferredJungleClient<C> {
-    pub fn new(inner: C, playback_delay: Duration) -> Self {
+    pub fn new(inner: C, playback_delay: Duration, event_lead_time: Duration) -> Self {
         Self {
             inner,
             playback_delay,
+            event_lead_time,
         }
     }
 }
@@ -73,13 +73,14 @@ where
             .subscribe_step_updates(journey_id, after_sequence_id)
             .await?;
         let playback_delay = self.playback_delay;
+        let event_lead_time = self.event_lead_time;
         let stream = futures::stream::unfold(subscription, move |mut subscription| async move {
             let next = subscription.next().await?;
             if let Ok(update) = &next {
                 let target_unix_ms = update
                     .event_unix_ms
                     .saturating_add(i64::try_from(playback_delay.as_millis()).unwrap_or(i64::MAX))
-                    .saturating_sub(DEFERRED_EVENT_LEAD_TIME_MS);
+                    .saturating_sub(i64::try_from(event_lead_time.as_millis()).unwrap_or(i64::MAX));
                 let now_unix_ms = current_unix_ms();
                 if target_unix_ms > now_unix_ms {
                     let wait_ms = u64::try_from(target_unix_ms - now_unix_ms).unwrap_or(u64::MAX);

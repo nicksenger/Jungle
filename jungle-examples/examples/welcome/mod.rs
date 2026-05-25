@@ -42,6 +42,7 @@ const DEFAULT_WORKERS: usize = 2;
 const DEFAULT_SYNTH_WORKERS: usize = 9;
 const DEFAULT_SYNTH_QUEUE_SIZE: usize = 128;
 const DEFAULT_PLAYBACK_DELAY_MS: u64 = 1_000;
+const DEFAULT_EVENT_LEAD_TIME_MS: u64 = 200;
 const UI_MIN_UPTIME_BEFORE_SHUTDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(feature = "transport")]
@@ -80,6 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.synth_workers,
             args.synth_queue_size,
             args.playback_delay_ms,
+            args.event_lead_time_ms,
             args.enabled_animals,
         );
     }
@@ -90,6 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.synth_workers,
         args.synth_queue_size,
         args.playback_delay_ms,
+        args.event_lead_time_ms,
         args.enabled_animals,
     )
 }
@@ -102,6 +105,7 @@ struct CliArgs {
     synth_workers: usize,
     synth_queue_size: usize,
     playback_delay_ms: u64,
+    event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 }
 
@@ -112,6 +116,7 @@ fn run_with_ui(
     synth_workers: usize,
     synth_queue_size: usize,
     playback_delay_ms: u64,
+    event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -126,6 +131,7 @@ fn run_with_ui(
             synth_workers,
             synth_queue_size,
             playback_delay_ms,
+            event_lead_time_ms,
             enabled_animals,
             shutdown_for_runtime,
             setup_tx,
@@ -172,6 +178,7 @@ fn run_headless(
     synth_workers: usize,
     synth_queue_size: usize,
     playback_delay_ms: u64,
+    event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
@@ -181,6 +188,7 @@ fn run_headless(
         synth_workers,
         synth_queue_size,
         playback_delay_ms,
+        event_lead_time_ms,
         "running welcome example in headless mode"
     );
 
@@ -196,6 +204,7 @@ fn run_headless(
             synth_workers,
             synth_queue_size,
             playback_delay_ms,
+            event_lead_time_ms,
             enabled_animals,
             shutdown_for_runtime,
             setup_tx,
@@ -259,6 +268,7 @@ fn run_runtime_thread(
     synth_workers: usize,
     synth_queue_size: usize,
     playback_delay_ms: u64,
+    event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
     ui_shutdown: ui::ShutdownFlag,
     setup_tx: std::sync::mpsc::SyncSender<Result<UiSetup, String>>,
@@ -421,8 +431,11 @@ fn run_runtime_thread(
 
         keep_alive.audio_engine = audio_engine;
         keep_alive.stub_audio = stub_audio;
-        let ui_client =
-            ui::DeferredJungleClient::new(client.clone(), Duration::from_millis(playback_delay_ms));
+        let ui_client = ui::DeferredJungleClient::new(
+            client.clone(),
+            Duration::from_millis(playback_delay_ms),
+            Duration::from_millis(event_lead_time_ms),
+        );
         Ok::<(UiSetup, RuntimeKeepAlive), String>((
             UiSetup {
                 client: ui_client,
@@ -675,6 +688,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let mut synth_workers = DEFAULT_SYNTH_WORKERS;
     let mut synth_queue_size = DEFAULT_SYNTH_QUEUE_SIZE;
     let mut playback_delay_ms = DEFAULT_PLAYBACK_DELAY_MS;
+    let mut event_lead_time_ms = DEFAULT_EVENT_LEAD_TIME_MS;
     let mut enabled_animals = SelectedAnimal::all();
     let mut animals_flag_seen = false;
 
@@ -717,6 +731,11 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             continue;
         }
 
+        if let Some(value) = arg.strip_prefix("--event-lead-time=") {
+            event_lead_time_ms = parse_event_lead_time_ms_value(value)?;
+            continue;
+        }
+
         if let Some(value) = arg.strip_prefix("--synth-workers=") {
             synth_workers = parse_synth_workers_value(value)?;
             continue;
@@ -748,6 +767,14 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
                 .next()
                 .ok_or_else(|| "--playback-delay-ms requires a value".to_string())?;
             playback_delay_ms = parse_playback_delay_ms_value(&value)?;
+            continue;
+        }
+
+        if arg == "--event-lead-time" {
+            let value = args
+                .next()
+                .ok_or_else(|| "--event-lead-time requires a value".to_string())?;
+            event_lead_time_ms = parse_event_lead_time_ms_value(&value)?;
             continue;
         }
 
@@ -783,6 +810,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         synth_workers,
         synth_queue_size,
         playback_delay_ms,
+        event_lead_time_ms,
         enabled_animals,
     })
 }
@@ -812,6 +840,13 @@ fn parse_playback_delay_ms_value(value: &str) -> Result<u64, Box<dyn std::error:
         .parse::<u64>()
         .map_err(|_| format!("Invalid playback delay argument: {value}"))?;
     Ok(playback_delay_ms)
+}
+
+fn parse_event_lead_time_ms_value(value: &str) -> Result<u64, Box<dyn std::error::Error>> {
+    let event_lead_time_ms = value
+        .parse::<u64>()
+        .map_err(|_| format!("Invalid event lead time argument: {value}"))?;
+    Ok(event_lead_time_ms)
 }
 
 fn parse_synth_workers_value(value: &str) -> Result<usize, Box<dyn std::error::Error>> {
