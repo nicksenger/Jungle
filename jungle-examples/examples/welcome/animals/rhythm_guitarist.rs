@@ -321,7 +321,7 @@ impl LoopCondition<RhythmGuitaristState> for RhythmRiffLoopRemaining {
 pub struct UseRhythmTurnaroundSection;
 impl Condition<(RhythmGuitaristState, ())> for UseRhythmTurnaroundSection {
     fn choose((state, _): &(RhythmGuitaristState, ())) -> bool {
-        state.riff_loops_remaining <= 1
+        state.riff_loops_remaining <= 0
     }
 }
 
