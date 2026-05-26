@@ -27,8 +27,9 @@ type HeartbeatJourneyLeaseHandler =
 type ClaimOwnerWakeHandler = Arc<dyn Fn(Uuid) -> Result<Option<OwnerWake>> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
-type AppendHistoryHandler = Arc<dyn Fn(RunnerOut) -> Result<()> + Send + Sync + 'static>;
+type AppendHistoryHandler = Arc<dyn Fn(RunnerOut, i64) -> Result<()> + Send + Sync + 'static>;
 type ScheduleSleepTimerHandler = Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
+type NextTimerDueAtHandler = Arc<dyn Fn() -> Result<Option<i64>> + Send + Sync + 'static>;
 type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'static>;
 
 #[derive(Clone)]
@@ -49,6 +50,7 @@ pub struct MockStore {
     on_claim_work: ClaimWorkHandler,
     on_append_history: AppendHistoryHandler,
     on_schedule_sleep_timer: ScheduleSleepTimerHandler,
+    on_next_timer_due_at: NextTimerDueAtHandler,
     on_poll_timers: PollTimersHandler,
 }
 
@@ -148,8 +150,8 @@ impl JungleStore for MockStore {
         (self.on_claim_work)(namespace, supported_animals)
     }
 
-    async fn append_history(&self, history: RunnerOut) -> Result<()> {
-        (self.on_append_history)(history)
+    async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()> {
+        (self.on_append_history)(history, event_unix_ms)
     }
 
     async fn schedule_sleep_timer(
@@ -159,6 +161,10 @@ impl JungleStore for MockStore {
         wake_at_unix_ms: i64,
     ) -> Result<()> {
         (self.on_schedule_sleep_timer)(journey_id, timer_id, wake_at_unix_ms)
+    }
+
+    async fn next_timer_due_at(&self) -> Result<Option<i64>> {
+        (self.on_next_timer_due_at)()
     }
 
     async fn poll_timers(&self) -> Result<Option<()>> {
@@ -184,6 +190,7 @@ pub struct MockStoreBuilder {
     on_claim_work: Option<ClaimWorkHandler>,
     on_append_history: Option<AppendHistoryHandler>,
     on_schedule_sleep_timer: Option<ScheduleSleepTimerHandler>,
+    on_next_timer_due_at: Option<NextTimerDueAtHandler>,
     on_poll_timers: Option<PollTimersHandler>,
 }
 
@@ -302,7 +309,7 @@ impl MockStoreBuilder {
 
     pub fn on_append_history<F>(mut self, f: F) -> Self
     where
-        F: Fn(RunnerOut) -> Result<()> + Send + Sync + 'static,
+        F: Fn(RunnerOut, i64) -> Result<()> + Send + Sync + 'static,
     {
         self.on_append_history = Some(Arc::new(f));
         self
@@ -313,6 +320,14 @@ impl MockStoreBuilder {
         F: Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static,
     {
         self.on_schedule_sleep_timer = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_next_timer_due_at<F>(mut self, f: F) -> Self
+    where
+        F: Fn() -> Result<Option<i64>> + Send + Sync + 'static,
+    {
+        self.on_next_timer_due_at = Some(Arc::new(f));
         self
     }
 
@@ -341,8 +356,9 @@ impl MockStoreBuilder {
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|_, _| Ok(None));
-        let default_append_history: AppendHistoryHandler = Arc::new(|_| Ok(()));
+        let default_append_history: AppendHistoryHandler = Arc::new(|_, _| Ok(()));
         let default_schedule_sleep_timer: ScheduleSleepTimerHandler = Arc::new(|_, _, _| Ok(()));
+        let default_next_timer_due_at: NextTimerDueAtHandler = Arc::new(|| Ok(None));
         let default_poll_timers: PollTimersHandler = Arc::new(|| Ok(None));
 
         MockStore {
@@ -394,6 +410,9 @@ impl MockStoreBuilder {
             on_schedule_sleep_timer: self
                 .on_schedule_sleep_timer
                 .unwrap_or_else(|| default_schedule_sleep_timer.clone()),
+            on_next_timer_due_at: self
+                .on_next_timer_due_at
+                .unwrap_or_else(|| default_next_timer_due_at.clone()),
             on_poll_timers: self
                 .on_poll_timers
                 .unwrap_or_else(|| default_poll_timers.clone()),

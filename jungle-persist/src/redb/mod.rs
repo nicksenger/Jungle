@@ -10,11 +10,16 @@ use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 const JOURNEYS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("journeys");
 const EVENTS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("events");
+const EVENT_TIMESTAMPS_TABLE: TableDefinition<&[u8], i64> =
+    TableDefinition::new("event_timestamps");
 const STEPS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("work_items");
 const TIMER_TASKS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("timer_tasks");
 const TIMER_DUE_INDEX_TABLE: TableDefinition<&[u8], &[u8]> =
@@ -46,6 +51,11 @@ const EVENT_KIND_ACTION_SUCCESS_OUTPUT: u8 = 1;
 const EVENT_KIND_ACTION_FAILURE_OUTPUT: u8 = 2;
 const EVENT_KIND_SLEEP_SCHEDULED: u8 = 3;
 const EVENT_KIND_SLEEP_FIRED: u8 = 4;
+const REDB_UPDATES_LOG_INTERVAL: usize = 256;
+const REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
+const REDB_STALE_EVENT_WARN_MS: i64 = 1_000;
+
+static REDB_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone)]
 pub struct RedbStore {
@@ -313,6 +323,7 @@ impl JungleStore for RedbStore {
         journey_id: Uuid,
         after_sequence_id: Option<u64>,
     ) -> Result<Vec<JourneyUpdateEvent>> {
+        let fetch_started_at = Instant::now();
         if after_sequence_id == Some(u64::MAX) {
             return Ok(Vec::new());
         }
@@ -327,6 +338,7 @@ impl JungleStore for RedbStore {
                 "redb journey_events_since open events table failed: {err}"
             ))
         })?;
+        let event_timestamps = read_tx.open_table(EVENT_TIMESTAMPS_TABLE).ok();
         let start_sequence_id = after_sequence_id.map_or(0_u64, |after| after + 1);
         let start_key = encode_event_key(journey_id, start_sequence_id);
         let end_key = encode_event_key(journey_id, u64::MAX);
@@ -338,7 +350,7 @@ impl JungleStore for RedbStore {
                 ))
             })?;
 
-        let mut rows: Vec<(u64, u8, Vec<u8>)> = Vec::new();
+        let mut rows: Vec<(u64, i64, u8, Vec<u8>)> = Vec::new();
         for entry in iter {
             let (key, value) = entry.map_err(|err| {
                 crate::PersistenceError::Message(format!(
@@ -347,19 +359,63 @@ impl JungleStore for RedbStore {
             })?;
             let (_, sequence_id) =
                 decode_event_key(key.value(), "redb journey_events_since decode event key")?;
+            let event_unix_ms = event_timestamps
+                .as_ref()
+                .and_then(|timestamps| timestamps.get(key.value()).ok().flatten())
+                .map(|value| value.value())
+                .unwrap_or(0);
             let (kind, data) = decode_event_value(
                 value.value(),
                 "redb journey_events_since decode event value",
             )?;
-            rows.push((sequence_id, kind, data));
+            rows.push((sequence_id, event_unix_ms, kind, data));
         }
 
         let mut updates = Vec::with_capacity(rows.len());
-        for (sequence_id, kind, data) in rows {
+        for (sequence_id, event_unix_ms, kind, data) in rows {
             updates.push(JourneyUpdateEvent {
                 sequence_id,
+                event_unix_ms,
                 event: decode_runner_update_out(journey_id, kind, data)?,
             });
+        }
+        let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
+        let fetch_count = REDB_UPDATES_FETCH_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        let now_ms = now_unix_ms();
+        let mut max_event_age_ms = 0_i64;
+        for update in updates.iter() {
+            max_event_age_ms = max_event_age_ms.max(now_ms.saturating_sub(update.event_unix_ms));
+        }
+        if fetch_elapsed_ms > REDB_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+            warn!(
+                journey_id = %journey_id,
+                fetch_count,
+                after_sequence_id = after_sequence_id.unwrap_or(0),
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "slow redb journey_update_events_since query"
+            );
+        } else if max_event_age_ms > REDB_STALE_EVENT_WARN_MS {
+            warn!(
+                journey_id = %journey_id,
+                fetch_count,
+                after_sequence_id = after_sequence_id.unwrap_or(0),
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "redb journey_update_events_since returned stale events"
+            );
+        } else if fetch_count % REDB_UPDATES_LOG_INTERVAL == 0 {
+            debug!(
+                journey_id = %journey_id,
+                fetch_count,
+                after_sequence_id = after_sequence_id.unwrap_or(0),
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "redb journey_update_events_since heartbeat"
+            );
         }
         Ok(updates)
     }
@@ -919,7 +975,7 @@ impl JungleStore for RedbStore {
         Ok(Some(work))
     }
 
-    async fn append_history(&self, history: RunnerOut) -> Result<()> {
+    async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()> {
         let (journey_id, kind, data) = match history {
             RunnerOut::EffectInput {
                 node_id,
@@ -991,6 +1047,12 @@ impl JungleStore for RedbStore {
                     "redb append_history open events table failed: {err}"
                 ))
             })?;
+            let mut event_timestamps =
+                write_tx.open_table(EVENT_TIMESTAMPS_TABLE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb append_history open event_timestamps table failed: {err}"
+                    ))
+                })?;
             let mut sequences =
                 write_tx
                     .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
@@ -1040,6 +1102,13 @@ impl JungleStore for RedbStore {
                 .map_err(|err| {
                     crate::PersistenceError::Message(format!(
                         "redb append_history insert event failed: {err}"
+                    ))
+                })?;
+            event_timestamps
+                .insert(event_key.as_slice(), event_unix_ms)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb append_history insert event timestamp failed: {err}"
                     ))
                 })?;
             sequences
@@ -1131,12 +1200,78 @@ impl JungleStore for RedbStore {
             ))
         })?;
 
-        self.append_history(RunnerOut::SleepScheduled {
-            uuid: journey_id,
-            timer_id,
-            wake_at_unix_ms,
-        })
+        self.append_history(
+            RunnerOut::SleepScheduled {
+                uuid: journey_id,
+                timer_id,
+                wake_at_unix_ms,
+            },
+            Utc::now().timestamp_millis(),
+        )
         .await
+    }
+
+    async fn next_timer_due_at(&self) -> Result<Option<i64>> {
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb next_timer_due_at begin read failed: {err}"
+            ))
+        })?;
+        let timers = read_tx.open_table(TIMER_TASKS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb next_timer_due_at open timer_tasks table failed: {err}"
+            ))
+        })?;
+        let due_index = read_tx.open_table(TIMER_DUE_INDEX_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb next_timer_due_at open timer_due_index table failed: {err}"
+            ))
+        })?;
+        let due_start = encode_timer_due_index_key(i64::MIN, Uuid::nil());
+        let due_end = encode_timer_due_index_bound_key(i64::MAX, true);
+        let due_iter = due_index
+            .range(due_start.as_slice()..=due_end.as_slice())
+            .map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb next_timer_due_at range timer_due_index failed: {err}"
+                ))
+            })?;
+
+        for due_entry in due_iter {
+            let (due_key, _) = due_entry.map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb next_timer_due_at read timer_due_index entry failed: {err}"
+                ))
+            })?;
+            let (indexed_visible_at_unix_ms, timer_id) = decode_timer_due_index_key(
+                due_key.value(),
+                "redb next_timer_due_at decode timer_due_index key",
+            )?;
+
+            let Some(timer_value) = timers.get(&timer_id.as_bytes()[..]).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb next_timer_due_at read timer task by due index failed: {err}"
+                ))
+            })?
+            else {
+                continue;
+            };
+
+            let timer = decode_timer_task(
+                timer_value.value(),
+                "redb next_timer_due_at decode timer task by due index",
+            )?;
+            let timer_visible_at_unix_ms = timer.visible_at.timestamp_millis();
+            if timer.status != TIMER_STATUS_PENDING
+                || timer_visible_at_unix_ms != indexed_visible_at_unix_ms
+            {
+                continue;
+            }
+
+            return Ok(Some(timer_visible_at_unix_ms));
+        }
+
+        Ok(None)
     }
 
     async fn poll_timers(&self) -> Result<Option<()>> {
@@ -1310,6 +1445,12 @@ impl JungleStore for RedbStore {
                     "redb poll_timers open events table failed: {err}"
                 ))
             })?;
+            let mut event_timestamps =
+                write_tx.open_table(EVENT_TIMESTAMPS_TABLE).map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb poll_timers open event_timestamps table failed: {err}"
+                    ))
+                })?;
             let mut sequences =
                 write_tx
                     .open_table(JOURNEY_EVENT_SEQUENCE_TABLE)
@@ -1363,6 +1504,13 @@ impl JungleStore for RedbStore {
                         "redb poll_timers insert sleep fired event failed: {err}"
                     ))
                 })?;
+            event_timestamps
+                .insert(event_key.as_slice(), now_millis)
+                .map_err(|err| {
+                    crate::PersistenceError::Message(format!(
+                        "redb poll_timers insert sleep fired event timestamp failed: {err}"
+                    ))
+                })?;
             sequences
                 .insert(key, sequence_id.saturating_add(1))
                 .map_err(|err| {
@@ -1377,6 +1525,13 @@ impl JungleStore for RedbStore {
         })?;
 
         Ok(Some(()))
+    }
+}
+
+fn now_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
     }
 }
 

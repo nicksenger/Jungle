@@ -2,17 +2,18 @@ use jungle_sdk::prelude::*;
 
 use crate::effect::{Dyad, Monad, Triad};
 
-use super::{Instrument, Note};
+use super::{Instrument, Note, SynthHandle};
 
-mod audio;
+pub(super) mod audio;
 
 pub struct ElectricGuitar {
     audio: crate::audio::AudioHandle,
+    synth: SynthHandle,
 }
 
 impl ElectricGuitar {
-    pub fn new(audio: crate::audio::AudioHandle) -> Self {
-        Self { audio }
+    pub fn new(audio: crate::audio::AudioHandle, synth: SynthHandle) -> Self {
+        Self { audio, synth }
     }
 
     pub fn audio(&self) -> &crate::audio::AudioHandle {
@@ -38,7 +39,7 @@ impl Instrument for ElectricGuitar {
     type Articulation = ElectricGuitarArticulation;
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), super::Error> {
-        audio::play(&self.audio, note).await
+        audio::play(&self.audio, &self.synth, note).await
     }
 }
 

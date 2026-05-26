@@ -1,14 +1,15 @@
-use super::{Instrument, Note};
+use super::{Instrument, Note, SynthHandle};
 
-mod audio;
+pub(super) mod audio;
 
 pub struct Toms {
     audio: crate::audio::AudioHandle,
+    synth: SynthHandle,
 }
 
 impl Toms {
-    pub fn new(audio: crate::audio::AudioHandle) -> Self {
-        Self { audio }
+    pub fn new(audio: crate::audio::AudioHandle, synth: SynthHandle) -> Self {
+        Self { audio, synth }
     }
 }
 
@@ -22,6 +23,6 @@ impl Instrument for Toms {
     type Articulation = TomsArticulation;
 
     async fn play(&self, note: Note<Self::Articulation>) -> Result<(), super::Error> {
-        audio::play(&self.audio, note).await
+        audio::play(&self.audio, &self.synth, note).await
     }
 }

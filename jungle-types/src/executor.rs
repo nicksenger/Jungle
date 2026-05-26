@@ -436,6 +436,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
         if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
+                return Err((state, err));
+            }
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -465,6 +468,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
         if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
+                return Err((state, err));
+            }
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -615,6 +621,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
         if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
+                return Err((state, err));
+            }
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -644,6 +653,9 @@ where
             return Err((state, ExecutorError::AwaitingCompletion));
         }
         if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
+                return Err((state, err));
+            }
             self.pending_inline_input = Some(input);
             return Err((state, ExecutorError::Complete));
         }
@@ -987,6 +999,7 @@ where
     body_cursor: usize,
     complete: bool,
     deferred_state: Option<State>,
+    deferred_emitted: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
@@ -1156,7 +1169,10 @@ where
                     Ok(state) => state,
                     Err(err) => return Err((state, err)),
                 };
-                return Err((state, ExecutorError::Complete));
+                if *cursor >= flow.len() {
+                    return Err((state, ExecutorError::Complete));
+                }
+                continue;
             }
             Err((next_state, err)) => {
                 return Err((next_state, err));
@@ -1211,8 +1227,17 @@ where
                     request
                 }
                 Err((next_state, ExecutorError::Complete)) => {
-                    return Ok((
+                    let settled = settle_subflow_without_progress(
+                        &mut flow,
+                        &mut cursor,
                         next_state,
+                        &mut last_emitted,
+                    )?;
+                    if cursor < flow.len() {
+                        return Err(ExecutorError::NoPendingRequest);
+                    }
+                    return Ok((
+                        settled,
                         FlowCompletionTrace {
                             completions,
                             emitted: last_emitted,
@@ -1269,6 +1294,24 @@ where
             subflow_complete_serialized(flow, &mut cursor, state, &mut next_input, completion)?;
         state = next_state;
         next_input = emitted;
+    }
+
+    loop {
+        match subflow_next_executable_request(flow, &mut cursor, state, &mut next_input) {
+            Ok((_next_state, _request)) => {
+                // Trace replay has no extra completions to apply; seeing another external
+                // request means the trace did not include all required completions.
+                return Err(ExecutorError::NoPendingRequest);
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                state = next_state;
+                break;
+            }
+            Err((next_state, err)) => {
+                let _ = next_state;
+                return Err(err);
+            }
+        }
     }
 
     state = settle_subflow_without_progress(flow, &mut cursor, state, &mut next_input)?;
@@ -1884,6 +1927,7 @@ where
             body_cursor: 0,
             complete: false,
             deferred_state: None,
+            deferred_emitted: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -1993,12 +2037,14 @@ where
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
         let mut state = state;
+        let control_input = input.clone();
+        let mut body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -2021,13 +2067,14 @@ where
                     }
                 }
             } else {
-                input.clone()
+                body_input.clone()
             };
 
             self.ensure_iteration_ready();
             enum NodeAdvance<S> {
                 Request((S, ExecutableEffectRequest)),
-                Completed(S),
+                Completed(S, Option<Serialized>),
+                Progress(S, Option<Serialized>),
                 Bubble((S, ExecutorError)),
             }
 
@@ -2040,14 +2087,19 @@ where
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
                         if node.is_complete() {
-                            NodeAdvance::Completed(next_state)
+                            let (next_state, emitted, _completed) = node
+                                .try_complete_without_progress(next_state)
+                                .expect("while child post-complete settle should succeed");
+                            NodeAdvance::Completed(next_state, emitted)
                         } else {
                             // Handles inline-completable children (e.g. Noop) inside While bodies.
-                            let (next_state, _emitted, completed) = node
+                            let (next_state, emitted, completed) = node
                                 .try_complete_without_progress(next_state)
                                 .expect("while child inline completion should succeed");
                             if completed {
-                                NodeAdvance::Completed(next_state)
+                                NodeAdvance::Completed(next_state, emitted)
+                            } else if emitted.is_some() {
+                                NodeAdvance::Progress(next_state, emitted)
                             } else {
                                 NodeAdvance::Bubble((next_state, ExecutorError::Complete))
                             }
@@ -2058,14 +2110,29 @@ where
             };
 
             match advance {
-                NodeAdvance::Request(ok) => return Ok(ok),
-                NodeAdvance::Completed(next_state) => {
+                NodeAdvance::Request(ok) => {
+                    self.deferred_emitted = None;
+                    return Ok(ok);
+                }
+                NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
                     if self.body_cursor >= self.active_body.len() {
                         self.active_body.clear();
                         self.body_cursor = 0;
                     }
                     state = next_state;
+                    if let Some(emitted) = emitted {
+                        self.deferred_emitted = Some(emitted.clone());
+                        body_input = emitted;
+                    }
+                    continue;
+                }
+                NodeAdvance::Progress(next_state, emitted) => {
+                    state = next_state;
+                    if let Some(emitted) = emitted {
+                        self.deferred_emitted = Some(emitted.clone());
+                        body_input = emitted;
+                    }
                     continue;
                 }
                 NodeAdvance::Bubble(err) => return Err(err),
@@ -2086,13 +2153,53 @@ where
 
     fn try_complete_without_progress(
         &mut self,
-        state: State,
+        mut state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
-            return Ok((saved, None, true));
+            let emitted = self.deferred_emitted.take();
+            return Ok((saved, emitted, true));
         }
         if self.complete {
-            return Ok((state, None, true));
+            let emitted = self.deferred_emitted.take();
+            return Ok((state, emitted, true));
+        }
+        let mut emitted_out = self.deferred_emitted.take();
+
+        loop {
+            if self.complete {
+                return Ok((state, emitted_out, true));
+            }
+            if self.active_body.is_empty() || self.body_cursor >= self.active_body.len() {
+                break;
+            }
+
+            let node = self
+                .active_body
+                .get_mut(self.body_cursor)
+                .expect("body cursor always points to an active body node");
+            if node.is_waiting_completion() {
+                break;
+            }
+
+            let (next_state, emitted, completed) = node.try_complete_without_progress(state)?;
+            state = next_state;
+            if emitted.is_some() {
+                emitted_out = emitted;
+            }
+            if completed {
+                self.body_cursor += 1;
+                if self.body_cursor >= self.active_body.len() {
+                    self.active_body.clear();
+                    self.body_cursor = 0;
+                    break;
+                }
+                continue;
+            }
+            break;
+        }
+
+        if let Some(emitted) = emitted_out {
+            return Ok((state, Some(emitted), false));
         }
         Ok((state, None, false))
     }
@@ -2383,7 +2490,7 @@ where
     State: Send + 'static,
     C: LoopCondition<State, Arg = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
-    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + 'static,
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + FlowCarry<State, In = In> + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -2741,7 +2848,8 @@ where
             let active_branch = self
                 .active_branch
                 .expect("active branch is present while conditional is executing");
-            let emitted = emitted.map(|bytes| encode_conditional_context_emitted(active_branch, bytes));
+            let emitted =
+                emitted.map(|bytes| encode_conditional_context_emitted(active_branch, bytes));
             return Ok((state, emitted, true));
         }
 
@@ -2951,6 +3059,7 @@ where
     body_cursor: usize,
     complete: bool,
     deferred_state: Option<State>,
+    deferred_emitted: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
@@ -2970,6 +3079,7 @@ where
             body_cursor: 0,
             complete: false,
             deferred_state: None,
+            deferred_emitted: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -3079,12 +3189,14 @@ where
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
         let mut state = state;
+        let control_input = input.clone();
+        let mut body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
             let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -3107,13 +3219,14 @@ where
                     }
                 }
             } else {
-                input.clone()
+                body_input.clone()
             };
 
             self.ensure_iteration_ready();
             enum NodeAdvance<S> {
                 Request((S, ExecutableEffectRequest)),
-                Completed(S),
+                Completed(S, Option<Serialized>),
+                Progress(S, Option<Serialized>),
                 Bubble((S, ExecutorError)),
             }
 
@@ -3126,14 +3239,19 @@ where
                     Ok((next_state, request)) => NodeAdvance::Request((next_state, request)),
                     Err((next_state, ExecutorError::Complete)) => {
                         if node.is_complete() {
-                            NodeAdvance::Completed(next_state)
+                            let (next_state, emitted, _completed) = node
+                                .try_complete_without_progress(next_state)
+                                .expect("while child post-complete settle should succeed");
+                            NodeAdvance::Completed(next_state, emitted)
                         } else {
                             // Handles inline-completable children (e.g. Noop) inside While bodies.
-                            let (next_state, _emitted, completed) = node
+                            let (next_state, emitted, completed) = node
                                 .try_complete_without_progress(next_state)
                                 .expect("while child inline completion should succeed");
                             if completed {
-                                NodeAdvance::Completed(next_state)
+                                NodeAdvance::Completed(next_state, emitted)
+                            } else if emitted.is_some() {
+                                NodeAdvance::Progress(next_state, emitted)
                             } else {
                                 NodeAdvance::Bubble((next_state, ExecutorError::Complete))
                             }
@@ -3144,14 +3262,29 @@ where
             };
 
             match advance {
-                NodeAdvance::Request(ok) => return Ok(ok),
-                NodeAdvance::Completed(next_state) => {
+                NodeAdvance::Request(ok) => {
+                    self.deferred_emitted = None;
+                    return Ok(ok);
+                }
+                NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
                     if self.body_cursor >= self.active_body.len() {
                         self.active_body.clear();
                         self.body_cursor = 0;
                     }
                     state = next_state;
+                    if let Some(emitted) = emitted {
+                        self.deferred_emitted = Some(emitted.clone());
+                        body_input = emitted;
+                    }
+                    continue;
+                }
+                NodeAdvance::Progress(next_state, emitted) => {
+                    state = next_state;
+                    if let Some(emitted) = emitted {
+                        self.deferred_emitted = Some(emitted.clone());
+                        body_input = emitted;
+                    }
                     continue;
                 }
                 NodeAdvance::Bubble(err) => return Err(err),
@@ -3172,13 +3305,53 @@ where
 
     fn try_complete_without_progress(
         &mut self,
-        state: State,
+        mut state: State,
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
-            return Ok((saved, None, true));
+            let emitted = self.deferred_emitted.take();
+            return Ok((saved, emitted, true));
         }
         if self.complete {
-            return Ok((state, None, true));
+            let emitted = self.deferred_emitted.take();
+            return Ok((state, emitted, true));
+        }
+        let mut emitted_out = self.deferred_emitted.take();
+
+        loop {
+            if self.complete {
+                return Ok((state, emitted_out, true));
+            }
+            if self.active_body.is_empty() || self.body_cursor >= self.active_body.len() {
+                break;
+            }
+
+            let node = self
+                .active_body
+                .get_mut(self.body_cursor)
+                .expect("body cursor always points to an active body node");
+            if node.is_waiting_completion() {
+                break;
+            }
+
+            let (next_state, emitted, completed) = node.try_complete_without_progress(state)?;
+            state = next_state;
+            if emitted.is_some() {
+                emitted_out = emitted;
+            }
+            if completed {
+                self.body_cursor += 1;
+                if self.body_cursor >= self.active_body.len() {
+                    self.active_body.clear();
+                    self.body_cursor = 0;
+                    break;
+                }
+                continue;
+            }
+            break;
+        }
+
+        if let Some(emitted) = emitted_out {
+            return Ok((state, Some(emitted), false));
         }
         Ok((state, None, false))
     }
@@ -3203,7 +3376,8 @@ where
     F: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + 'static,
+        > + FlowCarry<State, In = In>
+        + 'static,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -3552,7 +3726,10 @@ where
                         continue;
                     }
                     self.settle_without_progress()?;
-                    return Err(ExecutorError::Complete);
+                    if self.cursor >= self.steps.len() {
+                        return Err(ExecutorError::Complete);
+                    }
+                    continue;
                 }
                 Err((state, err)) => {
                     self.state = Some(state);
@@ -3618,7 +3795,17 @@ where
     {
         let mut emitted = Vec::new();
         while !self.is_complete() {
-            emitted.push(self.next_and_complete_with(initial_input.clone()).await?);
+            match self.next_and_complete_with(initial_input.clone()).await {
+                Ok(step_emitted) => emitted.push(step_emitted),
+                Err(ExecutorError::Complete) => {
+                    self.settle_without_progress()?;
+                    if self.is_complete() {
+                        break;
+                    }
+                    return Err(ExecutorError::Complete);
+                }
+                Err(err) => return Err(err),
+            }
         }
         Ok(emitted)
     }
@@ -3689,7 +3876,10 @@ where
                         continue;
                     }
                     self.settle_without_progress()?;
-                    return Err(ExecutorError::Complete);
+                    if self.cursor >= self.steps.len() {
+                        return Err(ExecutorError::Complete);
+                    }
+                    continue;
                 }
                 Err((state, err)) => {
                     self.state = Some(state);
@@ -3815,7 +4005,10 @@ where
                         continue;
                     }
                     self.settle_without_progress()?;
-                    return Err(ExecutorError::Complete);
+                    if self.cursor >= self.steps.len() {
+                        return Err(ExecutorError::Complete);
+                    }
+                    continue;
                 }
                 Err((state, err)) => {
                     self.state = Some(state);
@@ -3866,7 +4059,10 @@ where
                         continue;
                     }
                     self.settle_without_progress()?;
-                    return Err(ExecutorError::Complete);
+                    if self.cursor >= self.steps.len() {
+                        return Err(ExecutorError::Complete);
+                    }
+                    continue;
                 }
                 Err((state, err)) => {
                     self.state = Some(state);

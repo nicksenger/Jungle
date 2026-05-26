@@ -1,5 +1,6 @@
 use crate::JungleClient;
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::Stream;
 use jungle_types::{
     Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedPerturbable, Ecosystem,
@@ -16,6 +17,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncRead, ReadBuf};
 use tracing::{error, info};
@@ -346,8 +348,7 @@ impl<J> ClientBuilder<J> {
         }
 
         Ok(Client {
-            endpoint,
-            conn,
+            transport: Arc::new(ClientTransport { endpoint, conn }),
             namespace: self.namespace,
             _jungle: PhantomData,
         })
@@ -355,17 +356,27 @@ impl<J> ClientBuilder<J> {
 }
 
 pub struct Client<J = DefaultJungle> {
-    endpoint: quinn::Endpoint,
-    conn: quinn::Connection,
+    transport: Arc<ClientTransport>,
     namespace: String,
     _jungle: PhantomData<fn() -> J>,
+}
+
+struct ClientTransport {
+    endpoint: quinn::Endpoint,
+    conn: quinn::Connection,
+}
+
+impl Drop for ClientTransport {
+    fn drop(&mut self) {
+        self.conn.close(0u32.into(), b"done");
+        self.endpoint.close(0u32.into(), b"done");
+    }
 }
 
 impl<J> Clone for Client<J> {
     fn clone(&self) -> Self {
         Self {
-            endpoint: self.endpoint.clone(),
-            conn: self.conn.clone(),
+            transport: Arc::clone(&self.transport),
             namespace: self.namespace.clone(),
             _jungle: PhantomData,
         }
@@ -380,7 +391,12 @@ impl Client<DefaultJungle> {
 
 impl<J> Client<J> {
     async fn send_wire_message(&self, input: WireIn) -> ClientResult<WireOut> {
-        let (mut tx, mut rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
+        let (mut tx, mut rx) = self
+            .transport
+            .conn
+            .open_bi()
+            .await
+            .map_err(ClientError::OpenStream)?;
 
         let payload = postcard::to_allocvec(&input).map_err(ClientError::EncodeWireIn)?;
         let frame_len = u32::try_from(payload.len())
@@ -425,7 +441,12 @@ impl<J> Client<J> {
     }
 
     async fn send_wire_subscription(&self, input: WireIn) -> ClientResult<quinn::RecvStream> {
-        let (mut tx, rx) = self.conn.open_bi().await.map_err(ClientError::OpenStream)?;
+        let (mut tx, rx) = self
+            .transport
+            .conn
+            .open_bi()
+            .await
+            .map_err(ClientError::OpenStream)?;
 
         let payload = postcard::to_allocvec(&input).map_err(ClientError::EncodeWireIn)?;
         let frame_len = u32::try_from(payload.len())
@@ -492,13 +513,6 @@ impl<J> Client<J> {
                 "unexpected non-journey-created response for start_journey_by_id".to_string(),
             )),
         }
-    }
-}
-
-impl<J> Drop for Client<J> {
-    fn drop(&mut self) {
-        self.conn.close(0u32.into(), b"done");
-        self.endpoint.close(0u32.into(), b"done");
     }
 }
 
@@ -601,11 +615,12 @@ where
     }
 
     async fn animal_appearance_update(&self, id: Uuid, data: Vec<u8>) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::Appearance {
-                data,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::Appearance { data, uuid: id },
+                event_unix_ms,
+            })
             .await
             .map_err(Self::transport_error)?;
 
@@ -856,18 +871,55 @@ where
         }
     }
 
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: Uuid,
+        supported_animals: Vec<SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError> {
+        let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        let response = self
+            .send_wire_message(WireIn::WaitForWorkerWake {
+                owner_id,
+                namespace: self.namespace.clone(),
+                supported_animals,
+                timeout_ms,
+            })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedPerturbable(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected response for wait_for_worker_wake".to_string(),
+            )),
+        }
+    }
+
     async fn effect_input(
         &self,
         id: Uuid,
         node_id: u32,
         input: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectInput {
-                node_id,
-                data: input,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectInput {
+                    node_id,
+                    data: input,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await
             .map_err(Self::transport_error)?;
 
@@ -895,12 +947,16 @@ where
         node_id: u32,
         output: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectSuccessOutput {
-                node_id,
-                data: output,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectSuccessOutput {
+                    node_id,
+                    data: output,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await
             .map_err(Self::transport_error)?;
 
@@ -928,12 +984,16 @@ where
         node_id: u32,
         err: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectFailureOutput {
-                node_id,
-                data: err,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectFailureOutput {
+                    node_id,
+                    data: err,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await
             .map_err(Self::transport_error)?;
 

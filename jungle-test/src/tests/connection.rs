@@ -169,7 +169,7 @@ async fn client_exchanges_messages_with_mock_server() {
                                 ))),
                             },
                             3..=5 => match msg {
-                                WireIn::HistoryEvent(_) => Ok(WireOut::Ack),
+                                WireIn::HistoryEvent { .. } => Ok(WireOut::Ack),
                                 other => Err(BackendError::Message(format!(
                                     "expected history event, got {:?}",
                                     other
@@ -284,27 +284,36 @@ async fn client_exchanges_messages_with_mock_server() {
     );
     assert!(matches!(
         requests[3],
-        WireIn::HistoryEvent(RunnerOut::EffectInput {
-            node_id,
-            uuid,
-            ref data,
-        }) if node_id == 11 && uuid == effect_id && data == &vec![4, 5]
+        WireIn::HistoryEvent {
+            event: RunnerOut::EffectInput {
+                node_id,
+                uuid,
+                ref data,
+            },
+            event_unix_ms: _,
+        } if node_id == 11 && uuid == effect_id && data == &vec![4, 5]
     ));
     assert!(matches!(
         requests[4],
-        WireIn::HistoryEvent(RunnerOut::EffectSuccessOutput {
-            node_id,
-            uuid,
-            ref data,
-        }) if node_id == 11 && uuid == effect_id && data == &vec![6]
+        WireIn::HistoryEvent {
+            event: RunnerOut::EffectSuccessOutput {
+                node_id,
+                uuid,
+                ref data,
+            },
+            event_unix_ms: _,
+        } if node_id == 11 && uuid == effect_id && data == &vec![6]
     ));
     assert!(matches!(
         requests[5],
-        WireIn::HistoryEvent(RunnerOut::EffectFailureOutput {
-            node_id,
-            uuid,
-            ref data,
-        }) if node_id == 11 && uuid == effect_id && data == &vec![7, 8]
+        WireIn::HistoryEvent {
+            event: RunnerOut::EffectFailureOutput {
+                node_id,
+                uuid,
+                ref data,
+            },
+            event_unix_ms: _,
+        } if node_id == 11 && uuid == effect_id && data == &vec![7, 8]
     ));
     assert!(matches!(requests[6], WireIn::JourneyComplete(id) if id == journey_id));
 
@@ -437,6 +446,42 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
 }
 
 #[tokio::test]
+async fn dropping_one_client_clone_does_not_close_transport_for_others() {
+    let tempdir = tempfile::tempdir().expect("temp dir should be created");
+    let db_path = tempdir.path().join("jungle.redb");
+
+    let listen_addr = super::reserve_local_addr();
+    let server_task = tokio::spawn({
+        let db_path = db_path.clone();
+        async move {
+            ServerBuilder::new()
+                .listen(listen_addr)
+                .redb_path(db_path)
+                .run()
+                .await
+        }
+    });
+
+    let client = connect_client_with_retry(listen_addr).await;
+    let survivor = client.clone();
+    drop(client);
+
+    let journey_id = survivor
+        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .await
+        .expect("remaining client clone should still open streams");
+
+    let status = survivor
+        .journey_details(journey_id)
+        .await
+        .expect("journey_details should succeed after clone drop");
+    assert_eq!(status, JourneyStatus::Created);
+
+    server_task.abort();
+    let _ = server_task.await;
+}
+
+#[tokio::test]
 async fn poll_timers_promotes_due_sleep_to_resume_work() {
     let tempdir = tempfile::tempdir().expect("temp dir should be created");
     let db_path = tempdir.path().join("jungle.redb");
@@ -533,11 +578,13 @@ async fn client_handles_animal_appearance_round_trip() {
                         (0, WireIn::AnimalAppearance(id)) if id == journey_id => {
                             Ok(WireOut::AnimalAppearance(Some(appearance_bytes)))
                         }
-                        (1, WireIn::HistoryEvent(RunnerOut::Appearance { uuid, data }))
-                            if uuid == journey_id && data == vec![7, 8, 9] =>
-                        {
-                            Ok(WireOut::Ack)
-                        }
+                        (
+                            1,
+                            WireIn::HistoryEvent {
+                                event: RunnerOut::Appearance { uuid, data },
+                                event_unix_ms: _,
+                            },
+                        ) if uuid == journey_id && data == vec![7, 8, 9] => Ok(WireOut::Ack),
                         _ => Err(BackendError::Message(
                             "unexpected request sequence for animal appearance".to_string(),
                         )),
@@ -574,8 +621,10 @@ async fn client_handles_animal_appearance_round_trip() {
     assert!(matches!(requests[0], WireIn::AnimalAppearance(id) if id == journey_id));
     assert!(matches!(
         requests[1],
-        WireIn::HistoryEvent(RunnerOut::Appearance { uuid, ref data })
-            if uuid == journey_id && data == &vec![7, 8, 9]
+        WireIn::HistoryEvent {
+            event: RunnerOut::Appearance { uuid, ref data },
+            event_unix_ms: _,
+        } if uuid == journey_id && data == &vec![7, 8, 9]
     ));
 
     server_task.abort();

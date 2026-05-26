@@ -9,9 +9,17 @@ use jungle_types::{
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Row;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 const PG_JOURNEY_EVENTS_CHANNEL: &str = "jungle_journey_events";
+const PG_UPDATES_LOG_INTERVAL: usize = 256;
+const PG_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS: u128 = 50;
+const PG_STALE_EVENT_WARN_MS: i64 = 1_000;
+
+static PG_UPDATES_FETCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone)]
 pub struct PgStore {
@@ -163,6 +171,8 @@ impl JungleStore for PgStore {
             .await
             .map_err(crate::PersistenceError::PostgresQuery)?;
 
+        self.notify_journey_event(journey_id).await?;
+
         Ok(journey_id)
     }
 
@@ -192,6 +202,7 @@ impl JungleStore for PgStore {
         journey_id: Uuid,
         after_sequence_id: Option<u64>,
     ) -> Result<Vec<JourneyUpdateEvent>> {
+        let fetch_started_at = Instant::now();
         let after_sequence_id = after_sequence_id
             .map(|seq| {
                 i64::try_from(seq).map_err(|_| {
@@ -206,6 +217,7 @@ impl JungleStore for PgStore {
             r#"
             SELECT
                 sequence_id,
+                event_unix_ms,
                 kind,
                 node_id,
                 CASE
@@ -233,6 +245,10 @@ impl JungleStore for PgStore {
             let kind = row
                 .try_get::<i16, _>("kind")
                 .map_err(crate::PersistenceError::PostgresQuery)?;
+            let event_unix_ms = row
+                .try_get::<Option<i64>, _>("event_unix_ms")
+                .map_err(crate::PersistenceError::PostgresQuery)?
+                .unwrap_or(0);
             let node_id = row
                 .try_get::<Option<i32>, _>("node_id")
                 .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -248,8 +264,44 @@ impl JungleStore for PgStore {
             })?;
             updates.push(JourneyUpdateEvent {
                 sequence_id,
+                event_unix_ms,
                 event: decode_journey_update_row(journey_id, kind, node_id, data)?,
             });
+        }
+        let fetch_elapsed_ms = fetch_started_at.elapsed().as_millis();
+        let fetch_count = PG_UPDATES_FETCH_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        let now_ms = now_unix_ms();
+        let mut max_event_age_ms = 0_i64;
+        for update in updates.iter() {
+            max_event_age_ms = max_event_age_ms.max(now_ms.saturating_sub(update.event_unix_ms));
+        }
+        if fetch_elapsed_ms > PG_SLOW_UPDATES_FETCH_WARN_THRESHOLD_MS {
+            warn!(
+                journey_id = %journey_id,
+                fetch_count,
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "slow postgres journey_update_events_since query"
+            );
+        } else if max_event_age_ms > PG_STALE_EVENT_WARN_MS {
+            warn!(
+                journey_id = %journey_id,
+                fetch_count,
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "postgres journey_update_events_since returned stale events"
+            );
+        } else if fetch_count % PG_UPDATES_LOG_INTERVAL == 0 {
+            debug!(
+                journey_id = %journey_id,
+                fetch_count,
+                updates_len = updates.len(),
+                fetch_elapsed_ms,
+                max_event_age_ms,
+                "postgres journey_update_events_since heartbeat"
+            );
         }
         Ok(updates)
     }
@@ -661,7 +713,7 @@ impl JungleStore for PgStore {
         Ok(Some(work))
     }
 
-    async fn append_history(&self, history: RunnerOut) -> Result<()> {
+    async fn append_history(&self, history: RunnerOut, event_unix_ms: i64) -> Result<()> {
         let (journey_id, kind, node_id, data) = match history {
             RunnerOut::EffectInput {
                 node_id,
@@ -747,8 +799,8 @@ impl JungleStore for PgStore {
                 FROM events
                 WHERE journey_id = $1
             )
-            INSERT INTO events (journey_id, sequence_id, kind, node_id, data)
-            SELECT $1, next_sequence.sequence_id, $2, $3, $4
+            INSERT INTO events (journey_id, sequence_id, kind, node_id, data, event_unix_ms)
+            SELECT $1, next_sequence.sequence_id, $2, $3, $4, $5
             FROM next_sequence
             "#,
         )
@@ -756,6 +808,7 @@ impl JungleStore for PgStore {
         .bind(kind)
         .bind(node_id)
         .bind(data)
+        .bind(event_unix_ms)
         .execute(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -786,11 +839,14 @@ impl JungleStore for PgStore {
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
 
-        self.append_history(RunnerOut::SleepScheduled {
-            uuid: journey_id,
-            timer_id,
-            wake_at_unix_ms,
-        })
+        self.append_history(
+            RunnerOut::SleepScheduled {
+                uuid: journey_id,
+                timer_id,
+                wake_at_unix_ms,
+            },
+            chrono::Utc::now().timestamp_millis(),
+        )
         .await?;
 
         Ok(())
@@ -853,8 +909,8 @@ impl JungleStore for PgStore {
                 FROM events
                 WHERE journey_id = $1
             )
-            INSERT INTO events (journey_id, sequence_id, kind, node_id, data)
-            SELECT $1, next_sequence.sequence_id, $2, $3, $4
+            INSERT INTO events (journey_id, sequence_id, kind, node_id, data, event_unix_ms)
+            SELECT $1, next_sequence.sequence_id, $2, $3, $4, $5
             FROM next_sequence
             "#,
         )
@@ -862,6 +918,7 @@ impl JungleStore for PgStore {
         .bind(4_i16)
         .bind(Option::<i32>::None)
         .bind(sleep_fired_data)
+        .bind(fired_at_unix_ms)
         .execute(&mut *tx)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -916,6 +973,23 @@ impl JungleStore for PgStore {
         self.notify_journey_event(due.journey_id).await?;
 
         Ok(Some(()))
+    }
+
+    async fn next_timer_due_at(&self) -> Result<Option<i64>> {
+        let due = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT FLOOR(EXTRACT(EPOCH FROM visible_at) * 1000)::BIGINT
+            FROM timer_tasks
+            WHERE status = $1
+            ORDER BY visible_at, id
+            LIMIT 1
+            "#,
+        )
+        .bind(0_i16)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+        Ok(due)
     }
 
     fn postgres_pool(&self) -> Option<sqlx::PgPool> {
@@ -1104,5 +1178,12 @@ fn decode_journey_status(status: i16) -> Result<JourneyStatus> {
         other => Err(crate::PersistenceError::Message(format!(
             "unsupported journey status in postgres: {other}"
         ))),
+    }
+}
+
+fn now_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
     }
 }

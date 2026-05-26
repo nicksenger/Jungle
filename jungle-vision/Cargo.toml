@@ -11,6 +11,7 @@ jungle-types = { path = "../jungle-types" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 uuid = { workspace = true }
 tokio = { version = "1", features = ["time", "sync"] }
+tracing = "0.1"
 
 [lints]
 workspace = true

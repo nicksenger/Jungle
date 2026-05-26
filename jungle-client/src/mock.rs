@@ -11,6 +11,7 @@ use jungle_types::{
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
@@ -56,6 +57,14 @@ type HeartbeatJourneyLeaseHandler =
 type PollOwnerWakeHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Option<OwnerWake>, ExecutorError>> + Send + 'static>>;
 type PollOwnerWakeHandler = Arc<dyn Fn(Uuid) -> PollOwnerWakeHandlerFuture + Send + Sync + 'static>;
+type WaitForWorkerWakeHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
+type WaitForWorkerWakeHandler = Arc<
+    dyn Fn(Uuid, Vec<SupportedAnimal>, Duration) -> WaitForWorkerWakeHandlerFuture
+        + Send
+        + Sync
+        + 'static,
+>;
 
 #[derive(Clone)]
 pub struct MockClient {
@@ -70,6 +79,7 @@ pub struct MockClient {
     on_ack_perturbation: AckPerturbationHandler,
     on_heartbeat_journey_lease: HeartbeatJourneyLeaseHandler,
     on_poll_owner_wake: PollOwnerWakeHandler,
+    on_wait_for_worker_wake: WaitForWorkerWakeHandler,
     on_schedule_sleep_timer: ScheduleSleepTimerHandler,
     on_flow_complete: FlowCompleteHandler,
     on_poll_timers: PollTimersHandler,
@@ -246,6 +256,15 @@ impl JungleClient for MockClient {
         (self.on_poll_work)(supported_animals).await
     }
 
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: Uuid,
+        supported_animals: Vec<SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError> {
+        (self.on_wait_for_worker_wake)(owner_id, supported_animals, timeout).await
+    }
+
     async fn effect_input(
         &self,
         id: Uuid,
@@ -286,6 +305,7 @@ pub struct MockClientBuilder {
     on_ack_perturbation: Option<AckPerturbationHandler>,
     on_heartbeat_journey_lease: Option<HeartbeatJourneyLeaseHandler>,
     on_poll_owner_wake: Option<PollOwnerWakeHandler>,
+    on_wait_for_worker_wake: Option<WaitForWorkerWakeHandler>,
     on_schedule_sleep_timer: Option<ScheduleSleepTimerHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
     on_poll_timers: Option<PollTimersHandler>,
@@ -309,6 +329,7 @@ impl Default for MockClientBuilder {
             on_ack_perturbation: None,
             on_heartbeat_journey_lease: None,
             on_poll_owner_wake: None,
+            on_wait_for_worker_wake: None,
             on_schedule_sleep_timer: None,
             on_flow_complete: None,
             on_poll_timers: None,
@@ -447,6 +468,18 @@ impl MockClientBuilder {
         self
     }
 
+    pub fn on_wait_for_worker_wake<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid, Vec<SupportedAnimal>, Duration) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
+    {
+        self.on_wait_for_worker_wake =
+            Some(Arc::new(move |owner_id, supported_animals, timeout| {
+                Box::pin(f(owner_id, supported_animals, timeout))
+            }));
+        self
+    }
+
     pub fn on_flow_complete<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Fut + Send + Sync + 'static,
@@ -514,6 +547,13 @@ impl MockClientBuilder {
             Arc::new(|_, _, _| Box::pin(async { Ok(()) }));
         let default_poll_owner_wake_handler: PollOwnerWakeHandler =
             Arc::new(|_| Box::pin(async { Ok(None) }));
+        let default_wait_for_worker_wake_handler: WaitForWorkerWakeHandler =
+            Arc::new(|_, _, timeout| {
+                Box::pin(async move {
+                    tokio::time::sleep(timeout).await;
+                    Ok(())
+                })
+            });
         let default_schedule_sleep_timer_handler: ScheduleSleepTimerHandler =
             Arc::new(|_, _, _| Box::pin(async { Ok(()) }));
         let default_flow_complete_handler: FlowCompleteHandler =
@@ -553,6 +593,9 @@ impl MockClientBuilder {
             on_poll_owner_wake: self
                 .on_poll_owner_wake
                 .unwrap_or_else(|| default_poll_owner_wake_handler.clone()),
+            on_wait_for_worker_wake: self
+                .on_wait_for_worker_wake
+                .unwrap_or_else(|| default_wait_for_worker_wake_handler.clone()),
             on_schedule_sleep_timer: self
                 .on_schedule_sleep_timer
                 .unwrap_or_else(|| default_schedule_sleep_timer_handler.clone()),

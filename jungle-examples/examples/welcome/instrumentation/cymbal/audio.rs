@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::audio::PlayRequest;
+use crate::audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, smoothstep, triangle, SAMPLE_RATE},
@@ -11,23 +11,22 @@ use super::CymbalArticulation;
 
 pub(super) async fn play(
     audio: &crate::audio::AudioHandle,
+    synth: &crate::instrumentation::SynthHandle,
     note: Note<CymbalArticulation>,
 ) -> Result<(), Error> {
-    let (pcm, gain, playback_rate) = {
-        let note_for_synth = note;
-        tokio::task::spawn_blocking(move || synthesize_cymbal(&note_for_synth))
-            .await
-            .map_err(|_| Error::Playback)?
-    };
+    let (pcm, gain, playback_rate) = synth.cymbal(note).await?;
 
     let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
     request.gain = gain * amplitude_gain(&note);
     request.playback_rate = playback_rate;
     request.pan = 0.25;
+    request.priority = PlayPriority::Normal;
     audio.play(request).await.map_err(|_| Error::Submission)
 }
 
-fn synthesize_cymbal(note: &Note<CymbalArticulation>) -> (Arc<[f32]>, f32, f32) {
+pub(in crate::instrumentation) fn synthesize_cymbal(
+    note: &Note<CymbalArticulation>,
+) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let velocity = note.velocity.clamp(0.0, 1.0);

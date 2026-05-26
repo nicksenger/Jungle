@@ -2806,8 +2806,11 @@ mod tests {
 
         let mut worker_handles = Vec::with_capacity(PARALLEL_JOURNEYS);
         for _ in 0..PARALLEL_JOURNEYS {
-            let ecosystem =
-                TheJungle::new_with_metronome(shared_audio_handle.clone(), 123.0, shared_metronome.clone());
+            let ecosystem = TheJungle::new_with_metronome(
+                shared_audio_handle.clone(),
+                123.0,
+                shared_metronome.clone(),
+            );
             let worker = JungleWorker::new(ecosystem, client.clone());
             worker_handles.push(tokio::spawn(async move {
                 let _ = worker.spawn().await;

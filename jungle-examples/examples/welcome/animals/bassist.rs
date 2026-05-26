@@ -20,14 +20,7 @@ pub struct JoinThump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinThump<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<
-        BassInstrument,
-        BassArticulation,
-        BASS_LANE_ID,
-        NOTE,
-        NOTE_TICK,
-        REST_TICK,
-    >;
+    type Effect = Monad<BassInstrument, BassArticulation, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -431,11 +424,7 @@ pub struct BassPart05(
 );
 
 #[derive(Flow)]
-pub struct BassPart06Phrase(
-    BassDriveCadenceLead,
-    BassDriveCadenceLead,
-    BassDriveExit,
-);
+pub struct BassPart06Phrase(BassDriveCadenceLead, BassDriveCadenceLead, BassDriveExit);
 
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
@@ -1713,7 +1702,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn join_monad_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client() {
+    async fn join_monad_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client(
+    ) {
         const PARALLEL_JOURNEYS: usize = 1;
 
         let namespace = format!("welcome-bass-join-monad-100-test-{}", uuid::Uuid::new_v4());
@@ -1729,8 +1719,11 @@ mod tests {
 
         let mut worker_handles = Vec::with_capacity(PARALLEL_JOURNEYS);
         for _ in 0..PARALLEL_JOURNEYS {
-            let ecosystem =
-                TheJungle::new_with_metronome(shared_audio_handle.clone(), 123.0, shared_metronome.clone());
+            let ecosystem = TheJungle::new_with_metronome(
+                shared_audio_handle.clone(),
+                123.0,
+                shared_metronome.clone(),
+            );
             let worker = JungleWorker::new(ecosystem, client.clone());
             worker_handles.push(tokio::spawn(async move {
                 let _ = worker.spawn().await;

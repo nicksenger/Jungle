@@ -245,14 +245,8 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<
-        Vocals,
-        VocalsArticulation,
-        RHYTHM_GUITAR_LANE_ID,
-        NOTE,
-        NOTE_TICK,
-        REST_TICK,
-    >;
+    type Effect =
+        Monad<Vocals, VocalsArticulation, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -1767,11 +1761,17 @@ impl Act for RhythmTailStub {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+    fn emit(
+        _state: &RhythmGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
         ()
     }
 
-    fn absorb(_state: &mut RhythmGuitaristState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("rhythm tail stub should succeed");
     }
 }
@@ -1794,9 +1794,16 @@ impl Act for RhythmLoopDecrementStub {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &RhythmGuitaristState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+    fn emit(
+        _state: &RhythmGuitaristState,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+    }
 
-    fn absorb(state: &mut RhythmGuitaristState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut RhythmGuitaristState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("test loop decrement should succeed");
         state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
     }
@@ -1957,10 +1964,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn join_monad_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client() {
+    async fn join_monad_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client(
+    ) {
         const PARALLEL_JOURNEYS: usize = 1;
 
-        let namespace = format!("welcome-rhythm-join-monad-100-test-{}", uuid::Uuid::new_v4());
+        let namespace = format!(
+            "welcome-rhythm-join-monad-100-test-{}",
+            uuid::Uuid::new_v4()
+        );
         let client = LocalClient::builder()
             .namespace(&namespace)
             .build()
@@ -1973,15 +1984,19 @@ mod tests {
 
         let mut worker_handles = Vec::with_capacity(PARALLEL_JOURNEYS);
         for _ in 0..PARALLEL_JOURNEYS {
-            let ecosystem =
-                TheJungle::new_with_metronome(shared_audio_handle.clone(), 123.0, shared_metronome.clone());
+            let ecosystem = TheJungle::new_with_metronome(
+                shared_audio_handle.clone(),
+                123.0,
+                shared_metronome.clone(),
+            );
             let worker = JungleWorker::new(ecosystem, client.clone());
             worker_handles.push(tokio::spawn(async move {
                 let _ = worker.spawn().await;
             }));
         }
 
-        let seed = postcard::to_allocvec(&RhythmGuitaristState::default()).expect("seed should serialize");
+        let seed =
+            postcard::to_allocvec(&RhythmGuitaristState::default()).expect("seed should serialize");
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client

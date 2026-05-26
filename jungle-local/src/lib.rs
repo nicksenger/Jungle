@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::stream;
 use jungle_client::{JourneyUpdateSubscription, JungleClient};
 use jungle_server::{JungleServer, Server, ServerError, WireRx, WireTx};
@@ -6,13 +7,27 @@ use jungle_types::{
     Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyStatus,
     OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::mpsc;
+use tracing::{debug, warn};
 use typosaurus::num::Unsigned;
 use uuid::Uuid;
 
 const DEFAULT_NAMESPACE: &str = "default";
+const LOCAL_SUBSCRIPTION_LOG_INTERVAL: usize = 512;
+const LOCAL_SUBSCRIPTION_LAG_WARN_MS: i64 = 1_000;
+const LOCAL_SUBSCRIPTION_BACKLOG_WARN: usize = 256;
+const LOCAL_SUBSCRIPTION_SLOW_RECV_WARN_MS: u128 = 20;
+const LOCAL_REQUEST_SLOW_BACKEND_HANDLE_WARN_MS: u128 = 100;
+const LOCAL_REQUEST_SLOW_RESPONSE_WAIT_WARN_MS: u128 = 50;
+
+static LOCAL_SUBSCRIPTION_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+static LOCAL_SUBSCRIPTION_MAX_BACKLOG: AtomicUsize = AtomicUsize::new(0);
+static LOCAL_SUBSCRIPTION_MAX_EVENT_AGE_MS: AtomicUsize = AtomicUsize::new(0);
+static LOCAL_SUBSCRIPTION_MAX_RECV_WAIT_MS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone)]
 pub struct LocalClient {
@@ -97,6 +112,7 @@ impl LocalClient {
     }
 
     async fn send_wire_message(&self, input: WireIn) -> Result<WireOut, ExecutorError> {
+        let request_kind = wire_in_kind(&input);
         let (req_tx, req_rx) = mpsc::unbounded_channel::<WireIn>();
         let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<Result<WireOut, BackendError>>();
 
@@ -109,16 +125,44 @@ impl LocalClient {
 
         let tx = wire_tx_from_channel(resp_tx);
         let rx = wire_rx_from_channel(req_rx);
+        let backend_handle_started_at = Instant::now();
         self.backend
             .handle_request((tx, rx))
             .await
             .map_err(|err| ExecutorError::ClientTransport(err.to_string()))?;
+        let backend_handle_elapsed_ms = backend_handle_started_at.elapsed().as_millis();
+        if backend_handle_elapsed_ms > LOCAL_REQUEST_SLOW_BACKEND_HANDLE_WARN_MS {
+            warn!(
+                namespace = %self.namespace,
+                request_kind,
+                backend_handle_elapsed_ms,
+                "local request backend handle was slow"
+            );
+        }
 
+        let response_wait_started_at = Instant::now();
         let response = resp_rx.recv().await.ok_or_else(|| {
             ExecutorError::ClientTransport(
                 "in-process backend returned no response for request".to_string(),
             )
         })?;
+        let response_wait_elapsed_ms = response_wait_started_at.elapsed().as_millis();
+        if response_wait_elapsed_ms > LOCAL_REQUEST_SLOW_RESPONSE_WAIT_WARN_MS {
+            warn!(
+                namespace = %self.namespace,
+                request_kind,
+                response_wait_elapsed_ms,
+                "local request response channel wait was slow"
+            );
+        }
+
+        debug!(
+            namespace = %self.namespace,
+            request_kind,
+            backend_handle_elapsed_ms,
+            response_wait_elapsed_ms,
+            "local request timing"
+        );
         response.map_err(ExecutorError::Backend)
     }
 
@@ -126,6 +170,10 @@ impl LocalClient {
         &self,
         input: WireIn,
     ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        let subscribed_journey_id = match &input {
+            WireIn::SubscribeJourneyUpdates { journey_id, .. } => Some(*journey_id),
+            _ => None,
+        };
         let (req_tx, req_rx) = mpsc::unbounded_channel::<WireIn>();
         let (resp_tx, resp_rx) = mpsc::unbounded_channel::<Result<WireOut, BackendError>>();
 
@@ -138,27 +186,159 @@ impl LocalClient {
 
         let backend = Arc::clone(&self.backend);
         let error_tx = resp_tx.clone();
+        let namespace = self.namespace.clone();
         tokio::spawn(async move {
             let tx = wire_tx_from_channel(resp_tx);
             let rx = wire_rx_from_channel(req_rx);
+            let backend_handle_started_at = Instant::now();
             if let Err(err) = backend.handle_request((tx, rx)).await {
                 let _ = error_tx.send(Err(BackendError::Message(err.to_string())));
+                warn!(
+                    namespace = %namespace,
+                    journey_id = ?subscribed_journey_id,
+                    backend_handle_elapsed_ms = backend_handle_started_at.elapsed().as_millis(),
+                    "local subscription backend task failed"
+                );
+                return;
+            }
+
+            debug!(
+                namespace = %namespace,
+                journey_id = ?subscribed_journey_id,
+                backend_handle_elapsed_ms = backend_handle_started_at.elapsed().as_millis(),
+                "local subscription backend task completed"
+            );
+        });
+
+        let stream = stream::unfold(resp_rx, move |mut rx| {
+            let subscribed_journey_id = subscribed_journey_id;
+            async move {
+                let queued_before_recv = rx.len();
+                update_max_usize(&LOCAL_SUBSCRIPTION_MAX_BACKLOG, queued_before_recv);
+                let recv_started_at = Instant::now();
+                let next = rx.recv().await?;
+                let recv_wait_ms = recv_started_at.elapsed().as_millis();
+                update_max_usize(
+                    &LOCAL_SUBSCRIPTION_MAX_RECV_WAIT_MS,
+                    usize::try_from(recv_wait_ms).unwrap_or(usize::MAX),
+                );
+                let mapped = match next {
+                    Ok(WireOut::JourneyUpdate(update)) => {
+                        let event_count =
+                            LOCAL_SUBSCRIPTION_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                        let event_age_ms = current_unix_ms().saturating_sub(update.event_unix_ms);
+                        update_max_usize(
+                            &LOCAL_SUBSCRIPTION_MAX_EVENT_AGE_MS,
+                            usize::try_from(event_age_ms.max(0)).unwrap_or(usize::MAX),
+                        );
+                        if event_age_ms > LOCAL_SUBSCRIPTION_LAG_WARN_MS {
+                            warn!(
+                                journey_id = ?subscribed_journey_id,
+                                event_count,
+                                sequence_id = update.sequence_id,
+                                event_age_ms,
+                                queued_before_recv,
+                                recv_wait_ms,
+                                max_event_age_ms = LOCAL_SUBSCRIPTION_MAX_EVENT_AGE_MS.load(Ordering::Relaxed),
+                                max_backlog = LOCAL_SUBSCRIPTION_MAX_BACKLOG.load(Ordering::Relaxed),
+                                max_recv_wait_ms = LOCAL_SUBSCRIPTION_MAX_RECV_WAIT_MS.load(Ordering::Relaxed),
+                                "local subscription received stale journey update"
+                            );
+                        } else if recv_wait_ms > LOCAL_SUBSCRIPTION_SLOW_RECV_WARN_MS {
+                            warn!(
+                                journey_id = ?subscribed_journey_id,
+                                event_count,
+                                sequence_id = update.sequence_id,
+                                event_age_ms,
+                                queued_before_recv,
+                                recv_wait_ms,
+                                max_event_age_ms = LOCAL_SUBSCRIPTION_MAX_EVENT_AGE_MS.load(Ordering::Relaxed),
+                                max_backlog = LOCAL_SUBSCRIPTION_MAX_BACKLOG.load(Ordering::Relaxed),
+                                max_recv_wait_ms = LOCAL_SUBSCRIPTION_MAX_RECV_WAIT_MS.load(Ordering::Relaxed),
+                                "local subscription recv wait was unexpectedly slow"
+                            );
+                        } else if queued_before_recv >= LOCAL_SUBSCRIPTION_BACKLOG_WARN {
+                            warn!(
+                                journey_id = ?subscribed_journey_id,
+                                event_count,
+                                sequence_id = update.sequence_id,
+                                event_age_ms,
+                                queued_before_recv,
+                                recv_wait_ms,
+                                max_event_age_ms = LOCAL_SUBSCRIPTION_MAX_EVENT_AGE_MS.load(Ordering::Relaxed),
+                                max_backlog = LOCAL_SUBSCRIPTION_MAX_BACKLOG.load(Ordering::Relaxed),
+                                max_recv_wait_ms = LOCAL_SUBSCRIPTION_MAX_RECV_WAIT_MS.load(Ordering::Relaxed),
+                                "local subscription queue backlog is growing"
+                            );
+                        } else if event_count % LOCAL_SUBSCRIPTION_LOG_INTERVAL == 0 {
+                            debug!(
+                                journey_id = ?subscribed_journey_id,
+                                event_count,
+                                sequence_id = update.sequence_id,
+                                event_age_ms,
+                                queued_before_recv,
+                                recv_wait_ms,
+                                max_event_age_ms = LOCAL_SUBSCRIPTION_MAX_EVENT_AGE_MS.load(Ordering::Relaxed),
+                                max_backlog = LOCAL_SUBSCRIPTION_MAX_BACKLOG.load(Ordering::Relaxed),
+                                max_recv_wait_ms = LOCAL_SUBSCRIPTION_MAX_RECV_WAIT_MS.load(Ordering::Relaxed),
+                                "local subscription heartbeat"
+                            );
+                        }
+                        Ok(update)
+                    }
+                    Ok(other) => Err(ExecutorError::ClientTransport(format!(
+                        "unexpected response for journey update subscription: {other:?}"
+                    ))),
+                    Err(err) => Err(ExecutorError::Backend(err)),
+                };
+                Some((mapped, rx))
             }
         });
 
-        let stream = stream::unfold(resp_rx, |mut rx| async move {
-            let next = rx.recv().await?;
-            let mapped = match next {
-                Ok(WireOut::JourneyUpdate(update)) => Ok(update),
-                Ok(other) => Err(ExecutorError::ClientTransport(format!(
-                    "unexpected response for journey update subscription: {other:?}"
-                ))),
-                Err(err) => Err(ExecutorError::Backend(err)),
-            };
-            Some((mapped, rx))
-        });
-
         Ok(JourneyUpdateSubscription::from_stream(stream))
+    }
+}
+
+fn current_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
+    }
+}
+
+fn wire_in_kind(input: &WireIn) -> &'static str {
+    match input {
+        WireIn::CreateJourney { .. } => "CreateJourney",
+        WireIn::JourneyHistory(..) => "JourneyHistory",
+        WireIn::JourneyStatus(..) => "JourneyStatus",
+        WireIn::SubscribeJourneyUpdates { .. } => "SubscribeJourneyUpdates",
+        WireIn::AnimalAppearance(..) => "AnimalAppearance",
+        WireIn::PerturbAnimal { .. } => "PerturbAnimal",
+        WireIn::ClaimPerturbable(..) => "ClaimPerturbable",
+        WireIn::AckPerturbable { .. } => "AckPerturbable",
+        WireIn::HeartbeatJourneyLease { .. } => "HeartbeatJourneyLease",
+        WireIn::PollOwnerWake { .. } => "PollOwnerWake",
+        WireIn::ScheduleSleep { .. } => "ScheduleSleep",
+        WireIn::JourneyComplete(..) => "JourneyComplete",
+        WireIn::PollStep { .. } => "PollStep",
+        WireIn::WaitForWorkerWake { .. } => "WaitForWorkerWake",
+        WireIn::PollTimers => "PollTimers",
+        WireIn::HistoryEvent { .. } => "HistoryEvent",
+    }
+}
+
+fn update_max_usize(max_value: &AtomicUsize, candidate: usize) {
+    let mut current = max_value.load(Ordering::Relaxed);
+    while candidate > current {
+        match max_value.compare_exchange_weak(
+            current,
+            candidate,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(updated) => current = updated,
+        }
     }
 }
 
@@ -237,11 +417,12 @@ impl JungleClient for LocalClient {
     }
 
     async fn animal_appearance_update(&self, id: Uuid, data: Vec<u8>) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::Appearance {
-                data,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::Appearance { data, uuid: id },
+                event_unix_ms,
+            })
             .await?;
         match response {
             WireOut::Ack => Ok(()),
@@ -391,18 +572,45 @@ impl JungleClient for LocalClient {
         }
     }
 
+    async fn wait_for_worker_wake(
+        &self,
+        owner_id: Uuid,
+        supported_animals: Vec<SupportedAnimal>,
+        timeout: Duration,
+    ) -> Result<(), ExecutorError> {
+        let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        let response = self
+            .send_wire_message(WireIn::WaitForWorkerWake {
+                owner_id,
+                namespace: self.namespace.clone(),
+                supported_animals,
+                timeout_ms,
+            })
+            .await?;
+        match response {
+            WireOut::Ack => Ok(()),
+            _ => Err(ExecutorError::ClientTransport(
+                "unexpected response for wait_for_worker_wake".to_string(),
+            )),
+        }
+    }
+
     async fn effect_input(
         &self,
         id: Uuid,
         node_id: u32,
         input: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectInput {
-                node_id,
-                data: input,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectInput {
+                    node_id,
+                    data: input,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await?;
         match response {
             WireOut::Ack => Ok(()),
@@ -418,12 +626,16 @@ impl JungleClient for LocalClient {
         node_id: u32,
         output: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectSuccessOutput {
-                node_id,
-                data: output,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectSuccessOutput {
+                    node_id,
+                    data: output,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await?;
         match response {
             WireOut::Ack => Ok(()),
@@ -439,12 +651,16 @@ impl JungleClient for LocalClient {
         node_id: u32,
         err: Vec<u8>,
     ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
         let response = self
-            .send_wire_message(WireIn::HistoryEvent(RunnerOut::EffectFailureOutput {
-                node_id,
-                data: err,
-                uuid: id,
-            }))
+            .send_wire_message(WireIn::HistoryEvent {
+                event: RunnerOut::EffectFailureOutput {
+                    node_id,
+                    data: err,
+                    uuid: id,
+                },
+                event_unix_ms,
+            })
             .await?;
         match response {
             WireOut::Ack => Ok(()),

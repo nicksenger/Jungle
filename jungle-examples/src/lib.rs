@@ -196,32 +196,3 @@ pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
 
     (client, journey_id)
 }
-
-#[cfg(feature = "zoo")]
-fn spawn_gorilla_runtime_with_start<F>(start_journey: F) -> (jungle_sdk::Client, Uuid)
-where
-    F: FnOnce(&tokio::runtime::Runtime, &jungle_sdk::Client, Vec<u8>) -> Uuid,
-{
-    let listen_addr = reserve_local_addr();
-    let db_path = std::env::temp_dir().join(format!("jungle-examples-{}.redb", Uuid::new_v4()));
-
-    spawn_server_runtime(listen_addr, db_path);
-
-    let setup_runtime = tokio::runtime::Runtime::new().expect("setup runtime should start");
-
-    let client = setup_runtime.block_on(connect_client_with_retry(listen_addr));
-    let seed = postcard::to_allocvec(&jungle_zoo::animals::gorilla::default_temporal_seed())
-        .expect("gorilla seed should serialize");
-    let journey_id = start_journey(&setup_runtime, &client, seed);
-
-    (client, journey_id)
-}
-
-#[cfg(feature = "zoo")]
-pub fn spawn_gorilla_runtime_by_animal() -> (jungle_sdk::Client, Uuid) {
-    spawn_gorilla_runtime_with_start(|runtime, client, seed| {
-        runtime
-            .block_on(client.start_journey::<jungle_zoo::animals::gorilla::Gorilla>(seed))
-            .expect("start_journey gorilla should succeed")
-    })
-}

@@ -140,6 +140,7 @@ pub async fn migrate_postgres_v0(pool: &sqlx::PgPool) -> Result<(), sqlx::Error>
             kind SMALLINT NOT NULL,
             node_id INTEGER,
             data BYTEA NOT NULL,
+            event_unix_ms BIGINT,
             PRIMARY KEY (journey_id, sequence_id)
         )
         "#,
@@ -151,6 +152,15 @@ pub async fn migrate_postgres_v0(pool: &sqlx::PgPool) -> Result<(), sqlx::Error>
         r#"
         ALTER TABLE events
         ADD COLUMN IF NOT EXISTS node_id INTEGER
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        ALTER TABLE events
+        ADD COLUMN IF NOT EXISTS event_unix_ms BIGINT
         "#,
     )
     .execute(&mut *tx)

@@ -1,4 +1,5 @@
 mod cluster_panel;
+mod widgets;
 
 use iced::futures::{self, Stream, StreamExt};
 use iced::widget::{button, column, container, row, text, Space};
@@ -12,10 +13,14 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
+use tracing::{debug, warn};
 use uuid::Uuid;
+use widgets::animated_cluster::AnimatedClusterView;
+use widgets::animated_step::AnimatedStepNode;
 
 const WINDOW_WIDTH: f32 = 1360.0;
 const WINDOW_HEIGHT: f32 = 900.0;
@@ -26,9 +31,19 @@ const DEFAULT_CLUSTER_FILL: Color = Color::from_rgba8(20, 46, 30, 0.14);
 const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_BORDER_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_RECOLLAPSE_DELAY: Duration = Duration::from_secs(2);
-const ANIMATION_TICK: Duration = Duration::from_millis(16);
+const VISION_LIVE_EVENT_LOG_INTERVAL: usize = 512;
+const VISION_STALE_EVENT_WARN_MS: i64 = 1_000;
+const VISION_APPLY_QUEUE_DELAY_WARN_MS: i64 = 100;
+const VISION_END_TO_END_AGE_WARN_MS: i64 = 2_000;
+const VISION_SLOW_APPLY_WARN_MS: u128 = 20;
+const VISION_SLOW_THEME_UPDATE_WARN_MS: u128 = 20;
 
 static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
+static VISION_LIVE_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+static VISION_APPLY_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+static VISION_MAX_APPLY_QUEUE_DELAY_MS: AtomicUsize = AtomicUsize::new(0);
+static VISION_MAX_END_TO_END_EVENT_AGE_MS: AtomicUsize = AtomicUsize::new(0);
+static VISION_MAX_APPLY_ELAPSED_MS: AtomicUsize = AtomicUsize::new(0);
 
 pub struct AnyAnimal;
 
@@ -64,8 +79,8 @@ pub enum ClusterKind {
 pub struct StepViewCtx<'a> {
     pub display_id: u32,
     pub runtime_id: Option<u32>,
-    pub proxy_runtime_ids: Vec<u32>,
-    pub successor_runtime_ids: Vec<u32>,
+    pub proxy_runtime_ids: &'a [u32],
+    pub successor_runtime_ids: &'a [u32],
     pub kind: StepKind,
     pub label: &'a str,
     pub metadata: Option<&'a str>,
@@ -89,9 +104,9 @@ pub struct ClusterViewCtx<'a> {
     pub parent_cluster_id: Option<u32>,
     pub depth: usize,
     pub member_display_ids: &'a [u32],
-    pub entry_runtime_ids: Vec<u32>,
-    pub member_runtime_ids: Vec<u32>,
-    pub successor_runtime_ids: Vec<u32>,
+    pub entry_runtime_ids: &'a [u32],
+    pub member_runtime_ids: &'a [u32],
+    pub successor_runtime_ids: &'a [u32],
     pub phase: Phase<ClusterLive>,
 }
 
@@ -426,7 +441,10 @@ where
 #[derive(Debug, Clone)]
 pub enum EjectedViewerMessage {
     LiveEvent(Result<JourneyUpdateEvent, String>),
-    ApplyLiveEvent(JourneyUpdateEvent),
+    ApplyLiveEvent {
+        update: JourneyUpdateEvent,
+        received_unix_ms: i64,
+    },
     Theme(ViewerEvent<()>),
     ViewportInteraction(ViewportInteraction),
     Retry,
@@ -502,10 +520,35 @@ where
             EjectedViewerMessage::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
+                        let event_count =
+                            VISION_LIVE_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                        let event_age_ms = current_unix_ms().saturating_sub(update.event_unix_ms);
+                        if event_age_ms > VISION_STALE_EVENT_WARN_MS {
+                            warn!(
+                                journey = self.journey_name(),
+                                event_count,
+                                sequence_id = update.sequence_id,
+                                event_age_ms,
+                                "jungle-vision received stale live update"
+                            );
+                        } else if event_count % VISION_LIVE_EVENT_LOG_INTERVAL == 0 {
+                            debug!(
+                                journey = self.journey_name(),
+                                event_count,
+                                sequence_id = update.sequence_id,
+                                event_age_ms,
+                                "jungle-vision live event heartbeat"
+                            );
+                        }
                         return iced_sugiyama::invalidate::<EjectedViewerMessage>(
                             self.graph_widget_id.clone(),
                         )
-                        .chain(Task::done(EjectedViewerMessage::ApplyLiveEvent(update)));
+                        .chain(Task::done(
+                            EjectedViewerMessage::ApplyLiveEvent {
+                                update,
+                                received_unix_ms: current_unix_ms(),
+                            },
+                        ));
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -513,7 +556,22 @@ where
                 }
                 Task::none()
             }
-            EjectedViewerMessage::ApplyLiveEvent(update) => {
+            EjectedViewerMessage::ApplyLiveEvent {
+                update,
+                received_unix_ms,
+            } => {
+                let apply_started_at = Instant::now();
+                let now_unix_ms = current_unix_ms();
+                let apply_queue_delay_ms = now_unix_ms.saturating_sub(received_unix_ms);
+                let end_to_end_age_ms = now_unix_ms.saturating_sub(update.event_unix_ms);
+                update_max_usize(
+                    &VISION_MAX_APPLY_QUEUE_DELAY_MS,
+                    usize::try_from(apply_queue_delay_ms.max(0)).unwrap_or(usize::MAX),
+                );
+                update_max_usize(
+                    &VISION_MAX_END_TO_END_EVENT_AGE_MS,
+                    usize::try_from(end_to_end_age_ms.max(0)).unwrap_or(usize::MAX),
+                );
                 let theme_task = self
                     .theme
                     .update(
@@ -532,13 +590,84 @@ where
                     }
                 };
                 let _ = data.apply_update(update);
+                let apply_elapsed_ms = apply_started_at.elapsed().as_millis();
+                let apply_count = VISION_APPLY_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                update_max_usize(
+                    &VISION_MAX_APPLY_ELAPSED_MS,
+                    usize::try_from(apply_elapsed_ms).unwrap_or(usize::MAX),
+                );
+                if apply_elapsed_ms > VISION_SLOW_APPLY_WARN_MS {
+                    warn!(
+                        journey = self.journey_name(),
+                        apply_count,
+                        apply_elapsed_ms,
+                        apply_queue_delay_ms,
+                        end_to_end_age_ms,
+                        max_apply_queue_delay_ms =
+                            VISION_MAX_APPLY_QUEUE_DELAY_MS.load(Ordering::Relaxed),
+                        max_end_to_end_event_age_ms =
+                            VISION_MAX_END_TO_END_EVENT_AGE_MS.load(Ordering::Relaxed),
+                        max_apply_elapsed_ms = VISION_MAX_APPLY_ELAPSED_MS.load(Ordering::Relaxed),
+                        "slow jungle-vision ApplyLiveEvent handling"
+                    );
+                } else if apply_queue_delay_ms > VISION_APPLY_QUEUE_DELAY_WARN_MS {
+                    warn!(
+                        journey = self.journey_name(),
+                        apply_count,
+                        apply_elapsed_ms,
+                        apply_queue_delay_ms,
+                        end_to_end_age_ms,
+                        max_apply_queue_delay_ms =
+                            VISION_MAX_APPLY_QUEUE_DELAY_MS.load(Ordering::Relaxed),
+                        max_end_to_end_event_age_ms =
+                            VISION_MAX_END_TO_END_EVENT_AGE_MS.load(Ordering::Relaxed),
+                        max_apply_elapsed_ms = VISION_MAX_APPLY_ELAPSED_MS.load(Ordering::Relaxed),
+                        "jungle-vision ApplyLiveEvent queueing delay is growing"
+                    );
+                } else if end_to_end_age_ms > VISION_END_TO_END_AGE_WARN_MS {
+                    warn!(
+                        journey = self.journey_name(),
+                        apply_count,
+                        apply_elapsed_ms,
+                        apply_queue_delay_ms,
+                        end_to_end_age_ms,
+                        max_apply_queue_delay_ms =
+                            VISION_MAX_APPLY_QUEUE_DELAY_MS.load(Ordering::Relaxed),
+                        max_end_to_end_event_age_ms =
+                            VISION_MAX_END_TO_END_EVENT_AGE_MS.load(Ordering::Relaxed),
+                        max_apply_elapsed_ms = VISION_MAX_APPLY_ELAPSED_MS.load(Ordering::Relaxed),
+                        "jungle-vision end-to-end event age is high at apply"
+                    );
+                } else if apply_count % VISION_LIVE_EVENT_LOG_INTERVAL == 0 {
+                    debug!(
+                        journey = self.journey_name(),
+                        apply_count,
+                        apply_elapsed_ms,
+                        apply_queue_delay_ms,
+                        end_to_end_age_ms,
+                        max_apply_queue_delay_ms =
+                            VISION_MAX_APPLY_QUEUE_DELAY_MS.load(Ordering::Relaxed),
+                        max_end_to_end_event_age_ms =
+                            VISION_MAX_END_TO_END_EVENT_AGE_MS.load(Ordering::Relaxed),
+                        max_apply_elapsed_ms = VISION_MAX_APPLY_ELAPSED_MS.load(Ordering::Relaxed),
+                        "jungle-vision apply heartbeat"
+                    );
+                }
                 theme_task
             }
             EjectedViewerMessage::Theme(event) => {
+                let theme_started_at = Instant::now();
                 let theme_task = self
                     .theme
                     .update(&mut self.theme_state, event)
                     .map(EjectedViewerMessage::Theme);
+                let theme_elapsed_ms = theme_started_at.elapsed().as_millis();
+                if theme_elapsed_ms > VISION_SLOW_THEME_UPDATE_WARN_MS {
+                    warn!(
+                        journey = self.journey_name(),
+                        theme_elapsed_ms, "slow jungle-vision theme update"
+                    );
+                }
                 Task::batch(vec![
                     theme_task,
                     iced_sugiyama::force_review::<EjectedViewerMessage>(
@@ -603,7 +732,10 @@ where
         .map(|message| match message {
             Message::Theme(event) => EjectedViewerMessage::Theme(event),
             Message::LiveEvent(result) => EjectedViewerMessage::LiveEvent(result),
-            Message::ApplyLiveEvent(update) => EjectedViewerMessage::ApplyLiveEvent(update),
+            Message::ApplyLiveEvent(update) => EjectedViewerMessage::ApplyLiveEvent {
+                update,
+                received_unix_ms: current_unix_ms(),
+            },
             Message::ViewportInteraction(interaction) => {
                 EjectedViewerMessage::ViewportInteraction(interaction)
             }
@@ -1054,6 +1186,28 @@ fn infer_condition_runtime_state(live: &LiveData, successor_runtime_ids: &[u32])
         .unwrap_or(RuntimeState::Pending)
 }
 
+fn current_unix_ms() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_millis()).unwrap_or(i64::MAX),
+        Err(_) => 0,
+    }
+}
+
+fn update_max_usize(max_value: &AtomicUsize, candidate: usize) {
+    let mut current = max_value.load(Ordering::Relaxed);
+    while candidate > current {
+        match max_value.compare_exchange_weak(
+            current,
+            candidate,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(updated) => current = updated,
+        }
+    }
+}
+
 fn node_phase_for_display(
     live_data: Option<&LiveData>,
     display_id: u32,
@@ -1320,9 +1474,9 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
-            entry_runtime_ids: cluster_entry_runtime_ids[index].clone(),
-            member_runtime_ids: cluster_member_runtime_ids[index].clone(),
-            successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
+            entry_runtime_ids: &cluster_entry_runtime_ids[index],
+            member_runtime_ids: &cluster_member_runtime_ids[index],
+            successor_runtime_ids: &cluster_successor_runtime_ids[index],
             phase: cluster_phase(cluster),
         };
         if matches!(
@@ -1401,11 +1555,11 @@ where
         let step_ctx = StepViewCtx {
             display_id: node.id,
             runtime_id: node.runtime_node_id,
-            proxy_runtime_ids: node.proxy_runtime_ids.clone(),
+            proxy_runtime_ids: &node.proxy_runtime_ids,
             successor_runtime_ids: condition_successor_runtime_ids
                 .get(&node.id)
-                .cloned()
-                .unwrap_or_default(),
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
             kind: node.kind(),
             label: &node.label,
             metadata: node.metadata.as_deref(),
@@ -1439,9 +1593,9 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
-            entry_runtime_ids: cluster_entry_runtime_ids[index].clone(),
-            member_runtime_ids: cluster_member_runtime_ids[index].clone(),
-            successor_runtime_ids: cluster_successor_runtime_ids[index].clone(),
+            entry_runtime_ids: &cluster_entry_runtime_ids[index],
+            member_runtime_ids: &cluster_member_runtime_ids[index],
+            successor_runtime_ids: &cluster_successor_runtime_ids[index],
             phase: cluster_phase(cluster),
         };
         if let ClusterView::Collapsed { element, size } = theme.view_cluster(theme_state, &cx) {
@@ -1487,9 +1641,9 @@ where
                 .and_then(|parent| model.cluster_info.get(parent).map(|info| info.id)),
             depth: cluster.depth,
             member_display_ids: &cluster.nodes,
-            entry_runtime_ids: cluster_entry_runtime_ids[source_index].clone(),
-            member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
-            successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
+            entry_runtime_ids: &cluster_entry_runtime_ids[source_index],
+            member_runtime_ids: &cluster_member_runtime_ids[source_index],
+            successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
             phase: cluster_phase(cluster),
         };
         let ClusterView::Expanded { overlay, fill } = theme.view_cluster(theme_state, &cx) else {
@@ -1571,11 +1725,11 @@ where
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
                             runtime_id: node.runtime_node_id,
-                            proxy_runtime_ids: node.proxy_runtime_ids.clone(),
+                            proxy_runtime_ids: &node.proxy_runtime_ids,
                             successor_runtime_ids: condition_successors_for_nodes
                                 .get(&node.id)
-                                .cloned()
-                                .unwrap_or_default(),
+                                .map(Vec::as_slice)
+                                .unwrap_or(&[]),
                             kind: node.kind(),
                             label: &node.label,
                             metadata: node.metadata.as_deref(),
@@ -1598,13 +1752,11 @@ where
                             }),
                             depth: cluster.depth,
                             member_display_ids: &cluster.nodes,
-                            entry_runtime_ids: cluster_entry_runtime_ids_for_nodes[cluster_index]
-                                .clone(),
-                            member_runtime_ids: cluster_member_runtime_ids_for_nodes[cluster_index]
-                                .clone(),
-                            successor_runtime_ids: cluster_successor_runtime_ids_for_nodes
-                                [cluster_index]
-                                .clone(),
+                            entry_runtime_ids: &cluster_entry_runtime_ids_for_nodes[cluster_index],
+                            member_runtime_ids: &cluster_member_runtime_ids_for_nodes
+                                [cluster_index],
+                            successor_runtime_ids: &cluster_successor_runtime_ids_for_nodes
+                                [cluster_index],
                             phase: cluster_phase(cluster),
                         };
                         if let ClusterView::Collapsed { element, .. } =
@@ -1754,9 +1906,9 @@ where
                     .and_then(|parent| cluster_info_for_clusters.get(parent).map(|info| info.id)),
                 depth: cluster.depth,
                 member_display_ids: &cluster.nodes,
-                entry_runtime_ids: cluster_entry_runtime_ids[source_index].clone(),
-                member_runtime_ids: cluster_member_runtime_ids[source_index].clone(),
-                successor_runtime_ids: cluster_successor_runtime_ids[source_index].clone(),
+                entry_runtime_ids: &cluster_entry_runtime_ids[source_index],
+                member_runtime_ids: &cluster_member_runtime_ids[source_index],
+                successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
                 phase: cluster_phase(cluster),
             };
             match theme.view_cluster(theme_state, &cx) {
@@ -2265,9 +2417,7 @@ pub struct DefaultTheme;
 
 #[derive(Debug, Clone, Copy)]
 struct NodeVisual {
-    from: RuntimeState,
-    to: RuntimeState,
-    started_at: Instant,
+    state: RuntimeState,
 }
 
 #[derive(Debug, Clone)]
@@ -2281,22 +2431,13 @@ struct ClusterRuntimeIndex {
 #[derive(Debug, Clone, Copy)]
 struct ClusterVisual {
     expanded: bool,
-    border: ClusterBorderVisual,
-    fill: cluster_panel::Transition,
+    border_state: RuntimeState,
     completed_at: Option<Instant>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ClusterBorderVisual {
-    from: Color,
-    to: Color,
-    started_at: Instant,
 }
 
 #[derive(Debug)]
 pub struct DefaultThemeState {
     node_visuals: HashMap<u32, NodeVisual>,
-    condition_visuals: HashMap<u32, NodeVisual>,
     cluster_index: HashMap<u32, ClusterRuntimeIndex>,
     cluster_visuals: HashMap<u32, ClusterVisual>,
     condition_successor_runtime_ids: HashMap<u32, Vec<u32>>,
@@ -2306,8 +2447,7 @@ pub struct DefaultThemeState {
 }
 
 impl DefaultThemeState {
-    fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>, now: Instant) {
-        let fill = cluster_panel::target_color(cx.kind, cx.phase);
+    fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>) {
         let index = ClusterRuntimeIndex {
             kind: cx.kind,
             entry_runtime_ids: cx.entry_runtime_ids.iter().copied().collect(),
@@ -2319,12 +2459,7 @@ impl DefaultThemeState {
             .entry(cx.cluster_id)
             .or_insert(ClusterVisual {
                 expanded: false,
-                border: ClusterBorderVisual {
-                    from: cluster_border_color_gray(),
-                    to: cluster_border_color_gray(),
-                    started_at: now,
-                },
-                fill: cluster_panel::Transition::new(fill, now),
+                border_state: RuntimeState::Pending,
                 completed_at: None,
             });
     }
@@ -2340,7 +2475,7 @@ impl DefaultThemeState {
         let mut target = self
             .node_visuals
             .get(&runtime_id)
-            .map(|visual| visual.to)
+            .map(|visual| visual.state)
             .unwrap_or(RuntimeState::Pending);
         if self.force_pending_runtime_ids.contains(&runtime_id)
             && !matches!(target, RuntimeState::Running)
@@ -2381,24 +2516,19 @@ impl DefaultThemeState {
             })
     }
 
-    fn update_node_state(&mut self, runtime_id: u32, to: RuntimeState, now: Instant) -> bool {
+    fn update_node_state(&mut self, runtime_id: u32, to: RuntimeState) -> bool {
         if !matches!(to, RuntimeState::Pending) {
             self.force_pending_runtime_ids.remove(&runtime_id);
         }
         let entry = self.node_visuals.entry(runtime_id).or_insert(NodeVisual {
-            from: RuntimeState::Pending,
-            to: RuntimeState::Pending,
-            started_at: now,
+            state: RuntimeState::Pending,
         });
 
-        if entry.to == to {
+        if entry.state == to {
             return false;
         }
 
-        let blended = sampled_runtime_state(entry, now);
-        entry.from = blended;
-        entry.to = to;
-        entry.started_at = now;
+        entry.state = to;
         self.note_runtime_update(runtime_id);
         true
     }
@@ -2407,7 +2537,6 @@ impl DefaultThemeState {
         &mut self,
         cluster_id: u32,
         except_runtime_id: u32,
-        now: Instant,
     ) -> bool {
         let Some(index) = self.cluster_index.get(&cluster_id) else {
             return false;
@@ -2419,7 +2548,7 @@ impl DefaultThemeState {
                 continue;
             }
             self.force_pending_runtime_ids.insert(member_id);
-            changed |= self.update_node_state(member_id, RuntimeState::Pending, now);
+            changed |= self.update_node_state(member_id, RuntimeState::Pending);
         }
         changed
     }
@@ -2441,27 +2570,20 @@ impl DefaultThemeState {
                 if (is_while_cluster && contains_entry) || (!visual.expanded && contains_member) {
                     visual.expanded = true;
                     visual.completed_at = None;
-                    changed |= update_cluster_border_visual(
-                        &mut visual.border,
-                        cluster_border_color_gray(),
-                        cluster_border_color_running(),
-                        now,
-                    );
+                    let border_changed = visual.border_state != RuntimeState::Running;
+                    visual.border_state = RuntimeState::Running;
+                    changed |= border_changed;
                     just_opened = true;
                 } else if visual.expanded && contains_successor {
-                    let current = current_cluster_border_color(visual.border, now);
-                    changed |= update_cluster_border_visual(
-                        &mut visual.border,
-                        current,
-                        cluster_border_color_completed(),
-                        now,
-                    );
+                    let border_changed = visual.border_state != RuntimeState::Completed;
+                    visual.border_state = RuntimeState::Completed;
+                    changed |= border_changed;
                     visual.completed_at.get_or_insert(now);
                 }
             }
 
             if just_opened || (is_while_cluster && contains_entry) {
-                changed |= self.reset_cluster_members_to_pending(cluster_id, runtime_id, now);
+                changed |= self.reset_cluster_members_to_pending(cluster_id, runtime_id);
             }
         }
         changed
@@ -2488,7 +2610,7 @@ impl DefaultThemeState {
             .get(&cx.cluster_id)
             .map(|visual| {
                 visual.expanded
-                    && visual.border.to == cluster_border_color_completed()
+                    && matches!(visual.border_state, RuntimeState::Completed)
                     && visual
                         .completed_at
                         .map(|completed_at| {
@@ -2506,103 +2628,16 @@ impl DefaultThemeState {
         };
         visual.expanded = false;
         visual.completed_at = None;
-        let current = current_cluster_border_color(visual.border, now);
-        let mut changed = true;
-        changed |= update_cluster_border_visual(
-            &mut visual.border,
-            current,
-            cluster_border_color_gray(),
-            now,
-        );
-        changed
+        let border_changed = visual.border_state != RuntimeState::Pending;
+        visual.border_state = RuntimeState::Pending;
+        border_changed
     }
 
-    fn has_running_cluster_animations(&self, now: Instant) -> bool {
-        self.cluster_visuals.values().any(|visual| {
-            (visual.border.from != visual.border.to
-                && now.duration_since(visual.border.started_at) < CLUSTER_BORDER_ANIMATION_DURATION)
-                || visual
-                    .fill
-                    .is_animating(now, CLUSTER_BORDER_ANIMATION_DURATION)
-        })
-    }
-
-    fn cluster_border_color(&self, cluster_id: u32, now: Instant) -> Color {
+    fn cluster_border_color(&self, cluster_id: u32) -> Color {
         self.cluster_visuals
             .get(&cluster_id)
-            .map(|visual| current_cluster_border_color(visual.border, now))
+            .map(|visual| runtime_color(visual.border_state))
             .unwrap_or_else(cluster_border_color_gray)
-    }
-
-    fn update_cluster_fill_target(&mut self, cx: &ClusterViewCtx<'_>, now: Instant) -> bool {
-        let target = cluster_panel::target_color(cx.kind, cx.phase);
-        self.cluster_visuals
-            .get_mut(&cx.cluster_id)
-            .map(|visual| {
-                visual
-                    .fill
-                    .update_target(target, now, CLUSTER_BORDER_ANIMATION_DURATION)
-            })
-            .unwrap_or(false)
-    }
-
-    fn cluster_fill_color(&self, cluster_id: u32, now: Instant) -> Color {
-        self.cluster_visuals
-            .get(&cluster_id)
-            .map(|visual| visual.fill.sample(now, CLUSTER_BORDER_ANIMATION_DURATION))
-            .unwrap_or(DEFAULT_CLUSTER_FILL)
-    }
-
-    fn settle_cluster_animations(&mut self, now: Instant) -> bool {
-        let mut changed = false;
-        for visual in self.cluster_visuals.values_mut() {
-            let border = &mut visual.border;
-            if border.from == border.to {
-                changed |= visual.fill.settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
-                continue;
-            }
-            if now.duration_since(border.started_at) >= CLUSTER_BORDER_ANIMATION_DURATION {
-                border.from = border.to;
-                changed = true;
-            }
-            changed |= visual.fill.settle(now, CLUSTER_BORDER_ANIMATION_DURATION);
-        }
-        changed
-    }
-
-    fn has_running_animations(&self, now: Instant) -> bool {
-        self.node_visuals
-            .values()
-            .chain(self.condition_visuals.values())
-            .any(|visual| {
-                visual.from != visual.to
-                    && now.duration_since(visual.started_at) < NODE_ANIMATION_DURATION
-            })
-            || self.has_running_cluster_animations(now)
-    }
-
-    fn settle_animations(&mut self, now: Instant) -> bool {
-        let mut changed = false;
-        for visual in self.node_visuals.values_mut() {
-            if visual.from == visual.to {
-                continue;
-            }
-            if now.duration_since(visual.started_at) >= NODE_ANIMATION_DURATION {
-                visual.from = visual.to;
-                changed = true;
-            }
-        }
-        for visual in self.condition_visuals.values_mut() {
-            if visual.from == visual.to {
-                continue;
-            }
-            if now.duration_since(visual.started_at) >= NODE_ANIMATION_DURATION {
-                visual.from = visual.to;
-                changed = true;
-            }
-        }
-        changed |= self.settle_cluster_animations(now);
-        changed
     }
 }
 
@@ -2613,7 +2648,6 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     fn init(&self) -> Self::State {
         Mutex::new(DefaultThemeState {
             node_visuals: HashMap::new(),
-            condition_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
             condition_successor_runtime_ids: HashMap::new(),
@@ -2630,31 +2664,22 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     ) -> Task<ViewerEvent<Self::Message>> {
         let now = Instant::now();
         let guard = state.get_mut();
-        let mut should_tick = false;
 
         match event {
             ViewerEvent::JourneyUpdate(update) => match update.event {
                 RunnerUpdateOut::EffectInput { node_id, .. } => {
-                    let node_changed = guard.update_node_state(node_id, RuntimeState::Running, now);
-                    let cluster_changed = guard.update_clusters_for_effect_input(node_id, now);
-                    should_tick = node_changed || cluster_changed;
+                    let _ = guard.update_node_state(node_id, RuntimeState::Running);
+                    let _ = guard.update_clusters_for_effect_input(node_id, now);
                 }
                 RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
-                    should_tick = guard.update_node_state(node_id, RuntimeState::Completed, now);
+                    let _ = guard.update_node_state(node_id, RuntimeState::Completed);
                 }
                 RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
-                    should_tick = guard.update_node_state(node_id, RuntimeState::Failed, now);
+                    let _ = guard.update_node_state(node_id, RuntimeState::Failed);
                 }
                 RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
             },
-            ViewerEvent::Message(()) => {
-                let settled = guard.settle_animations(now);
-                should_tick = settled || guard.has_running_animations(now);
-            }
-        }
-
-        if should_tick {
-            return next_tick();
+            ViewerEvent::Message(()) => {}
         }
 
         Task::none()
@@ -2672,16 +2697,10 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
             StepKind::Step => "step",
         };
 
-        let now = Instant::now();
         let fill = if let Some(runtime_id) = cx.runtime_id {
             if let Ok(mut guard) = state.try_lock() {
                 let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
                     && cx.proxy_runtime_ids.is_empty();
-                let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
-                    from: RuntimeState::Pending,
-                    to: RuntimeState::Pending,
-                    started_at: now,
-                });
 
                 let mut phase_target = match cx.phase {
                     Phase::Live(target) => target,
@@ -2690,13 +2709,8 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
                 if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                     phase_target = RuntimeState::Pending;
                 }
-                if visual.to != phase_target {
-                    let blended = sampled_runtime_state(visual, now);
-                    visual.from = blended;
-                    visual.to = phase_target;
-                    visual.started_at = now;
-                }
-                blend_runtime_color(*visual, now)
+                let _ = guard.update_node_state(runtime_id, phase_target);
+                runtime_color(phase_target)
             } else {
                 let phase_target = match cx.phase {
                     Phase::Live(target) => target,
@@ -2707,26 +2721,19 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         } else if matches!(cx.kind, StepKind::Conditional) {
             if let Ok(mut guard) = state.try_lock() {
                 if !cx.successor_runtime_ids.is_empty() {
-                    guard
+                    let should_update = guard
                         .condition_successor_runtime_ids
-                        .insert(cx.display_id, cx.successor_runtime_ids.clone());
+                        .get(&cx.display_id)
+                        .map(Vec::as_slice)
+                        != Some(cx.successor_runtime_ids);
+                    if should_update {
+                        guard
+                            .condition_successor_runtime_ids
+                            .insert(cx.display_id, cx.successor_runtime_ids.to_vec());
+                    }
                 }
                 let phase_target = guard.infer_condition_target(cx.display_id, cx.phase);
-                let visual = guard
-                    .condition_visuals
-                    .entry(cx.display_id)
-                    .or_insert(NodeVisual {
-                        from: RuntimeState::Pending,
-                        to: RuntimeState::Pending,
-                        started_at: now,
-                    });
-                if visual.to != phase_target {
-                    let blended = sampled_runtime_state(visual, now);
-                    visual.from = blended;
-                    visual.to = phase_target;
-                    visual.started_at = now;
-                }
-                blend_runtime_color(*visual, now)
+                runtime_color(phase_target)
             } else {
                 let phase_target = match cx.phase {
                     Phase::Live(target) => target,
@@ -2737,28 +2744,14 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         } else {
             Color::from_rgb8(120, 120, 120)
         };
-
-        let body = column![
-            text(role).size(10).color(Color::from_rgb8(168, 198, 181)),
-            text(cx.label.to_string())
-                .size(13)
-                .color(Color::from_rgb8(223, 245, 230))
-        ]
-        .spacing(4);
-
         (
-            button(body)
-                .padding([8, 10])
-                .width(Length::Shrink)
-                .style(move |_theme, _status| iced::widget::button::Style {
-                    background: Some(iced::Background::Color(fill)),
-                    text_color: Color::from_rgb8(223, 245, 230),
-                    border: iced::border::rounded(10)
-                        .color(Color::from_rgb8(58, 122, 86))
-                        .width(1.0),
-                    ..Default::default()
-                })
-                .into(),
+            AnimatedStepNode::<ViewerEvent<Self::Message>>::new(
+                role,
+                cx.label.to_string(),
+                fill,
+                NODE_ANIMATION_DURATION,
+            )
+            .into(),
             (240.0, 80.0),
         )
     }
@@ -2769,43 +2762,23 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         cx: &ClusterViewCtx<'_>,
     ) -> ClusterView<Self::Message> {
         let now = Instant::now();
-        let (expanded, border_color, fill) = if let Ok(mut guard) = state.try_lock() {
-            guard.register_cluster(cx, now);
+        let (expanded, border_color) = if let Ok(mut guard) = state.try_lock() {
+            guard.register_cluster(cx);
             guard.maybe_collapse_completed_cluster_for_pending_successor(cx, now);
-            let _ = guard.update_cluster_fill_target(cx, now);
             (
                 guard.cluster_is_expanded(cx.cluster_id),
-                guard.cluster_border_color(cx.cluster_id, now),
-                guard.cluster_fill_color(cx.cluster_id, now),
+                guard.cluster_border_color(cx.cluster_id),
             )
         } else {
-            (
-                false,
-                cluster_border_color_gray(),
-                cluster_panel::target_color(cx.kind, cx.phase),
-            )
+            (false, cluster_border_color_gray())
         };
-        let overlay = container(
-            container(text(cx.label.to_string()).size(11).color(border_color))
-                .padding([4, 8])
-                .style(move |_theme| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
-                    border: iced::border::rounded(6).color(border_color).width(1.0),
-                    text_color: Some(border_color),
-                    ..Default::default()
-                }),
+        let fill = cluster_panel::target_color(cx.kind, cx.phase);
+        let overlay = AnimatedClusterView::<ViewerEvent<Self::Message>>::overlay(
+            cx.label.to_string(),
+            border_color,
+            fill,
+            CLUSTER_BORDER_ANIMATION_DURATION,
         )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding(12)
-        .align_x(iced::alignment::Horizontal::Left)
-        .align_y(iced::alignment::Vertical::Top)
-        .style(move |_theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(fill)),
-            border: iced::border::rounded(10).color(border_color).width(2.0),
-            text_color: Some(border_color),
-            ..Default::default()
-        })
         .into();
 
         if expanded {
@@ -2815,34 +2788,22 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
             }
         } else {
             ClusterView::Collapsed {
-                element: button(text(cx.label.to_string()).size(11).color(border_color))
-                    .padding([6, 10])
-                    .width(Length::Shrink)
-                    .style(move |_theme, _status| iced::widget::button::Style {
-                        background: None,
-                        text_color: border_color,
-                        border: iced::border::rounded(8).color(border_color).width(1.4),
-                        ..Default::default()
-                    })
-                    .into(),
+                element: AnimatedClusterView::<ViewerEvent<Self::Message>>::chip(
+                    cx.label.to_string(),
+                    border_color,
+                    CLUSTER_BORDER_ANIMATION_DURATION,
+                )
+                .into(),
                 size: (240.0, 46.0),
             }
         }
     }
 
     fn edge_style(&self, state: &Self::State, cx: EdgeStyleCtx) -> Option<EdgeStyle> {
-        let now = Instant::now();
         let (from_color, to_color) = if let Some(runtime_id) = cx.source_runtime_id {
             if let Ok(mut guard) = state.try_lock() {
-                let forced_pending =
-                    guard.force_pending_runtime_ids.contains(&runtime_id)
-                        && !cx.source_has_proxy_runtime;
-                let visual = guard.node_visuals.entry(runtime_id).or_insert(NodeVisual {
-                    from: RuntimeState::Pending,
-                    to: RuntimeState::Pending,
-                    started_at: now,
-                });
-
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
+                    && !cx.source_has_proxy_runtime;
                 let mut phase_target = match cx.source_phase {
                     Phase::Live(target) => target,
                     Phase::Static => RuntimeState::Pending,
@@ -2850,14 +2811,9 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
                 if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                     phase_target = RuntimeState::Pending;
                 }
-                if visual.to != phase_target {
-                    let blended = sampled_runtime_state(visual, now);
-                    visual.from = blended;
-                    visual.to = phase_target;
-                    visual.started_at = now;
-                }
-
-                (runtime_color(visual.from), runtime_color(visual.to))
+                let _ = guard.update_node_state(runtime_id, phase_target);
+                let color = runtime_color(phase_target);
+                (color, color)
             } else {
                 let phase_target = match cx.source_phase {
                     Phase::Live(target) => target,
@@ -2889,52 +2845,6 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     }
 }
 
-fn sampled_runtime_state(visual: &NodeVisual, now: Instant) -> RuntimeState {
-    if now.duration_since(visual.started_at) >= NODE_ANIMATION_DURATION {
-        return visual.to;
-    }
-    visual.from
-}
-
-fn update_cluster_border_visual(
-    visual: &mut ClusterBorderVisual,
-    from: Color,
-    to: Color,
-    now: Instant,
-) -> bool {
-    if visual.to == to && visual.from == from {
-        return false;
-    }
-    visual.from = from;
-    visual.to = to;
-    visual.started_at = now;
-    true
-}
-
-fn current_cluster_border_color(visual: ClusterBorderVisual, now: Instant) -> Color {
-    if visual.from == visual.to {
-        return visual.to;
-    }
-    let elapsed = now.saturating_duration_since(visual.started_at);
-    let t =
-        (elapsed.as_secs_f32() / CLUSTER_BORDER_ANIMATION_DURATION.as_secs_f32()).clamp(0.0, 1.0);
-    lerp_color(visual.from, visual.to, ease_out_cubic(t))
-}
-
-fn blend_runtime_color(visual: NodeVisual, now: Instant) -> Color {
-    if visual.from == visual.to {
-        return runtime_color(visual.to);
-    }
-
-    let elapsed = now.saturating_duration_since(visual.started_at);
-    let t = (elapsed.as_secs_f32() / NODE_ANIMATION_DURATION.as_secs_f32()).clamp(0.0, 1.0);
-    lerp_color(
-        runtime_color(visual.from),
-        runtime_color(visual.to),
-        ease_out_cubic(t),
-    )
-}
-
 fn runtime_color(state: RuntimeState) -> Color {
     match state {
         RuntimeState::Pending => Color::from_rgb8(120, 120, 120),
@@ -2948,14 +2858,6 @@ fn cluster_border_color_gray() -> Color {
     runtime_color(RuntimeState::Pending)
 }
 
-fn cluster_border_color_running() -> Color {
-    runtime_color(RuntimeState::Running)
-}
-
-fn cluster_border_color_completed() -> Color {
-    runtime_color(RuntimeState::Completed)
-}
-
 fn lerp_color(from: Color, to: Color, t: f32) -> Color {
     Color {
         r: from.r + (to.r - from.r) * t,
@@ -2967,15 +2869,6 @@ fn lerp_color(from: Color, to: Color, t: f32) -> Color {
 
 fn ease_out_cubic(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
-}
-
-fn next_tick() -> Task<ViewerEvent<()>> {
-    Task::perform(
-        async move {
-            tokio::time::sleep(ANIMATION_TICK).await;
-        },
-        ViewerEvent::Message,
-    )
 }
 
 fn app_background(_theme: &iced::Theme) -> iced::widget::container::Style {
@@ -3085,6 +2978,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 1,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
@@ -3094,6 +2988,7 @@ mod tests {
 
         assert!(!live.apply_update(JourneyUpdateEvent {
             sequence_id: 2,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
@@ -3102,6 +2997,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 3,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectSuccessOutput {
                 node_id: 9,
                 uuid: Uuid::nil(),
@@ -3112,6 +3008,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 4,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 9,
                 uuid: Uuid::nil(),
@@ -3122,6 +3019,7 @@ mod tests {
 
         assert!(!live.apply_update(JourneyUpdateEvent {
             sequence_id: 5,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::SleepScheduled {
                 uuid: Uuid::nil(),
                 timer_id: Uuid::nil(),
@@ -3137,6 +3035,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 1,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 11,
                 uuid: Uuid::nil(),
@@ -3144,6 +3043,7 @@ mod tests {
         }));
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 2,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectSuccessOutput {
                 node_id: 11,
                 uuid: Uuid::nil(),
@@ -3156,6 +3056,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 3,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 12,
                 uuid: Uuid::nil(),
@@ -3189,6 +3090,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 1,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectInput {
                 node_id: 0,
                 uuid: Uuid::nil(),
@@ -3217,6 +3119,7 @@ mod tests {
 
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 2,
+            event_unix_ms: 0,
             event: RunnerUpdateOut::EffectSuccessOutput {
                 node_id: 0,
                 uuid: Uuid::nil(),
@@ -3249,7 +3152,6 @@ mod tests {
         let theme = DefaultTheme;
         let state = Mutex::new(DefaultThemeState {
             node_visuals: HashMap::new(),
-            condition_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
             condition_successor_runtime_ids: HashMap::new(),
@@ -3260,8 +3162,8 @@ mod tests {
         let cx = StepViewCtx {
             display_id: 1,
             runtime_id: Some(42),
-            proxy_runtime_ids: vec![7],
-            successor_runtime_ids: Vec::new(),
+            proxy_runtime_ids: &[7],
+            successor_runtime_ids: &[],
             kind: StepKind::Step,
             label: "JoinL",
             metadata: None,
@@ -3270,13 +3172,15 @@ mod tests {
 
         let _ = theme.view_step(&state, &cx);
 
-        let guard = state.try_lock().expect("theme state lock should be available");
+        let guard = state
+            .try_lock()
+            .expect("theme state lock should be available");
         let visual = guard
             .node_visuals
             .get(&42)
             .copied()
             .expect("node visual should be created");
-        assert_eq!(visual.to, RuntimeState::Completed);
+        assert_eq!(visual.state, RuntimeState::Completed);
     }
 
     #[test]
@@ -3656,7 +3560,6 @@ mod tests {
     fn while_cluster_border_resets_on_reentry() {
         let mut state = DefaultThemeState {
             node_visuals: HashMap::new(),
-            condition_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
             condition_successor_runtime_ids: HashMap::new(),
@@ -3675,52 +3578,49 @@ mod tests {
             parent_cluster_id: Some(1),
             depth: 1,
             member_display_ids: &[],
-            entry_runtime_ids: vec![18],
-            member_runtime_ids: vec![18, 19],
-            successor_runtime_ids: vec![32],
+            entry_runtime_ids: &[18],
+            member_runtime_ids: &[18, 19],
+            successor_runtime_ids: &[32],
             phase: Phase::Live(ClusterLive {
                 has_running: false,
                 has_failed: false,
                 has_completed: false,
             }),
         };
-        state.register_cluster(&cx, started_at);
+        state.register_cluster(&cx);
 
         let first_entry = started_at + Duration::from_millis(1);
         assert!(state.update_clusters_for_effect_input(18, first_entry));
-        let border = state
+        let border_state = state
             .cluster_visuals
             .get(&9)
             .expect("cluster visual should exist")
-            .border;
-        assert_eq!(border.from, cluster_border_color_gray());
-        assert_eq!(border.to, cluster_border_color_running());
+            .border_state;
+        assert_eq!(border_state, RuntimeState::Running);
 
         let first_exit = first_entry + Duration::from_millis(1);
         assert!(state.update_clusters_for_effect_input(32, first_exit));
-        let border = state
+        let border_state = state
             .cluster_visuals
             .get(&9)
             .expect("cluster visual should exist")
-            .border;
-        assert_eq!(border.to, cluster_border_color_completed());
+            .border_state;
+        assert_eq!(border_state, RuntimeState::Completed);
 
         let second_entry = first_exit + Duration::from_millis(1);
         assert!(state.update_clusters_for_effect_input(18, second_entry));
-        let border = state
+        let border_state = state
             .cluster_visuals
             .get(&9)
             .expect("cluster visual should exist")
-            .border;
-        assert_eq!(border.from, cluster_border_color_gray());
-        assert_eq!(border.to, cluster_border_color_running());
+            .border_state;
+        assert_eq!(border_state, RuntimeState::Running);
     }
 
     #[test]
     fn completed_cluster_recollapses_when_successor_returns_to_pending() {
         let mut state = DefaultThemeState {
             node_visuals: HashMap::new(),
-            condition_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
             condition_successor_runtime_ids: HashMap::new(),
@@ -3739,16 +3639,16 @@ mod tests {
             parent_cluster_id: None,
             depth: 0,
             member_display_ids: &[],
-            entry_runtime_ids: vec![70],
-            member_runtime_ids: vec![70, 71],
-            successor_runtime_ids: vec![95],
+            entry_runtime_ids: &[70],
+            member_runtime_ids: &[70, 71],
+            successor_runtime_ids: &[95],
             phase: Phase::Live(ClusterLive {
                 has_running: false,
                 has_failed: false,
                 has_completed: false,
             }),
         };
-        state.register_cluster(&cx, started_at);
+        state.register_cluster(&cx);
 
         let entry = started_at + Duration::from_millis(1);
         assert!(state.update_clusters_for_effect_input(70, entry));
@@ -3762,17 +3662,17 @@ mod tests {
 
         let exit = entry + Duration::from_millis(1);
         assert!(state.update_clusters_for_effect_input(95, exit));
-        let border = state
+        let border_state = state
             .cluster_visuals
             .get(&12)
             .expect("cluster visual should exist")
-            .border;
-        assert_eq!(border.to, cluster_border_color_completed());
+            .border_state;
+        assert_eq!(border_state, RuntimeState::Completed);
 
         let successor_completed = exit + Duration::from_millis(1);
-        assert!(state.update_node_state(95, RuntimeState::Completed, successor_completed));
+        assert!(state.update_node_state(95, RuntimeState::Completed));
         let successor_pending = successor_completed + Duration::from_millis(1);
-        assert!(state.update_node_state(95, RuntimeState::Pending, successor_pending));
+        assert!(state.update_node_state(95, RuntimeState::Pending));
 
         let collapse_cx = ClusterViewCtx {
             phase: Phase::Live(ClusterLive {
@@ -3799,14 +3699,13 @@ mod tests {
             .get(&12)
             .expect("cluster visual should exist");
         assert!(!visual.expanded);
-        assert_eq!(visual.border.to, cluster_border_color_gray());
+        assert_eq!(visual.border_state, RuntimeState::Pending);
     }
 
     #[test]
     fn completed_cluster_does_not_recollapse_while_still_running() {
         let mut state = DefaultThemeState {
             node_visuals: HashMap::new(),
-            condition_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
             condition_successor_runtime_ids: HashMap::new(),
@@ -3825,16 +3724,16 @@ mod tests {
             parent_cluster_id: None,
             depth: 0,
             member_display_ids: &[],
-            entry_runtime_ids: vec![10],
-            member_runtime_ids: vec![10, 11],
-            successor_runtime_ids: vec![22],
+            entry_runtime_ids: &[10],
+            member_runtime_ids: &[10, 11],
+            successor_runtime_ids: &[22],
             phase: Phase::Live(ClusterLive {
                 has_running: true,
                 has_failed: false,
                 has_completed: true,
             }),
         };
-        state.register_cluster(&cx, started_at);
+        state.register_cluster(&cx);
         assert!(state.update_clusters_for_effect_input(10, started_at + Duration::from_millis(1)));
         assert!(state.update_clusters_for_effect_input(22, started_at + Duration::from_millis(2)));
 

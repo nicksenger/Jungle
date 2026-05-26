@@ -8,6 +8,7 @@ mod electric_guitar;
 mod hihat;
 mod kick_drum;
 mod snare_drum;
+mod synth_worker;
 mod synthesis;
 mod toms;
 mod vocals;
@@ -18,6 +19,7 @@ pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation, Pick, Pluc
 pub use hihat::{HiHat, HiHatArticulation};
 pub use kick_drum::{KickDrum, KickDrumArticulation};
 pub use snare_drum::{SnareDrum, SnareDrumArticulation};
+pub use synth_worker::SynthHandle;
 pub use toms::{Toms, TomsArticulation};
 pub use vocals::{Sing, Vocals, VocalsArticulation};
 

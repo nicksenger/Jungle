@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use crate::audio::PlayRequest;
+use crate::audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, SAMPLE_RATE},
@@ -11,14 +11,10 @@ use super::VocalsArticulation;
 
 pub(super) async fn play(
     audio: &crate::audio::AudioHandle,
+    synth: &crate::instrumentation::SynthHandle,
     note: Note<VocalsArticulation>,
 ) -> Result<(), Error> {
-    let (pcm, gain, playback_rate) = {
-        let note_for_synth = note;
-        tokio::task::spawn_blocking(move || synthesize_vocals(&note_for_synth))
-            .await
-            .map_err(|_| Error::Playback)?
-    };
+    let (pcm, gain, playback_rate) = synth.vocals(note).await?;
 
     for layer in articulation_layers(note.articulation) {
         if layer.delay_seconds > 0.0 {
@@ -28,6 +24,7 @@ pub(super) async fn play(
         request.gain = gain * layer.gain_scale * amplitude_gain(&note);
         request.playback_rate = playback_rate * layer.playback_rate_scale;
         request.pan = layer.pan;
+        request.priority = PlayPriority::Low;
         audio.play(request).await.map_err(|_| Error::Submission)?;
     }
 
@@ -87,7 +84,9 @@ fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLa
     }
 }
 
-fn synthesize_vocals(note: &Note<VocalsArticulation>) -> (Arc<[f32]>, f32, f32) {
+pub(in crate::instrumentation) fn synthesize_vocals(
+    note: &Note<VocalsArticulation>,
+) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let base_hz = midi_to_hz(note.n_midi).clamp(85.0, 1_300.0);
