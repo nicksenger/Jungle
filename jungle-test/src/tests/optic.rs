@@ -162,7 +162,6 @@ impl Act for LensOnBranchSpec {
     type Effect = EchoI32;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 
     fn emit(view: &Branch, input: Self::Input) -> i32 {
         view.leaf.value + input

@@ -43,7 +43,6 @@ impl Act for AddOneSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = GenericCommit<A>)]
@@ -51,7 +50,6 @@ impl Act for CommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[derive(Flow)]
@@ -63,7 +61,6 @@ impl Act for CounterAddOneSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 struct CounterCommitSpec;
@@ -72,7 +69,6 @@ impl Act for CounterCommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[derive(Flow)]
@@ -84,7 +80,6 @@ impl Act for LedgerAddOneSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 struct LedgerCommitSpec;
@@ -93,7 +88,6 @@ impl Act for LedgerCommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[derive(Flow)]
@@ -490,7 +484,6 @@ impl Act for ContextBoundSpec {
     type Effect = ContextBoundEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 struct ContextBoundAct<A>(core::marker::PhantomData<fn() -> A>);
@@ -861,7 +854,6 @@ impl Act for LensReadSpareSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = LensReadLeafAct<A>)]
@@ -869,7 +861,6 @@ impl Act for LensReadLeafSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = LensCommitAct<A>)]
@@ -877,7 +868,6 @@ impl Act for LensCommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[derive(Flow)]
@@ -1148,7 +1138,6 @@ impl Act for NestedBranchSpareSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = NestedLeafValueAct<A>)]
@@ -1156,7 +1145,6 @@ impl Act for NestedLeafValueSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = NestedLeafNoiseAct<A>)]
@@ -1164,7 +1152,6 @@ impl Act for NestedLeafNoiseSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[allow(private_interfaces)]
@@ -1173,7 +1160,6 @@ impl Act for NestedAutoBranchSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 
     fn emit(state: &NestedLensBranch, input: Self::Input) -> i32 {
         state.spare + input
@@ -1423,7 +1409,6 @@ impl<St> Act for Loop2SetCounterTo2Spec<St> {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 
     fn emit(_state: &Loop2Container<St>, input: Self::Input) -> i32 {
         input
@@ -1445,7 +1430,6 @@ impl<St> Act for Loop2DecrementCounterSpec<St> {
     type Effect = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = (bool, i32);
-    type Carry = ();
 
     fn emit(_state: &Loop2Container<St>, input: Self::Input) -> i32 {
         match input {
@@ -1499,7 +1483,6 @@ impl Act for Loop2LeftSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + 10
@@ -1518,7 +1501,6 @@ impl Act for Loop2RightSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + 100
@@ -1880,7 +1862,6 @@ impl Act for LeftJoinFirstSpec {
     type Effect = TemplateCommitEffect;
     type Input = ();
     type Output = ();
-    type Carry = ();
 
     fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
         0
@@ -1901,7 +1882,6 @@ impl Act for LeftJoinSecondSpec {
     type Effect = TemplateCommitEffect;
     type Input = ();
     type Output = ();
-    type Carry = ();
 
     fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
         0
@@ -1922,7 +1902,6 @@ impl Act for RightJoinFirstSpec {
     type Effect = TemplateCommitEffect;
     type Input = ();
     type Output = ();
-    type Carry = ();
 
     fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
         0
@@ -1943,7 +1922,6 @@ impl Act for RightJoinSecondSpec {
     type Effect = TemplateCommitEffect;
     type Input = ();
     type Output = ();
-    type Carry = ();
 
     fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
         0
@@ -1964,7 +1942,6 @@ impl Act for MergeJoinedUnitSpec {
     type Effect = TemplateCommitEffect;
     type Input = ((), ());
     type Output = ();
-    type Carry = ();
 
     fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
         0
@@ -1985,7 +1962,6 @@ impl Act for MergeConditionalUnitSpec {
     type Effect = TemplateCommitEffect;
     type Input = Either<(), ()>;
     type Output = ();
-    type Carry = ();
 
     fn emit(_state: &ConditionalJoinMergeState, _input: Self::Input) -> i32 {
         0
@@ -2430,7 +2406,6 @@ impl Act for JoinLeftSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = JoinRightAct<A>)]
@@ -2438,7 +2413,6 @@ impl Act for JoinRightSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = JoinToCarryAct<A>)]
@@ -2446,7 +2420,6 @@ impl Act for JoinToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = (i32, i32);
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = SelectFastAct<A>)]
@@ -2454,7 +2427,6 @@ impl Act for SelectFastSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = SelectSlowAct<A>)]
@@ -2462,7 +2434,6 @@ impl Act for SelectSlowSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = SelectToCarryAct<A>)]
@@ -2470,7 +2441,6 @@ impl Act for SelectToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = LoopAdvanceAct<A>)]
@@ -2478,7 +2448,6 @@ impl Act for LoopAdvanceSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = UniqueAlphaAct<A>)]
@@ -2486,7 +2455,6 @@ impl Act for UniqueAlphaSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = UniqueBetaAct<A>)]
@@ -2494,7 +2462,6 @@ impl Act for UniqueBetaSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = FinalizeAct<A>)]
@@ -2502,7 +2469,6 @@ impl Act for FinalizeSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[jungle::act(bind = UniqueToCarryAct<A>)]
@@ -2510,7 +2476,6 @@ impl Act for UniqueToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
-    type Carry = ();
 }
 
 #[derive(Flow)]

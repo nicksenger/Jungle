@@ -235,7 +235,6 @@ impl Act for GorillaEatSpec {
     type Effect = Eat;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 pub struct GorillaSleepManualSpec;
@@ -244,7 +243,6 @@ impl Act for GorillaSleepManualSpec {
     type Effect = Sleep;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 
     fn emit(state: &GorillaState, input: Self::Input) -> i32 {
         state.core.energy + input
@@ -264,7 +262,6 @@ impl Act for GorillaForageSpec {
     type Effect = Forage;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 #[derive(Flow)]
@@ -299,7 +296,6 @@ impl Act for TigerEatSpec {
     type Effect = Eat;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 pub struct TigerSleepSpec;
@@ -308,7 +304,6 @@ impl Act for TigerSleepSpec {
     type Effect = Sleep;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 }
 
 pub struct TigerSleepFromEitherSpec;
@@ -317,7 +312,6 @@ impl Act for TigerSleepFromEitherSpec {
     type Effect = Sleep;
     type Input = Either<i32, i32>;
     type Output = i32;
-    type Carry = ();
 
     fn emit(_state: &TigerState, input: Self::Input) -> i32 {
         match input {
@@ -338,7 +332,6 @@ impl Act for TigerHuntFromEnergySpec {
     type Effect = Hunt;
     type Input = i32;
     type Output = i32;
-    type Carry = ();
 
     fn emit(_state: &TigerState, _input: Self::Input) -> () {}
 
