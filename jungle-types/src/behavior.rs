@@ -126,12 +126,7 @@ pub trait BoundAct<T: Animal> {
     fn emit_with_carry(
         view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
-    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry)
-    where
-        Self::Carry: Default,
-    {
-        (Self::emit(view, input), Self::Carry::default())
-    }
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry);
 
     fn absorb_with_carry(
         view: &mut <<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
@@ -209,10 +204,7 @@ where
     fn emit_with_carry(
         view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
-    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry)
-    where
-        Self::Carry: Default,
-    {
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
         <InnerAct as BoundAct<ScopedAnimal<A, ScopeState>>>::emit_with_carry(view, input)
     }
 
@@ -419,10 +411,7 @@ where
     fn emit_with_carry(
         view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
-    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry)
-    where
-        Self::Carry: Default,
-    {
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
         <E as Emit<T>>::emit(view, input)
     }
 
@@ -552,7 +541,6 @@ impl<T, A> Running for BoundFlowStep<T, A>
 where
     T: Animal,
     A: BoundAct<T>,
-    <A as BoundAct<T>>::Carry: Default,
 {
     type In = (T::State, <A as BoundAct<T>>::Input);
     type Out = (
