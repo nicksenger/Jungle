@@ -2653,7 +2653,6 @@ dependencies = [
  "jungle-sdk",
  "jungle-vision",
  "postcard",
- "rustsam",
  "serde",
  "testcontainers",
  "testcontainers-modules",
@@ -4584,13 +4583,6 @@ dependencies = [
  "ring",
  "rustls-pki-types",
  "untrusted",
-]
-
-[[package]]
-name = "rustsam"
-version = "0.1.0"
-dependencies = [
- "once_cell",
 ]
 
 [[package]]

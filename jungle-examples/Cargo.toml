@@ -6,7 +6,7 @@ edition = "2021"
 [features]
 default = []
 viewer = ["dep:jungle-vision", "dep:iced"]
-audio = ["dep:cpal", "dep:rustsam"]
+audio = ["dep:cpal"]
 redb = []
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
 transport = []
@@ -28,7 +28,6 @@ testcontainers = { version = "0.23", optional = true }
 testcontainers-modules = { version = "0.11", features = ["postgres"], optional = true }
 async-trait = { workspace = true }
 clap = { version = "4.6", features = ["derive"] }
-rustsam = { path = "../../rustsam", optional = true }
 
 [[example]]
 name = "welcome"

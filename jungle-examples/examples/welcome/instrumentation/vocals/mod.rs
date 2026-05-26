@@ -58,15 +58,9 @@ pub struct Phoneme {
 pub fn phonemes_from_text(text: &str) -> [Option<Phoneme>; 12] {
     let mut output = [None; 12];
 
-    let parsed_text = match rustsam::reciter::text_to_phonemes(text) {
-        Ok(parsed_text) => parsed_text,
-        Err(err) => {
-            warn!(word = text, error = %err, "failed to recite text into rustsam phonemes");
-            return output;
-        }
-    };
+    let parsed_text = audio::text_to_phonemes(text);
 
-    let parsed_phonemes = match rustsam::parser::parse_phonemes(&parsed_text) {
+    let parsed_phonemes = match audio::parse_phonemes(&parsed_text) {
         Ok(parsed_phonemes) => parsed_phonemes,
         Err(err) => {
             warn!(word = text, error = %err, "failed to parse rustsam phoneme string");
