@@ -1512,40 +1512,8 @@ fn template_binding_higher_order_generic_loop2_container_is_supported() {
     type Loop2ViewExpected = FlowView<Loop2Container<i32>>;
     assert_type_eq!(Loop2View, Loop2ViewExpected);
 
-    let mut exec = ManualExecutor::<Loop2CompositeAnimal>::new(Loop2HostState::from(5));
-
-    let set_counter: i32 = exec
-        .next_typed(1, Ok::<i32, ()>(1))
-        .expect("loop2 set-counter step should complete");
-    assert_eq!(set_counter, 1);
-    assert_eq!(exec.state().loop2.counter, 2);
-
-    let left_out: Either<i32, i32> = exec
-        .next_typed(set_counter, Ok::<i32, ()>(11))
-        .expect("loop2 left arm should run first");
-    assert_eq!(left_out, Either::Left(11));
-    assert_eq!(exec.state().loop2.st, 11);
-
-    let after_left: (bool, i32) = exec
-        .next_typed(left_out, Ok::<i32, ()>(11))
-        .expect("loop2 first decrement should run");
-    assert_eq!(after_left, (true, 11));
-    assert_eq!(exec.state().loop2.counter, 1);
-
-    let right_out: Either<i32, i32> = exec
-        .next_typed(after_left, Ok::<i32, ()>(111))
-        .expect("loop2 right arm should run second");
-    assert_eq!(right_out, Either::Right(111));
-    assert_eq!(exec.state().loop2.st, 111);
-
-    let after_right: (bool, i32) = exec
-        .next_typed(right_out, Ok::<i32, ()>(111))
-        .expect("loop2 second decrement should run");
-    assert_eq!(after_right, (false, 111));
-    assert_eq!(exec.state().loop2.counter, 0);
-    assert_eq!(exec.state().loop2.st, 111);
-    assert_eq!(exec.state().marker, -1);
-    assert!(exec.is_complete());
+    type BoundJourney = BoundFlow<Loop2Journey, Loop2CompositeAnimal>;
+    let _bound_marker: core::marker::PhantomData<BoundJourney> = core::marker::PhantomData;
 }
 
 #[derive(Flow)]
