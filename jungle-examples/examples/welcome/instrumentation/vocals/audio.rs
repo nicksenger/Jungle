@@ -1,5 +1,8 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
+use rustsam::singer::{render_vocal_note, LyricInput, VocalNote, VoiceParams};
+use tracing::warn;
+
 use crate::audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
@@ -87,6 +90,12 @@ fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLa
 pub(in crate::instrumentation) fn synthesize_vocals(
     note: &Note<VocalsArticulation>,
 ) -> (Arc<[f32]>, f32, f32) {
+    if let VocalsArticulation::Formant(phonemes) = note.articulation {
+        if let Some(formant) = synthesize_formant_vocals(note, phonemes) {
+            return formant;
+        }
+    }
+
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let base_hz = midi_to_hz(note.n_midi).clamp(85.0, 1_300.0);
@@ -107,6 +116,53 @@ pub(in crate::instrumentation) fn synthesize_vocals(
 
     let (gain, playback_rate) = articulation_output_shape(note.articulation);
     (Arc::from(pcm), gain, playback_rate)
+}
+
+fn synthesize_formant_vocals(
+    note: &Note<VocalsArticulation>,
+    phonemes: [Option<super::Phoneme>; 12],
+) -> Option<(Arc<[f32]>, f32, f32)> {
+    let phonemes: Vec<rustsam::parser::Phoneme> = phonemes
+        .into_iter()
+        .flatten()
+        .map(|phoneme| rustsam::parser::Phoneme {
+            length: phoneme.length,
+            index: phoneme.index,
+            stress: phoneme.stress,
+        })
+        .collect();
+
+    if phonemes.is_empty() {
+        return None;
+    }
+
+    let duration = articulation_duration(note.duration, note.articulation);
+    let voice = VoiceParams::default();
+    let rendered = render_vocal_note(
+        VocalNote {
+            midi_note: note.n_midi,
+            lyric: LyricInput::Phonemes(phonemes),
+            duration,
+        },
+        SAMPLE_RATE,
+        voice,
+    );
+
+    let rendered = match rendered {
+        Ok(rendered) => rendered,
+        Err(err) => {
+            warn!(error = %err, "failed to render rustsam formant vocals; using procedural fallback");
+            return None;
+        }
+    };
+
+    let velocity = note.velocity.clamp(0.0, 1.0);
+    let pcm: Vec<f32> = rendered
+        .into_iter()
+        .map(|sample| ((sample as f32 / 127.5) - 1.0) * velocity)
+        .collect();
+    let (gain, playback_rate) = articulation_output_shape(note.articulation);
+    Some((Arc::from(pcm), gain, playback_rate))
 }
 
 fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Duration {
