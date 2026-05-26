@@ -41,7 +41,7 @@ struct PlaybackLayer {
 
 fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLayer] {
     match articulation {
-        VocalsArticulation::Clean => &[
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => &[
             PlaybackLayer {
                 pan: 0.02,
                 gain_scale: 1.0,
@@ -111,7 +111,7 @@ pub(in crate::instrumentation) fn synthesize_vocals(
 
 fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Duration {
     let scale = match articulation {
-        VocalsArticulation::Clean => 1.05,
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => 1.05,
         VocalsArticulation::GroupHarmony => 1.0,
     };
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.03))
@@ -119,7 +119,7 @@ fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Du
 
 fn articulation_output_shape(articulation: VocalsArticulation) -> (f32, f32) {
     match articulation {
-        VocalsArticulation::Clean => (0.83, 1.0),
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => (0.83, 1.0),
         VocalsArticulation::GroupHarmony => (0.78, 1.0),
     }
 }
@@ -135,7 +135,7 @@ fn articulation_sample(
     let bend = expression.bend.clamp(-1.0, 1.0) * 0.15;
 
     match articulation {
-        VocalsArticulation::Clean => {
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => {
             let f = base_hz * (1.0 + bend + vibrato);
             reed_formant(f, t, phase)
         }
@@ -157,7 +157,7 @@ fn reed_formant(frequency_hz: f32, t: f32, phase: f32) -> f32 {
 
 fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
     match articulation {
-        VocalsArticulation::Clean => {
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => {
             let attack = 0.03;
             let body = 0.9;
             let release_start = 0.8;

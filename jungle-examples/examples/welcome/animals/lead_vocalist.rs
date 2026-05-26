@@ -1,22 +1,30 @@
 use jungle_sdk::prelude::*;
 
 use crate::effect::Rest;
-use crate::instrumentation::{Sing as LaneSing, VocalsArticulation};
+use crate::instrumentation::{
+    Generate as LaneGenerate, Lyrics, Phoneme, Sing as LaneSing, VocalsArticulation,
+};
 
 use super::{Double, LeadVocalist};
 
 const LEAD_VOCALS_LANE_ID: u32 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32;
 type Sing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneSing<NOTE, NOTE_TICK, REST_TICK, LEAD_VOCALS_LANE_ID>;
+type Generate<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
+    LaneGenerate<NOTE, NOTE_TICK, REST_TICK, LEAD_VOCALS_LANE_ID>;
+
+type Generate68Tick = Step<Generate<68, 96, 96>>;
 type Sing68Tick = Step<Sing<68, 96, 96>>;
+type Generate68Hold = Step<Generate<68, 192, 192>>;
 type Sing68Hold = Step<Sing<68, 192, 192>>;
 type Sing63Hold = Step<Sing<63, 192, 192>>;
 
-#[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Optic, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LeadVocalistState {
     #[jungle(focus)]
     articulation: VocalsArticulation,
     intro_pickup_remaining: u8,
+    pub lyrics: Lyrics,
 }
 
 impl Default for LeadVocalistState {
@@ -24,6 +32,296 @@ impl Default for LeadVocalistState {
         Self {
             articulation: VocalsArticulation::Clean,
             intro_pickup_remaining: 1,
+            lyrics: Lyrics {
+                phonemes: vec![
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                    [
+                        Some(Phoneme {
+                            length: 8,
+                            index: 25,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 8,
+                            index: 7,
+                            stress: 0,
+                        }),
+                        Some(Phoneme {
+                            length: 9,
+                            index: 19,
+                            stress: 0,
+                        }),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                ],
+            },
         }
     }
 }
@@ -148,29 +446,28 @@ pub struct LeadVocalSection03(
 );
 
 #[derive(Flow)]
-#[jungle(focus = VocalsArticulation)]
 pub struct LeadVocalPart01(
-    Step<Sing<58, 192, 6528>>,
-    Step<Sing<66, 96, 96>>,
-    Step<Sing<68, 288, 288>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<66, 96, 96>>,
-    Step<Sing<71, 384, 384>>,
-    Step<Sing<68, 192, 576>>,
-    Step<Sing<66, 96, 96>>,
-    Step<Sing<68, 288, 288>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<66, 192, 192>>,
-    Step<Sing<68, 288, 288>>,
-    Step<Sing<66, 192, 576>>,
-    Step<Sing<66, 96, 96>>,
-    Step<Sing<68, 288, 288>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<68, 192, 192>>,
-    Step<Sing<71, 288, 288>>,
-    Step<Sing<68, 96, 96>>,
-    Step<Sing<71, 480, 480>>,
-    Step<Sing<66, 192, 192>>,
+    Step<Generate<58, 192, 6528>>,
+    Step<Generate<66, 96, 96>>,
+    Step<Generate<68, 288, 288>>,
+    Step<Generate<68, 96, 96>>,
+    Step<Generate<66, 96, 96>>,
+    Step<Generate<71, 384, 384>>,
+    Step<Generate<68, 192, 576>>,
+    Step<Generate<66, 96, 96>>,
+    Step<Generate<68, 288, 288>>,
+    Step<Generate<68, 96, 96>>,
+    Step<Generate<66, 192, 192>>,
+    Step<Generate<68, 288, 288>>,
+    Step<Generate<66, 192, 576>>,
+    Step<Generate<66, 96, 96>>,
+    Step<Generate<68, 288, 288>>,
+    Step<Generate<68, 96, 96>>,
+    Step<Generate<68, 192, 192>>,
+    Step<Generate<71, 288, 288>>,
+    Step<Generate<68, 96, 96>>,
+    Step<Generate<71, 480, 480>>,
+    Step<Generate<66, 192, 192>>,
     Transparent<IntroSectionMeta, LeadVocalPart01Cadence>,
 );
 
@@ -246,7 +543,7 @@ pub struct Sing73Triplet(
 pub struct TripleSing68Triplet(Double<Sing68Triplet>, Sing68Triplet);
 
 #[derive(Flow)]
-pub struct LeadVocalPart01Cadence(Double<Sing68Tick>, Sing68Hold);
+pub struct LeadVocalPart01Cadence(Double<Generate68Tick>, Generate68Hold);
 
 #[derive(Flow)]
 pub struct LeadVocalTriple68Hold(Double<Sing68Hold>, Sing68Hold);
