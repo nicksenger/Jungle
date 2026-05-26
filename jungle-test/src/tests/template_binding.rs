@@ -1410,11 +1410,11 @@ impl<St> Condition<(Loop2Container<St>, i32)> for Loop2CounterIsEven {
 }
 
 #[derive(Flow)]
-struct Loop2Arm<St, T>(T, Step<Loop2DecrementCounterSpec<St>>);
+struct Loop2Arm<St, T: TraverseFlow>(T, Step<Loop2DecrementCounterSpec<St>>);
 
 #[derive(Flow)]
 #[jungle(focus = Loop2Container<St>)]
-struct Loop2<St, L, R>(
+struct Loop2<St, L: TraverseFlow, R: TraverseFlow>(
     Step<Loop2SetCounterTo2Spec<St>>,
     While<Loop2CounterGt0, Conditional<Loop2CounterIsEven, Loop2Arm<St, L>, Loop2Arm<St, R>>>,
 );
