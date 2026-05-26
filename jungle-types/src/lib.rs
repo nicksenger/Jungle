@@ -112,6 +112,43 @@ pub trait LoopCondition<State> {
     fn should_continue(state: &State) -> bool;
 }
 
+/// Adapts a [`Condition`] defined over a focused view to run against a larger root state.
+///
+/// This is useful for scoped flow templates where branch predicates are authored against
+/// the focused scope type, but runtime evaluation happens on the full animal state.
+pub struct FocusedCondition<P, View>(PhantomData<fn() -> (P, View)>);
+
+impl<State, View, Arg, P> Condition<(State, Arg)> for FocusedCondition<P, View>
+where
+    State: ViewProject<View> + Clone,
+    View: Clone,
+    Arg: Clone,
+    P: Condition<(View, Arg)>,
+{
+    fn choose((state, arg): &(State, Arg)) -> bool {
+        let mut projected_state = state.clone();
+        let view = <State as ViewProject<View>>::project_view(&mut projected_state).clone();
+        <P as Condition<(View, Arg)>>::choose(&(view, arg.clone()))
+    }
+}
+
+/// Adapts a [`LoopCondition`] defined over a focused view to run against a larger root state.
+pub struct FocusedLoopCondition<C, View>(PhantomData<fn() -> (C, View)>);
+
+impl<State, View, C> LoopCondition<State> for FocusedLoopCondition<C, View>
+where
+    State: ViewProject<View> + Clone,
+    C: LoopCondition<View>,
+{
+    type Arg = <C as LoopCondition<View>>::Arg;
+
+    fn should_continue(state: &State) -> bool {
+        let mut projected_state = state.clone();
+        let view = <State as ViewProject<View>>::project_view(&mut projected_state);
+        <C as LoopCondition<View>>::should_continue(view)
+    }
+}
+
 /// Property used to opt-in a state type to field-index lenses.
 pub struct JungleOptic;
 impl Property for JungleOptic {}

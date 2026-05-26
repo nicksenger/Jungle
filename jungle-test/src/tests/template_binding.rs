@@ -1357,6 +1357,7 @@ impl<St> ViewProject<Loop2Container<St>> for Loop2Container<St> {
 }
 
 struct Loop2SetCounterTo2Spec<St>(core::marker::PhantomData<fn() -> St>);
+#[allow(private_interfaces)]
 #[jungle::act]
 impl<St> Act for Loop2SetCounterTo2Spec<St> {
     type Effect = TemplateCommitEffect;
@@ -1378,6 +1379,7 @@ impl<St> Act for Loop2SetCounterTo2Spec<St> {
 }
 
 struct Loop2DecrementCounterSpec<St>(core::marker::PhantomData<fn() -> St>);
+#[allow(private_interfaces)]
 #[jungle::act]
 impl<St> Act for Loop2DecrementCounterSpec<St> {
     type Effect = TemplateCommitEffect;
@@ -1420,7 +1422,7 @@ impl<St> Condition<(Loop2Container<St>, i32)> for Loop2CounterIsEven {
 #[derive(Flow)]
 #[jungle(focus = Loop2Container<St>)]
 struct Loop2Body<St, L: TraverseFlow, R: TraverseFlow>(
-    Conditional<Loop2CounterIsEven, L, R>,
+    Conditional<FocusedCondition<Loop2CounterIsEven, Loop2Container<St>>, L, R>,
     Step<Loop2DecrementCounterSpec<St>>,
 );
 
@@ -1428,7 +1430,7 @@ struct Loop2Body<St, L: TraverseFlow, R: TraverseFlow>(
 #[jungle(focus = Loop2Container<St>)]
 struct Loop2<St, L: TraverseFlow, R: TraverseFlow>(
     Step<Loop2SetCounterTo2Spec<St>>,
-    While<Loop2CounterGt0, Loop2Body<St, L, R>>,
+    While<FocusedLoopCondition<Loop2CounterGt0, Loop2Container<St>>, Loop2Body<St, L, R>>,
 );
 
 struct Loop2LeftSpec;
@@ -1512,8 +1514,44 @@ fn template_binding_higher_order_generic_loop2_container_is_supported() {
     type Loop2ViewExpected = FlowView<Loop2Container<i32>>;
     assert_type_eq!(Loop2View, Loop2ViewExpected);
 
-    type BoundJourney = BoundFlow<Loop2Journey, Loop2CompositeAnimal>;
-    let _bound_marker: core::marker::PhantomData<BoundJourney> = core::marker::PhantomData;
+    let mut exec = ManualExecutor::<Loop2CompositeAnimal>::new(Loop2HostState::from(5));
+
+    let set_counter: i32 = exec
+        .next_typed(1, Ok::<i32, ()>(1))
+        .expect("loop2 set-counter step should complete");
+    assert_eq!(set_counter, 1);
+    assert_eq!(exec.state().loop2.counter, 2);
+
+    let left_out: Either<i32, i32> = exec
+        .next_typed(set_counter, Ok::<i32, ()>(11))
+        .expect("loop2 left arm should run first");
+    assert_eq!(left_out, Either::Left(11));
+    assert_eq!(exec.state().loop2.st, 11);
+
+    let after_left: (bool, i32) = exec
+        .next_typed(left_out, Ok::<i32, ()>(11))
+        .expect("loop2 first decrement should run");
+    assert_eq!(after_left, (true, 11));
+    assert_eq!(exec.state().loop2.counter, 1);
+
+    let right_out: Either<i32, i32> = exec
+        .next_typed(after_left, Ok::<i32, ()>(111))
+        .expect("loop2 right arm should run second");
+    assert_eq!(right_out, Either::Right(111));
+    assert_eq!(exec.state().loop2.st, 111);
+
+    let after_right: (bool, i32) = exec
+        .next_typed(right_out, Ok::<i32, ()>(111))
+        .expect("loop2 second decrement should run");
+    assert_eq!(after_right, (false, 111));
+    assert_eq!(exec.state().loop2.counter, 0);
+    assert_eq!(exec.state().loop2.st, 111);
+    assert_eq!(exec.state().marker, -1);
+    let final_probe = exec.next_request(
+        postcard::to_allocvec(&after_right).expect("loop2 final probe input should serialize"),
+    );
+    assert!(matches!(final_probe, Err(ExecutorError::Complete)));
+    assert!(exec.is_complete());
 }
 
 #[derive(Flow)]
