@@ -1201,6 +1201,47 @@ struct NestedBranchScopedFlow(
     Step<NestedBranchSpareSpec>,
 );
 
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct GenericBranchFocus<T> {
+    #[jungle(focus)]
+    branch: T,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct GenericNestedRootState {
+    #[jungle(focus)]
+    wrapped: GenericBranchFocus<NestedLensBranch>,
+}
+
+impl From<i32> for GenericNestedRootState {
+    fn from(seed: i32) -> Self {
+        Self {
+            wrapped: GenericBranchFocus {
+                branch: NestedLensBranch {
+                    leaf: NestedLensLeaf::default(),
+                    spare: seed,
+                },
+            },
+        }
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = NestedLensBranch)]
+struct GenericConcreteNestedFlow(Step<NestedAutoBranchSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = GenericBranchFocus<NestedLensBranch>)]
+struct GenericFocusedOuterFlow(GenericConcreteNestedFlow);
+
+struct GenericNestedScopeAnimal;
+#[jungle::animal(id = 56, generation = 0)]
+impl Animal for GenericNestedScopeAnimal {
+    type State = GenericNestedRootState;
+    type Seed = i32;
+    type Journey = GenericFocusedOuterFlow;
+}
+
 struct NestedScopeAnimal;
 #[jungle::animal(observe, id = 53, generation = 0)]
 impl Animal for NestedScopeAnimal {
@@ -1271,6 +1312,35 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
 
     worker_handle.abort();
     let _ = worker_handle.await;
+}
+
+#[test]
+fn template_binding_generic_focus_supports_nested_concrete_focus() {
+    type NestedTraverse = <GenericConcreteNestedFlow as TraverseFlow>::Output;
+    type NestedExpected = Scoped<
+        NestedLensBranch,
+        jungle_sdk::typosaurus::list![jungle_sdk::types::Step<NestedAutoBranchSpec>],
+    >;
+    assert_type_eq!(NestedTraverse, NestedExpected);
+
+    type OuterTraverse = <GenericFocusedOuterFlow as TraverseFlow>::Output;
+    type OuterExpected = Scoped<
+        GenericBranchFocus<NestedLensBranch>,
+        jungle_sdk::typosaurus::list![Scoped<
+            NestedLensBranch,
+            jungle_sdk::typosaurus::list![jungle_sdk::types::Step<NestedAutoBranchSpec>],
+        >],
+    >;
+    assert_type_eq!(OuterTraverse, OuterExpected);
+
+    let mut exec = ManualExecutor::<GenericNestedScopeAnimal>::new(GenericNestedRootState::from(3));
+    let emitted: i32 = exec
+        .next_typed(2, Ok::<i32, ()>(6))
+        .expect("generic focused nested flow should complete");
+    assert_eq!(emitted, 6);
+
+    let state = exec.into_state();
+    assert_eq!(state.wrapped.branch.spare, 6);
 }
 
 #[derive(Flow)]
