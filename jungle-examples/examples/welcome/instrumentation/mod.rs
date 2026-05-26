@@ -21,7 +21,7 @@ pub use kick_drum::{KickDrum, KickDrumArticulation};
 pub use snare_drum::{SnareDrum, SnareDrumArticulation};
 pub use synth_worker::SynthHandle;
 pub use toms::{Toms, TomsArticulation};
-pub use vocals::{Generate, Lyrics, Phoneme, Sing, Vocals, VocalsArticulation};
+pub use vocals::{phonemes_from_text, Generate, Lyrics, Sing, Vocals, VocalsArticulation};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
