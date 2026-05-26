@@ -936,6 +936,12 @@ struct ScopedLensFlow(LensFlow);
 #[jungle(focus = LensBranch)]
 struct ScopedLensMultiField(LensFlow, LensFlow);
 
+struct GenericFocus<T>(core::marker::PhantomData<fn() -> T>);
+
+#[derive(Flow)]
+#[jungle(focus = GenericFocus<LensBranch>)]
+struct GenericScopedLensFlow(LensFlow);
+
 #[test]
 fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs() {
     type Traversed = jungle_sdk::types::Traversed<LensFlow, LensTraversal>;
@@ -973,6 +979,20 @@ fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs()
         ],
     >;
     assert_type_eq!(ScopedMultiTraverse, ScopedMultiExpected);
+
+    type GenericScopedTraverse = <GenericScopedLensFlow as TraverseFlow>::Output;
+    type GenericScopedExpected = Scoped<
+        GenericFocus<LensBranch>,
+        jungle_sdk::typosaurus::list![
+            jungle_sdk::types::Step<LensReadSpareSpec>,
+            jungle_sdk::types::Step<LensCommitSpec>
+        ],
+    >;
+    assert_type_eq!(GenericScopedTraverse, GenericScopedExpected);
+
+    type GenericScopedView = <GenericScopedLensFlow as FlowScope>::View;
+    type GenericScopedViewExpected = FlowView<GenericFocus<LensBranch>>;
+    assert_type_eq!(GenericScopedView, GenericScopedViewExpected);
 }
 
 #[tokio::test]
