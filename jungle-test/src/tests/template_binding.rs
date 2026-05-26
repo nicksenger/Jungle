@@ -1343,6 +1343,198 @@ fn template_binding_generic_focus_supports_nested_concrete_focus() {
     assert_eq!(state.wrapped.branch.spare, 6);
 }
 
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Loop2Container<St> {
+    counter: usize,
+    #[jungle(focus)]
+    st: St,
+}
+
+struct Loop2SetCounterTo2Spec<St>(core::marker::PhantomData<fn() -> St>);
+#[jungle::act]
+impl<St> Act for Loop2SetCounterTo2Spec<St> {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Carry = ();
+
+    fn emit(_state: &Loop2Container<St>, input: Self::Input) -> i32 {
+        input
+    }
+
+    fn absorb(
+        state: &mut Loop2Container<St>,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        state.counter = 2;
+        output.expect("loop2 set-counter step should succeed")
+    }
+}
+
+struct Loop2DecrementCounterSpec<St>(core::marker::PhantomData<fn() -> St>);
+#[jungle::act]
+impl<St> Act for Loop2DecrementCounterSpec<St> {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = (bool, i32);
+    type Carry = ();
+
+    fn emit(_state: &Loop2Container<St>, input: Self::Input) -> i32 {
+        input
+    }
+
+    fn absorb(
+        state: &mut Loop2Container<St>,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        let value = output.expect("loop2 decrement step should succeed");
+        state.counter = state.counter.saturating_sub(1);
+        (state.counter > 0, value)
+    }
+}
+
+struct Loop2CounterGt0;
+impl<St> LoopCondition<Loop2Container<St>> for Loop2CounterGt0 {
+    type Arg = i32;
+
+    fn should_continue(state: &Loop2Container<St>) -> bool {
+        state.counter > 0
+    }
+}
+
+struct Loop2CounterIsEven;
+impl<St> Condition<(Loop2Container<St>, i32)> for Loop2CounterIsEven {
+    fn choose((state, _): &(Loop2Container<St>, i32)) -> bool {
+        state.counter % 2 == 0
+    }
+}
+
+#[derive(Flow)]
+struct Loop2Arm<St, T>(T, Step<Loop2DecrementCounterSpec<St>>);
+
+#[derive(Flow)]
+#[jungle(focus = Loop2Container<St>)]
+struct Loop2<St, L, R>(
+    Step<Loop2SetCounterTo2Spec<St>>,
+    While<Loop2CounterGt0, Conditional<Loop2CounterIsEven, Loop2Arm<St, L>, Loop2Arm<St, R>>>,
+);
+
+struct Loop2LeftSpec;
+#[jungle::act]
+impl Act for Loop2LeftSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Carry = ();
+
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
+        input + 10
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("loop2 left step should succeed");
+        *state = value;
+        value
+    }
+}
+
+struct Loop2RightSpec;
+#[jungle::act]
+impl Act for Loop2RightSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+    type Carry = ();
+
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
+        input + 100
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("loop2 right step should succeed");
+        *state = value;
+        value
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = i32)]
+struct Loop2LeftFlow(Step<Loop2LeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = i32)]
+struct Loop2RightFlow(Step<Loop2RightSpec>);
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Loop2CompositeState {
+    #[jungle(focus)]
+    loop2: Loop2Container<i32>,
+}
+
+impl From<i32> for Loop2CompositeState {
+    fn from(seed: i32) -> Self {
+        Self {
+            loop2: Loop2Container {
+                counter: 0,
+                st: seed,
+            },
+        }
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = Loop2CompositeState)]
+struct Loop2CompositeFlow(Loop2<i32, Loop2LeftFlow, Loop2RightFlow>);
+
+struct Loop2CompositeAnimal;
+#[jungle::animal(id = 57, generation = 0)]
+impl Animal for Loop2CompositeAnimal {
+    type State = Loop2CompositeState;
+    type Seed = i32;
+    type Journey = Loop2CompositeFlow;
+}
+
+#[test]
+fn template_binding_higher_order_generic_loop2_container_is_supported() {
+    type Loop2View = <Loop2<i32, Loop2LeftFlow, Loop2RightFlow> as FlowScope>::View;
+    type Loop2ViewExpected = FlowView<Loop2Container<i32>>;
+    assert_type_eq!(Loop2View, Loop2ViewExpected);
+
+    let mut exec = ManualExecutor::<Loop2CompositeAnimal>::new(Loop2CompositeState::from(5));
+
+    let set_counter: i32 = exec
+        .next_typed(1, Ok::<i32, ()>(1))
+        .expect("loop2 set-counter step should complete");
+    assert_eq!(set_counter, 1);
+    assert_eq!(exec.state().loop2.counter, 2);
+
+    let left_out: i32 = exec
+        .next_typed(set_counter, Ok::<i32, ()>(11))
+        .expect("loop2 left arm should run first");
+    assert_eq!(left_out, 11);
+    assert_eq!(exec.state().loop2.st, 11);
+
+    let after_left: (bool, i32) = exec
+        .next_typed(left_out, Ok::<i32, ()>(11))
+        .expect("loop2 first decrement should run");
+    assert_eq!(after_left, (true, 11));
+    assert_eq!(exec.state().loop2.counter, 1);
+
+    let right_out: i32 = exec
+        .next_typed(after_left, Ok::<i32, ()>(111))
+        .expect("loop2 right arm should run second");
+    assert_eq!(right_out, 111);
+    assert_eq!(exec.state().loop2.st, 111);
+
+    let after_right: (bool, i32) = exec
+        .next_typed(right_out, Ok::<i32, ()>(111))
+        .expect("loop2 second decrement should run");
+    assert_eq!(after_right, (false, 111));
+    assert_eq!(exec.state().loop2.counter, 0);
+    assert_eq!(exec.state().loop2.st, 111);
+    assert!(exec.is_complete());
+}
+
 #[derive(Flow)]
 struct InheritedAutoFocusLeafFlow(Step<NestedAutoBranchSpec>);
 
