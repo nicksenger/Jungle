@@ -37,7 +37,7 @@ use testcontainers_modules::postgres::Postgres;
 use crate::{
     animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
     audio::{AudioEngine, AudioHandle, StubAudioKeepAlive},
-    ecosystem::TheJungle,
+    ecosystem::{AnimalVolumes, TheJungle},
     instrumentation::SynthHandle,
 };
 
@@ -97,6 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.workers,
             args.synth_workers,
             args.synth_queue_size,
+            args.animal_volumes,
             args.server_addr
                 .expect("clap requires --server-addr when --worker-only is set"),
         );
@@ -112,6 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.playback_delay_ms,
             args.event_lead_time_ms,
             args.enabled_animals,
+            args.animal_volumes,
             args.server_addr,
         );
     }
@@ -125,6 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.playback_delay_ms,
             args.event_lead_time_ms,
             args.enabled_animals,
+            args.animal_volumes,
             #[cfg(feature = "transport")]
             args.server_addr,
         );
@@ -138,6 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.playback_delay_ms,
         args.event_lead_time_ms,
         args.enabled_animals,
+        args.animal_volumes,
         #[cfg(feature = "transport")]
         args.server_addr,
     )
@@ -153,6 +157,7 @@ struct CliArgs {
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    animal_volumes: AnimalVolumes,
     #[cfg(feature = "transport")]
     server_addr: Option<SocketAddr>,
     #[cfg(feature = "transport")]
@@ -211,6 +216,9 @@ struct WelcomeCliArgs {
     /// Comma-delimited or repeatable list of enabled animals.
     #[clap(long = "animals", value_enum, value_delimiter = ',')]
     animals: Vec<SelectedAnimalCli>,
+    /// Comma-delimited `animal:volume` values (0..=1), for example `lead-vocalist:0.8,bassist:0.2`.
+    #[clap(long = "animal-volumes", value_delimiter = ',', value_parser = parse_animal_volume_value)]
+    animal_volumes: Vec<AnimalVolumeOverride>,
     /// Connect to an already-running jungle transport server instead of starting one locally.
     #[cfg(feature = "transport")]
     #[clap(long = "server-addr", value_parser = parse_server_addr_value)]
@@ -249,6 +257,7 @@ fn run_with_ui(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    animal_volumes: AnimalVolumes,
     #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -265,6 +274,7 @@ fn run_with_ui(
             playback_delay_ms,
             event_lead_time_ms,
             enabled_animals,
+            animal_volumes,
             #[cfg(feature = "transport")]
             server_addr,
             false,
@@ -384,6 +394,7 @@ fn run_worker_only(
     workers: usize,
     synth_workers: usize,
     synth_queue_size: usize,
+    animal_volumes: AnimalVolumes,
     server_addr: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
@@ -392,6 +403,7 @@ fn run_worker_only(
         workers,
         synth_workers,
         synth_queue_size,
+        ?animal_volumes,
         %server_addr,
         "running welcome example in worker-only mode"
     );
@@ -424,11 +436,12 @@ fn run_worker_only(
         let mut worker_metronomes = Vec::with_capacity(workers);
         for worker_index in 0..workers {
             let metronome = metronome::Metronome::spawn(bpm);
-            let ecosystem = TheJungle::new_with_metronome_and_synth(
+            let ecosystem = TheJungle::new_with_metronome_and_synth_and_volumes(
                 audio_handle.clone(),
                 synth_handle.clone(),
                 bpm,
                 metronome,
+                animal_volumes,
             );
             let metronome = ecosystem.metronome().clone();
             metronome.arm_start_barrier();
@@ -469,6 +482,7 @@ fn run_headless(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    animal_volumes: AnimalVolumes,
     #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
@@ -496,6 +510,7 @@ fn run_headless(
             playback_delay_ms,
             event_lead_time_ms,
             enabled_animals,
+            animal_volumes,
             #[cfg(feature = "transport")]
             server_addr,
             true,
@@ -749,6 +764,7 @@ fn run_runtime_thread(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    animal_volumes: AnimalVolumes,
     #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
     enable_headless_lag_probe: bool,
     ui_shutdown: ui::ShutdownFlag,
@@ -787,11 +803,12 @@ fn run_runtime_thread(
         let mut worker_metronomes = Vec::with_capacity(workers);
         for worker_index in 0..workers {
             let metronome = metronome::Metronome::spawn(bpm);
-            let ecosystem = TheJungle::new_with_metronome_and_synth(
+            let ecosystem = TheJungle::new_with_metronome_and_synth_and_volumes(
                 audio_handle.clone(),
                 synth_handle.clone(),
                 bpm,
                 metronome,
+                animal_volumes,
             );
             let metronome = ecosystem.metronome().clone();
             metronome.arm_start_barrier();
@@ -1362,6 +1379,22 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             .map(SelectedAnimal::from)
             .collect::<BTreeSet<_>>()
     };
+    let mut animal_volumes = AnimalVolumes::default();
+    for override_entry in parsed.animal_volumes {
+        animal_volumes = match override_entry.animal {
+            SelectedAnimal::LeadVocalist => {
+                animal_volumes.with_lead_vocalist(override_entry.volume)
+            }
+            SelectedAnimal::LeadGuitarist => {
+                animal_volumes.with_lead_guitarist(override_entry.volume)
+            }
+            SelectedAnimal::RhythmGuitarist => {
+                animal_volumes.with_rhythm_guitarist(override_entry.volume)
+            }
+            SelectedAnimal::Bassist => animal_volumes.with_bassist(override_entry.volume),
+            SelectedAnimal::Drummer => animal_volumes.with_drummer(override_entry.volume),
+        };
+    }
     Ok(CliArgs {
         bpm: parsed.bpm,
         headless: parsed.headless,
@@ -1372,6 +1405,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         playback_delay_ms: parsed.playback_delay_ms,
         event_lead_time_ms: parsed.event_lead_time_ms,
         enabled_animals,
+        animal_volumes,
         #[cfg(feature = "transport")]
         server_addr: parsed.server_addr,
         #[cfg(feature = "transport")]
@@ -1381,6 +1415,34 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         #[cfg(feature = "transport")]
         server_only: parsed.server_only,
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AnimalVolumeOverride {
+    animal: SelectedAnimal,
+    volume: f32,
+}
+
+fn parse_animal_volume_value(value: &str) -> Result<AnimalVolumeOverride, String> {
+    let Some((animal_raw, volume_raw)) = value.split_once(':') else {
+        return Err(format!(
+            "invalid animal volume entry `{value}`; expected `<animal>:<volume>`"
+        ));
+    };
+    let animal = SelectedAnimal::from_cli_name(animal_raw).ok_or_else(|| {
+        format!(
+            "invalid animal in `{value}`: `{animal_raw}` (expected one of: lead-vocalist, lead-guitarist, rhythm-guitarist, bassist, drummer)"
+        )
+    })?;
+    let volume = volume_raw
+        .parse::<f32>()
+        .map_err(|_| format!("invalid volume in `{value}`: `{volume_raw}` is not a number"))?;
+    if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
+        return Err(format!(
+            "invalid volume in `{value}`: `{volume_raw}` must be between 0 and 1"
+        ));
+    }
+    Ok(AnimalVolumeOverride { animal, volume })
 }
 
 #[cfg(feature = "transport")]
@@ -1461,6 +1523,17 @@ impl SelectedAnimal {
             Self::RhythmGuitarist => "rhythm-guitarist",
             Self::Bassist => "bassist",
             Self::Drummer => "drummer",
+        }
+    }
+
+    fn from_cli_name(value: &str) -> Option<Self> {
+        match value {
+            "lead-vocalist" => Some(Self::LeadVocalist),
+            "lead-guitarist" => Some(Self::LeadGuitarist),
+            "rhythm-guitarist" => Some(Self::RhythmGuitarist),
+            "bassist" | "bass" => Some(Self::Bassist),
+            "drummer" | "drums" => Some(Self::Drummer),
+            _ => None,
         }
     }
 }

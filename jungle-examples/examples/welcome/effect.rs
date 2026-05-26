@@ -11,7 +11,6 @@ use crate::instrumentation::{Instrument, Note};
 const TICKS_PER_BEAT: u32 = 384;
 const MIN_LATE_NOTE_DROP_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(20);
 const MAX_LATE_NOTE_DROP_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(120);
-const RHYTHM_AMPLITUDE_MULTIPLIER: f32 = 0.5;
 const RHYTHM_PAN: f32 = 0.5;
 const RHYTHM_VELOCITY: f32 = 37.0 / 127.0;
 const EFFECT_CYCLE_LOG_INTERVAL: usize = 512;
@@ -152,6 +151,8 @@ where
         let mut play_elapsed = Duration::ZERO;
         if timing.should_play() {
             let note_1 = rhythm_note(
+                jungle,
+                LANE_ID,
                 NOTE_1,
                 jungle
                     .metronome()
@@ -159,6 +160,8 @@ where
                 input.0,
             );
             let note_2 = rhythm_note(
+                jungle,
+                LANE_ID,
                 NOTE_2,
                 jungle
                     .metronome()
@@ -219,6 +222,8 @@ where
         let mut play_elapsed = Duration::ZERO;
         if timing.should_play() {
             let [note_1, note_2, note_3, note_4] = rhythm_notes(
+                jungle,
+                LANE_ID,
                 [NOTE_1, NOTE_2, NOTE_3, NOTE_4],
                 timing.note_duration(),
                 articulation,
@@ -276,6 +281,8 @@ where
         let mut play_elapsed = Duration::ZERO;
         if timing.should_play() {
             let [note_1, note_2, note_3] = rhythm_notes(
+                jungle,
+                LANE_ID,
                 [NOTE_1, NOTE_2, NOTE_3],
                 timing.note_duration(),
                 articulation,
@@ -331,8 +338,13 @@ where
         let pre_play_sleep_elapsed = measure_note_window_sleep(LANE_ID, &timing).await;
         let mut play_elapsed = Duration::ZERO;
         if timing.should_play() {
-            let [note_1, note_2] =
-                rhythm_notes([NOTE_1, NOTE_2], timing.note_duration(), articulation);
+            let [note_1, note_2] = rhythm_notes(
+                jungle,
+                LANE_ID,
+                [NOTE_1, NOTE_2],
+                timing.note_duration(),
+                articulation,
+            );
             let play_started_at = Instant::now();
             play_two::<I>(jungle, note_1, note_2).await?;
             play_elapsed = play_started_at.elapsed();
@@ -376,7 +388,13 @@ where
         let pre_play_sleep_elapsed = measure_note_window_sleep(LANE_ID, &timing).await;
         let mut play_elapsed = Duration::ZERO;
         if timing.should_play() {
-            let [note] = rhythm_notes([NOTE], timing.note_duration(), articulation);
+            let [note] = rhythm_notes(
+                jungle,
+                LANE_ID,
+                [NOTE],
+                timing.note_duration(),
+                articulation,
+            );
             let play_started_at = Instant::now();
             play_one::<I>(jungle, note).await?;
             play_elapsed = play_started_at.elapsed();
@@ -395,17 +413,25 @@ where
 }
 
 fn rhythm_notes<const N: usize, A: Copy>(
+    jungle: &TheJungle,
+    lane_id: u32,
     midi_notes: [u8; N],
     duration: std::time::Duration,
     articulation: A,
 ) -> [Note<A>; N] {
-    midi_notes.map(|n_midi| rhythm_note(n_midi, duration, articulation))
+    midi_notes.map(|n_midi| rhythm_note(jungle, lane_id, n_midi, duration, articulation))
 }
 
-fn rhythm_note<A: Copy>(n_midi: u8, duration: std::time::Duration, articulation: A) -> Note<A> {
+fn rhythm_note<A: Copy>(
+    jungle: &TheJungle,
+    lane_id: u32,
+    n_midi: u8,
+    duration: std::time::Duration,
+    articulation: A,
+) -> Note<A> {
     Note {
         n_midi,
-        amplitude_multiplier: RHYTHM_AMPLITUDE_MULTIPLIER,
+        amplitude_multiplier: jungle.animal_volume_for_lane(lane_id),
         pan: RHYTHM_PAN,
         duration,
         velocity: RHYTHM_VELOCITY,
