@@ -364,6 +364,169 @@ impl Act for NestedInlineOuterEchoBoolSpec {
     }
 }
 
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RhythmLikeLoopState {
+    loops_remaining: u8,
+    choose_final_tail: bool,
+    #[jungle(focus)]
+    focused: i32,
+}
+
+pub struct RhythmLikeLoopRemaining;
+impl LoopCondition<RhythmLikeLoopState> for RhythmLikeLoopRemaining {
+    type Arg = ();
+
+    fn should_continue(state: &RhythmLikeLoopState) -> bool {
+        state.loops_remaining > 0
+    }
+}
+
+pub struct UseRhythmLikeFinalTail;
+impl Condition<(RhythmLikeLoopState, ())> for UseRhythmLikeFinalTail {
+    fn choose((state, _): &(RhythmLikeLoopState, ())) -> bool {
+        state.choose_final_tail
+    }
+}
+
+pub struct IntroSectionMeta;
+impl NodeMetadata for IntroSectionMeta {
+    const METADATA: &'static str = "section";
+}
+
+pub struct RhythmLikeJoinLeftSpec;
+#[jungle::act]
+impl Act for RhythmLikeJoinLeftSpec {
+    type Effect = TickEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &i32, _input: Self::Input) -> i32 {
+        0
+    }
+
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let _ = output.expect("rhythm-like join left should succeed");
+    }
+}
+
+pub struct RhythmLikeJoinRightSpec;
+#[jungle::act]
+impl Act for RhythmLikeJoinRightSpec {
+    type Effect = TickEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &i32, _input: Self::Input) -> i32 {
+        1
+    }
+
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let _ = output.expect("rhythm-like join right should succeed");
+    }
+}
+
+pub struct RhythmLikeMergeUnitSpec;
+#[jungle::act]
+impl Act for RhythmLikeMergeUnitSpec {
+    type Effect = Noop;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &i32, _input: Self::Input) -> () {}
+
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("rhythm-like merge unit should succeed");
+    }
+}
+
+pub struct RhythmLikePostMergeRestSpec;
+#[jungle::act]
+impl Act for RhythmLikePostMergeRestSpec {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &i32, _input: Self::Input) -> std::time::Duration {
+        std::time::Duration::from_millis(1)
+    }
+
+    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("rhythm-like post merge rest should succeed");
+    }
+}
+
+pub struct RhythmLikeDecrementLoopSpec;
+#[jungle::act]
+impl Act for RhythmLikeDecrementLoopSpec {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &RhythmLikeLoopState, _input: Self::Input) -> Self::Input {}
+
+    fn absorb(
+        state: &mut RhythmLikeLoopState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("rhythm-like decrement should succeed");
+        state.loops_remaining = state.loops_remaining.saturating_sub(1);
+    }
+}
+
+pub struct RhythmLikeMergeChoiceSpec;
+#[jungle::act]
+impl Act for RhythmLikeMergeChoiceSpec {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &RhythmLikeLoopState, _input: Self::Input) -> () {}
+
+    fn absorb(
+        _state: &mut RhythmLikeLoopState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("rhythm-like conditional merge should succeed");
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = i32)]
+pub struct RhythmLikeFocusedTurnaround(
+    Join<Step<RhythmLikeJoinLeftSpec>, Step<RhythmLikeJoinRightSpec>>,
+    Step<RhythmLikeMergeUnitSpec>,
+    Step<RhythmLikePostMergeRestSpec>,
+);
+
+#[derive(Flow)]
+pub struct RhythmLikeNormalTail(Step<RhythmLikeDecrementLoopSpec>);
+
+#[derive(Flow)]
+pub struct RhythmLikeFinalTail(
+    Transparent<IntroSectionMeta, RhythmLikeFocusedTurnaround>,
+    Step<RhythmLikeDecrementLoopSpec>,
+);
+
+#[derive(Flow)]
+pub struct RhythmLikeConditionalLoopBody(
+    Conditional<UseRhythmLikeFinalTail, RhythmLikeFinalTail, RhythmLikeNormalTail>,
+    Step<RhythmLikeMergeChoiceSpec>,
+);
+
+#[derive(Flow)]
+pub struct RhythmLikeConditionalLoopFlow(
+    While<RhythmLikeLoopRemaining, RhythmLikeConditionalLoopBody>,
+);
+
+pub struct RhythmLikeConditionalLoopAnimal;
+
+#[jungle::animal(id = 94, generation = 0)]
+impl Animal for RhythmLikeConditionalLoopAnimal {
+    type State = RhythmLikeLoopState;
+    type Seed = RhythmLikeLoopState;
+    type Journey = RhythmLikeConditionalLoopFlow;
+}
+
 #[derive(Flow)]
 pub struct NestedInlineInnerOnlyBody(Step<NestedInlineInnerNoopFalseSpec>);
 
@@ -606,8 +769,7 @@ fn while_executable_inline_noop_then_effect_keeps_request_completion_handshake()
 
 #[test]
 fn while_context_executable_inline_noop_then_effect_keeps_request_completion_handshake() {
-    let mut executor =
-        ContextExecutor::<(), WhileInlineNoopThenEffectAnimal>::new(Arc::new(()), 0);
+    let mut executor = ContextExecutor::<(), WhileInlineNoopThenEffectAnimal>::new(Arc::new(()), 0);
     let request = executor
         .next_executable_request(())
         .expect("context while body should advance from inline noop to effect request");
@@ -671,7 +833,8 @@ fn nested_while_context_executable_inline_noop_then_effect_keeps_request_complet
 
 #[test]
 fn nested_inline_while_executable_propagates_inner_emitted_to_outer_sibling() {
-    let mut executor = Executor::<NestedInlineWhileCarryAnimal>::new(NestedInlineCarryState::default());
+    let mut executor =
+        Executor::<NestedInlineWhileCarryAnimal>::new(NestedInlineCarryState::default());
     let request = executor
         .next_executable_request(())
         .expect("nested inline while should still produce outer sibling effect request");
@@ -712,4 +875,29 @@ fn nested_inline_while_context_executable_propagates_inner_emitted_to_outer_sibl
     let _emitted = executor
         .complete_serialized(completion.expect("effect should run"))
         .expect("nested context inline while completion should not fail with no pending request");
+}
+
+#[test]
+fn while_conditional_final_tail_with_focused_join_merge_rest_does_not_hang() {
+    let mut executor = ContextExecutor::<(), RhythmLikeConditionalLoopAnimal>::new(
+        Arc::new(()),
+        RhythmLikeLoopState {
+            loops_remaining: 1,
+            choose_final_tail: true,
+            focused: 0,
+        },
+    );
+
+    let first = executor
+        .next_executable_request(())
+        .expect("while/conditional final-tail flow should produce an executable request");
+    let completion = futures::executor::block_on(first.run()).expect("first effect should run");
+    let _ = executor
+        .complete_serialized(completion)
+        .expect("completion should advance while/conditional final-tail flow");
+
+    let _ = futures::executor::block_on(executor.advance_to_end_with(()))
+        .expect("while/conditional final-tail flow should complete");
+    assert!(executor.is_complete());
+    assert_eq!(executor.state().loops_remaining, 0);
 }
