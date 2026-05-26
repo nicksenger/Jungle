@@ -74,11 +74,7 @@ where
         }
     }
 
-    pub fn chip(
-        label: impl Into<String>,
-        target_border: Color,
-        duration: Duration,
-    ) -> Self {
+    pub fn chip(label: impl Into<String>, target_border: Color, duration: Duration) -> Self {
         Self {
             label: label.into(),
             target_border,
@@ -95,7 +91,13 @@ where
         now: Instant,
         shell: &mut Shell<'_, Message>,
     ) {
-        sync_tween(&mut state.border, self.target_border, now, self.duration, shell);
+        sync_tween(
+            &mut state.border,
+            self.target_border,
+            now,
+            self.duration,
+            shell,
+        );
         if matches!(self.mode, Mode::Overlay) {
             sync_tween(&mut state.fill, self.target_fill, now, self.duration, shell);
         }
@@ -111,7 +113,10 @@ where
     }
 
     fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(self.as_element(Color::TRANSPARENT, Color::TRANSPARENT).as_widget())]
+        vec![Tree::new(
+            self.as_element(Color::TRANSPARENT, Color::TRANSPARENT)
+                .as_widget(),
+        )]
     }
 
     fn diff(&self, tree: &mut Tree) {
@@ -162,8 +167,8 @@ where
 
         if let Event::Window(iced::window::Event::RedrawRequested(now)) = event {
             let border_animating = is_animating(state.border, *now, self.duration);
-            let fill_animating = matches!(self.mode, Mode::Overlay)
-                && is_animating(state.fill, *now, self.duration);
+            let fill_animating =
+                matches!(self.mode, Mode::Overlay) && is_animating(state.fill, *now, self.duration);
 
             if border_animating || fill_animating {
                 shell.request_redraw_at(RedrawRequest::At(*now + FRAME_DURATION));
@@ -214,9 +219,15 @@ where
             Color::TRANSPARENT
         };
         let element = self.as_element(border, fill);
-        element
-            .as_widget()
-            .draw(&tree.children[0], renderer, theme, style, layout, cursor, viewport);
+        element.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            viewport,
+        );
     }
 
     fn mouse_interaction(
@@ -275,7 +286,9 @@ where
                 container(text(self.label.as_str()).size(11).color(border_color))
                     .padding([4, 8])
                     .style(move |_theme| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
+                        background: Some(iced::Background::Color(Color::from_rgba8(
+                            20, 46, 30, 0.35,
+                        ))),
                         border: iced::border::rounded(6).color(border_color).width(1.0),
                         text_color: Some(border_color),
                         ..Default::default()

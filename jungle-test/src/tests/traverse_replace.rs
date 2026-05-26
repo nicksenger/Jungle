@@ -70,6 +70,7 @@ impl BoundAct<TraverseAnimal> for StepA {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
@@ -84,6 +85,7 @@ impl BoundAct<TraverseAnimal> for StepB {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
@@ -98,6 +100,7 @@ impl BoundAct<TraverseAnimal> for StepC {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
@@ -112,6 +115,7 @@ impl BoundAct<TraverseAnimal> for StepD {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 

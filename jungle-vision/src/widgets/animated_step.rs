@@ -60,12 +60,7 @@ where
         }
     }
 
-    fn sync_target(
-        &self,
-        state: &mut TweenState,
-        now: Instant,
-        shell: &mut Shell<'_, Message>,
-    ) {
+    fn sync_target(&self, state: &mut TweenState, now: Instant, shell: &mut Shell<'_, Message>) {
         if !state.initialized {
             state.from = self.target_fill;
             state.to = self.target_fill;
@@ -197,9 +192,15 @@ where
         let state = tree.state.downcast_ref::<TweenState>();
         let fill = sample_color(*state, Instant::now(), self.duration);
         let element = self.as_element(fill);
-        element
-            .as_widget()
-            .draw(&tree.children[0], renderer, theme, style, layout, cursor, viewport);
+        element.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            viewport,
+        );
     }
 
     fn mouse_interaction(

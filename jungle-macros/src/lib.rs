@@ -790,11 +790,12 @@ fn view_ty_from_bound_method(
     func: &ImplItemFn,
     method_name: &str,
     expect_mut: bool,
+    expected_args: usize,
 ) -> Result<Type, syn::Error> {
-    if func.sig.inputs.len() != 2 {
+    if func.sig.inputs.len() != expected_args {
         return Err(syn::Error::new_spanned(
             &func.sig,
-            format!("`{method_name}` must accept exactly two arguments."),
+            format!("`{method_name}` must accept exactly {expected_args} arguments."),
         ));
     }
 
@@ -1160,6 +1161,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut effect_assoc: Option<ImplItemType> = None;
     let mut input_assoc: Option<ImplItemType> = None;
     let mut output_assoc: Option<ImplItemType> = None;
+    let mut carry_assoc: Option<ImplItemType> = None;
     let mut emit_fn: Option<ImplItemFn> = None;
     let mut absorb_fn: Option<ImplItemFn> = None;
 
@@ -1168,6 +1170,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
             ImplItem::Type(ty) if ty.ident == "Effect" => effect_assoc = Some(ty.clone()),
             ImplItem::Type(ty) if ty.ident == "Input" => input_assoc = Some(ty.clone()),
             ImplItem::Type(ty) if ty.ident == "Output" => output_assoc = Some(ty.clone()),
+            ImplItem::Type(ty) if ty.ident == "Carry" => carry_assoc = Some(ty.clone()),
             ImplItem::Type(ty) if ty.ident == "Bind" => {
                 return syn::Error::new_spanned(
                     ty,
@@ -1238,12 +1241,25 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     let effect_ty = effect_assoc.ty.clone();
     let input_ty = input_assoc.ty.clone();
     let output_ty = output_assoc.ty.clone();
+    let carry_assoc = carry_assoc.unwrap_or_else(|| {
+        parse_quote!(
+            type Carry = ();
+        )
+    });
+    let carry_ty = carry_assoc.ty.clone();
+    let carry_is_unit = matches!(&carry_ty, Type::Tuple(tuple) if tuple.elems.is_empty());
+    let explicit_carry = item_impl
+        .items
+        .iter()
+        .any(|item| matches!(item, ImplItem::Type(ty) if ty.ident == "Carry"))
+        && !carry_is_unit;
 
     let mut generated_act_impl = item_impl.clone();
     generated_act_impl.items = vec![
         ImplItem::Type(effect_assoc.clone()),
         ImplItem::Type(input_assoc.clone()),
         ImplItem::Type(output_assoc.clone()),
+        ImplItem::Type(carry_assoc.clone()),
         bind_assoc,
     ];
 
@@ -1261,14 +1277,16 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
             .to_compile_error()
             .into();
         };
-        let emit_view_ty = match view_ty_from_bound_method(&emit_fn, "emit", false) {
+        let emit_view_ty = match view_ty_from_bound_method(&emit_fn, "emit", false, 2) {
             Ok(ty) => ty,
             Err(err) => return err.to_compile_error().into(),
         };
-        let absorb_view_ty = match view_ty_from_bound_method(&absorb_fn, "absorb", true) {
-            Ok(ty) => ty,
-            Err(err) => return err.to_compile_error().into(),
-        };
+        let absorb_expected_args = if explicit_carry { 3 } else { 2 };
+        let absorb_view_ty =
+            match view_ty_from_bound_method(&absorb_fn, "absorb", true, absorb_expected_args) {
+                Ok(ty) => ty,
+                Err(err) => return err.to_compile_error().into(),
+            };
         if !type_tokens_match(&emit_view_ty, &absorb_view_ty) {
             return syn::Error::new_spanned(
                 &absorb_fn.sig,
@@ -1294,6 +1312,71 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
             #aspect_ty: #types::Aspect<<#animal_ident as #types::Animal>::State, Focus = #emit_view_ty>
         ));
         let bound_impl_where_clause = quote! { where #(#bound_where_predicates),* };
+        let legacy_methods = if explicit_carry {
+            quote! {}
+        } else {
+            quote! {
+                #emit_fn
+                #absorb_fn
+            }
+        };
+        let carry_methods = if explicit_carry {
+            let mut emit_with_carry_fn = emit_fn.clone();
+            emit_with_carry_fn.sig.ident = format_ident!("emit_with_carry");
+            let mut absorb_with_carry_fn = absorb_fn.clone();
+            absorb_with_carry_fn.sig.ident = format_ident!("absorb_with_carry");
+            quote! {
+                #emit_with_carry_fn
+                #absorb_with_carry_fn
+            }
+        } else {
+            quote! {
+                fn emit_with_carry(
+                    view: &<<Self as #types::BoundAct<#animal_ident>>::Aspect as #types::StateCarrier<
+                        <#animal_ident as #types::Animal>::State,
+                    >>::Focus,
+                    input: Self::Input,
+                ) -> (<Self::Effect as #types::EffectSchema>::In, Self::Carry) {
+                    (<Self as #types::BoundAct<#animal_ident>>::emit(view, input), ())
+                }
+
+                fn absorb_with_carry(
+                    view: &mut <<Self as #types::BoundAct<#animal_ident>>::Aspect as #types::StateCarrier<
+                        <#animal_ident as #types::Animal>::State,
+                    >>::Focus,
+                    output: #types::EffectCompletion<Self::Effect>,
+                    _carry: Self::Carry,
+                ) -> Self::Output {
+                    <Self as #types::BoundAct<#animal_ident>>::absorb(view, output)
+                }
+            }
+        };
+        let shims = if explicit_carry {
+            quote! {
+                fn emit(
+                    view: &<<Self as #types::BoundAct<#animal_ident>>::Aspect as #types::StateCarrier<
+                        <#animal_ident as #types::Animal>::State,
+                    >>::Focus,
+                    input: Self::Input,
+                ) -> <Self::Effect as #types::EffectSchema>::In {
+                    let (effect_input, _carry): (<Self::Effect as #types::EffectSchema>::In, Self::Carry) =
+                        <Self as #types::BoundAct<#animal_ident>>::emit_with_carry(view, input);
+                    effect_input
+                }
+
+                fn absorb(
+                    view: &mut <<Self as #types::BoundAct<#animal_ident>>::Aspect as #types::StateCarrier<
+                        <#animal_ident as #types::Animal>::State,
+                    >>::Focus,
+                    output: #types::EffectCompletion<Self::Effect>,
+                ) -> Self::Output {
+                    let _ = (view, output);
+                    panic!("`absorb` is unavailable for carry-enabled acts; use `absorb_with_carry`.");
+                }
+            }
+        } else {
+            quote! {}
+        };
 
         quote! {
             #generated_act_impl
@@ -1309,9 +1392,10 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
                 type Aspect = #aspect_ty;
                 type Input = #input_ty;
                 type Output = #output_ty;
-
-                #emit_fn
-                #absorb_fn
+                type Carry = #carry_ty;
+                #legacy_methods
+                #carry_methods
+                #shims
             }
         }
         .into()

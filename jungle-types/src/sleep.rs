@@ -44,6 +44,7 @@ where
     type Aspect = Focus;
     type Input = Duration;
     type Output = ();
+    type Carry = ();
 
     fn emit(
         _view: &<Focus as StateCarrier<T::State>>::Focus,

@@ -131,6 +131,7 @@ where
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &T::State, _input: Self::Input) -> A::In {}
 
@@ -147,6 +148,7 @@ where
     type Effect = E;
     type Input = ();
     type Output = ();
+    type Carry = ();
     type Bind<A: Animal> = UnitOkStep<E>;
 }
 
@@ -331,6 +333,7 @@ impl Act for RunnerStepOneSpec {
     type Effect = RunnerStepOneEffect;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
 
@@ -345,6 +348,7 @@ impl Act for RunnerStepTwoSpec {
     type Effect = RunnerStepTwoEffect;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
 
@@ -359,6 +363,7 @@ impl Act for SlowRunnerStepSpec {
     type Effect = SlowRunnerEffect;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
 
@@ -551,6 +556,7 @@ where
     type Aspect = Focus;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(value: &i32, _input: Self::Input) -> Self::Input {
         *value
@@ -591,6 +597,7 @@ impl Act for ApeRoundTaskSpec {
     type Effect = RoundAdvance;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 }
 
 pub struct TigerHuntTaskSpec;
@@ -599,6 +606,7 @@ impl Act for TigerHuntTaskSpec {
     type Effect = HuntEnergy;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 }
 
 pub struct TigerEatTaskSpec;
@@ -607,6 +615,7 @@ impl Act for TigerEatTaskSpec {
     type Effect = EatEnergy;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 }
 
 pub struct ApeKeepRunning;

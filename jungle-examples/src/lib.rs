@@ -63,6 +63,7 @@ impl BoundAct<ObserveAnimal> for ObserveSleep {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(state: &ObserveState, _input: Self::Input) -> Duration {
         Duration::from_millis(state.sleep_ms)
@@ -80,6 +81,7 @@ impl BoundAct<ObserveAnimal> for ObserveBump {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &ObserveState, _input: Self::Input) -> Self::Input {}
 

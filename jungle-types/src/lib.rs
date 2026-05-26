@@ -1847,7 +1847,6 @@ where
 
 impl sealed::Sealed for () {}
 
-
 /// A read-only view over an [`Animal`]'s current state.
 pub trait Observe: Animal {
     /// The rendered appearance exposed by an observation.
