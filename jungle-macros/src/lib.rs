@@ -253,6 +253,17 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
         })
         .collect::<Vec<_>>();
     let scoped_inner = concat_tlist(&field_traverse_outputs, &list_empty);
+    let concat_bounds = if field_traverse_outputs.is_empty() {
+        Vec::new()
+    } else {
+        let mut bounds = Vec::with_capacity(field_traverse_outputs.len());
+        let mut rhs = quote!(#list_empty);
+        for output in field_traverse_outputs.iter().rev() {
+            bounds.push(quote!(#output: #flow_list_concat<#rhs>));
+            rhs = quote!(<#output as #flow_list_concat<#rhs>>::Output);
+        }
+        bounds
+    };
     let traverse_impl = if let Some(focus) = &focus_ty {
         quote! {
             impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
@@ -260,8 +271,9 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
                 #(
                     #field_types: #traverse_flow,
                     <#field_types as #traverse_flow>::Output: #scoped_field_list_normalize,
-                    <<#field_types as #traverse_flow>::Output as #scoped_field_list_normalize>::Output:
-                        #flow_list_concat<#list_empty>,
+                )*
+                #(
+                    #concat_bounds,
                 )*
             {
                 type Output = #scoped<#focus, #scoped_inner>;

@@ -1350,12 +1350,6 @@ struct Loop2Container<St> {
     st: St,
 }
 
-impl<St> ViewProject<Loop2Container<St>> for Loop2Container<St> {
-    fn project_view(state: &mut Self) -> &mut Loop2Container<St> {
-        state
-    }
-}
-
 struct Loop2SetCounterTo2Spec<St>(core::marker::PhantomData<fn() -> St>);
 #[jungle::act]
 impl<St> Act for Loop2SetCounterTo2Spec<St> {
@@ -1416,7 +1410,6 @@ impl<St> Condition<(Loop2Container<St>, i32)> for Loop2CounterIsEven {
 }
 
 #[derive(Flow)]
-#[jungle(focus = Loop2Container<St>)]
 struct Loop2Arm<St, T: TraverseFlow>(T, Step<Loop2DecrementCounterSpec<St>>);
 
 #[derive(Flow)]
