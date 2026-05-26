@@ -4,6 +4,9 @@ mod executor;
 mod journey;
 mod meta;
 mod noop;
+mod sealed {
+    pub trait Sealed {}
+}
 mod sleep;
 mod transport;
 mod view;
@@ -559,7 +562,7 @@ where
 
 /// A collection of [`Effect`]s extractable from an executable workflow.
 #[inception(property = JungleFlow, types)]
-pub trait JourneyEffects {
+pub trait JourneyEffects: sealed::Sealed {
     #[induce(
         base = list::Empty,
         merge = TList<(<Head as JourneyEffects>::List, <Tail as JourneyEffects>::List)>,
@@ -616,20 +619,20 @@ pub struct RootFlowScope;
 pub struct FlowView<View>(PhantomData<fn() -> View>);
 
 /// Internal helper selecting bind traversal from [`FlowScope`].
-pub trait BindWithFlowScope<A: Animal, ScopeView> {
+pub trait BindWithFlowScope<A: Animal, ScopeView>: sealed::Sealed {
     type Bound;
 }
 
 /// Convenience alias for binding a flow/template to a concrete animal.
 pub type BoundFlow<F, A> = <F as BindAnimal<A>>::Bound;
 /// Marker for animals whose journey template can be bound to themselves.
-pub trait BoundAnimal: Animal {
+pub trait BoundAnimal: Animal + sealed::Sealed {
     type BoundJourney;
 }
 
 impl<A> BoundAnimal for A
 where
-    A: Animal,
+    A: Animal + sealed::Sealed,
     A::Journey: BindAnimal<A>,
 {
     type BoundJourney = BoundFlow<A::Journey, A>;
@@ -747,7 +750,7 @@ impl<Left, Right> ReplaceNode<Right> for SwapRL<Left, Right> {
 
 /// Inception property that normalizes/walks a flow's type structure.
 #[inception(property = JungleTraverseFlow, types)]
-pub trait TraverseFlow {
+pub trait TraverseFlow: sealed::Sealed {
     #[induce(
         base = list::Empty,
         merge = TList<(
@@ -765,7 +768,7 @@ pub trait TraverseFlow {
 
 /// Inception property that normalizes/walks a flow's type structure.
 #[inception(property = JungleReplaceFlow, types)]
-pub trait ReplaceFlow {
+pub trait ReplaceFlow: sealed::Sealed {
     #[induce(
         base = list::Empty,
         merge = TList<(
@@ -782,28 +785,28 @@ pub trait ReplaceFlow {
 }
 
 /// Applies a traversal operator across a normalized flow type.
-pub trait TraverseWith<Traversal> {
+pub trait TraverseWith<Traversal>: sealed::Sealed {
     type Output;
 }
 
 /// Applies a replacement operator across a normalized flow type.
-pub trait ReplaceWith<Replacer> {
+pub trait ReplaceWith<Replacer>: sealed::Sealed {
     type Output;
 }
 
 /// Applies a node-level replacer across a normalized flow type.
-pub trait ReplaceNodesWith<Replacer> {
+pub trait ReplaceNodesWith<Replacer>: sealed::Sealed {
     type Output;
 }
 
 /// Normalizes a flow fragment into a list-shaped representation suitable for
 /// focused-field concatenation.
-pub trait ScopedFieldListNormalize {
+pub trait ScopedFieldListNormalize: sealed::Sealed {
     type Output;
 }
 
 /// Concatenates two list-shaped flow fragments.
-pub trait FlowListConcat<Rhs> {
+pub trait FlowListConcat<Rhs>: sealed::Sealed {
     type Output;
 }
 
@@ -1095,7 +1098,7 @@ impl<T> YieldingTail<T> {
 /// A phase that runs until it emits an output, then transitions to an
 /// awaiting phase that expects the next external input.
 #[inception(property = JungleRunning, signature(input = In, output = Out))]
-pub trait Running {
+pub trait Running: sealed::Sealed {
     /// Input used to start/resume this yielding phase.
     type In;
 
@@ -1168,7 +1171,7 @@ where
 /// A phase that awaits an external input, then transitions back to a yielding
 /// phase.
 #[inception(property = JungleWaiting, signature(input = In, output = Out))]
-pub trait Waiting {
+pub trait Waiting: sealed::Sealed {
     /// External input expected at this await point.
     type In;
 
@@ -1841,6 +1844,52 @@ where
         >,
     >>::Output;
 }
+
+impl sealed::Sealed for () {}
+
+impl sealed::Sealed for list::Empty {}
+
+impl<Head, Tail> sealed::Sealed for TList<(Head, Tail)> {}
+
+impl<T, A> sealed::Sealed for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAct<T>,
+{
+}
+
+impl<S> sealed::Sealed for Step<S>
+where
+    S: Act,
+{
+}
+
+impl<P, L, R, M> sealed::Sealed for Conditional<P, L, R, M> {}
+
+impl<C, F, M> sealed::Sealed for While<C, F, M> {}
+
+impl<View, F> sealed::Sealed for Scoped<View, F> {}
+
+impl<M, F> sealed::Sealed for Transparent<M, F> {}
+
+impl<L, R, M> sealed::Sealed for Select<L, R, M> {}
+
+impl<L, R, M> sealed::Sealed for Join<L, R, M> {}
+
+impl<T> sealed::Sealed for __inception_running::Wrap<T> {}
+
+impl<T> sealed::Sealed for AwaitingTail<T>
+where
+    T: Waiting,
+{
+}
+
+impl<T> sealed::Sealed for YieldingTail<T>
+where
+    T: Running,
+{
+}
+
 
 /// A read-only view over an [`Animal`]'s current state.
 pub trait Observe: Animal {
