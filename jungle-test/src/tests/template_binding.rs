@@ -1235,11 +1235,28 @@ struct GenericConcreteNestedFlow(Step<NestedAutoBranchSpec>);
 struct GenericFocusedOuterFlow(GenericConcreteNestedFlow);
 
 struct GenericNestedScopeAnimal;
-#[jungle::animal(id = 56, generation = 0)]
+#[jungle::animal(observe, id = 56, generation = 0)]
 impl Animal for GenericNestedScopeAnimal {
     type State = GenericNestedRootState;
     type Seed = i32;
     type Journey = GenericFocusedOuterFlow;
+}
+
+impl Observe for GenericNestedScopeAnimal {
+    type Appearance = GenericNestedRootState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct GenericNestedScopeAnimals(GenericNestedScopeAnimal);
+
+struct GenericNestedScopeZoo;
+impl Ecosystem for GenericNestedScopeZoo {
+    const NAME: &'static str = "late-bound-generic-nested-scope-zoo";
+    type Animals = GenericNestedScopeAnimals;
 }
 
 struct NestedScopeAnimal;
@@ -1341,6 +1358,49 @@ fn template_binding_generic_focus_supports_nested_concrete_focus() {
 
     let state = exec.into_state();
     assert_eq!(state.wrapped.branch.spare, 6);
+}
+
+#[tokio::test]
+async fn template_binding_generic_focus_nested_concrete_focus_runs_end_to_end_local() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-generic-nested-scope-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(GenericNestedScopeZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<GenericNestedScopeAnimal>(
+            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let history = client
+        .journey_history(journey_id)
+        .await
+        .expect("journey history should be available");
+    let effect_inputs = decode_effect_inputs(&history);
+    assert_eq!(effect_inputs, vec![3]);
+    assert_eq!(effect_inputs.len(), 1);
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: GenericNestedRootState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+    assert_eq!(appearance.wrapped.branch.spare, 4);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 }
 
 #[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1501,11 +1561,28 @@ impl From<i32> for Loop2HostState {
 type Loop2Journey = Loop2<i32, Loop2LeftFlow, Loop2RightFlow>;
 
 struct Loop2CompositeAnimal;
-#[jungle::animal(id = 57, generation = 0)]
+#[jungle::animal(observe, id = 57, generation = 0)]
 impl Animal for Loop2CompositeAnimal {
     type State = Loop2HostState;
     type Seed = i32;
     type Journey = Loop2Journey;
+}
+
+impl Observe for Loop2CompositeAnimal {
+    type Appearance = Loop2HostState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct Loop2Animals(Loop2CompositeAnimal);
+
+struct Loop2Zoo;
+impl Ecosystem for Loop2Zoo {
+    const NAME: &'static str = "late-bound-loop2-zoo";
+    type Animals = Loop2Animals;
 }
 
 #[test]
@@ -1552,6 +1629,51 @@ fn template_binding_higher_order_generic_loop2_container_is_supported() {
     );
     assert!(matches!(final_probe, Err(ExecutorError::Complete)));
     assert!(exec.is_complete());
+}
+
+#[tokio::test]
+async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_local() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-loop2-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(Loop2Zoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<Loop2CompositeAnimal>(
+            postcard::to_allocvec(&5_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let history = client
+        .journey_history(journey_id)
+        .await
+        .expect("journey history should be available");
+    let effect_inputs = decode_effect_inputs(&history);
+    assert_eq!(effect_inputs, vec![5, 15, 15, 115, 115]);
+    assert_eq!(effect_inputs.len(), 5);
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: Loop2HostState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+    assert_eq!(appearance.loop2.st, 115);
+    assert_eq!(appearance.loop2.counter, 0);
+    assert_eq!(appearance.marker, 0);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
 }
 
 #[derive(Flow)]
