@@ -44,7 +44,8 @@ impl Default for LeadVocalistState {
                     phonemes_from_text("the"),
                     phonemes_from_text("to"),
                     phonemes_from_text("come"),
-                    phonemes_from_text("well"),
+                    phonemes_from_text("wel"),
+                    phonemes_from_text("ha"),
                 ],
             },
         }
