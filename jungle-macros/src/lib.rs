@@ -219,6 +219,7 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     };
     let traverse_flow = jungle_type("TraverseFlow");
     let scoped_field_list_normalize = jungle_type("ScopedFieldListNormalize");
+    let flow_list_concat = jungle_type("FlowListConcat");
     let scoped = jungle_type("Scoped");
     let list_empty: Path = parse_quote!(jungle_sdk::typosaurus::collections::list::Empty);
     let field_types = match &data {
@@ -259,6 +260,8 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
                 #(
                     #field_types: #traverse_flow,
                     <#field_types as #traverse_flow>::Output: #scoped_field_list_normalize,
+                    <<#field_types as #traverse_flow>::Output as #scoped_field_list_normalize>::Output:
+                        #flow_list_concat<#list_empty>,
                 )*
             {
                 type Output = #scoped<#focus, #scoped_inner>;
