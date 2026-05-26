@@ -66,7 +66,7 @@ impl JourneyAst {
 }
 
 #[inception(property = JungleJourneyAst, signature(input = Input, output = Output))]
-pub trait BuildJourneyAst<Input>: crate::sealed::Sealed {
+pub trait BuildJourneyAst<Input> {
     type Output;
 
     fn push_ast(input: Input) -> Self::Output;

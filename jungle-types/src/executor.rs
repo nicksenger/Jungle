@@ -31,7 +31,7 @@ impl<State, Carry> SplitStateCarry<State> for (State, Carry) {
     type Carry = Carry;
 }
 
-pub trait ArgputForState<State>: crate::sealed::Sealed {
+pub trait ArgputForState<State> {
     type Carry;
 }
 
@@ -101,7 +101,6 @@ where
 
 impl<State, F> ArgputForState<State> for F
 where
-    F: crate::sealed::Sealed,
     (): crate::__inception_running::FieldsInput<F>,
     <() as crate::__inception_running::FieldsInput<F>>::In: SplitStateCarry<State>,
 {
@@ -2589,7 +2588,7 @@ fn encode_conditional_context_emitted(
 }
 
 #[inception(property = JungleDynFlowContext, signature(input = Input, output = Output))]
-pub trait BuildFlowWithContext<Input>: crate::sealed::Sealed {
+pub trait BuildFlowWithContext<Input> {
     type Output;
 
     fn push_steps(input: Input) -> Self::Output;
