@@ -405,8 +405,8 @@ pub struct LeadVocalPart09(
     Step<Sing<68, 288, 288>>,
     Step<Sing<68, 192, 192>>,
     Step<Sing<68, 128, 128>>,
-    Step<Sing<68, 129, 129>>,
-    Step<Sing<68, 128, 128>>,
+    Step<Sing<68, 257, 129>>,
+    Step<Sing<68, 0, 128>>,
     Step<Sing<63, 96, 96>>,
     Step<Sing<63, 192, 192>>,
     Step<Sing<63, 192, 192>>,
@@ -522,10 +522,10 @@ pub struct LeadVocalPart13(
     Step<Sing<68, 192, 384>>,
     Step<Sing<70, 384, 40512>>,
     Step<Sing<73, 192, 192>>,
-    Step<Sing<73, 128, 128>>,
-    Step<Sing<73, 129, 129>>,
-    Step<Sing<73, 128, 128>>,
-    Step<Sing<73, 384, 1152>>,
+    Step<Sing<73, 257, 128>>,
+    Step<Sing<73, 0, 129>>,
+    Step<Sing<73, 512, 128>>,
+    Step<Sing<73, 0, 1152>>,
 );
 
 #[derive(Flow)]
