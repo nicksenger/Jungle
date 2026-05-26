@@ -27,7 +27,7 @@ impl Default for LeadGuitaristState {
     fn default() -> Self {
         Self {
             articulation: ElectricGuitarArticulation::Sustained,
-            riff_loops_remaining: 6,
+            riff_loops_remaining: 1,
         }
     }
 }
@@ -211,7 +211,7 @@ impl LoopCondition<LeadGuitaristState> for LeadRiffLoopRemaining {
 pub struct UseLeadTurnaroundSection;
 impl Condition<(LeadGuitaristState, ())> for UseLeadTurnaroundSection {
     fn choose((state, _): &(LeadGuitaristState, ())) -> bool {
-        state.riff_loops_remaining <= 1
+        state.riff_loops_remaining <= 0
     }
 }
 
@@ -284,6 +284,7 @@ pub struct LeadGuitarIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Transparent<IntroSectionMeta, LeadSection01>,
     While<LeadRiffLoopRemaining, LeadRiffLoopBody>,
+    Transparent<IntroSectionMeta, LeadSection06>,
     Transparent<IntroSectionMeta, LeadSection07>,
 );
 
