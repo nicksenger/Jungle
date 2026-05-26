@@ -84,6 +84,7 @@ impl RhythmTiming {
 pub struct Metronome {
     started_at: Arc<RwLock<Instant>>,
     beat: Duration,
+    start_offset: Duration,
     latest_beat: Arc<RwLock<Option<BeatEvent>>>,
     lane_ticks: Arc<RwLock<HashMap<u32, u64>>>,
     lane_timing_states: Arc<RwLock<HashMap<u32, LaneTimingState>>>,
@@ -102,12 +103,21 @@ struct LaneTimingState {
 
 impl Metronome {
     pub fn spawn(bpm: f32) -> Self {
+        Self::spawn_with_offset(bpm, Duration::ZERO)
+    }
+
+    pub fn spawn_with_offset(bpm: f32, start_offset: Duration) -> Self {
         let beat = beat_duration(bpm);
         let latest_beat = Arc::new(RwLock::new(None));
-        let started_at = Arc::new(RwLock::new(Instant::now()));
+        let started_at = Arc::new(RwLock::new(
+            Instant::now()
+                .checked_sub(start_offset)
+                .unwrap_or_else(Instant::now),
+        ));
         let metronome = Self {
             started_at,
             beat,
+            start_offset,
             latest_beat,
             lane_ticks: Arc::new(RwLock::new(HashMap::new())),
             lane_timing_states: Arc::new(RwLock::new(HashMap::new())),
@@ -205,7 +215,9 @@ impl Metronome {
                 .started_at
                 .write()
                 .expect("started_at rwlock should not be poisoned");
-            *started_at = Instant::now();
+            *started_at = Instant::now()
+                .checked_sub(self.start_offset)
+                .unwrap_or_else(Instant::now);
         }
         {
             let mut lane_ticks = self

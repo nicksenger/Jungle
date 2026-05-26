@@ -55,7 +55,7 @@ pub struct Phoneme {
     pub stress: u8,
 }
 
-pub fn phonemes_from_text(text: &'static str) -> [Option<Phoneme>; 12] {
+pub fn phonemes_from_text(text: &str) -> [Option<Phoneme>; 12] {
     let mut output = [None; 12];
 
     let parsed_text = match rustsam::reciter::text_to_phonemes(text) {

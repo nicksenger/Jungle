@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::Rest;
+use crate::effect::{Passthrough, Rest};
 use crate::instrumentation::{
     phonemes_from_text, Generate as LaneGenerate, Lyrics, VocalsArticulation,
 };
@@ -41,20 +41,52 @@ impl Default for LeadVocalistState {
                     phonemes_from_text("the"),
                     phonemes_from_text("to"),
                     phonemes_from_text("come"),
-                    phonemes_from_text("wel"),
-                    phonemes_from_text("ha"),
+                    phonemes_from_text("well"),
                 ],
             },
         }
     }
 }
 
-pub type LeadVocalistSeed = ();
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct LeadVocalistSeed {
+    pub lyrics: Option<Vec<String>>,
+}
+
 const INTRO_START_DELAY_TICKS: u32 = 20_352;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
     const METADATA: &'static str = "section";
+}
+
+pub struct ApplyLeadVocalistSeed;
+#[jungle::act]
+impl Act for ApplyLeadVocalistSeed {
+    type Effect = Passthrough<LeadVocalistSeed>;
+    type Input = LeadVocalistSeed;
+    type Output = ();
+
+    fn emit(_state: &LeadVocalistState, input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        input
+    }
+
+    fn absorb(
+        state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        let seed = output.expect("lead vocalist seed step should complete");
+        if let Some(lyrics) = seed.lyrics {
+            let phonemes = lyrics
+                .iter()
+                .rev()
+                .map(|word| phonemes_from_text(word))
+                .collect::<Vec<_>>();
+            if !phonemes.is_empty() {
+                state.lyrics.phonemes = phonemes;
+            }
+        }
+    }
 }
 
 pub struct IntroStartDelay;
@@ -131,6 +163,7 @@ pub struct LeadVocalMainBranch(Step<ConsumeLeadVocalPickup>);
 
 #[derive(Flow)]
 pub struct LeadVocalIntro(
+    Step<ApplyLeadVocalistSeed>,
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Conditional<UseLeadVocalPickup, LeadVocalPickupBranch, LeadVocalMainBranch>,
     Step<MergeLeadVocalPickupChoice>,
@@ -681,7 +714,8 @@ mod tests {
             let _ = worker.spawn().await;
         });
 
-        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let seed = postcard::to_allocvec(&super::LeadVocalistSeed::default())
+            .expect("seed should serialize");
         let journey_id = client
             .start_journey::<LeadVocalist>(seed)
             .await

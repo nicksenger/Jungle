@@ -35,7 +35,9 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
 use crate::{
-    animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
+    animals::{
+        Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, LeadVocalistSeed, RhythmGuitarist,
+    },
     audio::{AudioEngine, AudioHandle, StubAudioKeepAlive},
     ecosystem::{AnimalVolumes, TheJungle},
     instrumentation::SynthHandle,
@@ -93,6 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.worker_only {
         return run_worker_only(
             args.bpm,
+            args.skip_seconds,
             args.mute,
             args.workers,
             args.synth_workers,
@@ -106,6 +109,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.ui_only {
         return run_with_ui(
             args.bpm,
+            args.lyrics,
+            args.skip_seconds,
             args.mute,
             0,
             args.synth_workers,
@@ -120,6 +125,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.headless {
         return run_headless(
             args.bpm,
+            args.lyrics,
+            args.skip_seconds,
             args.mute,
             args.workers,
             args.synth_workers,
@@ -134,6 +141,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     run_with_ui(
         args.bpm,
+        args.lyrics,
+        args.skip_seconds,
         args.mute,
         args.workers,
         args.synth_workers,
@@ -149,6 +158,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 struct CliArgs {
     bpm: f32,
+    lyrics: Option<Vec<String>>,
+    skip_seconds: f32,
     headless: bool,
     mute: bool,
     workers: usize,
@@ -174,6 +185,12 @@ struct WelcomeCliArgs {
     /// Tempo in BPM.
     #[clap(long = "bpm", value_parser = parse_bpm_value, default_value_t = DEFAULT_BPM)]
     bpm: f32,
+    /// Comma-delimited lyrics words for lead vocalist (for example `fly,me,to,the,moon`).
+    #[clap(long = "lyrics", value_delimiter = ',')]
+    lyrics: Vec<String>,
+    /// Skip to this many seconds from song start when playback begins.
+    #[clap(long = "skip", value_parser = parse_skip_seconds_value, default_value_t = 0.0)]
+    skip_seconds: f32,
     /// Run without the viewer UI and exit after playback.
     #[clap(long = "headless")]
     headless: bool,
@@ -250,6 +267,8 @@ struct WelcomeCliArgs {
 
 fn run_with_ui(
     bpm: f32,
+    lyrics: Option<Vec<String>>,
+    skip_seconds: f32,
     mute: bool,
     workers: usize,
     synth_workers: usize,
@@ -267,6 +286,8 @@ fn run_with_ui(
     let runtime_thread = std::thread::spawn(move || {
         run_runtime_thread(
             bpm,
+            lyrics,
+            skip_seconds,
             mute,
             workers,
             synth_workers,
@@ -390,6 +411,7 @@ async fn run_transport_server(listen_addr: SocketAddr) -> Result<(), String> {
 #[cfg(feature = "transport")]
 fn run_worker_only(
     bpm: f32,
+    skip_seconds: f32,
     mute: bool,
     workers: usize,
     synth_workers: usize,
@@ -399,6 +421,7 @@ fn run_worker_only(
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
         bpm,
+        skip_seconds,
         mute,
         workers,
         synth_workers,
@@ -433,9 +456,10 @@ fn run_worker_only(
         keep_alive.stub_audio = stub_audio;
 
         let synth_handle = SynthHandle::new_with_config(synth_workers, synth_queue_size);
+        let start_offset = Duration::from_secs_f32(skip_seconds);
         let mut worker_metronomes = Vec::with_capacity(workers);
         for worker_index in 0..workers {
-            let metronome = metronome::Metronome::spawn(bpm);
+            let metronome = metronome::Metronome::spawn_with_offset(bpm, start_offset);
             let ecosystem = TheJungle::new_with_metronome_and_synth_and_volumes(
                 audio_handle.clone(),
                 synth_handle.clone(),
@@ -475,6 +499,8 @@ fn run_worker_only(
 
 fn run_headless(
     bpm: f32,
+    lyrics: Option<Vec<String>>,
+    skip_seconds: f32,
     mute: bool,
     workers: usize,
     synth_workers: usize,
@@ -503,6 +529,8 @@ fn run_headless(
     let runtime_thread = std::thread::spawn(move || {
         run_runtime_thread(
             bpm,
+            lyrics,
+            skip_seconds,
             mute,
             workers,
             synth_workers,
@@ -757,6 +785,8 @@ impl JungleClient for UiClient {
 
 fn run_runtime_thread(
     bpm: f32,
+    lyrics: Option<Vec<String>>,
+    skip_seconds: f32,
     mute: bool,
     workers: usize,
     synth_workers: usize,
@@ -800,9 +830,10 @@ fn run_runtime_thread(
             (audio_handle, Some(audio_engine), None)
         };
         let synth_handle = SynthHandle::new_with_config(synth_workers, synth_queue_size);
+        let start_offset = Duration::from_secs_f32(skip_seconds);
         let mut worker_metronomes = Vec::with_capacity(workers);
         for worker_index in 0..workers {
-            let metronome = metronome::Metronome::spawn(bpm);
+            let metronome = metronome::Metronome::spawn_with_offset(bpm, start_offset);
             let ecosystem = TheJungle::new_with_metronome_and_synth_and_volumes(
                 audio_handle.clone(),
                 synth_handle.clone(),
@@ -830,6 +861,11 @@ fn run_runtime_thread(
             synth_workers, synth_queue_size, "started welcome workers"
         );
 
+        let lead_vocalist_seed =
+            postcard::to_allocvec(&LeadVocalistSeed { lyrics }).map_err(|err| {
+                error!(error = %err, "failed serializing lead vocalist journey seed");
+                err.to_string()
+            })?;
         let seed = postcard::to_allocvec(&()).map_err(|err| {
             error!(error = %err, "failed serializing journey seed");
             err.to_string()
@@ -844,7 +880,7 @@ fn run_runtime_thread(
         let lead_vocalist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::LeadVocalist) {
                 client
-                    .start_journey::<LeadVocalist>(seed.clone())
+                    .start_journey::<LeadVocalist>(lead_vocalist_seed.clone())
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -1370,6 +1406,17 @@ fn spawn_runtime_heartbeat_probe() -> tokio::task::JoinHandle<()> {
 
 fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let parsed = WelcomeCliArgs::parse();
+    let lyrics = parsed
+        .lyrics
+        .into_iter()
+        .map(|word| word.trim().to_string())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    let lyrics = if lyrics.is_empty() {
+        None
+    } else {
+        Some(lyrics)
+    };
     let enabled_animals = if parsed.animals.is_empty() {
         SelectedAnimal::all()
     } else {
@@ -1397,6 +1444,8 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     }
     Ok(CliArgs {
         bpm: parsed.bpm,
+        lyrics,
+        skip_seconds: parsed.skip_seconds,
         headless: parsed.headless,
         mute: parsed.mute,
         workers: parsed.workers,
@@ -1462,6 +1511,18 @@ fn parse_bpm_value(value: &str) -> Result<f32, String> {
         ));
     }
     Ok(bpm)
+}
+
+fn parse_skip_seconds_value(value: &str) -> Result<f32, String> {
+    let skip_seconds = value
+        .parse::<f32>()
+        .map_err(|_| format!("invalid skip seconds argument: {value}"))?;
+    if !skip_seconds.is_finite() || skip_seconds < 0.0 {
+        return Err(format!(
+            "skip seconds must be a non-negative finite number, got: {value}"
+        ));
+    }
+    Ok(skip_seconds)
 }
 
 fn parse_workers_value(value: &str) -> Result<usize, String> {

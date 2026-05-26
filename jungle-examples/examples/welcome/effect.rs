@@ -63,6 +63,8 @@ pub struct Monad<
     const REST_TICK: u32,
 >(PhantomData<(I, A)>);
 
+pub struct Passthrough<T>(PhantomData<T>);
+
 pub struct Rest<const LANE_ID: u32, const REST_TICKS: u32>;
 pub struct AtomicDualHit<
     I1: Instrument<Articulation = A1>,
@@ -76,6 +78,20 @@ pub struct AtomicDualHit<
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
 >(PhantomData<(I1, I2, A1, A2)>);
+
+#[effect(id = 515)]
+impl<T> jungle_sdk::prelude::Effect<TheJungle> for Passthrough<T>
+where
+    T: Serialize + DeserializeOwned + Send + 'static,
+{
+    type In = T;
+    type Out = T;
+    type Err = String;
+
+    async fn effect(_jungle: &TheJungle, input: Self::In) -> Result<Self::Out, Self::Err> {
+        Ok(input)
+    }
+}
 
 #[effect(id = 513)]
 impl<const LANE_ID: u32, const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJungle>
