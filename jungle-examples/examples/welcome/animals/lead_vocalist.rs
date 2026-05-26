@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::Rest;
-use crate::instrumentation::{Sing as LaneSing, VocalsArticulation};
+use crate::effect::{Monad, Rest};
+use crate::instrumentation::{Sing as LaneSing, Vocals, VocalsArticulation};
 
 use super::{Double, LeadVocalist};
 
@@ -29,7 +29,7 @@ impl Default for LeadVocalistState {
 }
 
 pub type LeadVocalistSeed = ();
-const INTRO_START_DELAY_TICKS: u32 = 20_352;
+const INTRO_START_DELAY_TICKS: u32 = 39_168;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
@@ -52,6 +52,46 @@ impl Act for IntroStartDelay {
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("intro start delay should complete");
+    }
+}
+
+pub struct LeadVocalRest<const REST_TICK: u32>;
+#[jungle::act]
+impl<const REST_TICK: u32> Act for LeadVocalRest<REST_TICK> {
+    type Effect = Rest<LEAD_VOCALS_LANE_ID, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        ()
+    }
+
+    fn absorb(
+        _state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("lead vocal rest should complete");
+    }
+}
+
+pub struct LeadVocalNote<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
+#[jungle::act]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+    for LeadVocalNote<NOTE, NOTE_TICK, REST_TICK>
+{
+    type Effect = Monad<Vocals, VocalsArticulation, LEAD_VOCALS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        state.articulation
+    }
+
+    fn absorb(
+        _state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("lead vocal score note should complete");
     }
 }
 
@@ -111,10 +151,36 @@ pub struct LeadVocalMainBranch(Step<ConsumeLeadVocalPickup>);
 #[derive(Flow)]
 pub struct LeadVocalIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
-    Conditional<UseLeadVocalPickup, LeadVocalPickupBranch, LeadVocalMainBranch>,
-    Step<MergeLeadVocalPickupChoice>,
-    Transparent<IntroSectionMeta, LeadVocalSection02>,
-    Transparent<IntroSectionMeta, LeadVocalSection03>,
+    Transparent<IntroSectionMeta, LeadVocalScoreTimeline>,
+);
+
+#[derive(Flow)]
+pub struct LeadVocalScorePhrase(
+    Step<LeadVocalNote<71, 384, 384>>,
+    Step<LeadVocalNote<70, 384, 384>>,
+    Step<LeadVocalNote<68, 384, 384>>,
+    Step<LeadVocalNote<66, 384, 384>>,
+    Step<LeadVocalNote<73, 384, 384>>,
+    Step<LeadVocalNote<72, 384, 384>>,
+    Step<LeadVocalNote<70, 384, 384>>,
+    Step<LeadVocalNote<68, 384, 384>>,
+);
+
+#[derive(Flow)]
+pub struct LeadVocalScoreTimeline(
+    LeadVocalScorePhrase,
+    Step<LeadVocalRest<18_432>>,
+    LeadVocalScorePhrase,
+    Step<LeadVocalRest<30_720>>,
+    LeadVocalScorePhrase,
+    Step<LeadVocalRest<78_336>>,
+    LeadVocalScorePhrase,
+    Step<LeadVocalRest<3_072>>,
+    LeadVocalScorePhrase,
+    Step<LeadVocalRest<3_072>>,
+    LeadVocalScorePhrase,
+    Step<LeadVocalRest<3_072>>,
+    LeadVocalScorePhrase,
 );
 
 #[derive(Flow)]

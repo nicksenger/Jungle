@@ -493,8 +493,6 @@ impl<
 #[derive(Flow)]
 pub struct DrummerIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
-    Conditional<UseHat46GrooveVariant, Hat46SnapCadence, Hat42SnapCadence>,
-    Step<MergeGrooveVariantChoice>,
     Transparent<IntroSectionMeta, DrummerIntroSectionChunk01>,
     Transparent<IntroSectionMeta, DrummerIntroSectionChunk02>,
     Transparent<IntroSectionMeta, DrummerIntroSectionChunk03>,
