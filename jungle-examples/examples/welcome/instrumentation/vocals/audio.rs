@@ -122,6 +122,10 @@ fn synthesize_formant_vocals(
     note: &Note<VocalsArticulation>,
     phonemes: [Option<super::Phoneme>; 12],
 ) -> Option<(Arc<[f32]>, f32, f32)> {
+    const FORMANT_TARGET_RMS: f32 = 0.22;
+    const FORMANT_TARGET_PEAK: f32 = 0.92;
+    const FORMANT_MAX_MAKEUP_GAIN: f32 = 4.0;
+
     let phonemes: Vec<rustsam::parser::Phoneme> = phonemes
         .into_iter()
         .flatten()
@@ -156,10 +160,40 @@ fn synthesize_formant_vocals(
         }
     };
 
-    let velocity = note.velocity.clamp(0.0, 1.0);
-    let pcm: Vec<f32> = rendered
+    let mut normalized: Vec<f32> = rendered
         .into_iter()
-        .map(|sample| ((sample as f32 / 127.5) - 1.0) * velocity)
+        .map(|sample| sample as f32 / 127.5 - 1.0)
+        .collect();
+
+    let peak_abs = normalized.iter().fold(0.0_f32, |acc, sample| {
+        if sample.abs() > acc {
+            sample.abs()
+        } else {
+            acc
+        }
+    });
+    let rms = if normalized.is_empty() {
+        0.0
+    } else {
+        (normalized.iter().map(|sample| sample * sample).sum::<f32>() / normalized.len() as f32)
+            .sqrt()
+    };
+
+    if peak_abs > 1.0e-4 && rms > 1.0e-4 {
+        let rms_gain = FORMANT_TARGET_RMS / rms;
+        let peak_gain = FORMANT_TARGET_PEAK / peak_abs;
+        let makeup_gain = rms_gain.min(peak_gain).clamp(1.0, FORMANT_MAX_MAKEUP_GAIN);
+        if makeup_gain > 1.0 {
+            for sample in &mut normalized {
+                *sample = (*sample * makeup_gain).clamp(-1.0, 1.0);
+            }
+        }
+    }
+
+    let velocity = note.velocity.clamp(0.0, 1.0);
+    let pcm: Vec<f32> = normalized
+        .into_iter()
+        .map(|sample| sample * velocity)
         .collect();
     let (gain, playback_rate) = articulation_output_shape(note.articulation);
     Some((Arc::from(pcm), gain, playback_rate))
