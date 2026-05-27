@@ -2775,6 +2775,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
         let fill = cluster_panel::target_color(cx.kind, cx.phase);
         let overlay = AnimatedClusterView::<ViewerEvent<Self::Message>>::overlay(
+            cx.cluster_id,
             cx.label.to_string(),
             border_color,
             fill,
@@ -2790,6 +2791,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         } else {
             ClusterView::Collapsed {
                 element: AnimatedClusterView::<ViewerEvent<Self::Message>>::chip(
+                    cx.cluster_id,
                     cx.label.to_string(),
                     border_color,
                     CLUSTER_BORDER_ANIMATION_DURATION,
