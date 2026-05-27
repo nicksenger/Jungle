@@ -464,7 +464,7 @@ impl TickPlaybackPlan {
 const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
     TickPlaybackPlan {
         tick: 0,
-        app_overlay: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
+        app_overlay: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
         lead_vocalist_panel: None,
         lead_guitarist_panel: None,
         rhythm_guitarist_panel: None,
@@ -474,11 +474,11 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
     TickPlaybackPlan {
         tick: 4,
         app_overlay: None,
-        lead_vocalist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        lead_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        bass_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        drums_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
+        lead_vocalist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        lead_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        bass_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        drums_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
     },
     TickPlaybackPlan {
         tick: 40,
@@ -579,12 +579,16 @@ impl WelcomeUi {
                 .eject_live_animal::<Drums, _>(client, journey)
         });
 
-        let app_overlay = init_video_state("app overlay");
-        let lead_vocalist_panel_overlay = init_video_state("lead vocalist panel overlay");
-        let lead_guitarist_panel_overlay = init_video_state("lead guitarist panel overlay");
-        let rhythm_guitarist_panel_overlay = init_video_state("rhythm guitarist panel overlay");
-        let bass_panel_overlay = init_video_state("bass panel overlay");
-        let drums_panel_overlay = init_video_state("drums panel overlay");
+        let app_overlay = init_video_state("app overlay", iced_av1::ScaleMode::Stretch);
+        let lead_vocalist_panel_overlay =
+            init_video_state("lead vocalist panel overlay", iced_av1::ScaleMode::Cover);
+        let lead_guitarist_panel_overlay =
+            init_video_state("lead guitarist panel overlay", iced_av1::ScaleMode::Cover);
+        let rhythm_guitarist_panel_overlay =
+            init_video_state("rhythm guitarist panel overlay", iced_av1::ScaleMode::Cover);
+        let bass_panel_overlay = init_video_state("bass panel overlay", iced_av1::ScaleMode::Cover);
+        let drums_panel_overlay =
+            init_video_state("drums panel overlay", iced_av1::ScaleMode::Cover);
         (
             Self {
                 lead_vocalist,
@@ -1012,7 +1016,10 @@ impl WelcomeUi {
     }
 }
 
-fn init_video_state(region: &str) -> Option<iced_av1::widget::State> {
+fn init_video_state(
+    region: &str,
+    scale_mode: iced_av1::ScaleMode,
+) -> Option<iced_av1::widget::State> {
     let playback_options = iced_av1::PlaybackOptions::default();
     let opacity_options = iced_av1::OpacityOptions {
         opacity: 0.0,
@@ -1026,7 +1033,10 @@ fn init_video_state(region: &str) -> Option<iced_av1::widget::State> {
         playback_options,
         opacity_options,
     ) {
-        Ok(state) => Some(state),
+        Ok(mut state) => {
+            state.set_scale_mode(scale_mode);
+            Some(state)
+        }
         Err(error) => {
             warn!(error = %error, region, "failed to initialize AV overlay state");
             None
