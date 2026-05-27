@@ -103,10 +103,12 @@ where
     }
 
     fn as_element(&self, fill: Color) -> Element<'_, Message> {
+        let accent_border = vary_green_shade(Color::from_rgb8(58, 122, 86), self.step_id);
+        let accent_role = vary_green_shade(Color::from_rgb8(168, 198, 181), self.step_id);
         let body = column![
             text(self.role.as_str())
                 .size(10)
-                .color(Color::from_rgb8(168, 198, 181)),
+                .color(accent_role),
             text(self.label.as_str())
                 .size(13)
                 .color(Color::from_rgb8(223, 245, 230))
@@ -120,7 +122,7 @@ where
                 background: Some(iced::Background::Color(Color { a: 0.8, ..fill })),
                 text_color: Color::from_rgb8(223, 245, 230),
                 border: iced::border::rounded(10)
-                    .color(Color::from_rgb8(58, 122, 86))
+                    .color(accent_border)
                     .width(1.0),
                 shadow: iced::Shadow {
                     color: Color::from_rgba8(0, 0, 0, 0.35),
@@ -306,6 +308,22 @@ fn lerp_color(from: Color, to: Color, t: f32) -> Color {
 
 fn ease_out_cubic(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
+}
+
+fn vary_green_shade(base: Color, step_id: u32) -> Color {
+    // Deterministic tiny variation in [-0.035, +0.035] keeps shades close to the base green.
+    let noise = (step_id as u64)
+        .wrapping_mul(1_103_515_245)
+        .wrapping_add(12_345)
+        & 0xFFFF;
+    let unit = (noise as f32) / 65_535.0;
+    let delta = (unit - 0.5) * 0.07;
+    Color {
+        r: (base.r + delta).clamp(0.0, 1.0),
+        g: (base.g + delta).clamp(0.0, 1.0),
+        b: (base.b + delta).clamp(0.0, 1.0),
+        a: base.a,
+    }
 }
 
 impl<'a, Message> From<AnimatedStepNode<Message>> for Element<'a, Message>
