@@ -1,14 +1,15 @@
 use jungle_sdk::prelude::*;
 use std::marker::PhantomData;
 
-pub struct Loop2FlattenUnit<S>(PhantomData<fn() -> S>);
+#[derive(Flow)]
+pub struct Loop2FlattenLeft<T, S>(PhantomData<fn() -> T>, PhantomData<fn() -> S>);
 
 #[jungle::act]
-impl<S> Act for Loop2FlattenUnit<S> {
+impl<L, R, S> Act for Loop2FlattenLeft<(L, R), S> {
     type Effect = Noop;
-    type Input = ((), ());
-    type Output = ();
-    type Carry = ((), ());
+    type Input = (L, R);
+    type Output = L;
+    type Carry = (L, R);
 
     fn emit(_state: &S, input: Self::Input) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
         ((), input)
@@ -17,13 +18,15 @@ impl<S> Act for Loop2FlattenUnit<S> {
     fn absorb(
         _state: &mut S,
         output: EffectCompletion<Self::Effect>,
-        _carry: Self::Carry,
+        carry: Self::Carry,
     ) -> Self::Output {
-        output.expect("loop2 flatten-unit step should complete");
+        output.expect("loop2 flatten-left step should complete");
+        carry.0
     }
 }
 
 #[derive(Flow)]
-pub struct Loop2WithState<L, R, S>(Join<L, R>, Step<Loop2FlattenUnit<S>>);
-
-pub type Loop2<L, R> = Loop2WithState<L, R, ()>;
+pub struct Loop2<L, R, S>(Join<L, R>, Step<Loop2FlattenLeft<(L::Out, R::Out), S>>)
+where
+    L: TraverseFlow + Running,
+    R: TraverseFlow + Running<In = L::In>;
