@@ -1424,25 +1424,7 @@ where
         }
     }
 
-    let mut cluster_successor_runtime_ids = vec![Vec::<u32>::new(); model.cluster_info.len()];
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
-        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
-        let mut seen = BTreeSet::new();
-        for (from, to) in &model.edges {
-            if !cluster_nodes.contains(from) || cluster_nodes.contains(to) {
-                continue;
-            }
-            let Some(node) = model.node_map.get(to) else {
-                continue;
-            };
-            let Some(runtime_id) = node.runtime_node_id else {
-                continue;
-            };
-            if seen.insert(runtime_id) {
-                cluster_successor_runtime_ids[index].push(runtime_id);
-            }
-        }
-    }
+    let cluster_successor_runtime_ids = cluster_successor_runtime_ids(model);
 
     let mut cluster_entry_runtime_ids = vec![Vec::<u32>::new(); model.cluster_info.len()];
     for (index, cluster) in model.cluster_info.iter().enumerate() {
@@ -2410,6 +2392,51 @@ fn dedup(values: Vec<u32>) -> Vec<u32> {
         }
     }
     output
+}
+
+fn cluster_successor_runtime_ids(model: &GraphModel) -> Vec<Vec<u32>> {
+    let mut outgoing_by_node = HashMap::<u32, Vec<u32>>::new();
+    for (from, to) in &model.edges {
+        outgoing_by_node.entry(*from).or_default().push(*to);
+    }
+
+    let mut cluster_successors = vec![Vec::<u32>::new(); model.cluster_info.len()];
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
+        let mut queue = std::collections::VecDeque::<u32>::new();
+        let mut visited = HashSet::<u32>::new();
+
+        for (from, to) in &model.edges {
+            if !cluster_nodes.contains(from) || cluster_nodes.contains(to) {
+                continue;
+            }
+            if visited.insert(*to) {
+                queue.push_back(*to);
+            }
+        }
+
+        let mut seen_runtime_ids = BTreeSet::new();
+        while let Some(node_id) = queue.pop_front() {
+            if cluster_nodes.contains(&node_id) {
+                continue;
+            }
+            if let Some(node) = model.node_map.get(&node_id) {
+                if let Some(runtime_id) = node.runtime_node_id {
+                    if seen_runtime_ids.insert(runtime_id) {
+                        cluster_successors[index].push(runtime_id);
+                    }
+                }
+            }
+            if let Some(neighbors) = outgoing_by_node.get(&node_id) {
+                for neighbor in neighbors {
+                    if visited.insert(*neighbor) {
+                        queue.push_back(*neighbor);
+                    }
+                }
+            }
+        }
+    }
+    cluster_successors
 }
 
 #[derive(Clone, Copy)]
@@ -3557,6 +3584,79 @@ mod tests {
         assert!(edges.contains(&(gate_id, in_r_id)));
         assert!(edges.contains(&(in_l_id, tail_id)));
         assert!(edges.contains(&(in_r_id, tail_id)));
+    }
+
+    #[test]
+    fn cluster_successors_include_downstream_runtime_after_direct_exit() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Transparent {
+                label: "flow::Boundary",
+                metadata: "",
+                body: Box::new(JourneyAst::Step { label: "Inside" }),
+            },
+            JourneyAst::Step {
+                label: "DirectSuccessor",
+            },
+            JourneyAst::Step {
+                label: "DownstreamSuccessor",
+            },
+        ]);
+        let model = GraphModel::from_ast(ast);
+        let successor_runtime_ids = cluster_successor_runtime_ids(&model);
+        assert_eq!(successor_runtime_ids.len(), 1);
+        assert_eq!(successor_runtime_ids[0], vec![1, 2]);
+    }
+
+    #[test]
+    fn completed_cluster_border_allows_downstream_successor_trigger() {
+        let mut state = DefaultThemeState {
+            node_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            condition_successor_runtime_ids: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+            runtime_update_counter: 0,
+            runtime_update_order: HashMap::new(),
+        };
+
+        let started_at = Instant::now();
+        let cx = ClusterViewCtx {
+            cluster_id: 9,
+            cluster_index: 0,
+            kind: ClusterKind::Transparent,
+            label: "transparent: section",
+            metadata: None,
+            parent_cluster_id: None,
+            depth: 0,
+            member_display_ids: &[],
+            entry_runtime_ids: &[18],
+            member_runtime_ids: &[18, 19],
+            successor_runtime_ids: &[32, 33],
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: false,
+            }),
+        };
+        state.register_cluster(&cx);
+
+        let entry = started_at + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(18, entry));
+        let border_state = state
+            .cluster_visuals
+            .get(&9)
+            .expect("cluster visual should exist")
+            .border_state;
+        assert_eq!(border_state, RuntimeState::Running);
+
+        let downstream_successor = entry + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(33, downstream_successor));
+        let border_state = state
+            .cluster_visuals
+            .get(&9)
+            .expect("cluster visual should exist")
+            .border_state;
+        assert_eq!(border_state, RuntimeState::Completed);
     }
 
     #[test]
