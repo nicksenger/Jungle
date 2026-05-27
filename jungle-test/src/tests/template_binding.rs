@@ -134,6 +134,13 @@ where
         input + 1
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let value = output.expect("counter add step should succeed");
         *state = value;
@@ -154,6 +161,13 @@ where
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + 10
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -178,6 +192,13 @@ where
         *state + input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let value = output.expect("counter commit step should succeed");
         *state = value;
@@ -200,6 +221,13 @@ where
         *state - input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let value = output.expect("ledger commit step should succeed");
         *state = value;
@@ -220,6 +248,13 @@ where
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + A::ADD_INPUT_DELTA
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -246,6 +281,13 @@ where
         } else {
             *state + input
         }
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -499,6 +541,13 @@ where
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -798,6 +847,13 @@ where
         *view + input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let out = output.expect("lens spare step should succeed");
         *view = out;
@@ -820,6 +876,13 @@ where
         *view + input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let out = output.expect("lens leaf step should succeed");
         *view = out;
@@ -840,6 +903,13 @@ where
 
     fn emit(_state: &LensRootState, input: Self::Input) -> i32 {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut LensRootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1082,6 +1152,13 @@ where
         *view + input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let out = output.expect("nested branch spare step should succeed");
         *view = out;
@@ -1104,6 +1181,13 @@ where
         *view + input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let out = output.expect("nested leaf value step should succeed");
         *view = out;
@@ -1124,6 +1208,13 @@ where
 
     fn emit(view: &i32, input: Self::Input) -> i32 {
         *view + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2179,6 +2270,13 @@ where
         (A::fast_ms(), input + 1)
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("join-left effect should succeed")
     }
@@ -2199,6 +2297,13 @@ where
         (A::slow_ms(), input + 2)
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("join-right effect should succeed")
     }
@@ -2217,6 +2322,13 @@ where
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         input.0 + input.1
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2241,6 +2353,13 @@ where
         (A::fast_ms(), input + 3)
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("select-fast effect should succeed")
     }
@@ -2259,6 +2378,13 @@ where
 
     fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
         (A::slow_ms(), input + 4)
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2283,6 +2409,13 @@ where
         }
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let value = output.expect("select-to-carry should succeed");
         A::set_select_winner(state, value);
@@ -2303,6 +2436,13 @@ where
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2328,6 +2468,13 @@ where
         input + 100
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let value = output.expect("unique-alpha should succeed");
         A::set_unique_alpha(state, value);
@@ -2348,6 +2495,13 @@ where
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         input - 100
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2372,6 +2526,13 @@ where
         input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
+    }
+
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let value = output.expect("finalize should succeed");
         A::set_final(state, value);
@@ -2394,6 +2555,13 @@ where
         match input {
             Either::Left(value) | Either::Right(value) => value,
         }
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {

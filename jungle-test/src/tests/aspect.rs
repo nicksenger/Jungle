@@ -136,6 +136,13 @@ where
         core.energy + input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
+    }
+
     fn absorb(core: &mut CoreState, output: EffectCompletion<Sleep>) -> Self::Output {
         let value = output.expect("sleep should succeed");
         core.energy = value;
@@ -156,6 +163,13 @@ where
 
     fn emit(core: &CoreState, input: Self::Input) -> i32 {
         core.energy + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(core: &mut CoreState, output: EffectCompletion<Eat>) -> Self::Output {
@@ -181,6 +195,13 @@ where
 
     fn emit(_value: &i32, input: Self::Input) -> A::In {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Output {
@@ -209,6 +230,13 @@ where
 
     fn emit(_value: &i32, input: Self::Input) -> A::In {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Output {

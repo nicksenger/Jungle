@@ -69,6 +69,15 @@ impl BoundAct<ObserveAnimal> for ObserveSleep {
         Duration::from_millis(state.sleep_ms)
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<ObserveAnimal>>::Aspect as StateCarrier<
+            <ObserveAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<ObserveAnimal>>::emit(view, input), ())
+    }
+
     fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("sleep branch should complete");
         state.tick = state.tick.saturating_add(1);
@@ -84,6 +93,15 @@ impl BoundAct<ObserveAnimal> for ObserveBump {
     type Carry = ();
 
     fn emit(_state: &ObserveState, _input: Self::Input) -> Self::Input {}
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<ObserveAnimal>>::Aspect as StateCarrier<
+            <ObserveAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<ObserveAnimal>>::emit(view, input), ())
+    }
 
     fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("bump branch should complete");

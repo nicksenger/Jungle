@@ -129,6 +129,15 @@ impl BoundAct<OpticAnimal> for LensOnLeafValue {
         *view + input
     }
 
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<OpticAnimal>>::Aspect as StateCarrier<
+            <OpticAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<OpticAnimal>>::emit(view, input), ())
+    }
+
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         let out = output.expect("lens list should succeed");
         *view = out;
@@ -147,6 +156,15 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
 
     fn emit(view: &RootState, _input: Self::Input) -> RootState {
         *view
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<OpticAnimal>>::Aspect as StateCarrier<
+            <OpticAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<OpticAnimal>>::emit(view, input), ())
     }
 
     fn absorb(_view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
