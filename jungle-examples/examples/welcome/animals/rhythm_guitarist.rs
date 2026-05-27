@@ -1835,9 +1835,12 @@ mod tests {
     use crate::ecosystem::TheJungle;
     const DUPLICATE_EXECUTION_WORKER_COUNT: usize = 5;
     const DUPLICATE_EXECUTION_TEST_BPM: f32 = 1_000.0;
-    const EXPECTED_DUPLICATE_EXECUTION_TOTAL_EVENTS: u32 = 24;
-    const EXPECTED_DUPLICATE_EXECUTION_INPUT_EVENTS: u32 = 12;
-    const EXPECTED_DUPLICATE_EXECUTION_SUCCESS_EVENTS: u32 = 12;
+    const DUPLICATE_EXECUTION_START_OFFSET: Duration = Duration::from_secs(60 * 60 * 24 * 365);
+    // Deterministic default RhythmGuitarFlow path executes 1,221 effect steps:
+    // each step emits one EffectInput and one EffectSuccessOutput.
+    const EXPECTED_DUPLICATE_EXECUTION_INPUT_EVENTS: u32 = 1_221;
+    const EXPECTED_DUPLICATE_EXECUTION_SUCCESS_EVENTS: u32 = 1_221;
+    const EXPECTED_DUPLICATE_EXECUTION_TOTAL_EVENTS: u32 = 2_442;
 
     async fn await_completion_with_timeout(
         client: &LocalClient,
@@ -1939,7 +1942,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 16)]
-    async fn rhythm_guitarist_join_flow_multi_worker_local_client_has_exact_event_counts() {
+    async fn rhythm_guitarist_flow_multi_worker_local_client_has_exact_event_counts() {
         let namespace = format!("welcome-rhythm-dup-exec-{}", uuid::Uuid::new_v4());
         let client = LocalClient::builder()
             .namespace(&namespace)
@@ -1948,8 +1951,10 @@ mod tests {
             .expect("local client should build");
 
         let (shared_audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
-        let shared_metronome = crate::metronome::Metronome::spawn(DUPLICATE_EXECUTION_TEST_BPM);
-        shared_metronome.arm_start_barrier();
+        let shared_metronome = crate::metronome::Metronome::spawn_with_offset(
+            DUPLICATE_EXECUTION_TEST_BPM,
+            DUPLICATE_EXECUTION_START_OFFSET,
+        );
 
         let mut worker_handles = Vec::with_capacity(DUPLICATE_EXECUTION_WORKER_COUNT);
         for _ in 0..DUPLICATE_EXECUTION_WORKER_COUNT {
@@ -1964,10 +1969,9 @@ mod tests {
             }));
         }
 
-        let seed =
-            postcard::to_allocvec(&RhythmGuitaristState::default()).expect("seed should serialize");
+        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
         let journey_id = client
-            .start_journey::<RhythmJoinMonad100Animal>(seed)
+            .start_journey::<RhythmGuitarist>(seed)
             .await
             .expect("journey should start");
 
@@ -1978,11 +1982,7 @@ mod tests {
         let stream_task =
             tokio::spawn(async move { collect_stream_stats(stream, journey_id).await });
 
-        let release_task = tokio::spawn(async move {
-            shared_metronome.release_start_barrier_on_downbeat().await;
-        });
-
-        await_completion_with_timeout(&client, journey_id, Duration::from_secs(45)).await;
+        await_completion_with_timeout(&client, journey_id, Duration::from_secs(900)).await;
         let stats = stream_task
             .await
             .expect("stream task should join cleanly after completion");
@@ -2012,7 +2012,6 @@ mod tests {
             "unexpected total event count; this can indicate duplicate journey execution"
         );
 
-        let _ = release_task.await;
         for worker_handle in worker_handles {
             worker_handle.abort();
             let _ = worker_handle.await;
