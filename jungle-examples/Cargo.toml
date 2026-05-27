@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = []
-viewer = ["dep:jungle-vision", "dep:iced"]
+viewer = ["dep:jungle-vision", "dep:iced", "dep:iced-av1"]
 audio = ["dep:cpal", "dep:rustsam"]
 redb = []
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
@@ -16,6 +16,7 @@ futures = { workspace = true }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "local"] }
 jungle-vision = { path = "../jungle-vision", optional = true }
 iced = { version = "0.14", features = ["tokio"], optional = true }
+iced-av1 = { path = "../../iced-av1", optional = true }
 cpal = { version = "0.17", optional = true }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }

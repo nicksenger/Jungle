@@ -2,7 +2,7 @@ use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
 use crate::UiClient;
 use async_trait::async_trait;
 use futures::StreamExt;
-use iced::widget::{column, container, text, Row};
+use iced::widget::{column, container, stack, text, Row};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
@@ -400,6 +400,7 @@ enum Panel {
 #[derive(Debug, Clone)]
 enum Message {
     Panel(Panel, jungle_vision::EjectedViewerMessage),
+    AvOverlay(iced_av1::widget::Message),
     Tick,
 }
 
@@ -414,6 +415,7 @@ struct WelcomeUi {
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
     drums:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
+    av_overlay: Option<iced_av1::widget::State>,
     shutdown: ShutdownFlag,
 }
 
@@ -448,6 +450,16 @@ impl WelcomeUi {
                 .title("Welcome: Drums")
                 .eject_live_animal::<Drums, _>(client, journey)
         });
+        let av_overlay = match iced_av1::widget::State::new() {
+            Ok(state) => Some(state),
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    "failed to initialize AV overlay state; continuing without video overlay"
+                );
+                None
+            }
+        };
 
         (
             Self {
@@ -456,6 +468,7 @@ impl WelcomeUi {
                 rhythm_guitarist,
                 bass,
                 drums,
+                av_overlay,
                 shutdown,
             },
             Task::none(),
@@ -467,6 +480,12 @@ impl WelcomeUi {
             Message::Tick => {
                 if self.shutdown.should_shutdown() {
                     return iced::exit();
+                }
+                Task::none()
+            }
+            Message::AvOverlay(event) => {
+                if let Some(av_overlay) = self.av_overlay.as_mut() {
+                    av_overlay.update(event);
                 }
                 Task::none()
             }
@@ -534,6 +553,9 @@ impl WelcomeUi {
                     .map(|event| Message::Panel(Panel::Drums, event)),
             );
         }
+        if let Some(av_overlay) = self.av_overlay.as_ref() {
+            subscriptions.push(av_overlay.subscription(Message::AvOverlay));
+        }
         subscriptions
             .push(iced::time::every(std::time::Duration::from_millis(200)).map(|_| Message::Tick));
         Subscription::batch(subscriptions)
@@ -580,12 +602,23 @@ impl WelcomeUi {
             panels.into()
         };
 
-        container(content)
+        let app: Element<'_, Message> = container(content)
             .padding(12)
             .width(Length::Fill)
             .height(Length::Fill)
             .style(app_background)
-            .into()
+            .into();
+
+        if let Some(av_overlay) = self.av_overlay.as_ref() {
+            if let Some(overlay) = av_overlay.overlay_view(Message::AvOverlay) {
+                return stack([app, overlay])
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into();
+            }
+        }
+
+        app
     }
 }
 

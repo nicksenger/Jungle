@@ -1749,9 +1749,7 @@ async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_l
     let _ = worker_handle.await;
 }
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct NoopLoop2TraceState {
     left_hits: u8,
     right_hits: u8,
@@ -1768,7 +1766,10 @@ impl<St> Act for NoopLoop2SetCounter<St> {
 
     fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
 
-    fn absorb(state: &mut Loop2Container<St>, _output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut Loop2Container<St>,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         state.counter = 2;
     }
 }
@@ -1783,7 +1784,10 @@ impl<St> Act for NoopLoop2DecCounter<St> {
 
     fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
 
-    fn absorb(state: &mut Loop2Container<St>, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut Loop2Container<St>,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
         output.expect("noop loop2 decrement step should succeed");
         state.counter = state.counter.saturating_sub(1);
     }
@@ -1890,9 +1894,7 @@ struct NoopLoop2<St, L: TraverseFlow, R: TraverseFlow>(
     While<FocusedLoopCondition<NoopLoop2CounterGt0, Loop2Container<St>>, NoopLoop2Body<St, L, R>>,
 );
 
-#[derive(
-    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct NoopLoop2HarnessState {
     #[jungle(focus)]
     loop2: Loop2Container<NoopLoop2TraceState>,

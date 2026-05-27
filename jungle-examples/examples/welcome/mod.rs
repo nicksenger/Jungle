@@ -1,13 +1,13 @@
 #![recursion_limit = "16384"]
 
 mod animals;
-mod assets;
 mod audio;
 mod ecosystem;
 mod effect;
 pub mod flow;
 mod instrumentation;
 mod metronome;
+mod overlay_video;
 mod ui;
 
 use std::collections::BTreeSet;
@@ -324,6 +324,13 @@ fn run_with_ui(
             "failed to notify runtime thread that UI started: {err}"
         ))
     })?;
+
+    if let Err(error) = overlay_video::ensure_av_overlay_media() {
+        warn!(
+            error = %error,
+            "failed to prepare AV overlay media; continuing without video overlay"
+        );
+    }
 
     ui::run_ui(setup.client, setup.journeys, ui_shutdown)?;
 
