@@ -2,6 +2,7 @@ use jungle_sdk::prelude::*;
 
 use super::{Double, Quad};
 use crate::effect::{AtomicDualHit, Monad, Rest, Tetrad};
+use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
@@ -262,6 +263,29 @@ impl Act for MergeUnit {
     }
 }
 
+pub struct Loop2Noop;
+#[jungle::act]
+impl Act for Loop2Noop {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &ElectricGuitarArticulation,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+    }
+
+    fn absorb(
+        _state: &mut ElectricGuitarArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("loop2 no-op step should complete");
+    }
+}
+
+type RhythmLoop2Noop = Step<Loop2Noop>;
+
 pub struct PostMergeRest<const REST_TICK: u32>;
 #[jungle::act]
 impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
@@ -375,72 +399,72 @@ pub struct RhythmGuitarFlow(
 
 #[derive(Flow)]
 pub struct RhythmSection01(
-    Transparent<IntroSectionMeta, RhythmPart01>,
-    Transparent<IntroSectionMeta, RhythmPart02>,
-    Transparent<IntroSectionMeta, RhythmPart03>,
-    Transparent<IntroSectionMeta, RhythmPart04>,
-    Transparent<IntroSectionMeta, RhythmPart05>,
-    Transparent<IntroSectionMeta, RhythmPart06>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart01, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart02, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart03, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart04, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart05, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart06, RhythmLoop2Noop>>,
 );
 
 #[derive(Flow)]
 pub struct RhythmSection02(
-    Transparent<IntroSectionMeta, RhythmPart07>,
-    Transparent<IntroSectionMeta, RhythmPart08>,
-    Transparent<IntroSectionMeta, RhythmPart09>,
-    Transparent<IntroSectionMeta, RhythmPart10>,
-    Transparent<IntroSectionMeta, RhythmPart11>,
-    Transparent<IntroSectionMeta, RhythmPart12>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart07, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart08, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart09, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart10, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart11, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart12, RhythmLoop2Noop>>,
 );
 
 #[derive(Flow)]
 pub struct RhythmSection03(
-    Transparent<IntroSectionMeta, RhythmPart13>,
-    Transparent<IntroSectionMeta, RhythmPart14>,
-    Transparent<IntroSectionMeta, RhythmPart15>,
-    Transparent<IntroSectionMeta, RhythmPart16>,
-    Transparent<IntroSectionMeta, RhythmPart17>,
-    Transparent<IntroSectionMeta, RhythmPart18>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart13, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart14, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart15, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart16, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart17, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart18, RhythmLoop2Noop>>,
 );
 
 #[derive(Flow)]
 pub struct RhythmSection04(
-    Transparent<IntroSectionMeta, RhythmPart19>,
-    Transparent<IntroSectionMeta, RhythmPart20>,
-    Transparent<IntroSectionMeta, RhythmPart21>,
-    Transparent<IntroSectionMeta, RhythmPart22>,
-    Transparent<IntroSectionMeta, RhythmPart23>,
-    Transparent<IntroSectionMeta, RhythmPart24>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart19, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart20, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart21, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart22, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart23, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart24, RhythmLoop2Noop>>,
 );
 
 #[derive(Flow)]
 pub struct RhythmSection05(
-    Transparent<IntroSectionMeta, RhythmPart25>,
-    Transparent<IntroSectionMeta, RhythmPart26>,
-    Transparent<IntroSectionMeta, RhythmPart27>,
-    Transparent<IntroSectionMeta, RhythmPart28>,
-    Transparent<IntroSectionMeta, RhythmPart29>,
-    Transparent<IntroSectionMeta, RhythmPart30>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart25, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart26, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart27, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart28, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart29, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart30, RhythmLoop2Noop>>,
 );
 
 #[derive(Flow)]
 pub struct RhythmSection06(
-    Transparent<IntroSectionMeta, RhythmPart31>,
-    Transparent<IntroSectionMeta, RhythmPart32>,
-    Transparent<IntroSectionMeta, RhythmPart33>,
-    Transparent<IntroSectionMeta, RhythmPart34>,
-    Transparent<IntroSectionMeta, RhythmPart35>,
-    Transparent<IntroSectionMeta, RhythmPart36>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart31, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart32, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart33, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart34, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart35, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart36, RhythmLoop2Noop>>,
 );
 
 #[derive(Flow)]
 pub struct RhythmSection07(
-    Transparent<IntroSectionMeta, RhythmPart37>,
-    Transparent<IntroSectionMeta, RhythmPart38>,
-    Transparent<IntroSectionMeta, RhythmPart39>,
-    Transparent<IntroSectionMeta, RhythmPart40>,
-    Transparent<IntroSectionMeta, RhythmPart41>,
-    Transparent<IntroSectionMeta, RhythmPart42>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart37, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart38, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart39, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart40, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart41, RhythmLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<RhythmPart42, RhythmLoop2Noop>>,
 );
 
 #[derive(Flow)]

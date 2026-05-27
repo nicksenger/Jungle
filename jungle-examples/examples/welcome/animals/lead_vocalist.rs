@@ -1,6 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use crate::effect::{Passthrough, Rest};
+use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
     phonemes_from_text, Generate as LaneGenerate, Lyrics, VocalsArticulation,
 };
@@ -570,6 +571,25 @@ impl Act for MergeLeadVocalPickupChoice {
     }
 }
 
+pub struct Loop2Noop;
+#[jungle::act]
+impl Act for Loop2Noop {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+
+    fn absorb(
+        _state: &mut LeadVocalistState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("loop2 no-op step should complete");
+    }
+}
+
+type LeadVocalLoop2Noop = Step<Loop2Noop>;
+
 #[derive(Flow)]
 pub struct LeadVocalPickupBranch(
     Transparent<IntroSectionMeta, LeadVocalSection01>,
@@ -591,32 +611,32 @@ pub struct LeadVocalIntro(
 
 #[derive(Flow)]
 pub struct LeadVocalSection01(
-    Transparent<IntroSectionMeta, LeadVocalPart01>,
-    Transparent<IntroSectionMeta, LeadVocalPart02>,
-    Transparent<IntroSectionMeta, LeadVocalPart03>,
-    Transparent<IntroSectionMeta, LeadVocalPart04>,
-    Transparent<IntroSectionMeta, LeadVocalPart05>,
-    Transparent<IntroSectionMeta, LeadVocalPart06>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart01, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart02, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart03, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart04, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart05, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart06, LeadVocalLoop2Noop>>,
 );
 
 #[derive(Flow)]
 pub struct LeadVocalSection02(
-    Transparent<IntroSectionMeta, LeadVocalPart07>,
-    Transparent<IntroSectionMeta, LeadVocalPart08>,
-    Transparent<IntroSectionMeta, LeadVocalPart09>,
-    Transparent<IntroSectionMeta, LeadVocalPart10>,
-    Transparent<IntroSectionMeta, LeadVocalPart11>,
-    Transparent<IntroSectionMeta, LeadVocalPart12>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart07, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart08, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart09, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart10, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart11, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart12, LeadVocalLoop2Noop>>,
 );
 
 #[derive(Flow)]
 pub struct LeadVocalSection03(
-    Transparent<IntroSectionMeta, LeadVocalPart13>,
-    Transparent<IntroSectionMeta, LeadVocalPart14>,
-    Transparent<IntroSectionMeta, LeadVocalPart15>,
-    Transparent<IntroSectionMeta, LeadVocalPart16>,
-    Transparent<IntroSectionMeta, LeadVocalPart17>,
-    Transparent<IntroSectionMeta, LeadVocalPart18>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart13, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart14, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart15, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart16, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart17, LeadVocalLoop2Noop>>,
+    Transparent<IntroSectionMeta, Loop2<LeadVocalPart18, LeadVocalLoop2Noop>>,
 );
 
 #[derive(Flow)]
