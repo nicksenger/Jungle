@@ -229,77 +229,206 @@ pub struct BassSection01(
         //BassPart02
         Loop2<BassArticulation, LoopedBassPart02Left, LoopedBassPart02Right>,
     >,
-    Transparent<IntroSectionMeta, BassPart03>,
-    Transparent<IntroSectionMeta, BassPart04>,
-    Transparent<IntroSectionMeta, BassPart05>,
-    Transparent<IntroSectionMeta, BassPart06>,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart03Left, LoopedBassPart03Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart04Left, LoopedBassPart04Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart05Left, LoopedBassPart05Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart06Left, LoopedBassPart06Right>,
+    >,
 );
 
 #[derive(Flow)]
 pub struct BassSection02(
-    Transparent<IntroSectionMeta, BassPart07>,
-    Transparent<IntroSectionMeta, BassPart08>,
-    Transparent<IntroSectionMeta, BassPart09>,
-    Transparent<IntroSectionMeta, BassPart10>,
-    Transparent<IntroSectionMeta, BassPart11>,
-    Transparent<IntroSectionMeta, BassPart12>,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart07Left, LoopedBassPart07Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart08Left, LoopedBassPart08Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart09Left, LoopedBassPart09Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart10Left, LoopedBassPart10Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart11Left, LoopedBassPart11Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart12Left, LoopedBassPart12Right>,
+    >,
 );
 
 #[derive(Flow)]
 pub struct BassSection03(
-    Transparent<IntroSectionMeta, BassPart13>,
-    Transparent<IntroSectionMeta, BassPart14>,
-    Transparent<IntroSectionMeta, BassPart15>,
-    Transparent<IntroSectionMeta, BassPart16>,
-    Transparent<IntroSectionMeta, BassPart17>,
-    Transparent<IntroSectionMeta, BassPart18>,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart13Left, LoopedBassPart13Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart14Left, LoopedBassPart14Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart15Left, LoopedBassPart15Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart16Left, LoopedBassPart16Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart17Left, LoopedBassPart17Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart18Left, LoopedBassPart18Right>,
+    >,
 );
 
 #[derive(Flow)]
 pub struct BassSection04(
-    Transparent<IntroSectionMeta, BassPart19>,
-    Transparent<IntroSectionMeta, BassPart20>,
-    Transparent<IntroSectionMeta, BassPart21>,
-    Transparent<IntroSectionMeta, BassPart22>,
-    Transparent<IntroSectionMeta, BassPart23>,
-    Transparent<IntroSectionMeta, BassPart24>,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart19Left, LoopedBassPart19Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart20Left, LoopedBassPart20Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart21Left, LoopedBassPart21Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart22Left, LoopedBassPart22Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart23Left, LoopedBassPart23Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart24Left, LoopedBassPart24Right>,
+    >,
 );
 
 #[derive(Flow)]
 pub struct BassSection05(
-    Transparent<IntroSectionMeta, BassPart25>,
-    Transparent<IntroSectionMeta, BassPart26>,
-    Transparent<IntroSectionMeta, BassPart27>,
-    Transparent<IntroSectionMeta, BassPart28>,
-    Transparent<IntroSectionMeta, BassPart29>,
-    Transparent<IntroSectionMeta, BassPart30>,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart25Left, LoopedBassPart25Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart26Left, LoopedBassPart26Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart27Left, LoopedBassPart27Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart28Left, LoopedBassPart28Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart29Left, LoopedBassPart29Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart30Left, LoopedBassPart30Right>,
+    >,
 );
 
 #[derive(Flow)]
 pub struct BassSection06(
-    Transparent<IntroSectionMeta, BassPart31>,
-    Transparent<IntroSectionMeta, BassPart32>,
-    Transparent<IntroSectionMeta, BassPart33>,
-    Transparent<IntroSectionMeta, BassPart34>,
-    Transparent<IntroSectionMeta, BassPart35>,
-    Transparent<IntroSectionMeta, BassPart36>,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart31Left, LoopedBassPart31Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart32Left, LoopedBassPart32Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart33Left, LoopedBassPart33Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart34Left, LoopedBassPart34Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart35Left, LoopedBassPart35Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart36Left, LoopedBassPart36Right>,
+    >,
 );
 
 #[derive(Flow)]
 pub struct BassSection07(
-    Transparent<IntroSectionMeta, BassPart37>,
-    Transparent<IntroSectionMeta, BassPart38>,
-    Transparent<IntroSectionMeta, BassPart39>,
-    Transparent<IntroSectionMeta, BassPart40>,
-    Transparent<IntroSectionMeta, BassPart41>,
-    Transparent<IntroSectionMeta, BassPart42>,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart37Left, LoopedBassPart37Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart38Left, LoopedBassPart38Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart39Left, LoopedBassPart39Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart40Left, LoopedBassPart40Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart41Left, LoopedBassPart41Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart42Left, LoopedBassPart42Right>,
+    >,
 );
 
 #[derive(Flow)]
 pub struct BassSection08(
-    Transparent<IntroSectionMeta, BassPart43>,
-    Transparent<IntroSectionMeta, BassPart44>,
-    Transparent<IntroSectionMeta, BassPart45>,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart43Left, LoopedBassPart43Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart44Left, LoopedBassPart44Right>,
+    >,
+    Transparent<
+        IntroSectionMeta,
+        Loop2<BassArticulation, LoopedBassPart45Left, LoopedBassPart45Right>,
+    >,
 );
 
 #[derive(Flow)]
@@ -1518,6 +1647,1489 @@ pub struct BassPart45(
     Join<Step<JoinThump<37, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 288, 288>>,
+    Step<Thump<37, 288, 288>>,
+    Step<Thump<33, 288, 288>>,
+    Step<Thump<32, 288, 288>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<32, 288, 288>>,
+    Step<Thump<30, 288, 288>>,
+    Step<Thump<27, 192, 576>>,
+    Step<Thump<27, 3456, 0>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart03Left(
+    Transparent<IntroSectionMeta, BassPart03LeadIn>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<37, 768, 768>>,
+    Step<Thump<32, 768, 768>>,
+    Transparent<IntroSectionMeta, BassPart03PedalTicks>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart03Right(
+    Step<Thump<41, 192, 192>>,
+    Step<Thump<44, 192, 192>>,
+    Step<Thump<45, 192, 192>>,
+    Step<Thump<46, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart04Left(
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 384, 384>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart04Right(
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart05Left(
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart05Right(
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<42, 96, 192>>,
+    Step<Thump<42, 96, 192>>,
+    Step<Thump<42, 96, 192>>,
+    Transparent<IntroSectionMeta, BassDriveCadenceLead>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart06Left(BassDriveCadenceLead, BassDriveCadenceLead);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart06Right(BassDriveExit);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart07Left(
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 384, 384>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart07Right(
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart08Left(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart08Right(
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<71, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<30, 192, 0>>, Step<HarmonySing<66, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<73, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart09Left(
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<72, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart09Right(
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart10Left(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart10Right(
+    Step<Thump<39, 288, 288>>,
+    Step<Thump<37, 288, 288>>,
+    Step<Thump<33, 384, 384>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<31, 192, 192>>,
+    Transparent<IntroSectionMeta, BassDriveCadenceLead>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart11Left(BassDriveCadenceLead, BassDriveCadenceLead);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart11Right(BassDriveExit);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart12Left(
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 384, 384>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart12Right(
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart13Left(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart13Right(
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<71, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<30, 192, 0>>, Step<HarmonySing<66, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<73, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart14Left(
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<72, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart14Right(
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart15Left(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<34, 288, 288>>,
+    Step<Thump<34, 288, 288>>,
+    Step<Thump<34, 384, 384>>,
+    Step<Thump<34, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart15Right(
+    Step<Thump<44, 384, 384>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart16Left(
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart16Right(
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart17Left(
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart17Right(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<42, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<42, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart18Left(
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart18Right(
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart19Left(
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart19Right(
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart20Left(
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 384, 384>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart20Right(
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart21Left(
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart21Right(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<71, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart22Left(
+    Join<Step<JoinThump<35, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<30, 192, 0>>, Step<HarmonySing<66, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<73, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<72, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart22Right(
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart23Left(
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart23Right(
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 288, 288>>,
+    Step<Thump<37, 288, 288>>,
+    Step<Thump<33, 384, 384>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<37, 1536, 1536>>,
+    Step<Thump<30, 1536, 1536>>,
+    Step<Thump<37, 1536, 1536>>,
+    Step<Thump<30, 1152, 1344>>,
+    Step<Thump<35, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart24Left(
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<37, 1152, 1344>>,
+    Step<Thump<40, 96, 96>>,
+    Step<Thump<41, 96, 96>>,
+    Step<Thump<42, 960, 960>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<35, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 384, 384>>,
+    Step<Thump<37, 288, 288>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<37, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart24Right(
+    Step<Thump<35, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 384>>,
+    Step<Thump<28, 384, 384>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart25Left(
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 384>>,
+    Step<Thump<28, 384, 384>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<30, 192, 384>>,
+    Step<Thump<28, 384, 384>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart25Right(
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<42, 96, 192>>,
+    Step<Thump<42, 96, 192>>,
+    Step<Thump<42, 96, 192>>,
+    Step<Thump<42, 96, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart26Left(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart26Right(
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart27Left(
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 96, 192>>,
+    Step<Thump<30, 384, 384>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart27Right(
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 384, 384>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart28Left(
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 384, 384>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart28Right(
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart29Left(
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<34, 384, 384>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 384, 384>>,
+    Step<Thump<27, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart29Right(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart30Left(
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<34, 384, 384>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart30Right(
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<46, 192, 192>>,
+    Step<Thump<44, 192, 192>>,
+    Step<Thump<41, 192, 192>>,
+    Step<Thump<39, 384, 384>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart31Left(
+    Step<Thump<39, 384, 384>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<34, 384, 384>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart31Right(
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<34, 384, 384>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<27, 64, 64>>,
+    Step<Thump<27, 127, 63>>,
+    Step<Thump<27, 0, 64>>,
+    Step<Thump<34, 192, 384>>,
+    Step<Thump<39, 384, 384>>,
+    Step<Thump<29, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart32Left(
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<29, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<40, 96, 96>>,
+    Step<Thump<41, 192, 192>>,
+    Step<Thump<41, 192, 192>>,
+    Step<Thump<41, 192, 192>>,
+    Step<Thump<41, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart32Right(
+    Step<Thump<41, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<36, 192, 192>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<34, 1152, 1152>>,
+    Step<Thump<34, 384, 384>>,
+    Step<Thump<46, 1536, 1536>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<29, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart33Left(
+    Step<Thump<29, 96, 96>>,
+    Step<Thump<29, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<27, 96, 96>>,
+    Step<Thump<29, 96, 96>>,
+    Step<Thump<29, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<29, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart33Right(
+    Step<Thump<29, 96, 96>>,
+    Step<Thump<29, 96, 96>>,
+    Step<Thump<29, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<31, 96, 96>>,
+    Step<Thump<31, 96, 96>>,
+    Step<Thump<31, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<30, 96, 96>>,
+    Step<Thump<31, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart34Left(
+    Step<Thump<31, 96, 96>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart34Right(
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart35Left(
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart35Right(
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart36Left(
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart36Right(
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart37Left(
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart37Right(
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart38Left(
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart38Right(
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart39Left(
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart39Right(
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart40Left(
+    Step<Thump<35, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<34, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<39, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<37, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart40Right(
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<36, 96, 96>>,
+    Step<Thump<35, 192, 192>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<29, 384, 384>>,
+    Step<Thump<28, 384, 384>>,
+    Step<Thump<29, 384, 384>>,
+    Step<Thump<30, 384, 384>>,
+    Step<Thump<32, 384, 384>>,
+    Step<Thump<31, 384, 384>>,
+    Step<Thump<32, 384, 384>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart41Left(
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<71, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<30, 192, 0>>, Step<HarmonySing<66, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<73, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<72, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart41Right(
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart42Left(
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<71, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<30, 192, 0>>, Step<HarmonySing<66, 384, 0>>>,
+    Step<MergeUnit>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart42Right(
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<73, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<72, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart43Left(
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<71, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart43Right(
+    Join<Step<JoinThump<35, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<30, 192, 0>>, Step<HarmonySing<66, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<73, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<72, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart44Left(
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<39, 192, 192>>,
+    Step<Thump<37, 192, 192>>,
+    Step<Thump<33, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart44Right(
+    Step<Thump<33, 192, 192>>,
+    Step<Thump<32, 96, 96>>,
+    Step<Thump<32, 192, 192>>,
+    Step<Thump<30, 192, 192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<71, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<35, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart45Left(
+    Join<Step<JoinThump<30, 192, 0>>, Step<HarmonySing<66, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+    Step<Thump<27, 192, 192>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<73, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<72, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 384, 0>>, Step<HarmonySing<70, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<384>>,
+    Join<Step<JoinThump<37, 192, 0>>, Step<HarmonySing<68, 384, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<192>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart45Right(
     Step<Thump<32, 96, 96>>,
     Step<Thump<38, 96, 96>>,
     Step<Thump<39, 288, 288>>,
