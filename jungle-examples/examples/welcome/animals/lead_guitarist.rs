@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{AtomicDualHit, Rest, Tetrad, Triad};
+use crate::effect::{AtomicDualHit, Rest, Tetrad};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
 };
@@ -108,49 +108,24 @@ impl<
     }
 }
 
+#[derive(Flow)]
+pub struct TriadHitPair<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32>(
+    Join<Step<Pick<NOTE_1, NOTE_TICK, 0>>, Step<Pick<NOTE_2, NOTE_TICK, 0>>>,
+    Step<MergeUnit>,
+);
+
+#[derive(Flow)]
 pub struct TriadHit<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_3: u8,
     const NOTE_TICK: u32,
     const REST_TICK: u32,
->;
-#[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_3: u8,
-        const NOTE_TICK: u32,
-        const REST_TICK: u32,
-    > Act for TriadHit<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK>
-{
-    type Effect = Triad<
-        ElectricGuitar,
-        ElectricGuitarArticulation,
-        LEAD_GUITAR_LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_3,
-        NOTE_TICK,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        *state
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("triad playback should succeed");
-    }
-}
+>(
+    Join<TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>, Step<Pick<NOTE_3, NOTE_TICK, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<REST_TICK>>,
+);
 
 pub struct QuadHit<
     const NOTE_1: u8,
@@ -196,6 +171,50 @@ impl<
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("quad playback should succeed");
+    }
+}
+
+pub struct MergeUnit;
+#[jungle::act]
+impl Act for MergeUnit {
+    type Effect = Noop;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(
+        _state: &ElectricGuitarArticulation,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        ()
+    }
+
+    fn absorb(
+        _state: &mut ElectricGuitarArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("join merge should complete");
+    }
+}
+
+pub struct PostMergeRest<const REST_TICK: u32>;
+#[jungle::act]
+impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
+    type Effect = Rest<LEAD_GUITAR_LANE_ID, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &ElectricGuitarArticulation,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        ()
+    }
+
+    fn absorb(
+        _state: &mut ElectricGuitarArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("post-merge rest should complete");
     }
 }
 
@@ -742,7 +761,7 @@ pub struct LeadPart14(
     Step<Pluck<51, 58, 192, 192>>,
     Step<Pluck<54, 66, 192, 192>>,
     Step<Pluck<49, 63, 192, 192>>,
-    Step<TriadHit<39, 49, 54, 96, 96>>,
+    TriadHit<39, 49, 54, 96, 96>,
     Step<Pick<46, 96, 96>>,
     Step<Pluck<49, 54, 96, 192>>,
     Step<Pluck<70, 73, 576, 384>>,
@@ -798,7 +817,7 @@ pub struct LeadPart16(
     Step<SplitPluck<56, 56, 192, 288, 192>>,
     Step<Pick<62, 192, 96>>,
     Step<Pick<54, 96, 96>>,
-    Step<TriadHit<51, 51, 63, 192, 192>>,
+    TriadHit<51, 51, 63, 192, 192>,
     Step<Pick<62, 576, 576>>,
     Step<Pick<60, 384, 384>>,
     Step<Pick<44, 96, 192>>,
@@ -851,11 +870,11 @@ pub struct LeadPart18(
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 96, 192>>,
     Step<Pick<41, 96, 192>>,
-    Step<TriadHit<49, 56, 61, 192, 192>>,
+    TriadHit<49, 56, 61, 192, 192>,
     Step<Pluck<51, 58, 96, 192>>,
     Step<Pluck<51, 58, 96, 192>>,
     Step<Pluck<49, 56, 96, 192>>,
-    Step<TriadHit<44, 49, 54, 96, 96>>,
+    TriadHit<44, 49, 54, 96, 96>,
     Step<Pluck<51, 58, 96, 192>>,
     Step<Pluck<51, 58, 96, 96>>,
     Step<Pluck<49, 56, 96, 192>>,
@@ -951,7 +970,7 @@ pub struct LeadPart21(
     Step<Pluck<44, 49, 1536, 1536>>,
     Step<Pluck<42, 46, 1536, 1536>>,
     Step<Pluck<44, 49, 1152, 1152>>,
-    Step<TriadHit<49, 56, 59, 384, 384>>,
+    TriadHit<49, 56, 59, 384, 384>,
     Step<Pluck<42, 49, 192, 192>>,
     Step<Pluck<42, 49, 192, 192>>,
     Step<Pluck<42, 49, 192, 192>>,
@@ -1131,13 +1150,13 @@ pub struct LeadPart27(
     Step<Pluck<49, 56, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    TriadHit<47, 54, 54, 96, 96>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct LeadPart28(
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    TriadHit<47, 54, 54, 96, 96>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<51, 58, 96, 96>>,
@@ -1152,8 +1171,8 @@ pub struct LeadPart28(
     Step<Pluck<49, 56, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    TriadHit<47, 54, 54, 96, 96>,
+    TriadHit<47, 54, 54, 96, 96>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<51, 58, 96, 96>>,
@@ -1172,8 +1191,8 @@ pub struct LeadPart29Phrase(
     Step<Pluck<49, 56, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    TriadHit<47, 54, 54, 96, 96>,
+    TriadHit<47, 54, 54, 96, 96>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<51, 58, 96, 96>>,
@@ -1188,7 +1207,7 @@ pub struct LeadPart29Phrase(
     Step<Pluck<49, 56, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    TriadHit<47, 54, 54, 96, 96>,
 );
 
 #[derive(Flow)]
@@ -1198,7 +1217,7 @@ pub struct LeadPart29(LeadPart29Phrase);
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct LeadPart30(
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    TriadHit<47, 54, 54, 96, 96>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<51, 58, 96, 96>>,
@@ -1231,7 +1250,7 @@ pub struct LeadPart31(LeadPart29Phrase);
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
 pub struct LeadPart32(
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    TriadHit<47, 54, 54, 96, 96>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<51, 58, 96, 96>>,
@@ -1246,8 +1265,8 @@ pub struct LeadPart32(
     Step<Pluck<49, 56, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
     Step<Pluck<48, 55, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
-    Step<TriadHit<47, 54, 54, 96, 96>>,
+    TriadHit<47, 54, 54, 96, 96>,
+    TriadHit<47, 54, 54, 96, 96>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<46, 53, 96, 96>>,
     Step<Pluck<41, 48, 384, 384>>,
