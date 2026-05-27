@@ -792,6 +792,7 @@ impl JungleStore for RedbStore {
             crate::PersistenceError::Message(format!("redb claim_work begin failed: {err}"))
         })?;
         let now = Utc::now();
+        let now_millis = now_unix_ms();
         let lease_until = now + chrono::Duration::seconds(30);
 
         let mut selected: Option<(Uuid, Uuid, StepKind, DateTime<Utc>)> = None;
@@ -838,6 +839,11 @@ impl JungleStore for RedbStore {
                     "redb claim_work open journeys table failed: {err}"
                 ))
             })?;
+            let journey_leases = write_tx.open_table(JOURNEY_LEASES_TABLE).map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb claim_work open journey_leases table failed: {err}"
+                ))
+            })?;
             let mut work_items = write_tx.open_table(STEPS_TABLE).map_err(|err| {
                 crate::PersistenceError::Message(format!(
                     "redb claim_work open work_items table failed: {err}"
@@ -860,9 +866,26 @@ impl JungleStore for RedbStore {
                 let (journey_id, kind, status, expiry) =
                     decode_work_item(value.value(), "redb claim_work decode work_item value")?;
 
+                let has_active_lease = match journey_leases
+                    .get(&journey_id.as_bytes()[..])
+                    .map_err(|err| {
+                        crate::PersistenceError::Message(format!(
+                            "redb claim_work read journey lease failed: {err}"
+                        ))
+                    })? {
+                    Some(raw_lease) => {
+                        let lease = decode_journey_lease(
+                            raw_lease.value(),
+                            "redb claim_work decode journey lease",
+                        )?;
+                        lease.lease_until_unix_ms > now_millis
+                    }
+                    None => false,
+                };
+
                 let claimable = match status {
                     StepStatus::Available => true,
-                    StepStatus::Claimed => expiry <= now,
+                    StepStatus::Claimed => expiry <= now && !has_active_lease,
                 };
                 if !claimable {
                     continue;
@@ -885,6 +908,9 @@ impl JungleStore for RedbStore {
                     "redb claim_work decode journey for namespace filter",
                 )?;
                 if journey.namespace != namespace.as_str() {
+                    continue;
+                }
+                if !matches!(journey.status, JourneyStatus::Created | JourneyStatus::Alive) {
                     continue;
                 }
                 if !supported_set.contains(&(journey.animal_id, journey.generation)) {

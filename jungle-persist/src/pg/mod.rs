@@ -618,7 +618,7 @@ impl JungleStore for PgStore {
             .map_err(crate::PersistenceError::PostgresQuery)?;
         }
 
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             WITH supported AS (
                 SELECT * FROM UNNEST($2::INT4[], $3::INT4[]) AS s(animal_id, generation)
@@ -631,7 +631,20 @@ impl JungleStore for PgStore {
                     ON s.animal_id = j.animal_id
                    AND s.generation = j.generation
                 WHERE j.namespace = $1
-                  AND (wi.status = $4 OR (wi.status = $5 AND wi.expiry < NOW()))
+                  AND j.status IN ($6, $7)
+                  AND (
+                        wi.status = $4
+                        OR (
+                            wi.status = $5
+                            AND wi.expiry < NOW()
+                            AND NOT EXISTS (
+                                SELECT 1
+                                FROM journey_leases jl
+                                WHERE jl.journey_id = wi.journey_id
+                                  AND jl.lease_until > NOW()
+                            )
+                        )
+                  )
                 ORDER BY wi.expiry, wi.id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
@@ -648,12 +661,14 @@ impl JungleStore for PgStore {
             FROM claimed c
             INNER JOIN journeys f ON f.id = c.journey_id
             "#,
-            namespace,
-            &supported_ids,
-            &supported_generations,
-            0_i16,
-            1_i16
         )
+        .bind(namespace)
+        .bind(&supported_ids)
+        .bind(&supported_generations)
+        .bind(0_i16)
+        .bind(1_i16)
+        .bind(encode_journey_status(JourneyStatus::Created))
+        .bind(encode_journey_status(JourneyStatus::Alive))
         .fetch_optional(&self.pool)
         .await
         .map_err(crate::PersistenceError::PostgresQuery)?;
@@ -662,45 +677,61 @@ impl JungleStore for PgStore {
             return Ok(None);
         };
 
-        let work = match row.kind {
+        let kind = row
+            .try_get::<i16, _>("kind")
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        let journey_id = row
+            .try_get::<Uuid, _>("journey_id")
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        let animal_id_i32 = row
+            .try_get::<i32, _>("animal_id")
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        let generation_i32 = row
+            .try_get::<i32, _>("generation")
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+        let seed = row
+            .try_get::<Vec<u8>, _>("seed")
+            .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let work = match kind {
             0 => {
-                let animal_id = u32::try_from(row.animal_id).map_err(|_| {
+                let animal_id = u32::try_from(animal_id_i32).map_err(|_| {
                     crate::PersistenceError::Message(format!(
                         "invalid negative animal_id in postgres journey: {}",
-                        row.animal_id
+                        animal_id_i32
                     ))
                 })?;
-                let generation = u32::try_from(row.generation).map_err(|_| {
+                let generation = u32::try_from(generation_i32).map_err(|_| {
                     crate::PersistenceError::Message(format!(
                         "invalid negative generation in postgres journey: {}",
-                        row.generation
+                        generation_i32
                     ))
                 })?;
                 Work::StartJourney {
-                    journey_id: row.journey_id,
+                    journey_id,
                     animal_id,
                     generation,
-                    seed: row.seed,
+                    seed,
                 }
             }
             1 => {
-                let animal_id = u32::try_from(row.animal_id).map_err(|_| {
+                let animal_id = u32::try_from(animal_id_i32).map_err(|_| {
                     crate::PersistenceError::Message(format!(
                         "invalid negative animal_id in postgres journey: {}",
-                        row.animal_id
+                        animal_id_i32
                     ))
                 })?;
-                let generation = u32::try_from(row.generation).map_err(|_| {
+                let generation = u32::try_from(generation_i32).map_err(|_| {
                     crate::PersistenceError::Message(format!(
                         "invalid negative generation in postgres journey: {}",
-                        row.generation
+                        generation_i32
                     ))
                 })?;
                 Work::ResumeJourney {
-                    journey_id: row.journey_id,
+                    journey_id,
                     animal_id,
                     generation,
-                    seed: row.seed,
+                    seed,
                 }
             }
             kind => {
