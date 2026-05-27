@@ -1,7 +1,6 @@
 use jungle_sdk::prelude::*;
 
 use crate::effect::{AtomicDualHit, Monad, Rest};
-use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
     Cymbal, CymbalArticulation, HiHat, HiHatArticulation, KickDrum, KickDrumArticulation,
     SnareDrum, SnareDrumArticulation, Toms, TomsArticulation,
@@ -185,22 +184,6 @@ impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
         output.expect("post-merge rest should complete");
     }
 }
-
-pub struct Loop2Noop;
-#[jungle::act]
-impl Act for Loop2Noop {
-    type Effect = Noop;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("loop2 no-op step should complete");
-    }
-}
-
-type DrumLoop2Noop = Step<Loop2Noop>;
 
 pub struct UseHat46GrooveVariant;
 impl Condition<(DrummerState, ())> for UseHat46GrooveVariant {
@@ -530,118 +513,118 @@ pub struct DrummerIntroSectionChunk03(
 
 #[derive(Flow)]
 pub struct DrumSection01(
-    Transparent<IntroSectionMeta, Loop2<DrumPart01, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart02, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart03, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart04, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart05, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart06, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart01>,
+    Transparent<IntroSectionMeta, DrumPart02>,
+    Transparent<IntroSectionMeta, DrumPart03>,
+    Transparent<IntroSectionMeta, DrumPart04>,
+    Transparent<IntroSectionMeta, DrumPart05>,
+    Transparent<IntroSectionMeta, DrumPart06>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection02(
-    Transparent<IntroSectionMeta, Loop2<DrumPart07, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart08, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart09, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart10, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart11, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart12, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart07>,
+    Transparent<IntroSectionMeta, DrumPart08>,
+    Transparent<IntroSectionMeta, DrumPart09>,
+    Transparent<IntroSectionMeta, DrumPart10>,
+    Transparent<IntroSectionMeta, DrumPart11>,
+    Transparent<IntroSectionMeta, DrumPart12>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection03(
-    Transparent<IntroSectionMeta, Loop2<DrumPart13, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart14, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart15, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart16, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart17, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart18, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart13>,
+    Transparent<IntroSectionMeta, DrumPart14>,
+    Transparent<IntroSectionMeta, DrumPart15>,
+    Transparent<IntroSectionMeta, DrumPart16>,
+    Transparent<IntroSectionMeta, DrumPart17>,
+    Transparent<IntroSectionMeta, DrumPart18>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection04(
-    Transparent<IntroSectionMeta, Loop2<DrumPart19, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart20, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart21, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart22, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart23, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart24, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart19>,
+    Transparent<IntroSectionMeta, DrumPart20>,
+    Transparent<IntroSectionMeta, DrumPart21>,
+    Transparent<IntroSectionMeta, DrumPart22>,
+    Transparent<IntroSectionMeta, DrumPart23>,
+    Transparent<IntroSectionMeta, DrumPart24>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection05(
-    Transparent<IntroSectionMeta, Loop2<DrumPart25, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart26, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart27, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart28, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart29, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart30, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart25>,
+    Transparent<IntroSectionMeta, DrumPart26>,
+    Transparent<IntroSectionMeta, DrumPart27>,
+    Transparent<IntroSectionMeta, DrumPart28>,
+    Transparent<IntroSectionMeta, DrumPart29>,
+    Transparent<IntroSectionMeta, DrumPart30>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection06(
-    Transparent<IntroSectionMeta, Loop2<DrumPart31, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart32, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart33, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart34, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart35, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart36, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart31>,
+    Transparent<IntroSectionMeta, DrumPart32>,
+    Transparent<IntroSectionMeta, DrumPart33>,
+    Transparent<IntroSectionMeta, DrumPart34>,
+    Transparent<IntroSectionMeta, DrumPart35>,
+    Transparent<IntroSectionMeta, DrumPart36>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection07(
-    Transparent<IntroSectionMeta, Loop2<DrumPart37, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart38, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart39, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart40, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart41, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart42, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart37>,
+    Transparent<IntroSectionMeta, DrumPart38>,
+    Transparent<IntroSectionMeta, DrumPart39>,
+    Transparent<IntroSectionMeta, DrumPart40>,
+    Transparent<IntroSectionMeta, DrumPart41>,
+    Transparent<IntroSectionMeta, DrumPart42>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection08(
-    Transparent<IntroSectionMeta, Loop2<DrumPart43, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart44, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart45, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart46, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart47, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart48, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart43>,
+    Transparent<IntroSectionMeta, DrumPart44>,
+    Transparent<IntroSectionMeta, DrumPart45>,
+    Transparent<IntroSectionMeta, DrumPart46>,
+    Transparent<IntroSectionMeta, DrumPart47>,
+    Transparent<IntroSectionMeta, DrumPart48>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection09(
-    Transparent<IntroSectionMeta, Loop2<DrumPart49, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart50, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart51, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart52, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart53, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart54, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart49>,
+    Transparent<IntroSectionMeta, DrumPart50>,
+    Transparent<IntroSectionMeta, DrumPart51>,
+    Transparent<IntroSectionMeta, DrumPart52>,
+    Transparent<IntroSectionMeta, DrumPart53>,
+    Transparent<IntroSectionMeta, DrumPart54>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection10(
-    Transparent<IntroSectionMeta, Loop2<DrumPart55, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart56, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart57, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart58, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart59, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart60, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart55>,
+    Transparent<IntroSectionMeta, DrumPart56>,
+    Transparent<IntroSectionMeta, DrumPart57>,
+    Transparent<IntroSectionMeta, DrumPart58>,
+    Transparent<IntroSectionMeta, DrumPart59>,
+    Transparent<IntroSectionMeta, DrumPart60>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection11(
-    Transparent<IntroSectionMeta, Loop2<DrumPart61, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart62, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart63, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart64, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart65, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart66, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart61>,
+    Transparent<IntroSectionMeta, DrumPart62>,
+    Transparent<IntroSectionMeta, DrumPart63>,
+    Transparent<IntroSectionMeta, DrumPart64>,
+    Transparent<IntroSectionMeta, DrumPart65>,
+    Transparent<IntroSectionMeta, DrumPart66>,
 );
 
 #[derive(Flow)]
 pub struct DrumSection12(
-    Transparent<IntroSectionMeta, Loop2<DrumPart67, DrumLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<DrumPart68, DrumLoop2Noop>>,
+    Transparent<IntroSectionMeta, DrumPart67>,
+    Transparent<IntroSectionMeta, DrumPart68>,
 );
 
 #[derive(Flow)]

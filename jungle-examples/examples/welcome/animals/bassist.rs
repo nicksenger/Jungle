@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use crate::effect::{Monad, Rest};
-use crate::flow::loop2::Loop2;
+use crate::flow::loop2::{Loop2, Loop2Container};
 use crate::instrumentation::{
     Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
 };
@@ -37,28 +37,14 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     }
 }
 
-pub struct Loop2Noop;
-#[jungle::act]
-impl Act for Loop2Noop {
-    type Effect = Noop;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
-
-    fn absorb(_state: &mut BassArticulation, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("loop2 no-op step should complete");
-    }
-}
-
-type BassLoop2Noop = Step<Loop2Noop>;
-
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct BassistState {
     #[jungle(focus)]
     articulation: BassArticulation,
     ostinato_loops_remaining: u8,
     riff_loops_remaining: u8,
+    #[jungle(focus)]
+    loop2: Loop2Container<BassArticulation>,
 }
 
 impl Default for BassistState {
@@ -67,6 +53,7 @@ impl Default for BassistState {
             articulation: BassArticulation::Picked,
             ostinato_loops_remaining: 1,
             riff_loops_remaining: 1,
+            loop2: Loop2Container::new(BassArticulation::Picked),
         }
     }
 }
@@ -235,80 +222,80 @@ pub struct BassSection01(
     Transparent<
         IntroSectionMeta,
         //BassPart01,
-        Loop2<LoopedBassPart01Left, LoopedBassPart01Right>,
+        Loop2<BassArticulation, LoopedBassPart01Left, LoopedBassPart01Right>,
     >,
-    Transparent<IntroSectionMeta, Loop2<BassPart02, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart03, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart04, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart05, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart06, BassLoop2Noop>>,
+    Transparent<IntroSectionMeta, BassPart02>,
+    Transparent<IntroSectionMeta, BassPart03>,
+    Transparent<IntroSectionMeta, BassPart04>,
+    Transparent<IntroSectionMeta, BassPart05>,
+    Transparent<IntroSectionMeta, BassPart06>,
 );
 
 #[derive(Flow)]
 pub struct BassSection02(
-    Transparent<IntroSectionMeta, Loop2<BassPart07, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart08, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart09, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart10, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart11, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart12, BassLoop2Noop>>,
+    Transparent<IntroSectionMeta, BassPart07>,
+    Transparent<IntroSectionMeta, BassPart08>,
+    Transparent<IntroSectionMeta, BassPart09>,
+    Transparent<IntroSectionMeta, BassPart10>,
+    Transparent<IntroSectionMeta, BassPart11>,
+    Transparent<IntroSectionMeta, BassPart12>,
 );
 
 #[derive(Flow)]
 pub struct BassSection03(
-    Transparent<IntroSectionMeta, Loop2<BassPart13, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart14, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart15, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart16, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart17, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart18, BassLoop2Noop>>,
+    Transparent<IntroSectionMeta, BassPart13>,
+    Transparent<IntroSectionMeta, BassPart14>,
+    Transparent<IntroSectionMeta, BassPart15>,
+    Transparent<IntroSectionMeta, BassPart16>,
+    Transparent<IntroSectionMeta, BassPart17>,
+    Transparent<IntroSectionMeta, BassPart18>,
 );
 
 #[derive(Flow)]
 pub struct BassSection04(
-    Transparent<IntroSectionMeta, Loop2<BassPart19, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart20, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart21, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart22, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart23, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart24, BassLoop2Noop>>,
+    Transparent<IntroSectionMeta, BassPart19>,
+    Transparent<IntroSectionMeta, BassPart20>,
+    Transparent<IntroSectionMeta, BassPart21>,
+    Transparent<IntroSectionMeta, BassPart22>,
+    Transparent<IntroSectionMeta, BassPart23>,
+    Transparent<IntroSectionMeta, BassPart24>,
 );
 
 #[derive(Flow)]
 pub struct BassSection05(
-    Transparent<IntroSectionMeta, Loop2<BassPart25, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart26, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart27, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart28, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart29, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart30, BassLoop2Noop>>,
+    Transparent<IntroSectionMeta, BassPart25>,
+    Transparent<IntroSectionMeta, BassPart26>,
+    Transparent<IntroSectionMeta, BassPart27>,
+    Transparent<IntroSectionMeta, BassPart28>,
+    Transparent<IntroSectionMeta, BassPart29>,
+    Transparent<IntroSectionMeta, BassPart30>,
 );
 
 #[derive(Flow)]
 pub struct BassSection06(
-    Transparent<IntroSectionMeta, Loop2<BassPart31, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart32, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart33, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart34, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart35, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart36, BassLoop2Noop>>,
+    Transparent<IntroSectionMeta, BassPart31>,
+    Transparent<IntroSectionMeta, BassPart32>,
+    Transparent<IntroSectionMeta, BassPart33>,
+    Transparent<IntroSectionMeta, BassPart34>,
+    Transparent<IntroSectionMeta, BassPart35>,
+    Transparent<IntroSectionMeta, BassPart36>,
 );
 
 #[derive(Flow)]
 pub struct BassSection07(
-    Transparent<IntroSectionMeta, Loop2<BassPart37, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart38, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart39, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart40, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart41, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart42, BassLoop2Noop>>,
+    Transparent<IntroSectionMeta, BassPart37>,
+    Transparent<IntroSectionMeta, BassPart38>,
+    Transparent<IntroSectionMeta, BassPart39>,
+    Transparent<IntroSectionMeta, BassPart40>,
+    Transparent<IntroSectionMeta, BassPart41>,
+    Transparent<IntroSectionMeta, BassPart42>,
 );
 
 #[derive(Flow)]
 pub struct BassSection08(
-    Transparent<IntroSectionMeta, Loop2<BassPart43, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart44, BassLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<BassPart45, BassLoop2Noop>>,
+    Transparent<IntroSectionMeta, BassPart43>,
+    Transparent<IntroSectionMeta, BassPart44>,
+    Transparent<IntroSectionMeta, BassPart45>,
 );
 
 #[derive(Flow)]

@@ -1,7 +1,6 @@
 use jungle_sdk::prelude::*;
 
 use crate::effect::{AtomicDualHit, Rest, Tetrad};
-use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
 };
@@ -219,29 +218,6 @@ impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
     }
 }
 
-pub struct Loop2Noop;
-#[jungle::act]
-impl Act for Loop2Noop {
-    type Effect = Noop;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        _state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("loop2 no-op step should complete");
-    }
-}
-
-type LeadLoop2Noop = Step<Loop2Noop>;
-
 pub struct LeadRiffLoopRemaining;
 impl LoopCondition<LeadGuitaristState> for LeadRiffLoopRemaining {
     type Arg = ();
@@ -333,66 +309,66 @@ pub struct LeadGuitarIntro(
 
 #[derive(Flow)]
 pub struct LeadSection01(
-    Transparent<IntroSectionMeta, Loop2<LeadPart01, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart02, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart03, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart04, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart05, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart06, LeadLoop2Noop>>,
+    Transparent<IntroSectionMeta, LeadPart01>,
+    Transparent<IntroSectionMeta, LeadPart02>,
+    Transparent<IntroSectionMeta, LeadPart03>,
+    Transparent<IntroSectionMeta, LeadPart04>,
+    Transparent<IntroSectionMeta, LeadPart05>,
+    Transparent<IntroSectionMeta, LeadPart06>,
 );
 
 #[derive(Flow)]
 pub struct LeadSection02(
-    Transparent<IntroSectionMeta, Loop2<LeadPart07, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart08, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart09, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart10, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart11, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart12, LeadLoop2Noop>>,
+    Transparent<IntroSectionMeta, LeadPart07>,
+    Transparent<IntroSectionMeta, LeadPart08>,
+    Transparent<IntroSectionMeta, LeadPart09>,
+    Transparent<IntroSectionMeta, LeadPart10>,
+    Transparent<IntroSectionMeta, LeadPart11>,
+    Transparent<IntroSectionMeta, LeadPart12>,
 );
 
 #[derive(Flow)]
 pub struct LeadSection03(
-    Transparent<IntroSectionMeta, Loop2<LeadPart13, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart14, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart15, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart16, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart17, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart18, LeadLoop2Noop>>,
+    Transparent<IntroSectionMeta, LeadPart13>,
+    Transparent<IntroSectionMeta, LeadPart14>,
+    Transparent<IntroSectionMeta, LeadPart15>,
+    Transparent<IntroSectionMeta, LeadPart16>,
+    Transparent<IntroSectionMeta, LeadPart17>,
+    Transparent<IntroSectionMeta, LeadPart18>,
 );
 
 #[derive(Flow)]
 pub struct LeadSection04(
-    Transparent<IntroSectionMeta, Loop2<LeadPart19, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart20, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart21, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart22, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart23, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart24, LeadLoop2Noop>>,
+    Transparent<IntroSectionMeta, LeadPart19>,
+    Transparent<IntroSectionMeta, LeadPart20>,
+    Transparent<IntroSectionMeta, LeadPart21>,
+    Transparent<IntroSectionMeta, LeadPart22>,
+    Transparent<IntroSectionMeta, LeadPart23>,
+    Transparent<IntroSectionMeta, LeadPart24>,
 );
 
 #[derive(Flow)]
 pub struct LeadSection05(
-    Transparent<IntroSectionMeta, Loop2<LeadPart25, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart26, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart27, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart28, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart29, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart30, LeadLoop2Noop>>,
+    Transparent<IntroSectionMeta, LeadPart25>,
+    Transparent<IntroSectionMeta, LeadPart26>,
+    Transparent<IntroSectionMeta, LeadPart27>,
+    Transparent<IntroSectionMeta, LeadPart28>,
+    Transparent<IntroSectionMeta, LeadPart29>,
+    Transparent<IntroSectionMeta, LeadPart30>,
 );
 
 #[derive(Flow)]
 pub struct LeadSection06(
-    Transparent<IntroSectionMeta, Loop2<LeadPart31, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart32, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart33, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart34, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart35, LeadLoop2Noop>>,
-    Transparent<IntroSectionMeta, Loop2<LeadPart36, LeadLoop2Noop>>,
+    Transparent<IntroSectionMeta, LeadPart31>,
+    Transparent<IntroSectionMeta, LeadPart32>,
+    Transparent<IntroSectionMeta, LeadPart33>,
+    Transparent<IntroSectionMeta, LeadPart34>,
+    Transparent<IntroSectionMeta, LeadPart35>,
+    Transparent<IntroSectionMeta, LeadPart36>,
 );
 
 #[derive(Flow)]
-pub struct LeadSection07(Transparent<IntroSectionMeta, Loop2<LeadPart37, LeadLoop2Noop>>);
+pub struct LeadSection07(Transparent<IntroSectionMeta, LeadPart37>);
 
 #[derive(Flow)]
 pub struct LeadPick44Pair(Double<Pick44Tick>);
