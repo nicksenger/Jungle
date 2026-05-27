@@ -1833,9 +1833,18 @@ mod tests {
     use super::super::RhythmGuitarist;
     use super::{RhythmGuitaristState, RhythmJoinMonad100Animal};
     use crate::ecosystem::TheJungle;
+    const DUPLICATE_EXECUTION_WORKER_COUNT: usize = 5;
+    const DUPLICATE_EXECUTION_TEST_BPM: f32 = 1_000.0;
+    const EXPECTED_DUPLICATE_EXECUTION_TOTAL_EVENTS: u32 = 24;
+    const EXPECTED_DUPLICATE_EXECUTION_INPUT_EVENTS: u32 = 12;
+    const EXPECTED_DUPLICATE_EXECUTION_SUCCESS_EVENTS: u32 = 12;
 
-    async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
-        let completion = tokio::time::timeout(Duration::from_secs(8), async {
+    async fn await_completion_with_timeout(
+        client: &LocalClient,
+        journey_id: uuid::Uuid,
+        timeout: Duration,
+    ) {
+        let completion = tokio::time::timeout(timeout, async {
             loop {
                 let status = client
                     .journey_details(journey_id)
@@ -1855,9 +1864,17 @@ mod tests {
         assert!(completion.is_ok(), "journey should complete within timeout");
     }
 
+    async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
+        await_completion_with_timeout(client, journey_id, Duration::from_secs(8)).await;
+    }
+
     struct JourneyStreamStats {
         total_events: u32,
+        input_count: u32,
+        success_count: u32,
         failed_count: u32,
+        sleep_scheduled_count: u32,
+        sleep_fired_count: u32,
     }
 
     async fn collect_stream_stats(
@@ -1865,7 +1882,11 @@ mod tests {
         journey_id: uuid::Uuid,
     ) -> JourneyStreamStats {
         let mut total_events = 0_u32;
+        let mut input_count = 0_u32;
+        let mut success_count = 0_u32;
         let mut failed_count = 0_u32;
+        let mut sleep_scheduled_count = 0_u32;
+        let mut sleep_fired_count = 0_u32;
         let mut last_sequence_id: Option<u64> = None;
 
         while let Some(next) = stream.next().await {
@@ -1879,27 +1900,122 @@ mod tests {
             last_sequence_id = Some(update.sequence_id);
 
             match update.event {
-                RunnerUpdateOut::EffectInput { uuid, .. }
-                | RunnerUpdateOut::EffectSuccessOutput { uuid, .. } => {
+                RunnerUpdateOut::EffectInput { uuid, .. } => {
                     assert_eq!(uuid, journey_id, "stream update should match journey");
                     total_events += 1;
+                    input_count += 1;
+                }
+                RunnerUpdateOut::EffectSuccessOutput { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    total_events += 1;
+                    success_count += 1;
                 }
                 RunnerUpdateOut::EffectFailureOutput { uuid, .. } => {
                     assert_eq!(uuid, journey_id, "stream update should match journey");
                     failed_count += 1;
                     total_events += 1;
                 }
-                RunnerUpdateOut::SleepScheduled { uuid, .. }
-                | RunnerUpdateOut::SleepFired { uuid, .. } => {
+                RunnerUpdateOut::SleepScheduled { uuid, .. } => {
                     assert_eq!(uuid, journey_id, "stream update should match journey");
                     total_events += 1;
+                    sleep_scheduled_count += 1;
+                }
+                RunnerUpdateOut::SleepFired { uuid, .. } => {
+                    assert_eq!(uuid, journey_id, "stream update should match journey");
+                    total_events += 1;
+                    sleep_fired_count += 1;
                 }
             }
         }
 
         JourneyStreamStats {
             total_events,
+            input_count,
+            success_count,
             failed_count,
+            sleep_scheduled_count,
+            sleep_fired_count,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 16)]
+    async fn rhythm_guitarist_join_flow_multi_worker_local_client_has_exact_event_counts() {
+        let namespace = format!("welcome-rhythm-dup-exec-{}", uuid::Uuid::new_v4());
+        let client = LocalClient::builder()
+            .namespace(&namespace)
+            .build()
+            .await
+            .expect("local client should build");
+
+        let (shared_audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
+        let shared_metronome = crate::metronome::Metronome::spawn(DUPLICATE_EXECUTION_TEST_BPM);
+        shared_metronome.arm_start_barrier();
+
+        let mut worker_handles = Vec::with_capacity(DUPLICATE_EXECUTION_WORKER_COUNT);
+        for _ in 0..DUPLICATE_EXECUTION_WORKER_COUNT {
+            let ecosystem = TheJungle::new_with_metronome(
+                shared_audio_handle.clone(),
+                DUPLICATE_EXECUTION_TEST_BPM,
+                shared_metronome.clone(),
+            );
+            let worker = JungleWorker::new(ecosystem, client.clone());
+            worker_handles.push(tokio::spawn(async move {
+                let _ = worker.spawn().await;
+            }));
+        }
+
+        let seed =
+            postcard::to_allocvec(&RhythmGuitaristState::default()).expect("seed should serialize");
+        let journey_id = client
+            .start_journey::<RhythmJoinMonad100Animal>(seed)
+            .await
+            .expect("journey should start");
+
+        let stream = client
+            .subscribe_step_updates(journey_id, None)
+            .await
+            .expect("subscribe_step_updates should succeed");
+        let stream_task =
+            tokio::spawn(async move { collect_stream_stats(stream, journey_id).await });
+
+        let release_task = tokio::spawn(async move {
+            shared_metronome.release_start_barrier_on_downbeat().await;
+        });
+
+        await_completion_with_timeout(&client, journey_id, Duration::from_secs(45)).await;
+        let stats = stream_task
+            .await
+            .expect("stream task should join cleanly after completion");
+
+        assert_eq!(
+            stats.failed_count, 0,
+            "rhythm guitarist flow should not emit failure events"
+        );
+        assert_eq!(
+            stats.sleep_scheduled_count, 0,
+            "rhythm guitarist flow should not schedule sleep events"
+        );
+        assert_eq!(
+            stats.sleep_fired_count, 0,
+            "rhythm guitarist flow should not fire sleep events"
+        );
+        assert_eq!(
+            stats.input_count, EXPECTED_DUPLICATE_EXECUTION_INPUT_EVENTS,
+            "unexpected effect-input event count; this can indicate duplicate journey execution"
+        );
+        assert_eq!(
+            stats.success_count, EXPECTED_DUPLICATE_EXECUTION_SUCCESS_EVENTS,
+            "unexpected effect-success event count; this can indicate duplicate journey execution"
+        );
+        assert_eq!(
+            stats.total_events, EXPECTED_DUPLICATE_EXECUTION_TOTAL_EVENTS,
+            "unexpected total event count; this can indicate duplicate journey execution"
+        );
+
+        let _ = release_task.await;
+        for worker_handle in worker_handles {
+            worker_handle.abort();
+            let _ = worker_handle.await;
         }
     }
 
