@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{Dyad, Monad, Triad};
+use crate::effect::{AtomicDualHit, AtomicTriHit, Monad};
 
 use super::{Instrument, Note, SynthHandle};
 
@@ -84,12 +84,15 @@ impl<
         const LANE_ID: u32,
     > Act for Pluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect = Dyad<
+    type Effect = AtomicDualHit<
         ElectricGuitar,
+        ElectricGuitar,
+        ElectricGuitarArticulation,
         ElectricGuitarArticulation,
         LANE_ID,
         NOTE_1,
         NOTE_2,
+        NOTE_TICK,
         NOTE_TICK,
         REST_TICK,
     >;
@@ -100,7 +103,7 @@ impl<
         state: &ElectricGuitarArticulation,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
-        *state
+        (*state, *state)
     }
 
     fn absorb(
@@ -129,13 +132,19 @@ impl<
         const LANE_ID: u32,
     > Act for Strum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect = Triad<
+    type Effect = AtomicTriHit<
         ElectricGuitar,
+        ElectricGuitar,
+        ElectricGuitar,
+        ElectricGuitarArticulation,
+        ElectricGuitarArticulation,
         ElectricGuitarArticulation,
         LANE_ID,
         NOTE_1,
         NOTE_2,
         NOTE_3,
+        NOTE_TICK,
+        NOTE_TICK,
         NOTE_TICK,
         REST_TICK,
     >;
@@ -146,7 +155,7 @@ impl<
         state: &ElectricGuitarArticulation,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
-        *state
+        (*state, *state, *state)
     }
 
     fn absorb(
