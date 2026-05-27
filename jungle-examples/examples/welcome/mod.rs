@@ -5,6 +5,7 @@ mod assets;
 mod audio;
 mod ecosystem;
 mod effect;
+pub mod flow;
 mod instrumentation;
 mod metronome;
 mod ui;
