@@ -91,6 +91,35 @@ impl Act for CarryActSpec {
 #[derive(Flow)]
 pub struct CarryActFlow(Step<CarryActSpec>);
 
+pub struct CarryAttrActAnimal;
+#[jungle::animal(id = 914, generation = 0)]
+impl Animal for CarryAttrActAnimal {
+    type State = i32;
+    type Seed = i32;
+    type Journey = CarryAttrActFlow;
+}
+
+pub struct CarryAttrActSpec;
+#[jungle::act(carry = i32)]
+impl Act for CarryAttrActSpec {
+    type Effect = CarryActEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &i32, input: Self::Input) -> (i32, i32) {
+        (input + *state, *state - input)
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>, carry: i32) -> Self::Output {
+        let value = output.expect("carry attr act effect should succeed");
+        *state = value + carry;
+        *state
+    }
+}
+
+#[derive(Flow)]
+pub struct CarryAttrActFlow(Step<CarryAttrActSpec>);
+
 fn assert_bound<T: BoundAct<GenericActAnimal>>() {}
 
 #[test]
@@ -126,6 +155,30 @@ fn act_attr_supports_explicit_carry() {
     let emitted: i32 = executor
         .next_typed(5, Ok::<i32, ()>(11))
         .expect("carry step should complete");
+    assert_eq!(emitted, 8);
+    assert_eq!(executor.into_state(), 8);
+}
+
+#[test]
+fn act_attr_supports_carry_attribute() {
+    type Bound = <CarryAttrActSpec as Act>::Bind<CarryAttrActAnimal>;
+    assert_type_eq!(<CarryAttrActSpec as Act>::Carry, i32);
+    assert_type_eq!(<Bound as BoundAct<CarryAttrActAnimal>>::Carry, i32);
+
+    let (state, (request, carry)) =
+        <BoundFlowStep<CarryAttrActAnimal, Bound> as Running>::run((2, 5));
+    assert_eq!(request.into_input(), 7);
+    assert_eq!(carry, -3);
+
+    let (state, emitted) =
+        <BoundFlowStep<CarryAttrActAnimal, Bound> as Waiting>::accept((state, Ok(11), carry));
+    assert_eq!(state, 8);
+    assert_eq!(emitted, 8);
+
+    let mut executor = ManualExecutor::<CarryAttrActAnimal>::new(2);
+    let emitted: i32 = executor
+        .next_typed(5, Ok::<i32, ()>(11))
+        .expect("carry-attr step should complete");
     assert_eq!(emitted, 8);
     assert_eq!(executor.into_state(), 8);
 }

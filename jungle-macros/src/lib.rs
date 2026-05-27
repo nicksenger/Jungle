@@ -594,6 +594,7 @@ impl Parse for EffectAttributes {
 struct ActAttributes {
     aspect: Option<Type>,
     bind: Option<Type>,
+    carry: Option<Type>,
 }
 
 impl Parse for ActAttributes {
@@ -602,11 +603,13 @@ impl Parse for ActAttributes {
             return Ok(Self {
                 aspect: None,
                 bind: None,
+                carry: None,
             });
         }
 
         let mut aspect = None;
         let mut bind = None;
+        let mut carry = None;
 
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
@@ -622,6 +625,12 @@ impl Parse for ActAttributes {
                     return Err(syn::Error::new_spanned(key, "Duplicate `bind` setting."));
                 }
                 bind = Some(input.parse::<Type>()?);
+            } else if key == "carry" {
+                input.parse::<Token![=]>()?;
+                if carry.is_some() {
+                    return Err(syn::Error::new_spanned(key, "Duplicate `carry` setting."));
+                }
+                carry = Some(input.parse::<Type>()?);
             } else if key == "bind_vis" {
                 // Back-compat: consume and ignore deprecated `bind_vis`.
                 input.parse::<Token![=]>()?;
@@ -629,7 +638,7 @@ impl Parse for ActAttributes {
             } else {
                 return Err(syn::Error::new_spanned(
                     key,
-                    "Unknown `act` setting. Supported: `aspect = ...`, `bind = ...`.",
+                    "Unknown `act` setting. Supported: `aspect = ...`, `bind = ...`, `carry = ...`.",
                 ));
             }
 
@@ -643,7 +652,11 @@ impl Parse for ActAttributes {
             }
         }
 
-        Ok(Self { aspect, bind })
+        Ok(Self {
+            aspect,
+            bind,
+            carry,
+        })
     }
 }
 
@@ -1256,17 +1269,32 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     let effect_ty = effect_assoc.ty.clone();
     let input_ty = input_assoc.ty.clone();
     let output_ty = output_assoc.ty.clone();
-    let carry_assoc = carry_assoc.unwrap_or_else(|| {
-        parse_quote!(
-            type Carry = ();
+    if carry_assoc.is_some() && attrs.carry.is_some() {
+        return syn::Error::new_spanned(
+            &item_impl.self_ty,
+            "`#[act(carry = ...)]` cannot be combined with `type Carry = ...`; choose one.",
         )
-    });
+        .to_compile_error()
+        .into();
+    }
+    let carry_assoc = if let Some(attr_carry_ty) = attrs.carry.clone() {
+        parse_quote!(
+            type Carry = #attr_carry_ty;
+        )
+    } else {
+        carry_assoc.unwrap_or_else(|| {
+            parse_quote!(
+                type Carry = ();
+            )
+        })
+    };
     let carry_ty = carry_assoc.ty.clone();
     let carry_is_unit = matches!(&carry_ty, Type::Tuple(tuple) if tuple.elems.is_empty());
-    let explicit_carry = item_impl
+    let explicit_carry = (item_impl
         .items
         .iter()
         .any(|item| matches!(item, ImplItem::Type(ty) if ty.ident == "Carry"))
+        || attrs.carry.is_some())
         && !carry_is_unit;
 
     let mut generated_act_impl = item_impl.clone();
