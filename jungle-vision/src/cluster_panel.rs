@@ -17,7 +17,7 @@ pub fn target_color(kind: ClusterKind, phase: Phase<ClusterLive>) -> Color {
             }
         }
     };
-    Color::from_rgba8(20, 46, 30, alpha)
+    Color::from_rgba8(20, 46, 30, (alpha + 0.1).clamp(0.0, 1.0))
 }
 
 fn kind_pending_alpha(kind: ClusterKind) -> f32 {

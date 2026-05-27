@@ -117,11 +117,16 @@ where
             .padding([8, 10])
             .width(Length::Shrink)
             .style(move |_theme, _status| iced::widget::button::Style {
-                background: Some(iced::Background::Color(fill)),
+                background: Some(iced::Background::Color(Color { a: 0.8, ..fill })),
                 text_color: Color::from_rgb8(223, 245, 230),
                 border: iced::border::rounded(10)
                     .color(Color::from_rgb8(58, 122, 86))
                     .width(1.0),
+                shadow: iced::Shadow {
+                    color: Color::from_rgba8(0, 0, 0, 0.35),
+                    offset: iced::Vector::new(0.0, 2.0),
+                    blur_radius: 6.0,
+                },
                 ..Default::default()
             })
             .into()
