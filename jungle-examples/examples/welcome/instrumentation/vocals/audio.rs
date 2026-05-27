@@ -1,5 +1,8 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
+use rustsam::singer::{render_vocal_note, LyricInput, VocalNote, VoiceParams};
+use tracing::warn;
+
 use crate::audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
@@ -41,7 +44,7 @@ struct PlaybackLayer {
 
 fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLayer] {
     match articulation {
-        VocalsArticulation::Clean => &[
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => &[
             PlaybackLayer {
                 pan: 0.02,
                 gain_scale: 1.0,
@@ -87,6 +90,12 @@ fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLa
 pub(in crate::instrumentation) fn synthesize_vocals(
     note: &Note<VocalsArticulation>,
 ) -> (Arc<[f32]>, f32, f32) {
+    if let VocalsArticulation::Formant(phonemes) = note.articulation {
+        if let Some(formant) = synthesize_formant_vocals(note, phonemes) {
+            return formant;
+        }
+    }
+
     let duration = articulation_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let base_hz = midi_to_hz(note.n_midi).clamp(85.0, 1_300.0);
@@ -109,9 +118,90 @@ pub(in crate::instrumentation) fn synthesize_vocals(
     (Arc::from(pcm), gain, playback_rate)
 }
 
+fn synthesize_formant_vocals(
+    note: &Note<VocalsArticulation>,
+    phonemes: [Option<super::Phoneme>; 12],
+) -> Option<(Arc<[f32]>, f32, f32)> {
+    const FORMANT_TARGET_RMS: f32 = 0.22;
+    const FORMANT_TARGET_PEAK: f32 = 0.92;
+    const FORMANT_MAX_MAKEUP_GAIN: f32 = 4.0;
+
+    let phonemes: Vec<rustsam::parser::Phoneme> = phonemes
+        .into_iter()
+        .flatten()
+        .map(|phoneme| rustsam::parser::Phoneme {
+            length: phoneme.length,
+            index: phoneme.index,
+            stress: phoneme.stress,
+        })
+        .collect();
+
+    if phonemes.is_empty() {
+        return None;
+    }
+
+    let duration = articulation_duration(note.duration, note.articulation);
+    let voice = VoiceParams::default();
+    let rendered = render_vocal_note(
+        VocalNote {
+            midi_note: note.n_midi,
+            lyric: LyricInput::Phonemes(phonemes),
+            duration,
+        },
+        SAMPLE_RATE,
+        voice,
+    );
+
+    let rendered = match rendered {
+        Ok(rendered) => rendered,
+        Err(err) => {
+            warn!(error = %err, "failed to render rustsam formant vocals; using procedural fallback");
+            return None;
+        }
+    };
+
+    let mut normalized: Vec<f32> = rendered
+        .into_iter()
+        .map(|sample| sample as f32 / 127.5 - 1.0)
+        .collect();
+
+    let peak_abs = normalized.iter().fold(0.0_f32, |acc, sample| {
+        if sample.abs() > acc {
+            sample.abs()
+        } else {
+            acc
+        }
+    });
+    let rms = if normalized.is_empty() {
+        0.0
+    } else {
+        (normalized.iter().map(|sample| sample * sample).sum::<f32>() / normalized.len() as f32)
+            .sqrt()
+    };
+
+    if peak_abs > 1.0e-4 && rms > 1.0e-4 {
+        let rms_gain = FORMANT_TARGET_RMS / rms;
+        let peak_gain = FORMANT_TARGET_PEAK / peak_abs;
+        let makeup_gain = rms_gain.min(peak_gain).clamp(1.0, FORMANT_MAX_MAKEUP_GAIN);
+        if makeup_gain > 1.0 {
+            for sample in &mut normalized {
+                *sample = (*sample * makeup_gain).clamp(-1.0, 1.0);
+            }
+        }
+    }
+
+    let velocity = note.velocity.clamp(0.0, 1.0);
+    let pcm: Vec<f32> = normalized
+        .into_iter()
+        .map(|sample| sample * velocity)
+        .collect();
+    let (gain, playback_rate) = articulation_output_shape(note.articulation);
+    Some((Arc::from(pcm), gain, playback_rate))
+}
+
 fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Duration {
     let scale = match articulation {
-        VocalsArticulation::Clean => 1.05,
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => 1.05,
         VocalsArticulation::GroupHarmony => 1.0,
     };
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.03))
@@ -119,7 +209,7 @@ fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Du
 
 fn articulation_output_shape(articulation: VocalsArticulation) -> (f32, f32) {
     match articulation {
-        VocalsArticulation::Clean => (0.83, 1.0),
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => (0.83, 1.0),
         VocalsArticulation::GroupHarmony => (0.78, 1.0),
     }
 }
@@ -135,7 +225,7 @@ fn articulation_sample(
     let bend = expression.bend.clamp(-1.0, 1.0) * 0.15;
 
     match articulation {
-        VocalsArticulation::Clean => {
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => {
             let f = base_hz * (1.0 + bend + vibrato);
             reed_formant(f, t, phase)
         }
@@ -157,7 +247,7 @@ fn reed_formant(frequency_hz: f32, t: f32, phase: f32) -> f32 {
 
 fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
     match articulation {
-        VocalsArticulation::Clean => {
+        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => {
             let attack = 0.03;
             let body = 0.9;
             let release_start = 0.8;

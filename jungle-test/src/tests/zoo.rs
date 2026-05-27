@@ -131,8 +131,16 @@ where
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &T::State, _input: Self::Input) -> A::In {}
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
+    }
 
     fn absorb(_state: &mut T::State, output: EffectCompletion<A>) -> Self::Output {
         output.expect("workflow effect should succeed");
@@ -147,6 +155,7 @@ where
     type Effect = E;
     type Input = ();
     type Output = ();
+    type Carry = ();
     type Bind<A: Animal> = UnitOkStep<E>;
 }
 
@@ -551,9 +560,17 @@ where
     type Aspect = Focus;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(value: &i32, _input: Self::Input) -> Self::Input {
         *value
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(value: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {

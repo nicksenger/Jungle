@@ -27,7 +27,7 @@ const WINDOW_HEIGHT: f32 = 900.0;
 const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-vision";
-const DEFAULT_CLUSTER_FILL: Color = Color::from_rgba8(20, 46, 30, 0.14);
+const DEFAULT_CLUSTER_FILL: Color = Color::from_rgba8(20, 46, 30, 0.24);
 const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_BORDER_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_RECOLLAPSE_DELAY: Duration = Duration::from_secs(2);
@@ -2746,6 +2746,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
         (
             AnimatedStepNode::<ViewerEvent<Self::Message>>::new(
+                cx.display_id,
                 role,
                 cx.label.to_string(),
                 fill,
@@ -2774,6 +2775,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
         let fill = cluster_panel::target_color(cx.kind, cx.phase);
         let overlay = AnimatedClusterView::<ViewerEvent<Self::Message>>::overlay(
+            cx.cluster_id,
             cx.label.to_string(),
             border_color,
             fill,
@@ -2789,6 +2791,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         } else {
             ClusterView::Collapsed {
                 element: AnimatedClusterView::<ViewerEvent<Self::Message>>::chip(
+                    cx.cluster_id,
                     cx.label.to_string(),
                     border_color,
                     CLUSTER_BORDER_ANIMATION_DURATION,

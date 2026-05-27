@@ -21,11 +21,6 @@ pub struct WelcomeAnimals(LeadVocalist, LeadGuitarist, RhythmGuitarist, Bass, Dr
 #[cfg(test)]
 #[derive(Animals)]
 pub struct WelcomeAnimals(
-    LeadVocalist,
-    LeadGuitarist,
-    RhythmGuitarist,
-    Bass,
-    Drums,
     BassJoinMonad100Animal,
     RhythmJoinMonad100Animal,
     ConditionalJoinMonad100Animal,

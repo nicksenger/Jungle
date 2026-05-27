@@ -128,9 +128,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + 1
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -149,9 +157,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + 10
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -170,9 +186,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(state: &i32, input: Self::Input) -> i32 {
         *state + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -191,9 +215,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(state: &i32, input: Self::Input) -> i32 {
         *state - input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -212,9 +244,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input + A::ADD_INPUT_DELTA
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -233,6 +273,7 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(state: &i32, input: Self::Input) -> i32 {
         if A::COMMIT_SUBTRACT {
@@ -240,6 +281,13 @@ where
         } else {
             *state + input
         }
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -489,9 +537,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &i32, input: Self::Input) -> i32 {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -785,9 +841,17 @@ where
     type Aspect = LensRootSpareCarrier;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(view: &i32, input: Self::Input) -> i32 {
         *view + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -806,9 +870,17 @@ where
     type Aspect = LensRootLeafValueCarrier;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(view: &i32, input: Self::Input) -> i32 {
         *view + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -827,9 +899,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &LensRootState, input: Self::Input) -> i32 {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut LensRootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -916,6 +996,12 @@ struct ScopedLensFlow(LensFlow);
 #[jungle(focus = LensBranch)]
 struct ScopedLensMultiField(LensFlow, LensFlow);
 
+struct GenericFocus<T>(core::marker::PhantomData<fn() -> T>);
+
+#[derive(Flow)]
+#[jungle(focus = GenericFocus<LensBranch>)]
+struct GenericScopedLensFlow(LensFlow);
+
 #[test]
 fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs() {
     type Traversed = jungle_sdk::types::Traversed<LensFlow, LensTraversal>;
@@ -953,6 +1039,20 @@ fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs()
         ],
     >;
     assert_type_eq!(ScopedMultiTraverse, ScopedMultiExpected);
+
+    type GenericScopedTraverse = <GenericScopedLensFlow as TraverseFlow>::Output;
+    type GenericScopedExpected = Scoped<
+        GenericFocus<LensBranch>,
+        jungle_sdk::typosaurus::list![
+            jungle_sdk::types::Step<LensReadSpareSpec>,
+            jungle_sdk::types::Step<LensCommitSpec>
+        ],
+    >;
+    assert_type_eq!(GenericScopedTraverse, GenericScopedExpected);
+
+    type GenericScopedView = <GenericScopedLensFlow as FlowScope>::View;
+    type GenericScopedViewExpected = FlowView<GenericFocus<LensBranch>>;
+    assert_type_eq!(GenericScopedView, GenericScopedViewExpected);
 }
 
 #[tokio::test]
@@ -1046,9 +1146,17 @@ where
     type Aspect = NestedBranchSpareCarrier;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(view: &i32, input: Self::Input) -> i32 {
         *view + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1067,9 +1175,17 @@ where
     type Aspect = NestedLeafValueCarrier;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(view: &i32, input: Self::Input) -> i32 {
         *view + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1088,9 +1204,17 @@ where
     type Aspect = NestedLeafNoiseCarrier;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(view: &i32, input: Self::Input) -> i32 {
         *view + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1153,6 +1277,64 @@ struct NestedBranchScopedFlow(
     NestedLeafScopedFlow,
     Step<NestedBranchSpareSpec>,
 );
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct GenericBranchFocus<T> {
+    #[jungle(focus)]
+    branch: T,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct GenericNestedRootState {
+    #[jungle(focus)]
+    wrapped: GenericBranchFocus<NestedLensBranch>,
+}
+
+impl From<i32> for GenericNestedRootState {
+    fn from(seed: i32) -> Self {
+        Self {
+            wrapped: GenericBranchFocus {
+                branch: NestedLensBranch {
+                    leaf: NestedLensLeaf::default(),
+                    spare: seed,
+                },
+            },
+        }
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = NestedLensBranch)]
+struct GenericConcreteNestedFlow(Step<NestedAutoBranchSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = GenericBranchFocus<NestedLensBranch>)]
+struct GenericFocusedOuterFlow(GenericConcreteNestedFlow);
+
+struct GenericNestedScopeAnimal;
+#[jungle::animal(observe, id = 56, generation = 0)]
+impl Animal for GenericNestedScopeAnimal {
+    type State = GenericNestedRootState;
+    type Seed = i32;
+    type Journey = GenericFocusedOuterFlow;
+}
+
+impl Observe for GenericNestedScopeAnimal {
+    type Appearance = GenericNestedRootState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct GenericNestedScopeAnimals(GenericNestedScopeAnimal);
+
+struct GenericNestedScopeZoo;
+impl Ecosystem for GenericNestedScopeZoo {
+    const NAME: &'static str = "late-bound-generic-nested-scope-zoo";
+    type Animals = GenericNestedScopeAnimals;
+}
 
 struct NestedScopeAnimal;
 #[jungle::animal(observe, id = 53, generation = 0)]
@@ -1224,6 +1406,535 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
 
     worker_handle.abort();
     let _ = worker_handle.await;
+}
+
+#[test]
+fn template_binding_generic_focus_supports_nested_concrete_focus() {
+    type NestedTraverse = <GenericConcreteNestedFlow as TraverseFlow>::Output;
+    type NestedExpected = Scoped<
+        NestedLensBranch,
+        jungle_sdk::typosaurus::list![jungle_sdk::types::Step<NestedAutoBranchSpec>],
+    >;
+    assert_type_eq!(NestedTraverse, NestedExpected);
+
+    type OuterTraverse = <GenericFocusedOuterFlow as TraverseFlow>::Output;
+    type OuterExpected = Scoped<
+        GenericBranchFocus<NestedLensBranch>,
+        jungle_sdk::typosaurus::list![Scoped<
+            NestedLensBranch,
+            jungle_sdk::typosaurus::list![jungle_sdk::types::Step<NestedAutoBranchSpec>],
+        >],
+    >;
+    assert_type_eq!(OuterTraverse, OuterExpected);
+
+    let mut exec = ManualExecutor::<GenericNestedScopeAnimal>::new(GenericNestedRootState::from(3));
+    let emitted: i32 = exec
+        .next_typed(2, Ok::<i32, ()>(6))
+        .expect("generic focused nested flow should complete");
+    assert_eq!(emitted, 6);
+
+    let state = exec.into_state();
+    assert_eq!(state.wrapped.branch.spare, 6);
+}
+
+#[tokio::test]
+async fn template_binding_generic_focus_nested_concrete_focus_runs_end_to_end_local() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-generic-nested-scope-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(GenericNestedScopeZoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<GenericNestedScopeAnimal>(
+            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let history = client
+        .journey_history(journey_id)
+        .await
+        .expect("journey history should be available");
+    let effect_inputs = decode_effect_inputs(&history);
+    assert_eq!(effect_inputs, vec![3]);
+    assert_eq!(effect_inputs.len(), 1);
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: GenericNestedRootState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+    assert_eq!(appearance.wrapped.branch.spare, 4);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Loop2Container<St> {
+    counter: usize,
+    #[jungle(focus)]
+    st: St,
+}
+
+impl<St> ViewProject<Loop2Container<St>> for Loop2Container<St> {
+    fn project_view(state: &mut Self) -> &mut Loop2Container<St> {
+        state
+    }
+}
+
+struct Loop2SetCounterTo2Spec<St>(core::marker::PhantomData<fn() -> St>);
+#[allow(private_interfaces)]
+#[jungle::act]
+impl<St> Act for Loop2SetCounterTo2Spec<St> {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &Loop2Container<St>, input: Self::Input) -> i32 {
+        input
+    }
+
+    fn absorb(
+        state: &mut Loop2Container<St>,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        state.counter = 2;
+        output.expect("loop2 set-counter step should succeed")
+    }
+}
+
+struct Loop2DecrementCounterSpec<St>(core::marker::PhantomData<fn() -> St>);
+#[allow(private_interfaces)]
+#[jungle::act]
+impl<St> Act for Loop2DecrementCounterSpec<St> {
+    type Effect = TemplateCommitEffect;
+    type Input = Either<i32, i32>;
+    type Output = (bool, i32);
+
+    fn emit(_state: &Loop2Container<St>, input: Self::Input) -> i32 {
+        match input {
+            Either::Left(value) | Either::Right(value) => value,
+        }
+    }
+
+    fn absorb(
+        state: &mut Loop2Container<St>,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        let value = output.expect("loop2 decrement step should succeed");
+        state.counter = state.counter.saturating_sub(1);
+        (state.counter > 0, value)
+    }
+}
+
+struct Loop2CounterGt0;
+impl<St> LoopCondition<Loop2Container<St>> for Loop2CounterGt0 {
+    type Arg = i32;
+
+    fn should_continue(state: &Loop2Container<St>) -> bool {
+        state.counter > 0
+    }
+}
+
+struct Loop2CounterIsEven;
+impl<St> Condition<(Loop2Container<St>, i32)> for Loop2CounterIsEven {
+    fn choose((state, _): &(Loop2Container<St>, i32)) -> bool {
+        state.counter % 2 == 0
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = Loop2Container<St>)]
+struct Loop2Body<St, L: TraverseFlow, R: TraverseFlow>(
+    Conditional<FocusedCondition<Loop2CounterIsEven, Loop2Container<St>>, L, R>,
+    Step<Loop2DecrementCounterSpec<St>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = Loop2Container<St>)]
+struct Loop2<St, L: TraverseFlow, R: TraverseFlow>(
+    Step<Loop2SetCounterTo2Spec<St>>,
+    While<FocusedLoopCondition<Loop2CounterGt0, Loop2Container<St>>, Loop2Body<St, L, R>>,
+);
+
+struct Loop2LeftSpec;
+#[jungle::act]
+impl Act for Loop2LeftSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
+        input + 10
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("loop2 left step should succeed");
+        *state = value;
+        value
+    }
+}
+
+struct Loop2RightSpec;
+#[jungle::act]
+impl Act for Loop2RightSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(_state: &i32, input: Self::Input) -> i32 {
+        input + 100
+    }
+
+    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        let value = output.expect("loop2 right step should succeed");
+        *state = value;
+        value
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = i32)]
+struct Loop2LeftFlow(Step<Loop2LeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = i32)]
+struct Loop2RightFlow(Step<Loop2RightSpec>);
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Loop2HostState {
+    #[jungle(focus)]
+    loop2: Loop2Container<i32>,
+    marker: i32,
+}
+
+impl From<i32> for Loop2HostState {
+    fn from(seed: i32) -> Self {
+        Self {
+            loop2: Loop2Container {
+                counter: 0,
+                st: seed,
+            },
+            marker: -1,
+        }
+    }
+}
+
+type Loop2Journey = Loop2<i32, Loop2LeftFlow, Loop2RightFlow>;
+
+struct Loop2CompositeAnimal;
+#[jungle::animal(observe, id = 57, generation = 0)]
+impl Animal for Loop2CompositeAnimal {
+    type State = Loop2HostState;
+    type Seed = i32;
+    type Journey = Loop2Journey;
+}
+
+impl Observe for Loop2CompositeAnimal {
+    type Appearance = Loop2HostState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        *state
+    }
+}
+
+#[derive(Animals)]
+struct Loop2Animals(Loop2CompositeAnimal);
+
+struct Loop2Zoo;
+impl Ecosystem for Loop2Zoo {
+    const NAME: &'static str = "late-bound-loop2-zoo";
+    type Animals = Loop2Animals;
+}
+
+#[test]
+fn template_binding_higher_order_generic_loop2_container_is_supported() {
+    type Loop2View = <Loop2<i32, Loop2LeftFlow, Loop2RightFlow> as FlowScope>::View;
+    type Loop2ViewExpected = FlowView<Loop2Container<i32>>;
+    assert_type_eq!(Loop2View, Loop2ViewExpected);
+
+    let mut exec = ManualExecutor::<Loop2CompositeAnimal>::new(Loop2HostState::from(5));
+
+    let set_counter: i32 = exec
+        .next_typed(1, Ok::<i32, ()>(1))
+        .expect("loop2 set-counter step should complete");
+    assert_eq!(set_counter, 1);
+    assert_eq!(exec.state().loop2.counter, 2);
+
+    let left_out: Either<i32, i32> = exec
+        .next_typed(set_counter, Ok::<i32, ()>(11))
+        .expect("loop2 left arm should run first");
+    assert_eq!(left_out, Either::Left(11));
+    assert_eq!(exec.state().loop2.st, 11);
+
+    let after_left: (bool, i32) = exec
+        .next_typed(left_out, Ok::<i32, ()>(11))
+        .expect("loop2 first decrement should run");
+    assert_eq!(after_left, (true, 11));
+    assert_eq!(exec.state().loop2.counter, 1);
+
+    let right_out: Either<i32, i32> = exec
+        .next_typed(after_left, Ok::<i32, ()>(111))
+        .expect("loop2 right arm should run second");
+    assert_eq!(right_out, Either::Right(111));
+    assert_eq!(exec.state().loop2.st, 111);
+
+    let after_right: (bool, i32) = exec
+        .next_typed(right_out, Ok::<i32, ()>(111))
+        .expect("loop2 second decrement should run");
+    assert_eq!(after_right, (false, 111));
+    assert_eq!(exec.state().loop2.counter, 0);
+    assert_eq!(exec.state().loop2.st, 111);
+    assert_eq!(exec.state().marker, -1);
+    let final_probe = exec.next_request(
+        postcard::to_allocvec(&after_right).expect("loop2 final probe input should serialize"),
+    );
+    assert!(matches!(final_probe, Err(ExecutorError::Complete)));
+    assert!(exec.is_complete());
+}
+
+#[tokio::test]
+async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_local() {
+    let client = jungle_sdk::LocalClient::builder()
+        .namespace("late-bound-loop2-zoo")
+        .build()
+        .await
+        .expect("local client should build");
+
+    let worker = jungle_sdk::core::JungleWorker::new(Loop2Zoo, client.clone());
+    let worker_handle = tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let journey_id = client
+        .start_journey::<Loop2CompositeAnimal>(
+            postcard::to_allocvec(&5_i32).expect("seed should serialize"),
+        )
+        .await
+        .expect("journey should start");
+
+    await_completion(&client, journey_id).await;
+
+    let history = client
+        .journey_history(journey_id)
+        .await
+        .expect("journey history should be available");
+    let effect_inputs = decode_effect_inputs(&history);
+    assert_eq!(effect_inputs, vec![5, 15, 15, 115, 115]);
+    assert_eq!(effect_inputs.len(), 5);
+
+    let appearance_bytes = client
+        .animal_appearance(journey_id)
+        .await
+        .expect("appearance request should succeed")
+        .expect("appearance should exist");
+    let appearance: Loop2HostState =
+        postcard::from_bytes(&appearance_bytes).expect("appearance should deserialize");
+    assert_eq!(appearance.loop2.st, 115);
+    assert_eq!(appearance.loop2.counter, 0);
+    assert_eq!(appearance.marker, 0);
+
+    worker_handle.abort();
+    let _ = worker_handle.await;
+}
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
+)]
+struct NoopLoop2TraceState {
+    left_hits: u8,
+    right_hits: u8,
+    order: u8,
+}
+
+struct NoopLoop2SetCounter<St>(core::marker::PhantomData<fn() -> St>);
+#[allow(private_interfaces)]
+#[jungle::act]
+impl<St> Act for NoopLoop2SetCounter<St> {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
+
+    fn absorb(state: &mut Loop2Container<St>, _output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.counter = 2;
+    }
+}
+
+struct NoopLoop2DecCounter<St>(core::marker::PhantomData<fn() -> St>);
+#[allow(private_interfaces)]
+#[jungle::act]
+impl<St> Act for NoopLoop2DecCounter<St> {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
+
+    fn absorb(state: &mut Loop2Container<St>, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("noop loop2 decrement step should succeed");
+        state.counter = state.counter.saturating_sub(1);
+    }
+}
+
+struct NoopFlattenEither<T, S>(core::marker::PhantomData<fn() -> (T, S)>);
+#[jungle::act]
+impl<T, S> Act for NoopFlattenEither<T, S> {
+    type Effect = Noop;
+    type Input = Either<T, T>;
+    type Output = T;
+    type Carry = Either<T, T>;
+
+    fn emit(_state: &S, input: Self::Input) -> ((), Either<T, T>) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut S,
+        output: EffectCompletion<Self::Effect>,
+        carry: Either<T, T>,
+    ) -> Self::Output {
+        output.expect("noop loop2 flatten step should succeed");
+        match carry {
+            Either::Left(value) | Either::Right(value) => value,
+        }
+    }
+}
+
+struct NoopLoop2CounterGt0;
+impl<St> LoopCondition<Loop2Container<St>> for NoopLoop2CounterGt0 {
+    type Arg = ();
+
+    fn should_continue(state: &Loop2Container<St>) -> bool {
+        state.counter > 0
+    }
+}
+
+struct NoopLoop2CounterIsEven;
+impl<St> Condition<(Loop2Container<St>, ())> for NoopLoop2CounterIsEven {
+    fn choose((state, _): &(Loop2Container<St>, ())) -> bool {
+        state.counter % 2 == 0
+    }
+}
+
+struct NoopLoop2LeftSpec;
+#[jungle::act]
+impl Act for NoopLoop2LeftSpec {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &NoopLoop2TraceState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut NoopLoop2TraceState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("noop loop2 left arm should succeed");
+        state.left_hits = state.left_hits.saturating_add(1);
+        state.order = state.order.saturating_mul(10).saturating_add(1);
+    }
+}
+
+struct NoopLoop2RightSpec;
+#[jungle::act]
+impl Act for NoopLoop2RightSpec {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &NoopLoop2TraceState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut NoopLoop2TraceState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("noop loop2 right arm should succeed");
+        state.right_hits = state.right_hits.saturating_add(1);
+        state.order = state.order.saturating_mul(10).saturating_add(2);
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = NoopLoop2TraceState)]
+struct NoopLoop2LeftFlow(Step<NoopLoop2LeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = NoopLoop2TraceState)]
+struct NoopLoop2RightFlow(Step<NoopLoop2RightSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = Loop2Container<St>)]
+struct NoopLoop2Body<St, L: TraverseFlow, R: TraverseFlow>(
+    Conditional<FocusedCondition<NoopLoop2CounterIsEven, Loop2Container<St>>, L, R>,
+    Step<NoopFlattenEither<(), Loop2Container<St>>>,
+    Step<NoopLoop2DecCounter<St>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = Loop2Container<St>)]
+struct NoopLoop2<St, L: TraverseFlow, R: TraverseFlow>(
+    Step<NoopLoop2SetCounter<St>>,
+    While<FocusedLoopCondition<NoopLoop2CounterGt0, Loop2Container<St>>, NoopLoop2Body<St, L, R>>,
+);
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
+)]
+struct NoopLoop2HarnessState {
+    #[jungle(focus)]
+    loop2: Loop2Container<NoopLoop2TraceState>,
+}
+
+impl From<NoopLoop2TraceState> for NoopLoop2HarnessState {
+    fn from(seed: NoopLoop2TraceState) -> Self {
+        Self {
+            loop2: Loop2Container {
+                counter: 0,
+                st: seed,
+            },
+        }
+    }
+}
+
+type NoopLoop2Journey = NoopLoop2<NoopLoop2TraceState, NoopLoop2LeftFlow, NoopLoop2RightFlow>;
+
+struct NoopLoop2HarnessAnimal;
+#[jungle::animal(id = 58, generation = 0)]
+impl Animal for NoopLoop2HarnessAnimal {
+    type State = NoopLoop2HarnessState;
+    type Seed = NoopLoop2TraceState;
+    type Journey = NoopLoop2Journey;
+}
+
+#[test]
+fn template_binding_noop_loop2_repro_completes_during_executor_init() {
+    let mut exec = ManualExecutor::<NoopLoop2HarnessAnimal>::new(NoopLoop2HarnessState::from(
+        NoopLoop2TraceState::default(),
+    ));
+
+    assert!(!exec.is_complete());
+    let step: Result<(), ExecutorError> = exec.next_typed((), Ok::<(), ()>(()));
+    assert!(matches!(step, Err(ExecutorError::Complete)));
+    assert!(exec.is_complete());
+
+    let state = exec.into_state();
+    assert_eq!(state.loop2.counter, 0);
+    assert_eq!(state.loop2.st.left_hits, 1);
+    assert_eq!(state.loop2.st.right_hits, 1);
+    assert_eq!(state.loop2.st.order, 12);
 }
 
 #[derive(Flow)]
@@ -1741,9 +2452,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
         (A::fast_ms(), input + 1)
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1760,9 +2479,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
         (A::slow_ms(), input + 2)
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1779,9 +2506,17 @@ where
     type Aspect = Identity;
     type Input = (i32, i32);
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         input.0 + input.1
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1800,9 +2535,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
         (A::fast_ms(), input + 3)
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1819,9 +2562,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> (u64, i32) {
         (A::slow_ms(), input + 4)
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1838,11 +2589,19 @@ where
     type Aspect = Identity;
     type Input = Either<i32, i32>;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         match input {
             Either::Left(value) | Either::Right(value) => value,
         }
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1861,9 +2620,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1883,9 +2650,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         input + 100
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1904,9 +2679,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         input - 100
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1925,9 +2708,17 @@ where
     type Aspect = Identity;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1946,11 +2737,19 @@ where
     type Aspect = Identity;
     type Input = Either<i32, i32>;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_state: &A::State, input: Self::Input) -> i32 {
         match input {
             Either::Left(value) | Either::Right(value) => value,
         }
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {

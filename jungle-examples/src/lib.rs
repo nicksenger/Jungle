@@ -63,9 +63,19 @@ impl BoundAct<ObserveAnimal> for ObserveSleep {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(state: &ObserveState, _input: Self::Input) -> Duration {
         Duration::from_millis(state.sleep_ms)
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<ObserveAnimal>>::Aspect as StateCarrier<
+            <ObserveAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<ObserveAnimal>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -80,8 +90,18 @@ impl BoundAct<ObserveAnimal> for ObserveBump {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &ObserveState, _input: Self::Input) -> Self::Input {}
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<ObserveAnimal>>::Aspect as StateCarrier<
+            <ObserveAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<ObserveAnimal>>::emit(view, input), ())
+    }
 
     fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("bump branch should complete");

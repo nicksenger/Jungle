@@ -44,12 +44,20 @@ where
     type Aspect = Focus;
     type Input = Duration;
     type Output = ();
+    type Carry = ();
 
     fn emit(
         _view: &<Focus as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<Focus as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(

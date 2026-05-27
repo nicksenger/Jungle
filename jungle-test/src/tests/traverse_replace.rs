@@ -70,8 +70,18 @@ impl BoundAct<TraverseAnimal> for StepA {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<TraverseAnimal>>::Aspect as StateCarrier<
+            <TraverseAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<TraverseAnimal>>::emit(view, input), ())
+    }
 
     fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("step A should succeed");
@@ -84,8 +94,18 @@ impl BoundAct<TraverseAnimal> for StepB {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<TraverseAnimal>>::Aspect as StateCarrier<
+            <TraverseAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<TraverseAnimal>>::emit(view, input), ())
+    }
 
     fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("step B should succeed");
@@ -98,8 +118,18 @@ impl BoundAct<TraverseAnimal> for StepC {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<TraverseAnimal>>::Aspect as StateCarrier<
+            <TraverseAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<TraverseAnimal>>::emit(view, input), ())
+    }
 
     fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("step C should succeed");
@@ -112,8 +142,18 @@ impl BoundAct<TraverseAnimal> for StepD {
     type Aspect = Identity;
     type Input = ();
     type Output = ();
+    type Carry = ();
 
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<TraverseAnimal>>::Aspect as StateCarrier<
+            <TraverseAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<TraverseAnimal>>::emit(view, input), ())
+    }
 
     fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("step D should succeed");

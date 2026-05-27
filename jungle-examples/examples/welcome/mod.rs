@@ -5,6 +5,7 @@ mod assets;
 mod audio;
 mod ecosystem;
 mod effect;
+pub mod flow;
 mod instrumentation;
 mod metronome;
 mod ui;
@@ -35,9 +36,11 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
 use crate::{
-    animals::{Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist},
+    animals::{
+        Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, LeadVocalistSeed, RhythmGuitarist,
+    },
     audio::{AudioEngine, AudioHandle, StubAudioKeepAlive},
-    ecosystem::TheJungle,
+    ecosystem::{AnimalVolumes, TheJungle},
     instrumentation::SynthHandle,
 };
 
@@ -93,10 +96,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.worker_only {
         return run_worker_only(
             args.bpm,
+            args.skip_seconds,
             args.mute,
             args.workers,
             args.synth_workers,
             args.synth_queue_size,
+            args.animal_volumes,
             args.server_addr
                 .expect("clap requires --server-addr when --worker-only is set"),
         );
@@ -105,6 +110,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.ui_only {
         return run_with_ui(
             args.bpm,
+            args.lyrics,
+            args.skip_seconds,
             args.mute,
             0,
             args.synth_workers,
@@ -112,12 +119,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.playback_delay_ms,
             args.event_lead_time_ms,
             args.enabled_animals,
+            args.animal_volumes,
             args.server_addr,
         );
     }
     if args.headless {
         return run_headless(
             args.bpm,
+            args.lyrics,
+            args.skip_seconds,
             args.mute,
             args.workers,
             args.synth_workers,
@@ -125,12 +135,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.playback_delay_ms,
             args.event_lead_time_ms,
             args.enabled_animals,
+            args.animal_volumes,
             #[cfg(feature = "transport")]
             args.server_addr,
         );
     }
     run_with_ui(
         args.bpm,
+        args.lyrics,
+        args.skip_seconds,
         args.mute,
         args.workers,
         args.synth_workers,
@@ -138,6 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.playback_delay_ms,
         args.event_lead_time_ms,
         args.enabled_animals,
+        args.animal_volumes,
         #[cfg(feature = "transport")]
         args.server_addr,
     )
@@ -145,6 +159,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 struct CliArgs {
     bpm: f32,
+    lyrics: Option<Vec<String>>,
+    skip_seconds: f32,
     headless: bool,
     mute: bool,
     workers: usize,
@@ -153,6 +169,7 @@ struct CliArgs {
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    animal_volumes: AnimalVolumes,
     #[cfg(feature = "transport")]
     server_addr: Option<SocketAddr>,
     #[cfg(feature = "transport")]
@@ -169,6 +186,12 @@ struct WelcomeCliArgs {
     /// Tempo in BPM.
     #[clap(long = "bpm", value_parser = parse_bpm_value, default_value_t = DEFAULT_BPM)]
     bpm: f32,
+    /// Comma-delimited lyrics words for lead vocalist (for example `fly,me,to,the,moon`).
+    #[clap(long = "lyrics", value_delimiter = ',')]
+    lyrics: Vec<String>,
+    /// Skip to this many seconds from song start when playback begins.
+    #[clap(long = "skip", value_parser = parse_skip_seconds_value, default_value_t = 0.0)]
+    skip_seconds: f32,
     /// Run without the viewer UI and exit after playback.
     #[clap(long = "headless")]
     headless: bool,
@@ -211,6 +234,9 @@ struct WelcomeCliArgs {
     /// Comma-delimited or repeatable list of enabled animals.
     #[clap(long = "animals", value_enum, value_delimiter = ',')]
     animals: Vec<SelectedAnimalCli>,
+    /// Comma-delimited `animal:volume` values (0..=1), for example `lead-vocalist:0.8,bassist:0.2`.
+    #[clap(long = "animal-volumes", value_delimiter = ',', value_parser = parse_animal_volume_value)]
+    animal_volumes: Vec<AnimalVolumeOverride>,
     /// Connect to an already-running jungle transport server instead of starting one locally.
     #[cfg(feature = "transport")]
     #[clap(long = "server-addr", value_parser = parse_server_addr_value)]
@@ -242,6 +268,8 @@ struct WelcomeCliArgs {
 
 fn run_with_ui(
     bpm: f32,
+    lyrics: Option<Vec<String>>,
+    skip_seconds: f32,
     mute: bool,
     workers: usize,
     synth_workers: usize,
@@ -249,6 +277,7 @@ fn run_with_ui(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    animal_volumes: AnimalVolumes,
     #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -258,6 +287,8 @@ fn run_with_ui(
     let runtime_thread = std::thread::spawn(move || {
         run_runtime_thread(
             bpm,
+            lyrics,
+            skip_seconds,
             mute,
             workers,
             synth_workers,
@@ -265,6 +296,7 @@ fn run_with_ui(
             playback_delay_ms,
             event_lead_time_ms,
             enabled_animals,
+            animal_volumes,
             #[cfg(feature = "transport")]
             server_addr,
             false,
@@ -380,18 +412,22 @@ async fn run_transport_server(listen_addr: SocketAddr) -> Result<(), String> {
 #[cfg(feature = "transport")]
 fn run_worker_only(
     bpm: f32,
+    skip_seconds: f32,
     mute: bool,
     workers: usize,
     synth_workers: usize,
     synth_queue_size: usize,
+    animal_volumes: AnimalVolumes,
     server_addr: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
         bpm,
+        skip_seconds,
         mute,
         workers,
         synth_workers,
         synth_queue_size,
+        ?animal_volumes,
         %server_addr,
         "running welcome example in worker-only mode"
     );
@@ -421,14 +457,16 @@ fn run_worker_only(
         keep_alive.stub_audio = stub_audio;
 
         let synth_handle = SynthHandle::new_with_config(synth_workers, synth_queue_size);
+        let start_offset = Duration::from_secs_f32(skip_seconds);
         let mut worker_metronomes = Vec::with_capacity(workers);
         for worker_index in 0..workers {
-            let metronome = metronome::Metronome::spawn(bpm);
-            let ecosystem = TheJungle::new_with_metronome_and_synth(
+            let metronome = metronome::Metronome::spawn_with_offset(bpm, start_offset);
+            let ecosystem = TheJungle::new_with_metronome_and_synth_and_volumes(
                 audio_handle.clone(),
                 synth_handle.clone(),
                 bpm,
                 metronome,
+                animal_volumes,
             );
             let metronome = ecosystem.metronome().clone();
             metronome.arm_start_barrier();
@@ -462,6 +500,8 @@ fn run_worker_only(
 
 fn run_headless(
     bpm: f32,
+    lyrics: Option<Vec<String>>,
+    skip_seconds: f32,
     mute: bool,
     workers: usize,
     synth_workers: usize,
@@ -469,6 +509,7 @@ fn run_headless(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    animal_volumes: AnimalVolumes,
     #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!(
@@ -489,6 +530,8 @@ fn run_headless(
     let runtime_thread = std::thread::spawn(move || {
         run_runtime_thread(
             bpm,
+            lyrics,
+            skip_seconds,
             mute,
             workers,
             synth_workers,
@@ -496,6 +539,7 @@ fn run_headless(
             playback_delay_ms,
             event_lead_time_ms,
             enabled_animals,
+            animal_volumes,
             #[cfg(feature = "transport")]
             server_addr,
             true,
@@ -742,6 +786,8 @@ impl JungleClient for UiClient {
 
 fn run_runtime_thread(
     bpm: f32,
+    lyrics: Option<Vec<String>>,
+    skip_seconds: f32,
     mute: bool,
     workers: usize,
     synth_workers: usize,
@@ -749,6 +795,7 @@ fn run_runtime_thread(
     playback_delay_ms: u64,
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
+    animal_volumes: AnimalVolumes,
     #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
     enable_headless_lag_probe: bool,
     ui_shutdown: ui::ShutdownFlag,
@@ -784,14 +831,16 @@ fn run_runtime_thread(
             (audio_handle, Some(audio_engine), None)
         };
         let synth_handle = SynthHandle::new_with_config(synth_workers, synth_queue_size);
+        let start_offset = Duration::from_secs_f32(skip_seconds);
         let mut worker_metronomes = Vec::with_capacity(workers);
         for worker_index in 0..workers {
-            let metronome = metronome::Metronome::spawn(bpm);
-            let ecosystem = TheJungle::new_with_metronome_and_synth(
+            let metronome = metronome::Metronome::spawn_with_offset(bpm, start_offset);
+            let ecosystem = TheJungle::new_with_metronome_and_synth_and_volumes(
                 audio_handle.clone(),
                 synth_handle.clone(),
                 bpm,
                 metronome,
+                animal_volumes,
             );
             let metronome = ecosystem.metronome().clone();
             metronome.arm_start_barrier();
@@ -813,6 +862,11 @@ fn run_runtime_thread(
             synth_workers, synth_queue_size, "started welcome workers"
         );
 
+        let lead_vocalist_seed =
+            postcard::to_allocvec(&LeadVocalistSeed { lyrics }).map_err(|err| {
+                error!(error = %err, "failed serializing lead vocalist journey seed");
+                err.to_string()
+            })?;
         let seed = postcard::to_allocvec(&()).map_err(|err| {
             error!(error = %err, "failed serializing journey seed");
             err.to_string()
@@ -827,7 +881,7 @@ fn run_runtime_thread(
         let lead_vocalist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::LeadVocalist) {
                 client
-                    .start_journey::<LeadVocalist>(seed.clone())
+                    .start_journey::<LeadVocalist>(lead_vocalist_seed.clone())
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -1353,6 +1407,17 @@ fn spawn_runtime_heartbeat_probe() -> tokio::task::JoinHandle<()> {
 
 fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let parsed = WelcomeCliArgs::parse();
+    let lyrics = parsed
+        .lyrics
+        .into_iter()
+        .map(|word| word.trim().to_string())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    let lyrics = if lyrics.is_empty() {
+        None
+    } else {
+        Some(lyrics)
+    };
     let enabled_animals = if parsed.animals.is_empty() {
         SelectedAnimal::all()
     } else {
@@ -1362,8 +1427,26 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             .map(SelectedAnimal::from)
             .collect::<BTreeSet<_>>()
     };
+    let mut animal_volumes = AnimalVolumes::default();
+    for override_entry in parsed.animal_volumes {
+        animal_volumes = match override_entry.animal {
+            SelectedAnimal::LeadVocalist => {
+                animal_volumes.with_lead_vocalist(override_entry.volume)
+            }
+            SelectedAnimal::LeadGuitarist => {
+                animal_volumes.with_lead_guitarist(override_entry.volume)
+            }
+            SelectedAnimal::RhythmGuitarist => {
+                animal_volumes.with_rhythm_guitarist(override_entry.volume)
+            }
+            SelectedAnimal::Bassist => animal_volumes.with_bassist(override_entry.volume),
+            SelectedAnimal::Drummer => animal_volumes.with_drummer(override_entry.volume),
+        };
+    }
     Ok(CliArgs {
         bpm: parsed.bpm,
+        lyrics,
+        skip_seconds: parsed.skip_seconds,
         headless: parsed.headless,
         mute: parsed.mute,
         workers: parsed.workers,
@@ -1372,6 +1455,7 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         playback_delay_ms: parsed.playback_delay_ms,
         event_lead_time_ms: parsed.event_lead_time_ms,
         enabled_animals,
+        animal_volumes,
         #[cfg(feature = "transport")]
         server_addr: parsed.server_addr,
         #[cfg(feature = "transport")]
@@ -1381,6 +1465,34 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         #[cfg(feature = "transport")]
         server_only: parsed.server_only,
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AnimalVolumeOverride {
+    animal: SelectedAnimal,
+    volume: f32,
+}
+
+fn parse_animal_volume_value(value: &str) -> Result<AnimalVolumeOverride, String> {
+    let Some((animal_raw, volume_raw)) = value.split_once(':') else {
+        return Err(format!(
+            "invalid animal volume entry `{value}`; expected `<animal>:<volume>`"
+        ));
+    };
+    let animal = SelectedAnimal::from_cli_name(animal_raw).ok_or_else(|| {
+        format!(
+            "invalid animal in `{value}`: `{animal_raw}` (expected one of: lead-vocalist, lead-guitarist, rhythm-guitarist, bassist, drummer)"
+        )
+    })?;
+    let volume = volume_raw
+        .parse::<f32>()
+        .map_err(|_| format!("invalid volume in `{value}`: `{volume_raw}` is not a number"))?;
+    if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
+        return Err(format!(
+            "invalid volume in `{value}`: `{volume_raw}` must be between 0 and 1"
+        ));
+    }
+    Ok(AnimalVolumeOverride { animal, volume })
 }
 
 #[cfg(feature = "transport")]
@@ -1400,6 +1512,18 @@ fn parse_bpm_value(value: &str) -> Result<f32, String> {
         ));
     }
     Ok(bpm)
+}
+
+fn parse_skip_seconds_value(value: &str) -> Result<f32, String> {
+    let skip_seconds = value
+        .parse::<f32>()
+        .map_err(|_| format!("invalid skip seconds argument: {value}"))?;
+    if !skip_seconds.is_finite() || skip_seconds < 0.0 {
+        return Err(format!(
+            "skip seconds must be a non-negative finite number, got: {value}"
+        ));
+    }
+    Ok(skip_seconds)
 }
 
 fn parse_workers_value(value: &str) -> Result<usize, String> {
@@ -1461,6 +1585,17 @@ impl SelectedAnimal {
             Self::RhythmGuitarist => "rhythm-guitarist",
             Self::Bassist => "bassist",
             Self::Drummer => "drummer",
+        }
+    }
+
+    fn from_cli_name(value: &str) -> Option<Self> {
+        match value {
+            "lead-vocalist" => Some(Self::LeadVocalist),
+            "lead-guitarist" => Some(Self::LeadGuitarist),
+            "rhythm-guitarist" => Some(Self::RhythmGuitarist),
+            "bassist" | "bass" => Some(Self::Bassist),
+            "drummer" | "drums" => Some(Self::Drummer),
+            _ => None,
         }
     }
 }

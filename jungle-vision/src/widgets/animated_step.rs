@@ -7,9 +7,16 @@ use iced::advanced::{Clipboard, Layout, Shell};
 use iced::widget::{button, column, text};
 use iced::window::RedrawRequest;
 use iced::{Color, Element, Event, Length, Rectangle, Theme};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const FRAME_DURATION: Duration = Duration::from_millis(16);
+static TWEEN_CACHE: OnceLock<Mutex<HashMap<u32, TweenState>>> = OnceLock::new();
+
+fn tween_cache() -> &'static Mutex<HashMap<u32, TweenState>> {
+    TWEEN_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Debug, Clone, Copy)]
 struct TweenState {
@@ -34,6 +41,7 @@ pub struct AnimatedStepNode<Message>
 where
     Message: Clone + 'static,
 {
+    step_id: u32,
     role: String,
     label: String,
     target_fill: Color,
@@ -46,12 +54,14 @@ where
     Message: Clone + 'static,
 {
     pub fn new(
+        step_id: u32,
         role: impl Into<String>,
         label: impl Into<String>,
         target_fill: Color,
         duration: Duration,
     ) -> Self {
         Self {
+            step_id,
             role: role.into(),
             label: label.into(),
             target_fill,
@@ -60,18 +70,20 @@ where
         }
     }
 
-    fn sync_target(
-        &self,
-        state: &mut TweenState,
-        now: Instant,
-        shell: &mut Shell<'_, Message>,
-    ) {
+    fn sync_target(&self, state: &mut TweenState, now: Instant, shell: &mut Shell<'_, Message>) {
         if !state.initialized {
-            state.from = self.target_fill;
-            state.to = self.target_fill;
-            state.started_at = now;
-            state.initialized = true;
-            return;
+            let cached = tween_cache()
+                .lock()
+                .ok()
+                .and_then(|cache| cache.get(&self.step_id).copied());
+            if let Some(cached) = cached {
+                *state = cached;
+            } else {
+                state.from = self.target_fill;
+                state.to = self.target_fill;
+                state.started_at = now;
+                state.initialized = true;
+            }
         }
 
         if state.to != self.target_fill {
@@ -79,6 +91,14 @@ where
             state.to = self.target_fill;
             state.started_at = now;
             shell.request_redraw();
+        }
+
+        self.persist_state(*state);
+    }
+
+    fn persist_state(&self, state: TweenState) {
+        if let Ok(mut cache) = tween_cache().lock() {
+            cache.insert(self.step_id, state);
         }
     }
 
@@ -97,11 +117,16 @@ where
             .padding([8, 10])
             .width(Length::Shrink)
             .style(move |_theme, _status| iced::widget::button::Style {
-                background: Some(iced::Background::Color(fill)),
+                background: Some(iced::Background::Color(Color { a: 0.8, ..fill })),
                 text_color: Color::from_rgb8(223, 245, 230),
                 border: iced::border::rounded(10)
                     .color(Color::from_rgb8(58, 122, 86))
                     .width(1.0),
+                shadow: iced::Shadow {
+                    color: Color::from_rgba8(0, 0, 0, 0.35),
+                    offset: iced::Vector::new(0.0, 2.0),
+                    blur_radius: 6.0,
+                },
                 ..Default::default()
             })
             .into()
@@ -168,6 +193,7 @@ where
             } else if state.from != state.to {
                 state.from = state.to;
             }
+            self.persist_state(*state);
         }
 
         let fill = sample_color(*state, now, self.duration);
@@ -197,9 +223,15 @@ where
         let state = tree.state.downcast_ref::<TweenState>();
         let fill = sample_color(*state, Instant::now(), self.duration);
         let element = self.as_element(fill);
-        element
-            .as_widget()
-            .draw(&tree.children[0], renderer, theme, style, layout, cursor, viewport);
+        element.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            viewport,
+        );
     }
 
     fn mouse_interaction(

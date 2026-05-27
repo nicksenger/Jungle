@@ -123,9 +123,19 @@ impl BoundAct<OpticAnimal> for LensOnLeafValue {
     type Aspect = LeafValueCarrier;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(view: &i32, input: Self::Input) -> i32 {
         *view + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<OpticAnimal>>::Aspect as StateCarrier<
+            <OpticAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<OpticAnimal>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -142,9 +152,19 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
     type Aspect = Identity;
     type Input = ();
     type Output = RootState;
+    type Carry = ();
 
     fn emit(view: &RootState, _input: Self::Input) -> RootState {
         *view
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<OpticAnimal>>::Aspect as StateCarrier<
+            <OpticAnimal as Animal>::State,
+        >>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<OpticAnimal>>::emit(view, input), ())
     }
 
     fn absorb(_view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -198,12 +218,12 @@ fn state_lens_single_index_short_flow() {
         <BoundFlowStep<OpticAnimal, <LensOnBranchSpec as Act>::Bind<OpticAnimal>> as Running>::run(
             (seed_state(), 3),
         );
-    assert_eq!(request.into_input(), 7);
+    assert_eq!(request.0.into_input(), 7);
 
     let (state, emitted) = <BoundFlowStep<
         OpticAnimal,
         <LensOnBranchSpec as Act>::Bind<OpticAnimal>,
-    > as Waiting>::accept((state, Ok(8)));
+    > as Waiting>::accept((state, Ok(8), ()));
     assert_eq!(emitted, 8);
     assert_eq!(state.branch.spare, 8);
     assert_eq!(state.top, 99);
@@ -213,10 +233,10 @@ fn state_lens_single_index_short_flow() {
 fn state_lens_list_multi_index_short_flow() {
     let (state, request) =
         <BoundFlowStep<OpticAnimal, LensOnLeafValue> as Running>::run((seed_state(), 2));
-    assert_eq!(request.into_input(), 6);
+    assert_eq!(request.0.into_input(), 6);
 
     let (state, emitted) =
-        <BoundFlowStep<OpticAnimal, LensOnLeafValue> as Waiting>::accept((state, Ok(7)));
+        <BoundFlowStep<OpticAnimal, LensOnLeafValue> as Waiting>::accept((state, Ok(7), ()));
     assert_eq!(emitted, 7);
     assert_eq!(state.branch.leaf.value, 7);
     assert_eq!(state.branch.leaf.noise, 1);

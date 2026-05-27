@@ -1,6 +1,8 @@
 use jungle_sdk::prelude::*;
+use serde::{Deserialize, Serialize};
+use tracing::warn;
 
-use crate::effect::Monad;
+use crate::{animals::LeadVocalistState, effect::Monad};
 
 use super::{Instrument, Note, SynthHandle};
 
@@ -23,6 +25,8 @@ pub enum VocalsArticulation {
     Clean,
     /// Clean, unified group harmony backing up a lead line.
     GroupHarmony,
+    /// Formant
+    Formant([Option<Phoneme>; 12]),
 }
 
 impl Default for VocalsArticulation {
@@ -39,23 +43,87 @@ impl Instrument for Vocals {
     }
 }
 
-pub struct Sing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32 = 0>;
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Lyrics {
+    pub phonemes: Vec<[Option<Phoneme>; 12]>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Phoneme {
+    pub length: u8,
+    pub index: usize,
+    pub stress: u8,
+}
+
+pub fn phonemes_from_text(text: &str) -> [Option<Phoneme>; 12] {
+    let mut output = [None; 12];
+
+    let parsed_text = match rustsam::reciter::text_to_phonemes(text) {
+        Ok(parsed_text) => parsed_text,
+        Err(err) => {
+            warn!(word = text, error = %err, "failed to recite text into rustsam phonemes");
+            return output;
+        }
+    };
+
+    let parsed_phonemes = match rustsam::parser::parse_phonemes(&parsed_text) {
+        Ok(parsed_phonemes) => parsed_phonemes,
+        Err(err) => {
+            warn!(word = text, error = %err, "failed to parse rustsam phoneme string");
+            return output;
+        }
+    };
+
+    if parsed_phonemes.len() > output.len() {
+        warn!(
+            word = text,
+            parsed_count = parsed_phonemes.len(),
+            max_count = output.len(),
+            "truncating parsed rustsam phonemes to fit vocals articulation capacity"
+        );
+    }
+
+    for (slot, phoneme) in output.iter_mut().zip(parsed_phonemes.into_iter()) {
+        *slot = Some(Phoneme {
+            length: phoneme.length,
+            index: phoneme.index,
+            stress: phoneme.stress,
+        });
+    }
+
+    output
+}
+
+pub struct Generate<
+    const NOTE: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
+    const LANE_ID: u32 = 0,
+>;
 #[jungle::act]
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32> Act
-    for Sing<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
+    for Generate<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
     type Effect = Monad<Vocals, VocalsArticulation, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
-    fn emit(state: &VocalsArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        *state
+    fn emit(state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        VocalsArticulation::Formant(
+            state
+                .lyrics
+                .phonemes
+                .last()
+                .copied()
+                .unwrap_or_else(|| [None; 12]),
+        )
     }
 
     fn absorb(
-        _state: &mut VocalsArticulation,
+        state: &mut LeadVocalistState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("note playback should succeed");
+        let _ = state.lyrics.phonemes.pop();
     }
 }

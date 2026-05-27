@@ -190,20 +190,20 @@ type BoundConditionalFlow = Conditional<
 fn conditional_run_selects_branch_from_predicate() {
     let left = <BoundConditionalFlow as Running>::run((5, 3));
     match left {
-        Either::Left((_state, request)) => assert_eq!(request.into_input(), 8),
+        Either::Left((_state, (request, ()))) => assert_eq!(request.into_input(), 8),
         Either::Right(_) => panic!("expected left branch"),
     }
 
     let right = <BoundConditionalFlow as Running>::run((-2, 3));
     match right {
         Either::Left(_) => panic!("expected right branch"),
-        Either::Right((_state, request)) => assert_eq!(request.into_input(), -5),
+        Either::Right((_state, (request, ()))) => assert_eq!(request.into_input(), -5),
     }
 }
 
 #[test]
 fn conditional_waiting_accept_returns_either_branch_output() {
-    let left = <BoundConditionalFlow as Waiting>::accept(Either::Left((1, Ok(9))));
+    let left = <BoundConditionalFlow as Waiting>::accept(Either::Left((1, Ok(9), ())));
     match left {
         Either::Left((state, emitted)) => {
             assert_eq!(state, 9);
@@ -212,7 +212,7 @@ fn conditional_waiting_accept_returns_either_branch_output() {
         Either::Right(_) => panic!("expected left output"),
     }
 
-    let right = <BoundConditionalFlow as Waiting>::accept(Either::Right((1, Ok(6))));
+    let right = <BoundConditionalFlow as Waiting>::accept(Either::Right((1, Ok(6), ())));
     match right {
         Either::Left(_) => panic!("expected right output"),
         Either::Right((state, emitted)) => {

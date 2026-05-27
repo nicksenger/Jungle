@@ -7,9 +7,16 @@ use iced::advanced::{Clipboard, Layout, Shell};
 use iced::widget::{button, container, text};
 use iced::window::RedrawRequest;
 use iced::{Color, Element, Event, Length, Rectangle, Theme};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const FRAME_DURATION: Duration = Duration::from_millis(16);
+static CLUSTER_TWEEN_CACHE: OnceLock<Mutex<HashMap<u64, AnimatedClusterState>>> = OnceLock::new();
+
+fn cluster_tween_cache() -> &'static Mutex<HashMap<u64, AnimatedClusterState>> {
+    CLUSTER_TWEEN_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Debug, Clone, Copy)]
 struct TweenState {
@@ -46,6 +53,7 @@ pub struct AnimatedClusterView<Message>
 where
     Message: Clone + 'static,
 {
+    cluster_id: u32,
     label: String,
     target_border: Color,
     target_fill: Color,
@@ -59,12 +67,14 @@ where
     Message: Clone + 'static,
 {
     pub fn overlay(
+        cluster_id: u32,
         label: impl Into<String>,
         target_border: Color,
         target_fill: Color,
         duration: Duration,
     ) -> Self {
         Self {
+            cluster_id,
             label: label.into(),
             target_border,
             target_fill,
@@ -75,11 +85,13 @@ where
     }
 
     pub fn chip(
+        cluster_id: u32,
         label: impl Into<String>,
         target_border: Color,
         duration: Duration,
     ) -> Self {
         Self {
+            cluster_id,
             label: label.into(),
             target_border,
             target_fill: Color::TRANSPARENT,
@@ -95,9 +107,40 @@ where
         now: Instant,
         shell: &mut Shell<'_, Message>,
     ) {
-        sync_tween(&mut state.border, self.target_border, now, self.duration, shell);
+        if !state.border.initialized {
+            let cached = cluster_tween_cache()
+                .lock()
+                .ok()
+                .and_then(|cache| cache.get(&self.cache_key()).copied());
+            if let Some(cached) = cached {
+                *state = cached;
+            }
+        }
+
+        sync_tween(
+            &mut state.border,
+            self.target_border,
+            now,
+            self.duration,
+            shell,
+        );
         if matches!(self.mode, Mode::Overlay) {
             sync_tween(&mut state.fill, self.target_fill, now, self.duration, shell);
+        }
+        self.persist_state(*state);
+    }
+
+    fn cache_key(&self) -> u64 {
+        let mode = match self.mode {
+            Mode::Overlay => 0_u64,
+            Mode::Chip => 1_u64,
+        };
+        (u64::from(self.cluster_id) << 1) | mode
+    }
+
+    fn persist_state(&self, state: AnimatedClusterState) {
+        if let Ok(mut cache) = cluster_tween_cache().lock() {
+            cache.insert(self.cache_key(), state);
         }
     }
 }
@@ -111,7 +154,10 @@ where
     }
 
     fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(self.as_element(Color::TRANSPARENT, Color::TRANSPARENT).as_widget())]
+        vec![Tree::new(
+            self.as_element(Color::TRANSPARENT, Color::TRANSPARENT)
+                .as_widget(),
+        )]
     }
 
     fn diff(&self, tree: &mut Tree) {
@@ -162,8 +208,8 @@ where
 
         if let Event::Window(iced::window::Event::RedrawRequested(now)) = event {
             let border_animating = is_animating(state.border, *now, self.duration);
-            let fill_animating = matches!(self.mode, Mode::Overlay)
-                && is_animating(state.fill, *now, self.duration);
+            let fill_animating =
+                matches!(self.mode, Mode::Overlay) && is_animating(state.fill, *now, self.duration);
 
             if border_animating || fill_animating {
                 shell.request_redraw_at(RedrawRequest::At(*now + FRAME_DURATION));
@@ -175,6 +221,7 @@ where
                     state.fill.from = state.fill.to;
                 }
             }
+            self.persist_state(*state);
         }
 
         let border = sample_color(state.border, now, self.duration);
@@ -214,9 +261,15 @@ where
             Color::TRANSPARENT
         };
         let element = self.as_element(border, fill);
-        element
-            .as_widget()
-            .draw(&tree.children[0], renderer, theme, style, layout, cursor, viewport);
+        element.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            viewport,
+        );
     }
 
     fn mouse_interaction(
@@ -275,7 +328,9 @@ where
                 container(text(self.label.as_str()).size(11).color(border_color))
                     .padding([4, 8])
                     .style(move |_theme| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(Color::from_rgba8(20, 46, 30, 0.35))),
+                        background: Some(iced::Background::Color(Color::from_rgba8(
+                            20, 46, 30, 0.35,
+                        ))),
                         border: iced::border::rounded(6).color(border_color).width(1.0),
                         text_color: Some(border_color),
                         ..Default::default()

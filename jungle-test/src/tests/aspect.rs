@@ -130,9 +130,17 @@ where
     type Aspect = Focus;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(core: &CoreState, input: Self::Input) -> i32 {
         core.energy + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(core: &mut CoreState, output: EffectCompletion<Sleep>) -> Self::Output {
@@ -151,9 +159,17 @@ where
     type Aspect = Focus;
     type Input = i32;
     type Output = i32;
+    type Carry = ();
 
     fn emit(core: &CoreState, input: Self::Input) -> i32 {
         core.energy + input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(core: &mut CoreState, output: EffectCompletion<Eat>) -> Self::Output {
@@ -175,9 +191,17 @@ where
     type Aspect = Focus;
     type Input = A::In;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_value: &i32, input: Self::Input) -> A::In {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Output {
@@ -202,9 +226,17 @@ where
     type Aspect = Focus;
     type Input = A::In;
     type Output = i32;
+    type Carry = ();
 
     fn emit(_value: &i32, input: Self::Input) -> A::In {
         input
+    }
+
+    fn emit_with_carry(
+        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        (<Self as BoundAct<T>>::emit(view, input), ())
     }
 
     fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Output {
@@ -387,11 +419,11 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         Gorilla,
         CoreEnergyStep<Sleep, GorillaCoreCarrier>,
     > as Running>::run((gorilla_state, 2));
-    assert_eq!(gorilla_request.into_input(), 12);
+    assert_eq!(gorilla_request.0.into_input(), 12);
     let (gorilla_state, gorilla_emitted) = <BoundFlowStep<
         Gorilla,
         CoreEnergyStep<Sleep, GorillaCoreCarrier>,
-    > as Waiting>::accept((gorilla_state, Ok(20)));
+    > as Waiting>::accept((gorilla_state, Ok(20), ()));
     assert_eq!(gorilla_emitted, 20);
     assert_eq!(gorilla_state.core.energy, 20);
     assert_eq!(gorilla_state.core.age, 25);
@@ -405,11 +437,11 @@ fn aspect_step_reuses_focused_mapper_across_animals() {
         Tiger,
         CoreEnergyStep<Sleep, TigerCoreCarrier>,
     > as Running>::run((tiger_state, 4));
-    assert_eq!(tiger_request.into_input(), 10);
+    assert_eq!(tiger_request.0.into_input(), 10);
     let (tiger_state, tiger_emitted) = <BoundFlowStep<
         Tiger,
         CoreEnergyStep<Sleep, TigerCoreCarrier>,
-    > as Waiting>::accept((tiger_state, Ok(15)));
+    > as Waiting>::accept((tiger_state, Ok(15), ()));
     assert_eq!(tiger_emitted, 15);
     assert_eq!(tiger_state.core.energy, 15);
     assert_eq!(tiger_state.core.age, 12);
@@ -554,7 +586,7 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
         0,
     ));
     match even {
-        Either::Left((_state, request)) => assert_eq!(request.into_input(), 0),
+        Either::Left((_state, request)) => assert_eq!(request.0.into_input(), 0),
         Either::Right(_) => panic!("expected eat branch"),
     }
 
@@ -571,7 +603,7 @@ fn tiger_first_step_conditional_selects_branch_from_stripe_parity() {
     ));
     match odd {
         Either::Left(_) => panic!("expected sleep branch"),
-        Either::Right((_state, request)) => assert_eq!(request.into_input(), 0),
+        Either::Right((_state, request)) => assert_eq!(request.0.into_input(), 0),
     }
 }
 

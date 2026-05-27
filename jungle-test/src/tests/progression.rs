@@ -96,21 +96,21 @@ impl StepHarness {
         Step: StepExecutor,
     {
         let (state, request) = <Step as Running>::run((state, input));
-        let _prepared = request.into_input();
-        <Step as Waiting>::accept((state, completion))
+        let _prepared = request.0.into_input();
+        <Step as Waiting>::accept((state, completion, ()))
     }
 }
 
 trait StepExecutor:
-    Running<In = (i32, i32), Out = (i32, EffectRequest<Self::Effect>)>
-    + Waiting<In = (i32, EffectCompletion<Self::Effect>), Out = (i32, i32)>
+    Running<In = (i32, i32), Out = (i32, (EffectRequest<Self::Effect>, ()))>
+    + Waiting<In = (i32, EffectCompletion<Self::Effect>, ()), Out = (i32, i32)>
 {
     type Effect: EffectSchema<In = i32, Out = i32, Err = ()>;
 }
 
 impl<A> StepExecutor for BoundFlowStep<ProgressAnimal, A>
 where
-    A: BoundAct<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32>,
+    A: BoundAct<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32, Carry = ()>,
     <A as BoundAct<ProgressAnimal>>::Effect:
         EffectSchema<In = i32, Out = i32, Err = ()> + Effect<()>,
 {

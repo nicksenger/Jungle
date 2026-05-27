@@ -1,6 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use crate::effect::{Monad, Rest};
+use crate::flow::loop2::{Loop2, Loop2Container};
 use crate::instrumentation::{
     Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
 };
@@ -42,6 +43,8 @@ pub struct BassistState {
     articulation: BassArticulation,
     ostinato_loops_remaining: u8,
     riff_loops_remaining: u8,
+    #[jungle(focus)]
+    loop2: Loop2Container<BassArticulation>,
 }
 
 impl Default for BassistState {
@@ -49,7 +52,8 @@ impl Default for BassistState {
         Self {
             articulation: BassArticulation::Picked,
             ostinato_loops_remaining: 1,
-            riff_loops_remaining: 3,
+            riff_loops_remaining: 1,
+            loop2: Loop2Container::new(BassArticulation::Picked),
         }
     }
 }
@@ -149,7 +153,7 @@ impl LoopCondition<BassistState> for BassRiffLoopRemaining {
 pub struct UseBassTurnaroundSection;
 impl Condition<(BassistState, ())> for UseBassTurnaroundSection {
     fn choose((state, _): &(BassistState, ())) -> bool {
-        state.riff_loops_remaining <= 1
+        state.riff_loops_remaining <= 0
     }
 }
 
@@ -208,13 +212,18 @@ pub struct BassIntro(
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Transparent<IntroSectionMeta, BassSection01>,
     While<BassRiffLoopRemaining, BassRiffLoopBody>,
+    Transparent<IntroSectionMeta, BassSection06>,
     Transparent<IntroSectionMeta, BassSection07>,
     Transparent<IntroSectionMeta, BassSection08>,
 );
 
 #[derive(Flow)]
 pub struct BassSection01(
-    Transparent<IntroSectionMeta, BassPart01>,
+    Transparent<
+        IntroSectionMeta,
+        //BassPart01,
+        Loop2<BassArticulation, LoopedBassPart01Left, LoopedBassPart01Right>,
+    >,
     Transparent<IntroSectionMeta, BassPart02>,
     Transparent<IntroSectionMeta, BassPart03>,
     Transparent<IntroSectionMeta, BassPart04>,
@@ -290,7 +299,12 @@ pub struct BassSection08(
 );
 
 #[derive(Flow)]
-pub struct BassPart01DriveTicks(Octa<Thump46Tick>, Quad<Thump46Tick>, Double<Thump46Tick>);
+pub struct BassPart01DriveTicks(
+    Octa<Thump46Tick>,
+    Quad<Thump46Tick>,
+    Double<Thump46Tick>,
+    Thump46Tick,
+);
 
 #[derive(Flow)]
 pub struct BassPart02HighTicks(
@@ -334,6 +348,24 @@ pub struct BassDriveExit(
     Step<Thump<32, 192, 192>>,
     Step<Thump<30, 192, 192>>,
     Step<Thump<27, 96, 96>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart01Right(Transparent<IntroSectionMeta, BassPart01DriveTicks>);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart01Left(
+    Step<Thump<46, 1536, 1536>>,
+    Step<Thump<44, 1344, 1344>>,
+    Step<Thump<34, 192, 192>>,
+    Step<Thump<30, 1152, 1344>>,
+    Step<Thump<37, 96, 96>>,
+    Step<Thump<38, 96, 96>>,
+    Step<Thump<39, 1152, 1344>>,
+    Step<Thump<44, 96, 96>>,
+    Step<Thump<45, 96, 96>>,
 );
 
 #[derive(Flow)]
@@ -559,7 +591,7 @@ pub struct BassPart10(
     Step<Thump<32, 192, 192>>,
     Step<Thump<30, 192, 192>>,
     Step<Thump<31, 192, 192>>,
-    Transparent<IntroSectionMeta, BassDriveCadence>,
+    Transparent<IntroSectionMeta, BassDriveCadenceLead>,
 );
 
 #[derive(Flow)]
@@ -1080,8 +1112,8 @@ pub struct BassPart31(
     Step<Thump<34, 192, 192>>,
     Step<Thump<34, 192, 192>>,
     Step<Thump<27, 64, 64>>,
-    Step<Thump<27, 63, 63>>,
-    Step<Thump<27, 64, 64>>,
+    Step<Thump<27, 127, 63>>,
+    Step<Thump<27, 0, 64>>,
     Step<Thump<34, 192, 384>>,
     Step<Thump<39, 384, 384>>,
     Step<Thump<29, 192, 192>>,

@@ -595,7 +595,7 @@ fn example_flow_for_dumb_robot() {}
 fn while_running_checks_state_before_iteration() {
     let run = <WhileTickFlow as Running>::run((true, (0, 1)));
     match run {
-        Some((_state, request)) => assert_eq!(request.into_input(), 1),
+        Some((_state, (request, ()))) => assert_eq!(request.into_input(), 1),
         None => panic!("expected iteration to run"),
     }
 
@@ -605,7 +605,7 @@ fn while_running_checks_state_before_iteration() {
 
 #[test]
 fn while_waiting_passthroughs_optional_branch() {
-    let waited = <WhileTickFlow as Waiting>::accept(Some((0, Ok(2))));
+    let waited = <WhileTickFlow as Waiting>::accept(Some((0, Ok(2), ())));
     match waited {
         Some((state, emitted)) => {
             assert_eq!(state, 2);

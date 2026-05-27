@@ -20,18 +20,96 @@ pub struct TheJungle {
     cymbal: Cymbal,
     bpm: f32,
     metronome: Metronome,
+    animal_volumes: AnimalVolumes,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AnimalVolumes {
+    lead_vocalist: f32,
+    lead_guitarist: f32,
+    rhythm_guitarist: f32,
+    bassist: f32,
+    drummer: f32,
+}
+
+impl Default for AnimalVolumes {
+    fn default() -> Self {
+        Self {
+            lead_vocalist: 0.5,
+            lead_guitarist: 0.5,
+            rhythm_guitarist: 0.5,
+            bassist: 0.5,
+            drummer: 0.5,
+        }
+    }
+}
+
+impl AnimalVolumes {
+    const LEAD_VOCALIST_LANE_ID: u32 = 0;
+    const LEAD_GUITARIST_LANE_ID: u32 = 1;
+    const RHYTHM_GUITARIST_LANE_ID: u32 = 2;
+    const BASSIST_LANE_ID: u32 = 3;
+    const DRUMMER_LANE_ID: u32 = 4;
+
+    pub fn with_lead_vocalist(mut self, volume: f32) -> Self {
+        self.lead_vocalist = volume;
+        self
+    }
+
+    pub fn with_lead_guitarist(mut self, volume: f32) -> Self {
+        self.lead_guitarist = volume;
+        self
+    }
+
+    pub fn with_rhythm_guitarist(mut self, volume: f32) -> Self {
+        self.rhythm_guitarist = volume;
+        self
+    }
+
+    pub fn with_bassist(mut self, volume: f32) -> Self {
+        self.bassist = volume;
+        self
+    }
+
+    pub fn with_drummer(mut self, volume: f32) -> Self {
+        self.drummer = volume;
+        self
+    }
+
+    pub fn for_lane(self, lane_id: u32) -> f32 {
+        match lane_id {
+            Self::LEAD_VOCALIST_LANE_ID => self.lead_vocalist,
+            Self::LEAD_GUITARIST_LANE_ID => self.lead_guitarist,
+            Self::RHYTHM_GUITARIST_LANE_ID => self.rhythm_guitarist,
+            Self::BASSIST_LANE_ID => self.bassist,
+            Self::DRUMMER_LANE_ID => self.drummer,
+            _ => 0.5,
+        }
+    }
 }
 
 impl TheJungle {
     pub fn new(audio_handle: AudioHandle, bpm: f32) -> Self {
         let synth_handle = SynthHandle::new();
         let metronome = Metronome::spawn(bpm);
-        Self::new_with_metronome_and_synth(audio_handle, synth_handle, bpm, metronome)
+        Self::new_with_metronome_and_synth_and_volumes(
+            audio_handle,
+            synth_handle,
+            bpm,
+            metronome,
+            AnimalVolumes::default(),
+        )
     }
 
     pub fn new_with_metronome(audio_handle: AudioHandle, bpm: f32, metronome: Metronome) -> Self {
         let synth_handle = SynthHandle::new();
-        Self::new_with_metronome_and_synth(audio_handle, synth_handle, bpm, metronome)
+        Self::new_with_metronome_and_synth_and_volumes(
+            audio_handle,
+            synth_handle,
+            bpm,
+            metronome,
+            AnimalVolumes::default(),
+        )
     }
 
     pub fn new_with_metronome_and_synth(
@@ -39,6 +117,22 @@ impl TheJungle {
         synth_handle: SynthHandle,
         bpm: f32,
         metronome: Metronome,
+    ) -> Self {
+        Self::new_with_metronome_and_synth_and_volumes(
+            audio_handle,
+            synth_handle,
+            bpm,
+            metronome,
+            AnimalVolumes::default(),
+        )
+    }
+
+    pub fn new_with_metronome_and_synth_and_volumes(
+        audio_handle: AudioHandle,
+        synth_handle: SynthHandle,
+        bpm: f32,
+        metronome: Metronome,
+        animal_volumes: AnimalVolumes,
     ) -> Self {
         Self {
             rhythm_guitar: ElectricGuitar::new(audio_handle.clone(), synth_handle.clone()),
@@ -51,6 +145,7 @@ impl TheJungle {
             cymbal: Cymbal::new(audio_handle, synth_handle),
             bpm,
             metronome,
+            animal_volumes,
         }
     }
 
@@ -92,6 +187,10 @@ impl TheJungle {
 
     pub fn metronome(&self) -> &Metronome {
         &self.metronome
+    }
+
+    pub fn animal_volume_for_lane(&self, lane_id: u32) -> f32 {
+        self.animal_volumes.for_lane(lane_id)
     }
 }
 

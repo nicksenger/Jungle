@@ -361,27 +361,51 @@ pub trait ExecutorFlow {
     fn build_steps() -> DynFlow<Self::State>;
 }
 
-pub struct TypedErasedStep<Step> {
+pub trait StepCarry {
+    type Carry: Send;
+}
+
+impl<T, A> StepCarry for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAct<T>,
+    <A as BoundAct<T>>::Carry: Send,
+{
+    type Carry = A::Carry;
+}
+
+pub struct TypedErasedStep<Step>
+where
+    Step: StepCarry,
+{
     node_id: u32,
     complete: bool,
     waiting_completion: bool,
     pending_inline_input: Option<Serialized>,
+    pending_carry: Option<<Step as StepCarry>::Carry>,
     marker: core::marker::PhantomData<fn() -> Step>,
 }
 
-impl<Step> TypedErasedStep<Step> {
+impl<Step> TypedErasedStep<Step>
+where
+    Step: StepCarry,
+{
     pub fn new() -> Self {
         Self {
             node_id: 0,
             complete: false,
             waiting_completion: false,
             pending_inline_input: None,
+            pending_carry: None,
             marker: core::marker::PhantomData,
         }
     }
 }
 
-impl<Step> Default for TypedErasedStep<Step> {
+impl<Step> Default for TypedErasedStep<Step>
+where
+    Step: StepCarry,
+{
     fn default() -> Self {
         Self::new()
     }
@@ -391,6 +415,7 @@ impl<T, A> ErasedFlow<T::State> for TypedErasedStep<BoundFlowStep<T, A>>
 where
     T: Animal,
     A: BoundAct<T>,
+    <A as BoundAct<T>>::Carry: Send + 'static,
     <A as BoundAct<T>>::Effect: Effect<()>,
     <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: 'static,
@@ -416,7 +441,9 @@ where
         }
 
         let typed_input = deserialize_step_input::<A::Input>(&input)?;
-        let (state, _request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let (state, (_request, carry)) =
+            <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        self.pending_carry = Some(carry);
         let completion = Ok(postcard::to_allocvec(&())
             .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
         self.waiting_completion = true;
@@ -447,7 +474,8 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, err)),
         };
-        let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let (state, (request, carry)) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        self.pending_carry = Some(carry);
         let request = match postcard::to_allocvec(&request.into_input()) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -479,7 +507,8 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, err)),
         };
-        let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let (state, (request, carry)) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        self.pending_carry = Some(carry);
         let effect_input = request.into_input();
         let request = match postcard::to_allocvec(&effect_input) {
             Ok(request) => request,
@@ -528,8 +557,12 @@ where
             .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
+        let carry = self
+            .pending_carry
+            .take()
+            .expect("carry must exist while waiting for completion");
         let (state, emitted) =
-            <BoundFlowStep<T, A> as crate::Waiting>::accept((state, typed_completion));
+            <BoundFlowStep<T, A> as crate::Waiting>::accept((state, typed_completion, carry));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -551,16 +584,23 @@ where
     }
 }
 
-pub struct ContextualTypedErasedStep<Context, R> {
+pub struct ContextualTypedErasedStep<Context, R>
+where
+    R: StepCarry,
+{
     context: Arc<Context>,
     node_id: u32,
     complete: bool,
     waiting_completion: bool,
     pending_inline_input: Option<Serialized>,
+    pending_carry: Option<<R as StepCarry>::Carry>,
     marker: core::marker::PhantomData<fn() -> R>,
 }
 
-impl<Context, R> ContextualTypedErasedStep<Context, R> {
+impl<Context, R> ContextualTypedErasedStep<Context, R>
+where
+    R: StepCarry,
+{
     pub fn new(context: Arc<Context>) -> Self {
         Self {
             context,
@@ -568,6 +608,7 @@ impl<Context, R> ContextualTypedErasedStep<Context, R> {
             complete: false,
             waiting_completion: false,
             pending_inline_input: None,
+            pending_carry: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -578,6 +619,7 @@ where
     Context: Send + Sync + 'static,
     T: Animal,
     A: BoundAct<T>,
+    <A as BoundAct<T>>::Carry: Send + 'static,
     <A as BoundAct<T>>::Effect: Effect<Context>,
     <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
@@ -601,7 +643,9 @@ where
         }
 
         let typed_input = deserialize_step_input::<A::Input>(&input)?;
-        let (state, _request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let (state, (_request, carry)) =
+            <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        self.pending_carry = Some(carry);
         let completion = Ok(postcard::to_allocvec(&())
             .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
         self.waiting_completion = true;
@@ -632,7 +676,8 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, err)),
         };
-        let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let (state, (request, carry)) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        self.pending_carry = Some(carry);
         let request = match postcard::to_allocvec(&request.into_input()) {
             Ok(request) => request,
             Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
@@ -664,7 +709,8 @@ where
             Ok(typed_input) => typed_input,
             Err(err) => return Err((state, err)),
         };
-        let (state, request) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        let (state, (request, carry)) = <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+        self.pending_carry = Some(carry);
         let effect_input = request.into_input();
         let request = match postcard::to_allocvec(&effect_input) {
             Ok(request) => request,
@@ -717,8 +763,12 @@ where
             .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
 
+        let carry = self
+            .pending_carry
+            .take()
+            .expect("carry must exist while waiting for completion");
         let (state, emitted) =
-            <BoundFlowStep<T, A> as crate::Waiting>::accept((state, typed_completion));
+            <BoundFlowStep<T, A> as crate::Waiting>::accept((state, typed_completion, carry));
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -2438,6 +2488,7 @@ impl<T, A> BuildFlow<DynFlow<T::State>> for BoundFlowStep<T, A>
 where
     T: Animal + 'static,
     A: BoundAct<T> + 'static,
+    <A as BoundAct<T>>::Carry: Send + 'static,
     <A as BoundAct<T>>::Effect: Effect<()> + 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
@@ -2746,6 +2797,7 @@ where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
     A: BoundAct<T> + 'static,
+    <A as BoundAct<T>>::Carry: Send + 'static,
     <A as BoundAct<T>>::Effect: Effect<Context> + 'static,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize,
     <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
