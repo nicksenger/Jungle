@@ -17,6 +17,7 @@ const DEFERRED_STREAM_SLOW_WAIT_WARN_MS: u64 = 400;
 const DEFERRED_STREAM_LAG_WARN_MS: u64 = 150;
 const DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS: i64 = 2_000;
 const DEFERRED_STREAM_SLOW_DECISION_WARN_US: u128 = 500;
+const AV_OVERLAY_BYTES: &[u8] = include_bytes!("../assets/jungle.mkv");
 
 static DEFERRED_STREAM_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static DEFERRED_STREAM_WAIT_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -450,16 +451,17 @@ impl WelcomeUi {
                 .title("Welcome: Drums")
                 .eject_live_animal::<Drums, _>(client, journey)
         });
-        let av_overlay = match iced_av1::widget::State::new() {
-            Ok(state) => Some(state),
-            Err(error) => {
-                warn!(
-                    error = %error,
-                    "failed to initialize AV overlay state; continuing without video overlay"
-                );
-                None
-            }
-        };
+        let av_overlay =
+            match iced_av1::widget::State::new_with_media_bytes(AV_OVERLAY_BYTES.to_vec()) {
+                Ok(state) => Some(state),
+                Err(error) => {
+                    warn!(
+                        error = %error,
+                        "failed to initialize AV overlay state; continuing without video overlay"
+                    );
+                    None
+                }
+            };
 
         (
             Self {
