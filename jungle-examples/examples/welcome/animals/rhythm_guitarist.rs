@@ -1879,16 +1879,24 @@ mod tests {
         sleep_fired_count: u32,
     }
 
+    #[derive(Clone, Copy)]
+    struct JourneyEventCeilings {
+        total_events: u32,
+        input_count: u32,
+        success_count: u32,
+    }
+
     async fn collect_stream_stats(
         mut stream: jungle_sdk::client::JourneyUpdateSubscription,
         journey_id: uuid::Uuid,
+        ceilings: Option<JourneyEventCeilings>,
     ) -> JourneyStreamStats {
         let mut total_events = 0_u32;
         let mut input_count = 0_u32;
         let mut success_count = 0_u32;
-        let mut failed_count = 0_u32;
-        let mut sleep_scheduled_count = 0_u32;
-        let mut sleep_fired_count = 0_u32;
+        let failed_count = 0_u32;
+        let sleep_scheduled_count = 0_u32;
+        let sleep_fired_count = 0_u32;
         let mut last_sequence_id: Option<u64> = None;
 
         while let Some(next) = stream.next().await {
@@ -1914,19 +1922,37 @@ mod tests {
                 }
                 RunnerUpdateOut::EffectFailureOutput { uuid, .. } => {
                     assert_eq!(uuid, journey_id, "stream update should match journey");
-                    failed_count += 1;
-                    total_events += 1;
+                    panic!("unexpected effect-failure event emitted for rhythm guitarist flow");
                 }
                 RunnerUpdateOut::SleepScheduled { uuid, .. } => {
                     assert_eq!(uuid, journey_id, "stream update should match journey");
-                    total_events += 1;
-                    sleep_scheduled_count += 1;
+                    panic!("unexpected sleep-scheduled event emitted for rhythm guitarist flow");
                 }
                 RunnerUpdateOut::SleepFired { uuid, .. } => {
                     assert_eq!(uuid, journey_id, "stream update should match journey");
-                    total_events += 1;
-                    sleep_fired_count += 1;
+                    panic!("unexpected sleep-fired event emitted for rhythm guitarist flow");
                 }
+            }
+
+            if let Some(ceilings) = ceilings {
+                assert!(
+                    input_count <= ceilings.input_count,
+                    "unexpected extra effect-input events; expected at most {}, got {}",
+                    ceilings.input_count,
+                    input_count
+                );
+                assert!(
+                    success_count <= ceilings.success_count,
+                    "unexpected extra effect-success events; expected at most {}, got {}",
+                    ceilings.success_count,
+                    success_count
+                );
+                assert!(
+                    total_events <= ceilings.total_events,
+                    "unexpected extra total events; expected at most {}, got {}",
+                    ceilings.total_events,
+                    total_events
+                );
             }
         }
 
@@ -1975,8 +2001,18 @@ mod tests {
             .subscribe_step_updates(journey_id, None)
             .await
             .expect("subscribe_step_updates should succeed");
-        let stream_task =
-            tokio::spawn(async move { collect_stream_stats(stream, journey_id).await });
+        let stream_task = tokio::spawn(async move {
+            collect_stream_stats(
+                stream,
+                journey_id,
+                Some(JourneyEventCeilings {
+                    total_events: EXPECTED_DUPLICATE_EXECUTION_TOTAL_EVENTS,
+                    input_count: EXPECTED_DUPLICATE_EXECUTION_INPUT_EVENTS,
+                    success_count: EXPECTED_DUPLICATE_EXECUTION_SUCCESS_EVENTS,
+                }),
+            )
+            .await
+        });
 
         await_completion_with_timeout(&client, journey_id, Duration::from_secs(300)).await;
         let stats = stream_task
@@ -2101,7 +2137,7 @@ mod tests {
                 .expect("subscribe_step_updates should succeed");
             let stream_journey_id = *journey_id;
             stream_tasks.push(tokio::spawn(async move {
-                collect_stream_stats(stream, stream_journey_id).await
+                collect_stream_stats(stream, stream_journey_id, None).await
             }));
         }
 
