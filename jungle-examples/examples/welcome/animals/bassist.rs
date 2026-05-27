@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use jungle_sdk::prelude::*;
 
 use crate::effect::{Monad, Rest};
@@ -37,21 +39,32 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     }
 }
 
-pub struct Loop2Noop;
+pub struct Loop2Noop<T>(PhantomData<fn() -> T>);
 #[jungle::act]
-impl Act for Loop2Noop {
+impl<T> Act for Loop2Noop<T> {
     type Effect = Noop;
-    type Input = ();
-    type Output = ();
+    type Input = T;
+    type Output = T;
+    type Carry = T;
 
-    fn emit(_state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+    fn emit(
+        _state: &BassArticulation,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
+        ((), input)
+    }
 
-    fn absorb(_state: &mut BassArticulation, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut BassArticulation,
+        output: EffectCompletion<Self::Effect>,
+        carry: Self::Carry,
+    ) -> Self::Output {
         output.expect("loop2 no-op step should complete");
+        carry
     }
 }
 
-type BassLoop2Noop = Step<Loop2Noop>;
+type BassLoop2Noop = Step<Loop2Noop<()>>;
 
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct BassistState {
