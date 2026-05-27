@@ -209,7 +209,9 @@ fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Du
 
 fn articulation_output_shape(articulation: VocalsArticulation) -> (f32, f32) {
     match articulation {
-        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => (0.83, 1.0),
+        VocalsArticulation::Clean => (0.83, 1.0),
+        // Keep lead-vocal speech synthesis twice as loud by default in the welcome example.
+        VocalsArticulation::Formant(_) => (1.66, 1.0),
         VocalsArticulation::GroupHarmony => (0.78, 1.0),
     }
 }
