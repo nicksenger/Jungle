@@ -2746,6 +2746,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
         (
             AnimatedStepNode::<ViewerEvent<Self::Message>>::new(
+                cx.display_id,
                 role,
                 cx.label.to_string(),
                 fill,
