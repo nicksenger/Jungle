@@ -1834,8 +1834,7 @@ mod tests {
     use super::{RhythmGuitaristState, RhythmJoinMonad100Animal};
     use crate::ecosystem::TheJungle;
     const DUPLICATE_EXECUTION_WORKER_COUNT: usize = 5;
-    const DUPLICATE_EXECUTION_TEST_BPM: f32 = 1_000.0;
-    const DUPLICATE_EXECUTION_START_OFFSET: Duration = Duration::from_secs(60 * 60 * 24 * 365);
+    const DUPLICATE_EXECUTION_TEST_BPM: f32 = 123.0;
     // Deterministic default RhythmGuitarFlow path executes 1,221 effect steps:
     // each step emits one EffectInput and one EffectSuccessOutput.
     const EXPECTED_DUPLICATE_EXECUTION_INPUT_EVENTS: u32 = 1_221;
@@ -1951,10 +1950,7 @@ mod tests {
             .expect("local client should build");
 
         let (shared_audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
-        let shared_metronome = crate::metronome::Metronome::spawn_with_offset(
-            DUPLICATE_EXECUTION_TEST_BPM,
-            DUPLICATE_EXECUTION_START_OFFSET,
-        );
+        let shared_metronome = crate::metronome::Metronome::spawn(DUPLICATE_EXECUTION_TEST_BPM);
 
         let mut worker_handles = Vec::with_capacity(DUPLICATE_EXECUTION_WORKER_COUNT);
         for _ in 0..DUPLICATE_EXECUTION_WORKER_COUNT {
@@ -1982,7 +1978,7 @@ mod tests {
         let stream_task =
             tokio::spawn(async move { collect_stream_stats(stream, journey_id).await });
 
-        await_completion_with_timeout(&client, journey_id, Duration::from_secs(900)).await;
+        await_completion_with_timeout(&client, journey_id, Duration::from_secs(300)).await;
         let stats = stream_task
             .await
             .expect("stream task should join cleanly after completion");
