@@ -224,7 +224,11 @@ pub struct BassSection01(
         //BassPart01,
         Loop2<BassArticulation, LoopedBassPart01Left, LoopedBassPart01Right>,
     >,
-    Transparent<IntroSectionMeta, BassPart02>,
+    Transparent<
+        IntroSectionMeta,
+        //BassPart02
+        Loop2<BassArticulation, LoopedBassPart02Left, LoopedBassPart02Right>,
+    >,
     Transparent<IntroSectionMeta, BassPart03>,
     Transparent<IntroSectionMeta, BassPart04>,
     Transparent<IntroSectionMeta, BassPart05>,
@@ -381,6 +385,20 @@ pub struct BassPart01(
     Step<Thump<44, 96, 96>>,
     Step<Thump<45, 96, 96>>,
     Transparent<IntroSectionMeta, BassPart01DriveTicks>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart02Left(
+    Step<Thump<46, 96, 96>>,
+    Transparent<IntroSectionMeta, BassPart02HighTicks>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = BassArticulation)]
+pub struct LoopedBassPart02Right(
+    Step<Thump<43, 96, 96>>,
+    Transparent<IntroSectionMeta, BassPart02LowTicks>,
 );
 
 #[derive(Flow)]
