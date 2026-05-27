@@ -456,7 +456,7 @@ impl Default for LeadVocalistState {
                     "to",
                     "come",
                     "Wel",
-                    "huh",
+                    "ha",
                 ]
                 .into_iter()
                 .map(phonemes_from_text)
