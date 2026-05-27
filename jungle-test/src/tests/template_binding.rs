@@ -1749,6 +1749,194 @@ async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_l
     let _ = worker_handle.await;
 }
 
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
+)]
+struct NoopLoop2TraceState {
+    left_hits: u8,
+    right_hits: u8,
+    order: u8,
+}
+
+struct NoopLoop2SetCounter<St>(core::marker::PhantomData<fn() -> St>);
+#[allow(private_interfaces)]
+#[jungle::act]
+impl<St> Act for NoopLoop2SetCounter<St> {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
+
+    fn absorb(state: &mut Loop2Container<St>, _output: EffectCompletion<Self::Effect>) -> Self::Output {
+        state.counter = 2;
+    }
+}
+
+struct NoopLoop2DecCounter<St>(core::marker::PhantomData<fn() -> St>);
+#[allow(private_interfaces)]
+#[jungle::act]
+impl<St> Act for NoopLoop2DecCounter<St> {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
+
+    fn absorb(state: &mut Loop2Container<St>, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("noop loop2 decrement step should succeed");
+        state.counter = state.counter.saturating_sub(1);
+    }
+}
+
+struct NoopFlattenEither<T, S>(core::marker::PhantomData<fn() -> (T, S)>);
+#[jungle::act]
+impl<T, S> Act for NoopFlattenEither<T, S> {
+    type Effect = Noop;
+    type Input = Either<T, T>;
+    type Output = T;
+    type Carry = Either<T, T>;
+
+    fn emit(_state: &S, input: Self::Input) -> ((), Either<T, T>) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut S,
+        output: EffectCompletion<Self::Effect>,
+        carry: Either<T, T>,
+    ) -> Self::Output {
+        output.expect("noop loop2 flatten step should succeed");
+        match carry {
+            Either::Left(value) | Either::Right(value) => value,
+        }
+    }
+}
+
+struct NoopLoop2CounterGt0;
+impl<St> LoopCondition<Loop2Container<St>> for NoopLoop2CounterGt0 {
+    type Arg = ();
+
+    fn should_continue(state: &Loop2Container<St>) -> bool {
+        state.counter > 0
+    }
+}
+
+struct NoopLoop2CounterIsEven;
+impl<St> Condition<(Loop2Container<St>, ())> for NoopLoop2CounterIsEven {
+    fn choose((state, _): &(Loop2Container<St>, ())) -> bool {
+        state.counter % 2 == 0
+    }
+}
+
+struct NoopLoop2LeftSpec;
+#[jungle::act]
+impl Act for NoopLoop2LeftSpec {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &NoopLoop2TraceState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut NoopLoop2TraceState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("noop loop2 left arm should succeed");
+        state.left_hits = state.left_hits.saturating_add(1);
+        state.order = state.order.saturating_mul(10).saturating_add(1);
+    }
+}
+
+struct NoopLoop2RightSpec;
+#[jungle::act]
+impl Act for NoopLoop2RightSpec {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &NoopLoop2TraceState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut NoopLoop2TraceState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("noop loop2 right arm should succeed");
+        state.right_hits = state.right_hits.saturating_add(1);
+        state.order = state.order.saturating_mul(10).saturating_add(2);
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = NoopLoop2TraceState)]
+struct NoopLoop2LeftFlow(Step<NoopLoop2LeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = NoopLoop2TraceState)]
+struct NoopLoop2RightFlow(Step<NoopLoop2RightSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = Loop2Container<St>)]
+struct NoopLoop2Body<St, L: TraverseFlow, R: TraverseFlow>(
+    Conditional<FocusedCondition<NoopLoop2CounterIsEven, Loop2Container<St>>, L, R>,
+    Step<NoopFlattenEither<(), Loop2Container<St>>>,
+    Step<NoopLoop2DecCounter<St>>,
+);
+
+#[derive(Flow)]
+#[jungle(focus = Loop2Container<St>)]
+struct NoopLoop2<St, L: TraverseFlow, R: TraverseFlow>(
+    Step<NoopLoop2SetCounter<St>>,
+    While<FocusedLoopCondition<NoopLoop2CounterGt0, Loop2Container<St>>, NoopLoop2Body<St, L, R>>,
+);
+
+#[derive(
+    Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize,
+)]
+struct NoopLoop2HarnessState {
+    #[jungle(focus)]
+    loop2: Loop2Container<NoopLoop2TraceState>,
+}
+
+impl From<NoopLoop2TraceState> for NoopLoop2HarnessState {
+    fn from(seed: NoopLoop2TraceState) -> Self {
+        Self {
+            loop2: Loop2Container {
+                counter: 0,
+                st: seed,
+            },
+        }
+    }
+}
+
+type NoopLoop2Journey = NoopLoop2<NoopLoop2TraceState, NoopLoop2LeftFlow, NoopLoop2RightFlow>;
+
+struct NoopLoop2HarnessAnimal;
+#[jungle::animal(id = 58, generation = 0)]
+impl Animal for NoopLoop2HarnessAnimal {
+    type State = NoopLoop2HarnessState;
+    type Seed = NoopLoop2TraceState;
+    type Journey = NoopLoop2Journey;
+}
+
+#[test]
+fn template_binding_noop_loop2_repro_completes_during_executor_init() {
+    let mut exec = ManualExecutor::<NoopLoop2HarnessAnimal>::new(NoopLoop2HarnessState::from(
+        NoopLoop2TraceState::default(),
+    ));
+
+    assert!(!exec.is_complete());
+    let step: Result<(), ExecutorError> = exec.next_typed((), Ok::<(), ()>(()));
+    assert!(matches!(step, Err(ExecutorError::Complete)));
+    assert!(exec.is_complete());
+
+    let state = exec.into_state();
+    assert_eq!(state.loop2.counter, 0);
+    assert_eq!(state.loop2.st.left_hits, 1);
+    assert_eq!(state.loop2.st.right_hits, 1);
+    assert_eq!(state.loop2.st.order, 12);
+}
+
 #[derive(Flow)]
 struct InheritedAutoFocusLeafFlow(Step<NestedAutoBranchSpec>);
 
