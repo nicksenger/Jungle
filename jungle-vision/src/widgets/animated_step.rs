@@ -106,9 +106,7 @@ where
         let accent_border = vary_green_shade(Color::from_rgb8(58, 122, 86), self.step_id);
         let accent_role = vary_green_shade(Color::from_rgb8(168, 198, 181), self.step_id);
         let body = column![
-            text(self.role.as_str())
-                .size(10)
-                .color(accent_role),
+            text(self.role.as_str()).size(10).color(accent_role),
             text(self.label.as_str())
                 .size(13)
                 .color(Color::from_rgb8(223, 245, 230))
@@ -121,9 +119,7 @@ where
             .style(move |_theme, _status| iced::widget::button::Style {
                 background: Some(iced::Background::Color(Color { a: 0.8, ..fill })),
                 text_color: Color::from_rgb8(223, 245, 230),
-                border: iced::border::rounded(10)
-                    .color(accent_border)
-                    .width(1.0),
+                border: iced::border::rounded(10).color(accent_border).width(1.0),
                 shadow: iced::Shadow {
                     color: Color::from_rgba8(0, 0, 0, 0.35),
                     offset: iced::Vector::new(0.0, 2.0),

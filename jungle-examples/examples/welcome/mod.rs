@@ -324,7 +324,7 @@ fn run_with_ui(
         ))
     })?;
 
-    ui::run_ui(setup.client, setup.journeys, ui_shutdown)?;
+    ui::run_ui(setup.client, setup.journeys, setup.metronome, ui_shutdown)?;
 
     let thread_result = runtime_thread.join().map_err(|_| {
         error!("runtime thread panicked while running welcome example");
@@ -595,6 +595,7 @@ fn init_tracing() {
 struct UiSetup {
     client: ui::DeferredJungleClient<UiClient>,
     journeys: ui::JourneyIds,
+    metronome: metronome::Metronome,
 }
 
 #[derive(Clone)]
@@ -988,10 +989,15 @@ fn run_runtime_thread(
         if enable_headless_lag_probe {
             spawn_headless_lag_probe(ui_client.clone(), journeys);
         }
+        let ui_metronome = worker_metronomes.first().cloned().unwrap_or_else(|| {
+            metronome::Metronome::spawn_with_offset(bpm, Duration::from_secs_f32(skip_seconds))
+        });
+
         Ok::<(UiSetup, RuntimeKeepAlive), String>((
             UiSetup {
                 client: ui_client,
                 journeys,
+                metronome: ui_metronome,
             },
             keep_alive,
         ))
