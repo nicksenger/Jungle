@@ -22,7 +22,7 @@ const DEFERRED_STREAM_SLOW_DECISION_WARN_US: u128 = 500;
 const AV_OVERLAY_BYTES: &[u8] = include_bytes!("../assets/jungle.mkv");
 const VIDEO_FADE_IN: Duration = Duration::from_millis(180);
 const VIDEO_FADE_OUT: Duration = Duration::from_millis(220);
-const VIDEO_OVERLAY_TICK_INTERVAL: Duration = Duration::from_millis(50);
+const VIDEO_OVERLAY_TICK_INTERVAL: Duration = Duration::from_millis(500);
 
 static DEFERRED_STREAM_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static DEFERRED_STREAM_WAIT_COUNT: AtomicUsize = AtomicUsize::new(0);
