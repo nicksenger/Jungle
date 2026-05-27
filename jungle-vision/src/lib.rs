@@ -2,7 +2,7 @@ mod cluster_panel;
 mod widgets;
 
 use iced::futures::{self, Stream, StreamExt};
-use iced::widget::{button, column, container, row, stack, text, Space};
+use iced::widget::{button, column, container, row, text, Space};
 use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
@@ -450,9 +450,6 @@ pub enum EjectedViewerMessage {
     Retry,
 }
 
-type ClusterOverlayProvider =
-    Arc<dyn Fn(&ClusterViewCtx<'_>) -> Option<Element<'static, ViewerEvent<()>>>>;
-
 pub struct EjectedViewer<T, Scope>
 where
     T: JunglePanelTheme<Scope, Message = ()>,
@@ -467,8 +464,6 @@ where
     graph_widget_id: iced_sugiyama::Id,
     auto_pan_enabled: bool,
     auto_zoom_enabled: bool,
-    latest_visible_cluster_ids: Arc<std::sync::Mutex<Vec<u32>>>,
-    cluster_overlay_provider: Option<ClusterOverlayProvider>,
     _scope: std::marker::PhantomData<Scope>,
 }
 
@@ -501,24 +496,8 @@ where
             graph_widget_id,
             auto_pan_enabled: true,
             auto_zoom_enabled: true,
-            latest_visible_cluster_ids: Arc::new(std::sync::Mutex::new(Vec::new())),
-            cluster_overlay_provider: None,
             _scope: std::marker::PhantomData,
         }
-    }
-
-    pub fn set_cluster_overlay_provider(
-        &mut self,
-        provider: impl Fn(&ClusterViewCtx<'_>) -> Option<Element<'static, ViewerEvent<()>>> + 'static,
-    ) {
-        self.cluster_overlay_provider = Some(Arc::new(provider));
-    }
-
-    pub fn latest_visible_cluster_id(&self) -> Option<u32> {
-        self.latest_visible_cluster_ids
-            .lock()
-            .ok()
-            .and_then(|clusters| clusters.last().copied())
     }
 
     pub fn journey_name(&self) -> &str {
@@ -749,8 +728,6 @@ where
             self.graph_widget_id.clone(),
             self.auto_pan_enabled,
             self.auto_zoom_enabled,
-            &self.latest_visible_cluster_ids,
-            self.cluster_overlay_provider.as_ref(),
         )
         .map(|message| match message {
             Message::Theme(event) => EjectedViewerMessage::Theme(event),
@@ -1049,8 +1026,6 @@ where
             (ViewMode::Live { .. }, LiveState::Loaded(data)) => Some(data),
             _ => None,
         };
-        let no_cluster_snapshot = Arc::new(std::sync::Mutex::new(Vec::new()));
-
         let body = row![
             sidebar(journey_name, model, &self.state),
             graph_panel(
@@ -1063,8 +1038,6 @@ where
                 self.graph_widget_id.clone(),
                 self.auto_pan_enabled,
                 self.auto_zoom_enabled,
-                &no_cluster_snapshot,
-                None,
             )
         ]
         .height(Length::Fill)
@@ -1369,8 +1342,6 @@ fn graph_panel<'a, T, Scope>(
     graph_widget_id: iced_sugiyama::Id,
     auto_pan_enabled: bool,
     auto_zoom_enabled: bool,
-    latest_visible_cluster_ids: &Arc<std::sync::Mutex<Vec<u32>>>,
-    cluster_overlay_provider: Option<&'a ClusterOverlayProvider>,
 ) -> Element<'a, Message>
 where
     T: JunglePanelTheme<Scope, Message = ()>,
@@ -1702,15 +1673,6 @@ where
         visible_cluster_index_by_source.insert(source_index, visible_index);
     }
 
-    if let Ok(mut latest_clusters) = latest_visible_cluster_ids.lock() {
-        latest_clusters.clear();
-        latest_clusters.extend(
-            visible_cluster_source_indices
-                .iter()
-                .filter_map(|source_index| model.cluster_info.get(*source_index).map(|c| c.id)),
-        );
-    }
-
     set_cluster_fill_colors(visible_cluster_fills);
 
     let default_edge_style = EdgeStyle {
@@ -1952,26 +1914,8 @@ where
                 ClusterView::Expanded { overlay, .. } => overlay,
                 ClusterView::Collapsed { .. } => None,
             };
-            let custom_overlay = cluster_overlay_provider.and_then(|provider| provider(&cx));
-
-            match (base_overlay, custom_overlay) {
-                (None, None) => None,
-                (Some(base), None) => {
-                    Some(base.map(|_event| Message::Theme(ViewerEvent::Message(()))))
-                }
-                (None, Some(custom)) => {
-                    Some(custom.map(|_event| Message::Theme(ViewerEvent::Message(()))))
-                }
-                (Some(base), Some(custom)) => Some(
-                    stack([
-                        custom.map(|_event| Message::Theme(ViewerEvent::Message(()))),
-                        base.map(|_event| Message::Theme(ViewerEvent::Message(()))),
-                    ])
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .into(),
-                ),
-            }
+            base_overlay
+                .map(|overlay| overlay.map(|_event| Message::Theme(ViewerEvent::Message(()))))
         })
         .cluster_color(cluster_fill_color)
         .padding(24)

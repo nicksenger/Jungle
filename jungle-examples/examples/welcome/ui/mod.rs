@@ -10,7 +10,6 @@ use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, warn};
 use uuid::Uuid;
@@ -448,11 +447,6 @@ struct TickPlaybackPlan {
     rhythm_guitarist_panel: Option<VideoPlaybackRequest>,
     bass_panel: Option<VideoPlaybackRequest>,
     drums_panel: Option<VideoPlaybackRequest>,
-    lead_vocalist_cluster: Option<VideoPlaybackRequest>,
-    lead_guitarist_cluster: Option<VideoPlaybackRequest>,
-    rhythm_guitarist_cluster: Option<VideoPlaybackRequest>,
-    bass_cluster: Option<VideoPlaybackRequest>,
-    drums_cluster: Option<VideoPlaybackRequest>,
 }
 
 impl TickPlaybackPlan {
@@ -463,16 +457,6 @@ impl TickPlaybackPlan {
             Panel::RhythmGuitarist => self.rhythm_guitarist_panel,
             Panel::Bass => self.bass_panel,
             Panel::Drums => self.drums_panel,
-        }
-    }
-
-    fn cluster_request(self, panel: Panel) -> Option<VideoPlaybackRequest> {
-        match panel {
-            Panel::LeadVocalist => self.lead_vocalist_cluster,
-            Panel::LeadGuitarist => self.lead_guitarist_cluster,
-            Panel::RhythmGuitarist => self.rhythm_guitarist_cluster,
-            Panel::Bass => self.bass_cluster,
-            Panel::Drums => self.drums_cluster,
         }
     }
 }
@@ -486,11 +470,6 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
         rhythm_guitarist_panel: None,
         bass_panel: None,
         drums_panel: None,
-        lead_vocalist_cluster: None,
-        lead_guitarist_cluster: None,
-        rhythm_guitarist_cluster: None,
-        bass_cluster: None,
-        drums_cluster: None,
     },
     TickPlaybackPlan {
         tick: 4,
@@ -500,11 +479,6 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
         rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
         bass_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
         drums_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        lead_vocalist_cluster: None,
-        lead_guitarist_cluster: None,
-        rhythm_guitarist_cluster: None,
-        bass_cluster: None,
-        drums_cluster: None,
     },
     TickPlaybackPlan {
         tick: 40,
@@ -514,11 +488,6 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
         rhythm_guitarist_panel: None,
         bass_panel: None,
         drums_panel: None,
-        lead_vocalist_cluster: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        lead_guitarist_cluster: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        rhythm_guitarist_cluster: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        bass_cluster: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
-        drums_cluster: Some(VideoPlaybackRequest::new(0, 2_000, 0.5)),
     },
 ];
 
@@ -546,7 +515,6 @@ enum Message {
     Panel(Panel, jungle_vision::EjectedViewerMessage),
     AppVideo(iced_av1::widget::Message),
     PanelVideo(Panel, iced_av1::widget::Message),
-    ClusterVideo(Panel, iced_av1::widget::Message),
     Tick,
 }
 
@@ -575,21 +543,6 @@ struct WelcomeUi {
     rhythm_guitarist_panel_playback: RegionPlayback,
     bass_panel_playback: RegionPlayback,
     drums_panel_playback: RegionPlayback,
-    lead_vocalist_cluster_overlay: Arc<Mutex<Option<iced_av1::widget::State>>>,
-    lead_guitarist_cluster_overlay: Arc<Mutex<Option<iced_av1::widget::State>>>,
-    rhythm_guitarist_cluster_overlay: Arc<Mutex<Option<iced_av1::widget::State>>>,
-    bass_cluster_overlay: Arc<Mutex<Option<iced_av1::widget::State>>>,
-    drums_cluster_overlay: Arc<Mutex<Option<iced_av1::widget::State>>>,
-    lead_vocalist_cluster_playback: RegionPlayback,
-    lead_guitarist_cluster_playback: RegionPlayback,
-    rhythm_guitarist_cluster_playback: RegionPlayback,
-    bass_cluster_playback: RegionPlayback,
-    drums_cluster_playback: RegionPlayback,
-    lead_vocalist_target_cluster_id: Arc<Mutex<Option<u32>>>,
-    lead_guitarist_target_cluster_id: Arc<Mutex<Option<u32>>>,
-    rhythm_guitarist_target_cluster_id: Arc<Mutex<Option<u32>>>,
-    bass_target_cluster_id: Arc<Mutex<Option<u32>>>,
-    drums_target_cluster_id: Arc<Mutex<Option<u32>>>,
     shutdown: ShutdownFlag,
 }
 
@@ -600,27 +553,27 @@ impl WelcomeUi {
         metronome: Metronome,
         shutdown: ShutdownFlag,
     ) -> (Self, Task<Message>) {
-        let mut lead_vocalist = journeys.lead_vocalist.map(|journey| {
+        let lead_vocalist = journeys.lead_vocalist.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
                 .title("Welcome: Lead Vocalist")
                 .eject_live_animal::<LeadVocalist, _>(client.clone(), journey)
         });
-        let mut lead_guitarist = journeys.lead_guitarist.map(|journey| {
+        let lead_guitarist = journeys.lead_guitarist.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
                 .title("Welcome: Lead Guitarist")
                 .eject_live_animal::<LeadGuitarist, _>(client.clone(), journey)
         });
-        let mut rhythm_guitarist = journeys.rhythm_guitarist.map(|journey| {
+        let rhythm_guitarist = journeys.rhythm_guitarist.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
                 .title("Welcome: Rhythm Guitarist")
                 .eject_live_animal::<RhythmGuitarist, _>(client.clone(), journey)
         });
-        let mut bass = journeys.bass.map(|journey| {
+        let bass = journeys.bass.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
                 .title("Welcome: Bass")
                 .eject_live_animal::<Bass, _>(client.clone(), journey)
         });
-        let mut drums = journeys.drums.map(|journey| {
+        let drums = journeys.drums.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
                 .title("Welcome: Drums")
                 .eject_live_animal::<Drums, _>(client, journey)
@@ -632,60 +585,6 @@ impl WelcomeUi {
         let rhythm_guitarist_panel_overlay = init_video_state("rhythm guitarist panel overlay");
         let bass_panel_overlay = init_video_state("bass panel overlay");
         let drums_panel_overlay = init_video_state("drums panel overlay");
-        let lead_vocalist_cluster_overlay = Arc::new(Mutex::new(init_video_state(
-            "lead vocalist cluster overlay",
-        )));
-        let lead_guitarist_cluster_overlay = Arc::new(Mutex::new(init_video_state(
-            "lead guitarist cluster overlay",
-        )));
-        let rhythm_guitarist_cluster_overlay = Arc::new(Mutex::new(init_video_state(
-            "rhythm guitarist cluster overlay",
-        )));
-        let bass_cluster_overlay = Arc::new(Mutex::new(init_video_state("bass cluster overlay")));
-        let drums_cluster_overlay = Arc::new(Mutex::new(init_video_state("drums cluster overlay")));
-
-        let lead_vocalist_target_cluster_id = Arc::new(Mutex::new(None));
-        let lead_guitarist_target_cluster_id = Arc::new(Mutex::new(None));
-        let rhythm_guitarist_target_cluster_id = Arc::new(Mutex::new(None));
-        let bass_target_cluster_id = Arc::new(Mutex::new(None));
-        let drums_target_cluster_id = Arc::new(Mutex::new(None));
-
-        if let Some(viewer) = lead_vocalist.as_mut() {
-            let target_cluster = lead_vocalist_target_cluster_id.clone();
-            let overlay = lead_vocalist_cluster_overlay.clone();
-            viewer.set_cluster_overlay_provider(move |cx| {
-                build_cluster_overlay_element(cx, &target_cluster, &overlay)
-            });
-        }
-        if let Some(viewer) = lead_guitarist.as_mut() {
-            let target_cluster = lead_guitarist_target_cluster_id.clone();
-            let overlay = lead_guitarist_cluster_overlay.clone();
-            viewer.set_cluster_overlay_provider(move |cx| {
-                build_cluster_overlay_element(cx, &target_cluster, &overlay)
-            });
-        }
-        if let Some(viewer) = rhythm_guitarist.as_mut() {
-            let target_cluster = rhythm_guitarist_target_cluster_id.clone();
-            let overlay = rhythm_guitarist_cluster_overlay.clone();
-            viewer.set_cluster_overlay_provider(move |cx| {
-                build_cluster_overlay_element(cx, &target_cluster, &overlay)
-            });
-        }
-        if let Some(viewer) = bass.as_mut() {
-            let target_cluster = bass_target_cluster_id.clone();
-            let overlay = bass_cluster_overlay.clone();
-            viewer.set_cluster_overlay_provider(move |cx| {
-                build_cluster_overlay_element(cx, &target_cluster, &overlay)
-            });
-        }
-        if let Some(viewer) = drums.as_mut() {
-            let target_cluster = drums_target_cluster_id.clone();
-            let overlay = drums_cluster_overlay.clone();
-            viewer.set_cluster_overlay_provider(move |cx| {
-                build_cluster_overlay_element(cx, &target_cluster, &overlay)
-            });
-        }
-
         (
             Self {
                 lead_vocalist,
@@ -707,21 +606,6 @@ impl WelcomeUi {
                 rhythm_guitarist_panel_playback: RegionPlayback::hidden(),
                 bass_panel_playback: RegionPlayback::hidden(),
                 drums_panel_playback: RegionPlayback::hidden(),
-                lead_vocalist_cluster_overlay,
-                lead_guitarist_cluster_overlay,
-                rhythm_guitarist_cluster_overlay,
-                bass_cluster_overlay,
-                drums_cluster_overlay,
-                lead_vocalist_cluster_playback: RegionPlayback::hidden(),
-                lead_guitarist_cluster_playback: RegionPlayback::hidden(),
-                rhythm_guitarist_cluster_playback: RegionPlayback::hidden(),
-                bass_cluster_playback: RegionPlayback::hidden(),
-                drums_cluster_playback: RegionPlayback::hidden(),
-                lead_vocalist_target_cluster_id,
-                lead_guitarist_target_cluster_id,
-                rhythm_guitarist_target_cluster_id,
-                bass_target_cluster_id,
-                drums_target_cluster_id,
                 shutdown,
             },
             Task::none(),
@@ -748,10 +632,6 @@ impl WelcomeUi {
                 if let Some(video) = self.panel_overlay_mut(panel) {
                     video.update(event);
                 }
-                Task::none()
-            }
-            Message::ClusterVideo(panel, event) => {
-                let _ = self.with_cluster_overlay_mut(panel, |video| video.update(event));
                 Task::none()
             }
             Message::Panel(panel, event) => match panel {
@@ -840,13 +720,6 @@ impl WelcomeUi {
         if let Some(video) = self.drums_panel_overlay.as_ref() {
             subscriptions
                 .push(video.subscription(|event| Message::PanelVideo(Panel::Drums, event)));
-        }
-        for panel in Panel::ALL {
-            if let Some(subscription) = self.with_cluster_overlay(panel, |video| {
-                video.subscription(move |event| Message::ClusterVideo(panel, event))
-            }) {
-                subscriptions.push(subscription);
-            }
         }
         subscriptions.push(iced::time::every(VIDEO_OVERLAY_TICK_INTERVAL).map(|_| Message::Tick));
         Subscription::batch(subscriptions)
@@ -983,16 +856,6 @@ impl WelcomeUi {
                     Self::stop_region_playback(overlay.as_ref(), playback);
                 }
             }
-
-            for panel in Panel::ALL {
-                if let Some(request) = plan.cluster_request(panel) {
-                    self.set_target_cluster_id(panel, self.latest_cluster_id(panel));
-                    self.start_cluster_region_playback(panel, request, now);
-                } else {
-                    self.set_target_cluster_id(panel, None);
-                    self.stop_cluster_region_playback(panel);
-                }
-            }
         }
     }
 
@@ -1006,7 +869,6 @@ impl WelcomeUi {
         for panel in Panel::ALL {
             let (overlay, playback) = self.panel_slot_mut(panel);
             Self::tick_region(overlay.as_ref(), playback, now);
-            self.tick_cluster_region(panel, now);
         }
     }
 
@@ -1124,93 +986,6 @@ impl WelcomeUi {
         }
     }
 
-    fn latest_cluster_id(&self, panel: Panel) -> Option<u32> {
-        match panel {
-            Panel::LeadVocalist => self
-                .lead_vocalist
-                .as_ref()
-                .and_then(jungle_vision::EjectedViewer::latest_visible_cluster_id),
-            Panel::LeadGuitarist => self
-                .lead_guitarist
-                .as_ref()
-                .and_then(jungle_vision::EjectedViewer::latest_visible_cluster_id),
-            Panel::RhythmGuitarist => self
-                .rhythm_guitarist
-                .as_ref()
-                .and_then(jungle_vision::EjectedViewer::latest_visible_cluster_id),
-            Panel::Bass => self
-                .bass
-                .as_ref()
-                .and_then(jungle_vision::EjectedViewer::latest_visible_cluster_id),
-            Panel::Drums => self
-                .drums
-                .as_ref()
-                .and_then(jungle_vision::EjectedViewer::latest_visible_cluster_id),
-        }
-    }
-
-    fn set_target_cluster_id(&mut self, panel: Panel, id: Option<u32>) {
-        match panel {
-            Panel::LeadVocalist => {
-                if let Ok(mut target) = self.lead_vocalist_target_cluster_id.lock() {
-                    *target = id;
-                }
-            }
-            Panel::LeadGuitarist => {
-                if let Ok(mut target) = self.lead_guitarist_target_cluster_id.lock() {
-                    *target = id;
-                }
-            }
-            Panel::RhythmGuitarist => {
-                if let Ok(mut target) = self.rhythm_guitarist_target_cluster_id.lock() {
-                    *target = id;
-                }
-            }
-            Panel::Bass => {
-                if let Ok(mut target) = self.bass_target_cluster_id.lock() {
-                    *target = id;
-                }
-            }
-            Panel::Drums => {
-                if let Ok(mut target) = self.drums_target_cluster_id.lock() {
-                    *target = id;
-                }
-            }
-        }
-    }
-
-    fn cluster_overlay_cell(&self, panel: Panel) -> &Arc<Mutex<Option<iced_av1::widget::State>>> {
-        match panel {
-            Panel::LeadVocalist => &self.lead_vocalist_cluster_overlay,
-            Panel::LeadGuitarist => &self.lead_guitarist_cluster_overlay,
-            Panel::RhythmGuitarist => &self.rhythm_guitarist_cluster_overlay,
-            Panel::Bass => &self.bass_cluster_overlay,
-            Panel::Drums => &self.drums_cluster_overlay,
-        }
-    }
-
-    fn with_cluster_overlay<R>(
-        &self,
-        panel: Panel,
-        f: impl FnOnce(&iced_av1::widget::State) -> R,
-    ) -> Option<R> {
-        let Ok(overlay) = self.cluster_overlay_cell(panel).lock() else {
-            return None;
-        };
-        overlay.as_ref().map(f)
-    }
-
-    fn with_cluster_overlay_mut<R>(
-        &self,
-        panel: Panel,
-        f: impl FnOnce(&mut iced_av1::widget::State) -> R,
-    ) -> Option<R> {
-        let Ok(mut overlay) = self.cluster_overlay_cell(panel).lock() else {
-            return None;
-        };
-        overlay.as_mut().map(f)
-    }
-
     fn panel_slot_mut(
         &mut self,
         panel: Panel,
@@ -1235,131 +1010,6 @@ impl WelcomeUi {
             ),
         }
     }
-
-    fn start_cluster_region_playback(
-        &mut self,
-        panel: Panel,
-        request: VideoPlaybackRequest,
-        now: Instant,
-    ) {
-        match panel {
-            Panel::LeadVocalist => start_cluster_region_with_lock(
-                &self.lead_vocalist_cluster_overlay,
-                &mut self.lead_vocalist_cluster_playback,
-                request,
-                now,
-            ),
-            Panel::LeadGuitarist => start_cluster_region_with_lock(
-                &self.lead_guitarist_cluster_overlay,
-                &mut self.lead_guitarist_cluster_playback,
-                request,
-                now,
-            ),
-            Panel::RhythmGuitarist => start_cluster_region_with_lock(
-                &self.rhythm_guitarist_cluster_overlay,
-                &mut self.rhythm_guitarist_cluster_playback,
-                request,
-                now,
-            ),
-            Panel::Bass => start_cluster_region_with_lock(
-                &self.bass_cluster_overlay,
-                &mut self.bass_cluster_playback,
-                request,
-                now,
-            ),
-            Panel::Drums => start_cluster_region_with_lock(
-                &self.drums_cluster_overlay,
-                &mut self.drums_cluster_playback,
-                request,
-                now,
-            ),
-        }
-    }
-
-    fn stop_cluster_region_playback(&mut self, panel: Panel) {
-        match panel {
-            Panel::LeadVocalist => stop_cluster_region_with_lock(
-                &self.lead_vocalist_cluster_overlay,
-                &mut self.lead_vocalist_cluster_playback,
-            ),
-            Panel::LeadGuitarist => stop_cluster_region_with_lock(
-                &self.lead_guitarist_cluster_overlay,
-                &mut self.lead_guitarist_cluster_playback,
-            ),
-            Panel::RhythmGuitarist => stop_cluster_region_with_lock(
-                &self.rhythm_guitarist_cluster_overlay,
-                &mut self.rhythm_guitarist_cluster_playback,
-            ),
-            Panel::Bass => stop_cluster_region_with_lock(
-                &self.bass_cluster_overlay,
-                &mut self.bass_cluster_playback,
-            ),
-            Panel::Drums => stop_cluster_region_with_lock(
-                &self.drums_cluster_overlay,
-                &mut self.drums_cluster_playback,
-            ),
-        }
-    }
-
-    fn tick_cluster_region(&mut self, panel: Panel, now: Instant) {
-        match panel {
-            Panel::LeadVocalist => tick_cluster_region_with_lock(
-                &self.lead_vocalist_cluster_overlay,
-                &mut self.lead_vocalist_cluster_playback,
-                now,
-            ),
-            Panel::LeadGuitarist => tick_cluster_region_with_lock(
-                &self.lead_guitarist_cluster_overlay,
-                &mut self.lead_guitarist_cluster_playback,
-                now,
-            ),
-            Panel::RhythmGuitarist => tick_cluster_region_with_lock(
-                &self.rhythm_guitarist_cluster_overlay,
-                &mut self.rhythm_guitarist_cluster_playback,
-                now,
-            ),
-            Panel::Bass => tick_cluster_region_with_lock(
-                &self.bass_cluster_overlay,
-                &mut self.bass_cluster_playback,
-                now,
-            ),
-            Panel::Drums => tick_cluster_region_with_lock(
-                &self.drums_cluster_overlay,
-                &mut self.drums_cluster_playback,
-                now,
-            ),
-        }
-    }
-}
-
-fn start_cluster_region_with_lock(
-    overlay_cell: &Arc<Mutex<Option<iced_av1::widget::State>>>,
-    playback: &mut RegionPlayback,
-    request: VideoPlaybackRequest,
-    now: Instant,
-) {
-    let overlay_guard = overlay_cell.lock().ok();
-    let overlay = overlay_guard.as_ref().and_then(|state| state.as_ref());
-    WelcomeUi::start_region_playback(overlay, playback, request, now);
-}
-
-fn stop_cluster_region_with_lock(
-    overlay_cell: &Arc<Mutex<Option<iced_av1::widget::State>>>,
-    playback: &mut RegionPlayback,
-) {
-    let overlay_guard = overlay_cell.lock().ok();
-    let overlay = overlay_guard.as_ref().and_then(|state| state.as_ref());
-    WelcomeUi::stop_region_playback(overlay, playback);
-}
-
-fn tick_cluster_region_with_lock(
-    overlay_cell: &Arc<Mutex<Option<iced_av1::widget::State>>>,
-    playback: &mut RegionPlayback,
-    now: Instant,
-) {
-    let overlay_guard = overlay_cell.lock().ok();
-    let overlay = overlay_guard.as_ref().and_then(|state| state.as_ref());
-    WelcomeUi::tick_region(overlay, playback, now);
 }
 
 fn init_video_state(region: &str) -> Option<iced_av1::widget::State> {
@@ -1384,39 +1034,8 @@ fn init_video_state(region: &str) -> Option<iced_av1::widget::State> {
     }
 }
 
-fn build_cluster_overlay_element(
-    ctx: &jungle_vision::ClusterViewCtx<'_>,
-    target_cluster_id: &Arc<Mutex<Option<u32>>>,
-    overlay_state: &Arc<Mutex<Option<iced_av1::widget::State>>>,
-) -> Option<Element<'static, jungle_vision::ViewerEvent<()>>> {
-    let active_cluster = target_cluster_id.lock().ok().and_then(|value| *value);
-    if active_cluster != Some(ctx.cluster_id) {
-        return None;
-    }
-
-    let Ok(overlay) = overlay_state.lock() else {
-        return None;
-    };
-    let video = overlay
-        .as_ref()?
-        .overlay_view_owned(map_cluster_video_message)?;
-    Some(
-        container(video)
-            .clip(true)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into(),
-    )
-}
-
 fn map_panel_video_message(message: iced_av1::widget::Message) -> iced_av1::widget::Message {
     message
-}
-
-fn map_cluster_video_message(
-    _message: iced_av1::widget::Message,
-) -> jungle_vision::ViewerEvent<()> {
-    jungle_vision::ViewerEvent::Message(())
 }
 
 fn duration_to_ns(duration: Duration) -> u64 {

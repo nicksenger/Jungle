@@ -2219,6 +2219,7 @@ dependencies = [
  "futures-lite",
  "glam 0.30.10",
  "iced",
+ "iced_futures",
  "itertools",
  "matroska-demuxer",
  "re_rav1d",
