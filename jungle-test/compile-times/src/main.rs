@@ -89,12 +89,14 @@ macro_rules! define_journey_double {
 }
 
 define_journey_24!(Journey24);
-#[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
 define_journey_double!(Journey48, Journey24);
-#[cfg(any(feature = "large", feature = "xlarge"))]
 define_journey_double!(Journey96, Journey48);
-#[cfg(feature = "xlarge")]
+#[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
 define_journey_double!(Journey192, Journey96);
+#[cfg(any(feature = "large", feature = "xlarge"))]
+define_journey_double!(Journey384, Journey192);
+#[cfg(feature = "xlarge")]
+define_journey_double!(Journey768, Journey384);
 
 #[cfg(all(
     feature = "small",
@@ -102,16 +104,16 @@ define_journey_double!(Journey192, Journey96);
     not(feature = "large"),
     not(feature = "xlarge")
 ))]
-type TierJourney = Journey24;
-
-#[cfg(all(feature = "medium", not(feature = "large"), not(feature = "xlarge")))]
-type TierJourney = Journey48;
-
-#[cfg(all(feature = "large", not(feature = "xlarge")))]
 type TierJourney = Journey96;
 
-#[cfg(feature = "xlarge")]
+#[cfg(all(feature = "medium", not(feature = "large"), not(feature = "xlarge")))]
 type TierJourney = Journey192;
+
+#[cfg(all(feature = "large", not(feature = "xlarge")))]
+type TierJourney = Journey384;
+
+#[cfg(feature = "xlarge")]
+type TierJourney = Journey768;
 
 pub struct Animal01;
 #[jungle::animal(id = 1001, generation = 0)]
