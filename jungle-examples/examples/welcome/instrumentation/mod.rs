@@ -9,7 +9,6 @@ mod hihat;
 mod kick_drum;
 mod snare_drum;
 mod synth_worker;
-mod synthesis;
 mod toms;
 mod vocals;
 

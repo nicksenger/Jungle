@@ -8,14 +8,14 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info, trace, warn};
 
 use super::{
-    bass::{self, BassArticulation},
-    cymbal::{self, CymbalArticulation},
-    electric_guitar::{self, ElectricGuitarArticulation},
-    hihat::{self, HiHatArticulation},
-    kick_drum::{self, KickDrumArticulation},
-    snare_drum::{self, SnareDrumArticulation},
-    toms::{self, TomsArticulation},
-    vocals::{self, VocalsArticulation},
+    bass::BassArticulation,
+    cymbal::CymbalArticulation,
+    electric_guitar::ElectricGuitarArticulation,
+    hihat::HiHatArticulation,
+    kick_drum::KickDrumArticulation,
+    snare_drum::SnareDrumArticulation,
+    toms::TomsArticulation,
+    vocals::VocalsArticulation,
     Error, Note,
 };
 
@@ -82,7 +82,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "bass",
             move |response| SynthRequest::Bass { note, response },
-            move || bass::audio::synthesize_bass(&note),
+            move || welcome_audio::dsp::bass::synthesize_bass(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -94,7 +94,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "cymbal",
             move |response| SynthRequest::Cymbal { note, response },
-            move || cymbal::audio::synthesize_cymbal(&note),
+            move || welcome_audio::dsp::cymbal::synthesize_cymbal(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -106,7 +106,12 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "electric_guitar",
             move |response| SynthRequest::ElectricGuitar { note, response },
-            move || electric_guitar::audio::synthesize_electric_guitar(&note),
+            move || {
+                welcome_audio::dsp::electric_guitar::synthesize_electric_guitar(&to_dsp_note(
+                    note,
+                    to_dsp_electric_guitar_articulation(note.articulation),
+                ))
+            },
         )
         .await
     }
@@ -118,7 +123,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "hihat",
             move |response| SynthRequest::HiHat { note, response },
-            move || hihat::audio::synthesize_hihat(&note),
+            move || welcome_audio::dsp::hihat::synthesize_hihat(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -130,7 +135,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "kick_drum",
             move |response| SynthRequest::KickDrum { note, response },
-            move || kick_drum::audio::synthesize_kick_drum(&note),
+            move || welcome_audio::dsp::kick_drum::synthesize_kick_drum(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -142,7 +147,9 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "snare_drum",
             move |response| SynthRequest::SnareDrum { note, response },
-            move || snare_drum::audio::synthesize_snare_drum(&note),
+            move || {
+                welcome_audio::dsp::snare_drum::synthesize_snare_drum(&to_dsp_note(note, ()))
+            },
         )
         .await
     }
@@ -154,7 +161,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "toms",
             move |response| SynthRequest::Toms { note, response },
-            move || toms::audio::synthesize_toms(&note),
+            move || welcome_audio::dsp::toms::synthesize_toms(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -166,7 +173,12 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "vocals",
             move |response| SynthRequest::Vocals { note, response },
-            move || vocals::audio::synthesize_vocals(&note),
+            move || {
+                welcome_audio::dsp::vocals::synthesize_vocals(&to_dsp_note(
+                    note,
+                    to_dsp_vocals_articulation(note.articulation),
+                ))
+            },
         )
         .await
     }
@@ -344,28 +356,48 @@ fn run_synth_request(worker_index: usize, request: SynthRequest) {
     let started_at = Instant::now();
     match request {
         SynthRequest::Bass { note, response } => {
-            let _ = response.send(bass::audio::synthesize_bass(&note));
+            let _ = response.send(welcome_audio::dsp::bass::synthesize_bass(&to_dsp_note(
+                note, (),
+            )));
         }
         SynthRequest::Cymbal { note, response } => {
-            let _ = response.send(cymbal::audio::synthesize_cymbal(&note));
+            let _ = response.send(welcome_audio::dsp::cymbal::synthesize_cymbal(&to_dsp_note(
+                note, (),
+            )));
         }
         SynthRequest::ElectricGuitar { note, response } => {
-            let _ = response.send(electric_guitar::audio::synthesize_electric_guitar(&note));
+            let _ = response.send(welcome_audio::dsp::electric_guitar::synthesize_electric_guitar(
+                &to_dsp_note(
+                    note,
+                    to_dsp_electric_guitar_articulation(note.articulation),
+                ),
+            ));
         }
         SynthRequest::HiHat { note, response } => {
-            let _ = response.send(hihat::audio::synthesize_hihat(&note));
+            let _ = response.send(welcome_audio::dsp::hihat::synthesize_hihat(&to_dsp_note(
+                note, (),
+            )));
         }
         SynthRequest::KickDrum { note, response } => {
-            let _ = response.send(kick_drum::audio::synthesize_kick_drum(&note));
+            let _ = response.send(welcome_audio::dsp::kick_drum::synthesize_kick_drum(
+                &to_dsp_note(note, ()),
+            ));
         }
         SynthRequest::SnareDrum { note, response } => {
-            let _ = response.send(snare_drum::audio::synthesize_snare_drum(&note));
+            let _ = response.send(welcome_audio::dsp::snare_drum::synthesize_snare_drum(
+                &to_dsp_note(note, ()),
+            ));
         }
         SynthRequest::Toms { note, response } => {
-            let _ = response.send(toms::audio::synthesize_toms(&note));
+            let _ = response.send(welcome_audio::dsp::toms::synthesize_toms(&to_dsp_note(
+                note, (),
+            )));
         }
         SynthRequest::Vocals { note, response } => {
-            let _ = response.send(vocals::audio::synthesize_vocals(&note));
+            let _ = response.send(welcome_audio::dsp::vocals::synthesize_vocals(&to_dsp_note(
+                note,
+                to_dsp_vocals_articulation(note.articulation),
+            )));
         }
     }
     let elapsed = started_at.elapsed();
@@ -396,5 +428,45 @@ fn request_kind(request: &SynthRequest) -> &'static str {
         SynthRequest::SnareDrum { .. } => "snare_drum",
         SynthRequest::Toms { .. } => "toms",
         SynthRequest::Vocals { .. } => "vocals",
+    }
+}
+
+fn to_dsp_note<A, B>(note: Note<A>, articulation: B) -> welcome_audio::dsp::Note<B> {
+    welcome_audio::dsp::Note {
+        n_midi: note.n_midi,
+        duration: note.duration,
+        velocity: note.velocity,
+        expression: note.expression.map(|expression| welcome_audio::dsp::Expression {
+            bend: expression.bend,
+            vibrato: expression.vibrato,
+        }),
+        articulation,
+    }
+}
+
+fn to_dsp_electric_guitar_articulation(
+    articulation: ElectricGuitarArticulation,
+) -> welcome_audio::dsp::electric_guitar::ElectricGuitarArticulation {
+    match articulation {
+        ElectricGuitarArticulation::Sustained => {
+            welcome_audio::dsp::electric_guitar::ElectricGuitarArticulation::Sustained
+        }
+        ElectricGuitarArticulation::RhythmSustained => {
+            welcome_audio::dsp::electric_guitar::ElectricGuitarArticulation::RhythmSustained
+        }
+    }
+}
+
+fn to_dsp_vocals_articulation(
+    articulation: VocalsArticulation,
+) -> welcome_audio::dsp::vocals::VocalsArticulation {
+    match articulation {
+        VocalsArticulation::Clean => welcome_audio::dsp::vocals::VocalsArticulation::Clean,
+        VocalsArticulation::GroupHarmony => {
+            welcome_audio::dsp::vocals::VocalsArticulation::GroupHarmony
+        }
+        VocalsArticulation::Formant(phonemes) => {
+            welcome_audio::dsp::vocals::VocalsArticulation::Formant(phonemes)
+        }
     }
 }
