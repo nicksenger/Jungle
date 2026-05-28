@@ -46,7 +46,7 @@ pub use transport::{
     WireIn, WireOut, Work,
 };
 pub use transport::{ClaimedPerturbable, OwnerWake, SupportedAnimal};
-use typosaurus::collections::list::{self, List as TList};
+use typosaurus::collections::list::{self, Interleave as ListInterleave, List as TList};
 use typosaurus::collections::sp::Node;
 use typosaurus::num::consts::U0;
 use typosaurus::num::{Bit, UInt, UTerm, Unsigned};
@@ -1314,8 +1314,9 @@ impl<P, L, R, M> JourneyEffects for Conditional<P, L, R, M>
 where
     L: JourneyEffects,
     R: JourneyEffects,
+    (L::List, R::List): ListInterleave,
 {
-    type List = TList<(L::List, R::List)>;
+    type List = <(L::List, R::List) as ListInterleave>::Out;
 }
 
 #[primitive(property = JungleTraverseFlow)]
@@ -1726,8 +1727,9 @@ impl<L, R, M> JourneyEffects for Select<L, R, M>
 where
     L: JourneyEffects,
     R: JourneyEffects,
+    (L::List, R::List): ListInterleave,
 {
-    type List = TList<(L::List, R::List)>;
+    type List = <(L::List, R::List) as ListInterleave>::Out;
 }
 
 #[primitive(property = JungleTraverseFlow)]
@@ -1821,8 +1823,9 @@ impl<L, R, M> JourneyEffects for Join<L, R, M>
 where
     L: JourneyEffects,
     R: JourneyEffects,
+    (L::List, R::List): ListInterleave,
 {
-    type List = TList<(L::List, R::List)>;
+    type List = <(L::List, R::List) as ListInterleave>::Out;
 }
 
 #[primitive(property = JungleTraverseFlow)]
