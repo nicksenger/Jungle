@@ -21,7 +21,7 @@ pub struct JoinThump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinThump<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<BassInstrument, BassArticulation, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<BassInstrument, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -87,7 +87,7 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<Vocals, VocalsArticulation, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<Vocals, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -3233,7 +3233,7 @@ pub struct BassJoinMonad100Flow(While<BassRiffLoopRemaining, BassJoinMonad100Loo
 pub struct BassJoinMonad100Animal;
 
 #[cfg(test)]
-#[jungle::animal(id = 78, generation = 0)]
+#[jungle::animal(id = 1, generation = 0)]
 impl Animal for BassJoinMonad100Animal {
     type State = BassistState;
     type Seed = BassistState;

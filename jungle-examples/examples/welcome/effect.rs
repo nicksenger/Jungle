@@ -23,18 +23,17 @@ static EFFECT_CYCLE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static EFFECT_SKIPPED_NOTES: AtomicUsize = AtomicUsize::new(0);
 
 pub struct Monad<
-    I: Instrument<Articulation = A>,
-    A: Copy,
+    I: Instrument,
     const LANE_ID: u32,
     const NOTE: u8,
     const NOTE_TICK: u32,
     const REST_TICK: u32,
->(PhantomData<(I, A)>);
+>(PhantomData<I>);
 
 pub struct Passthrough<T>(PhantomData<T>);
 
 pub struct Rest<const LANE_ID: u32, const REST_TICKS: u32>;
-#[effect(id = 515)]
+#[effect(id = 2)]
 impl<T> Effect<TheJungle> for Passthrough<T>
 where
     T: Serialize + DeserializeOwned + Send + 'static,
@@ -48,10 +47,8 @@ where
     }
 }
 
-#[effect(id = 513)]
-impl<const LANE_ID: u32, const REST_TICKS: u32> Effect<TheJungle>
-    for Rest<LANE_ID, REST_TICKS>
-{
+#[effect(id = 1)]
+impl<const LANE_ID: u32, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_ID, REST_TICKS> {
     type In = ();
     type Out = ();
     type Err = String;
@@ -81,15 +78,15 @@ impl<const LANE_ID: u32, const REST_TICKS: u32> Effect<TheJungle>
     }
 }
 
-#[effect(id = 500)]
-impl<I, A, const LANE_ID: u32, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
-    Effect<TheJungle> for Monad<I, A, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
+#[effect(id = 0)]
+impl<I, const LANE_ID: u32, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
+    Effect<TheJungle> for Monad<I, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
 where
-    I: Instrument<Articulation = A>,
+    I: Instrument,
     for<'a> &'a I: From<&'a TheJungle>,
-    A: Copy + Serialize + DeserializeOwned + Send + 'static,
+    I::Articulation: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
-    type In = A;
+    type In = I::Articulation;
     type Out = ();
     type Err = String;
 

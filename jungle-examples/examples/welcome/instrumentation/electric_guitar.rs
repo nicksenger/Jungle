@@ -58,8 +58,7 @@ pub struct Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, cons
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32> Act
     for Pick<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect =
-        Monad<ElectricGuitar, ElectricGuitarArticulation, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<ElectricGuitar, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -130,10 +129,7 @@ pub struct Pluck<
     const REST_TICK: u32,
     const LANE_ID: u32 = 0,
 >(
-    Join<
-        Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>,
-        Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>,
-    >,
+    Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<REST_TICK, LANE_ID>>,
 );
@@ -145,10 +141,7 @@ pub struct StrumPair<
     const NOTE_TICK: u32,
     const LANE_ID: u32 = 0,
 >(
-    Join<
-        Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>,
-        Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>,
-    >,
+    Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
     Step<MergeUnit>,
 );
 

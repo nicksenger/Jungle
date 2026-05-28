@@ -62,14 +62,7 @@ pub struct JoinPick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinPick<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<
-        ElectricGuitar,
-        ElectricGuitarArticulation,
-        RHYTHM_GUITAR_LANE_ID,
-        NOTE,
-        NOTE_TICK,
-        REST_TICK,
-    >;
+    type Effect = Monad<ElectricGuitar, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -154,8 +147,7 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect =
-        Monad<Vocals, VocalsArticulation, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<Vocals, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -1744,7 +1736,7 @@ pub struct RhythmJoinMonad100Flow(While<RhythmRiffLoopRemaining, RhythmJoinMonad
 pub struct RhythmJoinMonad100Animal;
 
 #[cfg(test)]
-#[jungle::animal(id = 79, generation = 0)]
+#[jungle::animal(id = 2, generation = 0)]
 impl Animal for RhythmJoinMonad100Animal {
     type State = RhythmGuitaristState;
     type Seed = RhythmGuitaristState;

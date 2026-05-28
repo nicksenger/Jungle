@@ -52,7 +52,7 @@ pub struct Hat<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Hat<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<HiHat, HiHatArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<HiHat, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -70,7 +70,7 @@ pub struct Boot<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Boot<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<KickDrum, KickDrumArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<KickDrum, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -88,8 +88,7 @@ pub struct Snap<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Snap<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect =
-        Monad<SnareDrum, SnareDrumArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<SnareDrum, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -107,7 +106,7 @@ pub struct Blast<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Blast<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<Cymbal, CymbalArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<Cymbal, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -125,7 +124,7 @@ pub struct TomHit<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for TomHit<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<Toms, TomsArticulation, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Monad<Toms, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -209,7 +208,7 @@ impl Act for MergeGrooveVariantChoice {
 pub struct ConditionalJoinTailStub;
 #[jungle::act]
 impl Act for ConditionalJoinTailStub {
-    type Effect = Monad<HiHat, HiHatArticulation, DRUMS_LANE_ID, 46, 1, 0>;
+    type Effect = Monad<HiHat, DRUMS_LANE_ID, 46, 1, 0>;
     type Input = Either<(), ()>;
     type Output = Either<(), ()>;
 
@@ -2480,7 +2479,7 @@ pub struct ConditionalJoinMonad100Flow(
 #[cfg(test)]
 pub struct ConditionalJoinMonad100Animal;
 #[cfg(test)]
-#[jungle::animal(id = 77, generation = 0)]
+#[jungle::animal(id = 0, generation = 0)]
 impl Animal for ConditionalJoinMonad100Animal {
     type State = DrummerState;
     type Seed = DrummerState;
