@@ -2,7 +2,7 @@ use jungle_sdk::prelude::*;
 
 use crate::effect::Rest;
 use crate::instrumentation::{
-    ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
+    ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
 };
 
 use super::{Double, LeadGuitarist};

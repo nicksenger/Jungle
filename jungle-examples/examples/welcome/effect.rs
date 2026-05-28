@@ -1,5 +1,4 @@
 use jungle_sdk::effect;
-use jungle_sdk::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};

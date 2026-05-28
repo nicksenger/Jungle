@@ -30,11 +30,11 @@ impl<St> Act for Loop2SetCounter<St> {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &Loop2Container<St>, input: Self::Input) {}
+    fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
 
     fn absorb(
         state: &mut Loop2Container<St>,
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         state.counter = 2;
     }
@@ -48,13 +48,13 @@ impl<St> Act for Loop2DecCounter<St> {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &Loop2Container<St>, input: Self::Input) {}
+    fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
 
     fn absorb(
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        let value = output.expect("loop2 decrement step should succeed");
+        output.expect("loop2 decrement step should succeed");
         state.counter = state.counter.saturating_sub(1);
     }
 }
@@ -72,8 +72,8 @@ impl<T, S> Act for FlattenEither<T, S> {
     }
 
     fn absorb(
-        state: &mut S,
-        output: EffectCompletion<Self::Effect>,
+        _state: &mut S,
+        _output: EffectCompletion<Self::Effect>,
         carry: Either<T, T>,
     ) -> Self::Output {
         match carry {
