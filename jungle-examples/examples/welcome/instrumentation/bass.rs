@@ -1,10 +1,9 @@
 use jungle_sdk::prelude::*;
+use welcome_audio::{PlayPriority, PlayRequest};
 
 use crate::effect::Monad;
 
-use super::{Instrument, Note, SynthHandle};
-
-pub(super) mod audio;
+use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
 pub struct Bass {
     audio: welcome_audio::AudioHandle,
@@ -32,8 +31,18 @@ impl Default for BassArticulation {
 impl Instrument for Bass {
     type Articulation = BassArticulation;
 
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), super::Error> {
-        audio::play(&self.audio, &self.synth, note).await
+    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
+        let (pcm, gain, playback_rate) = self.synth.bass(note).await?;
+
+        let mut request = PlayRequest::new(pcm, 1, welcome_audio::dsp::SAMPLE_RATE);
+        request.gain = gain * amplitude_gain(&note);
+        request.playback_rate = playback_rate;
+        request.pan = 0.0;
+        request.priority = PlayPriority::Normal;
+        self.audio
+            .play(request)
+            .await
+            .map_err(|_| Error::Submission)
     }
 }
 

@@ -1,10 +1,9 @@
 use jungle_sdk::prelude::*;
+use welcome_audio::{PlayPriority, PlayRequest};
 
 use crate::effect::{AtomicDualHit, AtomicTriHit, Monad};
 
-use super::{Instrument, Note, SynthHandle};
-
-pub(super) mod audio;
+use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
 pub struct ElectricGuitar {
     audio: welcome_audio::AudioHandle,
@@ -38,8 +37,19 @@ impl Default for ElectricGuitarArticulation {
 impl Instrument for ElectricGuitar {
     type Articulation = ElectricGuitarArticulation;
 
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), super::Error> {
-        audio::play(&self.audio, &self.synth, note).await
+    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
+        let (pcm, gain, playback_rate, pan) = self.synth.electric_guitar(note).await?;
+
+        let mut request = PlayRequest::new(pcm, 1, welcome_audio::dsp::SAMPLE_RATE);
+        request.gain = gain * amplitude_gain(&note);
+        request.playback_rate = playback_rate;
+        request.pan = pan;
+        request.priority = PlayPriority::Low;
+
+        self.audio
+            .play(request)
+            .await
+            .map_err(|_| Error::Submission)
     }
 }
 

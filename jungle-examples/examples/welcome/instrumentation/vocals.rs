@@ -1,10 +1,10 @@
 use jungle_sdk::prelude::*;
+use std::{sync::Arc, time::Duration};
+use welcome_audio::{PlayPriority, PlayRequest};
 
 use crate::{animals::LeadVocalistState, effect::Monad};
 
-use super::{Instrument, Note, SynthHandle};
-
-pub(super) mod audio;
+use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
 pub struct Vocals {
     audio: welcome_audio::AudioHandle,
@@ -36,8 +36,28 @@ impl Default for VocalsArticulation {
 impl Instrument for Vocals {
     type Articulation = VocalsArticulation;
 
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), super::Error> {
-        audio::play(&self.audio, &self.synth, note).await
+    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
+        let (pcm, gain, playback_rate) = self.synth.vocals(note).await?;
+
+        for layer in
+            welcome_audio::dsp::vocals::articulation_layers(to_dsp_articulation(note.articulation))
+        {
+            if layer.delay_seconds > 0.0 {
+                tokio::time::sleep(Duration::from_secs_f32(layer.delay_seconds)).await;
+            }
+            let mut request =
+                PlayRequest::new(Arc::clone(&pcm), 1, welcome_audio::dsp::SAMPLE_RATE);
+            request.gain = gain * layer.gain_scale * amplitude_gain(&note);
+            request.playback_rate = playback_rate * layer.playback_rate_scale;
+            request.pan = layer.pan;
+            request.priority = PlayPriority::Low;
+            self.audio
+                .play(request)
+                .await
+                .map_err(|_| Error::Submission)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -50,6 +70,20 @@ pub type Phoneme = welcome_audio::vocals::Phoneme;
 
 pub fn phonemes_from_text(text: &str) -> [Option<Phoneme>; 12] {
     welcome_audio::vocals::phonemes_from_text(text)
+}
+
+fn to_dsp_articulation(
+    articulation: VocalsArticulation,
+) -> welcome_audio::dsp::vocals::VocalsArticulation {
+    match articulation {
+        VocalsArticulation::Clean => welcome_audio::dsp::vocals::VocalsArticulation::Clean,
+        VocalsArticulation::GroupHarmony => {
+            welcome_audio::dsp::vocals::VocalsArticulation::GroupHarmony
+        }
+        VocalsArticulation::Formant(phonemes) => {
+            welcome_audio::dsp::vocals::VocalsArticulation::Formant(phonemes)
+        }
+    }
 }
 
 pub struct Generate<
