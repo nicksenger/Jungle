@@ -2,6 +2,7 @@
 
 use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::hint::black_box;
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FocusState {
@@ -33,6 +34,25 @@ impl<J, const EFFECT_ID: usize> Effect<J> for CompileNoop<EFFECT_ID> {
         _jungle: &J,
         _input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> + Send {
+        black_box(EFFECT_ID);
+        std::future::ready(Ok(()))
+    }
+}
+
+pub struct CompileTouch<const EFFECT_ID: usize>;
+impl<const EFFECT_ID: usize> EffectSchema for CompileTouch<EFFECT_ID> {
+    type Id = CompileEffectId<EFFECT_ID>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+}
+
+impl<J, const EFFECT_ID: usize> Effect<J> for CompileTouch<EFFECT_ID> {
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> + Send {
+        black_box(EFFECT_ID);
         std::future::ready(Ok(()))
     }
 }
@@ -40,13 +60,16 @@ impl<J, const EFFECT_ID: usize> Effect<J> for CompileNoop<EFFECT_ID> {
 pub struct TickSpec<const EFFECT_ID: usize>;
 #[jungle::act]
 impl<const EFFECT_ID: usize> Act for TickSpec<EFFECT_ID> {
-    type Effect = CompileNoop<EFFECT_ID>;
+    type Effect = CompileTouch<EFFECT_ID>;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &CompileState, _input: Self::Input) -> () {}
+    fn emit(_state: &CompileState, _input: Self::Input) -> () {
+        black_box(EFFECT_ID);
+    }
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        black_box(EFFECT_ID);
         output.expect("noop effect should succeed");
     }
 }
@@ -58,9 +81,12 @@ impl<const EFFECT_ID: usize> Act for FocusTickSpec<EFFECT_ID> {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &FocusState, _input: Self::Input) -> () {}
+    fn emit(_state: &FocusState, _input: Self::Input) -> () {
+        black_box(EFFECT_ID);
+    }
 
     fn absorb(_state: &mut FocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        black_box(EFFECT_ID);
         output.expect("focused noop effect should succeed");
     }
 }
@@ -68,13 +94,16 @@ impl<const EFFECT_ID: usize> Act for FocusTickSpec<EFFECT_ID> {
 pub struct FocusJoinMergeSpec<const EFFECT_ID: usize>;
 #[jungle::act]
 impl<const EFFECT_ID: usize> Act for FocusJoinMergeSpec<EFFECT_ID> {
-    type Effect = CompileNoop<EFFECT_ID>;
+    type Effect = CompileTouch<EFFECT_ID>;
     type Input = ((), ());
     type Output = ();
 
-    fn emit(_state: &FocusState, _input: Self::Input) -> () {}
+    fn emit(_state: &FocusState, _input: Self::Input) -> () {
+        black_box(EFFECT_ID);
+    }
 
     fn absorb(_state: &mut FocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        black_box(EFFECT_ID);
         output.expect("focused join merge noop effect should succeed");
     }
 }
@@ -82,13 +111,16 @@ impl<const EFFECT_ID: usize> Act for FocusJoinMergeSpec<EFFECT_ID> {
 pub struct JoinTickSpec<const EFFECT_ID: usize>;
 #[jungle::act]
 impl<const EFFECT_ID: usize> Act for JoinTickSpec<EFFECT_ID> {
-    type Effect = CompileNoop<EFFECT_ID>;
+    type Effect = CompileTouch<EFFECT_ID>;
     type Input = Either<(), ()>;
     type Output = ();
 
-    fn emit(_state: &CompileState, _input: Self::Input) -> () {}
+    fn emit(_state: &CompileState, _input: Self::Input) -> () {
+        black_box(EFFECT_ID);
+    }
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        black_box(EFFECT_ID);
         output.expect("join branch noop effect should succeed");
     }
 }
@@ -100,9 +132,12 @@ impl<const EFFECT_ID: usize> Act for JoinFlattenSpec<EFFECT_ID> {
     type Input = ((), ());
     type Output = ();
 
-    fn emit(_state: &CompileState, _input: Self::Input) -> () {}
+    fn emit(_state: &CompileState, _input: Self::Input) -> () {
+        black_box(EFFECT_ID);
+    }
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        black_box(EFFECT_ID);
         output.expect("join flatten noop effect should succeed");
     }
 }
@@ -110,7 +145,8 @@ impl<const EFFECT_ID: usize> Act for JoinFlattenSpec<EFFECT_ID> {
 pub struct CompileChooseLeft<const SEGMENT_ID: usize>;
 impl<const SEGMENT_ID: usize> Condition<(CompileState, ())> for CompileChooseLeft<SEGMENT_ID> {
     fn choose(input: &(CompileState, ())) -> bool {
-        let _ = input;
+        black_box(input);
+        black_box(SEGMENT_ID);
         SEGMENT_ID.is_multiple_of(2)
     }
 }
@@ -120,7 +156,7 @@ impl<const SEGMENT_ID: usize> LoopCondition<CompileState> for CompileLoopOnce<SE
     type Arg = ();
 
     fn should_continue(state: &CompileState) -> bool {
-        let _ = SEGMENT_ID;
+        black_box(SEGMENT_ID);
         state.counter == 0
     }
 }
@@ -128,16 +164,19 @@ impl<const SEGMENT_ID: usize> LoopCondition<CompileState> for CompileLoopOnce<SE
 pub struct IncrementCounterSpec<const EFFECT_ID: usize>;
 #[jungle::act]
 impl<const EFFECT_ID: usize> Act for IncrementCounterSpec<EFFECT_ID> {
-    type Effect = CompileNoop<EFFECT_ID>;
+    type Effect = CompileTouch<EFFECT_ID>;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &CompileState, _input: Self::Input) -> () {}
+    fn emit(_state: &CompileState, _input: Self::Input) -> () {
+        black_box(EFFECT_ID);
+    }
 
     fn absorb(
         state: &mut CompileState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
+        black_box(EFFECT_ID);
         output.expect("counter increment noop effect should succeed");
         state.counter = state.counter.saturating_add(1);
     }
