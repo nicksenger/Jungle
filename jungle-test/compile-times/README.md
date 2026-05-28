@@ -15,12 +15,12 @@ cargo check --manifest-path jungle-test/compile-times/Cargo.toml --features larg
 cargo check --manifest-path jungle-test/compile-times/Cargo.toml --features xlarge --timings
 ```
 
-Each tier keeps a single animal and increases its journey length while forcing:
+Each tier keeps a single animal and doubles journey length from a 24-step baseline:
 
-- `small`: 1 animal, 48-step journey
-- `medium`: 1 animal, 80-step journey
-- `large`: 1 animal, 112-step journey
-- `xlarge`: 1 animal, 144-step journey
+- `small`: 1 animal, 24-step journey
+- `medium`: 1 animal, 48-step journey
+- `large`: 1 animal, 96-step journey
+- `xlarge`: 1 animal, 192-step journey
 
 - `AnimalSet<T::Animals>: SupportedAnimalGenerations<T>`
 - `BoundAnimalJourney + BuildFlowWithContext + ArgputForState`
