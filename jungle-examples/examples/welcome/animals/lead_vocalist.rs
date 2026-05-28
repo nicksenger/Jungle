@@ -580,12 +580,6 @@ pub struct LeadVocalPickupBranch(
 pub struct LeadVocalMainBranch(Step<ConsumeLeadVocalPickup>);
 
 #[derive(Flow)]
-pub struct LeadVocalistJourneyStub(
-    Step<ApplyLeadVocalistSeed>,
-    Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
-);
-
-#[derive(Flow)]
 pub struct LeadVocalIntro(
     Step<ApplyLeadVocalistSeed>,
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,

@@ -76,18 +76,6 @@ impl Act for SleepFiveMinutesSpec {
 pub struct BandStubFlow(Step<StubStepSpec>, Step<SleepFiveMinutesSpec>);
 
 #[derive(Flow)]
-pub struct LeadGuitaristJourneyStub(Step<lead_guitarist::IntroStartDelay>);
-
-#[derive(Flow)]
-pub struct RhythmGuitaristJourneyStub(Step<rhythm_guitarist::IntroStartDelay>);
-
-#[derive(Flow)]
-pub struct BassJourneyStub(Step<bassist::IntroStartDelay>);
-
-#[derive(Flow)]
-pub struct DrumsJourneyStub(Step<drummer::IntroStartDelay>);
-
-#[derive(Flow)]
 pub struct Double<T>(T, T);
 
 #[derive(Flow)]
@@ -102,7 +90,7 @@ pub struct LeadVocalist;
 impl Animal for LeadVocalist {
     type State = LeadVocalistState;
     type Seed = LeadVocalistSeed;
-    type Journey = lead_vocalist::LeadVocalistJourneyStub;
+    type Journey = LeadVocalIntro;
 }
 
 pub struct LeadGuitarist;
@@ -111,7 +99,7 @@ pub struct LeadGuitarist;
 impl Animal for LeadGuitarist {
     type State = LeadGuitaristState;
     type Seed = LeadGuitaristSeed;
-    type Journey = LeadGuitaristJourneyStub;
+    type Journey = LeadGuitarIntro;
 }
 
 pub struct Bass;
@@ -120,7 +108,7 @@ pub struct Bass;
 impl Animal for Bass {
     type State = BassistState;
     type Seed = BassistSeed;
-    type Journey = BassJourneyStub;
+    type Journey = BassIntro;
 }
 
 pub struct Drums;
@@ -129,5 +117,5 @@ pub struct Drums;
 impl Animal for Drums {
     type State = DrummerState;
     type Seed = DrummerSeed;
-    type Journey = DrumsJourneyStub;
+    type Journey = DrummerIntro;
 }
