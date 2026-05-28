@@ -121,8 +121,91 @@ impl Animal for Animal01 {
     type Journey = TierJourney;
 }
 
+pub struct Animal02;
+#[jungle::animal(id = 1002, generation = 0)]
+impl Animal for Animal02 {
+    type State = CompileState;
+    type Seed = CompileState;
+    type Journey = TierJourney;
+}
+
+pub struct Animal03;
+#[jungle::animal(id = 1003, generation = 0)]
+impl Animal for Animal03 {
+    type State = CompileState;
+    type Seed = CompileState;
+    type Journey = TierJourney;
+}
+
+pub struct Animal04;
+#[jungle::animal(id = 1004, generation = 0)]
+impl Animal for Animal04 {
+    type State = CompileState;
+    type Seed = CompileState;
+    type Journey = TierJourney;
+}
+
+pub struct Animal05;
+#[jungle::animal(id = 1005, generation = 0)]
+impl Animal for Animal05 {
+    type State = CompileState;
+    type Seed = CompileState;
+    type Journey = TierJourney;
+}
+
+pub struct Animal06;
+#[jungle::animal(id = 1006, generation = 0)]
+impl Animal for Animal06 {
+    type State = CompileState;
+    type Seed = CompileState;
+    type Journey = TierJourney;
+}
+
+pub struct Animal07;
+#[jungle::animal(id = 1007, generation = 0)]
+impl Animal for Animal07 {
+    type State = CompileState;
+    type Seed = CompileState;
+    type Journey = TierJourney;
+}
+
+pub struct Animal08;
+#[jungle::animal(id = 1008, generation = 0)]
+impl Animal for Animal08 {
+    type State = CompileState;
+    type Seed = CompileState;
+    type Journey = TierJourney;
+}
+
+#[cfg(all(
+    feature = "small",
+    not(feature = "medium"),
+    not(feature = "large"),
+    not(feature = "xlarge")
+))]
 #[derive(Animals)]
 pub struct CompileAnimals(Animal01);
+
+#[cfg(all(feature = "medium", not(feature = "large"), not(feature = "xlarge")))]
+#[derive(Animals)]
+pub struct CompileAnimals(Animal01, Animal02);
+
+#[cfg(all(feature = "large", not(feature = "xlarge")))]
+#[derive(Animals)]
+pub struct CompileAnimals(Animal01, Animal02, Animal03, Animal04);
+
+#[cfg(feature = "xlarge")]
+#[derive(Animals)]
+pub struct CompileAnimals(
+    Animal01,
+    Animal02,
+    Animal03,
+    Animal04,
+    Animal05,
+    Animal06,
+    Animal07,
+    Animal08,
+);
 
 pub struct CompileZoo;
 impl Ecosystem for CompileZoo {
