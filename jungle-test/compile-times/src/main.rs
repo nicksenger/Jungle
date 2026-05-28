@@ -1,3 +1,5 @@
+#![recursion_limit = "1024"]
+
 use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +26,8 @@ impl From<CompileState> for () {
     fn from(_value: CompileState) -> Self {}
 }
 
-macro_rules! define_journey {
+#[allow(unused_macros)]
+macro_rules! define_journey_24 {
     ($name:ident) => {
         #[derive(Flow)]
         pub struct $name(
@@ -56,62 +59,257 @@ macro_rules! define_journey {
     };
 }
 
-define_journey!(Journey01);
-define_journey!(Journey02);
-define_journey!(Journey03);
-define_journey!(Journey04);
-define_journey!(Journey05);
-define_journey!(Journey06);
-define_journey!(Journey07);
-define_journey!(Journey08);
+#[allow(unused_macros)]
+macro_rules! define_journey_40 {
+    ($name:ident) => {
+        #[derive(Flow)]
+        pub struct $name(
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+        );
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! define_journey_56 {
+    ($name:ident) => {
+        #[derive(Flow)]
+        pub struct $name(
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+        );
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! define_journey_72 {
+    ($name:ident) => {
+        #[derive(Flow)]
+        pub struct $name(
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+            Step<TickSpec>,
+        );
+    };
+}
+
+define_journey_24!(Journey01);
+define_journey_24!(Journey02);
+define_journey_24!(Journey03);
+define_journey_24!(Journey04);
+define_journey_24!(Journey05);
+define_journey_24!(Journey06);
+define_journey_24!(Journey07);
+define_journey_24!(Journey08);
 #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey!(Journey09);
+define_journey_40!(Journey09);
 #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey!(Journey10);
+define_journey_40!(Journey10);
 #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey!(Journey11);
+define_journey_40!(Journey11);
 #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey!(Journey12);
+define_journey_40!(Journey12);
 #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey!(Journey13);
+define_journey_40!(Journey13);
 #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey!(Journey14);
+define_journey_40!(Journey14);
 #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey!(Journey15);
+define_journey_40!(Journey15);
 #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey!(Journey16);
+define_journey_40!(Journey16);
 #[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey!(Journey17);
+define_journey_56!(Journey17);
 #[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey!(Journey18);
+define_journey_56!(Journey18);
 #[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey!(Journey19);
+define_journey_56!(Journey19);
 #[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey!(Journey20);
+define_journey_56!(Journey20);
 #[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey!(Journey21);
+define_journey_56!(Journey21);
 #[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey!(Journey22);
+define_journey_56!(Journey22);
 #[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey!(Journey23);
+define_journey_56!(Journey23);
 #[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey!(Journey24);
+define_journey_56!(Journey24);
 #[cfg(feature = "xlarge")]
-define_journey!(Journey25);
+define_journey_72!(Journey25);
 #[cfg(feature = "xlarge")]
-define_journey!(Journey26);
+define_journey_72!(Journey26);
 #[cfg(feature = "xlarge")]
-define_journey!(Journey27);
+define_journey_72!(Journey27);
 #[cfg(feature = "xlarge")]
-define_journey!(Journey28);
+define_journey_72!(Journey28);
 #[cfg(feature = "xlarge")]
-define_journey!(Journey29);
+define_journey_72!(Journey29);
 #[cfg(feature = "xlarge")]
-define_journey!(Journey30);
+define_journey_72!(Journey30);
 #[cfg(feature = "xlarge")]
-define_journey!(Journey31);
+define_journey_72!(Journey31);
 #[cfg(feature = "xlarge")]
-define_journey!(Journey32);
+define_journey_72!(Journey32);
 
 pub struct Animal01;
 #[jungle::animal(id = 1001, generation = 0)]
