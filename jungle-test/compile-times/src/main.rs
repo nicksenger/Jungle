@@ -152,6 +152,15 @@ impl From<CompileState> for () {
 pub struct FocusedSegment(
     Join<Step<FocusTickSpec<0>>, Step<FocusTickSpec<1>>>,
     Step<FocusJoinMergeSpec<2>>,
+    Step<FocusTickSpec<3>>,
+    Step<FocusTickSpec<4>>,
+    Step<FocusTickSpec<5>>,
+    Step<FocusTickSpec<6>>,
+    Step<FocusTickSpec<7>>,
+    Step<FocusTickSpec<8>>,
+    Step<FocusTickSpec<9>>,
+    Step<FocusTickSpec<10>>,
+    Step<FocusTickSpec<11>>,
 );
 
 pub struct CompileMeta;
@@ -175,7 +184,7 @@ pub struct LoopBody(
 macro_rules! define_journey_24 {
     ($name:ident) => {
         #[derive(Flow)]
-        pub struct $name(
+pub struct $name(
             Transparent<CompileMeta, FocusedSegment>,
             While<CompileLoopOnce<1>, LoopBody>,
             Step<TickSpec<16>>,
@@ -186,20 +195,6 @@ macro_rules! define_journey_24 {
             Step<TickSpec<21>>,
             Step<TickSpec<22>>,
             Step<TickSpec<23>>,
-            Step<TickSpec<24>>,
-            Step<TickSpec<25>>,
-            Step<TickSpec<26>>,
-            Step<TickSpec<27>>,
-            Step<TickSpec<28>>,
-            Step<TickSpec<29>>,
-            Step<TickSpec<30>>,
-            Step<TickSpec<31>>,
-            Step<TickSpec<32>>,
-            Step<TickSpec<33>>,
-            Step<TickSpec<34>>,
-            Step<TickSpec<35>>,
-            Step<TickSpec<36>>,
-            Step<TickSpec<37>>,
         );
     };
 }
