@@ -672,8 +672,46 @@ impl<T> SupportedAnimalGenerations<T> for list::Empty {
     }
 }
 
-impl<T, Head, Tail> SupportedAnimalGenerations<T> for list::List<(Head, Tail)>
+macro_rules! sag_list_chain {
+    ($h0:ident) => {
+        list::List<($h0, list::Empty)>
+    };
+    ($h0:ident, $($rest:ident),+) => {
+        list::List<($h0, sag_list_chain!($($rest),+))>
+    };
+}
+
+macro_rules! sag_list_chain_tail {
+    ($h0:ident ; $tail:ident) => {
+        list::List<($h0, $tail)>
+    };
+    ($h0:ident, $($rest:ident),+ ; $tail:ident) => {
+        list::List<($h0, sag_list_chain_tail!($($rest),+ ; $tail))>
+    };
+}
+
+fn collect_supported_animal<Head>(out: &mut Vec<SupportedAnimal>)
 where
+    Head: BoundAnimal,
+    Head::Id: AnimalIdValue,
+    Head::Generation: Unsigned,
+{
+    out.push(SupportedAnimal {
+        animal_id: <Head::Id as AnimalIdValue>::U32,
+        generation: <Head::Generation as Unsigned>::U32,
+    });
+}
+
+async fn try_spawn_by_head<T, Head>(
+    animal_id: u32,
+    generation: u32,
+    seed: Vec<u8>,
+    journey_id: Uuid,
+    runner: &JungleRunner<T>,
+    tx: &mut RunnerChannelTx,
+) -> Result<Option<JourneyStartOutcome<T>>, ExecutorError>
+where
+    T: Send + Sync + 'static,
     Head: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
     Head::Id: AnimalIdValue,
     Head::Generation: Unsigned,
@@ -685,136 +723,445 @@ where
         > + ArgputForState<Head::State>,
     Head::Seed: Into<<BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry>,
     <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry: Serialize + Clone + Send,
-    Tail: SupportedAnimalGenerations<T>,
-    T: Send + Sync + 'static,
 {
-    fn collect() -> Vec<SupportedAnimal> {
-        let mut out = vec![SupportedAnimal {
-            animal_id: <Head::Id as AnimalIdValue>::U32,
-            generation: <Head::Generation as Unsigned>::U32,
-        }];
-        out.extend(Tail::collect());
-        out
+    if animal_id != <Head::Id as AnimalIdValue>::U32
+        || generation != <Head::Generation as Unsigned>::U32
+    {
+        return Ok(None);
     }
 
-    fn spawn_by_animal<'a>(
-        animal_id: u32,
-        generation: u32,
-        seed: Vec<u8>,
-        journey_id: Uuid,
-        runner: &'a JungleRunner<T>,
-        mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+    let seed: Head::Seed = postcard::from_bytes(&seed)
+        .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+    let initial_input: <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry =
+        seed.into();
+    let state: Head::State = Default::default();
+    let mut executor = runner.new_executor::<Head>(state);
+    let appearance = runner.initial_appearance::<Head>(&executor)?;
+    runner.emit_appearance(journey_id, appearance, tx).await?;
+    let outcome = match runner
+        .drive_until_sleep_or_complete::<Head, _>(&mut executor, initial_input, journey_id, tx)
+        .await?
     {
-        Box::pin(async move {
-            if animal_id == <Head::Id as AnimalIdValue>::U32
-                && generation == <Head::Generation as Unsigned>::U32
-            {
-                let seed: Head::Seed = postcard::from_bytes(&seed)
-                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-                let initial_input: <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry =
-                    seed.into();
-                let state: Head::State = Default::default();
-                let mut executor = runner.new_executor::<Head>(state);
-                let appearance = runner.initial_appearance::<Head>(&executor)?;
-                runner
-                    .emit_appearance(journey_id, appearance, &mut tx)
-                    .await?;
-                match runner
-                    .drive_until_sleep_or_complete::<Head, _>(
-                        &mut executor,
-                        initial_input,
-                        journey_id,
-                        &mut tx,
-                    )
-                    .await?
-                {
-                    RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
-                    RunnerAdvance::SuspendedSleep {
-                        wake_at_unix_ms,
-                        node_id,
-                    } => {
-                        let suspended = SuspendedAnimalJourney::<T, Head> {
-                            journey_id,
-                            sleep_node_id: node_id,
-                            executor,
-                        };
-                        Ok(JourneyStartOutcome::Sleeping {
-                            wake_at_unix_ms,
-                            journey: Box::new(suspended),
-                        })
-                    }
-                }
-            } else {
-                Tail::spawn_by_animal(animal_id, generation, seed, journey_id, runner, tx).await
+        RunnerAdvance::Completed => JourneyStartOutcome::Completed,
+        RunnerAdvance::SuspendedSleep {
+            wake_at_unix_ms,
+            node_id,
+        } => {
+            let suspended = SuspendedAnimalJourney::<T, Head> {
+                journey_id,
+                sleep_node_id: node_id,
+                executor,
+            };
+            JourneyStartOutcome::Sleeping {
+                wake_at_unix_ms,
+                journey: Box::new(suspended),
             }
-        })
-    }
-
-    fn resume_by_animal<'a>(
-        animal_id: u32,
-        generation: u32,
-        seed: Vec<u8>,
-        journey_id: Uuid,
-        history: Vec<RunnerOut>,
-        runner: &'a JungleRunner<T>,
-        mut tx: RunnerChannelTx,
-    ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
-    {
-        Box::pin(async move {
-            if animal_id == <Head::Id as AnimalIdValue>::U32
-                && generation == <Head::Generation as Unsigned>::U32
-            {
-                let seed: Head::Seed = postcard::from_bytes(&seed)
-                    .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
-                let initial_input: <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry =
-                    seed.into();
-                let state: Head::State = Default::default();
-                let mut executor = runner.new_executor::<Head>(state);
-                replay_history::<T, Head, _>(
-                    &mut executor,
-                    initial_input.clone(),
-                    journey_id,
-                    &history,
-                    &mut tx,
-                )
-                .await?;
-                let appearance = runner.initial_appearance::<Head>(&executor)?;
-                runner
-                    .emit_appearance(journey_id, appearance, &mut tx)
-                    .await?;
-                match runner
-                    .drive_until_sleep_or_complete::<Head, _>(
-                        &mut executor,
-                        initial_input,
-                        journey_id,
-                        &mut tx,
-                    )
-                    .await?
-                {
-                    RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
-                    RunnerAdvance::SuspendedSleep {
-                        wake_at_unix_ms,
-                        node_id,
-                    } => {
-                        let suspended = SuspendedAnimalJourney::<T, Head> {
-                            journey_id,
-                            sleep_node_id: node_id,
-                            executor,
-                        };
-                        Ok(JourneyStartOutcome::Sleeping {
-                            wake_at_unix_ms,
-                            journey: Box::new(suspended),
-                        })
-                    }
-                }
-            } else {
-                Tail::resume_by_animal(animal_id, generation, seed, journey_id, history, runner, tx)
-                    .await
-            }
-        })
-    }
+        }
+    };
+    Ok(Some(outcome))
 }
+
+async fn try_resume_by_head<T, Head>(
+    animal_id: u32,
+    generation: u32,
+    seed: Vec<u8>,
+    journey_id: Uuid,
+    history: &[RunnerOut],
+    runner: &JungleRunner<T>,
+    tx: &mut RunnerChannelTx,
+) -> Result<Option<JourneyStartOutcome<T>>, ExecutorError>
+where
+    T: Send + Sync + 'static,
+    Head: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+    Head::Id: AnimalIdValue,
+    Head::Generation: Unsigned,
+    Head::Seed: Send + 'static,
+    Head::State: Send + 'static,
+    BoundAnimalJourney<Head>: BuildFlowWithContext<
+            (Arc<T>, DynFlow<Head::State>),
+            Output = (Arc<T>, DynFlow<Head::State>),
+        > + ArgputForState<Head::State>,
+    Head::Seed: Into<<BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry>,
+    <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry: Serialize + Clone + Send,
+{
+    if animal_id != <Head::Id as AnimalIdValue>::U32
+        || generation != <Head::Generation as Unsigned>::U32
+    {
+        return Ok(None);
+    }
+
+    let seed: Head::Seed = postcard::from_bytes(&seed)
+        .map_err(|err| ExecutorError::InputDeserialize(err.to_string()))?;
+    let initial_input: <BoundAnimalJourney<Head> as ArgputForState<Head::State>>::Carry =
+        seed.into();
+    let state: Head::State = Default::default();
+    let mut executor = runner.new_executor::<Head>(state);
+    replay_history::<T, Head, _>(
+        &mut executor,
+        initial_input.clone(),
+        journey_id,
+        history,
+        tx,
+    )
+    .await?;
+    let appearance = runner.initial_appearance::<Head>(&executor)?;
+    runner.emit_appearance(journey_id, appearance, tx).await?;
+    let outcome = match runner
+        .drive_until_sleep_or_complete::<Head, _>(&mut executor, initial_input, journey_id, tx)
+        .await?
+    {
+        RunnerAdvance::Completed => JourneyStartOutcome::Completed,
+        RunnerAdvance::SuspendedSleep {
+            wake_at_unix_ms,
+            node_id,
+        } => {
+            let suspended = SuspendedAnimalJourney::<T, Head> {
+                journey_id,
+                sleep_node_id: node_id,
+                executor,
+            };
+            JourneyStartOutcome::Sleeping {
+                wake_at_unix_ms,
+                journey: Box::new(suspended),
+            }
+        }
+    };
+    Ok(Some(outcome))
+}
+
+macro_rules! impl_supported_animal_generations_fixed {
+    ($($head:ident),+) => {
+        impl<T, $($head),+> SupportedAnimalGenerations<T> for sag_list_chain!($($head),+)
+        where
+            $(
+                $head: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+                $head::Id: AnimalIdValue,
+                $head::Generation: Unsigned,
+                $head::Seed: Send + 'static,
+                $head::State: Send + 'static,
+                BoundAnimalJourney<$head>: BuildFlowWithContext<
+                        (Arc<T>, DynFlow<$head::State>),
+                        Output = (Arc<T>, DynFlow<$head::State>),
+                    > + ArgputForState<$head::State>,
+                $head::Seed: Into<<BoundAnimalJourney<$head> as ArgputForState<$head::State>>::Carry>,
+                <BoundAnimalJourney<$head> as ArgputForState<$head::State>>::Carry: Serialize + Clone + Send,
+            )+
+            T: Send + Sync + 'static,
+        {
+            fn collect() -> Vec<SupportedAnimal> {
+                let mut out = Vec::new();
+                $(collect_supported_animal::<$head>(&mut out);)+
+                out
+            }
+
+            fn spawn_by_animal<'a>(
+                animal_id: u32,
+                generation: u32,
+                seed: Vec<u8>,
+                journey_id: Uuid,
+                runner: &'a JungleRunner<T>,
+                mut tx: RunnerChannelTx,
+            ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+            {
+                Box::pin(async move {
+                    $(
+                        if let Some(outcome) = try_spawn_by_head::<T, $head>(
+                            animal_id,
+                            generation,
+                            seed.clone(),
+                            journey_id,
+                            runner,
+                            &mut tx,
+                        )
+                        .await?
+                        {
+                            return Ok(outcome);
+                        }
+                    )+
+                    Ok(JourneyStartOutcome::NotMatched)
+                })
+            }
+
+            fn resume_by_animal<'a>(
+                animal_id: u32,
+                generation: u32,
+                seed: Vec<u8>,
+                journey_id: Uuid,
+                history: Vec<RunnerOut>,
+                runner: &'a JungleRunner<T>,
+                mut tx: RunnerChannelTx,
+            ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+            {
+                Box::pin(async move {
+                    $(
+                        if let Some(outcome) = try_resume_by_head::<T, $head>(
+                            animal_id,
+                            generation,
+                            seed.clone(),
+                            journey_id,
+                            &history,
+                            runner,
+                            &mut tx,
+                        )
+                        .await?
+                        {
+                            return Ok(outcome);
+                        }
+                    )+
+                    Ok(JourneyStartOutcome::NotMatched)
+                })
+            }
+        }
+    };
+}
+
+macro_rules! impl_supported_animal_generations_chunk {
+    ($h0:ident, $h1:ident, $h2:ident, $h3:ident, $h4:ident, $h5:ident, $h6:ident, $h7:ident ; $tail:ident) => {
+        impl<T, $h0, $h1, $h2, $h3, $h4, $h5, $h6, $h7, $tail> SupportedAnimalGenerations<T>
+            for sag_list_chain_tail!($h0, $h1, $h2, $h3, $h4, $h5, $h6, $h7 ; $tail)
+        where
+            $h0: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+            $h0::Id: AnimalIdValue,
+            $h0::Generation: Unsigned,
+            $h0::Seed: Send + 'static,
+            $h0::State: Send + 'static,
+            BoundAnimalJourney<$h0>: BuildFlowWithContext<
+                    (Arc<T>, DynFlow<$h0::State>),
+                    Output = (Arc<T>, DynFlow<$h0::State>),
+                > + ArgputForState<$h0::State>,
+            $h0::Seed: Into<<BoundAnimalJourney<$h0> as ArgputForState<$h0::State>>::Carry>,
+            <BoundAnimalJourney<$h0> as ArgputForState<$h0::State>>::Carry: Serialize + Clone + Send,
+            $h1: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+            $h1::Id: AnimalIdValue,
+            $h1::Generation: Unsigned,
+            $h1::Seed: Send + 'static,
+            $h1::State: Send + 'static,
+            BoundAnimalJourney<$h1>: BuildFlowWithContext<
+                    (Arc<T>, DynFlow<$h1::State>),
+                    Output = (Arc<T>, DynFlow<$h1::State>),
+                > + ArgputForState<$h1::State>,
+            $h1::Seed: Into<<BoundAnimalJourney<$h1> as ArgputForState<$h1::State>>::Carry>,
+            <BoundAnimalJourney<$h1> as ArgputForState<$h1::State>>::Carry: Serialize + Clone + Send,
+            $h2: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+            $h2::Id: AnimalIdValue,
+            $h2::Generation: Unsigned,
+            $h2::Seed: Send + 'static,
+            $h2::State: Send + 'static,
+            BoundAnimalJourney<$h2>: BuildFlowWithContext<
+                    (Arc<T>, DynFlow<$h2::State>),
+                    Output = (Arc<T>, DynFlow<$h2::State>),
+                > + ArgputForState<$h2::State>,
+            $h2::Seed: Into<<BoundAnimalJourney<$h2> as ArgputForState<$h2::State>>::Carry>,
+            <BoundAnimalJourney<$h2> as ArgputForState<$h2::State>>::Carry: Serialize + Clone + Send,
+            $h3: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+            $h3::Id: AnimalIdValue,
+            $h3::Generation: Unsigned,
+            $h3::Seed: Send + 'static,
+            $h3::State: Send + 'static,
+            BoundAnimalJourney<$h3>: BuildFlowWithContext<
+                    (Arc<T>, DynFlow<$h3::State>),
+                    Output = (Arc<T>, DynFlow<$h3::State>),
+                > + ArgputForState<$h3::State>,
+            $h3::Seed: Into<<BoundAnimalJourney<$h3> as ArgputForState<$h3::State>>::Carry>,
+            <BoundAnimalJourney<$h3> as ArgputForState<$h3::State>>::Carry: Serialize + Clone + Send,
+            $h4: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+            $h4::Id: AnimalIdValue,
+            $h4::Generation: Unsigned,
+            $h4::Seed: Send + 'static,
+            $h4::State: Send + 'static,
+            BoundAnimalJourney<$h4>: BuildFlowWithContext<
+                    (Arc<T>, DynFlow<$h4::State>),
+                    Output = (Arc<T>, DynFlow<$h4::State>),
+                > + ArgputForState<$h4::State>,
+            $h4::Seed: Into<<BoundAnimalJourney<$h4> as ArgputForState<$h4::State>>::Carry>,
+            <BoundAnimalJourney<$h4> as ArgputForState<$h4::State>>::Carry: Serialize + Clone + Send,
+            $h5: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+            $h5::Id: AnimalIdValue,
+            $h5::Generation: Unsigned,
+            $h5::Seed: Send + 'static,
+            $h5::State: Send + 'static,
+            BoundAnimalJourney<$h5>: BuildFlowWithContext<
+                    (Arc<T>, DynFlow<$h5::State>),
+                    Output = (Arc<T>, DynFlow<$h5::State>),
+                > + ArgputForState<$h5::State>,
+            $h5::Seed: Into<<BoundAnimalJourney<$h5> as ArgputForState<$h5::State>>::Carry>,
+            <BoundAnimalJourney<$h5> as ArgputForState<$h5::State>>::Carry: Serialize + Clone + Send,
+            $h6: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+            $h6::Id: AnimalIdValue,
+            $h6::Generation: Unsigned,
+            $h6::Seed: Send + 'static,
+            $h6::State: Send + 'static,
+            BoundAnimalJourney<$h6>: BuildFlowWithContext<
+                    (Arc<T>, DynFlow<$h6::State>),
+                    Output = (Arc<T>, DynFlow<$h6::State>),
+                > + ArgputForState<$h6::State>,
+            $h6::Seed: Into<<BoundAnimalJourney<$h6> as ArgputForState<$h6::State>>::Carry>,
+            <BoundAnimalJourney<$h6> as ArgputForState<$h6::State>>::Carry: Serialize + Clone + Send,
+            $h7: BoundAnimal + Observable + Perturbable + Send + Sync + 'static,
+            $h7::Id: AnimalIdValue,
+            $h7::Generation: Unsigned,
+            $h7::Seed: Send + 'static,
+            $h7::State: Send + 'static,
+            BoundAnimalJourney<$h7>: BuildFlowWithContext<
+                    (Arc<T>, DynFlow<$h7::State>),
+                    Output = (Arc<T>, DynFlow<$h7::State>),
+                > + ArgputForState<$h7::State>,
+            $h7::Seed: Into<<BoundAnimalJourney<$h7> as ArgputForState<$h7::State>>::Carry>,
+            <BoundAnimalJourney<$h7> as ArgputForState<$h7::State>>::Carry: Serialize + Clone + Send,
+            $tail: SupportedAnimalGenerations<T>,
+            T: Send + Sync + 'static,
+        {
+            fn collect() -> Vec<SupportedAnimal> {
+                let mut out = Vec::new();
+                collect_supported_animal::<$h0>(&mut out);
+                collect_supported_animal::<$h1>(&mut out);
+                collect_supported_animal::<$h2>(&mut out);
+                collect_supported_animal::<$h3>(&mut out);
+                collect_supported_animal::<$h4>(&mut out);
+                collect_supported_animal::<$h5>(&mut out);
+                collect_supported_animal::<$h6>(&mut out);
+                collect_supported_animal::<$h7>(&mut out);
+                out.extend(<$tail as SupportedAnimalGenerations<T>>::collect());
+                out
+            }
+
+            fn spawn_by_animal<'a>(
+                animal_id: u32,
+                generation: u32,
+                seed: Vec<u8>,
+                journey_id: Uuid,
+                runner: &'a JungleRunner<T>,
+                mut tx: RunnerChannelTx,
+            ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+            {
+                Box::pin(async move {
+                    if let Some(outcome) =
+                        try_spawn_by_head::<T, $h0>(animal_id, generation, seed.clone(), journey_id, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_spawn_by_head::<T, $h1>(animal_id, generation, seed.clone(), journey_id, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_spawn_by_head::<T, $h2>(animal_id, generation, seed.clone(), journey_id, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_spawn_by_head::<T, $h3>(animal_id, generation, seed.clone(), journey_id, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_spawn_by_head::<T, $h4>(animal_id, generation, seed.clone(), journey_id, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_spawn_by_head::<T, $h5>(animal_id, generation, seed.clone(), journey_id, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_spawn_by_head::<T, $h6>(animal_id, generation, seed.clone(), journey_id, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_spawn_by_head::<T, $h7>(animal_id, generation, seed.clone(), journey_id, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    <$tail as SupportedAnimalGenerations<T>>::spawn_by_animal(
+                        animal_id,
+                        generation,
+                        seed,
+                        journey_id,
+                        runner,
+                        tx,
+                    )
+                    .await
+                })
+            }
+
+            fn resume_by_animal<'a>(
+                animal_id: u32,
+                generation: u32,
+                seed: Vec<u8>,
+                journey_id: Uuid,
+                history: Vec<RunnerOut>,
+                runner: &'a JungleRunner<T>,
+                mut tx: RunnerChannelTx,
+            ) -> Pin<Box<dyn Future<Output = Result<JourneyStartOutcome<T>, ExecutorError>> + Send + 'a>>
+            {
+                Box::pin(async move {
+                    if let Some(outcome) =
+                        try_resume_by_head::<T, $h0>(animal_id, generation, seed.clone(), journey_id, &history, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_resume_by_head::<T, $h1>(animal_id, generation, seed.clone(), journey_id, &history, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_resume_by_head::<T, $h2>(animal_id, generation, seed.clone(), journey_id, &history, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_resume_by_head::<T, $h3>(animal_id, generation, seed.clone(), journey_id, &history, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_resume_by_head::<T, $h4>(animal_id, generation, seed.clone(), journey_id, &history, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_resume_by_head::<T, $h5>(animal_id, generation, seed.clone(), journey_id, &history, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_resume_by_head::<T, $h6>(animal_id, generation, seed.clone(), journey_id, &history, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    if let Some(outcome) =
+                        try_resume_by_head::<T, $h7>(animal_id, generation, seed.clone(), journey_id, &history, runner, &mut tx).await?
+                    {
+                        return Ok(outcome);
+                    }
+                    <$tail as SupportedAnimalGenerations<T>>::resume_by_animal(
+                        animal_id,
+                        generation,
+                        seed,
+                        journey_id,
+                        history,
+                        runner,
+                        tx,
+                    )
+                    .await
+                })
+            }
+        }
+    };
+}
+
+impl_supported_animal_generations_fixed!(H0);
+impl_supported_animal_generations_fixed!(H0, H1);
+impl_supported_animal_generations_fixed!(H0, H1, H2);
+impl_supported_animal_generations_fixed!(H0, H1, H2, H3);
+impl_supported_animal_generations_fixed!(H0, H1, H2, H3, H4);
+impl_supported_animal_generations_fixed!(H0, H1, H2, H3, H4, H5);
+impl_supported_animal_generations_fixed!(H0, H1, H2, H3, H4, H5, H6);
+impl_supported_animal_generations_chunk!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail);
 
 async fn replay_history<T, A, Initial>(
     executor: &mut ContextExecutor<T, A>,
