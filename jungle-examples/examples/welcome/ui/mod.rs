@@ -905,6 +905,9 @@ impl WelcomeUi {
             if now >= visible_until {
                 if let Some(overlay) = overlay {
                     overlay.set_opacity(0.0);
+                    if let Err(error) = overlay.pause() {
+                        warn!(error = %error, "failed to pause AV overlay after visibility ended");
+                    }
                 }
                 *playback = RegionPlayback::hidden();
             }
@@ -918,6 +921,10 @@ impl WelcomeUi {
         now: Instant,
     ) {
         if let Some(overlay) = overlay {
+            if let Err(error) = overlay.resume() {
+                warn!(error = %error, "failed to resume AV overlay before playback");
+                return;
+            }
             if let Err(error) = overlay.seek(duration_to_ns(request.offset)) {
                 warn!(error = %error, "failed to seek AV overlay to requested offset");
                 return;
@@ -948,6 +955,9 @@ impl WelcomeUi {
     ) {
         if let Some(overlay) = overlay {
             overlay.set_opacity(0.0);
+            if let Err(error) = overlay.pause() {
+                warn!(error = %error, "failed to pause AV overlay for hidden region");
+            }
         }
         *playback = RegionPlayback::hidden();
     }
@@ -1035,6 +1045,13 @@ fn init_video_state(
     ) {
         Ok(mut state) => {
             state.set_scale_mode(scale_mode);
+            if let Err(error) = state.pause() {
+                warn!(
+                    error = %error,
+                    region,
+                    "failed to pause AV overlay state at initialization"
+                );
+            }
             Some(state)
         }
         Err(error) => {
