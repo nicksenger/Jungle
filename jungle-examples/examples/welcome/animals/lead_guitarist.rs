@@ -7,7 +7,7 @@ use crate::instrumentation::{
 
 use super::{Double, LeadGuitarist};
 
-const LEAD_GUITAR_LANE_ID: u32 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32;
+const LEAD_GUITAR_LANE_ID: u8 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePick<NOTE, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
 type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> =

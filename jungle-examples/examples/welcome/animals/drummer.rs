@@ -22,7 +22,7 @@ impl Default for DrummerState {
 }
 pub type DrummerSeed = ();
 const INTRO_START_DELAY_TICKS: u32 = 5_376;
-const DRUMS_LANE_ID: u32 = <<Drums as Animal>::Id as AnimalIdValue>::U32;
+const DRUMS_LANE_ID: u8 = <<Drums as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Hat44Tick = Step<Hat<44, 96, 96>>;
 type Hat46Tick = Step<Hat<46, 96, 96>>;
 

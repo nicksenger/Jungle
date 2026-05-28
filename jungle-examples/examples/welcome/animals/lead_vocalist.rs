@@ -7,7 +7,7 @@ use crate::instrumentation::{
 
 use super::{Double, LeadVocalist};
 
-const LEAD_VOCALS_LANE_ID: u32 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32;
+const LEAD_VOCALS_LANE_ID: u8 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Generate<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneGenerate<NOTE, NOTE_TICK, REST_TICK, LEAD_VOCALS_LANE_ID>;
 

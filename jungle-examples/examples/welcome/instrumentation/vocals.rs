@@ -90,10 +90,10 @@ pub struct Generate<
     const NOTE: u8,
     const NOTE_TICK: u32,
     const REST_TICK: u32,
-    const LANE_ID: u32 = 0,
+    const LANE_ID: u8 = 0,
 >;
 #[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u32> Act
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Act
     for Generate<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
     type Effect = Monad<Vocals, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;

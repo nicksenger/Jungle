@@ -8,7 +8,7 @@ use crate::instrumentation::{
 
 use super::{Bass, Double, Octa, Quad};
 
-const BASS_LANE_ID: u32 = <<Bass as Animal>::Id as AnimalIdValue>::U32;
+const BASS_LANE_ID: u8 = <<Bass as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Thump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneThump<NOTE, NOTE_TICK, REST_TICK, BASS_LANE_ID>;
 type Thump44Tick = Step<Thump<44, 96, 96>>;

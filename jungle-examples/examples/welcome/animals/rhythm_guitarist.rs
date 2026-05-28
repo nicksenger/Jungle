@@ -28,7 +28,7 @@ impl Default for RhythmGuitaristState {
 }
 
 pub type RhythmGuitaristSeed = ();
-const RHYTHM_GUITAR_LANE_ID: u32 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32;
+const RHYTHM_GUITAR_LANE_ID: u8 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
 const INTRO_START_DELAY_TICKS: u32 = 0;
 
 pub struct RhythmGuitarist;

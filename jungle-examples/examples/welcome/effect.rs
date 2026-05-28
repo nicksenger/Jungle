@@ -24,7 +24,7 @@ static EFFECT_SKIPPED_NOTES: AtomicUsize = AtomicUsize::new(0);
 
 pub struct Monad<
     I: Instrument,
-    const LANE_ID: u32,
+    const LANE_ID: u8,
     const NOTE: u8,
     const NOTE_TICK: u32,
     const REST_TICK: u32,
@@ -32,7 +32,7 @@ pub struct Monad<
 
 pub struct Passthrough<T>(PhantomData<T>);
 
-pub struct Rest<const LANE_ID: u32, const REST_TICKS: u32>;
+pub struct Rest<const LANE_ID: u8, const REST_TICKS: u32>;
 #[effect(id = 2)]
 impl<T> Effect<TheJungle> for Passthrough<T>
 where
@@ -48,7 +48,7 @@ where
 }
 
 #[effect(id = 1)]
-impl<const LANE_ID: u32, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_ID, REST_TICKS> {
+impl<const LANE_ID: u8, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_ID, REST_TICKS> {
     type In = ();
     type Out = ();
     type Err = String;
@@ -56,18 +56,19 @@ impl<const LANE_ID: u32, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_
     async fn effect(jungle: &TheJungle, _input: Self::In) -> Result<Self::Out, Self::Err> {
         let cycle_started_at = Instant::now();
         jungle.metronome().wait_for_start_barrier().await;
+        let lane_id = u32::from(LANE_ID);
         let timing = jungle.metronome().rhythm_timing(
-            LANE_ID,
+            lane_id,
             TICKS_PER_BEAT,
             0,
             REST_TICKS,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
-        let pre_play_sleep_elapsed = measure_note_window_sleep(LANE_ID, &timing).await;
-        let post_cycle_sleep_elapsed = measure_next_cycle_sleep(LANE_ID, &timing).await;
+        let pre_play_sleep_elapsed = measure_note_window_sleep(lane_id, &timing).await;
+        let post_cycle_sleep_elapsed = measure_next_cycle_sleep(lane_id, &timing).await;
         log_effect_cycle(
-            LANE_ID,
+            lane_id,
             false,
             pre_play_sleep_elapsed,
             Duration::ZERO,
@@ -79,7 +80,7 @@ impl<const LANE_ID: u32, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_
 }
 
 #[effect(id = 0)]
-impl<I, const LANE_ID: u32, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
+impl<I, const LANE_ID: u8, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
     Effect<TheJungle> for Monad<I, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
 where
     I: Instrument,
@@ -93,20 +94,21 @@ where
     async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
         let cycle_started_at = Instant::now();
         jungle.metronome().wait_for_start_barrier().await;
+        let lane_id = u32::from(LANE_ID);
         let timing = jungle.metronome().rhythm_timing(
-            LANE_ID,
+            lane_id,
             TICKS_PER_BEAT,
             NOTE_TICK as u32,
             REST_TICK as u32,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
-        let pre_play_sleep_elapsed = measure_note_window_sleep(LANE_ID, &timing).await;
+        let pre_play_sleep_elapsed = measure_note_window_sleep(lane_id, &timing).await;
         let mut play_elapsed = Duration::ZERO;
         if timing.should_play() {
             let [note] = rhythm_notes(
                 jungle,
-                LANE_ID,
+                lane_id,
                 [NOTE],
                 timing.note_duration(),
                 articulation,
@@ -115,9 +117,9 @@ where
             play_one::<I>(jungle, note).await?;
             play_elapsed = play_started_at.elapsed();
         }
-        let post_cycle_sleep_elapsed = measure_next_cycle_sleep(LANE_ID, &timing).await;
+        let post_cycle_sleep_elapsed = measure_next_cycle_sleep(lane_id, &timing).await;
         log_effect_cycle(
-            LANE_ID,
+            lane_id,
             timing.should_play(),
             pre_play_sleep_elapsed,
             play_elapsed,
