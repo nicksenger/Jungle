@@ -219,6 +219,7 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     };
     let traverse_flow = jungle_type("TraverseFlow");
     let traverse_with = jungle_type("TraverseWith");
+    let bind_flow = jungle_type("BindFlow");
     let scoped_field_list_normalize = jungle_type("ScopedFieldListNormalize");
     let flow_list_concat = jungle_type("FlowListConcat");
     let scoped = jungle_type("Scoped");
@@ -296,12 +297,27 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
             type Output = <<#ident #ty_generics as #traverse_flow>::Output as #traverse_with<Traversal>>::Output;
         }
     };
+    let mut bind_flow_generics = generics.clone();
+    bind_flow_generics.params.push(parse_quote!(A));
+    bind_flow_generics.params.push(parse_quote!(Scope));
+    let (bind_flow_impl_generics, _, bind_flow_where_clause) = bind_flow_generics.split_for_impl();
+    let bind_flow_impl = quote! {
+        impl #bind_flow_impl_generics #bind_flow<A, Scope> for #ident #ty_generics #bind_flow_where_clause
+        where
+            A: jungle_sdk::Animal,
+            #ident #ty_generics: #traverse_flow,
+            <#ident #ty_generics as #traverse_flow>::Output: #bind_flow<A, Scope>,
+        {
+            type Out = <<#ident #ty_generics as #traverse_flow>::Output as #bind_flow<A, Scope>>::Out;
+        }
+    };
 
     quote! {
         #derived
         #scope_impl
         #traverse_impl
         #traverse_with_impl
+        #bind_flow_impl
     }
     .into()
 }

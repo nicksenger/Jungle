@@ -660,6 +660,11 @@ pub trait BindWithFlowScope<A: Animal, ScopeView> {
     type Bound;
 }
 
+/// Dedicated binding recursion used by [`BoundAnimalJourney`] hot path.
+pub trait BindFlow<A: Animal, Scope> {
+    type Out;
+}
+
 /// Convenience alias for binding a flow/template to a concrete animal.
 pub type BoundFlow<F, A> = <F as BindAnimal<A>>::Bound;
 /// Marker for animals whose journey template can be bound to themselves.
@@ -702,21 +707,167 @@ where
 {
 }
 
+impl<A, Scope> BindFlow<A, Scope> for list::Empty
+where
+    A: Animal,
+{
+    type Out = list::Empty;
+}
+
+impl<A, Scope, Head, Tail> BindFlow<A, Scope> for TList<(Head, Tail)>
+where
+    A: Animal,
+    Head: BindFlow<A, Scope>,
+    Tail: BindFlow<A, Scope>,
+{
+    type Out = TList<(
+        <Head as BindFlow<A, Scope>>::Out,
+        <Tail as BindFlow<A, Scope>>::Out,
+    )>;
+}
+
+impl<A, Scope, T, B> BindFlow<A, Scope> for BoundFlowStep<T, B>
+where
+    A: Animal,
+    T: Animal,
+    B: BoundAct<T>,
+{
+    type Out = BoundFlowStep<T, B>;
+}
+
+impl<T, S> BindFlow<T, RootScope> for Step<S>
+where
+    T: Animal,
+    S: Act,
+    <S as Act>::Bind<T>: BoundAct<
+        T,
+        Input = <S as Act>::Input,
+        Output = <S as Act>::Output,
+        Effect = <S as Act>::Effect,
+    >,
+{
+    type Out = BoundFlowStep<T, <S as Act>::Bind<T>>;
+}
+
+impl<T, ScopeCarrier, S> BindFlow<T, ScopeCarrier> for Step<S>
+where
+    T: Animal,
+    ScopeCarrier: ScopedCarrierMarker,
+    ScopeCarrier: Aspect<T::State>,
+    S: Act,
+    S: ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>,
+    <S as ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>>::BoundAct:
+        BoundAct<
+            T,
+            Input = <S as Act>::Input,
+            Output = <S as Act>::Output,
+            Effect = <S as Act>::Effect,
+        >,
+{
+    type Out = BoundFlowStep<
+        T,
+        <S as ScopedAct<
+            T,
+            <ScopeCarrier as StateCarrier<T::State>>::Focus,
+            ScopeCarrier,
+        >>::BoundAct,
+    >;
+}
+
+impl<A, Scope, P, L, R, M> BindFlow<A, Scope> for Conditional<P, L, R, M>
+where
+    A: Animal,
+    L: BindFlow<A, Scope>,
+    R: BindFlow<A, Scope>,
+{
+    type Out = Conditional<
+        P,
+        <L as BindFlow<A, Scope>>::Out,
+        <R as BindFlow<A, Scope>>::Out,
+        M,
+    >;
+}
+
+impl<A, Scope, C, F, M> BindFlow<A, Scope> for While<C, F, M>
+where
+    A: Animal,
+    F: BindFlow<A, Scope>,
+{
+    type Out = While<C, <F as BindFlow<A, Scope>>::Out, M>;
+}
+
+impl<A, Scope, M, F> BindFlow<A, Scope> for Transparent<M, F>
+where
+    A: Animal,
+    F: BindFlow<A, Scope>,
+{
+    type Out = Transparent<M, <F as BindFlow<A, Scope>>::Out>;
+}
+
+impl<A, Scope, L, R, M> BindFlow<A, Scope> for Select<L, R, M>
+where
+    A: Animal,
+    L: BindFlow<A, Scope>,
+    R: BindFlow<A, Scope>,
+{
+    type Out = Select<
+        <L as BindFlow<A, Scope>>::Out,
+        <R as BindFlow<A, Scope>>::Out,
+        M,
+    >;
+}
+
+impl<A, Scope, L, R, M> BindFlow<A, Scope> for Join<L, R, M>
+where
+    A: Animal,
+    L: BindFlow<A, Scope>,
+    R: BindFlow<A, Scope>,
+{
+    type Out = Join<
+        <L as BindFlow<A, Scope>>::Out,
+        <R as BindFlow<A, Scope>>::Out,
+        M,
+    >;
+}
+
+impl<A, View, F> BindFlow<A, RootScope> for Scoped<View, F>
+where
+    A: Animal,
+    View: 'static,
+    F: BindFlow<A, ViewCarrier<View>>,
+{
+    type Out = <F as BindFlow<A, ViewCarrier<View>>>::Out;
+}
+
+impl<A, ScopeCarrier, View, F> BindFlow<A, ScopeCarrier> for Scoped<View, F>
+where
+    A: Animal,
+    ScopeCarrier: ScopedCarrierMarker,
+    ScopeCarrier: Aspect<A::State>,
+    View: 'static,
+    F: BindFlow<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>,
+{
+    type Out = <F as BindFlow<
+        A,
+        behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>,
+    >>::Out;
+}
+
 impl<F, A> BindWithFlowScope<A, RootFlowScope> for F
 where
     A: Animal,
-    F: TraverseWith<BindAnimalTraversal<A, RootScope>>,
+    F: BindFlow<A, RootScope>,
 {
-    type Bound = <F as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
+    type Bound = <F as BindFlow<A, RootScope>>::Out;
 }
 
 impl<F, A, View> BindWithFlowScope<A, FlowView<View>> for F
 where
     A: Animal,
     View: 'static,
-    F: TraverseWith<BindAnimalTraversal<A, RootScope>>,
+    F: BindFlow<A, RootScope>,
 {
-    type Bound = <F as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
+    type Bound = <F as BindFlow<A, RootScope>>::Out;
 }
 
 /// Directional helper that rewrites `BoundFlowStep<Animal, Left>` to `BoundFlowStep<Animal, Right>`.
