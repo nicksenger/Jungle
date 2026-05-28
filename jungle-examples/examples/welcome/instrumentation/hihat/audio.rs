@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::audio::{PlayPriority, PlayRequest};
+use welcome_audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, smoothstep, triangle, SAMPLE_RATE},
@@ -10,7 +10,7 @@ use crate::instrumentation::{
 use super::HiHatArticulation;
 
 pub(super) async fn play(
-    audio: &crate::audio::AudioHandle,
+    audio: &welcome_audio::AudioHandle,
     synth: &crate::instrumentation::SynthHandle,
     note: Note<HiHatArticulation>,
 ) -> Result<(), Error> {

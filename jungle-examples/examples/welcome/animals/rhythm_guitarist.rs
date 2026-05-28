@@ -1975,7 +1975,7 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let (shared_audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
+        let (shared_audio_handle, _audio_keep_alive) = welcome_audio::AudioHandle::stub();
         let shared_metronome = crate::metronome::Metronome::spawn(DUPLICATE_EXECUTION_TEST_BPM);
 
         let mut worker_handles = Vec::with_capacity(DUPLICATE_EXECUTION_WORKER_COUNT);
@@ -2058,7 +2058,7 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
+        let (audio_handle, _audio_keep_alive) = welcome_audio::AudioHandle::stub();
         let ecosystem = TheJungle::new(audio_handle, 123.0);
 
         let worker = JungleWorker::new(ecosystem, client.clone());
@@ -2101,7 +2101,7 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let (shared_audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
+        let (shared_audio_handle, _audio_keep_alive) = welcome_audio::AudioHandle::stub();
         let shared_metronome = crate::metronome::Metronome::spawn(123.0);
         shared_metronome.arm_start_barrier();
 

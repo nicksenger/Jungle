@@ -1,7 +1,6 @@
 #![recursion_limit = "16384"]
 
 mod animals;
-mod audio;
 mod ecosystem;
 mod effect;
 pub mod flow;
@@ -28,6 +27,7 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 use uuid::Uuid;
+use welcome_audio::{AudioEngine, AudioHandle, StubAudioKeepAlive};
 
 #[cfg(feature = "postgres")]
 use testcontainers::runners::AsyncRunner;
@@ -38,7 +38,6 @@ use crate::{
     animals::{
         Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, LeadVocalistSeed, RhythmGuitarist,
     },
-    audio::{AudioEngine, AudioHandle, StubAudioKeepAlive},
     ecosystem::{AnimalVolumes, TheJungle},
     instrumentation::SynthHandle,
 };

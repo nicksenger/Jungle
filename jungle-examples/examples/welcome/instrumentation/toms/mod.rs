@@ -3,12 +3,12 @@ use super::{Instrument, Note, SynthHandle};
 pub(super) mod audio;
 
 pub struct Toms {
-    audio: crate::audio::AudioHandle,
+    audio: welcome_audio::AudioHandle,
     synth: SynthHandle,
 }
 
 impl Toms {
-    pub fn new(audio: crate::audio::AudioHandle, synth: SynthHandle) -> Self {
+    pub fn new(audio: welcome_audio::AudioHandle, synth: SynthHandle) -> Self {
         Self { audio, synth }
     }
 }

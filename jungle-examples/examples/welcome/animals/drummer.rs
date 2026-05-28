@@ -2744,7 +2744,7 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
+        let (audio_handle, _audio_keep_alive) = welcome_audio::AudioHandle::stub();
         let ecosystem = TheJungle::new(audio_handle, 123.0);
 
         let worker = JungleWorker::new(ecosystem, client.clone());
@@ -2784,7 +2784,7 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let audio_engine = crate::audio::AudioEngine::start_default()
+        let audio_engine = welcome_audio::AudioEngine::start_default()
             .await
             .expect("shared real audio engine should start");
         let shared_audio_handle = audio_engine.handle();

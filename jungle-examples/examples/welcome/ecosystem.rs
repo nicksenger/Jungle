@@ -2,12 +2,12 @@ use jungle_sdk::prelude::*;
 
 use crate::{
     animals::WelcomeAnimals,
-    audio::AudioHandle,
     instrumentation::{
         Bass, Cymbal, ElectricGuitar, HiHat, KickDrum, SnareDrum, SynthHandle, Toms, Vocals,
     },
     metronome::Metronome,
 };
+use welcome_audio::AudioHandle;
 
 pub struct TheJungle {
     rhythm_guitar: ElectricGuitar,

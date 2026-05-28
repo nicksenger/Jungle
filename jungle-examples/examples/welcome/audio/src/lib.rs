@@ -1,4 +1,5 @@
 mod mixer;
+pub mod vocals;
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -214,13 +215,13 @@ impl AudioEngine {
     }
 }
 
-pub(crate) struct StubAudioKeepAlive {
+pub struct StubAudioKeepAlive {
     _critical_command_rx: mpsc::Receiver<mixer::Command>,
     _standard_command_rx: mpsc::Receiver<mixer::Command>,
 }
 
 impl AudioHandle {
-    pub(crate) fn stub() -> (Self, StubAudioKeepAlive) {
+    pub fn stub() -> (Self, StubAudioKeepAlive) {
         let (critical_command_tx, critical_command_rx) =
             mpsc::channel(COMMAND_CHANNEL_CAPACITY_CRITICAL);
         let (standard_command_tx, standard_command_rx) =

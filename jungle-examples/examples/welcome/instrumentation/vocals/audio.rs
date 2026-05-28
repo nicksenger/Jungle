@@ -1,9 +1,6 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use rustsam::singer::{render_vocal_note, LyricInput, VocalNote, VoiceParams};
-use tracing::warn;
-
-use crate::audio::{PlayPriority, PlayRequest};
+use welcome_audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
     synthesis::{duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, SAMPLE_RATE},
@@ -13,7 +10,7 @@ use crate::instrumentation::{
 use super::VocalsArticulation;
 
 pub(super) async fn play(
-    audio: &crate::audio::AudioHandle,
+    audio: &welcome_audio::AudioHandle,
     synth: &crate::instrumentation::SynthHandle,
     note: Note<VocalsArticulation>,
 ) -> Result<(), Error> {
@@ -122,81 +119,16 @@ fn synthesize_formant_vocals(
     note: &Note<VocalsArticulation>,
     phonemes: [Option<super::Phoneme>; 12],
 ) -> Option<(Arc<[f32]>, f32, f32)> {
-    const FORMANT_TARGET_RMS: f32 = 0.22;
-    const FORMANT_TARGET_PEAK: f32 = 0.92;
-    const FORMANT_MAX_MAKEUP_GAIN: f32 = 4.0;
-
-    let phonemes: Vec<rustsam::parser::Phoneme> = phonemes
-        .into_iter()
-        .flatten()
-        .map(|phoneme| rustsam::parser::Phoneme {
-            length: phoneme.length,
-            index: phoneme.index,
-            stress: phoneme.stress,
-        })
-        .collect();
-
-    if phonemes.is_empty() {
-        return None;
-    }
-
     let duration = articulation_duration(note.duration, note.articulation);
-    let voice = VoiceParams::default();
-    let rendered = render_vocal_note(
-        VocalNote {
-            midi_note: note.n_midi,
-            lyric: LyricInput::Phonemes(phonemes),
-            duration,
-        },
+    let pcm = welcome_audio::vocals::synthesize_formant_vocals(
+        note.n_midi,
+        duration,
+        phonemes,
+        note.velocity,
         SAMPLE_RATE,
-        voice,
-    );
-
-    let rendered = match rendered {
-        Ok(rendered) => rendered,
-        Err(err) => {
-            warn!(error = %err, "failed to render rustsam formant vocals; using procedural fallback");
-            return None;
-        }
-    };
-
-    let mut normalized: Vec<f32> = rendered
-        .into_iter()
-        .map(|sample| sample as f32 / 127.5 - 1.0)
-        .collect();
-
-    let peak_abs = normalized.iter().fold(0.0_f32, |acc, sample| {
-        if sample.abs() > acc {
-            sample.abs()
-        } else {
-            acc
-        }
-    });
-    let rms = if normalized.is_empty() {
-        0.0
-    } else {
-        (normalized.iter().map(|sample| sample * sample).sum::<f32>() / normalized.len() as f32)
-            .sqrt()
-    };
-
-    if peak_abs > 1.0e-4 && rms > 1.0e-4 {
-        let rms_gain = FORMANT_TARGET_RMS / rms;
-        let peak_gain = FORMANT_TARGET_PEAK / peak_abs;
-        let makeup_gain = rms_gain.min(peak_gain).clamp(1.0, FORMANT_MAX_MAKEUP_GAIN);
-        if makeup_gain > 1.0 {
-            for sample in &mut normalized {
-                *sample = (*sample * makeup_gain).clamp(-1.0, 1.0);
-            }
-        }
-    }
-
-    let velocity = note.velocity.clamp(0.0, 1.0);
-    let pcm: Vec<f32> = normalized
-        .into_iter()
-        .map(|sample| sample * velocity)
-        .collect();
+    )?;
     let (gain, playback_rate) = articulation_output_shape(note.articulation);
-    Some((Arc::from(pcm), gain, playback_rate))
+    Some((pcm, gain, playback_rate))
 }
 
 fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Duration {

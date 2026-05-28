@@ -7,16 +7,16 @@ use super::{Instrument, Note, SynthHandle};
 pub(super) mod audio;
 
 pub struct ElectricGuitar {
-    audio: crate::audio::AudioHandle,
+    audio: welcome_audio::AudioHandle,
     synth: SynthHandle,
 }
 
 impl ElectricGuitar {
-    pub fn new(audio: crate::audio::AudioHandle, synth: SynthHandle) -> Self {
+    pub fn new(audio: welcome_audio::AudioHandle, synth: SynthHandle) -> Self {
         Self { audio, synth }
     }
 
-    pub fn audio(&self) -> &crate::audio::AudioHandle {
+    pub fn audio(&self) -> &welcome_audio::AudioHandle {
         &self.audio
     }
 }

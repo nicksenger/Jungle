@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use crate::audio::{AudioHandle, PlayPriority, PlayRequest};
+use welcome_audio::{AudioHandle, PlayPriority, PlayRequest};
 use crate::instrumentation::{amplitude_gain, Error, Expression, Note};
 
 use super::ElectricGuitarArticulation;

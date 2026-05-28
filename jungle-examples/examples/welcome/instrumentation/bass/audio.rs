@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use crate::audio::{PlayPriority, PlayRequest};
+use welcome_audio::{PlayPriority, PlayRequest};
 use crate::instrumentation::{
     amplitude_gain,
     synthesis::{
@@ -12,7 +12,7 @@ use crate::instrumentation::{
 use super::BassArticulation;
 
 pub(super) async fn play(
-    audio: &crate::audio::AudioHandle,
+    audio: &welcome_audio::AudioHandle,
     synth: &crate::instrumentation::SynthHandle,
     note: Note<BassArticulation>,
 ) -> Result<(), Error> {
