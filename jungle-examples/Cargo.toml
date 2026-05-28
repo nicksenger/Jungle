@@ -5,7 +5,8 @@ edition = "2021"
 
 [features]
 default = []
-viewer = ["dep:jungle-vision", "dep:iced", "dep:iced-av1"]
+viewer = ["dep:jungle-vision", "dep:iced"]
+video = ["dep:iced-av1"]
 audio = ["dep:cpal", "dep:rustsam"]
 redb = []
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
