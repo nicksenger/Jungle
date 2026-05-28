@@ -851,11 +851,67 @@ impl<Rhs> FlowListConcat<Rhs> for list::Empty {
     type Output = Rhs;
 }
 
-impl<Head, Tail, Rhs> FlowListConcat<Rhs> for TList<(Head, Tail)>
+macro_rules! flow_concat_chain {
+    ($h:ty) => {
+        TList<($h, list::Empty)>
+    };
+    ($h:ty, $($rest:ty),+) => {
+        TList<($h, flow_concat_chain!($($rest),+))>
+    };
+}
+
+macro_rules! flow_concat_chain_tail {
+    ($h:ty ; $tail:ty) => {
+        TList<($h, $tail)>
+    };
+    ($h:ty, $($rest:ty),+ ; $tail:ty) => {
+        TList<($h, flow_concat_chain_tail!($($rest),+ ; $tail))>
+    };
+}
+
+macro_rules! flow_list_concat_len_impl {
+    ($h0:ident) => {
+        impl<$h0, Rhs> FlowListConcat<Rhs> for flow_concat_chain!($h0) {
+            type Output = flow_concat_chain_tail!($h0 ; Rhs);
+        }
+    };
+    ($h0:ident ; $($rest:ident),+) => {
+        impl<$h0, $($rest,)+ Rhs> FlowListConcat<Rhs> for flow_concat_chain!($h0, $($rest),+)
+        where
+            flow_concat_chain!($($rest),+): FlowListConcat<Rhs>,
+        {
+            type Output = flow_concat_chain_tail!(
+                $h0 ;
+                <flow_concat_chain!($($rest),+) as FlowListConcat<Rhs>>::Output
+            );
+        }
+    };
+}
+
+flow_list_concat_len_impl!(H0);
+flow_list_concat_len_impl!(H0; H1);
+flow_list_concat_len_impl!(H0; H1, H2);
+flow_list_concat_len_impl!(H0; H1, H2, H3);
+flow_list_concat_len_impl!(H0; H1, H2, H3, H4);
+flow_list_concat_len_impl!(H0; H1, H2, H3, H4, H5);
+flow_list_concat_len_impl!(H0; H1, H2, H3, H4, H5, H6);
+
+impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail, Rhs> FlowListConcat<Rhs>
+    for flow_concat_chain_tail!(H0, H1, H2, H3, H4, H5, H6, H7 ; Tail)
 where
     Tail: FlowListConcat<Rhs>,
 {
-    type Output = TList<(Head, <Tail as FlowListConcat<Rhs>>::Output)>;
+    type Output = flow_concat_chain_tail!(
+        H0,
+        H1,
+        H2,
+        H3,
+        H4,
+        H5,
+        H6,
+        H7 ;
+        <Tail as FlowListConcat<Rhs>>::Output
+    );
 }
 
 impl ScopedFieldListNormalize for list::Empty {
