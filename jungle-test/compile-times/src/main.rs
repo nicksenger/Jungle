@@ -8,10 +8,32 @@ pub struct CompileState {
     counter: u32,
 }
 
-pub struct TickSpec;
+pub struct CompileEffectId<const EFFECT_ID: usize>;
+impl<const EFFECT_ID: usize> IdValue for CompileEffectId<EFFECT_ID> {
+    type Value = num::U0;
+}
+
+pub struct CompileNoop<const EFFECT_ID: usize>;
+impl<const EFFECT_ID: usize> EffectSchema for CompileNoop<EFFECT_ID> {
+    type Id = CompileEffectId<EFFECT_ID>;
+    type In = ();
+    type Out = ();
+    type Err = ();
+}
+
+impl<J, const EFFECT_ID: usize> Effect<J> for CompileNoop<EFFECT_ID> {
+    fn effect(
+        _jungle: &J,
+        _input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> + Send {
+        std::future::ready(Ok(()))
+    }
+}
+
+pub struct TickSpec<const EFFECT_ID: usize>;
 #[jungle::act]
-impl Act for TickSpec {
-    type Effect = Noop;
+impl<const EFFECT_ID: usize> Act for TickSpec<EFFECT_ID> {
+    type Effect = CompileNoop<EFFECT_ID>;
     type Input = ();
     type Output = ();
 
@@ -30,30 +52,30 @@ macro_rules! define_journey_24 {
     ($name:ident) => {
         #[derive(Flow)]
         pub struct $name(
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
-            Step<TickSpec>,
+            Step<TickSpec<0>>,
+            Step<TickSpec<1>>,
+            Step<TickSpec<2>>,
+            Step<TickSpec<3>>,
+            Step<TickSpec<4>>,
+            Step<TickSpec<5>>,
+            Step<TickSpec<6>>,
+            Step<TickSpec<7>>,
+            Step<TickSpec<8>>,
+            Step<TickSpec<9>>,
+            Step<TickSpec<10>>,
+            Step<TickSpec<11>>,
+            Step<TickSpec<12>>,
+            Step<TickSpec<13>>,
+            Step<TickSpec<14>>,
+            Step<TickSpec<15>>,
+            Step<TickSpec<16>>,
+            Step<TickSpec<17>>,
+            Step<TickSpec<18>>,
+            Step<TickSpec<19>>,
+            Step<TickSpec<20>>,
+            Step<TickSpec<21>>,
+            Step<TickSpec<22>>,
+            Step<TickSpec<23>>,
         );
     };
 }
@@ -114,6 +136,12 @@ fn force_worker_typecheck() {
     std::hint::black_box(worker);
 }
 
+fn force_journey_ast_typecheck() {
+    let ast = <TierJourney as JourneyAstSource>::journey_ast();
+    std::hint::black_box(ast);
+}
+
 fn main() {
     force_worker_typecheck();
+    force_journey_ast_typecheck();
 }
