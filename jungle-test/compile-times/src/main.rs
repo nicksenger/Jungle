@@ -70,7 +70,7 @@ impl<const EFFECT_ID: usize> Act for TickSpec<EFFECT_ID> {
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         black_box(EFFECT_ID);
-        output.expect("noop effect should succeed");
+        output.expect("touch effect should succeed");
     }
 }
 
@@ -104,7 +104,7 @@ impl<const EFFECT_ID: usize> Act for FocusJoinMergeSpec<EFFECT_ID> {
 
     fn absorb(_state: &mut FocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         black_box(EFFECT_ID);
-        output.expect("focused join merge noop effect should succeed");
+        output.expect("focused join merge effect should succeed");
     }
 }
 
@@ -121,7 +121,7 @@ impl<const EFFECT_ID: usize> Act for JoinTickSpec<EFFECT_ID> {
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         black_box(EFFECT_ID);
-        output.expect("join branch noop effect should succeed");
+        output.expect("join branch effect should succeed");
     }
 }
 
@@ -138,7 +138,7 @@ impl<const EFFECT_ID: usize> Act for JoinFlattenSpec<EFFECT_ID> {
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Self::Output {
         black_box(EFFECT_ID);
-        output.expect("join flatten noop effect should succeed");
+        output.expect("join flatten effect should succeed");
     }
 }
 
@@ -177,7 +177,7 @@ impl<const EFFECT_ID: usize> Act for IncrementCounterSpec<EFFECT_ID> {
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         black_box(EFFECT_ID);
-        output.expect("counter increment noop effect should succeed");
+        output.expect("counter increment effect should succeed");
         state.counter = state.counter.saturating_add(1);
     }
 }
@@ -186,9 +186,29 @@ impl From<CompileState> for () {
     fn from(_value: CompileState) -> Self {}
 }
 
+pub struct CompileMetaA;
+impl NodeMetadata for CompileMetaA {
+    const METADATA: &'static str = "compile-times-a";
+}
+
+pub struct CompileMetaB;
+impl NodeMetadata for CompileMetaB {
+    const METADATA: &'static str = "compile-times-b";
+}
+
+pub struct CompileMetaC;
+impl NodeMetadata for CompileMetaC {
+    const METADATA: &'static str = "compile-times-c";
+}
+
+pub struct CompileMetaD;
+impl NodeMetadata for CompileMetaD {
+    const METADATA: &'static str = "compile-times-d";
+}
+
 #[derive(Flow)]
 #[jungle(focus = FocusState)]
-pub struct FocusedSegment(
+pub struct FocusedSegmentA(
     Join<Step<FocusTickSpec<0>>, Step<FocusTickSpec<1>>>,
     Step<FocusJoinMergeSpec<2>>,
     Step<FocusTickSpec<3>>,
@@ -202,30 +222,53 @@ pub struct FocusedSegment(
     Step<FocusTickSpec<11>>,
 );
 
-pub struct CompileMeta;
-impl NodeMetadata for CompileMeta {
-    const METADATA: &'static str = "compile-times";
-}
-
-type ConditionalSegment = Transparent<
-    CompileMeta,
-    Conditional<CompileChooseLeft<1>, Step<TickSpec<10>>, Step<TickSpec<11>>>,
->;
+#[derive(Flow)]
+#[jungle(focus = FocusState)]
+pub struct FocusedSegmentB(
+    Step<FocusTickSpec<30>>,
+    Step<FocusTickSpec<31>>,
+    Transparent<CompileMetaB, Join<Step<FocusTickSpec<32>>, Step<FocusTickSpec<33>>>>,
+    Step<FocusJoinMergeSpec<34>>,
+    Step<FocusTickSpec<35>>,
+    Step<FocusTickSpec<36>>,
+    Step<FocusTickSpec<37>>,
+    Step<FocusTickSpec<38>>,
+    Step<FocusTickSpec<39>>,
+    Step<FocusTickSpec<40>>,
+    Step<FocusTickSpec<41>>,
+);
 
 #[derive(Flow)]
-pub struct LoopBody(
-    ConditionalSegment,
+pub struct LoopBodyA(
+    Transparent<
+        CompileMetaA,
+        Conditional<CompileChooseLeft<1>, Step<TickSpec<10>>, Step<TickSpec<11>>>,
+    >,
     Join<Step<JoinTickSpec<12>>, Step<JoinTickSpec<13>>>,
     Step<JoinFlattenSpec<14>>,
     Step<IncrementCounterSpec<15>>,
 );
 
-macro_rules! define_journey_24 {
+#[derive(Flow)]
+pub struct LoopBodyB(
+    Transparent<
+        CompileMetaC,
+        Conditional<CompileChooseLeft<2>, Step<TickSpec<53>>, Step<TickSpec<54>>>,
+    >,
+    Transparent<
+        CompileMetaD,
+        Join<Step<JoinTickSpec<50>>, Step<JoinTickSpec<51>>>,
+    >,
+    Step<JoinFlattenSpec<52>>,
+    Step<IncrementCounterSpec<55>>,
+);
+
+macro_rules! define_journey_24_a {
     ($name:ident) => {
         #[derive(Flow)]
-pub struct $name(
-            Transparent<CompileMeta, FocusedSegment>,
-            While<CompileLoopOnce<1>, LoopBody>,
+        pub struct $name(
+            Transparent<CompileMetaA, FocusedSegmentA>,
+            While<CompileLoopOnce<1>, LoopBodyA>,
             Step<TickSpec<16>>,
             Step<TickSpec<17>>,
             Step<TickSpec<18>>,
@@ -238,6 +281,60 @@ pub struct $name(
     };
 }
 
+macro_rules! define_journey_24_b {
+    ($name:ident) => {
+        #[derive(Flow)]
+        pub struct $name(
+            While<CompileLoopOnce<3>, LoopBodyB>,
+            Transparent<CompileMetaB, FocusedSegmentB>,
+            Step<TickSpec<56>>,
+            Step<TickSpec<57>>,
+            Step<TickSpec<58>>,
+            Step<TickSpec<59>>,
+            Step<TickSpec<60>>,
+            Step<TickSpec<61>>,
+            Step<TickSpec<62>>,
+            Step<TickSpec<63>>,
+        );
+    };
+}
+
+macro_rules! define_journey_24_c {
+    ($name:ident) => {
+        #[derive(Flow)]
+        pub struct $name(
+            Transparent<CompileMetaC, FocusedSegmentA>,
+            Step<TickSpec<80>>,
+            While<CompileLoopOnce<4>, LoopBodyA>,
+            Step<TickSpec<81>>,
+            Step<TickSpec<82>>,
+            Step<TickSpec<83>>,
+            Step<TickSpec<84>>,
+            Step<TickSpec<85>>,
+            Step<TickSpec<86>>,
+            Step<TickSpec<87>>,
+        );
+    };
+}
+
+macro_rules! define_journey_24_d {
+    ($name:ident) => {
+        #[derive(Flow)]
+        pub struct $name(
+            Transparent<CompileMetaD, FocusedSegmentB>,
+            Step<TickSpec<90>>,
+            While<CompileLoopOnce<5>, LoopBodyB>,
+            Step<TickSpec<91>>,
+            Step<TickSpec<92>>,
+            Step<TickSpec<93>>,
+            Step<TickSpec<94>>,
+            Step<TickSpec<95>>,
+            Step<TickSpec<96>>,
+            Step<TickSpec<97>>,
+        );
+    };
+}
+
 #[allow(unused_macros)]
 macro_rules! define_journey_double {
     ($name:ident, $inner:ty) => {
@@ -246,39 +343,89 @@ macro_rules! define_journey_double {
     };
 }
 
-define_journey_24!(Journey24);
-define_journey_double!(Journey48, Journey24);
-define_journey_double!(Journey96, Journey48);
-#[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
-define_journey_double!(Journey192, Journey96);
-#[cfg(any(feature = "large", feature = "xlarge"))]
-define_journey_double!(Journey384, Journey192);
-#[cfg(feature = "xlarge")]
-define_journey_double!(Journey768, Journey384);
+macro_rules! define_journey_family {
+    ($j24:ident, $j48:ident, $j96:ident, $j192:ident, $j384:ident, $j768:ident, $build24:ident) => {
+        $build24!($j24);
+        define_journey_double!($j48, $j24);
+        define_journey_double!($j96, $j48);
+        #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
+        define_journey_double!($j192, $j96);
+        #[cfg(any(feature = "large", feature = "xlarge"))]
+        define_journey_double!($j384, $j192);
+        #[cfg(feature = "xlarge")]
+        define_journey_double!($j768, $j384);
+    };
+}
 
-#[cfg(all(
-    feature = "small",
-    not(feature = "medium"),
-    not(feature = "large"),
-    not(feature = "xlarge")
-))]
-type TierJourney = Journey96;
+define_journey_family!(JourneyA24, JourneyA48, JourneyA96, JourneyA192, JourneyA384, JourneyA768, define_journey_24_a);
+define_journey_family!(JourneyB24, JourneyB48, JourneyB96, JourneyB192, JourneyB384, JourneyB768, define_journey_24_b);
+define_journey_family!(JourneyC24, JourneyC48, JourneyC96, JourneyC192, JourneyC384, JourneyC768, define_journey_24_c);
+define_journey_family!(JourneyD24, JourneyD48, JourneyD96, JourneyD192, JourneyD384, JourneyD768, define_journey_24_d);
+define_journey_family!(JourneyE24, JourneyE48, JourneyE96, JourneyE192, JourneyE384, JourneyE768, define_journey_24_a);
+define_journey_family!(JourneyF24, JourneyF48, JourneyF96, JourneyF192, JourneyF384, JourneyF768, define_journey_24_b);
+define_journey_family!(JourneyG24, JourneyG48, JourneyG96, JourneyG192, JourneyG384, JourneyG768, define_journey_24_c);
+define_journey_family!(JourneyH24, JourneyH48, JourneyH96, JourneyH192, JourneyH384, JourneyH768, define_journey_24_d);
 
-#[cfg(all(feature = "medium", not(feature = "large"), not(feature = "xlarge")))]
-type TierJourney = Journey192;
+macro_rules! select_tier_journey {
+    ($j96:ty, $j192:ty, $j384:ty, $j768:ty) => {
+        #[cfg(all(
+            feature = "small",
+            not(feature = "medium"),
+            not(feature = "large"),
+            not(feature = "xlarge")
+        ))]
+        pub type TierJourney = $j96;
 
-#[cfg(all(feature = "large", not(feature = "xlarge")))]
-type TierJourney = Journey384;
+        #[cfg(all(feature = "medium", not(feature = "large"), not(feature = "xlarge")))]
+        pub type TierJourney = $j192;
 
-#[cfg(feature = "xlarge")]
-type TierJourney = Journey768;
+        #[cfg(all(feature = "large", not(feature = "xlarge")))]
+        pub type TierJourney = $j384;
+
+        #[cfg(feature = "xlarge")]
+        pub type TierJourney = $j768;
+    };
+}
+
+pub mod animal01_journey {
+    use super::*;
+    select_tier_journey!(JourneyA96, JourneyA192, JourneyA384, JourneyA768);
+}
+pub mod animal02_journey {
+    use super::*;
+    select_tier_journey!(JourneyB96, JourneyB192, JourneyB384, JourneyB768);
+}
+pub mod animal03_journey {
+    use super::*;
+    select_tier_journey!(JourneyC96, JourneyC192, JourneyC384, JourneyC768);
+}
+pub mod animal04_journey {
+    use super::*;
+    select_tier_journey!(JourneyD96, JourneyD192, JourneyD384, JourneyD768);
+}
+pub mod animal05_journey {
+    use super::*;
+    select_tier_journey!(JourneyE96, JourneyE192, JourneyE384, JourneyE768);
+}
+pub mod animal06_journey {
+    use super::*;
+    select_tier_journey!(JourneyF96, JourneyF192, JourneyF384, JourneyF768);
+}
+pub mod animal07_journey {
+    use super::*;
+    select_tier_journey!(JourneyG96, JourneyG192, JourneyG384, JourneyG768);
+}
+pub mod animal08_journey {
+    use super::*;
+    select_tier_journey!(JourneyH96, JourneyH192, JourneyH384, JourneyH768);
+}
 
 pub struct Animal01;
 #[jungle::animal(id = 1001, generation = 0)]
 impl Animal for Animal01 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = TierJourney;
+    type Journey = animal01_journey::TierJourney;
 }
 
 pub struct Animal02;
@@ -286,7 +433,7 @@ pub struct Animal02;
 impl Animal for Animal02 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = TierJourney;
+    type Journey = animal02_journey::TierJourney;
 }
 
 pub struct Animal03;
@@ -294,7 +441,7 @@ pub struct Animal03;
 impl Animal for Animal03 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = TierJourney;
+    type Journey = animal03_journey::TierJourney;
 }
 
 pub struct Animal04;
@@ -302,7 +449,7 @@ pub struct Animal04;
 impl Animal for Animal04 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = TierJourney;
+    type Journey = animal04_journey::TierJourney;
 }
 
 pub struct Animal05;
@@ -310,7 +457,7 @@ pub struct Animal05;
 impl Animal for Animal05 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = TierJourney;
+    type Journey = animal05_journey::TierJourney;
 }
 
 pub struct Animal06;
@@ -318,7 +465,7 @@ pub struct Animal06;
 impl Animal for Animal06 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = TierJourney;
+    type Journey = animal06_journey::TierJourney;
 }
 
 pub struct Animal07;
@@ -326,7 +473,7 @@ pub struct Animal07;
 impl Animal for Animal07 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = TierJourney;
+    type Journey = animal07_journey::TierJourney;
 }
 
 pub struct Animal08;
@@ -334,7 +481,7 @@ pub struct Animal08;
 impl Animal for Animal08 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = TierJourney;
+    type Journey = animal08_journey::TierJourney;
 }
 
 #[cfg(all(
@@ -376,12 +523,38 @@ impl Ecosystem for CompileZoo {
 fn force_worker_typecheck() {
     let client = jungle_sdk::MockClient::default();
     let worker = jungle_sdk::core::JungleWorker::new(CompileZoo, client);
-    std::hint::black_box(worker);
+    black_box(worker);
 }
 
 fn force_journey_ast_typecheck() {
-    let ast = <TierJourney as JourneyAstSource>::journey_ast();
-    std::hint::black_box(ast);
+    let ast01 = <animal01_journey::TierJourney as JourneyAstSource>::journey_ast();
+    black_box(ast01);
+
+    #[cfg(any(feature = "medium", feature = "large", feature = "xlarge"))]
+    {
+        let ast02 = <animal02_journey::TierJourney as JourneyAstSource>::journey_ast();
+        black_box(ast02);
+    }
+
+    #[cfg(any(feature = "large", feature = "xlarge"))]
+    {
+        let ast03 = <animal03_journey::TierJourney as JourneyAstSource>::journey_ast();
+        let ast04 = <animal04_journey::TierJourney as JourneyAstSource>::journey_ast();
+        black_box(ast03);
+        black_box(ast04);
+    }
+
+    #[cfg(feature = "xlarge")]
+    {
+        let ast05 = <animal05_journey::TierJourney as JourneyAstSource>::journey_ast();
+        let ast06 = <animal06_journey::TierJourney as JourneyAstSource>::journey_ast();
+        let ast07 = <animal07_journey::TierJourney as JourneyAstSource>::journey_ast();
+        let ast08 = <animal08_journey::TierJourney as JourneyAstSource>::journey_ast();
+        black_box(ast05);
+        black_box(ast06);
+        black_box(ast07);
+        black_box(ast08);
+    }
 }
 
 fn main() {
