@@ -1,7 +1,6 @@
 use typosaurus::bool::{And, Not, Truthy};
 use typosaurus::cmp::Equality;
 use typosaurus::cmp::IsEqual;
-use typosaurus::collections::list::Interleave as ListInterleave;
 use typosaurus::collections::{
     list,
     sp::{FlattenNodes, Node, SPFlatten},
@@ -710,35 +709,16 @@ where
     <BoundAnimalJourney<H7> as JourneyEffects>::List: FlattenNodes,
     SPFlatten<<BoundAnimalJourney<H7> as JourneyEffects>::List>: KeepEffectNodes,
     Tail: CollectAnimalJourneyEffects,
-    (
-        list_chain!(
-            <SPFlatten<<BoundAnimalJourney<H0> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H1> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H2> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H3> as JourneyEffects>::List> as KeepEffectNodes>::Out
-        ),
-        list_chain_tail!(
-            <SPFlatten<<BoundAnimalJourney<H4> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H5> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H6> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H7> as JourneyEffects>::List> as KeepEffectNodes>::Out ;
-            <Tail as CollectAnimalJourneyEffects>::Out
-        ),
-    ): ListInterleave,
 {
-    type Out = <(
-        list_chain!(
-            <SPFlatten<<BoundAnimalJourney<H0> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H1> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H2> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H3> as JourneyEffects>::List> as KeepEffectNodes>::Out
-        ),
-        list_chain_tail!(
-            <SPFlatten<<BoundAnimalJourney<H4> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H5> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H6> as JourneyEffects>::List> as KeepEffectNodes>::Out,
-            <SPFlatten<<BoundAnimalJourney<H7> as JourneyEffects>::List> as KeepEffectNodes>::Out ;
-            <Tail as CollectAnimalJourneyEffects>::Out
-        ),
-    ) as ListInterleave>::Out;
+    type Out = list_chain_tail!(
+        <SPFlatten<<BoundAnimalJourney<H0> as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<BoundAnimalJourney<H1> as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<BoundAnimalJourney<H2> as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<BoundAnimalJourney<H3> as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<BoundAnimalJourney<H4> as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<BoundAnimalJourney<H5> as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<BoundAnimalJourney<H6> as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<BoundAnimalJourney<H7> as JourneyEffects>::List> as KeepEffectNodes>::Out ;
+        <Tail as CollectAnimalJourneyEffects>::Out
+    );
 }
