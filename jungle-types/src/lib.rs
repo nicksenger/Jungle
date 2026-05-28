@@ -705,22 +705,18 @@ where
 impl<F, A> BindWithFlowScope<A, RootFlowScope> for F
 where
     A: Animal,
-    F: TraverseFlow,
-    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A, RootScope>>,
+    F: TraverseWith<BindAnimalTraversal<A, RootScope>>,
 {
-    type Bound =
-        <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
+    type Bound = <F as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
 }
 
 impl<F, A, View> BindWithFlowScope<A, FlowView<View>> for F
 where
     A: Animal,
     View: 'static,
-    F: TraverseFlow,
-    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A, RootScope>>,
+    F: TraverseWith<BindAnimalTraversal<A, RootScope>>,
 {
-    type Bound =
-        <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
+    type Bound = <F as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
 }
 
 /// Directional helper that rewrites `BoundFlowStep<Animal, Left>` to `BoundFlowStep<Animal, Right>`.
