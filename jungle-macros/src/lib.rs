@@ -186,21 +186,16 @@ pub fn derive_journey(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Flow, attributes(jungle))]
 pub fn derive_flow(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let data = input.data.clone();
     let ident = input.ident.clone();
     let generics = input.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let focus_ty = parse_jungle_focus_attr(&input.attrs);
-    let properties = if focus_ty.is_some() {
-        jungle_types(&["JungleFlow", "JungleJourneyAst", "JungleReplaceFlow"])
-    } else {
-        jungle_types(&[
-            "JungleFlow",
-            "JungleJourneyAst",
-            "JungleTraverseFlow",
-            "JungleReplaceFlow",
-        ])
-    };
+    let properties = jungle_types(&[
+        "JungleFlow",
+        "JungleJourneyAst",
+        "JungleTraverseFlow",
+        "JungleReplaceFlow",
+    ]);
     let derived = derive_with_properties_input(input, &properties);
     let template_scope = jungle_type("FlowScope");
     let root_scope = jungle_type("RootFlowScope");
@@ -216,72 +211,8 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
         }
     };
     let traverse_flow = jungle_type("TraverseFlow");
-    let traverse_flow_shape = jungle_type("TraverseFlowShape");
     let traverse_with = jungle_type("TraverseWith");
     let bind_flow = jungle_type("BindFlow");
-    let scoped_field_list_normalize = jungle_type("ScopedFieldListNormalize");
-    let flow_list_concat = jungle_type("FlowListConcat");
-    let list_empty: Path = parse_quote!(jungle_sdk::typosaurus::collections::list::Empty);
-    let field_types = match &data {
-        Data::Struct(data) => match &data.fields {
-            Fields::Named(named) => named
-                .named
-                .iter()
-                .map(|field| {
-                    let ty = &field.ty;
-                    quote!(#ty)
-                })
-                .collect::<Vec<_>>(),
-            Fields::Unnamed(unnamed) => unnamed
-                .unnamed
-                .iter()
-                .map(|field| {
-                    let ty = &field.ty;
-                    quote!(#ty)
-                })
-                .collect::<Vec<_>>(),
-            Fields::Unit => Vec::new(),
-        },
-        _ => Vec::new(),
-    };
-    let field_traverse_outputs = field_types
-        .iter()
-        .map(|ty| {
-            quote!(
-                <<#ty as #traverse_flow>::Output as #scoped_field_list_normalize>::Output
-            )
-        })
-        .collect::<Vec<_>>();
-    let scoped_inner = concat_tlist(&field_traverse_outputs, &list_empty);
-    let concat_bounds = if field_traverse_outputs.is_empty() {
-        Vec::new()
-    } else {
-        let mut bounds = Vec::with_capacity(field_traverse_outputs.len());
-        let mut rhs = quote!(#list_empty);
-        for output in field_traverse_outputs.iter().rev() {
-            bounds.push(quote!(#output: #flow_list_concat<#rhs>));
-            rhs = quote!(<#output as #flow_list_concat<#rhs>>::Output);
-        }
-        bounds
-    };
-    let traverse_shape_impl = if focus_ty.is_some() {
-        quote! {
-            impl #impl_generics #traverse_flow_shape for #ident #ty_generics #where_clause
-            where
-                #(
-                    #field_types: #traverse_flow,
-                    <#field_types as #traverse_flow>::Output: #scoped_field_list_normalize,
-                )*
-                #(
-                    #concat_bounds,
-                )*
-            {
-                type Output = #scoped_inner;
-            }
-        }
-    } else {
-        quote! {}
-    };
     let mut traverse_with_generics = generics.clone();
     traverse_with_generics.params.push(parse_quote!(Traversal));
     let (traverse_with_impl_generics, _, traverse_with_where_clause) =
@@ -313,7 +244,6 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     quote! {
         #derived
         #scope_impl
-        #traverse_shape_impl
         #traverse_with_impl
         #bind_flow_impl
     }
@@ -465,18 +395,6 @@ fn parse_jungle_focus_attr(attrs: &[Attribute]) -> Option<Type> {
         }
     }
     None
-}
-
-fn concat_tlist(items: &[proc_macro2::TokenStream], empty: &Path) -> proc_macro2::TokenStream {
-    if items.is_empty() {
-        return quote!(#empty);
-    }
-    let flow_list_concat = jungle_type("FlowListConcat");
-    let mut acc = quote!(#empty);
-    for item in items.iter().rev() {
-        acc = quote!(<#item as #flow_list_concat<#acc>>::Output);
-    }
-    acc
 }
 
 struct PrimitiveAttributes {

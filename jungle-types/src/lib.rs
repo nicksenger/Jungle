@@ -941,13 +941,13 @@ pub trait TraverseFlowShape {
     #[induce(
         base = list::Empty,
         merge = TList<(
-            <Head as TraverseFlowShape>::Output,
+            <Head as TraverseFlow>::Output,
             <Tail as TraverseFlowShape>::Output
-        )>,
+        )> where { Head: TraverseFlow },
         merge_variant = TList<(
-            <Head as TraverseFlowShape>::Output,
+            <Head as TraverseFlow>::Output,
             <Tail as TraverseFlowShape>::Output
-        )>,
+        )> where { Head: TraverseFlow },
         join = <Fields as TraverseFlowShape>::Output
     )]
     type Output;
@@ -983,6 +983,10 @@ where
     <F as TraverseFlowShape>::Output: ScopedFieldListNormalize,
 {
     type Output = Scoped<View, <<F as TraverseFlowShape>::Output as ScopedFieldListNormalize>::Output>;
+}
+
+impl TraverseFlow for VariantHeader {
+    type Output = list::Empty;
 }
 
 /// Inception property that normalizes/walks a flow's type structure.
@@ -1044,8 +1048,16 @@ impl ScopedFieldListNormalize for list::Empty {
     type Output = list::Empty;
 }
 
-impl<Head, Tail> ScopedFieldListNormalize for TList<(Head, Tail)> {
-    type Output = TList<(Head, Tail)>;
+impl<Head, Tail> ScopedFieldListNormalize for TList<(Head, Tail)>
+where
+    Head: ScopedFieldListNormalize,
+    Tail: ScopedFieldListNormalize,
+    <Head as ScopedFieldListNormalize>::Output:
+        FlowListConcat<<Tail as ScopedFieldListNormalize>::Output>,
+{
+    type Output = <<Head as ScopedFieldListNormalize>::Output as FlowListConcat<
+        <Tail as ScopedFieldListNormalize>::Output,
+    >>::Output;
 }
 
 impl<T, A> ScopedFieldListNormalize for BoundFlowStep<T, A>
