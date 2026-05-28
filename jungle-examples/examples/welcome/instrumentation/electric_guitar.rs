@@ -53,7 +53,7 @@ impl Instrument for ElectricGuitar {
     }
 }
 
-pub struct Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8 = 0>;
+pub struct Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8>;
 #[jungle::act]
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Act
     for Pick<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
@@ -127,7 +127,7 @@ pub struct Pluck<
     const NOTE_2: u8,
     const NOTE_TICK: u32,
     const REST_TICK: u32,
-    const LANE_ID: u8 = 0,
+    const LANE_ID: u8,
 >(
     Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
     Step<MergeUnit>,
@@ -139,7 +139,7 @@ pub struct StrumPair<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_TICK: u32,
-    const LANE_ID: u8 = 0,
+    const LANE_ID: u8,
 >(
     Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
     Step<MergeUnit>,
@@ -152,7 +152,7 @@ pub struct Strum<
     const NOTE_3: u8,
     const NOTE_TICK: u32,
     const REST_TICK: u32,
-    const LANE_ID: u8 = 0,
+    const LANE_ID: u8,
 >(
     Join<StrumPair<NOTE_1, NOTE_2, NOTE_TICK, LANE_ID>, Step<Pick<NOTE_3, NOTE_TICK, 0, LANE_ID>>>,
     Step<MergeUnit>,

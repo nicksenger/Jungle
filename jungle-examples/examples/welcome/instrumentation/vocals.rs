@@ -90,7 +90,7 @@ pub struct Generate<
     const NOTE: u8,
     const NOTE_TICK: u32,
     const REST_TICK: u32,
-    const LANE_ID: u8 = 0,
+    const LANE_ID: u8,
 >;
 #[jungle::act]
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Act
