@@ -37,7 +37,7 @@ pub struct RhythmGuitarist;
 impl Animal for RhythmGuitarist {
     type State = RhythmGuitaristState;
     type Seed = RhythmGuitaristSeed;
-    type Journey = RhythmGuitarFlow;
+    type Journey = super::RhythmGuitaristJourneyStub;
 }
 
 type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
