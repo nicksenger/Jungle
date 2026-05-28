@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 use welcome_audio::{PlayPriority, PlayRequest};
 
-use crate::effect::{AtomicDualHit, AtomicTriHit, Monad};
+use crate::effect::{Monad, Rest};
 
 use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
@@ -78,52 +78,81 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: 
     }
 }
 
-pub struct Pluck<
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_TICK: u32,
-    const REST_TICK: u32,
-    const LANE_ID: u32 = 0,
->;
+pub struct MergeUnit;
 #[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_TICK: u32,
-        const REST_TICK: u32,
-        const LANE_ID: u32,
-    > Act for Pluck<NOTE_1, NOTE_2, NOTE_TICK, REST_TICK, LANE_ID>
-{
-    type Effect = AtomicDualHit<
-        ElectricGuitar,
-        ElectricGuitar,
-        ElectricGuitarArticulation,
-        ElectricGuitarArticulation,
-        LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_TICK,
-        NOTE_TICK,
-        REST_TICK,
-    >;
-    type Input = ();
+impl Act for MergeUnit {
+    type Effect = Noop;
+    type Input = ((), ());
     type Output = ();
 
     fn emit(
-        state: &ElectricGuitarArticulation,
+        _state: &ElectricGuitarArticulation,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
-        (*state, *state)
+        ()
     }
 
     fn absorb(
         _state: &mut ElectricGuitarArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("note playback should succeed");
+        output.expect("join merge should complete");
     }
 }
 
+pub struct PostMergeRest<const REST_TICK: u32, const LANE_ID: u32>;
+#[jungle::act]
+impl<const REST_TICK: u32, const LANE_ID: u32> Act for PostMergeRest<REST_TICK, LANE_ID> {
+    type Effect = Rest<LANE_ID, REST_TICK>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(
+        _state: &ElectricGuitarArticulation,
+        _input: Self::Input,
+    ) -> <Self::Effect as EffectSchema>::In {
+        ()
+    }
+
+    fn absorb(
+        _state: &mut ElectricGuitarArticulation,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("post-merge rest should complete");
+    }
+}
+
+#[derive(Flow)]
+pub struct Pluck<
+    const NOTE_1: u8,
+    const NOTE_2: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
+    const LANE_ID: u32 = 0,
+>(
+    Join<
+        Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>,
+        Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>,
+    >,
+    Step<MergeUnit>,
+    Step<PostMergeRest<REST_TICK, LANE_ID>>,
+);
+
+#[derive(Flow)]
+pub struct StrumPair<
+    const NOTE_1: u8,
+    const NOTE_2: u8,
+    const NOTE_TICK: u32,
+    const LANE_ID: u32 = 0,
+>(
+    Join<
+        Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>,
+        Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>,
+    >,
+    Step<MergeUnit>,
+);
+
+#[derive(Flow)]
 pub struct Strum<
     const NOTE_1: u8,
     const NOTE_2: u8,
@@ -131,47 +160,8 @@ pub struct Strum<
     const NOTE_TICK: u32,
     const REST_TICK: u32,
     const LANE_ID: u32 = 0,
->;
-#[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_3: u8,
-        const NOTE_TICK: u32,
-        const REST_TICK: u32,
-        const LANE_ID: u32,
-    > Act for Strum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK, LANE_ID>
-{
-    type Effect = AtomicTriHit<
-        ElectricGuitar,
-        ElectricGuitar,
-        ElectricGuitar,
-        ElectricGuitarArticulation,
-        ElectricGuitarArticulation,
-        ElectricGuitarArticulation,
-        LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_3,
-        NOTE_TICK,
-        NOTE_TICK,
-        NOTE_TICK,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        (*state, *state, *state)
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("note playback should succeed");
-    }
-}
+>(
+    Join<StrumPair<NOTE_1, NOTE_2, NOTE_TICK, LANE_ID>, Step<Pick<NOTE_3, NOTE_TICK, 0, LANE_ID>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<REST_TICK, LANE_ID>>,
+);

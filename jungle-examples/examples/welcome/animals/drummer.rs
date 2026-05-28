@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{AtomicDualHit, Monad, Rest};
+use crate::effect::{Monad, Rest};
 use crate::instrumentation::{
     Cymbal, CymbalArticulation, HiHat, HiHatArticulation, KickDrum, KickDrumArticulation,
     SnareDrum, SnareDrumArticulation, Toms, TomsArticulation,
@@ -251,214 +251,70 @@ pub struct BootHat42Cadence(
     Step<PostMergeRest<192>>,
 );
 
+#[derive(Flow)]
 pub struct HatDual<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_TICK_1: u32,
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
->;
-#[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_TICK_1: u32,
-        const NOTE_TICK_2: u32,
-        const REST_TICK: u32,
-    > Act for HatDual<NOTE_1, NOTE_2, NOTE_TICK_1, NOTE_TICK_2, REST_TICK>
-{
-    type Effect = AtomicDualHit<
-        HiHat,
-        HiHat,
-        HiHatArticulation,
-        HiHatArticulation,
-        DRUMS_LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_TICK_1,
-        NOTE_TICK_2,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
+>(
+    Join<Step<Hat<NOTE_1, NOTE_TICK_1, 0>>, Step<Hat<NOTE_2, NOTE_TICK_2, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<REST_TICK>>,
+);
 
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        (HiHatArticulation::ClosedTip, HiHatArticulation::ClosedTip)
-    }
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("hat dual playback should succeed");
-    }
-}
-
+#[derive(Flow)]
 pub struct BootDual<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_TICK_1: u32,
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
->;
-#[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_TICK_1: u32,
-        const NOTE_TICK_2: u32,
-        const REST_TICK: u32,
-    > Act for BootDual<NOTE_1, NOTE_2, NOTE_TICK_1, NOTE_TICK_2, REST_TICK>
-{
-    type Effect = AtomicDualHit<
-        KickDrum,
-        KickDrum,
-        KickDrumArticulation,
-        KickDrumArticulation,
-        DRUMS_LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_TICK_1,
-        NOTE_TICK_2,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
+>(
+    Join<Step<Boot<NOTE_1, NOTE_TICK_1, 0>>, Step<Boot<NOTE_2, NOTE_TICK_2, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<REST_TICK>>,
+);
 
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        (
-            KickDrumArticulation::StandardHit,
-            KickDrumArticulation::StandardHit,
-        )
-    }
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("kick dual playback should succeed");
-    }
-}
-
+#[derive(Flow)]
 pub struct SnapDual<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_TICK_1: u32,
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
->;
-#[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_TICK_1: u32,
-        const NOTE_TICK_2: u32,
-        const REST_TICK: u32,
-    > Act for SnapDual<NOTE_1, NOTE_2, NOTE_TICK_1, NOTE_TICK_2, REST_TICK>
-{
-    type Effect = AtomicDualHit<
-        SnareDrum,
-        SnareDrum,
-        SnareDrumArticulation,
-        SnareDrumArticulation,
-        DRUMS_LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_TICK_1,
-        NOTE_TICK_2,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
+>(
+    Join<Step<Snap<NOTE_1, NOTE_TICK_1, 0>>, Step<Snap<NOTE_2, NOTE_TICK_2, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<REST_TICK>>,
+);
 
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        (
-            SnareDrumArticulation::Rimshot,
-            SnareDrumArticulation::Rimshot,
-        )
-    }
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("snare dual playback should succeed");
-    }
-}
-
+#[derive(Flow)]
 pub struct BlastDual<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_TICK_1: u32,
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
->;
-#[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_TICK_1: u32,
-        const NOTE_TICK_2: u32,
-        const REST_TICK: u32,
-    > Act for BlastDual<NOTE_1, NOTE_2, NOTE_TICK_1, NOTE_TICK_2, REST_TICK>
-{
-    type Effect = AtomicDualHit<
-        Cymbal,
-        Cymbal,
-        CymbalArticulation,
-        CymbalArticulation,
-        DRUMS_LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_TICK_1,
-        NOTE_TICK_2,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
+>(
+    Join<Step<Blast<NOTE_1, NOTE_TICK_1, 0>>, Step<Blast<NOTE_2, NOTE_TICK_2, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<REST_TICK>>,
+);
 
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        (
-            CymbalArticulation::StandardCrash,
-            CymbalArticulation::StandardCrash,
-        )
-    }
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("cymbal dual playback should succeed");
-    }
-}
-
+#[derive(Flow)]
 pub struct TomDual<
     const NOTE_1: u8,
     const NOTE_2: u8,
     const NOTE_TICK_1: u32,
     const NOTE_TICK_2: u32,
     const REST_TICK: u32,
->;
-#[jungle::act]
-impl<
-        const NOTE_1: u8,
-        const NOTE_2: u8,
-        const NOTE_TICK_1: u32,
-        const NOTE_TICK_2: u32,
-        const REST_TICK: u32,
-    > Act for TomDual<NOTE_1, NOTE_2, NOTE_TICK_1, NOTE_TICK_2, REST_TICK>
-{
-    type Effect = AtomicDualHit<
-        Toms,
-        Toms,
-        TomsArticulation,
-        TomsArticulation,
-        DRUMS_LANE_ID,
-        NOTE_1,
-        NOTE_2,
-        NOTE_TICK_1,
-        NOTE_TICK_2,
-        REST_TICK,
-    >;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        (TomsArticulation::StandardHit, TomsArticulation::StandardHit)
-    }
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("tom dual playback should succeed");
-    }
-}
+>(
+    Join<Step<TomHit<NOTE_1, NOTE_TICK_1, 0>>, Step<TomHit<NOTE_2, NOTE_TICK_2, 0>>>,
+    Step<MergeUnit>,
+    Step<PostMergeRest<REST_TICK>>,
+);
 
 #[derive(Flow)]
 pub struct TomTriadPair<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32>(
@@ -897,7 +753,7 @@ pub struct DrumPart13(
     Step<Hat<42, 192, 192>>,
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 336>>,
-    Join<Step<Blast<57, 192, 0>>, Step<BootDual<36, 36, 48, 192, 0>>>,
+    Join<Step<Blast<57, 192, 0>>, BootDual<36, 36, 48, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Hat<46, 192, 192>>,
@@ -928,38 +784,38 @@ pub struct DrumPart14(
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
 );
 
 #[derive(Flow)]
 pub struct DrumPart15(
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
@@ -974,7 +830,7 @@ pub struct DrumPart15(
     Step<Boot<36, 192, 192>>,
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 336>>,
-    Join<Step<Blast<57, 192, 0>>, Step<BootDual<36, 36, 48, 192, 0>>>,
+    Join<Step<Blast<57, 192, 0>>, BootDual<36, 36, 48, 192, 0>>,
 );
 
 #[derive(Flow)]
@@ -1063,7 +919,7 @@ pub struct DrumPart19(
 #[derive(Flow)]
 pub struct DrumPart20(
     Step<Snap<38, 192, 336>>,
-    Join<Step<Blast<57, 192, 0>>, Step<BootDual<36, 36, 48, 192, 0>>>,
+    Join<Step<Blast<57, 192, 0>>, BootDual<36, 36, 48, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Hat<46, 192, 192>>,
@@ -1092,38 +948,38 @@ pub struct DrumPart21(
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
 );
 
 #[derive(Flow)]
 pub struct DrumPart22(
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
@@ -1138,7 +994,7 @@ pub struct DrumPart22(
     Step<Boot<36, 192, 192>>,
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 336>>,
-    Join<Step<Blast<57, 192, 0>>, Step<BootDual<36, 36, 48, 192, 0>>>,
+    Join<Step<Blast<57, 192, 0>>, BootDual<36, 36, 48, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Hat<46, 192, 192>>,
@@ -1310,7 +1166,7 @@ pub struct DrumPart30(
     Step<Hat<42, 192, 192>>,
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 336>>,
-    Join<Step<Blast<57, 192, 0>>, Step<BootDual<36, 36, 48, 192, 0>>>,
+    Join<Step<Blast<57, 192, 0>>, BootDual<36, 36, 48, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Hat<46, 192, 192>>,
@@ -1345,34 +1201,34 @@ pub struct DrumPart31(
 
 #[derive(Flow)]
 pub struct DrumPart32(
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
@@ -1391,7 +1247,7 @@ pub struct DrumPart33(
     Step<Boot<36, 192, 192>>,
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 336>>,
-    Join<Step<Blast<57, 384, 0>>, Step<BootDual<36, 36, 48, 384, 0>>>,
+    Join<Step<Blast<57, 384, 0>>, BootDual<36, 36, 48, 384, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
     Join<Step<Hat<51, 384, 0>>, Step<Snap<38, 384, 0>>>,
@@ -1502,7 +1358,7 @@ pub struct DrumPart36(
     Step<Boot<36, 192, 192>>,
     Step<Boot<36, 384, 384>>,
     Step<Snap<38, 48, 384>>,
-    Join<Step<Boot<35, 192, 0>>, Step<SnapDual<38, 38, 48, 192, 0>>>,
+    Join<Step<Boot<35, 192, 0>>, SnapDual<38, 38, 48, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Join<Step<Boot<35, 192, 0>>, Step<Snap<38, 192, 0>>>,
@@ -1524,7 +1380,7 @@ pub struct DrumPart37(
     Step<Boot<36, 192, 192>>,
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 336>>,
-    Join<Step<Blast<57, 192, 0>>, Step<BootDual<36, 36, 48, 192, 0>>>,
+    Join<Step<Blast<57, 192, 0>>, BootDual<36, 36, 48, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Hat<46, 192, 192>>,
@@ -1567,7 +1423,7 @@ pub struct DrumPart39(
     Step<Boot<36, 192, 192>>,
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 288>>,
-    Join<Step<Blast<57, 192, 0>>, Step<BootDual<36, 36, 96, 192, 0>>>,
+    Join<Step<Blast<57, 192, 0>>, BootDual<36, 36, 96, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Hat<51, 192, 192>>,
@@ -1694,7 +1550,7 @@ pub struct DrumPart42(
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Blast<57, 192, 144>>,
-    Join<Step<BootDual<36, 36, 48, 192, 0>>, Step<Hat<51, 192, 0>>>,
+    Join<BootDual<36, 36, 48, 192, 0>, Step<Hat<51, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Join<Step<Boot<36, 192, 0>>, Step<Hat<51, 192, 0>>>,
@@ -1915,7 +1771,7 @@ pub struct DrumPart48(
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 192>>,
     Step<Boot<35, 192, 144>>,
-    Join<Step<BlastDual<49, 57, 192, 192, 0>>, Step<Boot<36, 192, 0>>>,
+    Join<BlastDual<49, 57, 192, 192, 0>, Step<Boot<36, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
     Step<Boot<36, 96, 288>>,
@@ -1939,7 +1795,7 @@ pub struct DrumPart49(
     Step<Hat<56, 96, 96>>,
     Step<Hat<56, 96, 96>>,
     Step<Hat<56, 96, 96>>,
-    Join<Step<BlastDual<49, 57, 96, 96, 0>>, Step<Boot<36, 96, 0>>>,
+    Join<BlastDual<49, 57, 96, 96, 0>, Step<Boot<36, 96, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
@@ -1961,7 +1817,7 @@ pub struct DrumPart49(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
@@ -1970,7 +1826,7 @@ pub struct DrumPart49(
 
 #[derive(Flow)]
 pub struct DrumPart50(
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -1995,12 +1851,12 @@ pub struct DrumPart50(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
 );
 
 #[derive(Flow)]
@@ -2029,12 +1885,12 @@ pub struct DrumPart51(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
 );
@@ -2063,12 +1919,12 @@ pub struct DrumPart52(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -2097,12 +1953,12 @@ pub struct DrumPart53(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -2131,12 +1987,12 @@ pub struct DrumPart54(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -2165,12 +2021,12 @@ pub struct DrumPart55(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -2199,12 +2055,12 @@ pub struct DrumPart56(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -2233,12 +2089,12 @@ pub struct DrumPart57(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -2267,12 +2123,12 @@ pub struct DrumPart58(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -2301,12 +2157,12 @@ pub struct DrumPart59(
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<HatBoot<44, 36, 96, 96, 0>, Step<TomDual<43, 48, 96, 96, 0>>>,
+    Join<HatBoot<44, 36, 96, 96, 0>, TomDual<43, 48, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Step<Hat<44, 96, 96>>,
     Step<Hat<44, 96, 96>>,
-    Join<Step<Hat<44, 96, 0>>, Step<TomDual<62, 62, 96, 96, 0>>>,
+    Join<Step<Hat<44, 96, 0>>, TomDual<62, 62, 96, 96, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<96>>,
     Join<HatBoot<44, 36, 96, 96, 0>, Step<TomHit<43, 96, 0>>>,
@@ -2366,7 +2222,7 @@ pub struct DrumPart61(
     Step<PostMergeRest<384>>,
     Step<Snap<38, 48, 48>>,
     Step<Snap<38, 192, 336>>,
-    Join<Step<Blast<57, 192, 0>>, Step<BootDual<36, 36, 48, 192, 0>>>,
+    Join<Step<Blast<57, 192, 0>>, BootDual<36, 36, 48, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Hat<46, 192, 192>>,
@@ -2395,23 +2251,23 @@ pub struct DrumPart62(
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Boot<36, 192, 192>>,
@@ -2448,23 +2304,23 @@ pub struct DrumPart64(
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Boot<36, 192, 192>>,
@@ -2497,27 +2353,27 @@ pub struct DrumPart65(
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
 );
 
 #[derive(Flow)]
 pub struct DrumPart66(
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<Boot<36, 192, 0>>, Step<HatDual<44, 56, 192, 192, 0>>>,
+    Join<Step<Boot<36, 192, 0>>, HatDual<44, 56, 192, 192, 0>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
-    Step<HatDual<44, 56, 192, 192, 192>>,
+    HatDual<44, 56, 192, 192, 192>,
     Step<Boot<36, 192, 192>>,
-    Join<Step<HatDual<44, 56, 192, 192, 0>>, Step<Snap<38, 192, 0>>>,
+    Join<HatDual<44, 56, 192, 192, 0>, Step<Snap<38, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<192>>,
     Step<Boot<36, 192, 192>>,
@@ -2580,7 +2436,7 @@ pub struct DrumPart68(
     Join<Step<Blast<57, 192, 0>>, Step<Boot<36, 192, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<576>>,
-    Join<Step<BlastDual<49, 57, 384, 384, 0>>, Step<Boot<36, 384, 0>>>,
+    Join<BlastDual<49, 57, 384, 384, 0>, Step<Boot<36, 384, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<384>>,
 );
