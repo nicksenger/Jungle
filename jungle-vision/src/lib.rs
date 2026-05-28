@@ -540,15 +540,10 @@ where
                                 "jungle-vision live event heartbeat"
                             );
                         }
-                        return iced_sugiyama::invalidate::<EjectedViewerMessage>(
-                            self.graph_widget_id.clone(),
-                        )
-                        .chain(Task::done(
-                            EjectedViewerMessage::ApplyLiveEvent {
-                                update,
-                                received_unix_ms: current_unix_ms(),
-                            },
-                        ));
+                        return Task::done(EjectedViewerMessage::ApplyLiveEvent {
+                            update,
+                            received_unix_ms: current_unix_ms(),
+                        });
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -589,7 +584,7 @@ where
                         }
                     }
                 };
-                let _ = data.apply_update(update);
+                let highlight_changed = data.apply_update(update);
                 let apply_elapsed_ms = apply_started_at.elapsed().as_millis();
                 let apply_count = VISION_APPLY_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
                 update_max_usize(
@@ -653,7 +648,12 @@ where
                         "jungle-vision apply heartbeat"
                     );
                 }
-                theme_task
+                if highlight_changed {
+                    iced_sugiyama::invalidate::<EjectedViewerMessage>(self.graph_widget_id.clone())
+                        .chain(theme_task)
+                } else {
+                    theme_task
+                }
             }
             EjectedViewerMessage::Theme(event) => {
                 let theme_started_at = Instant::now();
@@ -902,8 +902,7 @@ where
             Message::LiveEvent(result) => {
                 match result {
                     Ok(update) => {
-                        return iced_sugiyama::invalidate::<Message>(self.graph_widget_id.clone())
-                            .chain(Task::done(Message::ApplyLiveEvent(update)));
+                        return Task::done(Message::ApplyLiveEvent(update));
                     }
                     Err(error) => {
                         self.state = LiveState::Error(error);
@@ -929,8 +928,13 @@ where
                         }
                     }
                 };
-                let _ = data.apply_update(update);
-                theme_task
+                let highlight_changed = data.apply_update(update);
+                if highlight_changed {
+                    iced_sugiyama::invalidate::<Message>(self.graph_widget_id.clone())
+                        .chain(theme_task)
+                } else {
+                    theme_task
+                }
             }
             Message::Theme(event) => {
                 let theme_task = self
