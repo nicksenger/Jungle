@@ -1,4 +1,5 @@
 use jungle_sdk::effect;
+use jungle_sdk::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -34,7 +35,7 @@ pub struct Passthrough<T>(PhantomData<T>);
 
 pub struct Rest<const LANE_ID: u32, const REST_TICKS: u32>;
 #[effect(id = 515)]
-impl<T> jungle_sdk::prelude::Effect<TheJungle> for Passthrough<T>
+impl<T> Effect<TheJungle> for Passthrough<T>
 where
     T: Serialize + DeserializeOwned + Send + 'static,
 {
@@ -48,7 +49,7 @@ where
 }
 
 #[effect(id = 513)]
-impl<const LANE_ID: u32, const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJungle>
+impl<const LANE_ID: u32, const REST_TICKS: u32> Effect<TheJungle>
     for Rest<LANE_ID, REST_TICKS>
 {
     type In = ();
@@ -82,7 +83,7 @@ impl<const LANE_ID: u32, const REST_TICKS: u32> jungle_sdk::prelude::Effect<TheJ
 
 #[effect(id = 500)]
 impl<I, A, const LANE_ID: u32, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
-    jungle_sdk::prelude::Effect<TheJungle> for Monad<I, A, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
+    Effect<TheJungle> for Monad<I, A, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
 where
     I: Instrument<Articulation = A>,
     for<'a> &'a I: From<&'a TheJungle>,
