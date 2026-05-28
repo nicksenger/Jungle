@@ -4,7 +4,14 @@ use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FocusState {
+    counter: u32,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompileState {
+    #[jungle(focus)]
+    focus: FocusState,
     counter: u32,
 }
 
@@ -44,30 +51,133 @@ impl<const EFFECT_ID: usize> Act for TickSpec<EFFECT_ID> {
     }
 }
 
+pub struct FocusTickSpec<const EFFECT_ID: usize>;
+#[jungle::act]
+impl<const EFFECT_ID: usize> Act for FocusTickSpec<EFFECT_ID> {
+    type Effect = CompileNoop<EFFECT_ID>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &FocusState, _input: Self::Input) -> () {}
+
+    fn absorb(_state: &mut FocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("focused noop effect should succeed");
+    }
+}
+
+pub struct FocusJoinMergeSpec<const EFFECT_ID: usize>;
+#[jungle::act]
+impl<const EFFECT_ID: usize> Act for FocusJoinMergeSpec<EFFECT_ID> {
+    type Effect = CompileNoop<EFFECT_ID>;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &FocusState, _input: Self::Input) -> () {}
+
+    fn absorb(_state: &mut FocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("focused join merge noop effect should succeed");
+    }
+}
+
+pub struct JoinTickSpec<const EFFECT_ID: usize>;
+#[jungle::act]
+impl<const EFFECT_ID: usize> Act for JoinTickSpec<EFFECT_ID> {
+    type Effect = CompileNoop<EFFECT_ID>;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &CompileState, _input: Self::Input) -> () {}
+
+    fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("join branch noop effect should succeed");
+    }
+}
+
+pub struct JoinFlattenSpec<const EFFECT_ID: usize>;
+#[jungle::act]
+impl<const EFFECT_ID: usize> Act for JoinFlattenSpec<EFFECT_ID> {
+    type Effect = CompileNoop<EFFECT_ID>;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &CompileState, _input: Self::Input) -> () {}
+
+    fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+        output.expect("join flatten noop effect should succeed");
+    }
+}
+
+pub struct CompileChooseLeft<const SEGMENT_ID: usize>;
+impl<const SEGMENT_ID: usize> Condition<(CompileState, ())> for CompileChooseLeft<SEGMENT_ID> {
+    fn choose(input: &(CompileState, ())) -> bool {
+        let _ = input;
+        SEGMENT_ID.is_multiple_of(2)
+    }
+}
+
+pub struct CompileLoopOnce<const SEGMENT_ID: usize>;
+impl<const SEGMENT_ID: usize> LoopCondition<CompileState> for CompileLoopOnce<SEGMENT_ID> {
+    type Arg = ();
+
+    fn should_continue(state: &CompileState) -> bool {
+        let _ = SEGMENT_ID;
+        state.counter == 0
+    }
+}
+
+pub struct IncrementCounterSpec<const EFFECT_ID: usize>;
+#[jungle::act]
+impl<const EFFECT_ID: usize> Act for IncrementCounterSpec<EFFECT_ID> {
+    type Effect = CompileNoop<EFFECT_ID>;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &CompileState, _input: Self::Input) -> () {}
+
+    fn absorb(
+        state: &mut CompileState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Self::Output {
+        output.expect("counter increment noop effect should succeed");
+        state.counter = state.counter.saturating_add(1);
+    }
+}
+
 impl From<CompileState> for () {
     fn from(_value: CompileState) -> Self {}
 }
+
+#[derive(Flow)]
+#[jungle(focus = FocusState)]
+pub struct FocusedSegment(
+    Join<Step<FocusTickSpec<0>>, Step<FocusTickSpec<1>>>,
+    Step<FocusJoinMergeSpec<2>>,
+);
+
+pub struct CompileMeta;
+impl NodeMetadata for CompileMeta {
+    const METADATA: &'static str = "compile-times";
+}
+
+type ConditionalSegment = Transparent<
+    CompileMeta,
+    Conditional<CompileChooseLeft<1>, Step<TickSpec<10>>, Step<TickSpec<11>>>,
+>;
+
+#[derive(Flow)]
+pub struct LoopBody(
+    ConditionalSegment,
+    Join<Step<JoinTickSpec<12>>, Step<JoinTickSpec<13>>>,
+    Step<JoinFlattenSpec<14>>,
+    Step<IncrementCounterSpec<15>>,
+);
 
 macro_rules! define_journey_24 {
     ($name:ident) => {
         #[derive(Flow)]
         pub struct $name(
-            Step<TickSpec<0>>,
-            Step<TickSpec<1>>,
-            Step<TickSpec<2>>,
-            Step<TickSpec<3>>,
-            Step<TickSpec<4>>,
-            Step<TickSpec<5>>,
-            Step<TickSpec<6>>,
-            Step<TickSpec<7>>,
-            Step<TickSpec<8>>,
-            Step<TickSpec<9>>,
-            Step<TickSpec<10>>,
-            Step<TickSpec<11>>,
-            Step<TickSpec<12>>,
-            Step<TickSpec<13>>,
-            Step<TickSpec<14>>,
-            Step<TickSpec<15>>,
+            Transparent<CompileMeta, FocusedSegment>,
+            While<CompileLoopOnce<1>, LoopBody>,
             Step<TickSpec<16>>,
             Step<TickSpec<17>>,
             Step<TickSpec<18>>,
@@ -76,6 +186,20 @@ macro_rules! define_journey_24 {
             Step<TickSpec<21>>,
             Step<TickSpec<22>>,
             Step<TickSpec<23>>,
+            Step<TickSpec<24>>,
+            Step<TickSpec<25>>,
+            Step<TickSpec<26>>,
+            Step<TickSpec<27>>,
+            Step<TickSpec<28>>,
+            Step<TickSpec<29>>,
+            Step<TickSpec<30>>,
+            Step<TickSpec<31>>,
+            Step<TickSpec<32>>,
+            Step<TickSpec<33>>,
+            Step<TickSpec<34>>,
+            Step<TickSpec<35>>,
+            Step<TickSpec<36>>,
+            Step<TickSpec<37>>,
         );
     };
 }
