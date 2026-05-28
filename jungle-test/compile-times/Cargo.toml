@@ -1,0 +1,18 @@
+[package]
+name = "compile-times"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["small"]
+small = []
+medium = ["small"]
+large = ["medium"]
+xlarge = ["large"]
+
+[dependencies]
+jungle-sdk = { path = "../../jungle-sdk" }
+serde = { version = "1", features = ["derive"] }
+
+[workspace]
