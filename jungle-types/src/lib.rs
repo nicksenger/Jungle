@@ -936,39 +936,16 @@ impl<Left, Right> ReplaceNode<Right> for SwapRL<Left, Right> {
 ///
 /// This is an internal structural traversal used by derive/inception output.
 /// Public [`TraverseFlow`] adapts this shape based on [`FlowScope`].
-pub trait TraverseFlowField {
-    type Output;
-}
-
-impl<H, S, const IDX: usize> TraverseFlowField for TyField<H, S, IDX>
-where
-    H: TraverseFlow,
-{
-    type Output = <H as TraverseFlow>::Output;
-}
-
-impl<H, S, const VAR_IDX: usize, const IDX: usize> TraverseFlowField
-    for VarTyField<H, S, VAR_IDX, IDX>
-where
-    H: TraverseFlow,
-{
-    type Output = <H as TraverseFlow>::Output;
-}
-
-impl TraverseFlow for VariantHeader {
-    type Output = list::Empty;
-}
-
 #[inception(property = JungleTraverseFlow, types)]
 pub trait TraverseFlowShape {
     #[induce(
         base = list::Empty,
         merge = TList<(
-            <Head as TraverseFlowField>::Output,
+            <Head as TraverseFlowShape>::Output,
             <Tail as TraverseFlowShape>::Output
         )>,
         merge_variant = TList<(
-            <Head as TraverseFlowField>::Output,
+            <Head as TraverseFlowShape>::Output,
             <Tail as TraverseFlowShape>::Output
         )>,
         join = <Fields as TraverseFlowShape>::Output
@@ -981,19 +958,31 @@ pub trait TraverseFlow {
     type Output;
 }
 
-/// Marker for flows declared with `#[jungle(focus = ...)]`.
-pub trait FocusedFlow {
-    type View;
+/// Internal helper that routes [`TraverseFlow`] by declared [`FlowScope`].
+pub trait TraverseFlowWithScope<ScopeView> {
+    type Output;
 }
-
-/// Marker for flows that traverse in root scope.
-pub trait RootFlow {}
 
 impl<F> TraverseFlow for F
 where
-    F: TraverseFlowShape + RootFlow,
+    F: FlowScope + TraverseFlowWithScope<<F as FlowScope>::View>,
+{
+    type Output = <F as TraverseFlowWithScope<<F as FlowScope>::View>>::Output;
+}
+
+impl<F> TraverseFlowWithScope<RootFlowScope> for F
+where
+    F: TraverseFlowShape,
 {
     type Output = <F as TraverseFlowShape>::Output;
+}
+
+impl<F, View> TraverseFlowWithScope<FlowView<View>> for F
+where
+    F: TraverseFlowShape,
+    <F as TraverseFlowShape>::Output: ScopedFieldListNormalize,
+{
+    type Output = Scoped<View, <<F as TraverseFlowShape>::Output as ScopedFieldListNormalize>::Output>;
 }
 
 /// Inception property that normalizes/walks a flow's type structure.
@@ -1055,16 +1044,8 @@ impl ScopedFieldListNormalize for list::Empty {
     type Output = list::Empty;
 }
 
-impl<Head, Tail> ScopedFieldListNormalize for TList<(Head, Tail)>
-where
-    Head: ScopedFieldListNormalize,
-    Tail: ScopedFieldListNormalize,
-    <Head as ScopedFieldListNormalize>::Output:
-        FlowListConcat<<Tail as ScopedFieldListNormalize>::Output>,
-{
-    type Output = <<Head as ScopedFieldListNormalize>::Output as FlowListConcat<
-        <Tail as ScopedFieldListNormalize>::Output,
-    >>::Output;
+impl<Head, Tail> ScopedFieldListNormalize for TList<(Head, Tail)> {
+    type Output = TList<(Head, Tail)>;
 }
 
 impl<T, A> ScopedFieldListNormalize for BoundFlowStep<T, A>
