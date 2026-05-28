@@ -933,21 +933,56 @@ impl<Left, Right> ReplaceNode<Right> for SwapRL<Left, Right> {
 }
 
 /// Inception property that normalizes/walks a flow's type structure.
+///
+/// This is an internal structural traversal used by derive/inception output.
+/// Public [`TraverseFlow`] adapts this shape based on [`FlowScope`].
 #[inception(property = JungleTraverseFlow, types)]
-pub trait TraverseFlow {
+pub trait TraverseFlowShape {
     #[induce(
         base = list::Empty,
         merge = TList<(
-            <Head as TraverseFlow>::Output,
-            <Tail as TraverseFlow>::Output
+            <Head as TraverseFlowShape>::Output,
+            <Tail as TraverseFlowShape>::Output
         )>,
         merge_variant = TList<(
-            <Head as TraverseFlow>::Output,
-            <Tail as TraverseFlow>::Output
+            <Head as TraverseFlowShape>::Output,
+            <Tail as TraverseFlowShape>::Output
         )>,
-        join = <Fields as TraverseFlow>::Output
+        join = <Fields as TraverseFlowShape>::Output
     )]
     type Output;
+}
+
+/// Public flow traversal output used by bind/traverse operations.
+pub trait TraverseFlow {
+    type Output;
+}
+
+/// Internal helper that routes [`TraverseFlow`] by declared [`FlowScope`].
+pub trait TraverseFlowWithScope<ScopeView> {
+    type Output;
+}
+
+impl<F> TraverseFlow for F
+where
+    F: FlowScope + TraverseFlowWithScope<<F as FlowScope>::View>,
+{
+    type Output = <F as TraverseFlowWithScope<<F as FlowScope>::View>>::Output;
+}
+
+impl<F> TraverseFlowWithScope<RootFlowScope> for F
+where
+    F: TraverseFlowShape,
+{
+    type Output = <F as TraverseFlowShape>::Output;
+}
+
+impl<F, View> TraverseFlowWithScope<FlowView<View>> for F
+where
+    F: TraverseFlowShape,
+    <F as TraverseFlowShape>::Output: ScopedFieldListNormalize,
+{
+    type Output = Scoped<View, <<F as TraverseFlowShape>::Output as ScopedFieldListNormalize>::Output>;
 }
 
 /// Inception property that normalizes/walks a flow's type structure.
@@ -1466,6 +1501,14 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<P, L, R, M> TraverseFlowShape for Conditional<P, L, R, M>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Conditional<P, <L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
+}
+
 impl<P, L, R, M> TraverseFlow for Conditional<P, L, R, M>
 where
     L: TraverseFlow,
@@ -1572,6 +1615,13 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<C, F, M> TraverseFlowShape for While<C, F, M>
+where
+    F: TraverseFlow,
+{
+    type Output = While<C, <F as TraverseFlow>::Output, M>;
+}
+
 impl<C, F, M> TraverseFlow for While<C, F, M>
 where
     F: TraverseFlow,
@@ -1645,6 +1695,13 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<View, F> TraverseFlowShape for Scoped<View, F>
+where
+    F: TraverseFlow,
+{
+    type Output = Scoped<View, <F as TraverseFlow>::Output>;
+}
+
 impl<View, F> TraverseFlow for Scoped<View, F>
 where
     F: TraverseFlow,
@@ -1711,6 +1768,13 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<M, F> TraverseFlowShape for Transparent<M, F>
+where
+    F: TraverseFlow,
+{
+    type Output = Transparent<M, <F as TraverseFlow>::Output>;
+}
+
 impl<M, F> TraverseFlow for Transparent<M, F>
 where
     F: TraverseFlow,
@@ -1878,6 +1942,14 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<L, R, M> TraverseFlowShape for Select<L, R, M>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Select<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
+}
+
 impl<L, R, M> TraverseFlow for Select<L, R, M>
 where
     L: TraverseFlow,
@@ -1973,6 +2045,14 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<L, R, M> TraverseFlowShape for Join<L, R, M>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Join<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
+}
+
 impl<L, R, M> TraverseFlow for Join<L, R, M>
 where
     L: TraverseFlow,

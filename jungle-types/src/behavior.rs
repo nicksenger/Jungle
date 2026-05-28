@@ -596,12 +596,20 @@ where
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
-impl<T, A> TraverseFlow for BoundFlowStep<T, A>
+impl<T, A> crate::TraverseFlowShape for BoundFlowStep<T, A>
 where
     T: Animal,
     A: BoundAct<T>,
 {
     type Output = BoundFlowStep<T, A>;
+}
+
+impl<T, A> TraverseFlow for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAct<T>,
+{
+    type Output = <Self as crate::TraverseFlowShape>::Output;
 }
 
 #[primitive(property = crate::JungleReplaceFlow)]
@@ -649,11 +657,18 @@ where
 }
 
 #[primitive(property = crate::JungleTraverseFlow)]
-impl<S> TraverseFlow for Step<S>
+impl<S> crate::TraverseFlowShape for Step<S>
 where
     S: Act,
 {
     type Output = Step<S>;
+}
+
+impl<S> TraverseFlow for Step<S>
+where
+    S: Act,
+{
+    type Output = <Self as crate::TraverseFlowShape>::Output;
 }
 
 #[primitive(property = crate::JungleReplaceFlow)]

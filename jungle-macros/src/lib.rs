@@ -191,8 +191,6 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     let generics = input.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let focus_ty = parse_jungle_focus_attr(&input.attrs);
-    // Scoped templates provide a custom `TraverseFlow` impl (wrapping output in `Scoped`),
-    // so they must not also derive `JungleTraverseFlow` via inception.
     let properties = if focus_ty.is_some() {
         jungle_types(&["JungleFlow", "JungleJourneyAst", "JungleReplaceFlow"])
     } else {
@@ -218,11 +216,11 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
         }
     };
     let traverse_flow = jungle_type("TraverseFlow");
+    let traverse_flow_shape = jungle_type("TraverseFlowShape");
     let traverse_with = jungle_type("TraverseWith");
     let bind_flow = jungle_type("BindFlow");
     let scoped_field_list_normalize = jungle_type("ScopedFieldListNormalize");
     let flow_list_concat = jungle_type("FlowListConcat");
-    let scoped = jungle_type("Scoped");
     let list_empty: Path = parse_quote!(jungle_sdk::typosaurus::collections::list::Empty);
     let field_types = match &data {
         Data::Struct(data) => match &data.fields {
@@ -266,9 +264,9 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
         }
         bounds
     };
-    let traverse_impl = if let Some(focus) = &focus_ty {
+    let traverse_shape_impl = if focus_ty.is_some() {
         quote! {
-            impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
+            impl #impl_generics #traverse_flow_shape for #ident #ty_generics #where_clause
             where
                 #(
                     #field_types: #traverse_flow,
@@ -278,7 +276,7 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
                     #concat_bounds,
                 )*
             {
-                type Output = #scoped<#focus, #scoped_inner>;
+                type Output = #scoped_inner;
             }
         }
     } else {
@@ -315,7 +313,7 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
     quote! {
         #derived
         #scope_impl
-        #traverse_impl
+        #traverse_shape_impl
         #traverse_with_impl
         #bind_flow_impl
     }
