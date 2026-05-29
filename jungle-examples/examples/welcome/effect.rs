@@ -1,5 +1,5 @@
 use jungle_sdk::effect;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -36,22 +36,28 @@ where
     }
 }
 
-pub struct Rest<const LANE_ID: u8, const REST_TICKS: u32>;
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct RestInput {
+    pub lane_id: u8,
+    pub ticks: u32,
+}
+
+pub struct Rest;
 #[effect(id = 1)]
-impl<const LANE_ID: u8, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_ID, REST_TICKS> {
-    type In = ();
+impl Effect<TheJungle> for Rest {
+    type In = RestInput;
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &TheJungle, _input: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &TheJungle, input: Self::In) -> Result<Self::Out, Self::Err> {
         let cycle_started_at = Instant::now();
         jungle.metronome().wait_for_start_barrier().await;
-        let lane_id = u32::from(LANE_ID);
+        let lane_id = input.lane_id as u32;
         let timing = jungle.metronome().rhythm_timing(
             lane_id,
             TICKS_PER_BEAT,
             0,
-            REST_TICKS,
+            input.ticks,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );

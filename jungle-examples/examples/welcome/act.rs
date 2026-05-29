@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::effect::Rest as RestEffect;
+use crate::effect::{Rest as RestEffect, RestInput};
 use jungle_sdk::prelude::*;
 
 pub struct MergeUnit<S>(PhantomData<S>);
@@ -34,10 +34,15 @@ impl<T, S> Act for MergeEither<T, S> {
 pub struct Rest<S, const REST_TICK: u32, const LANE_ID: u8>(PhantomData<S>);
 #[jungle::act]
 impl<S, const REST_TICK: u32, const LANE_ID: u8> Act for Rest<S, REST_TICK, LANE_ID> {
-    type Effect = RestEffect<LANE_ID, REST_TICK>;
+    type Effect = RestEffect;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &S, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
+    fn emit(_state: &S, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
+        RestInput {
+            lane_id: LANE_ID,
+            ticks: REST_TICK,
+        }
+    }
     fn absorb(_state: &mut S, _output: EffectCompletion<Self::Effect>) -> Self::Output {}
 }
