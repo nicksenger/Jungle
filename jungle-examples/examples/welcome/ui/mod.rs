@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 #[cfg(feature = "video")]
 use iced::widget::stack;
-use iced::widget::{button, column, container, text, Row, Space};
+use iced::widget::{button, column, container, svg, text, Row, Space};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
@@ -23,6 +23,8 @@ const DEFERRED_STREAM_LAG_WARN_MS: u64 = 150;
 const DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS: i64 = 2_000;
 const DEFERRED_STREAM_SLOW_DECISION_WARN_US: u128 = 500;
 const UI_TICK_INTERVAL: Duration = Duration::from_millis(500);
+const LOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#;
+const UNLOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M16 11V7a4 4 0 0 0-7.5-2"/></svg>"#;
 #[cfg(feature = "video")]
 const AV_OVERLAY_BYTES: &[u8] = include_bytes!("../assets/jungle.mkv");
 #[cfg(feature = "video")]
@@ -1273,17 +1275,20 @@ fn panel<'a>(
     target: Panel,
     auto_viewport_enabled: bool,
 ) -> Element<'a, Message> {
-    let lock_label = if auto_viewport_enabled {
-        "Lock: On"
+    let lock_icon = if auto_viewport_enabled {
+        LOCK_ICON_SVG
     } else {
-        "Lock: Off"
+        UNLOCK_ICON_SVG
     };
     let lock_button = button(
-        text(lock_label)
-            .size(11)
-            .color(Color::from_rgb8(223, 245, 230)),
+        svg(svg::Handle::from_memory(lock_icon))
+            .width(Length::Fixed(14.0))
+            .height(Length::Fixed(14.0))
+            .style(|_theme, _status| svg::Style {
+                color: Some(Color::from_rgb8(223, 245, 230)),
+            }),
     )
-    .padding([3, 8])
+    .padding([3, 6])
     .style(move |theme, status| panel_lock_button_style(auto_viewport_enabled, theme, status))
     .on_press(Message::TogglePanelAutoViewport(target));
 
