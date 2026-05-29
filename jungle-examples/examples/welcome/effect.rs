@@ -75,34 +75,35 @@ impl Effect<TheJungle> for Rest {
     }
 }
 
-pub struct Sound<
-    I: Instrument,
-    const LANE_ID: u8,
-    const NOTE: u8,
-    const NOTE_TICK: u32,
-    const REST_TICK: u32,
->(PhantomData<I>);
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct SoundInput<A> {
+    pub articulation: A,
+    pub lane_id: u8,
+    pub note: u8,
+    pub note_ticks: u32,
+    pub rest_ticks: u32,
+}
+pub struct Sound<I: Instrument>(PhantomData<I>);
 #[effect(id = 0)]
-impl<I, const LANE_ID: u8, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
-    Effect<TheJungle> for Sound<I, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
+impl<I> Effect<TheJungle> for Sound<I>
 where
     I: Instrument,
     for<'a> &'a I: From<&'a TheJungle>,
     I::Articulation: Copy + Serialize + DeserializeOwned + Send + 'static,
 {
-    type In = I::Articulation;
+    type In = SoundInput<I::Articulation>;
     type Out = ();
     type Err = String;
 
-    async fn effect(jungle: &TheJungle, articulation: Self::In) -> Result<Self::Out, Self::Err> {
+    async fn effect(jungle: &TheJungle, input: Self::In) -> Result<Self::Out, Self::Err> {
+        let lane_id = input.lane_id as u32;
         let cycle_started_at = Instant::now();
         jungle.metronome().wait_for_start_barrier().await;
-        let lane_id = u32::from(LANE_ID);
         let timing = jungle.metronome().rhythm_timing(
             lane_id,
             TICKS_PER_BEAT,
-            NOTE_TICK as u32,
-            REST_TICK as u32,
+            input.note_ticks,
+            input.rest_ticks,
             MIN_LATE_NOTE_DROP_THRESHOLD,
             MAX_LATE_NOTE_DROP_THRESHOLD,
         );
@@ -112,9 +113,9 @@ where
             let [note] = rhythm_notes(
                 jungle,
                 lane_id,
-                [NOTE],
+                [input.note],
                 timing.note_duration(),
-                articulation,
+                input.articulation,
             );
             let play_started_at = Instant::now();
             play_one::<I>(jungle, note).await?;

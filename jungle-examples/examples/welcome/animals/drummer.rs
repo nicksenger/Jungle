@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
-use crate::effect::{Rest, Sound};
+use crate::effect::{Rest, Sound, SoundInput};
 use crate::instrumentation::{
     Cymbal, CymbalArticulation, HiHat, HiHatArticulation, KickDrum, KickDrumArticulation,
     SnareDrum, SnareDrumArticulation, Toms, TomsArticulation,
@@ -26,12 +26,18 @@ pub struct Hat<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Hat<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Sound<HiHat, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<HiHat>;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        HiHatArticulation::ClosedTip
+        SoundInput {
+            articulation: HiHatArticulation::ClosedTip,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: DRUMS_LANE_ID,
+        }
     }
 
     fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -44,7 +50,7 @@ pub struct Boot<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Boot<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Sound<KickDrum, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<KickDrum>;
     type Input = ();
     type Output = ();
 
@@ -62,12 +68,18 @@ pub struct Snap<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Snap<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Sound<SnareDrum, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<SnareDrum>;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        SnareDrumArticulation::Rimshot
+        SoundInput {
+            articulation: SnareDrumArticulation::Rimshot,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: DRUMS_LANE_ID,
+        }
     }
 
     fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -80,12 +92,18 @@ pub struct Blast<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Blast<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Sound<Cymbal, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Cymbal>;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        CymbalArticulation::StandardCrash
+        SoundInput {
+            articulation: CymbalArticulation::StandardCrash,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: DRUMS_LANE_ID,
+        }
     }
 
     fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -98,12 +116,18 @@ pub struct TomHit<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for TomHit<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Sound<Toms, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Toms>;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        TomsArticulation::StandardHit
+        SoundInput {
+            articulation: TomsArticulation::StandardHit,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: DRUMS_LANE_ID,
+        }
     }
 
     fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -133,15 +157,22 @@ impl Condition<(DrummerState, ())> for UseHat46GrooveVariant {
     }
 }
 
+#[cfg(test)]
 pub struct ConditionalJoinTailStub;
 #[jungle::act]
 impl Act for ConditionalJoinTailStub {
-    type Effect = Sound<HiHat, DRUMS_LANE_ID, 46, 1, 0>;
+    type Effect = Sound<HiHat>;
     type Input = Either<(), ()>;
     type Output = Either<(), ()>;
 
     fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        HiHatArticulation::ClosedTip
+        SoundInput {
+            articulation: HiHatArticulation::ClosedTip,
+            note: 46,
+            note_ticks: 1,
+            rest_ticks: 0,
+            lane_id: DRUMS_LANE_ID,
+        }
     }
 
     fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {

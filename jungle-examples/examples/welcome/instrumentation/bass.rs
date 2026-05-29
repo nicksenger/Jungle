@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 use welcome_audio::{PlayPriority, PlayRequest};
 
-use crate::effect::Sound;
+use crate::effect::{Sound, SoundInput};
 
 use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
@@ -52,12 +52,18 @@ pub struct Thump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, con
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Act
     for Thump<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect = Sound<Bass, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Bass>;
     type Input = ();
     type Output = ();
 
     fn emit(state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        *state
+        SoundInput {
+            articulation: *state,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: LANE_ID,
+        }
     }
 
     fn absorb(

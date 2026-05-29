@@ -2,7 +2,7 @@ use jungle_sdk::prelude::*;
 
 use super::{Double, Quad, RhythmGuitarist, RhythmGuitaristState};
 use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
-use crate::effect::{Rest, Sound};
+use crate::effect::{Rest, Sound, SoundInput};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
@@ -36,7 +36,7 @@ pub struct JoinPick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinPick<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Sound<ElectricGuitar, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<ElectricGuitar>;
     type Input = ();
     type Output = ();
 
@@ -44,7 +44,13 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
         state: &ElectricGuitarArticulation,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
-        *state
+        SoundInput {
+            articulation: *state,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: RHYTHM_GUITAR_LANE_ID,
+        }
     }
 
     fn absorb(
@@ -99,7 +105,7 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Sound<Vocals, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Vocals>;
     type Input = ();
     type Output = ();
 
@@ -107,7 +113,13 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
         _state: &ElectricGuitarArticulation,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
-        VocalsArticulation::GroupHarmony
+        SoundInput {
+            articulation: VocalsArticulation::GroupHarmony,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: RHYTHM_GUITAR_LANE_ID,
+        }
     }
 
     fn absorb(

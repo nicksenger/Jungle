@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
-use crate::effect::{Rest, Sound};
+use crate::effect::{Rest, Sound, SoundInput};
 use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
     Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
@@ -31,12 +31,18 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Sound<Vocals, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Vocals>;
     type Input = ();
     type Output = ();
 
     fn emit(_state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        VocalsArticulation::GroupHarmony
+        SoundInput {
+            articulation: VocalsArticulation::GroupHarmony,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: BASS_LANE_ID,
+        }
     }
 
     fn absorb(
