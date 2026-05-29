@@ -1,44 +1,14 @@
 use jungle_sdk::prelude::*;
 
-use super::{Double, Quad};
+use super::{Double, Quad, RhythmGuitarist, RhythmGuitaristState};
 use crate::effect::{Monad, Rest};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
 };
 
-#[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct RhythmGuitaristState {
-    #[jungle(focus)]
-    articulation: ElectricGuitarArticulation,
-    riff_loops_remaining: u8,
-    transition_loops_remaining: u8,
-    sustain_loops_remaining: u8,
-}
-
-impl Default for RhythmGuitaristState {
-    fn default() -> Self {
-        Self {
-            articulation: ElectricGuitarArticulation::default(),
-            riff_loops_remaining: 1,
-            transition_loops_remaining: 3,
-            sustain_loops_remaining: 1,
-        }
-    }
-}
-
-pub type RhythmGuitaristSeed = ();
 const RHYTHM_GUITAR_LANE_ID: u8 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
 const INTRO_START_DELAY_TICKS: u32 = 0;
-
-pub struct RhythmGuitarist;
-
-#[jungle::animal(id = 2, generation = 0)]
-impl Animal for RhythmGuitarist {
-    type State = RhythmGuitaristState;
-    type Seed = RhythmGuitaristSeed;
-    type Journey = RhythmGuitarFlow;
-}
 
 type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePick<NOTE, NOTE_TICK, REST_TICK, RHYTHM_GUITAR_LANE_ID>;

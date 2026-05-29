@@ -11,6 +11,11 @@ audio = ["dep:welcome-audio"]
 redb = []
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
 transport = []
+bass = []
+drums = []
+leadguitar = []
+vocals = []
+rhythmguitar = []
 
 [dependencies]
 futures = { workspace = true }

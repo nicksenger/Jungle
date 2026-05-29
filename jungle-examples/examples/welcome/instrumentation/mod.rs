@@ -12,15 +12,15 @@ mod synth_worker;
 mod toms;
 mod vocals;
 
-pub use bass::{Bass, BassArticulation, Thump};
-pub use cymbal::{Cymbal, CymbalArticulation};
-pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation, Pick, Pluck, Strum};
-pub use hihat::{HiHat, HiHatArticulation};
-pub use kick_drum::{KickDrum, KickDrumArticulation};
-pub use snare_drum::{SnareDrum, SnareDrumArticulation};
+pub use bass::{Bass, BassArticulation};
+pub use cymbal::Cymbal;
+pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation};
+pub use hihat::HiHat;
+pub use kick_drum::KickDrum;
+pub use snare_drum::SnareDrum;
 pub use synth_worker::SynthHandle;
-pub use toms::{Toms, TomsArticulation};
-pub use vocals::{phonemes_from_text, Generate, Lyrics, Vocals, VocalsArticulation};
+pub use toms::Toms;
+pub use vocals::{phonemes_from_text, Lyrics, Vocals, VocalsArticulation};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

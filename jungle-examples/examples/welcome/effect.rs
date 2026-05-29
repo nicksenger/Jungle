@@ -29,6 +29,7 @@ pub struct Monad<
     const REST_TICK: u32,
 >(PhantomData<I>);
 
+#[allow(unused)]
 pub struct Passthrough<T>(PhantomData<T>);
 
 pub struct Rest<const LANE_ID: u8, const REST_TICKS: u32>;

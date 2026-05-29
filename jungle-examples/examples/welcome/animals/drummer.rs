@@ -6,21 +6,8 @@ use crate::instrumentation::{
     SnareDrum, SnareDrumArticulation, Toms, TomsArticulation,
 };
 
-use super::{Double, Drums, Octa, Quad};
+use super::{Double, DrummerState, Drums, Octa, Quad};
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub struct DrummerState {
-    groove_variant_is_46: bool,
-}
-
-impl Default for DrummerState {
-    fn default() -> Self {
-        Self {
-            groove_variant_is_46: true,
-        }
-    }
-}
-pub type DrummerSeed = ();
 const INTRO_START_DELAY_TICKS: u32 = 5_376;
 const DRUMS_LANE_ID: u8 = <<Drums as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Hat44Tick = Step<Hat<44, 96, 96>>;

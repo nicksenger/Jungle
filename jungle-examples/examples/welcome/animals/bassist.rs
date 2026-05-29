@@ -6,7 +6,7 @@ use crate::instrumentation::{
     Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
 };
 
-use super::{Bass, Double, Octa, Quad};
+use super::{Bass, BassistState, Double, Octa, Quad};
 
 const BASS_LANE_ID: u8 = <<Bass as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Thump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
@@ -37,28 +37,6 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     }
 }
 
-#[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct BassistState {
-    #[jungle(focus)]
-    articulation: BassArticulation,
-    ostinato_loops_remaining: u8,
-    riff_loops_remaining: u8,
-    #[jungle(focus)]
-    loop2: Loop2Container<BassArticulation>,
-}
-
-impl Default for BassistState {
-    fn default() -> Self {
-        Self {
-            articulation: BassArticulation::Picked,
-            ostinato_loops_remaining: 1,
-            riff_loops_remaining: 1,
-            loop2: Loop2Container::new(BassArticulation::Picked),
-        }
-    }
-}
-
-pub type BassistSeed = ();
 const INTRO_START_DELAY_TICKS: u32 = 5_376;
 
 pub struct IntroSectionMeta;

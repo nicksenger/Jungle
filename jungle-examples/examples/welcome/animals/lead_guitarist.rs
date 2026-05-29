@@ -3,7 +3,7 @@ use jungle_sdk::prelude::*;
 use crate::effect::Rest;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
-use super::{Double, LeadGuitarist};
+use super::{Double, LeadGuitarist, LeadGuitaristState};
 
 const LEAD_GUITAR_LANE_ID: u8 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
@@ -14,23 +14,6 @@ type Pick44Tick = Step<Pick<44, 96, 96>>;
 type Pick39Tick = Step<Pick<39, 96, 96>>;
 type Pluck4451Hold = Pluck<44, 51, 192, 192>;
 
-#[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct LeadGuitaristState {
-    #[jungle(focus)]
-    articulation: ElectricGuitarArticulation,
-    riff_loops_remaining: u8,
-}
-
-impl Default for LeadGuitaristState {
-    fn default() -> Self {
-        Self {
-            articulation: ElectricGuitarArticulation::Sustained,
-            riff_loops_remaining: 1,
-        }
-    }
-}
-
-pub type LeadGuitaristSeed = ();
 const INTRO_START_DELAY_TICKS: u32 = 5_376;
 
 pub struct IntroSectionMeta;
