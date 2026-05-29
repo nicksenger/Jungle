@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tracing::{debug, trace, warn};
+use tracing::{debug, info, trace, warn};
 use uuid::Uuid;
 
 const DEFERRED_STREAM_LOG_INTERVAL: usize = 512;
@@ -531,6 +531,7 @@ enum Message {
     AppVideo(iced_av1::widget::Message),
     #[cfg(feature = "video")]
     PanelVideo(Panel, iced_av1::widget::Message),
+    Keyboard(iced::keyboard::Event),
     TogglePanelAutoViewport(Panel),
     Tick,
 }
@@ -546,6 +547,7 @@ impl Message {
                 Panel::Bass => "Panel(Bass)",
                 Panel::Drums => "Panel(Drums)",
             },
+            Message::Keyboard(_) => "Keyboard",
             #[cfg(feature = "video")]
             Message::AppVideo(_) => "AppVideo",
             #[cfg(feature = "video")]
@@ -578,7 +580,6 @@ struct WelcomeUi {
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
     drums:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
-    #[cfg(feature = "video")]
     metronome: Metronome,
     #[cfg(feature = "video")]
     applied_ticks: HashSet<u32>,
@@ -641,8 +642,6 @@ impl WelcomeUi {
                 .title("Welcome: Drums")
                 .eject_live_animal::<Drums, _>(client, journey)
         });
-        #[cfg(not(feature = "video"))]
-        let _ = metronome;
 
         #[cfg(feature = "video")]
         let app_overlay = init_video_state("app overlay", iced_av1::ScaleMode::Stretch);
@@ -678,7 +677,6 @@ impl WelcomeUi {
                 rhythm_guitarist,
                 bass,
                 drums,
-                #[cfg(feature = "video")]
                 metronome,
                 #[cfg(feature = "video")]
                 applied_ticks: HashSet::new(),
@@ -725,6 +723,18 @@ impl WelcomeUi {
                 self.update_playback_regions();
                 Task::none()
             }
+            Message::Keyboard(iced::keyboard::Event::KeyPressed { key, repeat, .. }) => {
+                if !repeat
+                    && matches!(
+                        key,
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Space)
+                    )
+                {
+                    info!("Tick: {}", self.current_beat_tick());
+                }
+                Task::none()
+            }
+            Message::Keyboard(_) => Task::none(),
             #[cfg(feature = "video")]
             Message::AppVideo(event) => {
                 self.app_overlay.as_mut().map_or_else(Task::none, |video| {
@@ -807,6 +817,7 @@ impl WelcomeUi {
                     .map(|event| Message::Panel(Panel::Drums, event)),
             );
         }
+        subscriptions.push(iced::keyboard::listen().map(Message::Keyboard));
         subscriptions.push(iced::time::every(UI_TICK_INTERVAL).map(|_| Message::Tick));
         #[cfg(feature = "video")]
         {
@@ -1142,7 +1153,6 @@ impl WelcomeUi {
         *playback = RegionPlayback::hidden();
     }
 
-    #[cfg(feature = "video")]
     fn current_beat_tick(&self) -> u64 {
         let beat = self.metronome.beat_duration().as_secs_f64();
         if beat <= f64::EPSILON {
