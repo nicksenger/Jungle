@@ -1355,30 +1355,13 @@ where
         Node(u32),
         Cluster(usize),
     }
-
-    let mut condition_successor_runtime_ids = HashMap::<u32, Vec<u32>>::new();
-    let mut condition_successor_seen = HashMap::<u32, BTreeSet<u32>>::new();
-    for (from, to) in &model.edges {
-        let Some(source) = model.node_map.get(from) else {
-            continue;
-        };
-        if !source.is_conditional_branch {
-            continue;
-        }
-        let Some(target) = model.node_map.get(to) else {
-            continue;
-        };
-        let Some(runtime_id) = target.runtime_node_id else {
-            continue;
-        };
-        let seen = condition_successor_seen.entry(*from).or_default();
-        if seen.insert(runtime_id) {
-            condition_successor_runtime_ids
-                .entry(*from)
-                .or_default()
-                .push(runtime_id);
-        }
-    }
+    let condition_successor_runtime_ids = &model.derived.condition_successor_runtime_ids;
+    let cluster_member_runtime_ids = &model.derived.cluster_member_runtime_ids;
+    let cluster_successor_runtime_ids = &model.derived.cluster_successor_runtime_ids;
+    let cluster_entry_runtime_ids = &model.derived.cluster_entry_runtime_ids;
+    let memberships = &model.derived.memberships;
+    let runtime_by_display_id = &model.derived.runtime_by_display_id;
+    let proxy_runtime_ids_by_display_id = &model.derived.proxy_runtime_ids_by_display_id;
 
     let cluster_phase = move |cluster: &ClusterInfo| -> Phase<ClusterLive> {
         if let Some(live) = live_data {
@@ -1412,40 +1395,6 @@ where
         }
     };
 
-    let mut cluster_member_runtime_ids = vec![Vec::<u32>::new(); model.cluster_info.len()];
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
-        let mut seen = BTreeSet::new();
-        for node_id in &cluster.nodes {
-            let Some(node) = model.node_map.get(node_id) else {
-                continue;
-            };
-            let Some(runtime_id) = node.runtime_node_id else {
-                continue;
-            };
-            if seen.insert(runtime_id) {
-                cluster_member_runtime_ids[index].push(runtime_id);
-            }
-        }
-    }
-
-    let cluster_successor_runtime_ids = cluster_successor_runtime_ids(model);
-
-    let mut cluster_entry_runtime_ids = vec![Vec::<u32>::new(); model.cluster_info.len()];
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
-        let mut seen = BTreeSet::new();
-        for node_id in &cluster.root_nodes {
-            let Some(node) = model.node_map.get(node_id) else {
-                continue;
-            };
-            let Some(runtime_id) = node.runtime_node_id else {
-                continue;
-            };
-            if seen.insert(runtime_id) {
-                cluster_entry_runtime_ids[index].push(runtime_id);
-            }
-        }
-    }
-
     let mut collapsed_clusters = HashSet::<usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
         let cx = ClusterViewCtx {
@@ -1472,19 +1421,6 @@ where
         }
     }
 
-    let mut memberships = HashMap::<u32, Vec<(usize, usize)>>::new();
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
-        for node_id in &cluster.nodes {
-            memberships
-                .entry(*node_id)
-                .or_default()
-                .push((cluster.depth, index));
-        }
-    }
-    for entry in memberships.values_mut() {
-        entry.sort_by_key(|(depth, _)| *depth);
-    }
-
     let cluster_hidden_by_collapsed_ancestor = |cluster_index: usize| -> bool {
         let mut parent = model.cluster_info[cluster_index].parent;
         while let Some(parent_index) = parent {
@@ -1507,16 +1443,10 @@ where
         VisibleOwner::Node(node_id)
     };
 
-    let max_node_id = model.nodes.iter().map(|node| node.id).max().unwrap_or(0);
-    let cluster_node_id = |index: usize| -> Option<u32> {
-        let offset = u32::try_from(index).ok()?;
-        Some(max_node_id.saturating_add(1).saturating_add(offset))
-    };
-
     let owner_to_display = |owner: VisibleOwner| -> Option<u32> {
         match owner {
             VisibleOwner::Node(node_id) => Some(node_id),
-            VisibleOwner::Cluster(index) => cluster_node_id(index),
+            VisibleOwner::Cluster(index) => model.cluster_node_id(index),
         }
     };
 
@@ -1564,7 +1494,7 @@ where
         if cluster_hidden_by_collapsed_ancestor(index) {
             continue;
         }
-        let Some(display_id) = cluster_node_id(index) else {
+        let Some(display_id) = model.cluster_node_id(index) else {
             continue;
         };
         let cx = ClusterViewCtx {
@@ -1666,35 +1596,25 @@ where
         start: Color::from_rgb8(64, 169, 104),
         end: Color::from_rgb8(40, 104, 67),
     };
-    let runtime_by_display_id = model
-        .node_map
-        .iter()
-        .map(|(display_id, node)| (*display_id, node.runtime_node_id))
-        .collect::<HashMap<_, _>>();
-    let proxy_runtime_ids_by_display_id = model
-        .node_map
-        .iter()
-        .map(|(display_id, node)| (*display_id, node.proxy_runtime_ids.clone()))
-        .collect::<HashMap<_, _>>();
 
     let graph_widget = {
-        let node_map = model.node_map.clone();
-        let cluster_info_for_nodes = model.cluster_info.clone();
-        let cluster_info_for_clusters = model.cluster_info.clone();
+        let node_map = &model.node_map;
+        let cluster_info_for_nodes = &model.cluster_info;
+        let cluster_info_for_clusters = &model.cluster_info;
         let collapsed_display_map = collapsed_cluster_by_display.clone();
         let visible_nodes = visible_real_nodes.clone();
         let sizes_for_view = node_sizes.clone();
         let visible_cluster_sources = visible_cluster_source_indices.clone();
-        let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids.clone();
-        let cluster_successor_runtime_ids_for_nodes = cluster_successor_runtime_ids.clone();
-        let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids.clone();
-        let runtime_ids_for_edge_colors = runtime_by_display_id.clone();
-        let runtime_ids_for_edge_strokes = runtime_by_display_id.clone();
-        let proxy_runtime_ids_for_edge_colors = proxy_runtime_ids_by_display_id.clone();
-        let proxy_runtime_ids_for_edge_strokes = proxy_runtime_ids_by_display_id.clone();
-        let condition_successors_for_nodes = condition_successor_runtime_ids.clone();
-        let condition_successors_for_edge_colors = condition_successor_runtime_ids.clone();
-        let condition_successors_for_edge_strokes = condition_successor_runtime_ids.clone();
+        let cluster_member_runtime_ids_for_nodes = cluster_member_runtime_ids;
+        let cluster_successor_runtime_ids_for_nodes = cluster_successor_runtime_ids;
+        let cluster_entry_runtime_ids_for_nodes = cluster_entry_runtime_ids;
+        let runtime_ids_for_edge_colors = runtime_by_display_id;
+        let runtime_ids_for_edge_strokes = runtime_by_display_id;
+        let proxy_runtime_ids_for_edge_colors = proxy_runtime_ids_by_display_id;
+        let proxy_runtime_ids_for_edge_strokes = proxy_runtime_ids_by_display_id;
+        let condition_successors_for_nodes = condition_successor_runtime_ids;
+        let condition_successors_for_edge_colors = condition_successor_runtime_ids;
+        let condition_successors_for_edge_strokes = condition_successor_runtime_ids;
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -1940,6 +1860,7 @@ struct GraphModel {
     node_map: HashMap<u32, NodeDisplay>,
     edges: Vec<(u32, u32)>,
     clusters: Vec<Cluster>,
+    derived: GraphDerived,
     #[cfg(test)]
     while_clusters: Vec<Cluster>,
     #[cfg(test)]
@@ -1952,22 +1873,150 @@ impl GraphModel {
         let mut builder = GraphBuilder::default();
         builder.flatten(&ast);
 
-        let node_map = builder
-            .nodes
+        let nodes = builder.nodes;
+        let edges = builder.edges;
+        let cluster_info = builder.cluster_info;
+        let node_map = nodes
             .iter()
             .map(|node| (node.id, node.clone()))
             .collect::<HashMap<_, _>>();
+        let derived = GraphDerived::build(&nodes, &node_map, &edges, &cluster_info);
 
         Self {
-            nodes: builder.nodes,
+            nodes,
             node_map,
-            edges: builder.edges,
+            edges,
             clusters: builder.clusters.clone(),
+            derived,
             #[cfg(test)]
             while_clusters: builder.clusters,
             #[cfg(test)]
             while_cluster_labels: builder.cluster_labels,
-            cluster_info: builder.cluster_info,
+            cluster_info,
+        }
+    }
+
+    fn cluster_node_id(&self, index: usize) -> Option<u32> {
+        let offset = u32::try_from(index).ok()?;
+        Some(
+            self.derived
+                .max_node_id
+                .saturating_add(1)
+                .saturating_add(offset),
+        )
+    }
+}
+
+#[derive(Clone)]
+struct GraphDerived {
+    condition_successor_runtime_ids: HashMap<u32, Vec<u32>>,
+    cluster_member_runtime_ids: Vec<Vec<u32>>,
+    cluster_successor_runtime_ids: Vec<Vec<u32>>,
+    cluster_entry_runtime_ids: Vec<Vec<u32>>,
+    memberships: HashMap<u32, Vec<(usize, usize)>>,
+    max_node_id: u32,
+    runtime_by_display_id: HashMap<u32, Option<u32>>,
+    proxy_runtime_ids_by_display_id: HashMap<u32, Vec<u32>>,
+}
+
+impl GraphDerived {
+    fn build(
+        nodes: &[NodeDisplay],
+        node_map: &HashMap<u32, NodeDisplay>,
+        edges: &[(u32, u32)],
+        cluster_info: &[ClusterInfo],
+    ) -> Self {
+        let mut condition_successor_runtime_ids = HashMap::<u32, Vec<u32>>::new();
+        let mut condition_successor_seen = HashMap::<u32, BTreeSet<u32>>::new();
+        for (from, to) in edges {
+            let Some(source) = node_map.get(from) else {
+                continue;
+            };
+            if !source.is_conditional_branch {
+                continue;
+            }
+            let Some(target) = node_map.get(to) else {
+                continue;
+            };
+            let Some(runtime_id) = target.runtime_node_id else {
+                continue;
+            };
+            let seen = condition_successor_seen.entry(*from).or_default();
+            if seen.insert(runtime_id) {
+                condition_successor_runtime_ids
+                    .entry(*from)
+                    .or_default()
+                    .push(runtime_id);
+            }
+        }
+
+        let mut cluster_member_runtime_ids = vec![Vec::<u32>::new(); cluster_info.len()];
+        for (index, cluster) in cluster_info.iter().enumerate() {
+            let mut seen = BTreeSet::new();
+            for node_id in &cluster.nodes {
+                let Some(node) = node_map.get(node_id) else {
+                    continue;
+                };
+                let Some(runtime_id) = node.runtime_node_id else {
+                    continue;
+                };
+                if seen.insert(runtime_id) {
+                    cluster_member_runtime_ids[index].push(runtime_id);
+                }
+            }
+        }
+
+        let mut cluster_entry_runtime_ids = vec![Vec::<u32>::new(); cluster_info.len()];
+        for (index, cluster) in cluster_info.iter().enumerate() {
+            let mut seen = BTreeSet::new();
+            for node_id in &cluster.root_nodes {
+                let Some(node) = node_map.get(node_id) else {
+                    continue;
+                };
+                let Some(runtime_id) = node.runtime_node_id else {
+                    continue;
+                };
+                if seen.insert(runtime_id) {
+                    cluster_entry_runtime_ids[index].push(runtime_id);
+                }
+            }
+        }
+
+        let mut memberships = HashMap::<u32, Vec<(usize, usize)>>::new();
+        for (index, cluster) in cluster_info.iter().enumerate() {
+            for node_id in &cluster.nodes {
+                memberships
+                    .entry(*node_id)
+                    .or_default()
+                    .push((cluster.depth, index));
+            }
+        }
+        for entry in memberships.values_mut() {
+            entry.sort_by_key(|(depth, _)| *depth);
+        }
+
+        let runtime_by_display_id = node_map
+            .iter()
+            .map(|(display_id, node)| (*display_id, node.runtime_node_id))
+            .collect::<HashMap<_, _>>();
+        let proxy_runtime_ids_by_display_id = node_map
+            .iter()
+            .map(|(display_id, node)| (*display_id, node.proxy_runtime_ids.clone()))
+            .collect::<HashMap<_, _>>();
+
+        Self {
+            condition_successor_runtime_ids,
+            cluster_member_runtime_ids,
+            cluster_successor_runtime_ids: compute_cluster_successor_runtime_ids(
+                edges,
+                node_map,
+                cluster_info,
+            ),
+            cluster_entry_runtime_ids,
+            memberships,
+            max_node_id: nodes.iter().map(|node| node.id).max().unwrap_or(0),
+            runtime_by_display_id,
+            proxy_runtime_ids_by_display_id,
         }
     }
 }
@@ -2398,19 +2447,28 @@ fn dedup(values: Vec<u32>) -> Vec<u32> {
     output
 }
 
+#[cfg(test)]
 fn cluster_successor_runtime_ids(model: &GraphModel) -> Vec<Vec<u32>> {
+    model.derived.cluster_successor_runtime_ids.clone()
+}
+
+fn compute_cluster_successor_runtime_ids(
+    edges: &[(u32, u32)],
+    node_map: &HashMap<u32, NodeDisplay>,
+    cluster_info: &[ClusterInfo],
+) -> Vec<Vec<u32>> {
     let mut outgoing_by_node = HashMap::<u32, Vec<u32>>::new();
-    for (from, to) in &model.edges {
+    for (from, to) in edges {
         outgoing_by_node.entry(*from).or_default().push(*to);
     }
 
-    let mut cluster_successors = vec![Vec::<u32>::new(); model.cluster_info.len()];
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
+    let mut cluster_successors = vec![Vec::<u32>::new(); cluster_info.len()];
+    for (index, cluster) in cluster_info.iter().enumerate() {
         let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
         let mut queue = std::collections::VecDeque::<u32>::new();
         let mut visited = HashSet::<u32>::new();
 
-        for (from, to) in &model.edges {
+        for (from, to) in edges {
             if !cluster_nodes.contains(from) || cluster_nodes.contains(to) {
                 continue;
             }
@@ -2424,7 +2482,7 @@ fn cluster_successor_runtime_ids(model: &GraphModel) -> Vec<Vec<u32>> {
             if cluster_nodes.contains(&node_id) {
                 continue;
             }
-            if let Some(node) = model.node_map.get(&node_id) {
+            if let Some(node) = node_map.get(&node_id) {
                 if let Some(runtime_id) = node.runtime_node_id {
                     if seen_runtime_ids.insert(runtime_id) {
                         cluster_successors[index].push(runtime_id);
