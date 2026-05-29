@@ -2,7 +2,7 @@ use jungle_sdk::prelude::*;
 use welcome_audio::{PlayPriority, PlayRequest};
 
 use crate::{
-    act::{MergeUnit, Rest as GenericRest},
+    action::{MergeUnit, Rest as GenericRest},
     effect::{Rest, Sound, SoundInput},
 };
 
