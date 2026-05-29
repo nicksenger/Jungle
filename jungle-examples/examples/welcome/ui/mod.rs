@@ -1,4 +1,4 @@
-use crate::animals::{Bass, Drums, RhythmGuitarist, LeadVocalist, LeadGuitarist};
+use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
 use crate::metronome::Metronome;
 use crate::UiClient;
 use async_trait::async_trait;
@@ -760,16 +760,16 @@ impl WelcomeUi {
                     v.update(event)
                         .map(move |next| Message::Panel(Panel::LeadVocalist, next))
                 }),
-                Panel::RhythmGuitarist => self.rhythm_guitarist.as_mut().map_or_else(Task::none, |v| {
-                    v.update(event)
-                        .map(move |next| Message::Panel(Panel::RhythmGuitarist, next))
-                }),
-                Panel::LeadGuitarist => {
-                    self.lead_guitarist.as_mut().map_or_else(Task::none, |v| {
+                Panel::RhythmGuitarist => {
+                    self.rhythm_guitarist.as_mut().map_or_else(Task::none, |v| {
                         v.update(event)
-                            .map(move |next| Message::Panel(Panel::LeadGuitarist, next))
+                            .map(move |next| Message::Panel(Panel::RhythmGuitarist, next))
                     })
                 }
+                Panel::LeadGuitarist => self.lead_guitarist.as_mut().map_or_else(Task::none, |v| {
+                    v.update(event)
+                        .map(move |next| Message::Panel(Panel::LeadGuitarist, next))
+                }),
                 Panel::Bass => self.bass.as_mut().map_or_else(Task::none, |v| {
                     v.update(event)
                         .map(move |next| Message::Panel(Panel::Bass, next))
