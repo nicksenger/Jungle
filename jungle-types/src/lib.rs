@@ -100,57 +100,12 @@ impl<In> LoopInput for (bool, In) {
     }
 }
 
-/// Legacy predicate hook for [`Conditional`], retained as a marker for type-level flow shape.
-pub trait Condition<In> {
-    fn choose(input: &In) -> bool;
-}
-
-/// Legacy predicate hook for [`While`], retained as a marker for type-level flow shape.
-pub trait LoopCondition<State> {
-    type Arg;
-
-    fn should_continue(state: &State) -> bool;
-}
-
 /// Unified predicate contract for control-flow decisions.
 pub trait Predicate<Input> {
     fn eval(input: &Input) -> bool;
 }
 
-impl<In, P> Condition<In> for P
-where
-    P: Predicate<In>,
-{
-    fn choose(input: &In) -> bool {
-        <P as Predicate<In>>::eval(input)
-    }
-}
-
-/// Compatibility adapter from legacy [`Condition`] into [`Predicate`].
-pub struct ConditionPredicate<P>(PhantomData<fn() -> P>);
-
-impl<In, P> Predicate<In> for ConditionPredicate<P>
-where
-    P: Condition<In>,
-{
-    fn eval(input: &In) -> bool {
-        <P as Condition<In>>::choose(input)
-    }
-}
-
-/// Compatibility adapter from legacy [`LoopCondition`] into [`Predicate`].
-pub struct LoopConditionPredicate<C>(PhantomData<fn() -> C>);
-
-impl<'a, State, In, C> Predicate<(&'a State, &'a In)> for LoopConditionPredicate<C>
-where
-    C: LoopCondition<State, Arg = In>,
-{
-    fn eval((state, _): &(&'a State, &'a In)) -> bool {
-        <C as LoopCondition<State>>::should_continue(state)
-    }
-}
-
-/// Adapts a [`Condition`] defined over a focused view to run against a larger root state.
+/// Adapts a [`Predicate`] defined over a focused view to run against a larger root state.
 ///
 /// This is useful for scoped flow templates where branch predicates are authored against
 /// the focused scope type, but runtime evaluation happens on the full animal state.
@@ -170,7 +125,7 @@ where
     }
 }
 
-/// Adapts a [`LoopCondition`] defined over a focused view to run against a larger root state.
+/// Adapts a borrowed-input loop [`Predicate`] over a focused view to run against a larger root state.
 pub struct FocusedLoopCondition<C, View>(PhantomData<fn() -> (C, View)>);
 
 impl<'a, State, View, Arg, C> Predicate<(&'a State, &'a Arg)> for FocusedLoopCondition<C, View>
@@ -1493,13 +1448,13 @@ impl<P, L, R, M> Running for Conditional<P, L, R, M>
 where
     L: Running,
     R: Running<In = L::In>,
-    ConditionPredicate<P>: Predicate<L::In>,
+    P: Predicate<L::In>,
 {
     type In = L::In;
     type Out = Either<L::Out, R::Out>;
 
     fn run(input: Self::In) -> Self::Out {
-        if <ConditionPredicate<P> as Predicate<L::In>>::eval(&input) {
+        if <P as Predicate<L::In>>::eval(&input) {
             Either::Left(<L as Running>::run(input))
         } else {
             Either::Right(<R as Running>::run(input))

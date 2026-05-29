@@ -2511,7 +2511,7 @@ where
     R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
         + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
     <L as ArgputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, <L as ArgputForState<State>>::Carry)> + 'static,
+    P: crate::Predicate<(State, <L as ArgputForState<State>>::Carry)> + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -2520,10 +2520,10 @@ where
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <crate::ConditionPredicate<P> as crate::Predicate<(
-                    State,
-                    <L as ArgputForState<State>>::Carry,
-                )>>::eval(&(state.clone(), input.clone()))
+                <P as crate::Predicate<(State, <L as ArgputForState<State>>::Carry)>>::eval(&(
+                    state.clone(),
+                    input.clone(),
+                ))
             },
         );
         steps.push(Box::new(ConditionalErasedFlow::<
@@ -3062,7 +3062,7 @@ where
     State: Clone + Send + 'static,
     L: ArgputForState<State>,
     <L as ArgputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, <L as ArgputForState<State>>::Carry)> + 'static,
+    P: crate::Predicate<(State, <L as ArgputForState<State>>::Carry)> + 'static,
     L: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
@@ -3085,10 +3085,10 @@ where
         ));
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <crate::ConditionPredicate<P> as crate::Predicate<(
-                    State,
-                    <L as ArgputForState<State>>::Carry,
-                )>>::eval(&(state.clone(), input.clone()))
+                <P as crate::Predicate<(State, <L as ArgputForState<State>>::Carry)>>::eval(&(
+                    state.clone(),
+                    input.clone(),
+                ))
             },
         );
         steps.push(Box::new(ConditionalContextErasedFlow::<
