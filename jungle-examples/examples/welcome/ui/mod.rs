@@ -537,16 +537,24 @@ struct VideoPlaybackRequest {
     offset: Duration,
     duration: Duration,
     opacity: f32,
+    cover_offset: f32,
 }
 
 #[cfg(feature = "video")]
 impl VideoPlaybackRequest {
-    const fn new(video: VideoAsset, offset_ms: u64, duration_ms: u64, opacity: f32) -> Self {
+    const fn new(
+        video: VideoAsset,
+        offset_ms: u64,
+        duration_ms: u64,
+        opacity: f32,
+        cover_offset: f32,
+    ) -> Self {
         Self {
             video,
             offset: Duration::from_millis(offset_ms),
             duration: Duration::from_millis(duration_ms),
             opacity,
+            cover_offset,
         }
     }
 }
@@ -580,7 +588,13 @@ impl TickPlaybackPlan {
 const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
     TickPlaybackPlan {
         tick: 0,
-        app_overlay: Some(VideoPlaybackRequest::new(VideoAsset::Jungle, 0, 2_000, 0.3)),
+        app_overlay: Some(VideoPlaybackRequest::new(
+            VideoAsset::Jungle,
+            0,
+            2_000,
+            0.3,
+            0.5,
+        )),
         lead_vocalist_panel: None,
         rhythm_guitarist_panel: None,
         lead_guitarist_panel: None,
@@ -590,20 +604,40 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
     TickPlaybackPlan {
         tick: 4,
         app_overlay: None,
-        lead_vocalist_panel: Some(VideoPlaybackRequest::new(VideoAsset::Toucan, 0, 2_000, 0.3)),
+        lead_vocalist_panel: Some(VideoPlaybackRequest::new(
+            VideoAsset::Toucan,
+            0,
+            2_000,
+            0.3,
+            0.5,
+        )),
         rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(
             VideoAsset::Serpentine,
             0,
             2_000,
             0.3,
+            0.5,
         )),
-        lead_guitarist_panel: Some(VideoPlaybackRequest::new(VideoAsset::Jaguar, 0, 2_000, 0.3)),
-        bass_panel: Some(VideoPlaybackRequest::new(VideoAsset::Hippo, 0, 2_000, 0.3)),
+        lead_guitarist_panel: Some(VideoPlaybackRequest::new(
+            VideoAsset::Jaguar,
+            0,
+            2_000,
+            0.3,
+            0.5,
+        )),
+        bass_panel: Some(VideoPlaybackRequest::new(
+            VideoAsset::Hippo,
+            0,
+            2_000,
+            0.3,
+            0.5,
+        )),
         drums_panel: Some(VideoPlaybackRequest::new(
             VideoAsset::CrocStrike,
             0,
             2_000,
             0.3,
+            0.5,
         )),
     },
     TickPlaybackPlan {
@@ -1175,11 +1209,12 @@ impl WelcomeUi {
 
             for panel in Panel::ALL {
                 if let Some(request) = plan.panel_request(panel) {
-                    self.reinitialize_panel_overlay(panel, request.video);
+                    self.reinitialize_panel_overlay(panel, request.video, request.cover_offset);
                     info!(
                         tick = plan.tick,
                         panel = panel.name(),
                         video = request.video.name(),
+                        cover_offset = request.cover_offset,
                         "selected panel overlay video from playback request"
                     );
                     let (overlay, playback) = self.panel_slot_mut(panel);
@@ -1366,10 +1401,13 @@ impl WelcomeUi {
     }
 
     #[cfg(feature = "video")]
-    fn reinitialize_panel_overlay(&mut self, panel: Panel, video: VideoAsset) {
+    fn reinitialize_panel_overlay(&mut self, panel: Panel, video: VideoAsset, cover_offset: f32) {
+        let clamped_cover_offset = cover_offset.clamp(0.0, 1.0);
         let overlay = init_video_state(
             panel.video_region_name(),
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
+            iced_av1::ScaleMode::Cover {
+                offset: clamped_cover_offset,
+            },
             video.bytes(),
         );
         match panel {
