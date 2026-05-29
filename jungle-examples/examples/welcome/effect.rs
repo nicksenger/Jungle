@@ -272,7 +272,7 @@ fn log_effect_cycle(
     }
 
     if cycle_elapsed > EFFECT_SLOW_CYCLE_WARN_THRESHOLD {
-        warn!(
+        debug!(
             lane_id,
             should_play,
             cycle_count,
