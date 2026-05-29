@@ -1,18 +1,18 @@
+use crate::UiClient;
 use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
 use crate::metronome::Metronome;
-use crate::UiClient;
 use async_trait::async_trait;
 use futures::StreamExt;
 #[cfg(feature = "video")]
 use iced::widget::stack;
-use iced::widget::{button, column, container, svg, text, Row, Space};
+use iced::widget::{Row, Space, button, column, container, svg, text};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
 #[cfg(feature = "video")]
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, trace, warn};
 use uuid::Uuid;
@@ -26,7 +26,32 @@ const UI_TICK_INTERVAL: Duration = Duration::from_millis(500);
 const LOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#;
 const UNLOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M16 11V7a4 4 0 0 0-7.5-2"/></svg>"#;
 #[cfg(feature = "video")]
-const AV_OVERLAY_BYTES: &[u8] = include_bytes!("../assets/jungle.mkv");
+const AV_OVERLAY_SOURCES: [(&str, &[u8]); 21] = [
+    ("baboons.mkv", include_bytes!("../assets/baboons.mkv")),
+    ("chimp.mkv", include_bytes!("../assets/chimp.mkv")),
+    (
+        "chimpattack.mkv",
+        include_bytes!("../assets/chimpattack.mkv"),
+    ),
+    ("croc.mkv", include_bytes!("../assets/croc.mkv")),
+    ("crocstrike.mkv", include_bytes!("../assets/crocstrike.mkv")),
+    ("elephants.mkv", include_bytes!("../assets/elephants.mkv")),
+    ("giraffe.mkv", include_bytes!("../assets/giraffe.mkv")),
+    ("hippo.mkv", include_bytes!("../assets/hippo.mkv")),
+    ("jackfruit.mkv", include_bytes!("../assets/jackfruit.mkv")),
+    ("jaguar.mkv", include_bytes!("../assets/jaguar.mkv")),
+    ("jaguar2.mkv", include_bytes!("../assets/jaguar2.mkv")),
+    ("jungle.mkv", include_bytes!("../assets/jungle.mkv")),
+    ("lions.mkv", include_bytes!("../assets/lions.mkv")),
+    ("monkey.mkv", include_bytes!("../assets/monkey.mkv")),
+    ("ostrich.mkv", include_bytes!("../assets/ostrich.mkv")),
+    ("panic.mkv", include_bytes!("../assets/panic.mkv")),
+    ("serpentine.mkv", include_bytes!("../assets/serpentine.mkv")),
+    ("shrooms.mkv", include_bytes!("../assets/shrooms.mkv")),
+    ("toucan.mkv", include_bytes!("../assets/toucan.mkv")),
+    ("toucanfly.mkv", include_bytes!("../assets/toucanfly.mkv")),
+    ("zebra.mkv", include_bytes!("../assets/zebra.mkv")),
+];
 #[cfg(feature = "video")]
 const VIDEO_FADE_IN: Duration = Duration::from_millis(180);
 #[cfg(feature = "video")]
@@ -609,6 +634,8 @@ struct WelcomeUi {
     bass_panel_playback: RegionPlayback,
     #[cfg(feature = "video")]
     drums_panel_playback: RegionPlayback,
+    #[cfg(feature = "video")]
+    video_source_cursor: usize,
     shutdown: ShutdownFlag,
 }
 
@@ -646,31 +673,42 @@ impl WelcomeUi {
         });
 
         #[cfg(feature = "video")]
-        let app_overlay = init_video_state("app overlay", iced_av1::ScaleMode::Stretch);
+        let (_, initial_video_bytes) = video_source_at_index(0);
+        #[cfg(feature = "video")]
+        let app_overlay = init_video_state(
+            "app overlay",
+            iced_av1::ScaleMode::Stretch,
+            initial_video_bytes,
+        );
         #[cfg(feature = "video")]
         let lead_vocalist_panel_overlay = init_video_state(
             "lead vocalist panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
+            initial_video_bytes,
         );
         #[cfg(feature = "video")]
         let rhythm_guitarist_panel_overlay = init_video_state(
             "rhythm guitarist panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
+            initial_video_bytes,
         );
         #[cfg(feature = "video")]
         let lead_guitarist_panel_overlay = init_video_state(
             "lead guitarist panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
+            initial_video_bytes,
         );
         #[cfg(feature = "video")]
         let bass_panel_overlay = init_video_state(
             "bass panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
+            initial_video_bytes,
         );
         #[cfg(feature = "video")]
         let drums_panel_overlay = init_video_state(
             "drums panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
+            initial_video_bytes,
         );
         (
             Self {
@@ -706,6 +744,8 @@ impl WelcomeUi {
                 bass_panel_playback: RegionPlayback::hidden(),
                 #[cfg(feature = "video")]
                 drums_panel_playback: RegionPlayback::hidden(),
+                #[cfg(feature = "video")]
+                video_source_cursor: 1,
                 shutdown,
             },
             Task::none(),
@@ -1025,6 +1065,20 @@ impl WelcomeUi {
                 continue;
             }
 
+            if plan.app_overlay.is_some()
+                || Panel::ALL
+                    .into_iter()
+                    .any(|panel| plan.panel_request(panel).is_some())
+            {
+                let (video_name, video_bytes) = self.next_video_source();
+                info!(
+                    tick = plan.tick,
+                    video = video_name,
+                    "selected welcome video for playback plan tick"
+                );
+                self.reinitialize_video_overlays(video_bytes);
+            }
+
             let now = Instant::now();
             if let Some(request) = plan.app_overlay {
                 Self::start_region_playback(
@@ -1233,12 +1287,51 @@ impl WelcomeUi {
             ),
         }
     }
+
+    #[cfg(feature = "video")]
+    fn next_video_source(&mut self) -> (&'static str, &'static [u8]) {
+        let source = video_source_at_index(self.video_source_cursor);
+        self.video_source_cursor = self.video_source_cursor.wrapping_add(1);
+        source
+    }
+
+    #[cfg(feature = "video")]
+    fn reinitialize_video_overlays(&mut self, video_bytes: &'static [u8]) {
+        self.app_overlay =
+            init_video_state("app overlay", iced_av1::ScaleMode::Stretch, video_bytes);
+        self.lead_vocalist_panel_overlay = init_video_state(
+            "lead vocalist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+            video_bytes,
+        );
+        self.rhythm_guitarist_panel_overlay = init_video_state(
+            "rhythm guitarist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+            video_bytes,
+        );
+        self.lead_guitarist_panel_overlay = init_video_state(
+            "lead guitarist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+            video_bytes,
+        );
+        self.bass_panel_overlay = init_video_state(
+            "bass panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+            video_bytes,
+        );
+        self.drums_panel_overlay = init_video_state(
+            "drums panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+            video_bytes,
+        );
+    }
 }
 
 #[cfg(feature = "video")]
 fn init_video_state(
     region: &str,
     scale_mode: iced_av1::ScaleMode,
+    video_bytes: &[u8],
 ) -> Option<iced_av1::widget::State> {
     let playback_options = iced_av1::PlaybackOptions::default();
     let opacity_options = iced_av1::OpacityOptions {
@@ -1247,7 +1340,7 @@ fn init_video_state(
             duration: VIDEO_FADE_IN,
         },
     };
-    let source = iced_av1::MediaSource::from_bytes(AV_OVERLAY_BYTES.to_vec());
+    let source = iced_av1::MediaSource::from_bytes(video_bytes.to_vec());
     match iced_av1::widget::State::new_with_media_source_and_opacity_options(
         source,
         playback_options,
@@ -1274,6 +1367,11 @@ fn init_video_state(
 #[cfg(feature = "video")]
 fn map_panel_video_message(message: iced_av1::widget::Message) -> iced_av1::widget::Message {
     message
+}
+
+#[cfg(feature = "video")]
+fn video_source_at_index(index: usize) -> (&'static str, &'static [u8]) {
+    AV_OVERLAY_SOURCES[index % AV_OVERLAY_SOURCES.len()]
 }
 
 #[cfg(feature = "video")]
