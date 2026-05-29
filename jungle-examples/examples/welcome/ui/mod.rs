@@ -1139,9 +1139,9 @@ impl WelcomeUi {
 
     #[cfg(feature = "video")]
     fn apply_playback_plan(&mut self) {
-        let beat = self.current_beat_tick();
+        let rhythm_tick = self.current_rhythm_tick();
         for plan in VIDEO_PLAYBACK_PLAN {
-            if beat < u64::from(plan.tick) {
+            if rhythm_tick < u64::from(plan.tick) {
                 continue;
             }
             if !self.applied_ticks.insert(plan.tick) {
@@ -1293,15 +1293,6 @@ impl WelcomeUi {
             }
         }
         *playback = RegionPlayback::hidden();
-    }
-
-    #[cfg(feature = "video")]
-    fn current_beat_tick(&self) -> u64 {
-        let beat = self.metronome.beat_duration().as_secs_f64();
-        if beat <= f64::EPSILON {
-            return 0;
-        }
-        (self.metronome.elapsed().as_secs_f64() / beat).floor() as u64
     }
 
     fn current_rhythm_tick(&self) -> u64 {
