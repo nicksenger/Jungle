@@ -208,7 +208,7 @@ where
                         usize::try_from(wait_ms).unwrap_or(usize::MAX),
                     );
                     if wait_ms >= DEFERRED_STREAM_SLOW_WAIT_WARN_MS {
-                        warn!(
+                        debug!(
                             journey_id = %journey_id,
                             sequence_id = update.sequence_id,
                             wait_ms,

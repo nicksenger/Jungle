@@ -365,7 +365,7 @@ where
                     .await?;
                 let wake_wait_elapsed = wake_wait_started_at.elapsed();
                 if wake_wait_elapsed > WORKER_SLOW_WAKE_WAIT_WARN_THRESHOLD {
-                    warn!(
+                    debug!(
                         owner_id = %owner_id,
                         wake_waits,
                         wake_timeout_ms = wake_timeout.as_millis(),
