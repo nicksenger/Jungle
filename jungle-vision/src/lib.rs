@@ -515,6 +515,15 @@ where
         }
     }
 
+    pub fn auto_viewport_enabled(&self) -> bool {
+        self.auto_pan_enabled && self.auto_zoom_enabled
+    }
+
+    pub fn set_auto_viewport_enabled(&mut self, enabled: bool) {
+        self.auto_pan_enabled = enabled;
+        self.auto_zoom_enabled = enabled;
+    }
+
     pub fn update(&mut self, message: EjectedViewerMessage) -> Task<EjectedViewerMessage> {
         match message {
             EjectedViewerMessage::LiveEvent(result) => {
