@@ -1288,7 +1288,7 @@ fn panel<'a>(
                 color: Some(Color::from_rgb8(223, 245, 230)),
             }),
     )
-    .padding([3, 6])
+    .padding([4, 4])
     .style(move |theme, status| panel_lock_button_style(auto_viewport_enabled, theme, status))
     .on_press(Message::TogglePanelAutoViewport(target));
 
