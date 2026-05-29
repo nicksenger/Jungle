@@ -12,14 +12,20 @@ mod synth_worker;
 mod toms;
 mod vocals;
 
+#[allow(unused)]
+pub use bass::Thump;
 pub use bass::{Bass, BassArticulation};
-pub use cymbal::Cymbal;
+pub use cymbal::{Cymbal, CymbalArticulation};
 pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation};
-pub use hihat::HiHat;
-pub use kick_drum::KickDrum;
-pub use snare_drum::SnareDrum;
+#[allow(unused)]
+pub use electric_guitar::{Pick, Pluck, Strum};
+pub use hihat::{HiHat, HiHatArticulation};
+pub use kick_drum::{KickDrum, KickDrumArticulation};
+pub use snare_drum::{SnareDrum, SnareDrumArticulation};
 pub use synth_worker::SynthHandle;
-pub use toms::Toms;
+pub use toms::{Toms, TomsArticulation};
+#[allow(unused)]
+pub use vocals::Generate;
 pub use vocals::{phonemes_from_text, Lyrics, Vocals, VocalsArticulation};
 
 #[derive(Debug, thiserror::Error)]

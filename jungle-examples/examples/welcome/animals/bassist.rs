@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use crate::effect::{Monad, Rest};
-use crate::flow::loop2::{Loop2, Loop2Container};
+use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
     Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
 };
