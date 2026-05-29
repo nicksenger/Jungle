@@ -4,9 +4,9 @@ use crate::action::{MergeEither, MergeUnit as GenericMergeUnit, Rest as GenericR
 use crate::effect::Rest;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
-use super::{Double, LeadGuitarist, LeadGuitaristState};
+use super::{Double, RhythmGuitarist, RhythmGuitaristState};
 
-const LEAD_GUITAR_LANE_ID: u8 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
+const LEAD_GUITAR_LANE_ID: u8 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePick<NOTE, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
 type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
@@ -71,35 +71,35 @@ pub struct QuadHit<
     Step<PostMergeRest<REST_TICK>>,
 );
 
-pub struct LeadRiffLoopRemaining;
-impl Predicate<(&LeadGuitaristState, &())> for LeadRiffLoopRemaining {
-    fn eval((state, _): &(&LeadGuitaristState, &())) -> bool {
+pub struct RhythmRiffLoopRemaining;
+impl Predicate<(&RhythmGuitaristState, &())> for RhythmRiffLoopRemaining {
+    fn eval((state, _): &(&RhythmGuitaristState, &())) -> bool {
         state.riff_loops_remaining > 0
     }
 }
 
-pub struct UseLeadTurnaroundSection;
-impl Predicate<(LeadGuitaristState, ())> for UseLeadTurnaroundSection {
-    fn eval((state, _): &(LeadGuitaristState, ())) -> bool {
+pub struct UseRhythmTurnaroundSection;
+impl Predicate<(RhythmGuitaristState, ())> for UseRhythmTurnaroundSection {
+    fn eval((state, _): &(RhythmGuitaristState, ())) -> bool {
         state.riff_loops_remaining <= 0
     }
 }
 
-pub struct DecrementLeadRiffLoop;
+pub struct DecrementRhythmRiffLoop;
 #[jungle::action]
-impl Action for DecrementLeadRiffLoop {
+impl Action for DecrementRhythmRiffLoop {
     type Effect = Noop;
     type Input = ();
     type Output = ();
 
     fn emit(
-        _state: &LeadGuitaristState,
+        _state: &RhythmGuitaristState,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
     }
 
     fn absorb(
-        state: &mut LeadGuitaristState,
+        state: &mut RhythmGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("lead riff loop decrement should complete");
@@ -108,113 +108,113 @@ impl Action for DecrementLeadRiffLoop {
 }
 
 #[derive(Flow)]
-pub struct LeadRiffLoopNormalTail(
-    Transparent<IntroSectionMeta, LeadSection05>,
-    Step<DecrementLeadRiffLoop>,
+pub struct RhythmRiffLoopNormalTail(
+    Transparent<IntroSectionMeta, RhythmSection05>,
+    Step<DecrementRhythmRiffLoop>,
 );
 
 #[derive(Flow)]
-pub struct LeadRiffLoopFinalTail(
-    Transparent<IntroSectionMeta, LeadSection06>,
-    Step<DecrementLeadRiffLoop>,
+pub struct RhythmRiffLoopFinalTail(
+    Transparent<IntroSectionMeta, RhythmSection06>,
+    Step<DecrementRhythmRiffLoop>,
 );
 
 #[derive(Flow)]
-pub struct LeadRiffLoopBody(
-    Transparent<IntroSectionMeta, LeadSection02>,
-    Transparent<IntroSectionMeta, LeadSection03>,
-    Transparent<IntroSectionMeta, LeadSection04>,
-    Conditional<UseLeadTurnaroundSection, LeadRiffLoopFinalTail, LeadRiffLoopNormalTail>,
-    Step<MergeEither<(), LeadGuitaristState>>,
+pub struct RhythmRiffLoopBody(
+    Transparent<IntroSectionMeta, RhythmSection02>,
+    Transparent<IntroSectionMeta, RhythmSection03>,
+    Transparent<IntroSectionMeta, RhythmSection04>,
+    Conditional<UseRhythmTurnaroundSection, RhythmRiffLoopFinalTail, RhythmRiffLoopNormalTail>,
+    Step<MergeEither<(), RhythmGuitaristState>>,
 );
 
 #[derive(Flow)]
-pub struct LeadGuitarIntro(
+pub struct RhythmGuitarIntro(
     Transparent<
         IntroSectionMeta,
-        Step<GenericRest<LeadGuitaristState, INTRO_START_DELAY_TICKS, LEAD_GUITAR_LANE_ID>>,
+        Step<GenericRest<RhythmGuitaristState, INTRO_START_DELAY_TICKS, LEAD_GUITAR_LANE_ID>>,
     >,
-    Transparent<IntroSectionMeta, LeadSection01>,
-    While<LeadRiffLoopRemaining, LeadRiffLoopBody>,
-    Transparent<IntroSectionMeta, LeadSection06>,
-    Transparent<IntroSectionMeta, LeadSection07>,
+    Transparent<IntroSectionMeta, RhythmSection01>,
+    While<RhythmRiffLoopRemaining, RhythmRiffLoopBody>,
+    Transparent<IntroSectionMeta, RhythmSection06>,
+    Transparent<IntroSectionMeta, RhythmSection07>,
 );
 
 #[derive(Flow)]
-pub struct LeadSection01(
-    Transparent<IntroSectionMeta, LeadPart01>,
-    Transparent<IntroSectionMeta, LeadPart02>,
-    Transparent<IntroSectionMeta, LeadPart03>,
-    Transparent<IntroSectionMeta, LeadPart04>,
-    Transparent<IntroSectionMeta, LeadPart05>,
-    Transparent<IntroSectionMeta, LeadPart06>,
+pub struct RhythmSection01(
+    Transparent<IntroSectionMeta, RhythmPart01>,
+    Transparent<IntroSectionMeta, RhythmPart02>,
+    Transparent<IntroSectionMeta, RhythmPart03>,
+    Transparent<IntroSectionMeta, RhythmPart04>,
+    Transparent<IntroSectionMeta, RhythmPart05>,
+    Transparent<IntroSectionMeta, RhythmPart06>,
 );
 
 #[derive(Flow)]
-pub struct LeadSection02(
-    Transparent<IntroSectionMeta, LeadPart07>,
-    Transparent<IntroSectionMeta, LeadPart08>,
-    Transparent<IntroSectionMeta, LeadPart09>,
-    Transparent<IntroSectionMeta, LeadPart10>,
-    Transparent<IntroSectionMeta, LeadPart11>,
-    Transparent<IntroSectionMeta, LeadPart12>,
+pub struct RhythmSection02(
+    Transparent<IntroSectionMeta, RhythmPart07>,
+    Transparent<IntroSectionMeta, RhythmPart08>,
+    Transparent<IntroSectionMeta, RhythmPart09>,
+    Transparent<IntroSectionMeta, RhythmPart10>,
+    Transparent<IntroSectionMeta, RhythmPart11>,
+    Transparent<IntroSectionMeta, RhythmPart12>,
 );
 
 #[derive(Flow)]
-pub struct LeadSection03(
-    Transparent<IntroSectionMeta, LeadPart13>,
-    Transparent<IntroSectionMeta, LeadPart14>,
-    Transparent<IntroSectionMeta, LeadPart15>,
-    Transparent<IntroSectionMeta, LeadPart16>,
-    Transparent<IntroSectionMeta, LeadPart17>,
-    Transparent<IntroSectionMeta, LeadPart18>,
+pub struct RhythmSection03(
+    Transparent<IntroSectionMeta, RhythmPart13>,
+    Transparent<IntroSectionMeta, RhythmPart14>,
+    Transparent<IntroSectionMeta, RhythmPart15>,
+    Transparent<IntroSectionMeta, RhythmPart16>,
+    Transparent<IntroSectionMeta, RhythmPart17>,
+    Transparent<IntroSectionMeta, RhythmPart18>,
 );
 
 #[derive(Flow)]
-pub struct LeadSection04(
-    Transparent<IntroSectionMeta, LeadPart19>,
-    Transparent<IntroSectionMeta, LeadPart20>,
-    Transparent<IntroSectionMeta, LeadPart21>,
-    Transparent<IntroSectionMeta, LeadPart22>,
-    Transparent<IntroSectionMeta, LeadPart23>,
-    Transparent<IntroSectionMeta, LeadPart24>,
+pub struct RhythmSection04(
+    Transparent<IntroSectionMeta, RhythmPart19>,
+    Transparent<IntroSectionMeta, RhythmPart20>,
+    Transparent<IntroSectionMeta, RhythmPart21>,
+    Transparent<IntroSectionMeta, RhythmPart22>,
+    Transparent<IntroSectionMeta, RhythmPart23>,
+    Transparent<IntroSectionMeta, RhythmPart24>,
 );
 
 #[derive(Flow)]
-pub struct LeadSection05(
-    Transparent<IntroSectionMeta, LeadPart25>,
-    Transparent<IntroSectionMeta, LeadPart26>,
-    Transparent<IntroSectionMeta, LeadPart27>,
-    Transparent<IntroSectionMeta, LeadPart28>,
-    Transparent<IntroSectionMeta, LeadPart29>,
-    Transparent<IntroSectionMeta, LeadPart30>,
+pub struct RhythmSection05(
+    Transparent<IntroSectionMeta, RhythmPart25>,
+    Transparent<IntroSectionMeta, RhythmPart26>,
+    Transparent<IntroSectionMeta, RhythmPart27>,
+    Transparent<IntroSectionMeta, RhythmPart28>,
+    Transparent<IntroSectionMeta, RhythmPart29>,
+    Transparent<IntroSectionMeta, RhythmPart30>,
 );
 
 #[derive(Flow)]
-pub struct LeadSection06(
-    Transparent<IntroSectionMeta, LeadPart31>,
-    Transparent<IntroSectionMeta, LeadPart32>,
-    Transparent<IntroSectionMeta, LeadPart33>,
-    Transparent<IntroSectionMeta, LeadPart34>,
-    Transparent<IntroSectionMeta, LeadPart35>,
-    Transparent<IntroSectionMeta, LeadPart36>,
+pub struct RhythmSection06(
+    Transparent<IntroSectionMeta, RhythmPart31>,
+    Transparent<IntroSectionMeta, RhythmPart32>,
+    Transparent<IntroSectionMeta, RhythmPart33>,
+    Transparent<IntroSectionMeta, RhythmPart34>,
+    Transparent<IntroSectionMeta, RhythmPart35>,
+    Transparent<IntroSectionMeta, RhythmPart36>,
 );
 
 #[derive(Flow)]
-pub struct LeadSection07(Transparent<IntroSectionMeta, LeadPart37>);
+pub struct RhythmSection07(Transparent<IntroSectionMeta, RhythmPart37>);
 
 #[derive(Flow)]
-pub struct LeadPick44Pair(Double<Pick44Tick>);
+pub struct RhythmPick44Pair(Double<Pick44Tick>);
 
 #[derive(Flow)]
-pub struct LeadPick39Pair(Double<Pick39Tick>);
+pub struct RhythmPick39Pair(Double<Pick39Tick>);
 
 #[derive(Flow)]
-pub struct LeadPluck4451Pair(Double<Pluck4451Hold>);
+pub struct RhythmPluck4451Pair(Double<Pluck4451Hold>);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart01(
+pub struct RhythmPart01(
     Pluck<46, 53, 1536, 1152>,
     Step<Pick<61, 192, 192>>,
     Step<Pick<63, 192, 192>>,
@@ -243,7 +243,7 @@ pub struct LeadPart01(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart02(
+pub struct RhythmPart02(
     Step<Pick<61, 192, 192>>,
     Step<Pick<63, 192, 192>>,
     Step<Pick<63, 192, 192>>,
@@ -251,7 +251,7 @@ pub struct LeadPart02(
     Pluck<63, 68, 384, 384>,
     Step<Pick<61, 384, 384>>,
     Step<Pick<58, 384, 384>>,
-    LeadPluck4451Pair,
+    RhythmPluck4451Pair,
     Pluck<42, 49, 192, 192>,
     Pluck<44, 51, 96, 96>,
     Pluck<44, 51, 192, 192>,
@@ -259,7 +259,7 @@ pub struct LeadPart02(
     Pluck<42, 49, 192, 192>,
     Pluck<41, 48, 192, 192>,
     Pluck<39, 46, 192, 192>,
-    LeadPluck4451Pair,
+    RhythmPluck4451Pair,
     Pluck<42, 49, 192, 192>,
     Pluck<44, 51, 96, 96>,
     Pluck<44, 51, 192, 192>,
@@ -270,9 +270,9 @@ pub struct LeadPart02(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart03(
+pub struct RhythmPart03(
     Pluck<39, 46, 192, 192>,
-    LeadPluck4451Pair,
+    RhythmPluck4451Pair,
     Pluck<42, 49, 192, 192>,
     Pluck<44, 51, 96, 96>,
     Pluck<44, 51, 192, 192>,
@@ -298,7 +298,7 @@ pub struct LeadPart03(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart04(
+pub struct RhythmPart04(
     Step<Pick<42, 96, 96>>,
     Step<Pick<44, 96, 192>>,
     Step<Pick<44, 96, 192>>,
@@ -307,8 +307,8 @@ pub struct LeadPart04(
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 192, 192>>,
     Step<Pick<41, 192, 192>>,
-    LeadPick39Pair,
-    LeadPick44Pair,
+    RhythmPick39Pair,
+    RhythmPick44Pair,
     Step<Pick<44, 96, 192>>,
     Step<Pick<42, 192, 192>>,
     Step<Pick<44, 96, 96>>,
@@ -316,22 +316,22 @@ pub struct LeadPart04(
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 96, 192>>,
     Step<Pick<41, 96, 192>>,
-    LeadPick39Pair,
-    LeadPick44Pair,
+    RhythmPick39Pair,
+    RhythmPick44Pair,
     Step<Pick<44, 96, 192>>,
 );
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart05(
+pub struct RhythmPart05(
     Step<Pick<42, 192, 192>>,
     Step<Pick<44, 96, 96>>,
     Step<Pick<44, 96, 192>>,
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 96, 192>>,
     Step<Pick<41, 96, 192>>,
-    LeadPick39Pair,
-    LeadPick44Pair,
+    RhythmPick39Pair,
+    RhythmPick44Pair,
     Step<Pick<44, 96, 192>>,
     Step<Pick<42, 192, 192>>,
     Step<Pick<44, 96, 96>>,
@@ -350,7 +350,7 @@ pub struct LeadPart05(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart06(
+pub struct RhythmPart06(
     Pluck<49, 56, 96, 192>,
     Pluck<48, 55, 96, 192>,
     Pluck<46, 53, 96, 192>,
@@ -379,7 +379,7 @@ pub struct LeadPart06(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart07(
+pub struct RhythmPart07(
     Pluck<44, 49, 96, 96>,
     SplitPluck<51, 58, 96, 192, 192>,
     Pluck<51, 58, 96, 96>,
@@ -408,7 +408,7 @@ pub struct LeadPart07(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart08(
+pub struct RhythmPart08(
     Step<Pick<51, 192, 192>>,
     Step<Pick<49, 192, 192>>,
     Step<Pick<45, 96, 96>>,
@@ -437,7 +437,7 @@ pub struct LeadPart08(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart09(
+pub struct RhythmPart09(
     Step<Pick<44, 96, 192>>,
     Step<Pick<42, 288, 288>>,
     Step<Pick<44, 96, 192>>,
@@ -466,7 +466,7 @@ pub struct LeadPart09(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart10(
+pub struct RhythmPart10(
     Step<Pick<44, 96, 192>>,
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 96, 192>>,
@@ -495,7 +495,7 @@ pub struct LeadPart10(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart11(
+pub struct RhythmPart11(
     Pluck<46, 53, 96, 192>,
     Pluck<51, 58, 96, 192>,
     Pluck<51, 58, 96, 192>,
@@ -524,7 +524,7 @@ pub struct LeadPart11(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart12(
+pub struct RhythmPart12(
     Pluck<51, 58, 96, 96>,
     SplitPluck<49, 56, 96, 192, 192>,
     SplitPluck<51, 58, 96, 192, 192>,
@@ -553,7 +553,7 @@ pub struct LeadPart12(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart13(
+pub struct RhythmPart13(
     Step<Pick<45, 96, 96>>,
     Step<Pick<45, 96, 192>>,
     Step<Pick<44, 96, 96>>,
@@ -582,7 +582,7 @@ pub struct LeadPart13(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart14(
+pub struct RhythmPart14(
     Pluck<39, 51, 192, 192>,
     SplitPluck<39, 56, 192, 96, 96>,
     Step<Pick<58, 96, 96>>,
@@ -611,7 +611,7 @@ pub struct LeadPart14(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart15(
+pub struct RhythmPart15(
     Step<Pick<70, 96, 96>>,
     Pluck<69, 72, 192, 192>,
     Pluck<70, 73, 384, 192>,
@@ -640,7 +640,7 @@ pub struct LeadPart15(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart16(
+pub struct RhythmPart16(
     Step<Pick<68, 96, 96>>,
     Step<Pick<66, 96, 96>>,
     Step<Pick<63, 96, 96>>,
@@ -669,7 +669,7 @@ pub struct LeadPart16(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart17(
+pub struct RhythmPart17(
     Step<Pick<42, 192, 192>>,
     Step<Pick<44, 96, 96>>,
     Step<Pick<44, 96, 192>>,
@@ -698,7 +698,7 @@ pub struct LeadPart17(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart18(
+pub struct RhythmPart18(
     Step<Pick<44, 96, 192>>,
     Step<Pick<44, 96, 96>>,
     Step<Pick<42, 96, 192>>,
@@ -727,7 +727,7 @@ pub struct LeadPart18(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart19(
+pub struct RhythmPart19(
     Pluck<51, 58, 96, 192>,
     Pluck<49, 56, 96, 192>,
     Pluck<44, 49, 96, 96>,
@@ -756,7 +756,7 @@ pub struct LeadPart19(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart20(
+pub struct RhythmPart20(
     Step<Pick<44, 384, 384>>,
     Pluck<51, 58, 192, 192>,
     Pluck<51, 58, 192, 192>,
@@ -785,7 +785,7 @@ pub struct LeadPart20(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart21(
+pub struct RhythmPart21(
     Step<Pick<44, 96, 96>>,
     Step<Pick<44, 192, 192>>,
     Step<Pick<42, 192, 192>>,
@@ -814,7 +814,7 @@ pub struct LeadPart21(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart22(
+pub struct RhythmPart22(
     Pluck<42, 49, 192, 192>,
     Pluck<42, 49, 192, 192>,
     Pluck<42, 49, 192, 192>,
@@ -843,7 +843,7 @@ pub struct LeadPart22(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart23(
+pub struct RhythmPart23(
     Step<Pick<73, 288, 192>>,
     Step<Pick<39, 96, 96>>,
     Step<Pick<73, 288, 288>>,
@@ -872,7 +872,7 @@ pub struct LeadPart23(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart24(
+pub struct RhythmPart24(
     Step<Pick<53, 576, 768>>,
     Step<Pick<51, 96, 96>>,
     Step<Pick<51, 96, 96>>,
@@ -901,7 +901,7 @@ pub struct LeadPart24(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart25(
+pub struct RhythmPart25(
     Step<Pick<63, 192, 192>>,
     Step<Pick<60, 192, 192>>,
     Pluck<63, 63, 576, 576>,
@@ -930,7 +930,7 @@ pub struct LeadPart25(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart26(
+pub struct RhythmPart26(
     Step<Pick<75, 192, 192>>,
     Step<Pick<75, 576, 576>>,
     Step<Pick<73, 384, 384>>,
@@ -959,7 +959,7 @@ pub struct LeadPart26(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart27(
+pub struct RhythmPart27(
     Pluck<49, 54, 96, 2880>,
     Step<Pick<85, 768, 768>>,
     Step<Pick<82, 192, 192>>,
@@ -988,7 +988,7 @@ pub struct LeadPart27(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart28(
+pub struct RhythmPart28(
     TriadHit<47, 54, 54, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
@@ -1016,7 +1016,7 @@ pub struct LeadPart28(
 );
 
 #[derive(Flow)]
-pub struct LeadPart29Phrase(
+pub struct RhythmPart29Phrase(
     Pluck<50, 57, 96, 96>,
     Pluck<50, 57, 96, 96>,
     Pluck<49, 56, 96, 96>,
@@ -1045,11 +1045,11 @@ pub struct LeadPart29Phrase(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart29(LeadPart29Phrase);
+pub struct RhythmPart29(RhythmPart29Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart30(
+pub struct RhythmPart30(
     TriadHit<47, 54, 54, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
@@ -1078,11 +1078,11 @@ pub struct LeadPart30(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart31(LeadPart29Phrase);
+pub struct RhythmPart31(RhythmPart29Phrase);
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart32(
+pub struct RhythmPart32(
     TriadHit<47, 54, 54, 96, 96>,
     Pluck<46, 53, 96, 96>,
     Pluck<46, 53, 96, 96>,
@@ -1111,7 +1111,7 @@ pub struct LeadPart32(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart33(
+pub struct RhythmPart33(
     Pluck<43, 50, 384, 384>,
     Pluck<44, 51, 384, 384>,
     Pluck<45, 52, 192, 192>,
@@ -1140,7 +1140,7 @@ pub struct LeadPart33(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart34(
+pub struct RhythmPart34(
     Step<Pick<45, 96, 96>>,
     Step<Pick<45, 192, 192>>,
     Step<Pick<44, 96, 96>>,
@@ -1169,7 +1169,7 @@ pub struct LeadPart34(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart35(
+pub struct RhythmPart35(
     Step<Pick<51, 192, 192>>,
     Step<Pick<49, 192, 192>>,
     Step<Pick<45, 96, 96>>,
@@ -1198,7 +1198,7 @@ pub struct LeadPart35(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart36(
+pub struct RhythmPart36(
     Step<Pick<39, 96, 192>>,
     Step<Pick<51, 192, 192>>,
     Step<Pick<51, 192, 192>>,
@@ -1227,7 +1227,7 @@ pub struct LeadPart36(
 
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct LeadPart37(
+pub struct RhythmPart37(
     Pluck<54, 58, 288, 288>,
     Pluck<51, 55, 192, 576>,
     Pluck<61, 66, 3456, 3456>,
@@ -1241,7 +1241,7 @@ mod tests {
     use jungle_sdk::prelude::JourneyStatus;
     use jungle_sdk::{JungleClient, LocalClient};
 
-    use super::super::LeadGuitarist;
+    use super::super::RhythmGuitarist;
     use crate::ecosystem::TheJungle;
 
     #[tokio::test]
@@ -1262,7 +1262,7 @@ mod tests {
 
         let seed = postcard::to_allocvec(&()).expect("seed should serialize");
         let journey_id = client
-            .start_journey::<LeadGuitarist>(seed)
+            .start_journey::<RhythmGuitarist>(seed)
             .await
             .expect("journey should start");
 
