@@ -8,7 +8,7 @@ use tracing::{debug, trace, warn};
 use crate::ecosystem::TheJungle;
 use crate::instrumentation::{Instrument, Note};
 
-const TICKS_PER_BEAT: u32 = 384;
+pub(crate) const TICKS_PER_BEAT: u32 = 384;
 const MIN_LATE_NOTE_DROP_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(20);
 const MAX_LATE_NOTE_DROP_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(120);
 const RHYTHM_PAN: f32 = 0.5;

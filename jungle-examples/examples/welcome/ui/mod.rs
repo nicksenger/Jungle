@@ -732,7 +732,7 @@ impl WelcomeUi {
                         iced::keyboard::Key::Named(iced::keyboard::key::Named::Space)
                     )
                 {
-                    info!("Tick: {}", self.current_beat_tick());
+                    info!("Tick: {}", self.current_rhythm_tick());
                 }
                 Task::none()
             }
@@ -1155,12 +1155,24 @@ impl WelcomeUi {
         *playback = RegionPlayback::hidden();
     }
 
+    #[cfg(feature = "video")]
     fn current_beat_tick(&self) -> u64 {
         let beat = self.metronome.beat_duration().as_secs_f64();
         if beat <= f64::EPSILON {
             return 0;
         }
         (self.metronome.elapsed().as_secs_f64() / beat).floor() as u64
+    }
+
+    fn current_rhythm_tick(&self) -> u64 {
+        let tick = self
+            .metronome
+            .tick_duration(crate::effect::TICKS_PER_BEAT)
+            .as_secs_f64();
+        if tick <= f64::EPSILON {
+            return 0;
+        }
+        (self.metronome.elapsed().as_secs_f64() / tick).floor() as u64
     }
 
     #[cfg(feature = "video")]
