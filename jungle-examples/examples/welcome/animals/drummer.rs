@@ -55,7 +55,13 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     type Output = ();
 
     fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        KickDrumArticulation::StandardHit
+        SoundInput {
+            articulation: KickDrumArticulation::StandardHit,
+            note: NOTE,
+            note_ticks: NOTE_TICK,
+            rest_ticks: REST_TICK,
+            lane_id: DRUMS_LANE_ID,
+        }
     }
 
     fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -159,6 +165,7 @@ impl Condition<(DrummerState, ())> for UseHat46GrooveVariant {
 
 #[cfg(test)]
 pub struct ConditionalJoinTailStub;
+#[cfg(test)]
 #[jungle::act]
 impl Act for ConditionalJoinTailStub {
     type Effect = Sound<HiHat>;
