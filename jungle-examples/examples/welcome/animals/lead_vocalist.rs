@@ -1,5 +1,6 @@
 use jungle_sdk::prelude::*;
 
+use crate::act::MergeEither;
 use crate::effect::{Passthrough, Rest};
 use crate::instrumentation::{
     phonemes_from_text, Generate as LaneGenerate, Lyrics, VocalsArticulation,
@@ -98,24 +99,6 @@ impl Act for ConsumeLeadVocalPickup {
     }
 }
 
-pub struct MergeLeadVocalPickupChoice;
-#[jungle::act]
-impl Act for MergeLeadVocalPickupChoice {
-    type Effect = Noop;
-    type Input = Either<(), ()>;
-    type Output = ();
-
-    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-    }
-
-    fn absorb(
-        _state: &mut LeadVocalistState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("lead vocal pickup branch merge should complete");
-    }
-}
-
 #[derive(Flow)]
 pub struct LeadVocalPickupBranch(
     Transparent<IntroSectionMeta, LeadVocalSection01>,
@@ -130,7 +113,7 @@ pub struct LeadVocalIntro(
     Step<ApplyLeadVocalistSeed>,
     Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
     Conditional<UseLeadVocalPickup, LeadVocalPickupBranch, LeadVocalMainBranch>,
-    Step<MergeLeadVocalPickupChoice>,
+    Step<MergeEither<(), LeadVocalistState>>,
     Transparent<IntroSectionMeta, LeadVocalSection02>,
     Transparent<IntroSectionMeta, LeadVocalSection03>,
 );

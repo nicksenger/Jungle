@@ -1,6 +1,7 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{Sound, Rest};
+use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
+use crate::effect::{Rest, Sound};
 use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
     Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
@@ -15,6 +16,8 @@ type Thump44Tick = Step<Thump<44, 96, 96>>;
 type Thump46Tick = Step<Thump<46, 96, 96>>;
 type Thump39Tick = Step<Thump<39, 96, 96>>;
 type Thump34Pedal = Step<Thump<34, 192, 192>>;
+type MergeUnit = GenericMergeUnit<BassArticulation>;
+type PostMergeRest<const TICKS: u32> = GenericRest<BassArticulation, TICKS, BASS_LANE_ID>;
 
 pub struct JoinThump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
@@ -78,44 +81,6 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("backup vocal playback should succeed");
-    }
-}
-
-pub struct MergeUnit;
-#[jungle::act]
-impl Act for MergeUnit {
-    type Effect = Noop;
-    type Input = ((), ());
-    type Output = ();
-
-    fn emit(_state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut BassArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("join merge should complete");
-    }
-}
-
-pub struct PostMergeRest<const REST_TICK: u32>;
-#[jungle::act]
-impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
-    type Effect = Rest<BASS_LANE_ID, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &BassArticulation, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut BassArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("post-merge rest should complete");
     }
 }
 

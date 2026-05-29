@@ -1,9 +1,15 @@
 use jungle_sdk::prelude::*;
 use welcome_audio::{PlayPriority, PlayRequest};
 
-use crate::effect::{Sound, Rest};
+use crate::{
+    act::{MergeUnit, Rest as GenericRest},
+    effect::{Rest, Sound},
+};
 
 use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
+
+type PostMergeRest<const TICKS: u32, const LANE_ID: u8> =
+    GenericRest<ElectricGuitarArticulation, TICKS, LANE_ID>;
 
 pub struct ElectricGuitar {
     audio: welcome_audio::AudioHandle,
@@ -77,50 +83,6 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: 
     }
 }
 
-pub struct MergeUnit;
-#[jungle::act]
-impl Act for MergeUnit {
-    type Effect = Noop;
-    type Input = ((), ());
-    type Output = ();
-
-    fn emit(
-        _state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("join merge should complete");
-    }
-}
-
-pub struct PostMergeRest<const REST_TICK: u32, const LANE_ID: u8>;
-#[jungle::act]
-impl<const REST_TICK: u32, const LANE_ID: u8> Act for PostMergeRest<REST_TICK, LANE_ID> {
-    type Effect = Rest<LANE_ID, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        _state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("post-merge rest should complete");
-    }
-}
-
 #[derive(Flow)]
 pub struct Pluck<
     const NOTE_1: u8,
@@ -130,14 +92,14 @@ pub struct Pluck<
     const LANE_ID: u8,
 >(
     Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
-    Step<MergeUnit>,
+    Step<MergeUnit<ElectricGuitarArticulation>>,
     Step<PostMergeRest<REST_TICK, LANE_ID>>,
 );
 
 #[derive(Flow)]
 pub struct StrumPair<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const LANE_ID: u8>(
     Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
-    Step<MergeUnit>,
+    Step<MergeUnit<ElectricGuitarArticulation>>,
 );
 
 #[derive(Flow)]
@@ -150,6 +112,6 @@ pub struct Strum<
     const LANE_ID: u8,
 >(
     Join<StrumPair<NOTE_1, NOTE_2, NOTE_TICK, LANE_ID>, Step<Pick<NOTE_3, NOTE_TICK, 0, LANE_ID>>>,
-    Step<MergeUnit>,
+    Step<MergeUnit<ElectricGuitarArticulation>>,
     Step<PostMergeRest<REST_TICK, LANE_ID>>,
 );

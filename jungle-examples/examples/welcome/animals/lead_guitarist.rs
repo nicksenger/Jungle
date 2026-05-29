@@ -1,5 +1,6 @@
 use jungle_sdk::prelude::*;
 
+use crate::act::{MergeEither, MergeUnit as GenericMergeUnit, Rest as GenericRest};
 use crate::effect::Rest;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
@@ -13,6 +14,9 @@ type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_
 type Pick44Tick = Step<Pick<44, 96, 96>>;
 type Pick39Tick = Step<Pick<39, 96, 96>>;
 type Pluck4451Hold = Pluck<44, 51, 192, 192>;
+type MergeUnit = GenericMergeUnit<ElectricGuitarArticulation>;
+type PostMergeRest<const TICKS: u32> =
+    GenericRest<ElectricGuitarArticulation, TICKS, LEAD_GUITAR_LANE_ID>;
 
 const INTRO_START_DELAY_TICKS: u32 = 5_376;
 
@@ -89,50 +93,6 @@ pub struct QuadHit<
     Step<PostMergeRest<REST_TICK>>,
 );
 
-pub struct MergeUnit;
-#[jungle::act]
-impl Act for MergeUnit {
-    type Effect = Noop;
-    type Input = ((), ());
-    type Output = ();
-
-    fn emit(
-        _state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("join merge should complete");
-    }
-}
-
-pub struct PostMergeRest<const REST_TICK: u32>;
-#[jungle::act]
-impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
-    type Effect = Rest<LEAD_GUITAR_LANE_ID, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        _state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("post-merge rest should complete");
-    }
-}
-
 pub struct LeadRiffLoopRemaining;
 impl LoopCondition<LeadGuitaristState> for LeadRiffLoopRemaining {
     type Arg = ();
@@ -171,27 +131,6 @@ impl Act for DecrementLeadRiffLoop {
     }
 }
 
-pub struct MergeLeadTurnaroundChoice;
-#[jungle::act]
-impl Act for MergeLeadTurnaroundChoice {
-    type Effect = Noop;
-    type Input = Either<(), ()>;
-    type Output = ();
-
-    fn emit(
-        _state: &LeadGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-    }
-
-    fn absorb(
-        _state: &mut LeadGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("lead turnaround branch merge should complete");
-    }
-}
-
 #[derive(Flow)]
 pub struct LeadRiffLoopNormalTail(
     Transparent<IntroSectionMeta, LeadSection05>,
@@ -210,7 +149,7 @@ pub struct LeadRiffLoopBody(
     Transparent<IntroSectionMeta, LeadSection03>,
     Transparent<IntroSectionMeta, LeadSection04>,
     Conditional<UseLeadTurnaroundSection, LeadRiffLoopFinalTail, LeadRiffLoopNormalTail>,
-    Step<MergeLeadTurnaroundChoice>,
+    Step<MergeEither<(), LeadGuitaristState>>,
 );
 
 #[derive(Flow)]

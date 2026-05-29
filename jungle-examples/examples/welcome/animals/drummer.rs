@@ -1,6 +1,7 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{Sound, Rest};
+use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
+use crate::effect::{Rest, Sound};
 use crate::instrumentation::{
     Cymbal, CymbalArticulation, HiHat, HiHatArticulation, KickDrum, KickDrumArticulation,
     SnareDrum, SnareDrumArticulation, Toms, TomsArticulation,
@@ -12,6 +13,8 @@ const INTRO_START_DELAY_TICKS: u32 = 5_376;
 const DRUMS_LANE_ID: u8 = <<Drums as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Hat44Tick = Step<Hat<44, 96, 96>>;
 type Hat46Tick = Step<Hat<46, 96, 96>>;
+type MergeUnit = GenericMergeUnit<DrummerState>;
+type PostMergeRest<const TICKS: u32> = GenericRest<DrummerState, TICKS, DRUMS_LANE_ID>;
 
 pub struct IntroSectionMeta;
 impl NodeMetadata for IntroSectionMeta {
@@ -139,56 +142,10 @@ pub struct HatBoot<
     Step<MergeUnit>,
 );
 
-pub struct MergeUnit;
-#[jungle::act]
-impl Act for MergeUnit {
-    type Effect = Noop;
-    type Input = ((), ());
-    type Output = ();
-
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("join merge should complete");
-    }
-}
-
-pub struct PostMergeRest<const REST_TICK: u32>;
-#[jungle::act]
-impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
-    type Effect = Rest<DRUMS_LANE_ID, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("post-merge rest should complete");
-    }
-}
-
 pub struct UseHat46GrooveVariant;
 impl Condition<(DrummerState, ())> for UseHat46GrooveVariant {
     fn choose((state, _): &(DrummerState, ())) -> bool {
         state.groove_variant_is_46
-    }
-}
-
-pub struct MergeGrooveVariantChoice;
-#[jungle::act]
-impl Act for MergeGrooveVariantChoice {
-    type Effect = Noop;
-    type Input = Either<(), ()>;
-    type Output = ();
-
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("drum groove variant merge should complete");
     }
 }
 

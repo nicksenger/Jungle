@@ -1,7 +1,8 @@
 use jungle_sdk::prelude::*;
 
 use super::{Double, Quad, RhythmGuitarist, RhythmGuitaristState};
-use crate::effect::{Sound, Rest};
+use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
+use crate::effect::{Rest, Sound};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
@@ -9,6 +10,9 @@ use crate::instrumentation::{
 
 const RHYTHM_GUITAR_LANE_ID: u8 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
 const INTRO_START_DELAY_TICKS: u32 = 0;
+type MergeUnit = GenericMergeUnit<ElectricGuitarArticulation>;
+type PostMergeRest<const TICKS: u32> =
+    GenericRest<ElectricGuitarArticulation, TICKS, RHYTHM_GUITAR_LANE_ID>;
 
 type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePick<NOTE, NOTE_TICK, REST_TICK, RHYTHM_GUITAR_LANE_ID>;
@@ -133,50 +137,6 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("backup vocal playback should succeed");
-    }
-}
-
-pub struct MergeUnit;
-#[jungle::act]
-impl Act for MergeUnit {
-    type Effect = Noop;
-    type Input = ((), ());
-    type Output = ();
-
-    fn emit(
-        _state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("join merge should complete");
-    }
-}
-
-pub struct PostMergeRest<const REST_TICK: u32>;
-#[jungle::act]
-impl<const REST_TICK: u32> Act for PostMergeRest<REST_TICK> {
-    type Effect = Rest<RHYTHM_GUITAR_LANE_ID, REST_TICK>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        _state: &ElectricGuitarArticulation,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut ElectricGuitarArticulation,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("post-merge rest should complete");
     }
 }
 
