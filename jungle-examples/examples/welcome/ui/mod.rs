@@ -647,19 +647,30 @@ impl WelcomeUi {
         #[cfg(feature = "video")]
         let app_overlay = init_video_state("app overlay", iced_av1::ScaleMode::Stretch);
         #[cfg(feature = "video")]
-        let lead_vocalist_panel_overlay =
-            init_video_state("lead vocalist panel overlay", iced_av1::ScaleMode::Cover);
+        let lead_vocalist_panel_overlay = init_video_state(
+            "lead vocalist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
         #[cfg(feature = "video")]
-        let lead_guitarist_panel_overlay =
-            init_video_state("lead guitarist panel overlay", iced_av1::ScaleMode::Cover);
+        let lead_guitarist_panel_overlay = init_video_state(
+            "lead guitarist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
         #[cfg(feature = "video")]
-        let rhythm_guitarist_panel_overlay =
-            init_video_state("rhythm guitarist panel overlay", iced_av1::ScaleMode::Cover);
+        let rhythm_guitarist_panel_overlay = init_video_state(
+            "rhythm guitarist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
         #[cfg(feature = "video")]
-        let bass_panel_overlay = init_video_state("bass panel overlay", iced_av1::ScaleMode::Cover);
+        let bass_panel_overlay = init_video_state(
+            "bass panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
         #[cfg(feature = "video")]
-        let drums_panel_overlay =
-            init_video_state("drums panel overlay", iced_av1::ScaleMode::Cover);
+        let drums_panel_overlay = init_video_state(
+            "drums panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
         (
             Self {
                 lead_vocalist,
