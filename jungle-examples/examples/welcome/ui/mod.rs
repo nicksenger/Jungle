@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
 const DEFERRED_STREAM_LOG_INTERVAL: usize = 512;
@@ -534,6 +534,31 @@ enum Message {
     Tick,
 }
 
+impl Message {
+    fn name(&self) -> &'static str {
+        match self {
+            Message::Tick => "Tick",
+            Message::Panel(panel, _) => match panel {
+                Panel::LeadVocalist => "Panel(LeadVocalist)",
+                Panel::LeadGuitarist => "Panel(LeadGuitarist)",
+                Panel::RhythmGuitarist => "Panel(RhythmGuitarist)",
+                Panel::Bass => "Panel(Bass)",
+                Panel::Drums => "Panel(Drums)",
+            },
+            #[cfg(feature = "video")]
+            Message::AppVideo(_) => "AppVideo",
+            #[cfg(feature = "video")]
+            Message::PanelVideo(panel, _) => match panel {
+                Panel::LeadVocalist => "PanelVideo(LeadVocalist)",
+                Panel::LeadGuitarist => "PanelVideo(LeadGuitarist)",
+                Panel::RhythmGuitarist => "PanelVideo(RhythmGuitarist)",
+                Panel::Bass => "PanelVideo(Bass)",
+                Panel::Drums => "PanelVideo(Drums)",
+            },
+        }
+    }
+}
+
 struct WelcomeUi {
     lead_vocalist:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
@@ -669,6 +694,7 @@ impl WelcomeUi {
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
+        trace!(message = message.name(), "welcome iced app update");
         match message {
             Message::Tick => {
                 if self.shutdown.should_shutdown() {
