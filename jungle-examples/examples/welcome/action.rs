@@ -4,8 +4,8 @@ use crate::effect::{Rest as RestEffect, RestInput};
 use jungle_sdk::prelude::*;
 
 pub struct MergeUnit<S>(PhantomData<S>);
-#[jungle::act]
-impl<S> Act for MergeUnit<S> {
+#[jungle::action]
+impl<S> Action for MergeUnit<S> {
     type Effect = Noop;
     type Input = ((), ());
     type Output = ();
@@ -15,8 +15,8 @@ impl<S> Act for MergeUnit<S> {
 }
 
 pub struct MergeEither<T, S>(PhantomData<T>, PhantomData<S>);
-#[jungle::act(carry = T)]
-impl<T, S> Act for MergeEither<T, S> {
+#[jungle::action(carry = T)]
+impl<T, S> Action for MergeEither<T, S> {
     type Effect = Noop;
     type Input = Either<T, T>;
     type Output = T;
@@ -32,8 +32,8 @@ impl<T, S> Act for MergeEither<T, S> {
 }
 
 pub struct Rest<S, const REST_TICK: u32, const LANE_ID: u8>(PhantomData<S>);
-#[jungle::act]
-impl<S, const REST_TICK: u32, const LANE_ID: u8> Act for Rest<S, REST_TICK, LANE_ID> {
+#[jungle::action]
+impl<S, const REST_TICK: u32, const LANE_ID: u8> Action for Rest<S, REST_TICK, LANE_ID> {
     type Effect = RestEffect;
     type Input = ();
     type Output = ();

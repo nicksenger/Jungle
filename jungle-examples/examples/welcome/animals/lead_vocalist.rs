@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::act::{MergeEither, Rest as GenericRest};
+use crate::action::{MergeEither, Rest as GenericRest};
 use crate::effect::{Passthrough, Rest};
 use crate::instrumentation::{
     phonemes_from_text, Generate as LaneGenerate, Lyrics, VocalsArticulation,
@@ -26,8 +26,8 @@ impl NodeMetadata for IntroSectionMeta {
 }
 
 pub struct ApplyLeadVocalistSeed;
-#[jungle::act]
-impl Act for ApplyLeadVocalistSeed {
+#[jungle::action]
+impl Action for ApplyLeadVocalistSeed {
     type Effect = Passthrough<LeadVocalistSeed>;
     type Input = LeadVocalistSeed;
     type Output = ();
@@ -62,8 +62,8 @@ impl Condition<(LeadVocalistState, ())> for UseLeadVocalPickup {
 }
 
 pub struct ConsumeLeadVocalPickup;
-#[jungle::act]
-impl Act for ConsumeLeadVocalPickup {
+#[jungle::action]
+impl Action for ConsumeLeadVocalPickup {
     type Effect = Noop;
     type Input = ();
     type Output = ();

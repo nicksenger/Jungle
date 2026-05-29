@@ -38,15 +38,15 @@ impl<J> Effect<J> for TemplateCommitEffect {
 pub struct AddOneSpec;
 pub struct CommitSpec;
 
-#[jungle::act(bind = GenericAddOne<A>)]
-impl Act for AddOneSpec {
+#[jungle::action(bind = GenericAddOne<A>)]
+impl Action for AddOneSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = GenericCommit<A>)]
-impl Act for CommitSpec {
+#[jungle::action(bind = GenericCommit<A>)]
+impl Action for CommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
@@ -56,16 +56,16 @@ impl Act for CommitSpec {
 struct TestFlow(Step<AddOneSpec>, Step<CommitSpec>);
 
 struct CounterAddOneSpec;
-#[jungle::act(bind = CounterAddOne<A>)]
-impl Act for CounterAddOneSpec {
+#[jungle::action(bind = CounterAddOne<A>)]
+impl Action for CounterAddOneSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
 struct CounterCommitSpec;
-#[jungle::act(bind = CounterCommit<A>)]
-impl Act for CounterCommitSpec {
+#[jungle::action(bind = CounterCommit<A>)]
+impl Action for CounterCommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
@@ -75,16 +75,16 @@ impl Act for CounterCommitSpec {
 struct CounterFlowTemplate(Step<CounterAddOneSpec>, Step<CounterCommitSpec>);
 
 struct LedgerAddOneSpec;
-#[jungle::act(bind = LedgerAddOne<A>)]
-impl Act for LedgerAddOneSpec {
+#[jungle::action(bind = LedgerAddOne<A>)]
+impl Action for LedgerAddOneSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
 struct LedgerCommitSpec;
-#[jungle::act(bind = LedgerCommit<A>)]
-impl Act for LedgerCommitSpec {
+#[jungle::action(bind = LedgerCommit<A>)]
+impl Action for LedgerCommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
@@ -120,7 +120,7 @@ impl LateBoundPolicy for LedgerAnimal {
 }
 
 struct CounterAddOne<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for CounterAddOne<A>
+impl<A> BoundAction<A> for CounterAddOne<A>
 where
     A: Animal<State = i32>,
 {
@@ -135,10 +135,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -149,7 +149,7 @@ where
 }
 
 struct LedgerAddOne<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for LedgerAddOne<A>
+impl<A> BoundAction<A> for LedgerAddOne<A>
 where
     A: Animal<State = i32>,
 {
@@ -164,10 +164,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -178,7 +178,7 @@ where
 }
 
 struct CounterCommit<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for CounterCommit<A>
+impl<A> BoundAction<A> for CounterCommit<A>
 where
     A: Animal<State = i32>,
 {
@@ -193,10 +193,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -207,7 +207,7 @@ where
 }
 
 struct LedgerCommit<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for LedgerCommit<A>
+impl<A> BoundAction<A> for LedgerCommit<A>
 where
     A: Animal<State = i32>,
 {
@@ -222,10 +222,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -236,7 +236,7 @@ where
 }
 
 pub struct GenericAddOne<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for GenericAddOne<A>
+impl<A> BoundAction<A> for GenericAddOne<A>
 where
     A: Animal<State = i32> + LateBoundPolicy,
 {
@@ -251,10 +251,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -265,7 +265,7 @@ where
 }
 
 pub struct GenericCommit<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for GenericCommit<A>
+impl<A> BoundAction<A> for GenericCommit<A>
 where
     A: Animal<State = i32> + LateBoundPolicy,
 {
@@ -284,10 +284,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -521,15 +521,15 @@ where
 }
 
 struct ContextBoundSpec;
-#[jungle::act(bind = ContextBoundAct<A>)]
-impl Act for ContextBoundSpec {
+#[jungle::action(bind = ContextBoundAct<A>)]
+impl Action for ContextBoundSpec {
     type Effect = ContextBoundEffect;
     type Input = i32;
     type Output = i32;
 }
 
 struct ContextBoundAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for ContextBoundAct<A>
+impl<A> BoundAction<A> for ContextBoundAct<A>
 where
     A: Animal<State = i32>,
 {
@@ -544,10 +544,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -833,7 +833,7 @@ type LensRootSpareCarrier = Lens<LensRootState, jungle_sdk::typosaurus::list![U0
 type LensRootLeafValueCarrier = Lens<LensRootState, jungle_sdk::typosaurus::list![U0, U0, U0]>;
 
 struct LensReadSpareAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for LensReadSpareAct<A>
+impl<A> BoundAction<A> for LensReadSpareAct<A>
 where
     A: Animal<State = LensRootState>,
 {
@@ -848,10 +848,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -862,7 +862,7 @@ where
 }
 
 struct LensReadLeafAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for LensReadLeafAct<A>
+impl<A> BoundAction<A> for LensReadLeafAct<A>
 where
     A: Animal<State = LensRootState>,
 {
@@ -877,10 +877,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -891,7 +891,7 @@ where
 }
 
 struct LensCommitAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for LensCommitAct<A>
+impl<A> BoundAction<A> for LensCommitAct<A>
 where
     A: Animal<State = LensRootState>,
 {
@@ -906,10 +906,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut LensRootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -919,22 +919,22 @@ where
     }
 }
 
-#[jungle::act(bind = LensReadSpareAct<A>)]
-impl Act for LensReadSpareSpec {
+#[jungle::action(bind = LensReadSpareAct<A>)]
+impl Action for LensReadSpareSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = LensReadLeafAct<A>)]
-impl Act for LensReadLeafSpec {
+#[jungle::action(bind = LensReadLeafAct<A>)]
+impl Action for LensReadLeafSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = LensCommitAct<A>)]
-impl Act for LensCommitSpec {
+#[jungle::action(bind = LensCommitAct<A>)]
+impl Action for LensCommitSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
@@ -947,7 +947,7 @@ struct SeenStep<T>(core::marker::PhantomData<T>);
 struct LensTraversal;
 impl<S> TraverseStep<jungle_sdk::types::Step<S>> for LensTraversal
 where
-    S: Act,
+    S: Action,
 {
     type Output = SeenStep<jungle_sdk::types::Step<S>>;
 }
@@ -1138,7 +1138,7 @@ type NestedLeafValueCarrier = Lens<NestedLensLeaf, U0>;
 type NestedLeafNoiseCarrier = Lens<NestedLensLeaf, U1>;
 
 struct NestedBranchSpareAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for NestedBranchSpareAct<A>
+impl<A> BoundAction<A> for NestedBranchSpareAct<A>
 where
     A: Animal<State = NestedLensBranch>,
 {
@@ -1153,10 +1153,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1167,7 +1167,7 @@ where
 }
 
 struct NestedLeafValueAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for NestedLeafValueAct<A>
+impl<A> BoundAction<A> for NestedLeafValueAct<A>
 where
     A: Animal<State = NestedLensLeaf>,
 {
@@ -1182,10 +1182,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1196,7 +1196,7 @@ where
 }
 
 struct NestedLeafNoiseAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for NestedLeafNoiseAct<A>
+impl<A> BoundAction<A> for NestedLeafNoiseAct<A>
 where
     A: Animal<State = NestedLensLeaf>,
 {
@@ -1211,10 +1211,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -1224,30 +1224,30 @@ where
     }
 }
 
-#[jungle::act(bind = NestedBranchSpareAct<A>)]
-impl Act for NestedBranchSpareSpec {
+#[jungle::action(bind = NestedBranchSpareAct<A>)]
+impl Action for NestedBranchSpareSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = NestedLeafValueAct<A>)]
-impl Act for NestedLeafValueSpec {
+#[jungle::action(bind = NestedLeafValueAct<A>)]
+impl Action for NestedLeafValueSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = NestedLeafNoiseAct<A>)]
-impl Act for NestedLeafNoiseSpec {
+#[jungle::action(bind = NestedLeafNoiseAct<A>)]
+impl Action for NestedLeafNoiseSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
 #[allow(private_interfaces)]
-#[jungle::act]
-impl Act for NestedAutoBranchSpec {
+#[jungle::action]
+impl Action for NestedAutoBranchSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
@@ -1495,8 +1495,8 @@ impl<St> ViewProject<Loop2Container<St>> for Loop2Container<St> {
 
 struct Loop2SetCounterTo2Spec<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
-#[jungle::act]
-impl<St> Act for Loop2SetCounterTo2Spec<St> {
+#[jungle::action]
+impl<St> Action for Loop2SetCounterTo2Spec<St> {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
@@ -1516,8 +1516,8 @@ impl<St> Act for Loop2SetCounterTo2Spec<St> {
 
 struct Loop2DecrementCounterSpec<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
-#[jungle::act]
-impl<St> Act for Loop2DecrementCounterSpec<St> {
+#[jungle::action]
+impl<St> Action for Loop2DecrementCounterSpec<St> {
     type Effect = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = (bool, i32);
@@ -1569,8 +1569,8 @@ struct Loop2<St, L: TraverseFlow, R: TraverseFlow>(
 );
 
 struct Loop2LeftSpec;
-#[jungle::act]
-impl Act for Loop2LeftSpec {
+#[jungle::action]
+impl Action for Loop2LeftSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
@@ -1587,8 +1587,8 @@ impl Act for Loop2LeftSpec {
 }
 
 struct Loop2RightSpec;
-#[jungle::act]
-impl Act for Loop2RightSpec {
+#[jungle::action]
+impl Action for Loop2RightSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
@@ -1758,8 +1758,8 @@ struct NoopLoop2TraceState {
 
 struct NoopLoop2SetCounter<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
-#[jungle::act]
-impl<St> Act for NoopLoop2SetCounter<St> {
+#[jungle::action]
+impl<St> Action for NoopLoop2SetCounter<St> {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -1776,8 +1776,8 @@ impl<St> Act for NoopLoop2SetCounter<St> {
 
 struct NoopLoop2DecCounter<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
-#[jungle::act]
-impl<St> Act for NoopLoop2DecCounter<St> {
+#[jungle::action]
+impl<St> Action for NoopLoop2DecCounter<St> {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -1794,8 +1794,8 @@ impl<St> Act for NoopLoop2DecCounter<St> {
 }
 
 struct NoopFlattenEither<T, S>(core::marker::PhantomData<fn() -> (T, S)>);
-#[jungle::act]
-impl<T, S> Act for NoopFlattenEither<T, S> {
+#[jungle::action]
+impl<T, S> Action for NoopFlattenEither<T, S> {
     type Effect = Noop;
     type Input = Either<T, T>;
     type Output = T;
@@ -1834,8 +1834,8 @@ impl<St> Condition<(Loop2Container<St>, ())> for NoopLoop2CounterIsEven {
 }
 
 struct NoopLoop2LeftSpec;
-#[jungle::act]
-impl Act for NoopLoop2LeftSpec {
+#[jungle::action]
+impl Action for NoopLoop2LeftSpec {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -1853,8 +1853,8 @@ impl Act for NoopLoop2LeftSpec {
 }
 
 struct NoopLoop2RightSpec;
-#[jungle::act]
-impl Act for NoopLoop2RightSpec {
+#[jungle::action]
+impl Action for NoopLoop2RightSpec {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -2138,8 +2138,8 @@ impl Condition<(ConditionalJoinMergeState, ())> for PreferLeftWhenMarkerNonNegat
 }
 
 pub struct LeftJoinFirstSpec;
-#[jungle::act]
-impl Act for LeftJoinFirstSpec {
+#[jungle::action]
+impl Action for LeftJoinFirstSpec {
     type Effect = TemplateCommitEffect;
     type Input = ();
     type Output = ();
@@ -2158,8 +2158,8 @@ impl Act for LeftJoinFirstSpec {
 }
 
 pub struct LeftJoinSecondSpec;
-#[jungle::act]
-impl Act for LeftJoinSecondSpec {
+#[jungle::action]
+impl Action for LeftJoinSecondSpec {
     type Effect = TemplateCommitEffect;
     type Input = ();
     type Output = ();
@@ -2178,8 +2178,8 @@ impl Act for LeftJoinSecondSpec {
 }
 
 pub struct RightJoinFirstSpec;
-#[jungle::act]
-impl Act for RightJoinFirstSpec {
+#[jungle::action]
+impl Action for RightJoinFirstSpec {
     type Effect = TemplateCommitEffect;
     type Input = ();
     type Output = ();
@@ -2198,8 +2198,8 @@ impl Act for RightJoinFirstSpec {
 }
 
 pub struct RightJoinSecondSpec;
-#[jungle::act]
-impl Act for RightJoinSecondSpec {
+#[jungle::action]
+impl Action for RightJoinSecondSpec {
     type Effect = TemplateCommitEffect;
     type Input = ();
     type Output = ();
@@ -2218,8 +2218,8 @@ impl Act for RightJoinSecondSpec {
 }
 
 pub struct MergeJoinedUnitSpec;
-#[jungle::act]
-impl Act for MergeJoinedUnitSpec {
+#[jungle::action]
+impl Action for MergeJoinedUnitSpec {
     type Effect = TemplateCommitEffect;
     type Input = ((), ());
     type Output = ();
@@ -2238,8 +2238,8 @@ impl Act for MergeJoinedUnitSpec {
 }
 
 pub struct MergeConditionalUnitSpec;
-#[jungle::act]
-impl Act for MergeConditionalUnitSpec {
+#[jungle::action]
+impl Action for MergeConditionalUnitSpec {
     type Effect = TemplateCommitEffect;
     type Input = Either<(), ()>;
     type Output = ();
@@ -2446,7 +2446,7 @@ pub struct FinalizeSpec;
 pub struct UniqueToCarrySpec;
 
 pub struct JoinLeftAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for JoinLeftAct<A>
+impl<A> BoundAction<A> for JoinLeftAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2461,10 +2461,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2473,7 +2473,7 @@ where
 }
 
 pub struct JoinRightAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for JoinRightAct<A>
+impl<A> BoundAction<A> for JoinRightAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2488,10 +2488,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2500,7 +2500,7 @@ where
 }
 
 pub struct JoinToCarryAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for JoinToCarryAct<A>
+impl<A> BoundAction<A> for JoinToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2515,10 +2515,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2529,7 +2529,7 @@ where
 }
 
 pub struct SelectFastAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for SelectFastAct<A>
+impl<A> BoundAction<A> for SelectFastAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2544,10 +2544,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2556,7 +2556,7 @@ where
 }
 
 pub struct SelectSlowAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for SelectSlowAct<A>
+impl<A> BoundAction<A> for SelectSlowAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2571,10 +2571,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2583,7 +2583,7 @@ where
 }
 
 pub struct SelectToCarryAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for SelectToCarryAct<A>
+impl<A> BoundAction<A> for SelectToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2600,10 +2600,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2614,7 +2614,7 @@ where
 }
 
 pub struct LoopAdvanceAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for LoopAdvanceAct<A>
+impl<A> BoundAction<A> for LoopAdvanceAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2629,10 +2629,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2644,7 +2644,7 @@ where
 }
 
 pub struct UniqueAlphaAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for UniqueAlphaAct<A>
+impl<A> BoundAction<A> for UniqueAlphaAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2659,10 +2659,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2673,7 +2673,7 @@ where
 }
 
 pub struct UniqueBetaAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for UniqueBetaAct<A>
+impl<A> BoundAction<A> for UniqueBetaAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2688,10 +2688,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2702,7 +2702,7 @@ where
 }
 
 pub struct FinalizeAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for FinalizeAct<A>
+impl<A> BoundAction<A> for FinalizeAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2717,10 +2717,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2731,7 +2731,7 @@ where
 }
 
 pub struct UniqueToCarryAct<A>(core::marker::PhantomData<fn() -> A>);
-impl<A> BoundAct<A> for UniqueToCarryAct<A>
+impl<A> BoundAction<A> for UniqueToCarryAct<A>
 where
     A: Animal + ComplexFlowBinding,
 {
@@ -2748,10 +2748,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<A>>::Aspect as StateCarrier<A::State>>::Focus,
+        view: &<<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<A>>::emit(view, input), ())
+        (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -2759,78 +2759,78 @@ where
     }
 }
 
-#[jungle::act(bind = JoinLeftAct<A>)]
-impl Act for JoinLeftSpec {
+#[jungle::action(bind = JoinLeftAct<A>)]
+impl Action for JoinLeftSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = JoinRightAct<A>)]
-impl Act for JoinRightSpec {
+#[jungle::action(bind = JoinRightAct<A>)]
+impl Action for JoinRightSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = JoinToCarryAct<A>)]
-impl Act for JoinToCarrySpec {
+#[jungle::action(bind = JoinToCarryAct<A>)]
+impl Action for JoinToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = (i32, i32);
     type Output = i32;
 }
 
-#[jungle::act(bind = SelectFastAct<A>)]
-impl Act for SelectFastSpec {
+#[jungle::action(bind = SelectFastAct<A>)]
+impl Action for SelectFastSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = SelectSlowAct<A>)]
-impl Act for SelectSlowSpec {
+#[jungle::action(bind = SelectSlowAct<A>)]
+impl Action for SelectSlowSpec {
     type Effect = ComplexTimedEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = SelectToCarryAct<A>)]
-impl Act for SelectToCarrySpec {
+#[jungle::action(bind = SelectToCarryAct<A>)]
+impl Action for SelectToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
 }
 
-#[jungle::act(bind = LoopAdvanceAct<A>)]
-impl Act for LoopAdvanceSpec {
+#[jungle::action(bind = LoopAdvanceAct<A>)]
+impl Action for LoopAdvanceSpec {
     type Effect = TemplateAddEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = UniqueAlphaAct<A>)]
-impl Act for UniqueAlphaSpec {
+#[jungle::action(bind = UniqueAlphaAct<A>)]
+impl Action for UniqueAlphaSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = UniqueBetaAct<A>)]
-impl Act for UniqueBetaSpec {
+#[jungle::action(bind = UniqueBetaAct<A>)]
+impl Action for UniqueBetaSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = FinalizeAct<A>)]
-impl Act for FinalizeSpec {
+#[jungle::action(bind = FinalizeAct<A>)]
+impl Action for FinalizeSpec {
     type Effect = TemplateCommitEffect;
     type Input = i32;
     type Output = i32;
 }
 
-#[jungle::act(bind = UniqueToCarryAct<A>)]
-impl Act for UniqueToCarrySpec {
+#[jungle::action(bind = UniqueToCarryAct<A>)]
+impl Action for UniqueToCarrySpec {
     type Effect = TemplateCommitEffect;
     type Input = Either<i32, i32>;
     type Output = i32;

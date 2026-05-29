@@ -58,8 +58,8 @@ impl<J, const EFFECT_ID: usize> Effect<J> for CompileTouch<EFFECT_ID> {
 }
 
 pub struct TickSpec<const EFFECT_ID: usize>;
-#[jungle::act]
-impl<const EFFECT_ID: usize> Act for TickSpec<EFFECT_ID> {
+#[jungle::action]
+impl<const EFFECT_ID: usize> Action for TickSpec<EFFECT_ID> {
     type Effect = CompileTouch<EFFECT_ID>;
     type Input = ();
     type Output = ();
@@ -75,8 +75,8 @@ impl<const EFFECT_ID: usize> Act for TickSpec<EFFECT_ID> {
 }
 
 pub struct FocusTickSpec<const EFFECT_ID: usize>;
-#[jungle::act]
-impl<const EFFECT_ID: usize> Act for FocusTickSpec<EFFECT_ID> {
+#[jungle::action]
+impl<const EFFECT_ID: usize> Action for FocusTickSpec<EFFECT_ID> {
     type Effect = CompileNoop<EFFECT_ID>;
     type Input = ();
     type Output = ();
@@ -92,8 +92,8 @@ impl<const EFFECT_ID: usize> Act for FocusTickSpec<EFFECT_ID> {
 }
 
 pub struct FocusJoinMergeSpec<const EFFECT_ID: usize>;
-#[jungle::act]
-impl<const EFFECT_ID: usize> Act for FocusJoinMergeSpec<EFFECT_ID> {
+#[jungle::action]
+impl<const EFFECT_ID: usize> Action for FocusJoinMergeSpec<EFFECT_ID> {
     type Effect = CompileTouch<EFFECT_ID>;
     type Input = ((), ());
     type Output = ();
@@ -109,8 +109,8 @@ impl<const EFFECT_ID: usize> Act for FocusJoinMergeSpec<EFFECT_ID> {
 }
 
 pub struct JoinTickSpec<const EFFECT_ID: usize>;
-#[jungle::act]
-impl<const EFFECT_ID: usize> Act for JoinTickSpec<EFFECT_ID> {
+#[jungle::action]
+impl<const EFFECT_ID: usize> Action for JoinTickSpec<EFFECT_ID> {
     type Effect = CompileTouch<EFFECT_ID>;
     type Input = Either<(), ()>;
     type Output = ();
@@ -126,8 +126,8 @@ impl<const EFFECT_ID: usize> Act for JoinTickSpec<EFFECT_ID> {
 }
 
 pub struct JoinFlattenSpec<const EFFECT_ID: usize>;
-#[jungle::act]
-impl<const EFFECT_ID: usize> Act for JoinFlattenSpec<EFFECT_ID> {
+#[jungle::action]
+impl<const EFFECT_ID: usize> Action for JoinFlattenSpec<EFFECT_ID> {
     type Effect = CompileNoop<EFFECT_ID>;
     type Input = ((), ());
     type Output = ();
@@ -162,8 +162,8 @@ impl<const SEGMENT_ID: usize> LoopCondition<CompileState> for CompileLoopOnce<SE
 }
 
 pub struct IncrementCounterSpec<const EFFECT_ID: usize>;
-#[jungle::act]
-impl<const EFFECT_ID: usize> Act for IncrementCounterSpec<EFFECT_ID> {
+#[jungle::action]
+impl<const EFFECT_ID: usize> Action for IncrementCounterSpec<EFFECT_ID> {
     type Effect = CompileTouch<EFFECT_ID>;
     type Input = ();
     type Output = ();

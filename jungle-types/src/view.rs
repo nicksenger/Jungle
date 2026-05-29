@@ -1,5 +1,5 @@
 use crate::{
-    Act, BoundFlowStep, Conditional, Join, NodeMetadata, Scoped, Select, Step, Transparent, While,
+    Action, BoundFlowStep, Conditional, Join, NodeMetadata, Scoped, Select, Step, Transparent, While,
 };
 use inception::*;
 
@@ -106,14 +106,14 @@ pub trait BuildJourneyAst<Input> {
 impl<T, A> BuildJourneyAst<Vec<JourneyAst>> for BoundFlowStep<T, A>
 where
     T: crate::Animal + 'static,
-    A: crate::BoundAct<T> + 'static,
-    <A as crate::BoundAct<T>>::Effect: 'static,
+    A: crate::BoundAction<T> + 'static,
+    <A as crate::BoundAction<T>>::Effect: 'static,
 {
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
         nodes.push(JourneyAst::Step {
-            label: core::any::type_name::<<A as crate::BoundAct<T>>::Effect>(),
+            label: core::any::type_name::<<A as crate::BoundAction<T>>::Effect>(),
         });
         nodes
     }
@@ -122,14 +122,14 @@ where
 #[inception::primitive(property = JungleJourneyAst)]
 impl<S> BuildJourneyAst<Vec<JourneyAst>> for Step<S>
 where
-    S: Act + 'static,
-    <S as Act>::Effect: 'static,
+    S: Action + 'static,
+    <S as Action>::Effect: 'static,
 {
     type Output = Vec<JourneyAst>;
 
     fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
         nodes.push(JourneyAst::Step {
-            label: core::any::type_name::<<S as Act>::Effect>(),
+            label: core::any::type_name::<<S as Action>::Effect>(),
         });
         nodes
     }

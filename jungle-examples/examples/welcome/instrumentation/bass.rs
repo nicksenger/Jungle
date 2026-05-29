@@ -48,8 +48,8 @@ impl Instrument for Bass {
 
 #[allow(unused)]
 pub struct Thump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Action
     for Thump<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
     type Effect = Sound<Bass>;

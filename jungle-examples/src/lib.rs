@@ -58,7 +58,7 @@ impl<J> Effect<J> for BumpEffect {
 }
 
 pub struct ObserveSleep;
-impl BoundAct<ObserveAnimal> for ObserveSleep {
+impl BoundAction<ObserveAnimal> for ObserveSleep {
     type Effect = Sleep;
     type Aspect = Identity;
     type Input = ();
@@ -70,12 +70,12 @@ impl BoundAct<ObserveAnimal> for ObserveSleep {
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<ObserveAnimal>>::Aspect as StateCarrier<
+        view: &<<Self as BoundAction<ObserveAnimal>>::Aspect as StateCarrier<
             <ObserveAnimal as Animal>::State,
         >>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<ObserveAnimal>>::emit(view, input), ())
+        (<Self as BoundAction<ObserveAnimal>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -85,7 +85,7 @@ impl BoundAct<ObserveAnimal> for ObserveSleep {
 }
 
 pub struct ObserveBump;
-impl BoundAct<ObserveAnimal> for ObserveBump {
+impl BoundAction<ObserveAnimal> for ObserveBump {
     type Effect = BumpEffect;
     type Aspect = Identity;
     type Input = ();
@@ -95,12 +95,12 @@ impl BoundAct<ObserveAnimal> for ObserveBump {
     fn emit(_state: &ObserveState, _input: Self::Input) -> Self::Input {}
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<ObserveAnimal>>::Aspect as StateCarrier<
+        view: &<<Self as BoundAction<ObserveAnimal>>::Aspect as StateCarrier<
             <ObserveAnimal as Animal>::State,
         >>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<ObserveAnimal>>::emit(view, input), ())
+        (<Self as BoundAction<ObserveAnimal>>::emit(view, input), ())
     }
 
     fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {

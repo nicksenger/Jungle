@@ -37,8 +37,8 @@ impl Animal for ConnectionAnimal7 {
 }
 
 pub struct ConnectionStepSpec7;
-#[jungle::act]
-impl Act for ConnectionStepSpec7 {
+#[jungle::action]
+impl Action for ConnectionStepSpec7 {
     type Effect = ConnectionEffect7;
     type Input = ();
     type Output = ();
@@ -79,8 +79,8 @@ impl Animal for ConnectionAnimal9 {
 }
 
 pub struct ConnectionStepSpec9;
-#[jungle::act]
-impl Act for ConnectionStepSpec9 {
+#[jungle::action]
+impl Action for ConnectionStepSpec9 {
     type Effect = ConnectionEffect9;
     type Input = ();
     type Output = ();

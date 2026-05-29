@@ -144,8 +144,8 @@ impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
 }
 
 pub struct AddOneBeforeFullStateSpec;
-#[jungle::act]
-impl Act for AddOneBeforeFullStateSpec {
+#[jungle::action]
+impl Action for AddOneBeforeFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
     type Output = ();
@@ -162,8 +162,8 @@ impl Act for AddOneBeforeFullStateSpec {
 }
 
 pub struct AddTwoBeforeFullStateSpec;
-#[jungle::act]
-impl Act for AddTwoBeforeFullStateSpec {
+#[jungle::action]
+impl Action for AddTwoBeforeFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
     type Output = ();
@@ -180,8 +180,8 @@ impl Act for AddTwoBeforeFullStateSpec {
 }
 
 pub struct AddOneFocusedSpec;
-#[jungle::act(aspect = IntegrationFocusedCarrier)]
-impl Act for AddOneFocusedSpec {
+#[jungle::action(aspect = IntegrationFocusedCarrier)]
+impl Action for AddOneFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
     type Output = ();
@@ -195,8 +195,8 @@ impl Act for AddOneFocusedSpec {
 }
 
 pub struct AddTwoFocusedSpec;
-#[jungle::act(aspect = IntegrationFocusedCarrier)]
-impl Act for AddTwoFocusedSpec {
+#[jungle::action(aspect = IntegrationFocusedCarrier)]
+impl Action for AddTwoFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
     type Output = ();
@@ -210,8 +210,8 @@ impl Act for AddTwoFocusedSpec {
 }
 
 pub struct AddOneDeepFocusedSpec;
-#[jungle::act(aspect = IntegrationDeepFocusedCarrier)]
-impl Act for AddOneDeepFocusedSpec {
+#[jungle::action(aspect = IntegrationDeepFocusedCarrier)]
+impl Action for AddOneDeepFocusedSpec {
     type Effect = AddOneEffect;
     type Input = ();
     type Output = ();
@@ -225,8 +225,8 @@ impl Act for AddOneDeepFocusedSpec {
 }
 
 pub struct AddTwoDeepFocusedSpec;
-#[jungle::act(aspect = IntegrationDeepFocusedCarrier)]
-impl Act for AddTwoDeepFocusedSpec {
+#[jungle::action(aspect = IntegrationDeepFocusedCarrier)]
+impl Action for AddTwoDeepFocusedSpec {
     type Effect = AddTwoEffect;
     type Input = ();
     type Output = ();
@@ -240,8 +240,8 @@ impl Act for AddTwoDeepFocusedSpec {
 }
 
 pub struct AddOneAfterFullStateSpec;
-#[jungle::act]
-impl Act for AddOneAfterFullStateSpec {
+#[jungle::action]
+impl Action for AddOneAfterFullStateSpec {
     type Effect = AddOneEffect;
     type Input = ();
     type Output = ();
@@ -258,8 +258,8 @@ impl Act for AddOneAfterFullStateSpec {
 }
 
 pub struct AddTwoAfterFullStateSpec;
-#[jungle::act]
-impl Act for AddTwoAfterFullStateSpec {
+#[jungle::action]
+impl Action for AddTwoAfterFullStateSpec {
     type Effect = AddTwoEffect;
     type Input = ();
     type Output = ();
@@ -277,16 +277,16 @@ impl Act for AddTwoAfterFullStateSpec {
 
 type MultiMatchBeforeFlow = Conditional<
     UseFirstBeforeFullStateTask,
-    BoundFlowStep<IntegrationAnimal, <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>>,
+    BoundFlowStep<IntegrationAnimal, <AddOneBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>>,
     Conditional<
         UseFirstBeforeFullStateTask,
         BoundFlowStep<
             IntegrationAnimal,
-            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            <AddOneBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
         >,
         BoundFlowStep<
             IntegrationAnimal,
-            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            <AddOneBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
         >,
     >,
 >;
@@ -297,11 +297,11 @@ type LoopBranchFlow = While<
         UseFirstBeforeFullStateTask,
         BoundFlowStep<
             IntegrationAnimal,
-            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            <AddOneBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
         >,
         BoundFlowStep<
             IntegrationAnimal,
-            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            <AddTwoBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
         >,
     >,
 >;
@@ -729,25 +729,25 @@ fn replaced_alias_rewrites_integration_flow_steps() {
     type Actual = jungle_sdk::types::Replace<
         MultiMatchBeforeFlow,
         jungle_sdk::types::SwapLR<
-            <AddOneBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
-            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            <AddOneBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
+            <AddTwoBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
         >,
     >;
     type Expected = Conditional<
         UseFirstBeforeFullStateTask,
         BoundFlowStep<
             IntegrationAnimal,
-            <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+            <AddTwoBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
         >,
         Conditional<
             UseFirstBeforeFullStateTask,
             BoundFlowStep<
                 IntegrationAnimal,
-                <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+                <AddTwoBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
             >,
             BoundFlowStep<
                 IntegrationAnimal,
-                <AddTwoBeforeFullStateSpec as Act>::Bind<IntegrationAnimal>,
+                <AddTwoBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
             >,
         >,
     >;
@@ -762,13 +762,13 @@ fn replaced_nodes_alias_replaces_loop_branch_section() {
             LoopBranchFlow,
             BoundFlowStep<
                 IntegrationAnimal,
-                <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>,
+                <AddOneAfterFullStateSpec as Action>::Bind<IntegrationAnimal>,
             >,
         >,
     >;
     type Expected = BoundFlowStep<
         IntegrationAnimal,
-        <AddOneAfterFullStateSpec as Act>::Bind<IntegrationAnimal>,
+        <AddOneAfterFullStateSpec as Action>::Bind<IntegrationAnimal>,
     >;
     assert_type_eq!(Actual, Expected);
 }

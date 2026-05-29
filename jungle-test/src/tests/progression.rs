@@ -33,8 +33,8 @@ impl<J> Effect<J> for FinishEffect {
 }
 
 pub struct SeedSpec;
-#[jungle::act]
-impl Act for SeedSpec {
+#[jungle::action]
+impl Action for SeedSpec {
     type Effect = SeedEffect;
     type Input = i32;
     type Output = i32;
@@ -51,8 +51,8 @@ impl Act for SeedSpec {
 }
 
 pub struct FinishSpec;
-#[jungle::act]
-impl Act for FinishSpec {
+#[jungle::action]
+impl Action for FinishSpec {
     type Effect = FinishEffect;
     type Input = i32;
     type Output = i32;
@@ -82,8 +82,8 @@ impl Animal for ProgressAnimal {
 
 pub struct ProgressContext;
 
-type SeedStep = BoundFlowStep<ProgressAnimal, <SeedSpec as Act>::Bind<ProgressAnimal>>;
-type FinishStep = BoundFlowStep<ProgressAnimal, <FinishSpec as Act>::Bind<ProgressAnimal>>;
+type SeedStep = BoundFlowStep<ProgressAnimal, <SeedSpec as Action>::Bind<ProgressAnimal>>;
+type FinishStep = BoundFlowStep<ProgressAnimal, <FinishSpec as Action>::Bind<ProgressAnimal>>;
 
 pub struct StepHarness;
 impl StepHarness {
@@ -110,11 +110,11 @@ trait StepExecutor:
 
 impl<A> StepExecutor for BoundFlowStep<ProgressAnimal, A>
 where
-    A: BoundAct<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32, Carry = ()>,
-    <A as BoundAct<ProgressAnimal>>::Effect:
+    A: BoundAction<ProgressAnimal, Aspect = Identity, Input = i32, Output = i32, Carry = ()>,
+    <A as BoundAction<ProgressAnimal>>::Effect:
         EffectSchema<In = i32, Out = i32, Err = ()> + Effect<()>,
 {
-    type Effect = <A as BoundAct<ProgressAnimal>>::Effect;
+    type Effect = <A as BoundAction<ProgressAnimal>>::Effect;
 }
 
 #[test]
@@ -217,8 +217,8 @@ impl<J> Effect<J> for BranchEffect {
 }
 
 pub struct BranchStepASpec;
-#[jungle::act]
-impl Act for BranchStepASpec {
+#[jungle::action]
+impl Action for BranchStepASpec {
     type Effect = BranchEffect;
     type Input = ();
     type Output = ();
@@ -233,8 +233,8 @@ impl Act for BranchStepASpec {
 }
 
 pub struct BranchStepBSpec;
-#[jungle::act]
-impl Act for BranchStepBSpec {
+#[jungle::action]
+impl Action for BranchStepBSpec {
     type Effect = BranchEffect;
     type Input = ();
     type Output = ();

@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
+use crate::action::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
 use crate::effect::{Rest, Sound, SoundInput};
 use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
@@ -27,8 +27,8 @@ impl NodeMetadata for IntroSectionMeta {
 }
 
 pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Sound<Vocals>;
@@ -70,8 +70,8 @@ impl Condition<(BassistState, ())> for UseBassTurnaroundSection {
 }
 
 pub struct DecrementBassRiffLoop;
-#[jungle::act]
-impl Act for DecrementBassRiffLoop {
+#[jungle::action]
+impl Action for DecrementBassRiffLoop {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -85,8 +85,8 @@ impl Act for DecrementBassRiffLoop {
 }
 
 pub struct MergeBassTurnaroundChoice;
-#[jungle::act]
-impl Act for MergeBassTurnaroundChoice {
+#[jungle::action]
+impl Action for MergeBassTurnaroundChoice {
     type Effect = Noop;
     type Input = Either<(), ()>;
     type Output = ();
@@ -3082,8 +3082,8 @@ impl<J> Effect<J> for BassTailStubEffect {
 pub struct BassTailStub;
 
 #[cfg(test)]
-#[jungle::act]
-impl Act for BassTailStub {
+#[jungle::action]
+impl Action for BassTailStub {
     type Effect = BassTailStubEffect;
     type Input = ();
     type Output = ();
@@ -3109,8 +3109,8 @@ pub struct BassJoinSound100JoinAndRest(
 pub struct BassLoopDecrementStub;
 
 #[cfg(test)]
-#[jungle::act]
-impl Act for BassLoopDecrementStub {
+#[jungle::action]
+impl Action for BassLoopDecrementStub {
     type Effect = BassTailStubEffect;
     type Input = ();
     type Output = ();

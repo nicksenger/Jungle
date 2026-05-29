@@ -16,8 +16,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, Aspect, BoundAct, BoundFlowStep, Effect, EffectCompletion, EffectRequest, EffectSchema,
-    Identity, ScopeReboundAct, ScopedAct, ScopedAnimal, StateCarrier, Step,
+    Action, Aspect, BoundAction, BoundFlowStep, Effect, EffectCompletion, EffectRequest, EffectSchema,
+    Identity, ScopeReboundAction, ScopedAction, ScopedAnimal, StateCarrier, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -730,7 +730,7 @@ impl<A, Scope, T, B> BindFlow<A, Scope> for BoundFlowStep<T, B>
 where
     A: Animal,
     T: Animal,
-    B: BoundAct<T>,
+    B: BoundAction<T>,
 {
     type Out = BoundFlowStep<T, B>;
 }
@@ -738,15 +738,15 @@ where
 impl<T, S> BindFlow<T, RootScope> for Step<S>
 where
     T: Animal,
-    S: Act,
-    <S as Act>::Bind<T>: BoundAct<
+    S: Action,
+    <S as Action>::Bind<T>: BoundAction<
         T,
-        Input = <S as Act>::Input,
-        Output = <S as Act>::Output,
-        Effect = <S as Act>::Effect,
+        Input = <S as Action>::Input,
+        Output = <S as Action>::Output,
+        Effect = <S as Action>::Effect,
     >,
 {
-    type Out = BoundFlowStep<T, <S as Act>::Bind<T>>;
+    type Out = BoundFlowStep<T, <S as Action>::Bind<T>>;
 }
 
 impl<T, ScopeCarrier, S> BindFlow<T, ScopeCarrier> for Step<S>
@@ -754,23 +754,23 @@ where
     T: Animal,
     ScopeCarrier: ScopedCarrierMarker,
     ScopeCarrier: Aspect<T::State>,
-    S: Act,
-    S: ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>,
-    <S as ScopedAct<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>>::BoundAct:
-        BoundAct<
+    S: Action,
+    S: ScopedAction<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>,
+    <S as ScopedAction<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>>::BoundAction:
+        BoundAction<
             T,
-            Input = <S as Act>::Input,
-            Output = <S as Act>::Output,
-            Effect = <S as Act>::Effect,
+            Input = <S as Action>::Input,
+            Output = <S as Action>::Output,
+            Effect = <S as Action>::Effect,
         >,
 {
     type Out = BoundFlowStep<
         T,
-        <S as ScopedAct<
+        <S as ScopedAction<
             T,
             <ScopeCarrier as StateCarrier<T::State>>::Focus,
             ScopeCarrier,
-        >>::BoundAct,
+        >>::BoundAction,
     >;
 }
 
@@ -869,8 +869,8 @@ pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 impl<A, Left, Right> ReplaceStep<BoundFlowStep<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
-    Left: BoundAct<A>,
-    Right: BoundAct<A>,
+    Left: BoundAction<A>,
+    Right: BoundAction<A>,
 {
     type Output = BoundFlowStep<A, Right>;
 }
@@ -878,19 +878,19 @@ where
 impl<A, Left, Right> ReplaceStep<BoundFlowStep<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
-    Left: BoundAct<A>,
-    Right: BoundAct<A>,
+    Left: BoundAction<A>,
+    Right: BoundAction<A>,
 {
     type Output = BoundFlowStep<A, Left>;
 }
 
 impl<Left, Right> ReplaceStep<Step<Left>> for SwapLR<Left, Right>
 where
-    Left: Act,
-    Right: Act<
-        Input = <Left as Act>::Input,
-        Output = <Left as Act>::Output,
-        Effect = <Left as Act>::Effect,
+    Left: Action,
+    Right: Action<
+        Input = <Left as Action>::Input,
+        Output = <Left as Action>::Output,
+        Effect = <Left as Action>::Effect,
     >,
 {
     type Output = Step<Right>;
@@ -898,11 +898,11 @@ where
 
 impl<Left, Right> ReplaceStep<Step<Right>> for SwapRL<Left, Right>
 where
-    Left: Act,
-    Right: Act<
-        Input = <Left as Act>::Input,
-        Output = <Left as Act>::Output,
-        Effect = <Left as Act>::Effect,
+    Left: Action,
+    Right: Action<
+        Input = <Left as Action>::Input,
+        Output = <Left as Action>::Output,
+        Effect = <Left as Action>::Effect,
     >,
 {
     type Output = Step<Left>;
@@ -1048,14 +1048,14 @@ where
 impl<T, A> ScopedFieldListNormalize for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: BoundAct<T>,
+    A: BoundAction<T>,
 {
     type Output = TList<(BoundFlowStep<T, A>, list::Empty)>;
 }
 
 impl<S> ScopedFieldListNormalize for Step<S>
 where
-    S: Act,
+    S: Action,
 {
     type Output = TList<(Step<S>, list::Empty)>;
 }
@@ -1814,7 +1814,7 @@ where
 impl<T, A> NodeMetadata for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: BoundAct<T>,
+    A: BoundAction<T>,
 {
 }
 
@@ -1852,14 +1852,14 @@ where
 
 impl<View, F> NodeMetadata for Scoped<View, F> {}
 
-impl<S> NodeMetadata for Step<S> where S: Act {}
+impl<S> NodeMetadata for Step<S> where S: Action {}
 
 impl<A, Scope, T, B> TraverseStep<BoundFlowStep<T, B>> for BindAnimalTraversal<A, Scope>
 where
     A: Animal,
     Scope: Aspect<A::State>,
     T: Animal,
-    B: BoundAct<T>,
+    B: BoundAction<T>,
 {
     type Output = BoundFlowStep<T, B>;
 }

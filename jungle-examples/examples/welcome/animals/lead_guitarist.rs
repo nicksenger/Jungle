@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::act::{MergeEither, MergeUnit as GenericMergeUnit, Rest as GenericRest};
+use crate::action::{MergeEither, MergeUnit as GenericMergeUnit, Rest as GenericRest};
 use crate::effect::Rest;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
@@ -88,8 +88,8 @@ impl Condition<(LeadGuitaristState, ())> for UseLeadTurnaroundSection {
 }
 
 pub struct DecrementLeadRiffLoop;
-#[jungle::act]
-impl Act for DecrementLeadRiffLoop {
+#[jungle::action]
+impl Action for DecrementLeadRiffLoop {
     type Effect = Noop;
     type Input = ();
     type Output = ();

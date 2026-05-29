@@ -11,7 +11,7 @@ pub use jungle_local as local;
 #[cfg(feature = "local")]
 pub use jungle_local::LocalClient;
 pub use jungle_macros::{
-    act, animal, effect, sdk_primitive, Animals, Effects, Flow, Journey, Optic,
+    action, animal, effect, sdk_primitive, Animals, Effects, Flow, Journey, Optic,
 };
 #[cfg(feature = "server")]
 pub use jungle_server as server;

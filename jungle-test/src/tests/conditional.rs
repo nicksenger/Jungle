@@ -52,8 +52,8 @@ impl Animal for ConditionalThenMergeAnimal {
 }
 
 pub struct LeftSpec;
-#[jungle::act]
-impl Act for LeftSpec {
+#[jungle::action]
+impl Action for LeftSpec {
     type Effect = LeftEffect;
     type Input = i32;
     type Output = i32;
@@ -70,8 +70,8 @@ impl Act for LeftSpec {
 }
 
 pub struct RightSpec;
-#[jungle::act]
-impl Act for RightSpec {
+#[jungle::action]
+impl Action for RightSpec {
     type Effect = RightEffect;
     type Input = i32;
     type Output = bool;
@@ -119,8 +119,8 @@ impl<J> Effect<J> for EchoEffect {
 }
 
 pub struct LeftIntSpec;
-#[jungle::act]
-impl Act for LeftIntSpec {
+#[jungle::action]
+impl Action for LeftIntSpec {
     type Effect = EchoEffect;
     type Input = i32;
     type Output = i32;
@@ -137,8 +137,8 @@ impl Act for LeftIntSpec {
 }
 
 pub struct RightIntSpec;
-#[jungle::act]
-impl Act for RightIntSpec {
+#[jungle::action]
+impl Action for RightIntSpec {
     type Effect = EchoEffect;
     type Input = i32;
     type Output = i32;
@@ -155,8 +155,8 @@ impl Act for RightIntSpec {
 }
 
 pub struct MergeEitherSpec;
-#[jungle::act]
-impl Act for MergeEitherSpec {
+#[jungle::action]
+impl Action for MergeEitherSpec {
     type Effect = EchoEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
@@ -182,8 +182,8 @@ pub struct ConditionalThenMergeFlowTemplate(
 
 type BoundConditionalFlow = Conditional<
     PreferLeftWhenStateIsNonNegative,
-    BoundFlowStep<ConditionalAnimal, <LeftSpec as Act>::Bind<ConditionalAnimal>>,
-    BoundFlowStep<ConditionalAnimal, <RightSpec as Act>::Bind<ConditionalAnimal>>,
+    BoundFlowStep<ConditionalAnimal, <LeftSpec as Action>::Bind<ConditionalAnimal>>,
+    BoundFlowStep<ConditionalAnimal, <RightSpec as Action>::Bind<ConditionalAnimal>>,
 >;
 
 #[test]

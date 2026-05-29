@@ -122,7 +122,7 @@ impl From<&Zoo> for SharedState {
 }
 
 pub struct UnitOkStep<A>(PhantomData<fn() -> A>);
-impl<T, A> BoundAct<T> for UnitOkStep<A>
+impl<T, A> BoundAction<T> for UnitOkStep<A>
 where
     T: Animal,
     A: EffectSchema<In = (), Out = (), Err = ()>,
@@ -136,10 +136,10 @@ where
     fn emit(_state: &T::State, _input: Self::Input) -> A::In {}
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        view: &<<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<T>>::emit(view, input), ())
+        (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut T::State, output: EffectCompletion<A>) -> Self::Output {
@@ -148,7 +148,7 @@ where
 }
 
 pub struct UnitOkSpec<E>(PhantomData<fn() -> E>);
-impl<E> Act for UnitOkSpec<E>
+impl<E> Action for UnitOkSpec<E>
 where
     E: EffectSchema<In = (), Out = (), Err = ()>,
 {
@@ -335,8 +335,8 @@ impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
 }
 
 pub struct RunnerStepOneSpec;
-#[jungle::act]
-impl Act for RunnerStepOneSpec {
+#[jungle::action]
+impl Action for RunnerStepOneSpec {
     type Effect = RunnerStepOneEffect;
     type Input = ();
     type Output = ();
@@ -349,8 +349,8 @@ impl Act for RunnerStepOneSpec {
 }
 
 pub struct RunnerStepTwoSpec;
-#[jungle::act]
-impl Act for RunnerStepTwoSpec {
+#[jungle::action]
+impl Action for RunnerStepTwoSpec {
     type Effect = RunnerStepTwoEffect;
     type Input = ();
     type Output = ();
@@ -363,8 +363,8 @@ impl Act for RunnerStepTwoSpec {
 }
 
 pub struct SlowRunnerStepSpec;
-#[jungle::act]
-impl Act for SlowRunnerStepSpec {
+#[jungle::action]
+impl Action for SlowRunnerStepSpec {
     type Effect = SlowRunnerEffect;
     type Input = ();
     type Output = ();
@@ -550,7 +550,7 @@ impl<J> Effect<J> for RoundAdvance {
 }
 
 pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
-impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
+impl<T, Focus, A> BoundAction<T> for AddI32<Focus, A>
 where
     T: Animal,
     Focus: jungle_sdk::types::Aspect<T::State, Focus = i32>,
@@ -567,10 +567,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        view: &<<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<T>>::emit(view, input), ())
+        (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
     fn absorb(value: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -603,24 +603,24 @@ type TigerHuntTask = AddI32<TigerEnergyCarrier, HuntEnergy>;
 type TigerEatTask = AddI32<TigerEnergyCarrier, EatEnergy>;
 
 pub struct ApeRoundTaskSpec;
-#[jungle::act(bind = ApeRoundTask)]
-impl Act for ApeRoundTaskSpec {
+#[jungle::action(bind = ApeRoundTask)]
+impl Action for ApeRoundTaskSpec {
     type Effect = RoundAdvance;
     type Input = i32;
     type Output = i32;
 }
 
 pub struct TigerHuntTaskSpec;
-#[jungle::act(bind = TigerHuntTask)]
-impl Act for TigerHuntTaskSpec {
+#[jungle::action(bind = TigerHuntTask)]
+impl Action for TigerHuntTaskSpec {
     type Effect = HuntEnergy;
     type Input = i32;
     type Output = i32;
 }
 
 pub struct TigerEatTaskSpec;
-#[jungle::act(bind = TigerEatTask)]
-impl Act for TigerEatTaskSpec {
+#[jungle::action(bind = TigerEatTask)]
+impl Action for TigerEatTaskSpec {
     type Effect = EatEnergy;
     type Input = i32;
     type Output = i32;

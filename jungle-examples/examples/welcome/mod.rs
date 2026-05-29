@@ -1,6 +1,6 @@
 #![recursion_limit = "16384"]
 
-mod act;
+mod action;
 mod animals;
 mod ecosystem;
 mod effect;

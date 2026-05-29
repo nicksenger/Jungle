@@ -1,5 +1,5 @@
 use crate::{
-    Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
+    Animal, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
     Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Noop, Running, Scoped,
     Select, Transparent, While,
 };
@@ -38,7 +38,7 @@ pub trait ArgputForState<State> {
 impl<State, T, A> ArgputForState<State> for BoundFlowStep<T, A>
 where
     T: Animal<State = State>,
-    A: BoundAct<T>,
+    A: BoundAction<T>,
 {
     type Carry = A::Input;
 }
@@ -368,8 +368,8 @@ pub trait StepCarry {
 impl<T, A> StepCarry for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: BoundAct<T>,
-    <A as BoundAct<T>>::Carry: Send,
+    A: BoundAction<T>,
+    <A as BoundAction<T>>::Carry: Send,
 {
     type Carry = A::Carry;
 }
@@ -414,14 +414,14 @@ where
 impl<T, A> ErasedFlow<T::State> for TypedErasedStep<BoundFlowStep<T, A>>
 where
     T: Animal,
-    A: BoundAct<T>,
-    <A as BoundAct<T>>::Carry: Send + 'static,
-    <A as BoundAct<T>>::Effect: Effect<()>,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize + 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAction<T>,
+    <A as BoundAction<T>>::Carry: Send + 'static,
+    <A as BoundAction<T>>::Effect: Effect<()>,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::In: 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -462,7 +462,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -495,7 +495,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -517,7 +517,7 @@ where
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<A as BoundAct<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
+                    <<A as BoundAction<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -527,7 +527,7 @@ where
             state,
             ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as BoundAct<T>>::Effect>(),
+                core::any::type_name::<<A as BoundAction<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -546,13 +546,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: EffectCompletion<<A as BoundAct<T>>::Effect> = match completion {
+        let typed_completion: EffectCompletion<<A as BoundAction<T>>::Effect> = match completion {
             Ok(output) => Ok(postcard::from_bytes::<
-                <<A as BoundAct<T>>::Effect as EffectSchema>::Out,
+                <<A as BoundAction<T>>::Effect as EffectSchema>::Out,
             >(&output)
             .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
             Err(error) => Err(postcard::from_bytes::<
-                <<A as BoundAct<T>>::Effect as EffectSchema>::Err,
+                <<A as BoundAction<T>>::Effect as EffectSchema>::Err,
             >(&error)
             .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
@@ -618,12 +618,12 @@ impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, 
 where
     Context: Send + Sync + 'static,
     T: Animal,
-    A: BoundAct<T>,
-    <A as BoundAct<T>>::Carry: Send + 'static,
-    <A as BoundAct<T>>::Effect: Effect<Context>,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
+    A: BoundAction<T>,
+    <A as BoundAction<T>>::Carry: Send + 'static,
+    <A as BoundAction<T>>::Effect: Effect<Context>,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::In: 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -664,7 +664,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -697,7 +697,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -719,7 +719,7 @@ where
         let context = Arc::clone(&self.context);
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as BoundAct<T>>::Effect as Effect<Context>>::effect(
+                let completion = <<A as BoundAction<T>>::Effect as Effect<Context>>::effect(
                     context.as_ref(),
                     effect_input,
                 )
@@ -733,7 +733,7 @@ where
             state,
             ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as BoundAct<T>>::Effect>(),
+                core::any::type_name::<<A as BoundAction<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -752,13 +752,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: EffectCompletion<<A as BoundAct<T>>::Effect> = match completion {
+        let typed_completion: EffectCompletion<<A as BoundAction<T>>::Effect> = match completion {
             Ok(output) => Ok(postcard::from_bytes::<
-                <<A as BoundAct<T>>::Effect as EffectSchema>::Out,
+                <<A as BoundAction<T>>::Effect as EffectSchema>::Out,
             >(&output)
             .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
             Err(error) => Err(postcard::from_bytes::<
-                <<A as BoundAct<T>>::Effect as EffectSchema>::Err,
+                <<A as BoundAction<T>>::Effect as EffectSchema>::Err,
             >(&error)
             .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
@@ -2335,7 +2335,7 @@ where
 impl<T, A> FlowCarry<T::State> for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: BoundAct<T>,
+    A: BoundAction<T>,
 {
     type In = A::Input;
     type Out = A::Output;
@@ -2487,12 +2487,12 @@ where
 impl<T, A> BuildFlow<DynFlow<T::State>> for BoundFlowStep<T, A>
 where
     T: Animal + 'static,
-    A: BoundAct<T> + 'static,
-    <A as BoundAct<T>>::Carry: Send + 'static,
-    <A as BoundAct<T>>::Effect: Effect<()> + 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAction<T> + 'static,
+    <A as BoundAction<T>>::Carry: Send + 'static,
+    <A as BoundAction<T>>::Effect: Effect<()> + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -2796,13 +2796,13 @@ impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for 
 where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
-    A: BoundAct<T> + 'static,
-    <A as BoundAct<T>>::Carry: Send + 'static,
-    <A as BoundAct<T>>::Effect: Effect<Context> + 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAction<T> + 'static,
+    <A as BoundAction<T>>::Carry: Send + 'static,
+    <A as BoundAction<T>>::Effect: Effect<Context> + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {

@@ -1,11 +1,11 @@
 pub use crate::types::*;
 pub use crate::typosaurus::list;
 pub use crate::{
-    Act, Animal, Animals, Ecosystem, Effects, Flow, Journey, Optic, ScopeReboundAct, ScopedAct,
+    Action, Animal, Animals, Ecosystem, Effects, Flow, Journey, Optic, ScopeReboundAction, ScopedAction,
 };
 
 pub mod jungle {
-    pub use crate::{act, animal, effect, sdk_primitive};
+    pub use crate::{action, animal, effect, sdk_primitive};
 }
 
 pub mod num {

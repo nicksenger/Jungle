@@ -121,7 +121,7 @@ impl StateCarrier<TigerState> for TigerEnergyCarrier {
 
 pub struct CoreEnergyStep<A, Focus>(PhantomData<fn() -> (A, Focus)>);
 
-impl<T, Focus> BoundAct<T> for CoreEnergyStep<Sleep, Focus>
+impl<T, Focus> BoundAction<T> for CoreEnergyStep<Sleep, Focus>
 where
     T: Animal,
     Focus: Aspect<T::State, Focus = CoreState>,
@@ -137,10 +137,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        view: &<<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<T>>::emit(view, input), ())
+        (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
     fn absorb(core: &mut CoreState, output: EffectCompletion<Sleep>) -> Self::Output {
@@ -150,7 +150,7 @@ where
     }
 }
 
-impl<T, Focus> BoundAct<T> for CoreEnergyStep<Eat, Focus>
+impl<T, Focus> BoundAction<T> for CoreEnergyStep<Eat, Focus>
 where
     T: Animal,
     Focus: Aspect<T::State, Focus = CoreState>,
@@ -166,10 +166,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        view: &<<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<T>>::emit(view, input), ())
+        (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
     fn absorb(core: &mut CoreState, output: EffectCompletion<Eat>) -> Self::Output {
@@ -181,7 +181,7 @@ where
 
 pub struct AddI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> BoundAct<T> for AddI32<Focus, A>
+impl<T, Focus, A> BoundAction<T> for AddI32<Focus, A>
 where
     T: Animal,
     Focus: Aspect<T::State, Focus = i32>,
@@ -198,10 +198,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        view: &<<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<T>>::emit(view, input), ())
+        (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
     fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Output {
@@ -216,7 +216,7 @@ where
 
 pub struct SubI32<Focus, A>(PhantomData<fn() -> (Focus, A)>);
 
-impl<T, Focus, A> BoundAct<T> for SubI32<Focus, A>
+impl<T, Focus, A> BoundAction<T> for SubI32<Focus, A>
 where
     T: Animal,
     Focus: Aspect<T::State, Focus = i32>,
@@ -233,10 +233,10 @@ where
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<T>>::Aspect as StateCarrier<T::State>>::Focus,
+        view: &<<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<T>>::emit(view, input), ())
+        (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
     fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Output {
@@ -258,16 +258,16 @@ type TigerEat = AddI32<TigerEnergyCarrier, Eat>;
 type TigerSleep = AddI32<TigerEnergyCarrier, Sleep>;
 
 pub struct GorillaEatSpec;
-#[jungle::act(bind = AddI32<GorillaEnergyCarrier, Eat>)]
-impl Act for GorillaEatSpec {
+#[jungle::action(bind = AddI32<GorillaEnergyCarrier, Eat>)]
+impl Action for GorillaEatSpec {
     type Effect = Eat;
     type Input = i32;
     type Output = i32;
 }
 
 pub struct GorillaSleepManualSpec;
-#[jungle::act]
-impl Act for GorillaSleepManualSpec {
+#[jungle::action]
+impl Action for GorillaSleepManualSpec {
     type Effect = Sleep;
     type Input = i32;
     type Output = i32;
@@ -285,8 +285,8 @@ impl Act for GorillaSleepManualSpec {
 }
 
 pub struct GorillaForageSpec;
-#[jungle::act(bind = SubI32<GorillaEnergyCarrier, Forage>)]
-impl Act for GorillaForageSpec {
+#[jungle::action(bind = SubI32<GorillaEnergyCarrier, Forage>)]
+impl Action for GorillaForageSpec {
     type Effect = Forage;
     type Input = i32;
     type Output = i32;
@@ -319,24 +319,24 @@ impl Condition<(TigerState, i32)> for TigerStripesAreEven {
 }
 
 pub struct TigerEatSpec;
-#[jungle::act(bind = AddI32<TigerEnergyCarrier, Eat>)]
-impl Act for TigerEatSpec {
+#[jungle::action(bind = AddI32<TigerEnergyCarrier, Eat>)]
+impl Action for TigerEatSpec {
     type Effect = Eat;
     type Input = i32;
     type Output = i32;
 }
 
 pub struct TigerSleepSpec;
-#[jungle::act(bind = AddI32<TigerEnergyCarrier, Sleep>)]
-impl Act for TigerSleepSpec {
+#[jungle::action(bind = AddI32<TigerEnergyCarrier, Sleep>)]
+impl Action for TigerSleepSpec {
     type Effect = Sleep;
     type Input = i32;
     type Output = i32;
 }
 
 pub struct TigerSleepFromEitherSpec;
-#[jungle::act]
-impl Act for TigerSleepFromEitherSpec {
+#[jungle::action]
+impl Action for TigerSleepFromEitherSpec {
     type Effect = Sleep;
     type Input = Either<i32, i32>;
     type Output = i32;
@@ -355,8 +355,8 @@ impl Act for TigerSleepFromEitherSpec {
 }
 
 pub struct TigerHuntFromEnergySpec;
-#[jungle::act]
-impl Act for TigerHuntFromEnergySpec {
+#[jungle::action]
+impl Action for TigerHuntFromEnergySpec {
     type Effect = Hunt;
     type Input = i32;
     type Output = i32;

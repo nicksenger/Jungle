@@ -29,8 +29,8 @@ impl Animal for Looper {
 }
 
 pub struct TickSpec;
-#[jungle::act]
-impl Act for TickSpec {
+#[jungle::action]
+impl Action for TickSpec {
     type Effect = TickEffect;
     type Input = i32;
     type Output = (bool, i32);
@@ -46,7 +46,7 @@ impl Act for TickSpec {
     }
 }
 
-type TickFlow = BoundFlowStep<Looper, <TickSpec as Act>::Bind<Looper>>;
+type TickFlow = BoundFlowStep<Looper, <TickSpec as Action>::Bind<Looper>>;
 
 pub struct LessThanThree;
 impl LoopCondition<i32> for LessThanThree {
@@ -87,8 +87,8 @@ impl Animal for LooperWithTail {
 }
 
 pub struct TailAfterLoopSpec;
-#[jungle::act]
-impl Act for TailAfterLoopSpec {
+#[jungle::action]
+impl Action for TailAfterLoopSpec {
     type Effect = TailEchoEffect;
     type Input = (bool, i32);
     type Output = i32;
@@ -165,8 +165,8 @@ impl LoopCondition<NestedState> for OuterContinue {
 }
 
 pub struct InnerWorkSpec;
-#[jungle::act]
-impl Act for InnerWorkSpec {
+#[jungle::action]
+impl Action for InnerWorkSpec {
     type Effect = UnitEffect;
     type Input = ();
     type Output = ();
@@ -179,8 +179,8 @@ impl Act for InnerWorkSpec {
 }
 
 pub struct FinishOuterRoundSpec;
-#[jungle::act]
-impl Act for FinishOuterRoundSpec {
+#[jungle::action]
+impl Action for FinishOuterRoundSpec {
     type Effect = UnitEffect;
     type Input = ();
     type Output = ();
@@ -211,8 +211,8 @@ impl<J> Effect<J> for EchoBoolEffect {
 }
 
 pub struct InlineNoopFalseSpec;
-#[jungle::act]
-impl Act for InlineNoopFalseSpec {
+#[jungle::action]
+impl Action for InlineNoopFalseSpec {
     type Effect = Noop;
     type Input = ();
     type Output = bool;
@@ -226,8 +226,8 @@ impl Act for InlineNoopFalseSpec {
 }
 
 pub struct EchoBoolSpec;
-#[jungle::act]
-impl Act for EchoBoolSpec {
+#[jungle::action]
+impl Action for EchoBoolSpec {
     type Effect = EchoBoolEffect;
     type Input = bool;
     type Output = ();
@@ -325,8 +325,8 @@ impl LoopCondition<NestedInlineCarryState> for NestedInlineOuterRunOnce {
 }
 
 pub struct NestedInlineInnerNoopFalseSpec;
-#[jungle::act]
-impl Act for NestedInlineInnerNoopFalseSpec {
+#[jungle::action]
+impl Action for NestedInlineInnerNoopFalseSpec {
     type Effect = Noop;
     type Input = ();
     type Output = bool;
@@ -344,8 +344,8 @@ impl Act for NestedInlineInnerNoopFalseSpec {
 }
 
 pub struct NestedInlineOuterEchoBoolSpec;
-#[jungle::act]
-impl Act for NestedInlineOuterEchoBoolSpec {
+#[jungle::action]
+impl Action for NestedInlineOuterEchoBoolSpec {
     type Effect = EchoBoolEffect;
     type Input = bool;
     type Output = ();
@@ -394,8 +394,8 @@ impl NodeMetadata for IntroSectionMeta {
 }
 
 pub struct RhythmLikeJoinLeftSpec;
-#[jungle::act]
-impl Act for RhythmLikeJoinLeftSpec {
+#[jungle::action]
+impl Action for RhythmLikeJoinLeftSpec {
     type Effect = TickEffect;
     type Input = ();
     type Output = ();
@@ -410,8 +410,8 @@ impl Act for RhythmLikeJoinLeftSpec {
 }
 
 pub struct RhythmLikeJoinRightSpec;
-#[jungle::act]
-impl Act for RhythmLikeJoinRightSpec {
+#[jungle::action]
+impl Action for RhythmLikeJoinRightSpec {
     type Effect = TickEffect;
     type Input = ();
     type Output = ();
@@ -426,8 +426,8 @@ impl Act for RhythmLikeJoinRightSpec {
 }
 
 pub struct RhythmLikeMergeUnitSpec;
-#[jungle::act]
-impl Act for RhythmLikeMergeUnitSpec {
+#[jungle::action]
+impl Action for RhythmLikeMergeUnitSpec {
     type Effect = Noop;
     type Input = ((), ());
     type Output = ();
@@ -440,8 +440,8 @@ impl Act for RhythmLikeMergeUnitSpec {
 }
 
 pub struct RhythmLikePostMergeRestSpec;
-#[jungle::act]
-impl Act for RhythmLikePostMergeRestSpec {
+#[jungle::action]
+impl Action for RhythmLikePostMergeRestSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
@@ -456,8 +456,8 @@ impl Act for RhythmLikePostMergeRestSpec {
 }
 
 pub struct RhythmLikeDecrementLoopSpec;
-#[jungle::act]
-impl Act for RhythmLikeDecrementLoopSpec {
+#[jungle::action]
+impl Action for RhythmLikeDecrementLoopSpec {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -474,8 +474,8 @@ impl Act for RhythmLikeDecrementLoopSpec {
 }
 
 pub struct RhythmLikeMergeChoiceSpec;
-#[jungle::act]
-impl Act for RhythmLikeMergeChoiceSpec {
+#[jungle::action]
+impl Action for RhythmLikeMergeChoiceSpec {
     type Effect = Noop;
     type Input = Either<(), ()>;
     type Output = ();

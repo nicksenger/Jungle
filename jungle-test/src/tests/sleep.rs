@@ -54,8 +54,8 @@ impl Condition<(SleepState, ())> for SleepPhaseOne {
 }
 
 pub struct AddBeforeSleepSpec;
-#[jungle::act]
-impl Act for AddBeforeSleepSpec {
+#[jungle::action]
+impl Action for AddBeforeSleepSpec {
     type Effect = AddEffect;
     type Input = ();
     type Output = ();
@@ -69,8 +69,8 @@ impl Act for AddBeforeSleepSpec {
 }
 
 pub struct SleepForStateWakeSpec;
-#[jungle::act]
-impl Act for SleepForStateWakeSpec {
+#[jungle::action]
+impl Action for SleepForStateWakeSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
@@ -86,8 +86,8 @@ impl Act for SleepForStateWakeSpec {
 }
 
 pub struct AddAfterSleepSpec;
-#[jungle::act]
-impl Act for AddAfterSleepSpec {
+#[jungle::action]
+impl Action for AddAfterSleepSpec {
     type Effect = AddEffect;
     type Input = ();
     type Output = ();
@@ -116,8 +116,8 @@ impl<J> Effect<J> for MergeEitherUnitEffect {
 }
 
 pub struct MergeEitherUnitSpec;
-#[jungle::act]
-impl Act for MergeEitherUnitSpec {
+#[jungle::action]
+impl Action for MergeEitherUnitSpec {
     type Effect = MergeEitherUnitEffect;
     type Input = Either<(), ()>;
     type Output = ();

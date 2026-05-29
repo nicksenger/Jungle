@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
+use crate::action::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
 use crate::effect::{Rest, Sound, SoundInput};
 use crate::instrumentation::{
     Cymbal, CymbalArticulation, HiHat, HiHatArticulation, KickDrum, KickDrumArticulation,
@@ -22,8 +22,8 @@ impl NodeMetadata for IntroSectionMeta {
 }
 
 pub struct Hat<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     for Hat<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Sound<HiHat>;
@@ -46,8 +46,8 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
 }
 
 pub struct Boot<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     for Boot<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Sound<KickDrum>;
@@ -70,8 +70,8 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
 }
 
 pub struct Snap<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     for Snap<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Sound<SnareDrum>;
@@ -94,8 +94,8 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
 }
 
 pub struct Blast<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     for Blast<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Sound<Cymbal>;
@@ -118,8 +118,8 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
 }
 
 pub struct TomHit<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     for TomHit<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Sound<Toms>;
@@ -166,8 +166,8 @@ impl Condition<(DrummerState, ())> for UseHat46GrooveVariant {
 #[cfg(test)]
 pub struct ConditionalJoinTailStub;
 #[cfg(test)]
-#[jungle::act]
-impl Act for ConditionalJoinTailStub {
+#[jungle::action]
+impl Action for ConditionalJoinTailStub {
     type Effect = Sound<HiHat>;
     type Input = Either<(), ()>;
     type Output = Either<(), ()>;

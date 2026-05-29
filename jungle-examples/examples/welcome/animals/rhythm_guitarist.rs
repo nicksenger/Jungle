@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use super::{Double, Quad, RhythmGuitarist, RhythmGuitaristState};
-use crate::act::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
+use crate::action::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
 use crate::effect::{Rest, Sound, SoundInput};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
@@ -32,8 +32,8 @@ type Strum<
 > = LaneStrum<NOTE_1, NOTE_2, NOTE_3, NOTE_TICK, REST_TICK, RHYTHM_GUITAR_LANE_ID>;
 
 pub struct JoinPick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     for JoinPick<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Sound<ElectricGuitar>;
@@ -101,8 +101,8 @@ impl NodeMetadata for IntroSectionMeta {
 }
 
 pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
-#[jungle::act]
-impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
+#[jungle::action]
+impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
     type Effect = Sound<Vocals>;
@@ -147,8 +147,8 @@ impl Condition<(RhythmGuitaristState, ())> for UseRhythmTurnaroundSection {
 }
 
 pub struct DecrementRhythmRiffLoop;
-#[jungle::act]
-impl Act for DecrementRhythmRiffLoop {
+#[jungle::action]
+impl Action for DecrementRhythmRiffLoop {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -169,8 +169,8 @@ impl Act for DecrementRhythmRiffLoop {
 }
 
 pub struct MergeRhythmTurnaroundChoice;
-#[jungle::act]
-impl Act for MergeRhythmTurnaroundChoice {
+#[jungle::action]
+impl Action for MergeRhythmTurnaroundChoice {
     type Effect = Noop;
     type Input = Either<(), ()>;
     type Output = ();
@@ -1580,8 +1580,8 @@ impl<J> Effect<J> for RhythmTailStubEffect {
 pub struct RhythmTailStub;
 
 #[cfg(test)]
-#[jungle::act]
-impl Act for RhythmTailStub {
+#[jungle::action]
+impl Action for RhythmTailStub {
     type Effect = RhythmTailStubEffect;
     type Input = ();
     type Output = ();
@@ -1613,8 +1613,8 @@ pub struct RhythmJoinSound100JoinAndRest(
 pub struct RhythmLoopDecrementStub;
 
 #[cfg(test)]
-#[jungle::act]
-impl Act for RhythmLoopDecrementStub {
+#[jungle::action]
+impl Action for RhythmLoopDecrementStub {
     type Effect = RhythmTailStubEffect;
     type Input = ();
     type Output = ();

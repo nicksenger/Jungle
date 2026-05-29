@@ -26,8 +26,8 @@ impl<const NOTE: u8, J> Effect<J> for GenericActEffect<NOTE> {
 }
 
 pub struct GenericActSpec<const NOTE: u8, const D_TICK: u8>;
-#[jungle::act]
-impl<const NOTE: u8, const D_TICK: u8> Act for GenericActSpec<NOTE, D_TICK> {
+#[jungle::action]
+impl<const NOTE: u8, const D_TICK: u8> Action for GenericActSpec<NOTE, D_TICK> {
     type Effect = GenericActEffect<NOTE>;
     type Input = ();
     type Output = ();
@@ -66,8 +66,8 @@ impl<J> Effect<J> for CarryActEffect {
 }
 
 pub struct CarryActSpec;
-#[jungle::act]
-impl Act for CarryActSpec {
+#[jungle::action]
+impl Action for CarryActSpec {
     type Effect = CarryActEffect;
     type Input = i32;
     type Output = i32;
@@ -100,8 +100,8 @@ impl Animal for CarryAttrActAnimal {
 }
 
 pub struct CarryAttrActSpec;
-#[jungle::act(carry = i32)]
-impl Act for CarryAttrActSpec {
+#[jungle::action(carry = i32)]
+impl Action for CarryAttrActSpec {
     type Effect = CarryActEffect;
     type Input = i32;
     type Output = i32;
@@ -120,27 +120,27 @@ impl Act for CarryAttrActSpec {
 #[derive(Flow)]
 pub struct CarryAttrActFlow(Step<CarryAttrActSpec>);
 
-fn assert_bound<T: BoundAct<GenericActAnimal>>() {}
+fn assert_bound<T: BoundAction<GenericActAnimal>>() {}
 
 #[test]
 fn generic_act_attr_generates_bind_type() {
-    type Bound = <GenericActSpec<7, 3> as Act>::Bind<GenericActAnimal>;
+    type Bound = <GenericActSpec<7, 3> as Action>::Bind<GenericActAnimal>;
     assert_bound::<Bound>();
     assert_type_eq!(
-        <Bound as BoundAct<GenericActAnimal>>::Effect,
+        <Bound as BoundAction<GenericActAnimal>>::Effect,
         GenericActEffect<7>
     );
-    assert_type_eq!(<Bound as BoundAct<GenericActAnimal>>::Input, ());
-    assert_type_eq!(<Bound as BoundAct<GenericActAnimal>>::Output, ());
-    assert_type_eq!(<Bound as BoundAct<GenericActAnimal>>::Carry, ());
+    assert_type_eq!(<Bound as BoundAction<GenericActAnimal>>::Input, ());
+    assert_type_eq!(<Bound as BoundAction<GenericActAnimal>>::Output, ());
+    assert_type_eq!(<Bound as BoundAction<GenericActAnimal>>::Carry, ());
     assert_type_eq!(<GenericActAnimal as Animal>::Id, Id<U910>);
 }
 
 #[test]
 fn act_attr_supports_explicit_carry() {
-    type Bound = <CarryActSpec as Act>::Bind<CarryActAnimal>;
-    assert_type_eq!(<CarryActSpec as Act>::Carry, i32);
-    assert_type_eq!(<Bound as BoundAct<CarryActAnimal>>::Carry, i32);
+    type Bound = <CarryActSpec as Action>::Bind<CarryActAnimal>;
+    assert_type_eq!(<CarryActSpec as Action>::Carry, i32);
+    assert_type_eq!(<Bound as BoundAction<CarryActAnimal>>::Carry, i32);
 
     let (state, (request, carry)) = <BoundFlowStep<CarryActAnimal, Bound> as Running>::run((2, 5));
     assert_eq!(request.into_input(), 7);
@@ -161,9 +161,9 @@ fn act_attr_supports_explicit_carry() {
 
 #[test]
 fn act_attr_supports_carry_attribute() {
-    type Bound = <CarryAttrActSpec as Act>::Bind<CarryAttrActAnimal>;
-    assert_type_eq!(<CarryAttrActSpec as Act>::Carry, i32);
-    assert_type_eq!(<Bound as BoundAct<CarryAttrActAnimal>>::Carry, i32);
+    type Bound = <CarryAttrActSpec as Action>::Bind<CarryAttrActAnimal>;
+    assert_type_eq!(<CarryAttrActSpec as Action>::Carry, i32);
+    assert_type_eq!(<Bound as BoundAction<CarryAttrActAnimal>>::Carry, i32);
 
     let (state, (request, carry)) =
         <BoundFlowStep<CarryAttrActAnimal, Bound> as Running>::run((2, 5));

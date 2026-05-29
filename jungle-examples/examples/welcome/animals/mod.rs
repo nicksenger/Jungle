@@ -601,8 +601,8 @@ impl Animal for Drums {
 
 #[allow(unused)]
 pub struct DecrementCounter<Focus>(core::marker::PhantomData<fn() -> Focus>);
-#[jungle::act(aspect = Focus)]
-impl<Focus> Act for DecrementCounter<Focus> {
+#[jungle::action(aspect = Focus)]
+impl<Focus> Action for DecrementCounter<Focus> {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -616,8 +616,8 @@ impl<Focus> Act for DecrementCounter<Focus> {
 }
 
 pub struct StubStepSpec;
-#[jungle::act]
-impl Act for StubStepSpec {
+#[jungle::action]
+impl Action for StubStepSpec {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -628,8 +628,8 @@ impl Act for StubStepSpec {
 }
 
 pub struct SleepFiveMinutesSpec;
-#[jungle::act]
-impl Act for SleepFiveMinutesSpec {
+#[jungle::action]
+impl Action for SleepFiveMinutesSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
@@ -655,8 +655,8 @@ pub struct Octa<T>(Quad<T>, Quad<T>);
 #[derive(Flow)]
 pub struct StubFlow<T, S>(Step<Stub<T, S>>);
 pub struct Stub<T, S>(PhantomData<T>, PhantomData<S>);
-#[jungle::act]
-impl<T, S> Act for Stub<T, S> {
+#[jungle::action]
+impl<T, S> Action for Stub<T, S> {
     type Effect = Noop;
     type Input = T;
     type Output = ();
