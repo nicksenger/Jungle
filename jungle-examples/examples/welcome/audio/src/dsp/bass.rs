@@ -39,7 +39,8 @@ fn articulation_output_shape() -> (f32, f32) {
 
 fn articulation_sample(base_hz: f32, phase: f32, t: f32, expression: Expression) -> f32 {
     let bend = expression.bend.clamp(-1.0, 1.0) * 0.14;
-    let vibrato = (std::f32::consts::TAU * 5.2 * t).sin() * expression.vibrato.clamp(-1.0, 1.0) * 0.01;
+    let vibrato =
+        (std::f32::consts::TAU * 5.2 * t).sin() * expression.vibrato.clamp(-1.0, 1.0) * 0.01;
     let freq = base_hz * (1.0 + bend + vibrato);
 
     let transient = hash_noise(t * 15_500.0) * (1.0 - smoothstep(phase * 13.0));

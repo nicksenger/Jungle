@@ -1,9 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use crate::effect::Rest;
-use crate::instrumentation::{
-    ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
-};
+use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
 use super::{Double, LeadGuitarist};
 
@@ -103,10 +101,7 @@ pub struct QuadHit<
     const NOTE_TICK: u32,
     const REST_TICK: u32,
 >(
-    Join<
-        TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>,
-        TriadHitPair<NOTE_3, NOTE_4, NOTE_TICK>,
-    >,
+    Join<TriadHitPair<NOTE_1, NOTE_2, NOTE_TICK>, TriadHitPair<NOTE_3, NOTE_4, NOTE_TICK>>,
     Step<MergeUnit>,
     Step<PostMergeRest<REST_TICK>>,
 );

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 #[cfg(feature = "video")]
 use iced::widget::stack;
-use iced::widget::{column, container, text, Row};
+use iced::widget::{button, column, container, text, Row, Space};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
@@ -531,6 +531,7 @@ enum Message {
     AppVideo(iced_av1::widget::Message),
     #[cfg(feature = "video")]
     PanelVideo(Panel, iced_av1::widget::Message),
+    TogglePanelAutoViewport(Panel),
     Tick,
 }
 
@@ -554,6 +555,13 @@ impl Message {
                 Panel::RhythmGuitarist => "PanelVideo(RhythmGuitarist)",
                 Panel::Bass => "PanelVideo(Bass)",
                 Panel::Drums => "PanelVideo(Drums)",
+            },
+            Message::TogglePanelAutoViewport(panel) => match panel {
+                Panel::LeadVocalist => "TogglePanelAutoViewport(LeadVocalist)",
+                Panel::LeadGuitarist => "TogglePanelAutoViewport(LeadGuitarist)",
+                Panel::RhythmGuitarist => "TogglePanelAutoViewport(RhythmGuitarist)",
+                Panel::Bass => "TogglePanelAutoViewport(Bass)",
+                Panel::Drums => "TogglePanelAutoViewport(Drums)",
             },
         }
     }
@@ -718,6 +726,10 @@ impl WelcomeUi {
                 if let Some(video) = self.panel_overlay_mut(panel) {
                     video.update(event);
                 }
+                Task::none()
+            }
+            Message::TogglePanelAutoViewport(panel) => {
+                self.toggle_panel_auto_viewport(panel);
                 Task::none()
             }
             Message::Panel(panel, event) => match panel {
@@ -896,7 +908,8 @@ impl WelcomeUi {
         content: Element<'a, jungle_vision::EjectedViewerMessage>,
         panel_kind: Panel,
     ) -> Element<'a, Message> {
-        let base = panel(label, content, panel_kind);
+        let auto_viewport_enabled = self.panel_auto_viewport_enabled(panel_kind);
+        let base = panel(label, content, panel_kind, auto_viewport_enabled);
         #[cfg(feature = "video")]
         if self.panel_playback(panel_kind).enabled {
             if let Some(overlay) = self
@@ -914,6 +927,66 @@ impl WelcomeUi {
         }
 
         base
+    }
+
+    fn panel_auto_viewport_enabled(&self, panel: Panel) -> bool {
+        match panel {
+            Panel::LeadVocalist => self
+                .lead_vocalist
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+            Panel::LeadGuitarist => self
+                .lead_guitarist
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+            Panel::RhythmGuitarist => self
+                .rhythm_guitarist
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+            Panel::Bass => self
+                .bass
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+            Panel::Drums => self
+                .drums
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+        }
+    }
+
+    fn toggle_panel_auto_viewport(&mut self, panel: Panel) {
+        match panel {
+            Panel::LeadVocalist => {
+                if let Some(viewer) = self.lead_vocalist.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+            Panel::LeadGuitarist => {
+                if let Some(viewer) = self.lead_guitarist.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+            Panel::RhythmGuitarist => {
+                if let Some(viewer) = self.rhythm_guitarist.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+            Panel::Bass => {
+                if let Some(viewer) = self.bass.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+            Panel::Drums => {
+                if let Some(viewer) = self.drums.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+        }
     }
 
     #[cfg(feature = "video")]
@@ -1176,10 +1249,28 @@ fn panel<'a>(
     label: &'a str,
     content: Element<'a, jungle_vision::EjectedViewerMessage>,
     target: Panel,
+    auto_viewport_enabled: bool,
 ) -> Element<'a, Message> {
+    let lock_label = if auto_viewport_enabled {
+        "Lock: On"
+    } else {
+        "Lock: Off"
+    };
+    let lock_button = button(
+        text(lock_label)
+            .size(11)
+            .color(Color::from_rgb8(223, 245, 230)),
+    )
+    .padding([3, 8])
+    .style(move |theme, status| panel_lock_button_style(auto_viewport_enabled, theme, status))
+    .on_press(Message::TogglePanelAutoViewport(target));
+
     container(
         column![
-            text(label).size(13).color(Color::from_rgb8(198, 229, 211)),
+            Row::new()
+                .push(text(label).size(13).color(Color::from_rgb8(198, 229, 211)))
+                .push(Space::new().width(Length::Fill))
+                .push(lock_button),
             container(content.map(move |event| Message::Panel(target, event)))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -1204,6 +1295,33 @@ fn panel_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(Color::from_rgb8(10, 26, 17))),
         border: iced::border::rounded(8)
+            .color(Color::from_rgb8(24, 63, 43))
+            .width(1.0),
+        ..Default::default()
+    }
+}
+
+fn panel_lock_button_style(
+    enabled: bool,
+    _theme: &iced::Theme,
+    status: button::Status,
+) -> iced::widget::button::Style {
+    let background = if enabled {
+        match status {
+            button::Status::Hovered => Color::from_rgb8(28, 89, 55),
+            _ => Color::from_rgb8(20, 71, 45),
+        }
+    } else {
+        match status {
+            button::Status::Hovered => Color::from_rgb8(89, 60, 26),
+            _ => Color::from_rgb8(71, 48, 20),
+        }
+    };
+
+    iced::widget::button::Style {
+        background: Some(iced::Background::Color(background)),
+        text_color: Color::from_rgb8(223, 245, 230),
+        border: iced::border::rounded(6)
             .color(Color::from_rgb8(24, 63, 43))
             .width(1.0),
         ..Default::default()

@@ -135,12 +135,7 @@ pub struct Pluck<
 );
 
 #[derive(Flow)]
-pub struct StrumPair<
-    const NOTE_1: u8,
-    const NOTE_2: u8,
-    const NOTE_TICK: u32,
-    const LANE_ID: u8,
->(
+pub struct StrumPair<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const LANE_ID: u8>(
     Join<Step<Pick<NOTE_1, NOTE_TICK, 0, LANE_ID>>, Step<Pick<NOTE_2, NOTE_TICK, 0, LANE_ID>>>,
     Step<MergeUnit>,
 );

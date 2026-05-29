@@ -780,12 +780,7 @@ where
     L: BindFlow<A, Scope>,
     R: BindFlow<A, Scope>,
 {
-    type Out = Conditional<
-        P,
-        <L as BindFlow<A, Scope>>::Out,
-        <R as BindFlow<A, Scope>>::Out,
-        M,
-    >;
+    type Out = Conditional<P, <L as BindFlow<A, Scope>>::Out, <R as BindFlow<A, Scope>>::Out, M>;
 }
 
 impl<A, Scope, C, F, M> BindFlow<A, Scope> for While<C, F, M>
@@ -810,11 +805,7 @@ where
     L: BindFlow<A, Scope>,
     R: BindFlow<A, Scope>,
 {
-    type Out = Select<
-        <L as BindFlow<A, Scope>>::Out,
-        <R as BindFlow<A, Scope>>::Out,
-        M,
-    >;
+    type Out = Select<<L as BindFlow<A, Scope>>::Out, <R as BindFlow<A, Scope>>::Out, M>;
 }
 
 impl<A, Scope, L, R, M> BindFlow<A, Scope> for Join<L, R, M>
@@ -823,11 +814,7 @@ where
     L: BindFlow<A, Scope>,
     R: BindFlow<A, Scope>,
 {
-    type Out = Join<
-        <L as BindFlow<A, Scope>>::Out,
-        <R as BindFlow<A, Scope>>::Out,
-        M,
-    >;
+    type Out = Join<<L as BindFlow<A, Scope>>::Out, <R as BindFlow<A, Scope>>::Out, M>;
 }
 
 impl<A, View, F> BindFlow<A, RootScope> for Scoped<View, F>
@@ -847,10 +834,7 @@ where
     View: 'static,
     F: BindFlow<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>,
 {
-    type Out = <F as BindFlow<
-        A,
-        behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>,
-    >>::Out;
+    type Out = <F as BindFlow<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>>::Out;
 }
 
 impl<F, A> BindWithFlowScope<A, RootFlowScope> for F
@@ -982,7 +966,8 @@ where
     F: TraverseFlowShape,
     <F as TraverseFlowShape>::Output: ScopedFieldListNormalize,
 {
-    type Output = Scoped<View, <<F as TraverseFlowShape>::Output as ScopedFieldListNormalize>::Output>;
+    type Output =
+        Scoped<View, <<F as TraverseFlowShape>::Output as ScopedFieldListNormalize>::Output>;
 }
 
 impl TraverseFlow for VariantHeader {

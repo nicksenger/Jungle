@@ -65,9 +65,7 @@ pub fn articulation_layers(articulation: VocalsArticulation) -> &'static [Playba
     }
 }
 
-pub fn synthesize_vocals(
-    note: &Note<VocalsArticulation>,
-) -> (Arc<[f32]>, f32, f32) {
+pub fn synthesize_vocals(note: &Note<VocalsArticulation>) -> (Arc<[f32]>, f32, f32) {
     if let VocalsArticulation::Formant(phonemes) = note.articulation {
         if let Some(formant) = synthesize_formant_vocals(note, phonemes) {
             return formant;

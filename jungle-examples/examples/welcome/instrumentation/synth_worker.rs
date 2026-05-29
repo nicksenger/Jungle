@@ -8,15 +8,10 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info, trace, warn};
 
 use super::{
-    bass::BassArticulation,
-    cymbal::CymbalArticulation,
-    electric_guitar::ElectricGuitarArticulation,
-    hihat::HiHatArticulation,
-    kick_drum::KickDrumArticulation,
-    snare_drum::SnareDrumArticulation,
-    toms::TomsArticulation,
-    vocals::VocalsArticulation,
-    Error, Note,
+    bass::BassArticulation, cymbal::CymbalArticulation,
+    electric_guitar::ElectricGuitarArticulation, hihat::HiHatArticulation,
+    kick_drum::KickDrumArticulation, snare_drum::SnareDrumArticulation, toms::TomsArticulation,
+    vocals::VocalsArticulation, Error, Note,
 };
 
 const DEFAULT_SYNTH_WORKER_THREADS: usize = 9;
@@ -147,9 +142,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "snare_drum",
             move |response| SynthRequest::SnareDrum { note, response },
-            move || {
-                welcome_audio::dsp::snare_drum::synthesize_snare_drum(&to_dsp_note(note, ()))
-            },
+            move || welcome_audio::dsp::snare_drum::synthesize_snare_drum(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -357,25 +350,28 @@ fn run_synth_request(worker_index: usize, request: SynthRequest) {
     match request {
         SynthRequest::Bass { note, response } => {
             let _ = response.send(welcome_audio::dsp::bass::synthesize_bass(&to_dsp_note(
-                note, (),
+                note,
+                (),
             )));
         }
         SynthRequest::Cymbal { note, response } => {
             let _ = response.send(welcome_audio::dsp::cymbal::synthesize_cymbal(&to_dsp_note(
-                note, (),
+                note,
+                (),
             )));
         }
         SynthRequest::ElectricGuitar { note, response } => {
-            let _ = response.send(welcome_audio::dsp::electric_guitar::synthesize_electric_guitar(
-                &to_dsp_note(
+            let _ = response.send(
+                welcome_audio::dsp::electric_guitar::synthesize_electric_guitar(&to_dsp_note(
                     note,
                     to_dsp_electric_guitar_articulation(note.articulation),
-                ),
-            ));
+                )),
+            );
         }
         SynthRequest::HiHat { note, response } => {
             let _ = response.send(welcome_audio::dsp::hihat::synthesize_hihat(&to_dsp_note(
-                note, (),
+                note,
+                (),
             )));
         }
         SynthRequest::KickDrum { note, response } => {
@@ -390,7 +386,8 @@ fn run_synth_request(worker_index: usize, request: SynthRequest) {
         }
         SynthRequest::Toms { note, response } => {
             let _ = response.send(welcome_audio::dsp::toms::synthesize_toms(&to_dsp_note(
-                note, (),
+                note,
+                (),
             )));
         }
         SynthRequest::Vocals { note, response } => {
@@ -436,10 +433,12 @@ fn to_dsp_note<A, B>(note: Note<A>, articulation: B) -> welcome_audio::dsp::Note
         n_midi: note.n_midi,
         duration: note.duration,
         velocity: note.velocity,
-        expression: note.expression.map(|expression| welcome_audio::dsp::Expression {
-            bend: expression.bend,
-            vibrato: expression.vibrato,
-        }),
+        expression: note
+            .expression
+            .map(|expression| welcome_audio::dsp::Expression {
+                bend: expression.bend,
+                vibrato: expression.vibrato,
+            }),
         articulation,
     }
 }

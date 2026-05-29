@@ -1,5 +1,5 @@
-mod mixer;
 pub mod dsp;
+mod mixer;
 pub mod vocals;
 
 use std::sync::{
