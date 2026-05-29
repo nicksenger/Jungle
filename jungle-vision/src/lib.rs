@@ -2538,21 +2538,19 @@ pub struct DefaultThemeState {
     node_visuals: HashMap<u32, NodeVisual>,
     cluster_index: HashMap<u32, ClusterRuntimeIndex>,
     cluster_visuals: HashMap<u32, ClusterVisual>,
-    condition_successor_runtime_ids: HashMap<u32, Vec<u32>>,
     force_pending_runtime_ids: HashSet<u32>,
-    runtime_update_counter: u64,
-    runtime_update_order: HashMap<u32, u64>,
 }
 
 impl DefaultThemeState {
     fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>) {
-        let index = ClusterRuntimeIndex {
-            kind: cx.kind,
-            entry_runtime_ids: cx.entry_runtime_ids.iter().copied().collect(),
-            member_runtime_ids: cx.member_runtime_ids.iter().copied().collect(),
-            successor_runtime_ids: cx.successor_runtime_ids.iter().copied().collect(),
-        };
-        self.cluster_index.insert(cx.cluster_id, index);
+        self.cluster_index
+            .entry(cx.cluster_id)
+            .or_insert_with(|| ClusterRuntimeIndex {
+                kind: cx.kind,
+                entry_runtime_ids: cx.entry_runtime_ids.iter().copied().collect(),
+                member_runtime_ids: cx.member_runtime_ids.iter().copied().collect(),
+                successor_runtime_ids: cx.successor_runtime_ids.iter().copied().collect(),
+            });
         self.cluster_visuals
             .entry(cx.cluster_id)
             .or_insert(ClusterVisual {
@@ -2569,51 +2567,6 @@ impl DefaultThemeState {
             .unwrap_or(false)
     }
 
-    fn effective_node_target(&self, runtime_id: u32) -> RuntimeState {
-        let mut target = self
-            .node_visuals
-            .get(&runtime_id)
-            .map(|visual| visual.state)
-            .unwrap_or(RuntimeState::Pending);
-        if self.force_pending_runtime_ids.contains(&runtime_id)
-            && !matches!(target, RuntimeState::Running)
-        {
-            target = RuntimeState::Pending;
-        }
-        target
-    }
-
-    fn note_runtime_update(&mut self, runtime_id: u32) {
-        self.runtime_update_counter = self.runtime_update_counter.saturating_add(1);
-        self.runtime_update_order
-            .insert(runtime_id, self.runtime_update_counter);
-    }
-
-    fn infer_condition_target(
-        &self,
-        display_id: u32,
-        fallback_phase: Phase<RuntimeState>,
-    ) -> RuntimeState {
-        let mut newest: Option<(u64, RuntimeState)> = None;
-        if let Some(successors) = self.condition_successor_runtime_ids.get(&display_id) {
-            for runtime_id in successors {
-                let Some(order) = self.runtime_update_order.get(runtime_id).copied() else {
-                    continue;
-                };
-                let state = self.effective_node_target(*runtime_id);
-                if newest.map(|(best, _)| order > best).unwrap_or(true) {
-                    newest = Some((order, state));
-                }
-            }
-        }
-        newest
-            .map(|(_, state)| state)
-            .unwrap_or(match fallback_phase {
-                Phase::Live(state) => state,
-                Phase::Static => RuntimeState::Pending,
-            })
-    }
-
     fn update_node_state(&mut self, runtime_id: u32, to: RuntimeState) -> bool {
         if !matches!(to, RuntimeState::Pending) {
             self.force_pending_runtime_ids.remove(&runtime_id);
@@ -2627,7 +2580,6 @@ impl DefaultThemeState {
         }
 
         entry.state = to;
-        self.note_runtime_update(runtime_id);
         true
     }
 
@@ -2748,10 +2700,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
             node_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
-            condition_successor_runtime_ids: HashMap::new(),
             force_pending_runtime_ids: HashSet::new(),
-            runtime_update_counter: 0,
-            runtime_update_order: HashMap::new(),
         })
     }
 
@@ -2796,51 +2745,24 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
 
         let fill = if let Some(runtime_id) = cx.runtime_id {
-            if let Ok(mut guard) = state.try_lock() {
+            let mut phase_target = match cx.phase {
+                Phase::Live(target) => target,
+                Phase::Static => RuntimeState::Pending,
+            };
+            if let Ok(guard) = state.try_lock() {
                 let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
                     && cx.proxy_runtime_ids.is_empty();
-
-                let mut phase_target = match cx.phase {
-                    Phase::Live(target) => target,
-                    Phase::Static => RuntimeState::Pending,
-                };
                 if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                     phase_target = RuntimeState::Pending;
                 }
-                let _ = guard.update_node_state(runtime_id, phase_target);
-                runtime_color(phase_target)
-            } else {
-                let phase_target = match cx.phase {
-                    Phase::Live(target) => target,
-                    Phase::Static => RuntimeState::Pending,
-                };
-                runtime_color(phase_target)
             }
-        } else if matches!(cx.kind, StepKind::Conditional) {
-            if let Ok(mut guard) = state.try_lock() {
-                if !cx.successor_runtime_ids.is_empty() {
-                    let should_update = guard
-                        .condition_successor_runtime_ids
-                        .get(&cx.display_id)
-                        .map(Vec::as_slice)
-                        != Some(cx.successor_runtime_ids);
-                    if should_update {
-                        guard
-                            .condition_successor_runtime_ids
-                            .insert(cx.display_id, cx.successor_runtime_ids.to_vec());
-                    }
-                }
-                let phase_target = guard.infer_condition_target(cx.display_id, cx.phase);
-                runtime_color(phase_target)
-            } else {
-                let phase_target = match cx.phase {
-                    Phase::Live(target) => target,
-                    Phase::Static => RuntimeState::Pending,
-                };
-                runtime_color(phase_target)
-            }
+            runtime_color(phase_target)
         } else {
-            Color::from_rgb8(120, 120, 120)
+            let phase_target = match cx.phase {
+                Phase::Live(target) => target,
+                Phase::Static => RuntimeState::Pending,
+            };
+            runtime_color(phase_target)
         };
         (
             AnimatedStepNode::<ViewerEvent<Self::Message>>::new(
@@ -2901,33 +2823,20 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     }
 
     fn edge_style(&self, state: &Self::State, cx: EdgeStyleCtx) -> Option<EdgeStyle> {
-        let (from_color, to_color) = if let Some(runtime_id) = cx.source_runtime_id {
-            if let Ok(mut guard) = state.try_lock() {
+        let mut phase_target = match cx.source_phase {
+            Phase::Live(target) => target,
+            Phase::Static => RuntimeState::Pending,
+        };
+        if let Some(runtime_id) = cx.source_runtime_id {
+            if let Ok(guard) = state.try_lock() {
                 let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
                     && !cx.source_has_proxy_runtime;
-                let mut phase_target = match cx.source_phase {
-                    Phase::Live(target) => target,
-                    Phase::Static => RuntimeState::Pending,
-                };
                 if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                     phase_target = RuntimeState::Pending;
                 }
-                let _ = guard.update_node_state(runtime_id, phase_target);
-                let color = runtime_color(phase_target);
-                (color, color)
-            } else {
-                let phase_target = match cx.source_phase {
-                    Phase::Live(target) => target,
-                    Phase::Static => RuntimeState::Pending,
-                };
-                let color = runtime_color(phase_target);
-                (color, color)
             }
-        } else {
-            let phase_target = match cx.source_phase {
-                Phase::Live(target) => target,
-                Phase::Static => RuntimeState::Pending,
-            };
+        }
+        let (from_color, to_color) = {
             let color = runtime_color(phase_target);
             (color, color)
         };
@@ -3249,16 +3158,13 @@ mod tests {
     }
 
     #[test]
-    fn proxy_driven_node_ignores_forced_pending_when_completed() {
+    fn view_step_does_not_mutate_theme_state() {
         let theme = DefaultTheme;
         let state = Mutex::new(DefaultThemeState {
             node_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
-            condition_successor_runtime_ids: HashMap::new(),
             force_pending_runtime_ids: HashSet::from([42]),
-            runtime_update_counter: 0,
-            runtime_update_order: HashMap::new(),
         });
         let cx = StepViewCtx {
             display_id: 1,
@@ -3276,12 +3182,7 @@ mod tests {
         let guard = state
             .try_lock()
             .expect("theme state lock should be available");
-        let visual = guard
-            .node_visuals
-            .get(&42)
-            .copied()
-            .expect("node visual should be created");
-        assert_eq!(visual.state, RuntimeState::Completed);
+        assert!(guard.node_visuals.is_empty());
     }
 
     #[test]
@@ -3684,10 +3585,7 @@ mod tests {
             node_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
-            condition_successor_runtime_ids: HashMap::new(),
             force_pending_runtime_ids: HashSet::new(),
-            runtime_update_counter: 0,
-            runtime_update_order: HashMap::new(),
         };
 
         let started_at = Instant::now();
@@ -3736,10 +3634,7 @@ mod tests {
             node_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
-            condition_successor_runtime_ids: HashMap::new(),
             force_pending_runtime_ids: HashSet::new(),
-            runtime_update_counter: 0,
-            runtime_update_order: HashMap::new(),
         };
 
         let started_at = Instant::now();
@@ -3797,10 +3692,7 @@ mod tests {
             node_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
-            condition_successor_runtime_ids: HashMap::new(),
             force_pending_runtime_ids: HashSet::new(),
-            runtime_update_counter: 0,
-            runtime_update_order: HashMap::new(),
         };
 
         let started_at = Instant::now();
@@ -3882,10 +3774,7 @@ mod tests {
             node_visuals: HashMap::new(),
             cluster_index: HashMap::new(),
             cluster_visuals: HashMap::new(),
-            condition_successor_runtime_ids: HashMap::new(),
             force_pending_runtime_ids: HashSet::new(),
-            runtime_update_counter: 0,
-            runtime_update_order: HashMap::new(),
         };
 
         let started_at = Instant::now();
