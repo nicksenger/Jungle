@@ -11,21 +11,21 @@ mod bassist;
 #[cfg(feature = "drums")]
 mod drummer;
 #[cfg(feature = "leadguitar")]
-mod rhythm_guitarist;
+mod lead_guitarist;
 #[cfg(feature = "vocals")]
 mod lead_vocalist;
 #[cfg(feature = "rhythmguitar")]
-mod lead_guitarist;
+mod rhythm_guitarist;
 #[cfg(feature = "bass")]
 pub use bassist::*;
 #[cfg(feature = "drums")]
 pub use drummer::*;
 #[cfg(feature = "leadguitar")]
-pub use rhythm_guitarist::*;
+pub use lead_guitarist::*;
 #[cfg(feature = "vocals")]
 pub use lead_vocalist::*;
 #[cfg(feature = "rhythmguitar")]
-pub use lead_guitarist::*;
+pub use rhythm_guitarist::*;
 
 #[cfg(not(test))]
 #[derive(Animals)]
@@ -54,9 +54,9 @@ impl Default for LeadGuitaristState {
 impl Animal for LeadGuitarist {
     type State = LeadGuitaristState;
     type Seed = ();
-    #[cfg(feature = "rhythmguitar")]
+    #[cfg(feature = "leadguitar")]
     type Journey = LeadGuitarFlow;
-    #[cfg(not(feature = "rhythmguitar"))]
+    #[cfg(not(feature = "leadguitar"))]
     type Journey = StubFlow<(), LeadGuitaristState>;
 }
 
@@ -541,9 +541,9 @@ impl Default for RhythmGuitaristState {
 impl Animal for RhythmGuitarist {
     type State = RhythmGuitaristState;
     type Seed = ();
-    #[cfg(feature = "leadguitar")]
+    #[cfg(feature = "rhythmguitar")]
     type Journey = RhythmGuitarIntro;
-    #[cfg(not(feature = "leadguitar"))]
+    #[cfg(not(feature = "rhythmguitar"))]
     type Journey = StubFlow<(), RhythmGuitaristState>;
 }
 
