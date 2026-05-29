@@ -26,32 +26,85 @@ const UI_TICK_INTERVAL: Duration = Duration::from_millis(500);
 const LOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#;
 const UNLOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M16 11V7a4 4 0 0 0-7.5-2"/></svg>"#;
 #[cfg(feature = "video")]
-const AV_OVERLAY_SOURCES: [(&str, &[u8]); 21] = [
-    ("baboons.mkv", include_bytes!("../assets/baboons.mkv")),
-    ("chimp.mkv", include_bytes!("../assets/chimp.mkv")),
-    (
-        "chimpattack.mkv",
-        include_bytes!("../assets/chimpattack.mkv"),
-    ),
-    ("croc.mkv", include_bytes!("../assets/croc.mkv")),
-    ("crocstrike.mkv", include_bytes!("../assets/crocstrike.mkv")),
-    ("elephants.mkv", include_bytes!("../assets/elephants.mkv")),
-    ("giraffe.mkv", include_bytes!("../assets/giraffe.mkv")),
-    ("hippo.mkv", include_bytes!("../assets/hippo.mkv")),
-    ("jackfruit.mkv", include_bytes!("../assets/jackfruit.mkv")),
-    ("jaguar.mkv", include_bytes!("../assets/jaguar.mkv")),
-    ("jaguar2.mkv", include_bytes!("../assets/jaguar2.mkv")),
-    ("jungle.mkv", include_bytes!("../assets/jungle.mkv")),
-    ("lions.mkv", include_bytes!("../assets/lions.mkv")),
-    ("monkey.mkv", include_bytes!("../assets/monkey.mkv")),
-    ("ostrich.mkv", include_bytes!("../assets/ostrich.mkv")),
-    ("panic.mkv", include_bytes!("../assets/panic.mkv")),
-    ("serpentine.mkv", include_bytes!("../assets/serpentine.mkv")),
-    ("shrooms.mkv", include_bytes!("../assets/shrooms.mkv")),
-    ("toucan.mkv", include_bytes!("../assets/toucan.mkv")),
-    ("toucanfly.mkv", include_bytes!("../assets/toucanfly.mkv")),
-    ("zebra.mkv", include_bytes!("../assets/zebra.mkv")),
-];
+#[derive(Debug, Clone, Copy)]
+enum VideoAsset {
+    Baboons,
+    Chimp,
+    ChimpAttack,
+    Croc,
+    CrocStrike,
+    Elephants,
+    Giraffe,
+    Hippo,
+    Jackfruit,
+    Jaguar,
+    Jaguar2,
+    Jungle,
+    Lions,
+    Monkey,
+    Ostrich,
+    Panic,
+    Serpentine,
+    Shrooms,
+    Toucan,
+    ToucanFly,
+    Zebra,
+}
+
+#[cfg(feature = "video")]
+impl VideoAsset {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Baboons => "baboons.mkv",
+            Self::Chimp => "chimp.mkv",
+            Self::ChimpAttack => "chimpattack.mkv",
+            Self::Croc => "croc.mkv",
+            Self::CrocStrike => "crocstrike.mkv",
+            Self::Elephants => "elephants.mkv",
+            Self::Giraffe => "giraffe.mkv",
+            Self::Hippo => "hippo.mkv",
+            Self::Jackfruit => "jackfruit.mkv",
+            Self::Jaguar => "jaguar.mkv",
+            Self::Jaguar2 => "jaguar2.mkv",
+            Self::Jungle => "jungle.mkv",
+            Self::Lions => "lions.mkv",
+            Self::Monkey => "monkey.mkv",
+            Self::Ostrich => "ostrich.mkv",
+            Self::Panic => "panic.mkv",
+            Self::Serpentine => "serpentine.mkv",
+            Self::Shrooms => "shrooms.mkv",
+            Self::Toucan => "toucan.mkv",
+            Self::ToucanFly => "toucanfly.mkv",
+            Self::Zebra => "zebra.mkv",
+        }
+    }
+
+    const fn bytes(self) -> &'static [u8] {
+        match self {
+            Self::Baboons => include_bytes!("../assets/baboons.mkv"),
+            Self::Chimp => include_bytes!("../assets/chimp.mkv"),
+            Self::ChimpAttack => include_bytes!("../assets/chimpattack.mkv"),
+            Self::Croc => include_bytes!("../assets/croc.mkv"),
+            Self::CrocStrike => include_bytes!("../assets/crocstrike.mkv"),
+            Self::Elephants => include_bytes!("../assets/elephants.mkv"),
+            Self::Giraffe => include_bytes!("../assets/giraffe.mkv"),
+            Self::Hippo => include_bytes!("../assets/hippo.mkv"),
+            Self::Jackfruit => include_bytes!("../assets/jackfruit.mkv"),
+            Self::Jaguar => include_bytes!("../assets/jaguar.mkv"),
+            Self::Jaguar2 => include_bytes!("../assets/jaguar2.mkv"),
+            Self::Jungle => include_bytes!("../assets/jungle.mkv"),
+            Self::Lions => include_bytes!("../assets/lions.mkv"),
+            Self::Monkey => include_bytes!("../assets/monkey.mkv"),
+            Self::Ostrich => include_bytes!("../assets/ostrich.mkv"),
+            Self::Panic => include_bytes!("../assets/panic.mkv"),
+            Self::Serpentine => include_bytes!("../assets/serpentine.mkv"),
+            Self::Shrooms => include_bytes!("../assets/shrooms.mkv"),
+            Self::Toucan => include_bytes!("../assets/toucan.mkv"),
+            Self::ToucanFly => include_bytes!("../assets/toucanfly.mkv"),
+            Self::Zebra => include_bytes!("../assets/zebra.mkv"),
+        }
+    }
+}
 #[cfg(feature = "video")]
 const VIDEO_FADE_IN: Duration = Duration::from_millis(180);
 #[cfg(feature = "video")]
@@ -453,11 +506,34 @@ impl Panel {
         Self::Bass,
         Self::Drums,
     ];
+
+    #[cfg(feature = "video")]
+    const fn name(self) -> &'static str {
+        match self {
+            Self::LeadVocalist => "lead_vocalist",
+            Self::RhythmGuitarist => "rhythm_guitarist",
+            Self::LeadGuitarist => "lead_guitarist",
+            Self::Bass => "bass",
+            Self::Drums => "drums",
+        }
+    }
+
+    #[cfg(feature = "video")]
+    const fn video_region_name(self) -> &'static str {
+        match self {
+            Self::LeadVocalist => "lead vocalist panel overlay",
+            Self::RhythmGuitarist => "rhythm guitarist panel overlay",
+            Self::LeadGuitarist => "lead guitarist panel overlay",
+            Self::Bass => "bass panel overlay",
+            Self::Drums => "drums panel overlay",
+        }
+    }
 }
 
 #[cfg(feature = "video")]
 #[derive(Debug, Clone, Copy)]
 struct VideoPlaybackRequest {
+    video: VideoAsset,
     offset: Duration,
     duration: Duration,
     opacity: f32,
@@ -465,8 +541,9 @@ struct VideoPlaybackRequest {
 
 #[cfg(feature = "video")]
 impl VideoPlaybackRequest {
-    const fn new(offset_ms: u64, duration_ms: u64, opacity: f32) -> Self {
+    const fn new(video: VideoAsset, offset_ms: u64, duration_ms: u64, opacity: f32) -> Self {
         Self {
+            video,
             offset: Duration::from_millis(offset_ms),
             duration: Duration::from_millis(duration_ms),
             opacity,
@@ -503,7 +580,7 @@ impl TickPlaybackPlan {
 const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
     TickPlaybackPlan {
         tick: 0,
-        app_overlay: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        app_overlay: Some(VideoPlaybackRequest::new(VideoAsset::Jungle, 0, 2_000, 0.3)),
         lead_vocalist_panel: None,
         rhythm_guitarist_panel: None,
         lead_guitarist_panel: None,
@@ -513,11 +590,21 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
     TickPlaybackPlan {
         tick: 4,
         app_overlay: None,
-        lead_vocalist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
-        rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
-        lead_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
-        bass_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
-        drums_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        lead_vocalist_panel: Some(VideoPlaybackRequest::new(VideoAsset::Toucan, 0, 2_000, 0.3)),
+        rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(
+            VideoAsset::Serpentine,
+            0,
+            2_000,
+            0.3,
+        )),
+        lead_guitarist_panel: Some(VideoPlaybackRequest::new(VideoAsset::Jaguar, 0, 2_000, 0.3)),
+        bass_panel: Some(VideoPlaybackRequest::new(VideoAsset::Hippo, 0, 2_000, 0.3)),
+        drums_panel: Some(VideoPlaybackRequest::new(
+            VideoAsset::CrocStrike,
+            0,
+            2_000,
+            0.3,
+        )),
     },
     TickPlaybackPlan {
         tick: 40,
@@ -634,8 +721,6 @@ struct WelcomeUi {
     bass_panel_playback: RegionPlayback,
     #[cfg(feature = "video")]
     drums_panel_playback: RegionPlayback,
-    #[cfg(feature = "video")]
-    video_source_cursor: usize,
     shutdown: ShutdownFlag,
 }
 
@@ -673,42 +758,42 @@ impl WelcomeUi {
         });
 
         #[cfg(feature = "video")]
-        let (_, initial_video_bytes) = video_source_at_index(0);
+        let initial_video = VideoAsset::Jungle;
         #[cfg(feature = "video")]
         let app_overlay = init_video_state(
             "app overlay",
             iced_av1::ScaleMode::Stretch,
-            initial_video_bytes,
+            initial_video.bytes(),
         );
         #[cfg(feature = "video")]
         let lead_vocalist_panel_overlay = init_video_state(
             "lead vocalist panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video_bytes,
+            initial_video.bytes(),
         );
         #[cfg(feature = "video")]
         let rhythm_guitarist_panel_overlay = init_video_state(
             "rhythm guitarist panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video_bytes,
+            initial_video.bytes(),
         );
         #[cfg(feature = "video")]
         let lead_guitarist_panel_overlay = init_video_state(
             "lead guitarist panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video_bytes,
+            initial_video.bytes(),
         );
         #[cfg(feature = "video")]
         let bass_panel_overlay = init_video_state(
             "bass panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video_bytes,
+            initial_video.bytes(),
         );
         #[cfg(feature = "video")]
         let drums_panel_overlay = init_video_state(
             "drums panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video_bytes,
+            initial_video.bytes(),
         );
         (
             Self {
@@ -744,8 +829,6 @@ impl WelcomeUi {
                 bass_panel_playback: RegionPlayback::hidden(),
                 #[cfg(feature = "video")]
                 drums_panel_playback: RegionPlayback::hidden(),
-                #[cfg(feature = "video")]
-                video_source_cursor: 1,
                 shutdown,
             },
             Task::none(),
@@ -1065,22 +1148,18 @@ impl WelcomeUi {
                 continue;
             }
 
-            if plan.app_overlay.is_some()
-                || Panel::ALL
-                    .into_iter()
-                    .any(|panel| plan.panel_request(panel).is_some())
-            {
-                let (video_name, video_bytes) = self.next_video_source();
-                info!(
-                    tick = plan.tick,
-                    video = video_name,
-                    "selected welcome video for playback plan tick"
-                );
-                self.reinitialize_video_overlays(video_bytes);
-            }
-
             let now = Instant::now();
             if let Some(request) = plan.app_overlay {
+                self.app_overlay = init_video_state(
+                    "app overlay",
+                    iced_av1::ScaleMode::Stretch,
+                    request.video.bytes(),
+                );
+                info!(
+                    tick = plan.tick,
+                    video = request.video.name(),
+                    "selected app overlay video from playback request"
+                );
                 Self::start_region_playback(
                     self.app_overlay.as_ref(),
                     &mut self.app_overlay_playback,
@@ -1096,6 +1175,13 @@ impl WelcomeUi {
 
             for panel in Panel::ALL {
                 if let Some(request) = plan.panel_request(panel) {
+                    self.reinitialize_panel_overlay(panel, request.video);
+                    info!(
+                        tick = plan.tick,
+                        panel = panel.name(),
+                        video = request.video.name(),
+                        "selected panel overlay video from playback request"
+                    );
                     let (overlay, playback) = self.panel_slot_mut(panel);
                     Self::start_region_playback(overlay.as_ref(), playback, request, now);
                 } else {
@@ -1289,41 +1375,19 @@ impl WelcomeUi {
     }
 
     #[cfg(feature = "video")]
-    fn next_video_source(&mut self) -> (&'static str, &'static [u8]) {
-        let source = video_source_at_index(self.video_source_cursor);
-        self.video_source_cursor = self.video_source_cursor.wrapping_add(1);
-        source
-    }
-
-    #[cfg(feature = "video")]
-    fn reinitialize_video_overlays(&mut self, video_bytes: &'static [u8]) {
-        self.app_overlay =
-            init_video_state("app overlay", iced_av1::ScaleMode::Stretch, video_bytes);
-        self.lead_vocalist_panel_overlay = init_video_state(
-            "lead vocalist panel overlay",
+    fn reinitialize_panel_overlay(&mut self, panel: Panel, video: VideoAsset) {
+        let overlay = init_video_state(
+            panel.video_region_name(),
             iced_av1::ScaleMode::Cover { offset: 0.5 },
-            video_bytes,
+            video.bytes(),
         );
-        self.rhythm_guitarist_panel_overlay = init_video_state(
-            "rhythm guitarist panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            video_bytes,
-        );
-        self.lead_guitarist_panel_overlay = init_video_state(
-            "lead guitarist panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            video_bytes,
-        );
-        self.bass_panel_overlay = init_video_state(
-            "bass panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            video_bytes,
-        );
-        self.drums_panel_overlay = init_video_state(
-            "drums panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            video_bytes,
-        );
+        match panel {
+            Panel::LeadVocalist => self.lead_vocalist_panel_overlay = overlay,
+            Panel::RhythmGuitarist => self.rhythm_guitarist_panel_overlay = overlay,
+            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay = overlay,
+            Panel::Bass => self.bass_panel_overlay = overlay,
+            Panel::Drums => self.drums_panel_overlay = overlay,
+        }
     }
 }
 
@@ -1367,11 +1431,6 @@ fn init_video_state(
 #[cfg(feature = "video")]
 fn map_panel_video_message(message: iced_av1::widget::Message) -> iced_av1::widget::Message {
     message
-}
-
-#[cfg(feature = "video")]
-fn video_source_at_index(index: usize) -> (&'static str, &'static [u8]) {
-    AV_OVERLAY_SOURCES[index % AV_OVERLAY_SOURCES.len()]
 }
 
 #[cfg(feature = "video")]
