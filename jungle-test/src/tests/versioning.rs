@@ -41,8 +41,8 @@ impl<J> Effect<J> for ModernEffect {
 }
 
 pub struct LegacyStepSpec;
-#[jungle::act]
-impl Act for LegacyStepSpec {
+#[jungle::action]
+impl Action for LegacyStepSpec {
     type Effect = LegacyEffect;
     type Input = i32;
     type Output = ();
@@ -55,8 +55,8 @@ impl Act for LegacyStepSpec {
 }
 
 pub struct ModernStepSpec;
-#[jungle::act]
-impl Act for ModernStepSpec {
+#[jungle::action]
+impl Action for ModernStepSpec {
     type Effect = ModernEffect;
     type Input = i32;
     type Output = ();

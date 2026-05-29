@@ -29,8 +29,8 @@ impl Animal for Looper {
 }
 
 pub struct TickSpec;
-#[jungle::act]
-impl Act for TickSpec {
+#[jungle::action]
+impl Action for TickSpec {
     type Effect = TickEffect;
     type Input = i32;
     type Output = (bool, i32);
@@ -46,14 +46,12 @@ impl Act for TickSpec {
     }
 }
 
-type TickFlow = BoundFlowStep<Looper, <TickSpec as Act>::Bind<Looper>>;
+type TickFlow = BoundFlowStep<Looper, <TickSpec as Action>::Bind<Looper>>;
 
 pub struct LessThanThree;
-impl LoopCondition<i32> for LessThanThree {
-    type Arg = i32;
-
-    fn should_continue(state: &i32) -> bool {
-        *state < 3
+impl Predicate<(&i32, &i32)> for LessThanThree {
+    fn eval((state, _): &(&i32, &i32)) -> bool {
+        **state < 3
     }
 }
 type WhileTickFlow = While<LessThanThree, TickFlow>;
@@ -87,8 +85,8 @@ impl Animal for LooperWithTail {
 }
 
 pub struct TailAfterLoopSpec;
-#[jungle::act]
-impl Act for TailAfterLoopSpec {
+#[jungle::action]
+impl Action for TailAfterLoopSpec {
     type Effect = TailEchoEffect;
     type Input = (bool, i32);
     type Output = i32;
@@ -147,26 +145,22 @@ impl Animal for NestedLooper {
 }
 
 pub struct InnerContinue;
-impl LoopCondition<NestedState> for InnerContinue {
-    type Arg = ();
-
-    fn should_continue(state: &NestedState) -> bool {
+impl Predicate<(&NestedState, &())> for InnerContinue {
+    fn eval((state, _): &(&NestedState, &())) -> bool {
         state.inner_step < 2
     }
 }
 
 pub struct OuterContinue;
-impl LoopCondition<NestedState> for OuterContinue {
-    type Arg = ();
-
-    fn should_continue(state: &NestedState) -> bool {
+impl Predicate<(&NestedState, &())> for OuterContinue {
+    fn eval((state, _): &(&NestedState, &())) -> bool {
         state.outer_round < 3
     }
 }
 
 pub struct InnerWorkSpec;
-#[jungle::act]
-impl Act for InnerWorkSpec {
+#[jungle::action]
+impl Action for InnerWorkSpec {
     type Effect = UnitEffect;
     type Input = ();
     type Output = ();
@@ -179,8 +173,8 @@ impl Act for InnerWorkSpec {
 }
 
 pub struct FinishOuterRoundSpec;
-#[jungle::act]
-impl Act for FinishOuterRoundSpec {
+#[jungle::action]
+impl Action for FinishOuterRoundSpec {
     type Effect = UnitEffect;
     type Input = ();
     type Output = ();
@@ -211,8 +205,8 @@ impl<J> Effect<J> for EchoBoolEffect {
 }
 
 pub struct InlineNoopFalseSpec;
-#[jungle::act]
-impl Act for InlineNoopFalseSpec {
+#[jungle::action]
+impl Action for InlineNoopFalseSpec {
     type Effect = Noop;
     type Input = ();
     type Output = bool;
@@ -226,8 +220,8 @@ impl Act for InlineNoopFalseSpec {
 }
 
 pub struct EchoBoolSpec;
-#[jungle::act]
-impl Act for EchoBoolSpec {
+#[jungle::action]
+impl Action for EchoBoolSpec {
     type Effect = EchoBoolEffect;
     type Input = bool;
     type Output = ();
@@ -244,11 +238,9 @@ impl Act for EchoBoolSpec {
 }
 
 pub struct RunOnce;
-impl LoopCondition<u8> for RunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &u8) -> bool {
-        *state == 0
+impl Predicate<(&u8, &())> for RunOnce {
+    fn eval((state, _): &(&u8, &())) -> bool {
+        **state == 0
     }
 }
 
@@ -268,20 +260,16 @@ impl Animal for WhileInlineNoopThenEffectAnimal {
 }
 
 pub struct InnerRunOnce;
-impl LoopCondition<u8> for InnerRunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &u8) -> bool {
-        *state == 0
+impl Predicate<(&u8, &())> for InnerRunOnce {
+    fn eval((state, _): &(&u8, &())) -> bool {
+        **state == 0
     }
 }
 
 pub struct OuterRunOnce;
-impl LoopCondition<u8> for OuterRunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &u8) -> bool {
-        *state == 0
+impl Predicate<(&u8, &())> for OuterRunOnce {
+    fn eval((state, _): &(&u8, &())) -> bool {
+        **state == 0
     }
 }
 
@@ -307,26 +295,22 @@ pub struct NestedInlineCarryState {
 }
 
 pub struct NestedInlineInnerRunOnce;
-impl LoopCondition<NestedInlineCarryState> for NestedInlineInnerRunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &NestedInlineCarryState) -> bool {
+impl Predicate<(&NestedInlineCarryState, &())> for NestedInlineInnerRunOnce {
+    fn eval((state, _): &(&NestedInlineCarryState, &())) -> bool {
         !state.inner_done
     }
 }
 
 pub struct NestedInlineOuterRunOnce;
-impl LoopCondition<NestedInlineCarryState> for NestedInlineOuterRunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &NestedInlineCarryState) -> bool {
+impl Predicate<(&NestedInlineCarryState, &())> for NestedInlineOuterRunOnce {
+    fn eval((state, _): &(&NestedInlineCarryState, &())) -> bool {
         !state.outer_done
     }
 }
 
 pub struct NestedInlineInnerNoopFalseSpec;
-#[jungle::act]
-impl Act for NestedInlineInnerNoopFalseSpec {
+#[jungle::action]
+impl Action for NestedInlineInnerNoopFalseSpec {
     type Effect = Noop;
     type Input = ();
     type Output = bool;
@@ -344,8 +328,8 @@ impl Act for NestedInlineInnerNoopFalseSpec {
 }
 
 pub struct NestedInlineOuterEchoBoolSpec;
-#[jungle::act]
-impl Act for NestedInlineOuterEchoBoolSpec {
+#[jungle::action]
+impl Action for NestedInlineOuterEchoBoolSpec {
     type Effect = EchoBoolEffect;
     type Input = bool;
     type Output = ();
@@ -373,17 +357,15 @@ pub struct RhythmLikeLoopState {
 }
 
 pub struct RhythmLikeLoopRemaining;
-impl LoopCondition<RhythmLikeLoopState> for RhythmLikeLoopRemaining {
-    type Arg = ();
-
-    fn should_continue(state: &RhythmLikeLoopState) -> bool {
+impl Predicate<(&RhythmLikeLoopState, &())> for RhythmLikeLoopRemaining {
+    fn eval((state, _): &(&RhythmLikeLoopState, &())) -> bool {
         state.loops_remaining > 0
     }
 }
 
 pub struct UseRhythmLikeFinalTail;
-impl Condition<(RhythmLikeLoopState, ())> for UseRhythmLikeFinalTail {
-    fn choose((state, _): &(RhythmLikeLoopState, ())) -> bool {
+impl Predicate<(RhythmLikeLoopState, ())> for UseRhythmLikeFinalTail {
+    fn eval((state, _): &(RhythmLikeLoopState, ())) -> bool {
         state.choose_final_tail
     }
 }
@@ -394,8 +376,8 @@ impl NodeMetadata for IntroSectionMeta {
 }
 
 pub struct RhythmLikeJoinLeftSpec;
-#[jungle::act]
-impl Act for RhythmLikeJoinLeftSpec {
+#[jungle::action]
+impl Action for RhythmLikeJoinLeftSpec {
     type Effect = TickEffect;
     type Input = ();
     type Output = ();
@@ -410,8 +392,8 @@ impl Act for RhythmLikeJoinLeftSpec {
 }
 
 pub struct RhythmLikeJoinRightSpec;
-#[jungle::act]
-impl Act for RhythmLikeJoinRightSpec {
+#[jungle::action]
+impl Action for RhythmLikeJoinRightSpec {
     type Effect = TickEffect;
     type Input = ();
     type Output = ();
@@ -426,8 +408,8 @@ impl Act for RhythmLikeJoinRightSpec {
 }
 
 pub struct RhythmLikeMergeUnitSpec;
-#[jungle::act]
-impl Act for RhythmLikeMergeUnitSpec {
+#[jungle::action]
+impl Action for RhythmLikeMergeUnitSpec {
     type Effect = Noop;
     type Input = ((), ());
     type Output = ();
@@ -440,8 +422,8 @@ impl Act for RhythmLikeMergeUnitSpec {
 }
 
 pub struct RhythmLikePostMergeRestSpec;
-#[jungle::act]
-impl Act for RhythmLikePostMergeRestSpec {
+#[jungle::action]
+impl Action for RhythmLikePostMergeRestSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
@@ -456,8 +438,8 @@ impl Act for RhythmLikePostMergeRestSpec {
 }
 
 pub struct RhythmLikeDecrementLoopSpec;
-#[jungle::act]
-impl Act for RhythmLikeDecrementLoopSpec {
+#[jungle::action]
+impl Action for RhythmLikeDecrementLoopSpec {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -474,8 +456,8 @@ impl Act for RhythmLikeDecrementLoopSpec {
 }
 
 pub struct RhythmLikeMergeChoiceSpec;
-#[jungle::act]
-impl Act for RhythmLikeMergeChoiceSpec {
+#[jungle::action]
+impl Action for RhythmLikeMergeChoiceSpec {
     type Effect = Noop;
     type Input = Either<(), ()>;
     type Output = ();

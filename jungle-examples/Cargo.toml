@@ -6,17 +6,24 @@ edition = "2021"
 [features]
 default = []
 viewer = ["dep:jungle-vision", "dep:iced"]
-audio = ["dep:cpal", "dep:rustsam"]
+video = ["dep:iced-av1"]
+audio = ["dep:welcome-audio"]
 redb = []
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
 transport = []
+bass = []
+drums = []
+leadguitar = []
+vocals = []
+rhythmguitar = []
 
 [dependencies]
 futures = { workspace = true }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "local"] }
 jungle-vision = { path = "../jungle-vision", optional = true }
-iced = { version = "0.14", features = ["tokio"], optional = true }
-cpal = { version = "0.17", optional = true }
+iced = { version = "0.14", features = ["tokio", "svg"], optional = true }
+iced-av1 = { path = "../../iced-av1", optional = true }
+welcome-audio = { path = "examples/welcome/audio", optional = true }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
 thiserror = { workspace = true }
@@ -28,7 +35,6 @@ testcontainers = { version = "0.23", optional = true }
 testcontainers-modules = { version = "0.11", features = ["postgres"], optional = true }
 async-trait = { workspace = true }
 clap = { version = "4.6", features = ["derive"] }
-rustsam = { path = "../../rustsam", optional = true }
 
 [[example]]
 name = "welcome"

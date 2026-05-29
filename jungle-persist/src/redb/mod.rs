@@ -910,7 +910,10 @@ impl JungleStore for RedbStore {
                 if journey.namespace != namespace.as_str() {
                     continue;
                 }
-                if !matches!(journey.status, JourneyStatus::Created | JourneyStatus::Alive) {
+                if !matches!(
+                    journey.status,
+                    JourneyStatus::Created | JourneyStatus::Alive
+                ) {
                     continue;
                 }
                 if !supported_set.contains(&(journey.animal_id, journey.generation)) {

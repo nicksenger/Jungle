@@ -1,7 +1,7 @@
 use crate::{
-    Animal, BackendError, BoundAct, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Noop, Running, Scoped,
-    Select, Transparent, While,
+    Animal, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
+    Effect, EffectCompletion, EffectSchema, Either, Join, Noop, Running, Scoped, Select,
+    Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -38,7 +38,7 @@ pub trait ArgputForState<State> {
 impl<State, T, A> ArgputForState<State> for BoundFlowStep<T, A>
 where
     T: Animal<State = State>,
-    A: BoundAct<T>,
+    A: BoundAction<T>,
 {
     type Carry = A::Input;
 }
@@ -83,9 +83,9 @@ where
 
 impl<State, C, F, M> ArgputForState<State> for While<C, F, M>
 where
-    C: LoopCondition<State>,
+    F: FlowCarry<State>,
 {
-    type Carry = <C as LoopCondition<State>>::Arg;
+    type Carry = <F as FlowCarry<State>>::In;
 }
 
 impl<State> ArgputForState<State> for list::Empty {
@@ -368,8 +368,8 @@ pub trait StepCarry {
 impl<T, A> StepCarry for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: BoundAct<T>,
-    <A as BoundAct<T>>::Carry: Send,
+    A: BoundAction<T>,
+    <A as BoundAction<T>>::Carry: Send,
 {
     type Carry = A::Carry;
 }
@@ -414,14 +414,14 @@ where
 impl<T, A> ErasedFlow<T::State> for TypedErasedStep<BoundFlowStep<T, A>>
 where
     T: Animal,
-    A: BoundAct<T>,
-    <A as BoundAct<T>>::Carry: Send + 'static,
-    <A as BoundAct<T>>::Effect: Effect<()>,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize + 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAction<T>,
+    <A as BoundAction<T>>::Carry: Send + 'static,
+    <A as BoundAction<T>>::Effect: Effect<()>,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::In: 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -462,7 +462,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -495,7 +495,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -517,7 +517,7 @@ where
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let completion =
-                    <<A as BoundAct<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
+                    <<A as BoundAction<T>>::Effect as Effect<()>>::effect(&(), effect_input).await;
                 serialize_completion(completion)
             })
         });
@@ -527,7 +527,7 @@ where
             state,
             ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as BoundAct<T>>::Effect>(),
+                core::any::type_name::<<A as BoundAction<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -546,13 +546,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: EffectCompletion<<A as BoundAct<T>>::Effect> = match completion {
+        let typed_completion: EffectCompletion<<A as BoundAction<T>>::Effect> = match completion {
             Ok(output) => Ok(postcard::from_bytes::<
-                <<A as BoundAct<T>>::Effect as EffectSchema>::Out,
+                <<A as BoundAction<T>>::Effect as EffectSchema>::Out,
             >(&output)
             .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
             Err(error) => Err(postcard::from_bytes::<
-                <<A as BoundAct<T>>::Effect as EffectSchema>::Err,
+                <<A as BoundAction<T>>::Effect as EffectSchema>::Err,
             >(&error)
             .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
@@ -618,12 +618,12 @@ impl<Context, T, A> ErasedFlow<T::State> for ContextualTypedErasedStep<Context, 
 where
     Context: Send + Sync + 'static,
     T: Animal,
-    A: BoundAct<T>,
-    <A as BoundAct<T>>::Carry: Send + 'static,
-    <A as BoundAct<T>>::Effect: Effect<Context>,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::In: 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
+    A: BoundAction<T>,
+    <A as BoundAction<T>>::Carry: Send + 'static,
+    <A as BoundAction<T>>::Effect: Effect<Context>,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::In: 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -664,7 +664,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -697,7 +697,7 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAct<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -719,7 +719,7 @@ where
         let context = Arc::clone(&self.context);
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let completion = <<A as BoundAct<T>>::Effect as Effect<Context>>::effect(
+                let completion = <<A as BoundAction<T>>::Effect as Effect<Context>>::effect(
                     context.as_ref(),
                     effect_input,
                 )
@@ -733,7 +733,7 @@ where
             state,
             ExecutableEffectRequest::new(
                 self.node_id,
-                core::any::type_name::<<A as BoundAct<T>>::Effect>(),
+                core::any::type_name::<<A as BoundAction<T>>::Effect>(),
                 request,
                 runner,
             ),
@@ -752,13 +752,13 @@ where
             return Err(ExecutorError::NoPendingRequest);
         }
 
-        let typed_completion: EffectCompletion<<A as BoundAct<T>>::Effect> = match completion {
+        let typed_completion: EffectCompletion<<A as BoundAction<T>>::Effect> = match completion {
             Ok(output) => Ok(postcard::from_bytes::<
-                <<A as BoundAct<T>>::Effect as EffectSchema>::Out,
+                <<A as BoundAction<T>>::Effect as EffectSchema>::Out,
             >(&output)
             .map_err(|err| ExecutorError::OutputDeserialize(err.to_string()))?),
             Err(error) => Err(postcard::from_bytes::<
-                <<A as BoundAct<T>>::Effect as EffectSchema>::Err,
+                <<A as BoundAction<T>>::Effect as EffectSchema>::Err,
             >(&error)
             .map_err(|err| ExecutorError::ErrorDeserialize(err.to_string()))?),
         };
@@ -2300,7 +2300,7 @@ pub trait BuildFlow<Input> {
     }
 }
 
-trait FlowCarry<State> {
+pub trait FlowCarry<State> {
     type In;
     type Out;
 }
@@ -2335,7 +2335,7 @@ where
 impl<T, A> FlowCarry<T::State> for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: BoundAct<T>,
+    A: BoundAction<T>,
 {
     type In = A::Input;
     type Out = A::Output;
@@ -2352,7 +2352,6 @@ where
 
 impl<State, In, C, F, M> FlowCarry<State> for While<C, F, M>
 where
-    C: LoopCondition<State, Arg = In>,
     F: FlowCarry<State, In = In>,
 {
     type In = In;
@@ -2487,12 +2486,12 @@ where
 impl<T, A> BuildFlow<DynFlow<T::State>> for BoundFlowStep<T, A>
 where
     T: Animal + 'static,
-    A: BoundAct<T> + 'static,
-    <A as BoundAct<T>>::Carry: Send + 'static,
-    <A as BoundAct<T>>::Effect: Effect<()> + 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAction<T> + 'static,
+    <A as BoundAction<T>>::Carry: Send + 'static,
+    <A as BoundAction<T>>::Effect: Effect<()> + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -2512,7 +2511,7 @@ where
     R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
         + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
     <L as ArgputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, <L as ArgputForState<State>>::Carry)> + 'static,
+    P: crate::Predicate<(State, <L as ArgputForState<State>>::Carry)> + 'static,
 {
     type Output = DynFlow<State>;
 
@@ -2521,7 +2520,7 @@ where
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(&(
+                <P as crate::Predicate<(State, <L as ArgputForState<State>>::Carry)>>::eval(&(
                     state.clone(),
                     input.clone(),
                 ))
@@ -2539,7 +2538,7 @@ where
 impl<State, In, C, F, M> BuildFlow<DynFlow<State>> for While<C, F, M>
 where
     State: Send + 'static,
-    C: LoopCondition<State, Arg = In> + 'static,
+    C: for<'a> crate::Predicate<(&'a State, &'a In)> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + FlowCarry<State, In = In> + 'static,
 {
@@ -2547,8 +2546,8 @@ where
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
-        let should_continue = Box::new(|state: &State, _input: &In| {
-            <C as LoopCondition<State>>::should_continue(state)
+        let should_continue = Box::new(|state: &State, input: &In| {
+            <C as crate::Predicate<(&State, &In)>>::eval(&(state, input))
         });
         let build_body = Box::new(|| <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         steps.push(Box::new(WhileErasedFlow::<State, In>::new(
@@ -2796,13 +2795,13 @@ impl<Context, T, A> BuildFlowWithContext<(Arc<Context>, DynFlow<T::State>)> for 
 where
     Context: Send + Sync + 'static,
     T: Animal + 'static,
-    A: BoundAct<T> + 'static,
-    <A as BoundAct<T>>::Carry: Send + 'static,
-    <A as BoundAct<T>>::Effect: Effect<Context> + 'static,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: Serialize,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: Serialize,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as BoundAct<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    A: BoundAction<T> + 'static,
+    <A as BoundAction<T>>::Carry: Send + 'static,
+    <A as BoundAction<T>>::Effect: Effect<Context> + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
+    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -3063,7 +3062,7 @@ where
     State: Clone + Send + 'static,
     L: ArgputForState<State>,
     <L as ArgputForState<State>>::Carry: Clone + DeserializeOwned + Serialize + 'static,
-    P: crate::Condition<(State, <L as ArgputForState<State>>::Carry)> + 'static,
+    P: crate::Predicate<(State, <L as ArgputForState<State>>::Carry)> + 'static,
     L: BuildFlowWithContext<
         (Arc<Context>, DynFlow<State>),
         Output = (Arc<Context>, DynFlow<State>),
@@ -3086,7 +3085,7 @@ where
         ));
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(&(
+                <P as crate::Predicate<(State, <L as ArgputForState<State>>::Carry)>>::eval(&(
                     state.clone(),
                     input.clone(),
                 ))
@@ -3423,7 +3422,7 @@ impl<Context, State, In, C, F, M> BuildFlowWithContext<(Arc<Context>, DynFlow<St
 where
     Context: Send + Sync + 'static,
     State: Send + 'static,
-    C: LoopCondition<State, Arg = In> + 'static,
+    C: for<'a> crate::Predicate<(&'a State, &'a In)> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
@@ -3435,8 +3434,8 @@ where
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
-        let should_continue = Box::new(|state: &State, _input: &In| {
-            <C as LoopCondition<State>>::should_continue(state)
+        let should_continue = Box::new(|state: &State, input: &In| {
+            <C as crate::Predicate<(&State, &In)>>::eval(&(state, input))
         });
         let context_for_body = Arc::clone(&context);
         let build_body = Box::new(move || {

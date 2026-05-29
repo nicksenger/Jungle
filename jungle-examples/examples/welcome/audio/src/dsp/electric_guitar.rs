@@ -1,36 +1,21 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use crate::audio::{AudioHandle, PlayPriority, PlayRequest};
-use crate::instrumentation::{amplitude_gain, Error, Expression, Note};
+use super::{Expression, Note, SAMPLE_RATE};
 
-use super::ElectricGuitarArticulation;
-
-pub(super) async fn play(
-    audio: &AudioHandle,
-    synth: &crate::instrumentation::SynthHandle,
-    note: Note<ElectricGuitarArticulation>,
-) -> Result<(), Error> {
-    let (pcm, gain, playback_rate, pan) = synth.electric_guitar(note).await?;
-
-    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-    request.gain = gain * amplitude_gain(&note);
-    request.playback_rate = playback_rate;
-    request.pan = pan;
-    request.priority = PlayPriority::Low;
-
-    audio.play(request).await.map_err(|_| Error::Submission)
+#[derive(Debug, Clone, Copy)]
+pub enum ElectricGuitarArticulation {
+    Sustained,
+    RhythmSustained,
 }
 
-const SAMPLE_RATE: u32 = 48_000;
-
-pub(in crate::instrumentation) fn synthesize_electric_guitar(
+pub fn synthesize_electric_guitar(
     note: &Note<ElectricGuitarArticulation>,
 ) -> (Arc<[f32]>, f32, f32, f32) {
     if note.articulation.is_rhythm_voice() {
-        let (pcm, gain, playback_rate) = synthesize_rhythm_guitar(note);
+        let (pcm, gain, playback_rate) = synthesize_lead_guitar(note);
         (pcm, gain, playback_rate, -0.25)
     } else {
-        let (pcm, gain, playback_rate) = synthesize_lead_guitar(note);
+        let (pcm, gain, playback_rate) = synthesize_rhythm_guitar(note);
         (pcm, gain, playback_rate, 0.12)
     }
 }
@@ -49,7 +34,7 @@ struct ElectricTone {
     body_mix: f32,
 }
 
-fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
+fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = lead_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let frequency_hz = midi_to_hz(note.n_midi).max(80.0);
@@ -206,7 +191,7 @@ struct RhythmTone {
     body_mix: f32,
 }
 
-fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
+fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = rhythm_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let root_hz = midi_to_hz(note.n_midi).max(70.0);

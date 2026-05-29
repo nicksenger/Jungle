@@ -9,19 +9,24 @@ mod hihat;
 mod kick_drum;
 mod snare_drum;
 mod synth_worker;
-mod synthesis;
 mod toms;
 mod vocals;
 
-pub use bass::{Bass, BassArticulation, Thump};
+#[allow(unused)]
+pub use bass::Thump;
+pub use bass::{Bass, BassArticulation};
 pub use cymbal::{Cymbal, CymbalArticulation};
-pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation, Pick, Pluck, Strum};
+pub use electric_guitar::{ElectricGuitar, ElectricGuitarArticulation};
+#[allow(unused)]
+pub use electric_guitar::{Pick, Pluck, Strum};
 pub use hihat::{HiHat, HiHatArticulation};
 pub use kick_drum::{KickDrum, KickDrumArticulation};
 pub use snare_drum::{SnareDrum, SnareDrumArticulation};
 pub use synth_worker::SynthHandle;
 pub use toms::{Toms, TomsArticulation};
-pub use vocals::{phonemes_from_text, Generate, Lyrics, Vocals, VocalsArticulation};
+#[allow(unused)]
+pub use vocals::Generate;
+pub use vocals::{phonemes_from_text, Lyrics, Vocals, VocalsArticulation};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

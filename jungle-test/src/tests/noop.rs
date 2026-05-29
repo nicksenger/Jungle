@@ -23,8 +23,8 @@ impl<J> Effect<J> for EchoI32Effect {
 }
 
 pub struct NoopIncrementSpec;
-#[jungle::act]
-impl Act for NoopIncrementSpec {
+#[jungle::action]
+impl Action for NoopIncrementSpec {
     type Effect = Noop;
     type Input = ();
     type Output = i32;
@@ -39,8 +39,8 @@ impl Act for NoopIncrementSpec {
 }
 
 pub struct CaptureValueSpec;
-#[jungle::act]
-impl Act for CaptureValueSpec {
+#[jungle::action]
+impl Action for CaptureValueSpec {
     type Effect = EchoI32Effect;
     type Input = i32;
     type Output = ();

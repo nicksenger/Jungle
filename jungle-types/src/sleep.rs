@@ -1,5 +1,5 @@
 use crate::{
-    Animal, Aspect, BoundAct, Effect, EffectCompletion, EffectSchema, Id, Identity, StateCarrier,
+    Animal, Aspect, BoundAction, Effect, EffectCompletion, EffectSchema, Id, Identity, StateCarrier,
 };
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -35,7 +35,7 @@ impl<J> Effect<J> for Sleep {
 
 pub struct SleepStep<Focus = Identity>(PhantomData<fn() -> Focus>);
 
-impl<T, Focus> BoundAct<T> for SleepStep<Focus>
+impl<T, Focus> BoundAction<T> for SleepStep<Focus>
 where
     T: Animal,
     Focus: Aspect<T::State>,
@@ -57,7 +57,7 @@ where
         view: &<Focus as StateCarrier<T::State>>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<T>>::emit(view, input), ())
+        (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
     fn absorb(

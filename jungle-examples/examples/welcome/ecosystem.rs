@@ -2,15 +2,15 @@ use jungle_sdk::prelude::*;
 
 use crate::{
     animals::WelcomeAnimals,
-    audio::AudioHandle,
     instrumentation::{
         Bass, Cymbal, ElectricGuitar, HiHat, KickDrum, SnareDrum, SynthHandle, Toms, Vocals,
     },
     metronome::Metronome,
 };
+use welcome_audio::AudioHandle;
 
 pub struct TheJungle {
-    rhythm_guitar: ElectricGuitar,
+    lead_guitar: ElectricGuitar,
     bass: Bass,
     vocals: Vocals,
     hihat: HiHat,
@@ -26,8 +26,8 @@ pub struct TheJungle {
 #[derive(Debug, Clone, Copy)]
 pub struct AnimalVolumes {
     lead_vocalist: f32,
-    lead_guitarist: f32,
     rhythm_guitarist: f32,
+    lead_guitarist: f32,
     bassist: f32,
     drummer: f32,
 }
@@ -36,8 +36,8 @@ impl Default for AnimalVolumes {
     fn default() -> Self {
         Self {
             lead_vocalist: 0.5,
-            lead_guitarist: 0.5,
             rhythm_guitarist: 0.5,
+            lead_guitarist: 0.5,
             bassist: 0.5,
             drummer: 0.5,
         }
@@ -46,8 +46,8 @@ impl Default for AnimalVolumes {
 
 impl AnimalVolumes {
     const LEAD_VOCALIST_LANE_ID: u32 = 0;
-    const LEAD_GUITARIST_LANE_ID: u32 = 1;
-    const RHYTHM_GUITARIST_LANE_ID: u32 = 2;
+    const LEAD_GUITARIST_LANE_ID: u32 = 2;
+    const RHYTHM_GUITARIST_LANE_ID: u32 = 1;
     const BASSIST_LANE_ID: u32 = 3;
     const DRUMMER_LANE_ID: u32 = 4;
 
@@ -56,13 +56,13 @@ impl AnimalVolumes {
         self
     }
 
-    pub fn with_lead_guitarist(mut self, volume: f32) -> Self {
-        self.lead_guitarist = volume;
+    pub fn with_rhythm_guitarist(mut self, volume: f32) -> Self {
+        self.rhythm_guitarist = volume;
         self
     }
 
-    pub fn with_rhythm_guitarist(mut self, volume: f32) -> Self {
-        self.rhythm_guitarist = volume;
+    pub fn with_lead_guitarist(mut self, volume: f32) -> Self {
+        self.lead_guitarist = volume;
         self
     }
 
@@ -135,7 +135,7 @@ impl TheJungle {
         animal_volumes: AnimalVolumes,
     ) -> Self {
         Self {
-            rhythm_guitar: ElectricGuitar::new(audio_handle.clone(), synth_handle.clone()),
+            lead_guitar: ElectricGuitar::new(audio_handle.clone(), synth_handle.clone()),
             bass: Bass::new(audio_handle.clone(), synth_handle.clone()),
             vocals: Vocals::new(audio_handle.clone(), synth_handle.clone()),
             hihat: HiHat::new(audio_handle.clone(), synth_handle.clone()),
@@ -149,8 +149,8 @@ impl TheJungle {
         }
     }
 
-    pub fn rhythm_guitar(&self) -> &ElectricGuitar {
-        &self.rhythm_guitar
+    pub fn lead_guitar(&self) -> &ElectricGuitar {
+        &self.lead_guitar
     }
 
     pub fn bpm(&self) -> f32 {
@@ -201,7 +201,7 @@ impl Ecosystem for TheJungle {
 
 impl<'a> From<&'a TheJungle> for &'a ElectricGuitar {
     fn from(ecosystem: &'a TheJungle) -> Self {
-        ecosystem.rhythm_guitar()
+        ecosystem.lead_guitar()
     }
 }
 

@@ -27,8 +27,8 @@ impl Animal for TransparentAnimal {
 }
 
 pub struct TransparentStepSpec;
-#[jungle::act]
-impl Act for TransparentStepSpec {
+#[jungle::action]
+impl Action for TransparentStepSpec {
     type Effect = TransparentEffect;
     type Input = i32;
     type Output = i32;

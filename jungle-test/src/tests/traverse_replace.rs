@@ -65,7 +65,7 @@ impl<J> Effect<J> for TraverseDEffect {
 struct TraverseAnimal;
 
 struct StepA;
-impl BoundAct<TraverseAnimal> for StepA {
+impl BoundAction<TraverseAnimal> for StepA {
     type Effect = TraverseAEffect;
     type Aspect = Identity;
     type Input = ();
@@ -75,12 +75,12 @@ impl BoundAct<TraverseAnimal> for StepA {
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<TraverseAnimal>>::Aspect as StateCarrier<
+        view: &<<Self as BoundAction<TraverseAnimal>>::Aspect as StateCarrier<
             <TraverseAnimal as Animal>::State,
         >>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<TraverseAnimal>>::emit(view, input), ())
+        (<Self as BoundAction<TraverseAnimal>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -89,7 +89,7 @@ impl BoundAct<TraverseAnimal> for StepA {
 }
 
 struct StepB;
-impl BoundAct<TraverseAnimal> for StepB {
+impl BoundAction<TraverseAnimal> for StepB {
     type Effect = TraverseBEffect;
     type Aspect = Identity;
     type Input = ();
@@ -99,12 +99,12 @@ impl BoundAct<TraverseAnimal> for StepB {
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<TraverseAnimal>>::Aspect as StateCarrier<
+        view: &<<Self as BoundAction<TraverseAnimal>>::Aspect as StateCarrier<
             <TraverseAnimal as Animal>::State,
         >>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<TraverseAnimal>>::emit(view, input), ())
+        (<Self as BoundAction<TraverseAnimal>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -113,7 +113,7 @@ impl BoundAct<TraverseAnimal> for StepB {
 }
 
 struct StepC;
-impl BoundAct<TraverseAnimal> for StepC {
+impl BoundAction<TraverseAnimal> for StepC {
     type Effect = TraverseCEffect;
     type Aspect = Identity;
     type Input = ();
@@ -123,12 +123,12 @@ impl BoundAct<TraverseAnimal> for StepC {
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<TraverseAnimal>>::Aspect as StateCarrier<
+        view: &<<Self as BoundAction<TraverseAnimal>>::Aspect as StateCarrier<
             <TraverseAnimal as Animal>::State,
         >>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<TraverseAnimal>>::emit(view, input), ())
+        (<Self as BoundAction<TraverseAnimal>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -137,7 +137,7 @@ impl BoundAct<TraverseAnimal> for StepC {
 }
 
 struct StepD;
-impl BoundAct<TraverseAnimal> for StepD {
+impl BoundAction<TraverseAnimal> for StepD {
     type Effect = TraverseDEffect;
     type Aspect = Identity;
     type Input = ();
@@ -147,12 +147,12 @@ impl BoundAct<TraverseAnimal> for StepD {
     fn emit(_state: &i32, _input: Self::Input) -> Self::Input {}
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<TraverseAnimal>>::Aspect as StateCarrier<
+        view: &<<Self as BoundAction<TraverseAnimal>>::Aspect as StateCarrier<
             <TraverseAnimal as Animal>::State,
         >>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<TraverseAnimal>>::emit(view, input), ())
+        (<Self as BoundAction<TraverseAnimal>>::emit(view, input), ())
     }
 
     fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -161,11 +161,9 @@ impl BoundAct<TraverseAnimal> for StepD {
 }
 
 struct KeepLooping;
-impl LoopCondition<i32> for KeepLooping {
-    type Arg = ();
-
-    fn should_continue(state: &i32) -> bool {
-        *state < 1
+impl Predicate<(&i32, &())> for KeepLooping {
+    fn eval((state, _): &(&i32, &())) -> bool {
+        **state < 1
     }
 }
 

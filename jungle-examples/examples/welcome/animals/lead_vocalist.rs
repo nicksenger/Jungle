@@ -1,13 +1,14 @@
 use jungle_sdk::prelude::*;
 
+use crate::action::{MergeEither, Rest as GenericRest};
 use crate::effect::{Passthrough, Rest};
 use crate::instrumentation::{
     phonemes_from_text, Generate as LaneGenerate, Lyrics, VocalsArticulation,
 };
 
-use super::{Double, LeadVocalist};
+use super::{Double, LeadVocalist, LeadVocalistSeed, LeadVocalistState};
 
-const LEAD_VOCALS_LANE_ID: u32 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32;
+const LEAD_VOCALS_LANE_ID: u8 = <<LeadVocalist as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Generate<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LaneGenerate<NOTE, NOTE_TICK, REST_TICK, LEAD_VOCALS_LANE_ID>;
 
@@ -17,460 +18,6 @@ type Generate68Hold = Step<Generate<68, 192, 192>>;
 type Sing68Hold = Step<Generate<68, 192, 192>>;
 type Sing63Hold = Step<Generate<63, 192, 192>>;
 
-#[derive(Optic, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct LeadVocalistState {
-    articulation: VocalsArticulation,
-    intro_pickup_remaining: u8,
-    pub lyrics: Lyrics,
-}
-
-impl Default for LeadVocalistState {
-    fn default() -> Self {
-        Self {
-            articulation: VocalsArticulation::Clean,
-            intro_pickup_remaining: 1,
-            lyrics: Lyrics {
-                phonemes: [
-                    "ha",
-                    "down",
-                    "you",
-                    "bring",
-                    "na",
-                    "gon",
-                    "its",
-                    "your",
-                    "to",
-                    "you",
-                    "bring",
-                    "it",
-                    "Watch",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "wel",
-                    "gol",
-                    "jun",
-                    "the",
-                    "in",
-                    "knees",
-                    "knees",
-                    "knees",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "shuh",
-                    "your",
-                    "to",
-                    "you",
-                    "bring",
-                    "it",
-                    "Watch",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "wel",
-                    "gol",
-                    "jun",
-                    "teen",
-                    "pen",
-                    "ser",
-                    "my",
-                    "my",
-                    "my",
-                    "my",
-                    "my",
-                    "Feel",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "wel",
-                    "gol",
-                    "jun",
-                    "the",
-                    "In",
-                    "you're",
-                    "knees",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "shuh",
-                    "your",
-                    "to",
-                    "you",
-                    "bring",
-                    "it",
-                    "Watch",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "wel",
-                    "gol",
-                    "jun",
-                    "the",
-                    "in",
-                    "here",
-                    "eee",
-                    "die",
-                    "na",
-                    "gon",
-                    "you're",
-                    "bee",
-                    "bay",
-                    "gol",
-                    "jun",
-                    "the",
-                    "in",
-                    "you're",
-                    "are?",
-                    "you",
-                    "where",
-                    "know",
-                    "gol",
-                    "jun",
-                    "gol",
-                    "jun",
-                    "gol",
-                    "jun",
-                    "jun",
-                    "gol",
-                    "jun",
-                    "gol",
-                    "jun",
-                    "gol",
-                    "jun",
-                    "gol",
-                    "jun",
-                    "yeah",
-                    "heh",
-                    "heh",
-                    "heh",
-                    "heh",
-                    "yeah",
-                    "down",
-                    "down",
-                    "so",
-                    "down",
-                    "down",
-                    "So",
-                    "down",
-                    "down",
-                    "so",
-                    "down",
-                    "come",
-                    "to",
-                    "want",
-                    "ver",
-                    "ne",
-                    "want",
-                    "er",
-                    "nev",
-                    "you",
-                    "iigh",
-                    "high",
-                    "you're",
-                    "when",
-                    "and",
-                    "bleed",
-                    "you",
-                    "watch",
-                    "na",
-                    "wan",
-                    "I",
-                    "knees",
-                    "knees",
-                    "knees",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "shuh",
-                    "your",
-                    "to",
-                    "you",
-                    "bring",
-                    "it",
-                    "Watch",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "wel",
-                    "gol",
-                    "jun",
-                    "the",
-                    "in",
-                    "me",
-                    "from",
-                    "it",
-                    "take",
-                    "not",
-                    "better",
-                    "you",
-                    "but",
-                    "want",
-                    "you",
-                    "everything",
-                    "have",
-                    "can",
-                    "you",
-                    "and",
-                    "lee",
-                    "tual",
-                    "even",
-                    "it",
-                    "take",
-                    "youll",
-                    "see",
-                    "you",
-                    "what",
-                    "for",
-                    "ger",
-                    "hun",
-                    "you",
-                    "if",
-                    "and",
-                    "play",
-                    "we",
-                    "where",
-                    "gol",
-                    "jun",
-                    "the",
-                    "in",
-                    "here",
-                    "mal",
-                    "i",
-                    "an",
-                    "an",
-                    "like",
-                    "live",
-                    "to",
-                    "learn",
-                    "you",
-                    "day",
-                    "ree",
-                    "ev",
-                    "here",
-                    "worse",
-                    "gets",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "Wel",
-                    "scream",
-                    "you",
-                    "hear",
-                    "na",
-                    "wan",
-                    "I",
-                    "teen",
-                    "pen",
-                    "ser",
-                    "my",
-                    "my",
-                    "my",
-                    "my",
-                    "Feel",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "wel",
-                    "gol",
-                    "jun",
-                    "the",
-                    "in",
-                    "oh",
-                    "free",
-                    "for",
-                    "there",
-                    "get",
-                    "wont",
-                    "you",
-                    "but",
-                    "lights",
-                    "bright",
-                    "the",
-                    "taste",
-                    "can",
-                    "You",
-                    "please",
-                    "to",
-                    "hard",
-                    "eee",
-                    "vair",
-                    "thats",
-                    "girl",
-                    "eee",
-                    "sex",
-                    "eee",
-                    "vair",
-                    "a",
-                    "youre",
-                    "And",
-                    "pay",
-                    "to",
-                    "price",
-                    "the",
-                    "its",
-                    "but",
-                    "bleed",
-                    "na",
-                    "gon",
-                    "youre",
-                    "it",
-                    "want",
-                    "you",
-                    "If",
-                    "day",
-                    "by",
-                    "day",
-                    "it",
-                    "take",
-                    "we",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "Wel",
-                    "bleed",
-                    "you",
-                    "watch",
-                    "na",
-                    "wan",
-                    "I",
-                    "I",
-                    "knees",
-                    "knees",
-                    "knees",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "nuh",
-                    "shuh",
-                    "your",
-                    "to",
-                    "you",
-                    "bring",
-                    "it",
-                    "watch",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "wel",
-                    "gol",
-                    "jun",
-                    "the",
-                    "in",
-                    "here",
-                    "oh",
-                    "ease",
-                    "dis",
-                    "your",
-                    "got",
-                    "we",
-                    "neee",
-                    "huh",
-                    "ney",
-                    "muh",
-                    "the",
-                    "got",
-                    "you",
-                    "If",
-                    "need",
-                    "may",
-                    "you",
-                    "er",
-                    "ev",
-                    "what",
-                    "find",
-                    "can",
-                    "that",
-                    "ple",
-                    "peo",
-                    "the",
-                    "are",
-                    "We",
-                    "names",
-                    "the",
-                    "know",
-                    "we",
-                    "ney",
-                    "huh",
-                    "want",
-                    "you",
-                    "thing",
-                    "ree",
-                    "ev",
-                    "got",
-                    "We",
-                    "games",
-                    "games",
-                    "and",
-                    "fun",
-                    "got",
-                    "we",
-                    "gol",
-                    "jun",
-                    "the",
-                    "to",
-                    "come",
-                    "Wel",
-                    "huh",
-                ]
-                .into_iter()
-                .map(phonemes_from_text)
-                .collect(),
-            },
-        }
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct LeadVocalistSeed {
-    pub lyrics: Option<Vec<String>>,
-}
-
 const INTRO_START_DELAY_TICKS: u32 = 20_352;
 
 pub struct IntroSectionMeta;
@@ -479,8 +26,8 @@ impl NodeMetadata for IntroSectionMeta {
 }
 
 pub struct ApplyLeadVocalistSeed;
-#[jungle::act]
-impl Act for ApplyLeadVocalistSeed {
+#[jungle::action]
+impl Action for ApplyLeadVocalistSeed {
     type Effect = Passthrough<LeadVocalistSeed>;
     type Input = LeadVocalistSeed;
     type Output = ();
@@ -507,35 +54,16 @@ impl Act for ApplyLeadVocalistSeed {
     }
 }
 
-pub struct IntroStartDelay;
-#[jungle::act]
-impl Act for IntroStartDelay {
-    type Effect = Rest<LEAD_VOCALS_LANE_ID, INTRO_START_DELAY_TICKS>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut LeadVocalistState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("intro start delay should complete");
-    }
-}
-
 pub struct UseLeadVocalPickup;
-impl Condition<(LeadVocalistState, ())> for UseLeadVocalPickup {
-    fn choose((state, _): &(LeadVocalistState, ())) -> bool {
+impl Predicate<(LeadVocalistState, ())> for UseLeadVocalPickup {
+    fn eval((state, _): &(LeadVocalistState, ())) -> bool {
         state.intro_pickup_remaining > 0
     }
 }
 
 pub struct ConsumeLeadVocalPickup;
-#[jungle::act]
-impl Act for ConsumeLeadVocalPickup {
+#[jungle::action]
+impl Action for ConsumeLeadVocalPickup {
     type Effect = Noop;
     type Input = ();
     type Output = ();
@@ -552,24 +80,6 @@ impl Act for ConsumeLeadVocalPickup {
     }
 }
 
-pub struct MergeLeadVocalPickupChoice;
-#[jungle::act]
-impl Act for MergeLeadVocalPickupChoice {
-    type Effect = Noop;
-    type Input = Either<(), ()>;
-    type Output = ();
-
-    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-    }
-
-    fn absorb(
-        _state: &mut LeadVocalistState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("lead vocal pickup branch merge should complete");
-    }
-}
-
 #[derive(Flow)]
 pub struct LeadVocalPickupBranch(
     Transparent<IntroSectionMeta, LeadVocalSection01>,
@@ -582,9 +92,12 @@ pub struct LeadVocalMainBranch(Step<ConsumeLeadVocalPickup>);
 #[derive(Flow)]
 pub struct LeadVocalIntro(
     Step<ApplyLeadVocalistSeed>,
-    Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
+    Transparent<
+        IntroSectionMeta,
+        Step<GenericRest<LeadVocalistState, INTRO_START_DELAY_TICKS, LEAD_VOCALS_LANE_ID>>,
+    >,
     Conditional<UseLeadVocalPickup, LeadVocalPickupBranch, LeadVocalMainBranch>,
-    Step<MergeLeadVocalPickupChoice>,
+    Step<MergeEither<(), LeadVocalistState>>,
     Transparent<IntroSectionMeta, LeadVocalSection02>,
     Transparent<IntroSectionMeta, LeadVocalSection03>,
 );
@@ -1124,7 +637,7 @@ mod tests {
             .await
             .expect("local client should build");
 
-        let (audio_handle, _audio_keep_alive) = crate::audio::AudioHandle::stub();
+        let (audio_handle, _audio_keep_alive) = welcome_audio::AudioHandle::stub();
         let ecosystem = TheJungle::new(audio_handle, 123.0);
 
         let worker = JungleWorker::new(ecosystem, client.clone());

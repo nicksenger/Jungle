@@ -1,0 +1,2 @@
+jungle-examples/examples/welcome/assets/** filter=lfs diff=lfs merge=lfs -text
+*.mkv filter=lfs diff=lfs merge=lfs -text

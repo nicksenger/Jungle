@@ -1,32 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::audio::{PlayPriority, PlayRequest};
-use crate::instrumentation::{
-    amplitude_gain,
-    synthesis::{duration_to_frames, hash_noise, smoothstep, triangle, SAMPLE_RATE},
-    Error, Note,
-};
+use super::{duration_to_frames, hash_noise, smoothstep, triangle, Note, SAMPLE_RATE};
 
-use super::HiHatArticulation;
-
-pub(super) async fn play(
-    audio: &crate::audio::AudioHandle,
-    synth: &crate::instrumentation::SynthHandle,
-    note: Note<HiHatArticulation>,
-) -> Result<(), Error> {
-    let (pcm, gain, playback_rate) = synth.hihat(note).await?;
-
-    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-    request.gain = gain * amplitude_gain(&note);
-    request.playback_rate = playback_rate;
-    request.pan = 0.2;
-    request.priority = PlayPriority::Critical;
-    audio.play(request).await.map_err(|_| Error::Submission)
-}
-
-pub(in crate::instrumentation) fn synthesize_hihat(
-    note: &Note<HiHatArticulation>,
-) -> (Arc<[f32]>, f32, f32) {
+pub fn synthesize_hihat(note: &Note<()>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let velocity = note.velocity.clamp(0.0, 1.0);

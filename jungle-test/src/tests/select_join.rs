@@ -52,8 +52,8 @@ impl<J> Effect<J> for ContextTimedValueEffect {
 }
 
 pub struct SelectFastSpec;
-#[jungle::act]
-impl Act for SelectFastSpec {
+#[jungle::action]
+impl Action for SelectFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -71,8 +71,8 @@ impl Act for SelectFastSpec {
 }
 
 pub struct SelectSlowSpec;
-#[jungle::act]
-impl Act for SelectSlowSpec {
+#[jungle::action]
+impl Action for SelectSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -90,8 +90,8 @@ impl Act for SelectSlowSpec {
 }
 
 pub struct CaptureSelectWinnerSpec;
-#[jungle::act]
-impl Act for CaptureSelectWinnerSpec {
+#[jungle::action]
+impl Action for CaptureSelectWinnerSpec {
     type Effect = TimedValueEffect;
     type Input = Either<i32, i32>;
     type Output = ();
@@ -124,8 +124,8 @@ impl Animal for SelectAnimal {
 }
 
 pub struct JoinFastSpec;
-#[jungle::act]
-impl Act for JoinFastSpec {
+#[jungle::action]
+impl Action for JoinFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -143,8 +143,8 @@ impl Act for JoinFastSpec {
 }
 
 pub struct JoinSlowSpec;
-#[jungle::act]
-impl Act for JoinSlowSpec {
+#[jungle::action]
+impl Action for JoinSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -162,8 +162,8 @@ impl Act for JoinSlowSpec {
 }
 
 pub struct CaptureJoinSumSpec;
-#[jungle::act]
-impl Act for CaptureJoinSumSpec {
+#[jungle::action]
+impl Action for CaptureJoinSumSpec {
     type Effect = TimedValueEffect;
     type Input = (i32, i32);
     type Output = ();
@@ -193,8 +193,8 @@ impl Animal for JoinAnimal {
 }
 
 pub struct TimeoutSleepSpec;
-#[jungle::act]
-impl Act for TimeoutSleepSpec {
+#[jungle::action]
+impl Action for TimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = i32;
@@ -211,8 +211,8 @@ impl Act for TimeoutSleepSpec {
 }
 
 pub struct TimeoutSlowSpec;
-#[jungle::act]
-impl Act for TimeoutSlowSpec {
+#[jungle::action]
+impl Action for TimeoutSlowSpec {
     type Effect = ContextTimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -241,8 +241,8 @@ impl Animal for TimeoutAnimal {
 }
 
 pub struct SelectBranchPrefixFastSpec;
-#[jungle::act]
-impl Act for SelectBranchPrefixFastSpec {
+#[jungle::action]
+impl Action for SelectBranchPrefixFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -260,8 +260,8 @@ impl Act for SelectBranchPrefixFastSpec {
 }
 
 pub struct SelectBranchPrefixSlowSpec;
-#[jungle::act]
-impl Act for SelectBranchPrefixSlowSpec {
+#[jungle::action]
+impl Action for SelectBranchPrefixSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -279,8 +279,8 @@ impl Act for SelectBranchPrefixSlowSpec {
 }
 
 pub struct SelectBranchWinnerFastSpec;
-#[jungle::act]
-impl Act for SelectBranchWinnerFastSpec {
+#[jungle::action]
+impl Action for SelectBranchWinnerFastSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -298,8 +298,8 @@ impl Act for SelectBranchWinnerFastSpec {
 }
 
 pub struct SelectBranchWinnerSlowSpec;
-#[jungle::act]
-impl Act for SelectBranchWinnerSlowSpec {
+#[jungle::action]
+impl Action for SelectBranchWinnerSlowSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -344,8 +344,8 @@ impl Animal for SelectComposableAnimal {
 }
 
 pub struct JoinBranchLeftPrefixSpec;
-#[jungle::act]
-impl Act for JoinBranchLeftPrefixSpec {
+#[jungle::action]
+impl Action for JoinBranchLeftPrefixSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -363,8 +363,8 @@ impl Act for JoinBranchLeftPrefixSpec {
 }
 
 pub struct JoinBranchRightPrefixSpec;
-#[jungle::act]
-impl Act for JoinBranchRightPrefixSpec {
+#[jungle::action]
+impl Action for JoinBranchRightPrefixSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -382,8 +382,8 @@ impl Act for JoinBranchRightPrefixSpec {
 }
 
 pub struct JoinBranchLeftValueSpec;
-#[jungle::act]
-impl Act for JoinBranchLeftValueSpec {
+#[jungle::action]
+impl Action for JoinBranchLeftValueSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -401,8 +401,8 @@ impl Act for JoinBranchLeftValueSpec {
 }
 
 pub struct JoinBranchRightValueSpec;
-#[jungle::act]
-impl Act for JoinBranchRightValueSpec {
+#[jungle::action]
+impl Action for JoinBranchRightValueSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -447,15 +447,15 @@ impl Animal for JoinComposableAnimal {
 }
 
 pub struct ConditionalPrefersLeft;
-impl Condition<(SelectJoinState, ())> for ConditionalPrefersLeft {
-    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+impl Predicate<(SelectJoinState, ())> for ConditionalPrefersLeft {
+    fn eval((state, _): &(SelectJoinState, ())) -> bool {
         state.winner == 0
     }
 }
 
 pub struct ConditionalLeftPassthroughSpec;
-#[jungle::act]
-impl Act for ConditionalLeftPassthroughSpec {
+#[jungle::action]
+impl Action for ConditionalLeftPassthroughSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -473,8 +473,8 @@ impl Act for ConditionalLeftPassthroughSpec {
 }
 
 pub struct ConditionalRightPassthroughSpec;
-#[jungle::act]
-impl Act for ConditionalRightPassthroughSpec {
+#[jungle::action]
+impl Action for ConditionalRightPassthroughSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -492,8 +492,8 @@ impl Act for ConditionalRightPassthroughSpec {
 }
 
 pub struct JoinFromConditionalLeftSpec;
-#[jungle::act]
-impl Act for JoinFromConditionalLeftSpec {
+#[jungle::action]
+impl Action for JoinFromConditionalLeftSpec {
     type Effect = TimedValueEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
@@ -514,8 +514,8 @@ impl Act for JoinFromConditionalLeftSpec {
 }
 
 pub struct JoinFromConditionalRightSpec;
-#[jungle::act]
-impl Act for JoinFromConditionalRightSpec {
+#[jungle::action]
+impl Action for JoinFromConditionalRightSpec {
     type Effect = TimedValueEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
@@ -561,8 +561,8 @@ impl Animal for ConditionalThenJoinAnimal {
 }
 
 pub struct JoinMutatesWinnerSpec;
-#[jungle::act]
-impl Act for JoinMutatesWinnerSpec {
+#[jungle::action]
+impl Action for JoinMutatesWinnerSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -579,15 +579,15 @@ impl Act for JoinMutatesWinnerSpec {
 }
 
 pub struct RightBranchUsesWinnerZero;
-impl Condition<(SelectJoinState, ())> for RightBranchUsesWinnerZero {
-    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+impl Predicate<(SelectJoinState, ())> for RightBranchUsesWinnerZero {
+    fn eval((state, _): &(SelectJoinState, ())) -> bool {
         state.winner == 0
     }
 }
 
 pub struct RightZeroPrefixSpec;
-#[jungle::act]
-impl Act for RightZeroPrefixSpec {
+#[jungle::action]
+impl Action for RightZeroPrefixSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -605,8 +605,8 @@ impl Act for RightZeroPrefixSpec {
 }
 
 pub struct RightZeroValueSpec;
-#[jungle::act]
-impl Act for RightZeroValueSpec {
+#[jungle::action]
+impl Action for RightZeroValueSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -624,8 +624,8 @@ impl Act for RightZeroValueSpec {
 }
 
 pub struct RightNonZeroValueSpec;
-#[jungle::act]
-impl Act for RightNonZeroValueSpec {
+#[jungle::action]
+impl Action for RightNonZeroValueSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = i32;
@@ -646,8 +646,8 @@ impl Act for RightNonZeroValueSpec {
 pub struct RightZeroFlow(Step<RightZeroPrefixSpec>, Step<RightZeroValueSpec>);
 
 pub struct RightBranchMergeValueSpec;
-#[jungle::act]
-impl Act for RightBranchMergeValueSpec {
+#[jungle::action]
+impl Action for RightBranchMergeValueSpec {
     type Effect = TimedValueEffect;
     type Input = Either<i32, i32>;
     type Output = i32;
@@ -689,15 +689,15 @@ impl Animal for JoinStateDependentAnimal {
 }
 
 pub struct LocalConditionalPrefersLeft;
-impl Condition<(SelectJoinState, ())> for LocalConditionalPrefersLeft {
-    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+impl Predicate<(SelectJoinState, ())> for LocalConditionalPrefersLeft {
+    fn eval((state, _): &(SelectJoinState, ())) -> bool {
         state.winner == 0
     }
 }
 
 pub struct LocalJoinLeftStubASpec;
-#[jungle::act]
-impl Act for LocalJoinLeftStubASpec {
+#[jungle::action]
+impl Action for LocalJoinLeftStubASpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -715,8 +715,8 @@ impl Act for LocalJoinLeftStubASpec {
 }
 
 pub struct LocalJoinLeftStubBSpec;
-#[jungle::act]
-impl Act for LocalJoinLeftStubBSpec {
+#[jungle::action]
+impl Action for LocalJoinLeftStubBSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -734,8 +734,8 @@ impl Act for LocalJoinLeftStubBSpec {
 }
 
 pub struct LocalJoinRightStubASpec;
-#[jungle::act]
-impl Act for LocalJoinRightStubASpec {
+#[jungle::action]
+impl Action for LocalJoinRightStubASpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -753,8 +753,8 @@ impl Act for LocalJoinRightStubASpec {
 }
 
 pub struct LocalJoinRightStubBSpec;
-#[jungle::act]
-impl Act for LocalJoinRightStubBSpec {
+#[jungle::action]
+impl Action for LocalJoinRightStubBSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -772,8 +772,8 @@ impl Act for LocalJoinRightStubBSpec {
 }
 
 pub struct FlattenJoinedUnitTupleSpec;
-#[jungle::act]
-impl Act for FlattenJoinedUnitTupleSpec {
+#[jungle::action]
+impl Action for FlattenJoinedUnitTupleSpec {
     type Effect = Noop;
     type Input = ((), ());
     type Output = ();
@@ -789,8 +789,8 @@ impl Act for FlattenJoinedUnitTupleSpec {
 }
 
 pub struct LocalTailStubSpec;
-#[jungle::act]
-impl Act for LocalTailStubSpec {
+#[jungle::action]
+impl Action for LocalTailStubSpec {
     type Effect = TimedValueEffect;
     type Input = Either<(), ()>;
     type Output = Either<(), ()>;
@@ -847,8 +847,8 @@ impl Animal for LocalConditionalJoinTailAnimal {
 }
 
 pub struct NestedJoinInnerLeftSpec;
-#[jungle::act]
-impl Act for NestedJoinInnerLeftSpec {
+#[jungle::action]
+impl Action for NestedJoinInnerLeftSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -866,8 +866,8 @@ impl Act for NestedJoinInnerLeftSpec {
 }
 
 pub struct NestedJoinInnerRightSpec;
-#[jungle::act]
-impl Act for NestedJoinInnerRightSpec {
+#[jungle::action]
+impl Action for NestedJoinInnerRightSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -885,8 +885,8 @@ impl Act for NestedJoinInnerRightSpec {
 }
 
 pub struct NestedJoinInnerMergeSpec;
-#[jungle::act]
-impl Act for NestedJoinInnerMergeSpec {
+#[jungle::action]
+impl Action for NestedJoinInnerMergeSpec {
     type Effect = Noop;
     type Input = ((), ());
     type Output = ();
@@ -902,8 +902,8 @@ impl Act for NestedJoinInnerMergeSpec {
 }
 
 pub struct NestedJoinOuterRightSpec;
-#[jungle::act]
-impl Act for NestedJoinOuterRightSpec {
+#[jungle::action]
+impl Action for NestedJoinOuterRightSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();
@@ -921,8 +921,8 @@ impl Act for NestedJoinOuterRightSpec {
 }
 
 pub struct NestedJoinOuterMergeSpec;
-#[jungle::act]
-impl Act for NestedJoinOuterMergeSpec {
+#[jungle::action]
+impl Action for NestedJoinOuterMergeSpec {
     type Effect = Noop;
     type Input = ((), ());
     type Output = ();
@@ -938,8 +938,8 @@ impl Act for NestedJoinOuterMergeSpec {
 }
 
 pub struct NestedJoinTailCaptureSpec;
-#[jungle::act]
-impl Act for NestedJoinTailCaptureSpec {
+#[jungle::action]
+impl Action for NestedJoinTailCaptureSpec {
     type Effect = TimedValueEffect;
     type Input = ();
     type Output = ();

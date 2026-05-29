@@ -118,23 +118,21 @@ impl ReplayPhaseState for ReplayGateState {
 }
 
 pub struct ReplayPhaseNotComplete;
-impl<S> LoopCondition<S> for ReplayPhaseNotComplete
+impl<S> Predicate<(&S, &())> for ReplayPhaseNotComplete
 where
     S: ReplayPhaseState,
 {
-    type Arg = ();
-
-    fn should_continue(state: &S) -> bool {
+    fn eval((state, _): &(&S, &())) -> bool {
         state.phase() < 5
     }
 }
 
 pub struct ReplayPhaseIs<const N: u8>;
-impl<S, Arg, const N: u8> Condition<(S, Arg)> for ReplayPhaseIs<N>
+impl<S, Arg, const N: u8> Predicate<(S, Arg)> for ReplayPhaseIs<N>
 where
     S: ReplayPhaseState,
 {
-    fn choose((state, _): &(S, Arg)) -> bool {
+    fn eval((state, _): &(S, Arg)) -> bool {
         state.phase() == N
     }
 }
@@ -157,8 +155,8 @@ type ReplayPhaseRouterFlow<Pre, Mid, Post> = While<
 >;
 
 pub struct ReplayPreSpec;
-#[jungle::act]
-impl Act for ReplayPreSpec {
+#[jungle::action]
+impl Action for ReplayPreSpec {
     type Effect = ReplayPreIncrementEffect;
     type Input = ();
     type Output = ();
@@ -172,8 +170,8 @@ impl Act for ReplayPreSpec {
 }
 
 pub struct ReplayGateSpec;
-#[jungle::act]
-impl Act for ReplayGateSpec {
+#[jungle::action]
+impl Action for ReplayGateSpec {
     type Effect = ReplayGateEffect;
     type Input = ();
     type Output = ();
@@ -187,8 +185,8 @@ impl Act for ReplayGateSpec {
 }
 
 pub struct ReplayPostSpec;
-#[jungle::act]
-impl Act for ReplayPostSpec {
+#[jungle::action]
+impl Action for ReplayPostSpec {
     type Effect = ReplayPostIncrementEffect;
     type Input = ();
     type Output = ();
@@ -417,8 +415,8 @@ impl Effect<ReplayTimeoutZoo> for ReplayTimeoutPostIncrementEffect {
 }
 
 pub struct ReplayTimeoutPreSpec;
-#[jungle::act]
-impl Act for ReplayTimeoutPreSpec {
+#[jungle::action]
+impl Action for ReplayTimeoutPreSpec {
     type Effect = ReplayTimeoutPreIncrementEffect;
     type Input = ();
     type Output = ();
@@ -435,8 +433,8 @@ impl Act for ReplayTimeoutPreSpec {
 }
 
 pub struct ReplayTimeoutSleepSpec;
-#[jungle::act]
-impl Act for ReplayTimeoutSleepSpec {
+#[jungle::action]
+impl Action for ReplayTimeoutSleepSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
@@ -455,8 +453,8 @@ impl Act for ReplayTimeoutSleepSpec {
 }
 
 pub struct ReplayTimeoutPostSpec;
-#[jungle::act]
-impl Act for ReplayTimeoutPostSpec {
+#[jungle::action]
+impl Action for ReplayTimeoutPostSpec {
     type Effect = ReplayTimeoutPostIncrementEffect;
     type Input = ();
     type Output = ();

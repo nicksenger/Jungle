@@ -1,34 +1,11 @@
-use std::{f32::consts::TAU, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
-use crate::audio::{PlayPriority, PlayRequest};
-use crate::instrumentation::{
-    amplitude_gain,
-    synthesis::{
-        duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, triangle, SAMPLE_RATE,
-    },
-    Error, Expression, Note,
+use super::{
+    duration_to_frames, hash_noise, midi_to_hz, saw, sine, smoothstep, triangle, Expression, Note,
+    SAMPLE_RATE,
 };
 
-use super::BassArticulation;
-
-pub(super) async fn play(
-    audio: &crate::audio::AudioHandle,
-    synth: &crate::instrumentation::SynthHandle,
-    note: Note<BassArticulation>,
-) -> Result<(), Error> {
-    let (pcm, gain, playback_rate) = synth.bass(note).await?;
-
-    let mut request = PlayRequest::new(pcm, 1, SAMPLE_RATE);
-    request.gain = gain * amplitude_gain(&note);
-    request.playback_rate = playback_rate;
-    request.pan = 0.0;
-    request.priority = PlayPriority::Normal;
-    audio.play(request).await.map_err(|_| Error::Submission)
-}
-
-pub(in crate::instrumentation) fn synthesize_bass(
-    note: &Note<BassArticulation>,
-) -> (Arc<[f32]>, f32, f32) {
+pub fn synthesize_bass(note: &Note<()>) -> (Arc<[f32]>, f32, f32) {
     let duration = articulation_duration(note.duration);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let base_hz = midi_to_hz(note.n_midi).clamp(35.0, 220.0);
@@ -62,7 +39,8 @@ fn articulation_output_shape() -> (f32, f32) {
 
 fn articulation_sample(base_hz: f32, phase: f32, t: f32, expression: Expression) -> f32 {
     let bend = expression.bend.clamp(-1.0, 1.0) * 0.14;
-    let vibrato = (TAU * 5.2 * t).sin() * expression.vibrato.clamp(-1.0, 1.0) * 0.01;
+    let vibrato =
+        (std::f32::consts::TAU * 5.2 * t).sin() * expression.vibrato.clamp(-1.0, 1.0) * 0.01;
     let freq = base_hz * (1.0 + bend + vibrato);
 
     let transient = hash_noise(t * 15_500.0) * (1.0 - smoothstep(phase * 13.0));

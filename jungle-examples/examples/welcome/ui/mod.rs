@@ -1,15 +1,20 @@
-use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
+use crate::animals::{Bass, Drums, RhythmGuitarist, LeadVocalist, LeadGuitarist};
+use crate::metronome::Metronome;
 use crate::UiClient;
 use async_trait::async_trait;
 use futures::StreamExt;
-use iced::widget::{column, container, text, Row};
+#[cfg(feature = "video")]
+use iced::widget::stack;
+use iced::widget::{button, column, container, svg, text, Row, Space};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
+#[cfg(feature = "video")]
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tracing::{debug, warn};
+use tracing::{debug, info, trace, warn};
 use uuid::Uuid;
 
 const DEFERRED_STREAM_LOG_INTERVAL: usize = 512;
@@ -17,6 +22,15 @@ const DEFERRED_STREAM_SLOW_WAIT_WARN_MS: u64 = 400;
 const DEFERRED_STREAM_LAG_WARN_MS: u64 = 150;
 const DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS: i64 = 2_000;
 const DEFERRED_STREAM_SLOW_DECISION_WARN_US: u128 = 500;
+const UI_TICK_INTERVAL: Duration = Duration::from_millis(500);
+const LOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#;
+const UNLOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M16 11V7a4 4 0 0 0-7.5-2"/></svg>"#;
+#[cfg(feature = "video")]
+const AV_OVERLAY_BYTES: &[u8] = include_bytes!("../assets/jungle.mkv");
+#[cfg(feature = "video")]
+const VIDEO_FADE_IN: Duration = Duration::from_millis(180);
+#[cfg(feature = "video")]
+const VIDEO_FADE_OUT: Duration = Duration::from_millis(220);
 
 static DEFERRED_STREAM_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 static DEFERRED_STREAM_WAIT_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -28,8 +42,8 @@ static DEFERRED_STREAM_MAX_DECISION_US: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone, Copy)]
 pub struct JourneyIds {
     pub lead_vocalist: Option<Uuid>,
-    pub lead_guitarist: Option<Uuid>,
     pub rhythm_guitarist: Option<Uuid>,
+    pub lead_guitarist: Option<Uuid>,
     pub bass: Option<Uuid>,
     pub drums: Option<Uuid>,
 }
@@ -372,11 +386,19 @@ impl ShutdownFlag {
 pub fn run_ui(
     client: DeferredJungleClient<UiClient>,
     journeys: JourneyIds,
+    metronome: Metronome,
     shutdown: ShutdownFlag,
 ) -> iced::Result {
     let title = "Welcome to the Jungle";
     iced::application(
-        move || WelcomeUi::new(client.clone(), journeys, shutdown.clone()),
+        move || {
+            WelcomeUi::new(
+                client.clone(),
+                journeys,
+                metronome.clone(),
+                shutdown.clone(),
+            )
+        },
         WelcomeUi::update,
         WelcomeUi::view,
     )
@@ -391,29 +413,202 @@ pub fn run_ui(
 #[derive(Debug, Clone, Copy)]
 enum Panel {
     LeadVocalist,
-    LeadGuitarist,
     RhythmGuitarist,
+    LeadGuitarist,
     Bass,
     Drums,
+}
+
+impl Panel {
+    #[cfg(feature = "video")]
+    const ALL: [Self; 5] = [
+        Self::LeadVocalist,
+        Self::RhythmGuitarist,
+        Self::LeadGuitarist,
+        Self::Bass,
+        Self::Drums,
+    ];
+}
+
+#[cfg(feature = "video")]
+#[derive(Debug, Clone, Copy)]
+struct VideoPlaybackRequest {
+    offset: Duration,
+    duration: Duration,
+    opacity: f32,
+}
+
+#[cfg(feature = "video")]
+impl VideoPlaybackRequest {
+    const fn new(offset_ms: u64, duration_ms: u64, opacity: f32) -> Self {
+        Self {
+            offset: Duration::from_millis(offset_ms),
+            duration: Duration::from_millis(duration_ms),
+            opacity,
+        }
+    }
+}
+
+#[cfg(feature = "video")]
+#[derive(Debug, Clone, Copy)]
+struct TickPlaybackPlan {
+    tick: u32,
+    app_overlay: Option<VideoPlaybackRequest>,
+    lead_vocalist_panel: Option<VideoPlaybackRequest>,
+    rhythm_guitarist_panel: Option<VideoPlaybackRequest>,
+    lead_guitarist_panel: Option<VideoPlaybackRequest>,
+    bass_panel: Option<VideoPlaybackRequest>,
+    drums_panel: Option<VideoPlaybackRequest>,
+}
+
+#[cfg(feature = "video")]
+impl TickPlaybackPlan {
+    fn panel_request(self, panel: Panel) -> Option<VideoPlaybackRequest> {
+        match panel {
+            Panel::LeadVocalist => self.lead_vocalist_panel,
+            Panel::RhythmGuitarist => self.rhythm_guitarist_panel,
+            Panel::LeadGuitarist => self.lead_guitarist_panel,
+            Panel::Bass => self.bass_panel,
+            Panel::Drums => self.drums_panel,
+        }
+    }
+}
+
+#[cfg(feature = "video")]
+const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
+    TickPlaybackPlan {
+        tick: 0,
+        app_overlay: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        lead_vocalist_panel: None,
+        rhythm_guitarist_panel: None,
+        lead_guitarist_panel: None,
+        bass_panel: None,
+        drums_panel: None,
+    },
+    TickPlaybackPlan {
+        tick: 4,
+        app_overlay: None,
+        lead_vocalist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        lead_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        bass_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        drums_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+    },
+    TickPlaybackPlan {
+        tick: 40,
+        app_overlay: None,
+        lead_vocalist_panel: None,
+        rhythm_guitarist_panel: None,
+        lead_guitarist_panel: None,
+        bass_panel: None,
+        drums_panel: None,
+    },
+];
+
+#[cfg(feature = "video")]
+#[derive(Debug, Clone)]
+struct RegionPlayback {
+    enabled: bool,
+    visible_until: Option<Instant>,
+    fade_out_at: Option<Instant>,
+    fade_out_started: bool,
+}
+
+#[cfg(feature = "video")]
+impl RegionPlayback {
+    fn hidden() -> Self {
+        Self {
+            enabled: false,
+            visible_until: None,
+            fade_out_at: None,
+            fade_out_started: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     Panel(Panel, jungle_vision::EjectedViewerMessage),
+    #[cfg(feature = "video")]
+    AppVideo(iced_av1::widget::Message),
+    #[cfg(feature = "video")]
+    PanelVideo(Panel, iced_av1::widget::Message),
+    Keyboard(iced::keyboard::Event),
+    TogglePanelAutoViewport(Panel),
     Tick,
+}
+
+impl Message {
+    fn name(&self) -> &'static str {
+        match self {
+            Message::Tick => "Tick",
+            Message::Panel(panel, _) => match panel {
+                Panel::LeadVocalist => "Panel(LeadVocalist)",
+                Panel::RhythmGuitarist => "Panel(RhythmGuitarist)",
+                Panel::LeadGuitarist => "Panel(LeadGuitarist)",
+                Panel::Bass => "Panel(Bass)",
+                Panel::Drums => "Panel(Drums)",
+            },
+            Message::Keyboard(_) => "Keyboard",
+            #[cfg(feature = "video")]
+            Message::AppVideo(_) => "AppVideo",
+            #[cfg(feature = "video")]
+            Message::PanelVideo(panel, _) => match panel {
+                Panel::LeadVocalist => "PanelVideo(LeadVocalist)",
+                Panel::RhythmGuitarist => "PanelVideo(RhythmGuitarist)",
+                Panel::LeadGuitarist => "PanelVideo(LeadGuitarist)",
+                Panel::Bass => "PanelVideo(Bass)",
+                Panel::Drums => "PanelVideo(Drums)",
+            },
+            Message::TogglePanelAutoViewport(panel) => match panel {
+                Panel::LeadVocalist => "TogglePanelAutoViewport(LeadVocalist)",
+                Panel::RhythmGuitarist => "TogglePanelAutoViewport(RhythmGuitarist)",
+                Panel::LeadGuitarist => "TogglePanelAutoViewport(LeadGuitarist)",
+                Panel::Bass => "TogglePanelAutoViewport(Bass)",
+                Panel::Drums => "TogglePanelAutoViewport(Drums)",
+            },
+        }
+    }
 }
 
 struct WelcomeUi {
     lead_vocalist:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
-    lead_guitarist:
-        Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
     rhythm_guitarist:
+        Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
+    lead_guitarist:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
     bass:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
     drums:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
+    metronome: Metronome,
+    #[cfg(feature = "video")]
+    applied_ticks: HashSet<u32>,
+    #[cfg(feature = "video")]
+    app_overlay: Option<iced_av1::widget::State>,
+    #[cfg(feature = "video")]
+    app_overlay_playback: RegionPlayback,
+    #[cfg(feature = "video")]
+    lead_vocalist_panel_overlay: Option<iced_av1::widget::State>,
+    #[cfg(feature = "video")]
+    rhythm_guitarist_panel_overlay: Option<iced_av1::widget::State>,
+    #[cfg(feature = "video")]
+    lead_guitarist_panel_overlay: Option<iced_av1::widget::State>,
+    #[cfg(feature = "video")]
+    bass_panel_overlay: Option<iced_av1::widget::State>,
+    #[cfg(feature = "video")]
+    drums_panel_overlay: Option<iced_av1::widget::State>,
+    #[cfg(feature = "video")]
+    lead_vocalist_panel_playback: RegionPlayback,
+    #[cfg(feature = "video")]
+    rhythm_guitarist_panel_playback: RegionPlayback,
+    #[cfg(feature = "video")]
+    lead_guitarist_panel_playback: RegionPlayback,
+    #[cfg(feature = "video")]
+    bass_panel_playback: RegionPlayback,
+    #[cfg(feature = "video")]
+    drums_panel_playback: RegionPlayback,
     shutdown: ShutdownFlag,
 }
 
@@ -421,6 +616,7 @@ impl WelcomeUi {
     fn new(
         client: DeferredJungleClient<UiClient>,
         journeys: JourneyIds,
+        metronome: Metronome,
         shutdown: ShutdownFlag,
     ) -> (Self, Task<Message>) {
         let lead_vocalist = journeys.lead_vocalist.map(|journey| {
@@ -428,15 +624,15 @@ impl WelcomeUi {
                 .title("Welcome: Lead Vocalist")
                 .eject_live_animal::<LeadVocalist, _>(client.clone(), journey)
         });
-        let lead_guitarist = journeys.lead_guitarist.map(|journey| {
-            jungle_vision::JungleViewerBuilder::new()
-                .title("Welcome: Lead Guitarist")
-                .eject_live_animal::<LeadGuitarist, _>(client.clone(), journey)
-        });
         let rhythm_guitarist = journeys.rhythm_guitarist.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
                 .title("Welcome: Rhythm Guitarist")
                 .eject_live_animal::<RhythmGuitarist, _>(client.clone(), journey)
+        });
+        let lead_guitarist = journeys.lead_guitarist.map(|journey| {
+            jungle_vision::JungleViewerBuilder::new()
+                .title("Welcome: Lead Guitarist")
+                .eject_live_animal::<LeadGuitarist, _>(client.clone(), journey)
         });
         let bass = journeys.bass.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
@@ -449,13 +645,67 @@ impl WelcomeUi {
                 .eject_live_animal::<Drums, _>(client, journey)
         });
 
+        #[cfg(feature = "video")]
+        let app_overlay = init_video_state("app overlay", iced_av1::ScaleMode::Stretch);
+        #[cfg(feature = "video")]
+        let lead_vocalist_panel_overlay = init_video_state(
+            "lead vocalist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
+        #[cfg(feature = "video")]
+        let rhythm_guitarist_panel_overlay = init_video_state(
+            "rhythm guitarist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
+        #[cfg(feature = "video")]
+        let lead_guitarist_panel_overlay = init_video_state(
+            "lead guitarist panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
+        #[cfg(feature = "video")]
+        let bass_panel_overlay = init_video_state(
+            "bass panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
+        #[cfg(feature = "video")]
+        let drums_panel_overlay = init_video_state(
+            "drums panel overlay",
+            iced_av1::ScaleMode::Cover { offset: 0.5 },
+        );
         (
             Self {
                 lead_vocalist,
-                lead_guitarist,
                 rhythm_guitarist,
+                lead_guitarist,
                 bass,
                 drums,
+                metronome,
+                #[cfg(feature = "video")]
+                applied_ticks: HashSet::new(),
+                #[cfg(feature = "video")]
+                app_overlay,
+                #[cfg(feature = "video")]
+                app_overlay_playback: RegionPlayback::hidden(),
+                #[cfg(feature = "video")]
+                lead_vocalist_panel_overlay,
+                #[cfg(feature = "video")]
+                rhythm_guitarist_panel_overlay,
+                #[cfg(feature = "video")]
+                lead_guitarist_panel_overlay,
+                #[cfg(feature = "video")]
+                bass_panel_overlay,
+                #[cfg(feature = "video")]
+                drums_panel_overlay,
+                #[cfg(feature = "video")]
+                lead_vocalist_panel_playback: RegionPlayback::hidden(),
+                #[cfg(feature = "video")]
+                rhythm_guitarist_panel_playback: RegionPlayback::hidden(),
+                #[cfg(feature = "video")]
+                lead_guitarist_panel_playback: RegionPlayback::hidden(),
+                #[cfg(feature = "video")]
+                bass_panel_playback: RegionPlayback::hidden(),
+                #[cfg(feature = "video")]
+                drums_panel_playback: RegionPlayback::hidden(),
                 shutdown,
             },
             Task::none(),
@@ -463,11 +713,46 @@ impl WelcomeUi {
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
+        trace!(message = message.name(), "welcome iced app update");
         match message {
             Message::Tick => {
                 if self.shutdown.should_shutdown() {
                     return iced::exit();
                 }
+                #[cfg(feature = "video")]
+                self.apply_playback_plan();
+                #[cfg(feature = "video")]
+                self.update_playback_regions();
+                Task::none()
+            }
+            Message::Keyboard(iced::keyboard::Event::KeyPressed { key, repeat, .. }) => {
+                if !repeat
+                    && matches!(
+                        key,
+                        iced::keyboard::Key::Named(iced::keyboard::key::Named::Space)
+                    )
+                {
+                    info!("Tick: {}", self.current_rhythm_tick());
+                }
+                Task::none()
+            }
+            Message::Keyboard(_) => Task::none(),
+            #[cfg(feature = "video")]
+            Message::AppVideo(event) => {
+                self.app_overlay.as_mut().map_or_else(Task::none, |video| {
+                    video.update(event);
+                    Task::none()
+                })
+            }
+            #[cfg(feature = "video")]
+            Message::PanelVideo(panel, event) => {
+                if let Some(video) = self.panel_overlay_mut(panel) {
+                    video.update(event);
+                }
+                Task::none()
+            }
+            Message::TogglePanelAutoViewport(panel) => {
+                self.toggle_panel_auto_viewport(panel);
                 Task::none()
             }
             Message::Panel(panel, event) => match panel {
@@ -475,14 +760,14 @@ impl WelcomeUi {
                     v.update(event)
                         .map(move |next| Message::Panel(Panel::LeadVocalist, next))
                 }),
-                Panel::LeadGuitarist => self.lead_guitarist.as_mut().map_or_else(Task::none, |v| {
+                Panel::RhythmGuitarist => self.rhythm_guitarist.as_mut().map_or_else(Task::none, |v| {
                     v.update(event)
-                        .map(move |next| Message::Panel(Panel::LeadGuitarist, next))
+                        .map(move |next| Message::Panel(Panel::RhythmGuitarist, next))
                 }),
-                Panel::RhythmGuitarist => {
-                    self.rhythm_guitarist.as_mut().map_or_else(Task::none, |v| {
+                Panel::LeadGuitarist => {
+                    self.lead_guitarist.as_mut().map_or_else(Task::none, |v| {
                         v.update(event)
-                            .map(move |next| Message::Panel(Panel::RhythmGuitarist, next))
+                            .map(move |next| Message::Panel(Panel::LeadGuitarist, next))
                     })
                 }
                 Panel::Bass => self.bass.as_mut().map_or_else(Task::none, |v| {
@@ -506,18 +791,18 @@ impl WelcomeUi {
                     .map(|event| Message::Panel(Panel::LeadVocalist, event)),
             );
         }
-        if let Some(viewer) = self.lead_guitarist.as_ref() {
-            subscriptions.push(
-                viewer
-                    .subscription()
-                    .map(|event| Message::Panel(Panel::LeadGuitarist, event)),
-            );
-        }
         if let Some(viewer) = self.rhythm_guitarist.as_ref() {
             subscriptions.push(
                 viewer
                     .subscription()
                     .map(|event| Message::Panel(Panel::RhythmGuitarist, event)),
+            );
+        }
+        if let Some(viewer) = self.lead_guitarist.as_ref() {
+            subscriptions.push(
+                viewer
+                    .subscription()
+                    .map(|event| Message::Panel(Panel::LeadGuitarist, event)),
             );
         }
         if let Some(viewer) = self.bass.as_ref() {
@@ -534,8 +819,37 @@ impl WelcomeUi {
                     .map(|event| Message::Panel(Panel::Drums, event)),
             );
         }
-        subscriptions
-            .push(iced::time::every(std::time::Duration::from_millis(200)).map(|_| Message::Tick));
+        subscriptions.push(iced::keyboard::listen().map(Message::Keyboard));
+        subscriptions.push(iced::time::every(UI_TICK_INTERVAL).map(|_| Message::Tick));
+        #[cfg(feature = "video")]
+        {
+            if let Some(video) = self.app_overlay.as_ref() {
+                subscriptions.push(video.subscription(Message::AppVideo));
+            }
+            if let Some(video) = self.lead_vocalist_panel_overlay.as_ref() {
+                subscriptions.push(
+                    video.subscription(|event| Message::PanelVideo(Panel::LeadVocalist, event)),
+                );
+            }
+            if let Some(video) = self.rhythm_guitarist_panel_overlay.as_ref() {
+                subscriptions.push(
+                    video.subscription(|event| Message::PanelVideo(Panel::RhythmGuitarist, event)),
+                );
+            }
+            if let Some(video) = self.lead_guitarist_panel_overlay.as_ref() {
+                subscriptions.push(
+                    video.subscription(|event| Message::PanelVideo(Panel::LeadGuitarist, event)),
+                );
+            }
+            if let Some(video) = self.bass_panel_overlay.as_ref() {
+                subscriptions
+                    .push(video.subscription(|event| Message::PanelVideo(Panel::Bass, event)));
+            }
+            if let Some(video) = self.drums_panel_overlay.as_ref() {
+                subscriptions
+                    .push(video.subscription(|event| Message::PanelVideo(Panel::Drums, event)));
+            }
+        }
         Subscription::batch(subscriptions)
     }
 
@@ -547,27 +861,36 @@ impl WelcomeUi {
         let mut panel_count = 0usize;
 
         if let Some(viewer) = self.bass.as_ref() {
-            panels = panels.push(panel("Bass", viewer.view(), Panel::Bass));
-            panel_count += 1;
-        }
-        if let Some(viewer) = self.lead_guitarist.as_ref() {
-            panels = panels.push(panel("Lead Guitarist", viewer.view(), Panel::LeadGuitarist));
-            panel_count += 1;
-        }
-        if let Some(viewer) = self.lead_vocalist.as_ref() {
-            panels = panels.push(panel("Lead Vocalist", viewer.view(), Panel::LeadVocalist));
+            panels = panels.push(self.panel_with_overlay("Foo (Bass)", viewer.view(), Panel::Bass));
             panel_count += 1;
         }
         if let Some(viewer) = self.rhythm_guitarist.as_ref() {
-            panels = panels.push(panel(
-                "Rhythm Guitarist",
+            panels = panels.push(self.panel_with_overlay(
+                "Bar (Rhythm Guitar)",
                 viewer.view(),
                 Panel::RhythmGuitarist,
             ));
             panel_count += 1;
         }
+        if let Some(viewer) = self.lead_vocalist.as_ref() {
+            panels = panels.push(self.panel_with_overlay(
+                "Baz (Vocals)",
+                viewer.view(),
+                Panel::LeadVocalist,
+            ));
+            panel_count += 1;
+        }
+        if let Some(viewer) = self.lead_guitarist.as_ref() {
+            panels = panels.push(self.panel_with_overlay(
+                "Qux (Lead Guitar)",
+                viewer.view(),
+                Panel::LeadGuitarist,
+            ));
+            panel_count += 1;
+        }
         if let Some(viewer) = self.drums.as_ref() {
-            panels = panels.push(panel("Drums", viewer.view(), Panel::Drums));
+            panels =
+                panels.push(self.panel_with_overlay("Corge (Drums)", viewer.view(), Panel::Drums));
             panel_count += 1;
         }
 
@@ -580,23 +903,413 @@ impl WelcomeUi {
             panels.into()
         };
 
-        container(content)
+        let app: Element<'_, Message> = container(content)
             .padding(12)
             .width(Length::Fill)
             .height(Length::Fill)
             .style(app_background)
-            .into()
+            .into();
+
+        #[cfg(feature = "video")]
+        if self.app_overlay_playback.enabled {
+            if let Some(overlay) = self
+                .app_overlay
+                .as_ref()
+                .and_then(|video| video.overlay_view(Message::AppVideo))
+            {
+                return stack([app, overlay])
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into();
+            }
+        }
+
+        app
     }
+
+    fn panel_with_overlay<'a>(
+        &'a self,
+        label: &'a str,
+        content: Element<'a, jungle_vision::EjectedViewerMessage>,
+        panel_kind: Panel,
+    ) -> Element<'a, Message> {
+        let auto_viewport_enabled = self.panel_auto_viewport_enabled(panel_kind);
+        let base = panel(label, content, panel_kind, auto_viewport_enabled);
+        #[cfg(feature = "video")]
+        if self.panel_playback(panel_kind).enabled {
+            if let Some(overlay) = self
+                .panel_overlay(panel_kind)
+                .and_then(|video| video.overlay_view(map_panel_video_message))
+            {
+                return stack([
+                    base,
+                    overlay.map(move |event| Message::PanelVideo(panel_kind, event)),
+                ])
+                .width(Length::FillPortion(1))
+                .height(Length::Fill)
+                .into();
+            }
+        }
+
+        base
+    }
+
+    fn panel_auto_viewport_enabled(&self, panel: Panel) -> bool {
+        match panel {
+            Panel::LeadVocalist => self
+                .lead_vocalist
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+            Panel::RhythmGuitarist => self
+                .rhythm_guitarist
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+            Panel::LeadGuitarist => self
+                .lead_guitarist
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+            Panel::Bass => self
+                .bass
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+            Panel::Drums => self
+                .drums
+                .as_ref()
+                .map(|viewer| viewer.auto_viewport_enabled())
+                .unwrap_or(true),
+        }
+    }
+
+    fn toggle_panel_auto_viewport(&mut self, panel: Panel) {
+        match panel {
+            Panel::LeadVocalist => {
+                if let Some(viewer) = self.lead_vocalist.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+            Panel::RhythmGuitarist => {
+                if let Some(viewer) = self.rhythm_guitarist.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+            Panel::LeadGuitarist => {
+                if let Some(viewer) = self.lead_guitarist.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+            Panel::Bass => {
+                if let Some(viewer) = self.bass.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+            Panel::Drums => {
+                if let Some(viewer) = self.drums.as_mut() {
+                    viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "video")]
+    fn apply_playback_plan(&mut self) {
+        let beat = self.current_beat_tick();
+        for plan in VIDEO_PLAYBACK_PLAN {
+            if beat < u64::from(plan.tick) {
+                continue;
+            }
+            if !self.applied_ticks.insert(plan.tick) {
+                continue;
+            }
+
+            let now = Instant::now();
+            if let Some(request) = plan.app_overlay {
+                Self::start_region_playback(
+                    self.app_overlay.as_ref(),
+                    &mut self.app_overlay_playback,
+                    request,
+                    now,
+                );
+            } else {
+                Self::stop_region_playback(
+                    self.app_overlay.as_ref(),
+                    &mut self.app_overlay_playback,
+                );
+            }
+
+            for panel in Panel::ALL {
+                if let Some(request) = plan.panel_request(panel) {
+                    let (overlay, playback) = self.panel_slot_mut(panel);
+                    Self::start_region_playback(overlay.as_ref(), playback, request, now);
+                } else {
+                    let (overlay, playback) = self.panel_slot_mut(panel);
+                    Self::stop_region_playback(overlay.as_ref(), playback);
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "video")]
+    fn update_playback_regions(&mut self) {
+        let now = Instant::now();
+        Self::tick_region(
+            self.app_overlay.as_ref(),
+            &mut self.app_overlay_playback,
+            now,
+        );
+        for panel in Panel::ALL {
+            let (overlay, playback) = self.panel_slot_mut(panel);
+            Self::tick_region(overlay.as_ref(), playback, now);
+        }
+    }
+
+    #[cfg(feature = "video")]
+    fn tick_region(
+        overlay: Option<&iced_av1::widget::State>,
+        playback: &mut RegionPlayback,
+        now: Instant,
+    ) {
+        if !playback.enabled {
+            return;
+        }
+
+        if !playback.fade_out_started {
+            if let Some(fade_out_at) = playback.fade_out_at {
+                if now >= fade_out_at {
+                    if let Some(overlay) = overlay {
+                        overlay.tween_to_opacity_with(
+                            0.0,
+                            iced_av1::OpacityTween {
+                                duration: VIDEO_FADE_OUT,
+                            },
+                        );
+                    }
+                    playback.fade_out_started = true;
+                }
+            }
+        }
+
+        if let Some(visible_until) = playback.visible_until {
+            if now >= visible_until {
+                if let Some(overlay) = overlay {
+                    overlay.set_opacity(0.0);
+                    if let Err(error) = overlay.pause() {
+                        warn!(error = %error, "failed to pause AV overlay after visibility ended");
+                    }
+                }
+                *playback = RegionPlayback::hidden();
+            }
+        }
+    }
+
+    #[cfg(feature = "video")]
+    fn start_region_playback(
+        overlay: Option<&iced_av1::widget::State>,
+        playback: &mut RegionPlayback,
+        request: VideoPlaybackRequest,
+        now: Instant,
+    ) {
+        if let Some(overlay) = overlay {
+            if let Err(error) = overlay.resume() {
+                warn!(error = %error, "failed to resume AV overlay before playback");
+                return;
+            }
+            if let Err(error) = overlay.seek(duration_to_ns(request.offset)) {
+                warn!(error = %error, "failed to seek AV overlay to requested offset");
+                return;
+            }
+            overlay.set_opacity(0.0);
+            overlay.tween_to_opacity_with(
+                request.opacity,
+                iced_av1::OpacityTween {
+                    duration: VIDEO_FADE_IN.min(request.duration),
+                },
+            );
+        }
+
+        let visible_until = now + request.duration;
+        playback.enabled = true;
+        playback.visible_until = Some(visible_until);
+        playback.fade_out_at = Some(
+            visible_until
+                .checked_sub(VIDEO_FADE_OUT.min(request.duration))
+                .unwrap_or(now),
+        );
+        playback.fade_out_started = false;
+    }
+
+    #[cfg(feature = "video")]
+    fn stop_region_playback(
+        overlay: Option<&iced_av1::widget::State>,
+        playback: &mut RegionPlayback,
+    ) {
+        if let Some(overlay) = overlay {
+            overlay.set_opacity(0.0);
+            if let Err(error) = overlay.pause() {
+                warn!(error = %error, "failed to pause AV overlay for hidden region");
+            }
+        }
+        *playback = RegionPlayback::hidden();
+    }
+
+    #[cfg(feature = "video")]
+    fn current_beat_tick(&self) -> u64 {
+        let beat = self.metronome.beat_duration().as_secs_f64();
+        if beat <= f64::EPSILON {
+            return 0;
+        }
+        (self.metronome.elapsed().as_secs_f64() / beat).floor() as u64
+    }
+
+    fn current_rhythm_tick(&self) -> u64 {
+        let tick = self
+            .metronome
+            .tick_duration(crate::effect::TICKS_PER_BEAT)
+            .as_secs_f64();
+        if tick <= f64::EPSILON {
+            return 0;
+        }
+        (self.metronome.elapsed().as_secs_f64() / tick).floor() as u64
+    }
+
+    #[cfg(feature = "video")]
+    fn panel_overlay(&self, panel: Panel) -> Option<&iced_av1::widget::State> {
+        match panel {
+            Panel::LeadVocalist => self.lead_vocalist_panel_overlay.as_ref(),
+            Panel::RhythmGuitarist => self.rhythm_guitarist_panel_overlay.as_ref(),
+            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay.as_ref(),
+            Panel::Bass => self.bass_panel_overlay.as_ref(),
+            Panel::Drums => self.drums_panel_overlay.as_ref(),
+        }
+    }
+
+    #[cfg(feature = "video")]
+    fn panel_overlay_mut(&mut self, panel: Panel) -> Option<&mut iced_av1::widget::State> {
+        match panel {
+            Panel::LeadVocalist => self.lead_vocalist_panel_overlay.as_mut(),
+            Panel::RhythmGuitarist => self.rhythm_guitarist_panel_overlay.as_mut(),
+            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay.as_mut(),
+            Panel::Bass => self.bass_panel_overlay.as_mut(),
+            Panel::Drums => self.drums_panel_overlay.as_mut(),
+        }
+    }
+
+    #[cfg(feature = "video")]
+    fn panel_playback(&self, panel: Panel) -> &RegionPlayback {
+        match panel {
+            Panel::LeadVocalist => &self.lead_vocalist_panel_playback,
+            Panel::RhythmGuitarist => &self.rhythm_guitarist_panel_playback,
+            Panel::LeadGuitarist => &self.lead_guitarist_panel_playback,
+            Panel::Bass => &self.bass_panel_playback,
+            Panel::Drums => &self.drums_panel_playback,
+        }
+    }
+
+    #[cfg(feature = "video")]
+    fn panel_slot_mut(
+        &mut self,
+        panel: Panel,
+    ) -> (&mut Option<iced_av1::widget::State>, &mut RegionPlayback) {
+        match panel {
+            Panel::LeadVocalist => (
+                &mut self.lead_vocalist_panel_overlay,
+                &mut self.lead_vocalist_panel_playback,
+            ),
+            Panel::RhythmGuitarist => (
+                &mut self.rhythm_guitarist_panel_overlay,
+                &mut self.rhythm_guitarist_panel_playback,
+            ),
+            Panel::LeadGuitarist => (
+                &mut self.lead_guitarist_panel_overlay,
+                &mut self.lead_guitarist_panel_playback,
+            ),
+            Panel::Bass => (&mut self.bass_panel_overlay, &mut self.bass_panel_playback),
+            Panel::Drums => (
+                &mut self.drums_panel_overlay,
+                &mut self.drums_panel_playback,
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "video")]
+fn init_video_state(
+    region: &str,
+    scale_mode: iced_av1::ScaleMode,
+) -> Option<iced_av1::widget::State> {
+    let playback_options = iced_av1::PlaybackOptions::default();
+    let opacity_options = iced_av1::OpacityOptions {
+        opacity: 0.0,
+        tween: iced_av1::OpacityTween {
+            duration: VIDEO_FADE_IN,
+        },
+    };
+    let source = iced_av1::MediaSource::from_bytes(AV_OVERLAY_BYTES.to_vec());
+    match iced_av1::widget::State::new_with_media_source_and_opacity_options(
+        source,
+        playback_options,
+        opacity_options,
+    ) {
+        Ok(mut state) => {
+            state.set_scale_mode(scale_mode);
+            if let Err(error) = state.pause() {
+                warn!(
+                    error = %error,
+                    region,
+                    "failed to pause AV overlay state at initialization"
+                );
+            }
+            Some(state)
+        }
+        Err(error) => {
+            warn!(error = %error, region, "failed to initialize AV overlay state");
+            None
+        }
+    }
+}
+
+#[cfg(feature = "video")]
+fn map_panel_video_message(message: iced_av1::widget::Message) -> iced_av1::widget::Message {
+    message
+}
+
+#[cfg(feature = "video")]
+fn duration_to_ns(duration: Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
 }
 
 fn panel<'a>(
     label: &'a str,
     content: Element<'a, jungle_vision::EjectedViewerMessage>,
     target: Panel,
+    auto_viewport_enabled: bool,
 ) -> Element<'a, Message> {
+    let lock_icon = if auto_viewport_enabled {
+        LOCK_ICON_SVG
+    } else {
+        UNLOCK_ICON_SVG
+    };
+    let lock_button = button(
+        svg(svg::Handle::from_memory(lock_icon))
+            .width(Length::Fixed(14.0))
+            .height(Length::Fixed(14.0))
+            .style(|_theme, _status| svg::Style {
+                color: Some(Color::from_rgb8(223, 245, 230)),
+            }),
+    )
+    .padding([4, 4])
+    .style(move |theme, status| panel_lock_button_style(auto_viewport_enabled, theme, status))
+    .on_press(Message::TogglePanelAutoViewport(target));
+
     container(
         column![
-            text(label).size(13).color(Color::from_rgb8(198, 229, 211)),
+            Row::new()
+                .push(text(label).size(13).color(Color::from_rgb8(198, 229, 211)))
+                .push(Space::new().width(Length::Fill))
+                .push(lock_button),
             container(content.map(move |event| Message::Panel(target, event)))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -621,6 +1334,33 @@ fn panel_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(Color::from_rgb8(10, 26, 17))),
         border: iced::border::rounded(8)
+            .color(Color::from_rgb8(24, 63, 43))
+            .width(1.0),
+        ..Default::default()
+    }
+}
+
+fn panel_lock_button_style(
+    enabled: bool,
+    _theme: &iced::Theme,
+    status: button::Status,
+) -> iced::widget::button::Style {
+    let background = if enabled {
+        match status {
+            button::Status::Hovered => Color::from_rgb8(28, 89, 55),
+            _ => Color::from_rgb8(20, 71, 45),
+        }
+    } else {
+        match status {
+            button::Status::Hovered => Color::from_rgb8(89, 60, 26),
+            _ => Color::from_rgb8(71, 48, 20),
+        }
+    };
+
+    iced::widget::button::Style {
+        background: Some(iced::Background::Color(background)),
+        text_color: Color::from_rgb8(223, 245, 230),
+        border: iced::border::rounded(6)
             .color(Color::from_rgb8(24, 63, 43))
             .width(1.0),
         ..Default::default()

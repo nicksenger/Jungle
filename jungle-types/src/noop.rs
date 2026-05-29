@@ -1,7 +1,7 @@
 use crate::{Effect, EffectSchema, Id};
 use typosaurus::num::consts::U654;
 
-/// Built-in no-op effect for `Act`s that don't need any I/O.
+/// Built-in no-op effect for `Action`s that don't need any I/O.
 ///
 /// The executor has a dedicated inline fast path for this effect to avoid
 /// request/completion roundtrip overhead.

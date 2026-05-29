@@ -16,8 +16,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Act, Aspect, BoundAct, BoundFlowStep, Effect, EffectCompletion, EffectRequest, EffectSchema,
-    Identity, ScopeReboundAct, ScopedAct, ScopedAnimal, StateCarrier, Step,
+    Action, Aspect, BoundAction, BoundFlowStep, Effect, EffectCompletion, EffectRequest, EffectSchema,
+    Identity, ScopeReboundAction, ScopedAction, ScopedAnimal, StateCarrier, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;
@@ -100,52 +100,43 @@ impl<In> LoopInput for (bool, In) {
     }
 }
 
-/// Legacy predicate hook for [`Conditional`], retained as a marker for type-level flow shape.
-pub trait Condition<In> {
-    fn choose(input: &In) -> bool;
+/// Unified predicate contract for control-flow decisions.
+pub trait Predicate<Input> {
+    fn eval(input: &Input) -> bool;
 }
 
-/// Legacy predicate hook for [`While`], retained as a marker for type-level flow shape.
-pub trait LoopCondition<State> {
-    type Arg;
-
-    fn should_continue(state: &State) -> bool;
-}
-
-/// Adapts a [`Condition`] defined over a focused view to run against a larger root state.
+/// Adapts a [`Predicate`] defined over a focused view to run against a larger root state.
 ///
 /// This is useful for scoped flow templates where branch predicates are authored against
 /// the focused scope type, but runtime evaluation happens on the full animal state.
 pub struct FocusedCondition<P, View>(PhantomData<fn() -> (P, View)>);
 
-impl<State, View, Arg, P> Condition<(State, Arg)> for FocusedCondition<P, View>
+impl<State, View, Arg, P> Predicate<(State, Arg)> for FocusedCondition<P, View>
 where
     State: ViewProject<View> + Clone,
     View: Clone,
     Arg: Clone,
-    P: Condition<(View, Arg)>,
+    P: Predicate<(View, Arg)>,
 {
-    fn choose((state, arg): &(State, Arg)) -> bool {
+    fn eval((state, arg): &(State, Arg)) -> bool {
         let mut projected_state = state.clone();
         let view = <State as ViewProject<View>>::project_view(&mut projected_state).clone();
-        <P as Condition<(View, Arg)>>::choose(&(view, arg.clone()))
+        <P as Predicate<(View, Arg)>>::eval(&(view, arg.clone()))
     }
 }
 
-/// Adapts a [`LoopCondition`] defined over a focused view to run against a larger root state.
+/// Adapts a borrowed-input loop [`Predicate`] over a focused view to run against a larger root state.
 pub struct FocusedLoopCondition<C, View>(PhantomData<fn() -> (C, View)>);
 
-impl<State, View, C> LoopCondition<State> for FocusedLoopCondition<C, View>
+impl<'a, State, View, Arg, C> Predicate<(&'a State, &'a Arg)> for FocusedLoopCondition<C, View>
 where
     State: ViewProject<View> + Clone,
-    C: LoopCondition<View>,
+    C: for<'b> Predicate<(&'b View, &'b Arg)>,
 {
-    type Arg = <C as LoopCondition<View>>::Arg;
-
-    fn should_continue(state: &State) -> bool {
-        let mut projected_state = state.clone();
+    fn eval((state, arg): &(&'a State, &'a Arg)) -> bool {
+        let mut projected_state = (*state).clone();
         let view = <State as ViewProject<View>>::project_view(&mut projected_state);
-        <C as LoopCondition<View>>::should_continue(view)
+        <C as Predicate<(&View, &Arg)>>::eval(&(view, arg))
     }
 }
 
@@ -660,6 +651,11 @@ pub trait BindWithFlowScope<A: Animal, ScopeView> {
     type Bound;
 }
 
+/// Dedicated binding recursion used by [`BoundAnimalJourney`] hot path.
+pub trait BindFlow<A: Animal, Scope> {
+    type Out;
+}
+
 /// Convenience alias for binding a flow/template to a concrete animal.
 pub type BoundFlow<F, A> = <F as BindAnimal<A>>::Bound;
 /// Marker for animals whose journey template can be bound to themselves.
@@ -702,25 +698,151 @@ where
 {
 }
 
+impl<A, Scope> BindFlow<A, Scope> for list::Empty
+where
+    A: Animal,
+{
+    type Out = list::Empty;
+}
+
+impl<A, Scope, Head, Tail> BindFlow<A, Scope> for TList<(Head, Tail)>
+where
+    A: Animal,
+    Head: BindFlow<A, Scope>,
+    Tail: BindFlow<A, Scope>,
+{
+    type Out = TList<(
+        <Head as BindFlow<A, Scope>>::Out,
+        <Tail as BindFlow<A, Scope>>::Out,
+    )>;
+}
+
+impl<A, Scope, T, B> BindFlow<A, Scope> for BoundFlowStep<T, B>
+where
+    A: Animal,
+    T: Animal,
+    B: BoundAction<T>,
+{
+    type Out = BoundFlowStep<T, B>;
+}
+
+impl<T, S> BindFlow<T, RootScope> for Step<S>
+where
+    T: Animal,
+    S: Action,
+    <S as Action>::Bind<T>: BoundAction<
+        T,
+        Input = <S as Action>::Input,
+        Output = <S as Action>::Output,
+        Effect = <S as Action>::Effect,
+    >,
+{
+    type Out = BoundFlowStep<T, <S as Action>::Bind<T>>;
+}
+
+impl<T, ScopeCarrier, S> BindFlow<T, ScopeCarrier> for Step<S>
+where
+    T: Animal,
+    ScopeCarrier: ScopedCarrierMarker,
+    ScopeCarrier: Aspect<T::State>,
+    S: Action,
+    S: ScopedAction<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>,
+    <S as ScopedAction<T, <ScopeCarrier as StateCarrier<T::State>>::Focus, ScopeCarrier>>::BoundAction:
+        BoundAction<
+            T,
+            Input = <S as Action>::Input,
+            Output = <S as Action>::Output,
+            Effect = <S as Action>::Effect,
+        >,
+{
+    type Out = BoundFlowStep<
+        T,
+        <S as ScopedAction<
+            T,
+            <ScopeCarrier as StateCarrier<T::State>>::Focus,
+            ScopeCarrier,
+        >>::BoundAction,
+    >;
+}
+
+impl<A, Scope, P, L, R, M> BindFlow<A, Scope> for Conditional<P, L, R, M>
+where
+    A: Animal,
+    L: BindFlow<A, Scope>,
+    R: BindFlow<A, Scope>,
+{
+    type Out = Conditional<P, <L as BindFlow<A, Scope>>::Out, <R as BindFlow<A, Scope>>::Out, M>;
+}
+
+impl<A, Scope, C, F, M> BindFlow<A, Scope> for While<C, F, M>
+where
+    A: Animal,
+    F: BindFlow<A, Scope>,
+{
+    type Out = While<C, <F as BindFlow<A, Scope>>::Out, M>;
+}
+
+impl<A, Scope, M, F> BindFlow<A, Scope> for Transparent<M, F>
+where
+    A: Animal,
+    F: BindFlow<A, Scope>,
+{
+    type Out = Transparent<M, <F as BindFlow<A, Scope>>::Out>;
+}
+
+impl<A, Scope, L, R, M> BindFlow<A, Scope> for Select<L, R, M>
+where
+    A: Animal,
+    L: BindFlow<A, Scope>,
+    R: BindFlow<A, Scope>,
+{
+    type Out = Select<<L as BindFlow<A, Scope>>::Out, <R as BindFlow<A, Scope>>::Out, M>;
+}
+
+impl<A, Scope, L, R, M> BindFlow<A, Scope> for Join<L, R, M>
+where
+    A: Animal,
+    L: BindFlow<A, Scope>,
+    R: BindFlow<A, Scope>,
+{
+    type Out = Join<<L as BindFlow<A, Scope>>::Out, <R as BindFlow<A, Scope>>::Out, M>;
+}
+
+impl<A, View, F> BindFlow<A, RootScope> for Scoped<View, F>
+where
+    A: Animal,
+    View: 'static,
+    F: BindFlow<A, ViewCarrier<View>>,
+{
+    type Out = <F as BindFlow<A, ViewCarrier<View>>>::Out;
+}
+
+impl<A, ScopeCarrier, View, F> BindFlow<A, ScopeCarrier> for Scoped<View, F>
+where
+    A: Animal,
+    ScopeCarrier: ScopedCarrierMarker,
+    ScopeCarrier: Aspect<A::State>,
+    View: 'static,
+    F: BindFlow<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>,
+{
+    type Out = <F as BindFlow<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>>::Out;
+}
+
 impl<F, A> BindWithFlowScope<A, RootFlowScope> for F
 where
     A: Animal,
-    F: TraverseFlow,
-    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A, RootScope>>,
+    F: BindFlow<A, RootScope>,
 {
-    type Bound =
-        <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
+    type Bound = <F as BindFlow<A, RootScope>>::Out;
 }
 
 impl<F, A, View> BindWithFlowScope<A, FlowView<View>> for F
 where
     A: Animal,
     View: 'static,
-    F: TraverseFlow,
-    <F as TraverseFlow>::Output: TraverseWith<BindAnimalTraversal<A, RootScope>>,
+    F: BindFlow<A, RootScope>,
 {
-    type Bound =
-        <<F as TraverseFlow>::Output as TraverseWith<BindAnimalTraversal<A, RootScope>>>::Output;
+    type Bound = <F as BindFlow<A, RootScope>>::Out;
 }
 
 /// Directional helper that rewrites `BoundFlowStep<Animal, Left>` to `BoundFlowStep<Animal, Right>`.
@@ -738,8 +860,8 @@ pub type SwapNodeRL<Left, Right> = SwapRL<Left, Right>;
 impl<A, Left, Right> ReplaceStep<BoundFlowStep<A, Left>> for SwapLR<Left, Right>
 where
     A: Animal,
-    Left: BoundAct<A>,
-    Right: BoundAct<A>,
+    Left: BoundAction<A>,
+    Right: BoundAction<A>,
 {
     type Output = BoundFlowStep<A, Right>;
 }
@@ -747,19 +869,19 @@ where
 impl<A, Left, Right> ReplaceStep<BoundFlowStep<A, Right>> for SwapRL<Left, Right>
 where
     A: Animal,
-    Left: BoundAct<A>,
-    Right: BoundAct<A>,
+    Left: BoundAction<A>,
+    Right: BoundAction<A>,
 {
     type Output = BoundFlowStep<A, Left>;
 }
 
 impl<Left, Right> ReplaceStep<Step<Left>> for SwapLR<Left, Right>
 where
-    Left: Act,
-    Right: Act<
-        Input = <Left as Act>::Input,
-        Output = <Left as Act>::Output,
-        Effect = <Left as Act>::Effect,
+    Left: Action,
+    Right: Action<
+        Input = <Left as Action>::Input,
+        Output = <Left as Action>::Output,
+        Effect = <Left as Action>::Effect,
     >,
 {
     type Output = Step<Right>;
@@ -767,11 +889,11 @@ where
 
 impl<Left, Right> ReplaceStep<Step<Right>> for SwapRL<Left, Right>
 where
-    Left: Act,
-    Right: Act<
-        Input = <Left as Act>::Input,
-        Output = <Left as Act>::Output,
-        Effect = <Left as Act>::Effect,
+    Left: Action,
+    Right: Action<
+        Input = <Left as Action>::Input,
+        Output = <Left as Action>::Output,
+        Effect = <Left as Action>::Effect,
     >,
 {
     type Output = Step<Left>;
@@ -786,21 +908,61 @@ impl<Left, Right> ReplaceNode<Right> for SwapRL<Left, Right> {
 }
 
 /// Inception property that normalizes/walks a flow's type structure.
+///
+/// This is an internal structural traversal used by derive/inception output.
+/// Public [`TraverseFlow`] adapts this shape based on [`FlowScope`].
 #[inception(property = JungleTraverseFlow, types)]
-pub trait TraverseFlow {
+pub trait TraverseFlowShape {
     #[induce(
         base = list::Empty,
         merge = TList<(
             <Head as TraverseFlow>::Output,
-            <Tail as TraverseFlow>::Output
-        )>,
+            <Tail as TraverseFlowShape>::Output
+        )> where { Head: TraverseFlow },
         merge_variant = TList<(
             <Head as TraverseFlow>::Output,
-            <Tail as TraverseFlow>::Output
-        )>,
-        join = <Fields as TraverseFlow>::Output
+            <Tail as TraverseFlowShape>::Output
+        )> where { Head: TraverseFlow },
+        join = <Fields as TraverseFlowShape>::Output
     )]
     type Output;
+}
+
+/// Public flow traversal output used by bind/traverse operations.
+pub trait TraverseFlow {
+    type Output;
+}
+
+/// Internal helper that routes [`TraverseFlow`] by declared [`FlowScope`].
+pub trait TraverseFlowWithScope<ScopeView> {
+    type Output;
+}
+
+impl<F> TraverseFlow for F
+where
+    F: FlowScope + TraverseFlowWithScope<<F as FlowScope>::View>,
+{
+    type Output = <F as TraverseFlowWithScope<<F as FlowScope>::View>>::Output;
+}
+
+impl<F> TraverseFlowWithScope<RootFlowScope> for F
+where
+    F: TraverseFlowShape,
+{
+    type Output = <F as TraverseFlowShape>::Output;
+}
+
+impl<F, View> TraverseFlowWithScope<FlowView<View>> for F
+where
+    F: TraverseFlowShape,
+    <F as TraverseFlowShape>::Output: ScopedFieldListNormalize,
+{
+    type Output =
+        Scoped<View, <<F as TraverseFlowShape>::Output as ScopedFieldListNormalize>::Output>;
+}
+
+impl TraverseFlow for VariantHeader {
+    type Output = list::Empty;
 }
 
 /// Inception property that normalizes/walks a flow's type structure.
@@ -862,21 +1024,29 @@ impl ScopedFieldListNormalize for list::Empty {
     type Output = list::Empty;
 }
 
-impl<Head, Tail> ScopedFieldListNormalize for TList<(Head, Tail)> {
-    type Output = TList<(Head, Tail)>;
+impl<Head, Tail> ScopedFieldListNormalize for TList<(Head, Tail)>
+where
+    Head: ScopedFieldListNormalize,
+    Tail: ScopedFieldListNormalize,
+    <Head as ScopedFieldListNormalize>::Output:
+        FlowListConcat<<Tail as ScopedFieldListNormalize>::Output>,
+{
+    type Output = <<Head as ScopedFieldListNormalize>::Output as FlowListConcat<
+        <Tail as ScopedFieldListNormalize>::Output,
+    >>::Output;
 }
 
 impl<T, A> ScopedFieldListNormalize for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: BoundAct<T>,
+    A: BoundAction<T>,
 {
     type Output = TList<(BoundFlowStep<T, A>, list::Empty)>;
 }
 
 impl<S> ScopedFieldListNormalize for Step<S>
 where
-    S: Act,
+    S: Action,
 {
     type Output = TList<(Step<S>, list::Empty)>;
 }
@@ -1278,13 +1448,13 @@ impl<P, L, R, M> Running for Conditional<P, L, R, M>
 where
     L: Running,
     R: Running<In = L::In>,
-    P: Condition<L::In>,
+    P: Predicate<L::In>,
 {
     type In = L::In;
     type Out = Either<L::Out, R::Out>;
 
     fn run(input: Self::In) -> Self::Out {
-        if <P as Condition<L::In>>::choose(&input) {
+        if <P as Predicate<L::In>>::eval(&input) {
             Either::Left(<L as Running>::run(input))
         } else {
             Either::Right(<R as Running>::run(input))
@@ -1319,6 +1489,14 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<P, L, R, M> TraverseFlowShape for Conditional<P, L, R, M>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Conditional<P, <L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
+}
+
 impl<P, L, R, M> TraverseFlow for Conditional<P, L, R, M>
 where
     L: TraverseFlow,
@@ -1425,6 +1603,13 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<C, F, M> TraverseFlowShape for While<C, F, M>
+where
+    F: TraverseFlow,
+{
+    type Output = While<C, <F as TraverseFlow>::Output, M>;
+}
+
 impl<C, F, M> TraverseFlow for While<C, F, M>
 where
     F: TraverseFlow,
@@ -1498,6 +1683,13 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<View, F> TraverseFlowShape for Scoped<View, F>
+where
+    F: TraverseFlow,
+{
+    type Output = Scoped<View, <F as TraverseFlow>::Output>;
+}
+
 impl<View, F> TraverseFlow for Scoped<View, F>
 where
     F: TraverseFlow,
@@ -1564,6 +1756,13 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<M, F> TraverseFlowShape for Transparent<M, F>
+where
+    F: TraverseFlow,
+{
+    type Output = Transparent<M, <F as TraverseFlow>::Output>;
+}
+
 impl<M, F> TraverseFlow for Transparent<M, F>
 where
     F: TraverseFlow,
@@ -1606,7 +1805,7 @@ where
 impl<T, A> NodeMetadata for BoundFlowStep<T, A>
 where
     T: Animal,
-    A: BoundAct<T>,
+    A: BoundAction<T>,
 {
 }
 
@@ -1644,14 +1843,14 @@ where
 
 impl<View, F> NodeMetadata for Scoped<View, F> {}
 
-impl<S> NodeMetadata for Step<S> where S: Act {}
+impl<S> NodeMetadata for Step<S> where S: Action {}
 
 impl<A, Scope, T, B> TraverseStep<BoundFlowStep<T, B>> for BindAnimalTraversal<A, Scope>
 where
     A: Animal,
     Scope: Aspect<A::State>,
     T: Animal,
-    B: BoundAct<T>,
+    B: BoundAction<T>,
 {
     type Output = BoundFlowStep<T, B>;
 }
@@ -1731,6 +1930,14 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<L, R, M> TraverseFlowShape for Select<L, R, M>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Select<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
+}
+
 impl<L, R, M> TraverseFlow for Select<L, R, M>
 where
     L: TraverseFlow,
@@ -1826,6 +2033,14 @@ where
 }
 
 #[primitive(property = JungleTraverseFlow)]
+impl<L, R, M> TraverseFlowShape for Join<L, R, M>
+where
+    L: TraverseFlow,
+    R: TraverseFlow,
+{
+    type Output = Join<<L as TraverseFlow>::Output, <R as TraverseFlow>::Output, M>;
+}
+
 impl<L, R, M> TraverseFlow for Join<L, R, M>
 where
     L: TraverseFlow,

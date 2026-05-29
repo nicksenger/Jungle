@@ -1,0 +1,15 @@
+[package]
+name = "welcome-audio"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cpal = "0.17"
+futures = "0.3"
+rustsam = { path = "../../../../../rustsam" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+
+[lints]
+workspace = true

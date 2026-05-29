@@ -31,31 +31,29 @@ impl<J> Effect<J> for AddEffect {
 }
 
 pub struct SleepNotComplete;
-impl LoopCondition<SleepState> for SleepNotComplete {
-    type Arg = ();
-
-    fn should_continue(state: &SleepState) -> bool {
+impl Predicate<(&SleepState, &())> for SleepNotComplete {
+    fn eval((state, _): &(&SleepState, &())) -> bool {
         state.phase < 3
     }
 }
 
 pub struct SleepPhaseZero;
-impl Condition<(SleepState, ())> for SleepPhaseZero {
-    fn choose((state, _): &(SleepState, ())) -> bool {
+impl Predicate<(SleepState, ())> for SleepPhaseZero {
+    fn eval((state, _): &(SleepState, ())) -> bool {
         state.phase == 0
     }
 }
 
 pub struct SleepPhaseOne;
-impl Condition<(SleepState, ())> for SleepPhaseOne {
-    fn choose((state, _): &(SleepState, ())) -> bool {
+impl Predicate<(SleepState, ())> for SleepPhaseOne {
+    fn eval((state, _): &(SleepState, ())) -> bool {
         state.phase == 1
     }
 }
 
 pub struct AddBeforeSleepSpec;
-#[jungle::act]
-impl Act for AddBeforeSleepSpec {
+#[jungle::action]
+impl Action for AddBeforeSleepSpec {
     type Effect = AddEffect;
     type Input = ();
     type Output = ();
@@ -69,8 +67,8 @@ impl Act for AddBeforeSleepSpec {
 }
 
 pub struct SleepForStateWakeSpec;
-#[jungle::act]
-impl Act for SleepForStateWakeSpec {
+#[jungle::action]
+impl Action for SleepForStateWakeSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
@@ -86,8 +84,8 @@ impl Act for SleepForStateWakeSpec {
 }
 
 pub struct AddAfterSleepSpec;
-#[jungle::act]
-impl Act for AddAfterSleepSpec {
+#[jungle::action]
+impl Action for AddAfterSleepSpec {
     type Effect = AddEffect;
     type Input = ();
     type Output = ();
@@ -116,8 +114,8 @@ impl<J> Effect<J> for MergeEitherUnitEffect {
 }
 
 pub struct MergeEitherUnitSpec;
-#[jungle::act]
-impl Act for MergeEitherUnitSpec {
+#[jungle::action]
+impl Action for MergeEitherUnitSpec {
     type Effect = MergeEitherUnitEffect;
     type Input = Either<(), ()>;
     type Output = ();

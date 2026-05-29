@@ -37,24 +37,22 @@ impl<J> Effect<J> for MultiWorkerSleepEffect {
 }
 
 pub struct MultiWorkerContinue;
-impl LoopCondition<MultiWorkerState> for MultiWorkerContinue {
-    type Arg = ();
-
-    fn should_continue(state: &MultiWorkerState) -> bool {
+impl Predicate<(&MultiWorkerState, &())> for MultiWorkerContinue {
+    fn eval((state, _): &(&MultiWorkerState, &())) -> bool {
         state.iteration < LOOP_ITERATIONS
     }
 }
 
 pub struct MultiWorkerChooseLeft;
-impl Condition<(MultiWorkerState, ())> for MultiWorkerChooseLeft {
-    fn choose((state, _): &(MultiWorkerState, ())) -> bool {
+impl Predicate<(MultiWorkerState, ())> for MultiWorkerChooseLeft {
+    fn eval((state, _): &(MultiWorkerState, ())) -> bool {
         state.iteration % 2 == 0
     }
 }
 
 pub struct MultiWorkerConditionalLeftSpec;
-#[jungle::act]
-impl Act for MultiWorkerConditionalLeftSpec {
+#[jungle::action]
+impl Action for MultiWorkerConditionalLeftSpec {
     type Effect = MultiWorkerSleepEffect;
     type Input = ();
     type Output = ();
@@ -70,8 +68,8 @@ impl Act for MultiWorkerConditionalLeftSpec {
 }
 
 pub struct MultiWorkerConditionalRightSpec;
-#[jungle::act]
-impl Act for MultiWorkerConditionalRightSpec {
+#[jungle::action]
+impl Action for MultiWorkerConditionalRightSpec {
     type Effect = MultiWorkerSleepEffect;
     type Input = ();
     type Output = ();
@@ -87,8 +85,8 @@ impl Act for MultiWorkerConditionalRightSpec {
 }
 
 pub struct MultiWorkerJoinLeftSpec;
-#[jungle::act]
-impl Act for MultiWorkerJoinLeftSpec {
+#[jungle::action]
+impl Action for MultiWorkerJoinLeftSpec {
     type Effect = MultiWorkerSleepEffect;
     type Input = Either<(), ()>;
     type Output = ();
@@ -104,8 +102,8 @@ impl Act for MultiWorkerJoinLeftSpec {
 }
 
 pub struct MultiWorkerJoinRightSpec;
-#[jungle::act]
-impl Act for MultiWorkerJoinRightSpec {
+#[jungle::action]
+impl Action for MultiWorkerJoinRightSpec {
     type Effect = MultiWorkerSleepEffect;
     type Input = Either<(), ()>;
     type Output = ();
@@ -121,8 +119,8 @@ impl Act for MultiWorkerJoinRightSpec {
 }
 
 pub struct MultiWorkerJoinMergeSpec;
-#[jungle::act]
-impl Act for MultiWorkerJoinMergeSpec {
+#[jungle::action]
+impl Action for MultiWorkerJoinMergeSpec {
     type Effect = MultiWorkerSleepEffect;
     type Input = ((), ());
     type Output = ();
@@ -138,8 +136,8 @@ impl Act for MultiWorkerJoinMergeSpec {
 }
 
 pub struct MultiWorkerWorkSpec;
-#[jungle::act]
-impl Act for MultiWorkerWorkSpec {
+#[jungle::action]
+impl Action for MultiWorkerWorkSpec {
     type Effect = MultiWorkerSleepEffect;
     type Input = ();
     type Output = ();
@@ -155,8 +153,8 @@ impl Act for MultiWorkerWorkSpec {
 }
 
 pub struct MultiWorkerShortSleepSpec;
-#[jungle::act]
-impl Act for MultiWorkerShortSleepSpec {
+#[jungle::action]
+impl Action for MultiWorkerShortSleepSpec {
     type Effect = Sleep;
     type Input = ();
     type Output = ();
@@ -174,8 +172,8 @@ impl Act for MultiWorkerShortSleepSpec {
 }
 
 pub struct MultiWorkerAdvanceIterationSpec;
-#[jungle::act]
-impl Act for MultiWorkerAdvanceIterationSpec {
+#[jungle::action]
+impl Action for MultiWorkerAdvanceIterationSpec {
     type Effect = MultiWorkerSleepEffect;
     type Input = ();
     type Output = ();

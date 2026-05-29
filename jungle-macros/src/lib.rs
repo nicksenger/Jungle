@@ -186,23 +186,16 @@ pub fn derive_journey(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Flow, attributes(jungle))]
 pub fn derive_flow(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let data = input.data.clone();
     let ident = input.ident.clone();
     let generics = input.generics.clone();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let focus_ty = parse_jungle_focus_attr(&input.attrs);
-    // Scoped templates provide a custom `TraverseFlow` impl (wrapping output in `Scoped`),
-    // so they must not also derive `JungleTraverseFlow` via inception.
-    let properties = if focus_ty.is_some() {
-        jungle_types(&["JungleFlow", "JungleJourneyAst", "JungleReplaceFlow"])
-    } else {
-        jungle_types(&[
-            "JungleFlow",
-            "JungleJourneyAst",
-            "JungleTraverseFlow",
-            "JungleReplaceFlow",
-        ])
-    };
+    let properties = jungle_types(&[
+        "JungleFlow",
+        "JungleJourneyAst",
+        "JungleTraverseFlow",
+        "JungleReplaceFlow",
+    ]);
     let derived = derive_with_properties_input(input, &properties);
     let template_scope = jungle_type("FlowScope");
     let root_scope = jungle_type("RootFlowScope");
@@ -218,75 +211,41 @@ pub fn derive_flow(input: TokenStream) -> TokenStream {
         }
     };
     let traverse_flow = jungle_type("TraverseFlow");
-    let scoped_field_list_normalize = jungle_type("ScopedFieldListNormalize");
-    let flow_list_concat = jungle_type("FlowListConcat");
-    let scoped = jungle_type("Scoped");
-    let list_empty: Path = parse_quote!(jungle_sdk::typosaurus::collections::list::Empty);
-    let field_types = match &data {
-        Data::Struct(data) => match &data.fields {
-            Fields::Named(named) => named
-                .named
-                .iter()
-                .map(|field| {
-                    let ty = &field.ty;
-                    quote!(#ty)
-                })
-                .collect::<Vec<_>>(),
-            Fields::Unnamed(unnamed) => unnamed
-                .unnamed
-                .iter()
-                .map(|field| {
-                    let ty = &field.ty;
-                    quote!(#ty)
-                })
-                .collect::<Vec<_>>(),
-            Fields::Unit => Vec::new(),
-        },
-        _ => Vec::new(),
-    };
-    let field_traverse_outputs = field_types
-        .iter()
-        .map(|ty| {
-            quote!(
-                <<#ty as #traverse_flow>::Output as #scoped_field_list_normalize>::Output
-            )
-        })
-        .collect::<Vec<_>>();
-    let scoped_inner = concat_tlist(&field_traverse_outputs, &list_empty);
-    let concat_bounds = if field_traverse_outputs.is_empty() {
-        Vec::new()
-    } else {
-        let mut bounds = Vec::with_capacity(field_traverse_outputs.len());
-        let mut rhs = quote!(#list_empty);
-        for output in field_traverse_outputs.iter().rev() {
-            bounds.push(quote!(#output: #flow_list_concat<#rhs>));
-            rhs = quote!(<#output as #flow_list_concat<#rhs>>::Output);
+    let traverse_with = jungle_type("TraverseWith");
+    let bind_flow = jungle_type("BindFlow");
+    let mut traverse_with_generics = generics.clone();
+    traverse_with_generics.params.push(parse_quote!(Traversal));
+    let (traverse_with_impl_generics, _, traverse_with_where_clause) =
+        traverse_with_generics.split_for_impl();
+    let traverse_with_impl = quote! {
+        impl #traverse_with_impl_generics #traverse_with<Traversal> for #ident #ty_generics #traverse_with_where_clause
+        where
+            #ident #ty_generics: #traverse_flow,
+            <#ident #ty_generics as #traverse_flow>::Output: #traverse_with<Traversal>,
+        {
+            type Output = <<#ident #ty_generics as #traverse_flow>::Output as #traverse_with<Traversal>>::Output;
         }
-        bounds
     };
-    let traverse_impl = if let Some(focus) = &focus_ty {
-        quote! {
-            impl #impl_generics #traverse_flow for #ident #ty_generics #where_clause
-            where
-                #(
-                    #field_types: #traverse_flow,
-                    <#field_types as #traverse_flow>::Output: #scoped_field_list_normalize,
-                )*
-                #(
-                    #concat_bounds,
-                )*
-            {
-                type Output = #scoped<#focus, #scoped_inner>;
-            }
+    let mut bind_flow_generics = generics.clone();
+    bind_flow_generics.params.push(parse_quote!(A));
+    bind_flow_generics.params.push(parse_quote!(Scope));
+    let (bind_flow_impl_generics, _, bind_flow_where_clause) = bind_flow_generics.split_for_impl();
+    let bind_flow_impl = quote! {
+        impl #bind_flow_impl_generics #bind_flow<A, Scope> for #ident #ty_generics #bind_flow_where_clause
+        where
+            A: jungle_sdk::Animal,
+            #ident #ty_generics: #traverse_flow,
+            <#ident #ty_generics as #traverse_flow>::Output: #bind_flow<A, Scope>,
+        {
+            type Out = <<#ident #ty_generics as #traverse_flow>::Output as #bind_flow<A, Scope>>::Out;
         }
-    } else {
-        quote! {}
     };
 
     quote! {
         #derived
         #scope_impl
-        #traverse_impl
+        #traverse_with_impl
+        #bind_flow_impl
     }
     .into()
 }
@@ -436,18 +395,6 @@ fn parse_jungle_focus_attr(attrs: &[Attribute]) -> Option<Type> {
         }
     }
     None
-}
-
-fn concat_tlist(items: &[proc_macro2::TokenStream], empty: &Path) -> proc_macro2::TokenStream {
-    if items.is_empty() {
-        return quote!(#empty);
-    }
-    let flow_list_concat = jungle_type("FlowListConcat");
-    let mut acc = quote!(#empty);
-    for item in items.iter().rev() {
-        acc = quote!(<#item as #flow_list_concat<#acc>>::Output);
-    }
-    acc
 }
 
 struct PrimitiveAttributes {
@@ -638,7 +585,7 @@ impl Parse for ActAttributes {
             } else {
                 return Err(syn::Error::new_spanned(
                     key,
-                    "Unknown `act` setting. Supported: `aspect = ...`, `bind = ...`, `carry = ...`.",
+                    "Unknown `action` setting. Supported: `aspect = ...`, `bind = ...`, `carry = ...`.",
                 ));
             }
 
@@ -648,7 +595,7 @@ impl Parse for ActAttributes {
                     break;
                 }
             } else if !input.is_empty() {
-                return Err(input.error("Expected `,` between `act` settings."));
+                return Err(input.error("Expected `,` between `action` settings."));
             }
         }
 
@@ -868,14 +815,14 @@ fn self_type_ident(self_ty: &Type) -> Result<syn::Ident, syn::Error> {
     let Type::Path(tp) = self_ty else {
         return Err(syn::Error::new_spanned(
             self_ty,
-            "`#[act]` requires a concrete type path for `impl Act for ...`.",
+            "`#[action]` requires a concrete type path for `impl Action for ...`.",
         ));
     };
 
     let Some(last) = tp.path.segments.last() else {
         return Err(syn::Error::new_spanned(
             self_ty,
-            "Unable to determine type name for `#[act]`.",
+            "Unable to determine type name for `#[action]`.",
         ));
     };
 
@@ -1175,14 +1122,14 @@ pub fn effect(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attrs = match syn::parse::<ActAttributes>(attr) {
         Ok(attrs) => attrs,
         Err(err) => return err.into_compile_error().into(),
     };
 
     let item_impl = parse_macro_input!(item as ItemImpl);
-    if let Err(err) = require_trait_impl(&item_impl, "Act", "act") {
+    if let Err(err) = require_trait_impl(&item_impl, "Action", "action") {
         return err.into_compile_error().into();
     }
 
@@ -1202,7 +1149,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
             ImplItem::Type(ty) if ty.ident == "Bind" => {
                 return syn::Error::new_spanned(
                     ty,
-                    "`#[act]` generates `type Bind<...>`; remove manual `Bind` from this impl.",
+                    "`#[action]` generates `type Bind<...>`; remove manual `Bind` from this impl.",
                 )
                 .to_compile_error()
                 .into();
@@ -1243,14 +1190,14 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     while generic_names.contains(&animal_ident.to_string()) {
         animal_ident = format_ident!("{animal_ident}_");
     }
-    let bound_ident = format_ident!("__JungleActBound{self_ident}");
+    let bound_ident = format_ident!("__JungleActionBound{self_ident}");
     let types = jungle_types_path();
     let default_aspect: Type = parse_quote!(#types::Identity);
     let explicit_bind_ty = attrs.bind.clone();
     if explicit_bind_ty.is_some() && attrs.aspect.is_some() {
         return syn::Error::new_spanned(
             &item_impl.self_ty,
-            "`#[act(bind = ...)]` cannot be combined with `aspect = ...`; define the aspect on the explicit bound type instead.",
+            "`#[action(bind = ...)]` cannot be combined with `aspect = ...`; define the aspect on the explicit bound type instead.",
         )
         .to_compile_error()
         .into();
@@ -1261,9 +1208,9 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
             type Bind<#animal_ident: #types::Animal> = #bind_ty;
         }
     } else {
-        let (_, act_ty_generics, _) = item_impl.generics.split_for_impl();
+        let (_, action_ty_generics, _) = item_impl.generics.split_for_impl();
         parse_quote! {
-            type Bind<#animal_ident: #types::Animal> = #bound_ident #act_ty_generics;
+            type Bind<#animal_ident: #types::Animal> = #bound_ident #action_ty_generics;
         }
     };
     let effect_ty = effect_assoc.ty.clone();
@@ -1272,7 +1219,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
     if carry_assoc.is_some() && attrs.carry.is_some() {
         return syn::Error::new_spanned(
             &item_impl.self_ty,
-            "`#[act(carry = ...)]` cannot be combined with `type Carry = ...`; choose one.",
+            "`#[action(carry = ...)]` cannot be combined with `type Carry = ...`; choose one.",
         )
         .to_compile_error()
         .into();
@@ -1297,8 +1244,8 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
         || attrs.carry.is_some())
         && !carry_is_unit;
 
-    let mut generated_act_impl = item_impl.clone();
-    generated_act_impl.items = vec![
+    let mut generated_action_impl = item_impl.clone();
+    generated_action_impl.items = vec![
         ImplItem::Type(effect_assoc.clone()),
         ImplItem::Type(input_assoc.clone()),
         ImplItem::Type(output_assoc.clone()),
@@ -1308,7 +1255,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     if explicit_bind_ty.is_some() {
         quote! {
-            #generated_act_impl
+            #generated_action_impl
         }
         .into()
     } else {
@@ -1338,7 +1285,7 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
             .to_compile_error()
             .into();
         }
-        let (act_impl_generics, act_ty_generics, act_where_clause) =
+        let (action_impl_generics, action_ty_generics, action_where_clause) =
             item_impl.generics.split_for_impl();
         let mut bound_impl_generics = item_impl.generics.clone();
         bound_impl_generics
@@ -1375,46 +1322,46 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
         } else {
             quote! {
                 fn emit_with_carry(
-                    view: &<<Self as #types::BoundAct<#animal_ident>>::Aspect as #types::StateCarrier<
+                    view: &<<Self as #types::BoundAction<#animal_ident>>::Aspect as #types::StateCarrier<
                         <#animal_ident as #types::Animal>::State,
                     >>::Focus,
                     input: Self::Input,
                 ) -> (<Self::Effect as #types::EffectSchema>::In, Self::Carry) {
-                    (<Self as #types::BoundAct<#animal_ident>>::emit(view, input), ())
+                    (<Self as #types::BoundAction<#animal_ident>>::emit(view, input), ())
                 }
 
                 fn absorb_with_carry(
-                    view: &mut <<Self as #types::BoundAct<#animal_ident>>::Aspect as #types::StateCarrier<
+                    view: &mut <<Self as #types::BoundAction<#animal_ident>>::Aspect as #types::StateCarrier<
                         <#animal_ident as #types::Animal>::State,
                     >>::Focus,
                     output: #types::EffectCompletion<Self::Effect>,
                     _carry: Self::Carry,
                 ) -> Self::Output {
-                    <Self as #types::BoundAct<#animal_ident>>::absorb(view, output)
+                    <Self as #types::BoundAction<#animal_ident>>::absorb(view, output)
                 }
             }
         };
         let shims = if explicit_carry {
             quote! {
                 fn emit(
-                    view: &<<Self as #types::BoundAct<#animal_ident>>::Aspect as #types::StateCarrier<
+                    view: &<<Self as #types::BoundAction<#animal_ident>>::Aspect as #types::StateCarrier<
                         <#animal_ident as #types::Animal>::State,
                     >>::Focus,
                     input: Self::Input,
                 ) -> <Self::Effect as #types::EffectSchema>::In {
                     let (effect_input, _carry): (<Self::Effect as #types::EffectSchema>::In, Self::Carry) =
-                        <Self as #types::BoundAct<#animal_ident>>::emit_with_carry(view, input);
+                        <Self as #types::BoundAction<#animal_ident>>::emit_with_carry(view, input);
                     effect_input
                 }
 
                 fn absorb(
-                    view: &mut <<Self as #types::BoundAct<#animal_ident>>::Aspect as #types::StateCarrier<
+                    view: &mut <<Self as #types::BoundAction<#animal_ident>>::Aspect as #types::StateCarrier<
                         <#animal_ident as #types::Animal>::State,
                     >>::Focus,
                     output: #types::EffectCompletion<Self::Effect>,
                 ) -> Self::Output {
                     let _ = (view, output);
-                    panic!("`absorb` is unavailable for carry-enabled acts; use `absorb_with_carry`.");
+                    panic!("`absorb` is unavailable for carry-enabled actions; use `absorb_with_carry`.");
                 }
             }
         } else {
@@ -1422,13 +1369,13 @@ pub fn act(attr: TokenStream, item: TokenStream) -> TokenStream {
         };
 
         quote! {
-            #generated_act_impl
+            #generated_action_impl
 
-            pub struct #bound_ident #act_impl_generics(
+            pub struct #bound_ident #action_impl_generics(
                 ::core::marker::PhantomData<fn() -> #self_ty>
-            ) #act_where_clause;
+            ) #action_where_clause;
 
-            impl #bound_impl_generics #types::BoundAct<#animal_ident> for #bound_ident #act_ty_generics
+            impl #bound_impl_generics #types::BoundAction<#animal_ident> for #bound_ident #action_ty_generics
                 #bound_impl_where_clause
             {
                 type Effect = #effect_ty;

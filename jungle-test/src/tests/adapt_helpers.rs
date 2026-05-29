@@ -64,22 +64,22 @@ impl EmitMapper<HelperState, EchoEffect, i32> for EmitUsingState {
 }
 
 struct PassthroughSpec;
-#[jungle::act(bind = Fuse<
+#[jungle::action(bind = Fuse<
         PassthroughEmit<EchoEffect, Identity>,
         AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
     >)]
-impl Act for PassthroughSpec {
+impl Action for PassthroughSpec {
     type Effect = EchoEffect;
     type Input = i32;
     type Output = i32;
 }
 
 struct UnitSpec;
-#[jungle::act(bind = Fuse<
+#[jungle::action(bind = Fuse<
         UnitEmit<PulseEffect, Identity>,
         AbsorbFn<Identity, PulseEffect, (), CountPulseAbsorb>,
     >)]
-impl Act for UnitSpec {
+impl Action for UnitSpec {
     type Effect = PulseEffect;
     type Input = ();
     type Output = ();
@@ -102,8 +102,8 @@ impl<J> Effect<J> for BridgeToUnitEffect {
 }
 
 struct BridgeToUnitSpec;
-#[jungle::act]
-impl Act for BridgeToUnitSpec {
+#[jungle::action]
+impl Action for BridgeToUnitSpec {
     type Effect = BridgeToUnitEffect;
     type Input = i32;
     type Output = ();
@@ -134,8 +134,8 @@ impl<J> Effect<J> for BridgeFromUnitEffect {
 }
 
 struct BridgeFromUnitSpec;
-#[jungle::act]
-impl Act for BridgeFromUnitSpec {
+#[jungle::action]
+impl Action for BridgeFromUnitSpec {
     type Effect = BridgeFromUnitEffect;
     type Input = ();
     type Output = i32;
@@ -152,11 +152,11 @@ impl Act for BridgeFromUnitSpec {
 }
 
 struct FunctionEmitSpec;
-#[jungle::act(bind = Fuse<
+#[jungle::action(bind = Fuse<
         EmitFn<Identity, EchoEffect, i32, EmitUsingState>,
         AbsorbFn<Identity, EchoEffect, i32, StoreValueAbsorb>,
     >)]
-impl Act for FunctionEmitSpec {
+impl Action for FunctionEmitSpec {
     type Effect = EchoEffect;
     type Input = i32;
     type Output = i32;

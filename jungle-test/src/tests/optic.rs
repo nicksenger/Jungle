@@ -118,7 +118,7 @@ impl StateCarrier<RootState> for LeafValueCarrier {
 }
 
 pub struct LensOnLeafValue;
-impl BoundAct<OpticAnimal> for LensOnLeafValue {
+impl BoundAction<OpticAnimal> for LensOnLeafValue {
     type Effect = EchoI32;
     type Aspect = LeafValueCarrier;
     type Input = i32;
@@ -130,12 +130,12 @@ impl BoundAct<OpticAnimal> for LensOnLeafValue {
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<OpticAnimal>>::Aspect as StateCarrier<
+        view: &<<Self as BoundAction<OpticAnimal>>::Aspect as StateCarrier<
             <OpticAnimal as Animal>::State,
         >>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<OpticAnimal>>::emit(view, input), ())
+        (<Self as BoundAction<OpticAnimal>>::emit(view, input), ())
     }
 
     fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -147,7 +147,7 @@ impl BoundAct<OpticAnimal> for LensOnLeafValue {
 
 #[allow(dead_code)]
 pub struct RootStatePulse;
-impl BoundAct<OpticAnimal> for RootStatePulse {
+impl BoundAction<OpticAnimal> for RootStatePulse {
     type Effect = EchoRootState;
     type Aspect = Identity;
     type Input = ();
@@ -159,12 +159,12 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
     }
 
     fn emit_with_carry(
-        view: &<<Self as BoundAct<OpticAnimal>>::Aspect as StateCarrier<
+        view: &<<Self as BoundAction<OpticAnimal>>::Aspect as StateCarrier<
             <OpticAnimal as Animal>::State,
         >>::Focus,
         input: Self::Input,
     ) -> (<Self::Effect as EffectSchema>::In, Self::Carry) {
-        (<Self as BoundAct<OpticAnimal>>::emit(view, input), ())
+        (<Self as BoundAction<OpticAnimal>>::emit(view, input), ())
     }
 
     fn absorb(_view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
@@ -175,8 +175,8 @@ impl BoundAct<OpticAnimal> for RootStatePulse {
 pub struct OpticAnimal;
 
 pub struct LensOnBranchSpec;
-#[jungle::act(aspect = BranchCarrier)]
-impl Act for LensOnBranchSpec {
+#[jungle::action(aspect = BranchCarrier)]
+impl Action for LensOnBranchSpec {
     type Effect = EchoI32;
     type Input = i32;
     type Output = i32;
@@ -215,14 +215,14 @@ fn seed_state() -> RootState {
 #[test]
 fn state_lens_single_index_short_flow() {
     let (state, request) =
-        <BoundFlowStep<OpticAnimal, <LensOnBranchSpec as Act>::Bind<OpticAnimal>> as Running>::run(
+        <BoundFlowStep<OpticAnimal, <LensOnBranchSpec as Action>::Bind<OpticAnimal>> as Running>::run(
             (seed_state(), 3),
         );
     assert_eq!(request.0.into_input(), 7);
 
     let (state, emitted) = <BoundFlowStep<
         OpticAnimal,
-        <LensOnBranchSpec as Act>::Bind<OpticAnimal>,
+        <LensOnBranchSpec as Action>::Bind<OpticAnimal>,
     > as Waiting>::accept((state, Ok(8), ()));
     assert_eq!(emitted, 8);
     assert_eq!(state.branch.spare, 8);

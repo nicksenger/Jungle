@@ -286,7 +286,7 @@ mod tests {
             pan: 0.0,
             playback_rate: 1.0,
             start_delay: std::time::Duration::ZERO,
-            priority: crate::audio::PlayPriority::Normal,
+            priority: crate::PlayPriority::Normal,
         };
         critical_tx
             .try_send(play_command(request))
@@ -313,7 +313,7 @@ mod tests {
             pan: 0.0,
             playback_rate: 1.0,
             start_delay: std::time::Duration::ZERO,
-            priority: crate::audio::PlayPriority::Normal,
+            priority: crate::PlayPriority::Normal,
         };
         let second = first.clone();
 
@@ -346,7 +346,7 @@ mod tests {
             pan: 0.0,
             playback_rate: 1.0,
             start_delay: std::time::Duration::ZERO,
-            priority: crate::audio::PlayPriority::Normal,
+            priority: crate::PlayPriority::Normal,
         };
 
         critical_tx

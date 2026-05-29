@@ -24,17 +24,17 @@ impl<St> ViewProject<Loop2Container<St>> for Loop2Container<St> {
 
 pub struct Loop2SetCounter<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
-#[jungle::act]
-impl<St> Act for Loop2SetCounter<St> {
+#[jungle::action]
+impl<St> Action for Loop2SetCounter<St> {
     type Effect = Noop;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &Loop2Container<St>, input: Self::Input) {}
+    fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
 
     fn absorb(
         state: &mut Loop2Container<St>,
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         state.counter = 2;
     }
@@ -42,26 +42,26 @@ impl<St> Act for Loop2SetCounter<St> {
 
 pub struct Loop2DecCounter<St>(core::marker::PhantomData<fn() -> St>);
 #[allow(private_interfaces)]
-#[jungle::act]
-impl<St> Act for Loop2DecCounter<St> {
+#[jungle::action]
+impl<St> Action for Loop2DecCounter<St> {
     type Effect = Noop;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &Loop2Container<St>, input: Self::Input) {}
+    fn emit(_state: &Loop2Container<St>, _input: Self::Input) {}
 
     fn absorb(
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        let value = output.expect("loop2 decrement step should succeed");
+        output.expect("loop2 decrement step should succeed");
         state.counter = state.counter.saturating_sub(1);
     }
 }
 
 pub struct FlattenEither<T, S>(PhantomData<T>, PhantomData<S>);
-#[jungle::act]
-impl<T, S> Act for FlattenEither<T, S> {
+#[jungle::action]
+impl<T, S> Action for FlattenEither<T, S> {
     type Effect = Noop;
     type Input = Either<T, T>;
     type Output = T;
@@ -72,8 +72,8 @@ impl<T, S> Act for FlattenEither<T, S> {
     }
 
     fn absorb(
-        state: &mut S,
-        output: EffectCompletion<Self::Effect>,
+        _state: &mut S,
+        _output: EffectCompletion<Self::Effect>,
         carry: Either<T, T>,
     ) -> Self::Output {
         match carry {
@@ -84,17 +84,15 @@ impl<T, S> Act for FlattenEither<T, S> {
 }
 
 pub struct Loop2CounterGt0;
-impl<St> LoopCondition<Loop2Container<St>> for Loop2CounterGt0 {
-    type Arg = ();
-
-    fn should_continue(state: &Loop2Container<St>) -> bool {
+impl<St> Predicate<(&Loop2Container<St>, &())> for Loop2CounterGt0 {
+    fn eval((state, _): &(&Loop2Container<St>, &())) -> bool {
         state.counter > 0
     }
 }
 
 pub struct Loop2CounterIsEven;
-impl<St> Condition<(Loop2Container<St>, ())> for Loop2CounterIsEven {
-    fn choose((state, _): &(Loop2Container<St>, ())) -> bool {
+impl<St> Predicate<(Loop2Container<St>, ())> for Loop2CounterIsEven {
+    fn eval((state, _): &(Loop2Container<St>, ())) -> bool {
         state.counter % 2 == 0
     }
 }
