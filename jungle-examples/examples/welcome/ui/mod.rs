@@ -837,12 +837,12 @@ impl WelcomeUi {
         let mut panel_count = 0usize;
 
         if let Some(viewer) = self.bass.as_ref() {
-            panels = panels.push(self.panel_with_overlay("Bass", viewer.view(), Panel::Bass));
+            panels = panels.push(self.panel_with_overlay("Foo (Bass)", viewer.view(), Panel::Bass));
             panel_count += 1;
         }
         if let Some(viewer) = self.lead_guitarist.as_ref() {
             panels = panels.push(self.panel_with_overlay(
-                "Lead Guitarist",
+                "Bar (Lead Guitar)",
                 viewer.view(),
                 Panel::LeadGuitarist,
             ));
@@ -850,7 +850,7 @@ impl WelcomeUi {
         }
         if let Some(viewer) = self.lead_vocalist.as_ref() {
             panels = panels.push(self.panel_with_overlay(
-                "Lead Vocalist",
+                "Baz (Vocals)",
                 viewer.view(),
                 Panel::LeadVocalist,
             ));
@@ -858,14 +858,15 @@ impl WelcomeUi {
         }
         if let Some(viewer) = self.rhythm_guitarist.as_ref() {
             panels = panels.push(self.panel_with_overlay(
-                "Rhythm Guitarist",
+                "Qux (Rhythm Guitar)",
                 viewer.view(),
                 Panel::RhythmGuitarist,
             ));
             panel_count += 1;
         }
         if let Some(viewer) = self.drums.as_ref() {
-            panels = panels.push(self.panel_with_overlay("Drums", viewer.view(), Panel::Drums));
+            panels =
+                panels.push(self.panel_with_overlay("Corge (Drums)", viewer.view(), Panel::Drums));
             panel_count += 1;
         }
 
