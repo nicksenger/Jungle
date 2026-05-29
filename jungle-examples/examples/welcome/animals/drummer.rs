@@ -21,22 +21,6 @@ impl NodeMetadata for IntroSectionMeta {
     const METADATA: &'static str = "section";
 }
 
-pub struct IntroStartDelay;
-#[jungle::act]
-impl Act for IntroStartDelay {
-    type Effect = Rest<DRUMS_LANE_ID, INTRO_START_DELAY_TICKS>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &DrummerState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("intro start delay should complete");
-    }
-}
-
 pub struct Hat<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
@@ -280,7 +264,10 @@ pub struct TomTriad<
 
 #[derive(Flow)]
 pub struct DrummerIntro(
-    Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
+    Transparent<
+        IntroSectionMeta,
+        Step<GenericRest<DrummerState, INTRO_START_DELAY_TICKS, DRUMS_LANE_ID>>,
+    >,
     Transparent<IntroSectionMeta, DrummerIntroSectionChunk01>,
     Transparent<IntroSectionMeta, DrummerIntroSectionChunk02>,
     Transparent<IntroSectionMeta, DrummerIntroSectionChunk03>,

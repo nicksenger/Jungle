@@ -17,22 +17,11 @@ const EFFECT_CYCLE_LOG_INTERVAL: usize = 512;
 const EFFECT_SLOW_CYCLE_WARN_THRESHOLD: Duration = Duration::from_millis(150);
 const EFFECT_SLEEP_OVERSHOOT_WARN_THRESHOLD: Duration = Duration::from_millis(40);
 const EFFECT_WAKE_DRIFT_WARN_THRESHOLD: Duration = Duration::from_millis(200);
-
 static EFFECT_CYCLE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static EFFECT_SKIPPED_NOTES: AtomicUsize = AtomicUsize::new(0);
 
-pub struct Sound<
-    I: Instrument,
-    const LANE_ID: u8,
-    const NOTE: u8,
-    const NOTE_TICK: u32,
-    const REST_TICK: u32,
->(PhantomData<I>);
-
 #[allow(unused)]
 pub struct Passthrough<T>(PhantomData<T>);
-
-pub struct Rest<const LANE_ID: u8, const REST_TICKS: u32>;
 #[effect(id = 2)]
 impl<T> Effect<TheJungle> for Passthrough<T>
 where
@@ -47,6 +36,7 @@ where
     }
 }
 
+pub struct Rest<const LANE_ID: u8, const REST_TICKS: u32>;
 #[effect(id = 1)]
 impl<const LANE_ID: u8, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_ID, REST_TICKS> {
     type In = ();
@@ -79,6 +69,13 @@ impl<const LANE_ID: u8, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_I
     }
 }
 
+pub struct Sound<
+    I: Instrument,
+    const LANE_ID: u8,
+    const NOTE: u8,
+    const NOTE_TICK: u32,
+    const REST_TICK: u32,
+>(PhantomData<I>);
 #[effect(id = 0)]
 impl<I, const LANE_ID: u8, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
     Effect<TheJungle> for Sound<I, LANE_ID, NOTE, NOTE_TICK, REST_TICK>

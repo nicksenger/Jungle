@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::act::MergeEither;
+use crate::act::{MergeEither, Rest as GenericRest};
 use crate::effect::{Passthrough, Rest};
 use crate::instrumentation::{
     phonemes_from_text, Generate as LaneGenerate, Lyrics, VocalsArticulation,
@@ -54,25 +54,6 @@ impl Act for ApplyLeadVocalistSeed {
     }
 }
 
-pub struct IntroStartDelay;
-#[jungle::act]
-impl Act for IntroStartDelay {
-    type Effect = Rest<LEAD_VOCALS_LANE_ID, INTRO_START_DELAY_TICKS>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(_state: &LeadVocalistState, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut LeadVocalistState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("intro start delay should complete");
-    }
-}
-
 pub struct UseLeadVocalPickup;
 impl Condition<(LeadVocalistState, ())> for UseLeadVocalPickup {
     fn choose((state, _): &(LeadVocalistState, ())) -> bool {
@@ -111,7 +92,10 @@ pub struct LeadVocalMainBranch(Step<ConsumeLeadVocalPickup>);
 #[derive(Flow)]
 pub struct LeadVocalIntro(
     Step<ApplyLeadVocalistSeed>,
-    Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
+    Transparent<
+        IntroSectionMeta,
+        Step<GenericRest<LeadVocalistState, INTRO_START_DELAY_TICKS, LEAD_VOCALS_LANE_ID>>,
+    >,
     Conditional<UseLeadVocalPickup, LeadVocalPickupBranch, LeadVocalMainBranch>,
     Step<MergeEither<(), LeadVocalistState>>,
     Transparent<IntroSectionMeta, LeadVocalSection02>,

@@ -94,28 +94,6 @@ impl NodeMetadata for IntroSectionMeta {
     const METADATA: &'static str = "section";
 }
 
-pub struct IntroStartDelay;
-#[jungle::act]
-impl Act for IntroStartDelay {
-    type Effect = Rest<RHYTHM_GUITAR_LANE_ID, INTRO_START_DELAY_TICKS>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        _state: &RhythmGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut RhythmGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("intro start delay should complete");
-    }
-}
-
 pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 #[jungle::act]
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
@@ -221,7 +199,10 @@ pub struct RhythmRiffLoopBody(
 
 #[derive(Flow)]
 pub struct RhythmGuitarFlow(
-    Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
+    Transparent<
+        IntroSectionMeta,
+        Step<GenericRest<RhythmGuitaristState, INTRO_START_DELAY_TICKS, RHYTHM_GUITAR_LANE_ID>>,
+    >,
     Transparent<IntroSectionMeta, RhythmSection01>,
     Transparent<IntroSectionMeta, RhythmSection02>,
     While<RhythmRiffLoopRemaining, RhythmRiffLoopBody>,

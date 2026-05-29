@@ -25,28 +25,6 @@ impl NodeMetadata for IntroSectionMeta {
     const METADATA: &'static str = "section";
 }
 
-pub struct IntroStartDelay;
-#[jungle::act]
-impl Act for IntroStartDelay {
-    type Effect = Rest<LEAD_GUITAR_LANE_ID, INTRO_START_DELAY_TICKS>;
-    type Input = ();
-    type Output = ();
-
-    fn emit(
-        _state: &LeadGuitaristState,
-        _input: Self::Input,
-    ) -> <Self::Effect as EffectSchema>::In {
-        ()
-    }
-
-    fn absorb(
-        _state: &mut LeadGuitaristState,
-        output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("intro start delay should complete");
-    }
-}
-
 #[derive(Flow)]
 pub struct SplitPluck<
     const NOTE_1: u8,
@@ -154,7 +132,10 @@ pub struct LeadRiffLoopBody(
 
 #[derive(Flow)]
 pub struct LeadGuitarIntro(
-    Transparent<IntroSectionMeta, Step<IntroStartDelay>>,
+    Transparent<
+        IntroSectionMeta,
+        Step<GenericRest<LeadGuitaristState, INTRO_START_DELAY_TICKS, LEAD_GUITAR_LANE_ID>>,
+    >,
     Transparent<IntroSectionMeta, LeadSection01>,
     While<LeadRiffLoopRemaining, LeadRiffLoopBody>,
     Transparent<IntroSectionMeta, LeadSection06>,
