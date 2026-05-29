@@ -1,4 +1,4 @@
-use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
+use crate::animals::{Bass, Drums, RhythmGuitarist, LeadVocalist, LeadGuitarist};
 use crate::metronome::Metronome;
 use crate::UiClient;
 use async_trait::async_trait;
@@ -42,8 +42,8 @@ static DEFERRED_STREAM_MAX_DECISION_US: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone, Copy)]
 pub struct JourneyIds {
     pub lead_vocalist: Option<Uuid>,
-    pub lead_guitarist: Option<Uuid>,
     pub rhythm_guitarist: Option<Uuid>,
+    pub lead_guitarist: Option<Uuid>,
     pub bass: Option<Uuid>,
     pub drums: Option<Uuid>,
 }
@@ -413,8 +413,8 @@ pub fn run_ui(
 #[derive(Debug, Clone, Copy)]
 enum Panel {
     LeadVocalist,
-    LeadGuitarist,
     RhythmGuitarist,
+    LeadGuitarist,
     Bass,
     Drums,
 }
@@ -423,8 +423,8 @@ impl Panel {
     #[cfg(feature = "video")]
     const ALL: [Self; 5] = [
         Self::LeadVocalist,
-        Self::LeadGuitarist,
         Self::RhythmGuitarist,
+        Self::LeadGuitarist,
         Self::Bass,
         Self::Drums,
     ];
@@ -455,8 +455,8 @@ struct TickPlaybackPlan {
     tick: u32,
     app_overlay: Option<VideoPlaybackRequest>,
     lead_vocalist_panel: Option<VideoPlaybackRequest>,
-    lead_guitarist_panel: Option<VideoPlaybackRequest>,
     rhythm_guitarist_panel: Option<VideoPlaybackRequest>,
+    lead_guitarist_panel: Option<VideoPlaybackRequest>,
     bass_panel: Option<VideoPlaybackRequest>,
     drums_panel: Option<VideoPlaybackRequest>,
 }
@@ -466,8 +466,8 @@ impl TickPlaybackPlan {
     fn panel_request(self, panel: Panel) -> Option<VideoPlaybackRequest> {
         match panel {
             Panel::LeadVocalist => self.lead_vocalist_panel,
-            Panel::LeadGuitarist => self.lead_guitarist_panel,
             Panel::RhythmGuitarist => self.rhythm_guitarist_panel,
+            Panel::LeadGuitarist => self.lead_guitarist_panel,
             Panel::Bass => self.bass_panel,
             Panel::Drums => self.drums_panel,
         }
@@ -480,8 +480,8 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
         tick: 0,
         app_overlay: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
         lead_vocalist_panel: None,
-        lead_guitarist_panel: None,
         rhythm_guitarist_panel: None,
+        lead_guitarist_panel: None,
         bass_panel: None,
         drums_panel: None,
     },
@@ -489,8 +489,8 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
         tick: 4,
         app_overlay: None,
         lead_vocalist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
-        lead_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
         rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
+        lead_guitarist_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
         bass_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
         drums_panel: Some(VideoPlaybackRequest::new(0, 2_000, 0.3)),
     },
@@ -498,8 +498,8 @@ const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
         tick: 40,
         app_overlay: None,
         lead_vocalist_panel: None,
-        lead_guitarist_panel: None,
         rhythm_guitarist_panel: None,
+        lead_guitarist_panel: None,
         bass_panel: None,
         drums_panel: None,
     },
@@ -544,8 +544,8 @@ impl Message {
             Message::Tick => "Tick",
             Message::Panel(panel, _) => match panel {
                 Panel::LeadVocalist => "Panel(LeadVocalist)",
-                Panel::LeadGuitarist => "Panel(LeadGuitarist)",
                 Panel::RhythmGuitarist => "Panel(RhythmGuitarist)",
+                Panel::LeadGuitarist => "Panel(LeadGuitarist)",
                 Panel::Bass => "Panel(Bass)",
                 Panel::Drums => "Panel(Drums)",
             },
@@ -555,15 +555,15 @@ impl Message {
             #[cfg(feature = "video")]
             Message::PanelVideo(panel, _) => match panel {
                 Panel::LeadVocalist => "PanelVideo(LeadVocalist)",
-                Panel::LeadGuitarist => "PanelVideo(LeadGuitarist)",
                 Panel::RhythmGuitarist => "PanelVideo(RhythmGuitarist)",
+                Panel::LeadGuitarist => "PanelVideo(LeadGuitarist)",
                 Panel::Bass => "PanelVideo(Bass)",
                 Panel::Drums => "PanelVideo(Drums)",
             },
             Message::TogglePanelAutoViewport(panel) => match panel {
                 Panel::LeadVocalist => "TogglePanelAutoViewport(LeadVocalist)",
-                Panel::LeadGuitarist => "TogglePanelAutoViewport(LeadGuitarist)",
                 Panel::RhythmGuitarist => "TogglePanelAutoViewport(RhythmGuitarist)",
+                Panel::LeadGuitarist => "TogglePanelAutoViewport(LeadGuitarist)",
                 Panel::Bass => "TogglePanelAutoViewport(Bass)",
                 Panel::Drums => "TogglePanelAutoViewport(Drums)",
             },
@@ -574,9 +574,9 @@ impl Message {
 struct WelcomeUi {
     lead_vocalist:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
-    lead_guitarist:
-        Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
     rhythm_guitarist:
+        Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
+    lead_guitarist:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
     bass:
         Option<jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>>,
@@ -592,9 +592,9 @@ struct WelcomeUi {
     #[cfg(feature = "video")]
     lead_vocalist_panel_overlay: Option<iced_av1::widget::State>,
     #[cfg(feature = "video")]
-    lead_guitarist_panel_overlay: Option<iced_av1::widget::State>,
-    #[cfg(feature = "video")]
     rhythm_guitarist_panel_overlay: Option<iced_av1::widget::State>,
+    #[cfg(feature = "video")]
+    lead_guitarist_panel_overlay: Option<iced_av1::widget::State>,
     #[cfg(feature = "video")]
     bass_panel_overlay: Option<iced_av1::widget::State>,
     #[cfg(feature = "video")]
@@ -602,9 +602,9 @@ struct WelcomeUi {
     #[cfg(feature = "video")]
     lead_vocalist_panel_playback: RegionPlayback,
     #[cfg(feature = "video")]
-    lead_guitarist_panel_playback: RegionPlayback,
-    #[cfg(feature = "video")]
     rhythm_guitarist_panel_playback: RegionPlayback,
+    #[cfg(feature = "video")]
+    lead_guitarist_panel_playback: RegionPlayback,
     #[cfg(feature = "video")]
     bass_panel_playback: RegionPlayback,
     #[cfg(feature = "video")]
@@ -624,15 +624,15 @@ impl WelcomeUi {
                 .title("Welcome: Lead Vocalist")
                 .eject_live_animal::<LeadVocalist, _>(client.clone(), journey)
         });
-        let lead_guitarist = journeys.lead_guitarist.map(|journey| {
-            jungle_vision::JungleViewerBuilder::new()
-                .title("Welcome: Lead Guitarist")
-                .eject_live_animal::<LeadGuitarist, _>(client.clone(), journey)
-        });
         let rhythm_guitarist = journeys.rhythm_guitarist.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
                 .title("Welcome: Rhythm Guitarist")
                 .eject_live_animal::<RhythmGuitarist, _>(client.clone(), journey)
+        });
+        let lead_guitarist = journeys.lead_guitarist.map(|journey| {
+            jungle_vision::JungleViewerBuilder::new()
+                .title("Welcome: Lead Guitarist")
+                .eject_live_animal::<LeadGuitarist, _>(client.clone(), journey)
         });
         let bass = journeys.bass.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
@@ -653,13 +653,13 @@ impl WelcomeUi {
             iced_av1::ScaleMode::Cover { offset: 0.5 },
         );
         #[cfg(feature = "video")]
-        let lead_guitarist_panel_overlay = init_video_state(
-            "lead guitarist panel overlay",
+        let rhythm_guitarist_panel_overlay = init_video_state(
+            "rhythm guitarist panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
         );
         #[cfg(feature = "video")]
-        let rhythm_guitarist_panel_overlay = init_video_state(
-            "rhythm guitarist panel overlay",
+        let lead_guitarist_panel_overlay = init_video_state(
+            "lead guitarist panel overlay",
             iced_av1::ScaleMode::Cover { offset: 0.5 },
         );
         #[cfg(feature = "video")]
@@ -675,8 +675,8 @@ impl WelcomeUi {
         (
             Self {
                 lead_vocalist,
-                lead_guitarist,
                 rhythm_guitarist,
+                lead_guitarist,
                 bass,
                 drums,
                 metronome,
@@ -689,9 +689,9 @@ impl WelcomeUi {
                 #[cfg(feature = "video")]
                 lead_vocalist_panel_overlay,
                 #[cfg(feature = "video")]
-                lead_guitarist_panel_overlay,
-                #[cfg(feature = "video")]
                 rhythm_guitarist_panel_overlay,
+                #[cfg(feature = "video")]
+                lead_guitarist_panel_overlay,
                 #[cfg(feature = "video")]
                 bass_panel_overlay,
                 #[cfg(feature = "video")]
@@ -699,9 +699,9 @@ impl WelcomeUi {
                 #[cfg(feature = "video")]
                 lead_vocalist_panel_playback: RegionPlayback::hidden(),
                 #[cfg(feature = "video")]
-                lead_guitarist_panel_playback: RegionPlayback::hidden(),
-                #[cfg(feature = "video")]
                 rhythm_guitarist_panel_playback: RegionPlayback::hidden(),
+                #[cfg(feature = "video")]
+                lead_guitarist_panel_playback: RegionPlayback::hidden(),
                 #[cfg(feature = "video")]
                 bass_panel_playback: RegionPlayback::hidden(),
                 #[cfg(feature = "video")]
@@ -760,14 +760,14 @@ impl WelcomeUi {
                     v.update(event)
                         .map(move |next| Message::Panel(Panel::LeadVocalist, next))
                 }),
-                Panel::LeadGuitarist => self.lead_guitarist.as_mut().map_or_else(Task::none, |v| {
+                Panel::RhythmGuitarist => self.rhythm_guitarist.as_mut().map_or_else(Task::none, |v| {
                     v.update(event)
-                        .map(move |next| Message::Panel(Panel::LeadGuitarist, next))
+                        .map(move |next| Message::Panel(Panel::RhythmGuitarist, next))
                 }),
-                Panel::RhythmGuitarist => {
-                    self.rhythm_guitarist.as_mut().map_or_else(Task::none, |v| {
+                Panel::LeadGuitarist => {
+                    self.lead_guitarist.as_mut().map_or_else(Task::none, |v| {
                         v.update(event)
-                            .map(move |next| Message::Panel(Panel::RhythmGuitarist, next))
+                            .map(move |next| Message::Panel(Panel::LeadGuitarist, next))
                     })
                 }
                 Panel::Bass => self.bass.as_mut().map_or_else(Task::none, |v| {
@@ -791,18 +791,18 @@ impl WelcomeUi {
                     .map(|event| Message::Panel(Panel::LeadVocalist, event)),
             );
         }
-        if let Some(viewer) = self.lead_guitarist.as_ref() {
-            subscriptions.push(
-                viewer
-                    .subscription()
-                    .map(|event| Message::Panel(Panel::LeadGuitarist, event)),
-            );
-        }
         if let Some(viewer) = self.rhythm_guitarist.as_ref() {
             subscriptions.push(
                 viewer
                     .subscription()
                     .map(|event| Message::Panel(Panel::RhythmGuitarist, event)),
+            );
+        }
+        if let Some(viewer) = self.lead_guitarist.as_ref() {
+            subscriptions.push(
+                viewer
+                    .subscription()
+                    .map(|event| Message::Panel(Panel::LeadGuitarist, event)),
             );
         }
         if let Some(viewer) = self.bass.as_ref() {
@@ -831,14 +831,14 @@ impl WelcomeUi {
                     video.subscription(|event| Message::PanelVideo(Panel::LeadVocalist, event)),
                 );
             }
-            if let Some(video) = self.lead_guitarist_panel_overlay.as_ref() {
-                subscriptions.push(
-                    video.subscription(|event| Message::PanelVideo(Panel::LeadGuitarist, event)),
-                );
-            }
             if let Some(video) = self.rhythm_guitarist_panel_overlay.as_ref() {
                 subscriptions.push(
                     video.subscription(|event| Message::PanelVideo(Panel::RhythmGuitarist, event)),
+                );
+            }
+            if let Some(video) = self.lead_guitarist_panel_overlay.as_ref() {
+                subscriptions.push(
+                    video.subscription(|event| Message::PanelVideo(Panel::LeadGuitarist, event)),
                 );
             }
             if let Some(video) = self.bass_panel_overlay.as_ref() {
@@ -864,11 +864,11 @@ impl WelcomeUi {
             panels = panels.push(self.panel_with_overlay("Foo (Bass)", viewer.view(), Panel::Bass));
             panel_count += 1;
         }
-        if let Some(viewer) = self.lead_guitarist.as_ref() {
+        if let Some(viewer) = self.rhythm_guitarist.as_ref() {
             panels = panels.push(self.panel_with_overlay(
-                "Bar (Lead Guitar)",
+                "Bar (Rhythm Guitar)",
                 viewer.view(),
-                Panel::LeadGuitarist,
+                Panel::RhythmGuitarist,
             ));
             panel_count += 1;
         }
@@ -880,11 +880,11 @@ impl WelcomeUi {
             ));
             panel_count += 1;
         }
-        if let Some(viewer) = self.rhythm_guitarist.as_ref() {
+        if let Some(viewer) = self.lead_guitarist.as_ref() {
             panels = panels.push(self.panel_with_overlay(
-                "Qux (Rhythm Guitar)",
+                "Qux (Lead Guitar)",
                 viewer.view(),
-                Panel::RhythmGuitarist,
+                Panel::LeadGuitarist,
             ));
             panel_count += 1;
         }
@@ -961,13 +961,13 @@ impl WelcomeUi {
                 .as_ref()
                 .map(|viewer| viewer.auto_viewport_enabled())
                 .unwrap_or(true),
-            Panel::LeadGuitarist => self
-                .lead_guitarist
+            Panel::RhythmGuitarist => self
+                .rhythm_guitarist
                 .as_ref()
                 .map(|viewer| viewer.auto_viewport_enabled())
                 .unwrap_or(true),
-            Panel::RhythmGuitarist => self
-                .rhythm_guitarist
+            Panel::LeadGuitarist => self
+                .lead_guitarist
                 .as_ref()
                 .map(|viewer| viewer.auto_viewport_enabled())
                 .unwrap_or(true),
@@ -991,13 +991,13 @@ impl WelcomeUi {
                     viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
                 }
             }
-            Panel::LeadGuitarist => {
-                if let Some(viewer) = self.lead_guitarist.as_mut() {
+            Panel::RhythmGuitarist => {
+                if let Some(viewer) = self.rhythm_guitarist.as_mut() {
                     viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
                 }
             }
-            Panel::RhythmGuitarist => {
-                if let Some(viewer) = self.rhythm_guitarist.as_mut() {
+            Panel::LeadGuitarist => {
+                if let Some(viewer) = self.lead_guitarist.as_mut() {
                     viewer.set_auto_viewport_enabled(!viewer.auto_viewport_enabled());
                 }
             }
@@ -1167,8 +1167,8 @@ impl WelcomeUi {
     fn panel_overlay(&self, panel: Panel) -> Option<&iced_av1::widget::State> {
         match panel {
             Panel::LeadVocalist => self.lead_vocalist_panel_overlay.as_ref(),
-            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay.as_ref(),
             Panel::RhythmGuitarist => self.rhythm_guitarist_panel_overlay.as_ref(),
+            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay.as_ref(),
             Panel::Bass => self.bass_panel_overlay.as_ref(),
             Panel::Drums => self.drums_panel_overlay.as_ref(),
         }
@@ -1178,8 +1178,8 @@ impl WelcomeUi {
     fn panel_overlay_mut(&mut self, panel: Panel) -> Option<&mut iced_av1::widget::State> {
         match panel {
             Panel::LeadVocalist => self.lead_vocalist_panel_overlay.as_mut(),
-            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay.as_mut(),
             Panel::RhythmGuitarist => self.rhythm_guitarist_panel_overlay.as_mut(),
+            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay.as_mut(),
             Panel::Bass => self.bass_panel_overlay.as_mut(),
             Panel::Drums => self.drums_panel_overlay.as_mut(),
         }
@@ -1189,8 +1189,8 @@ impl WelcomeUi {
     fn panel_playback(&self, panel: Panel) -> &RegionPlayback {
         match panel {
             Panel::LeadVocalist => &self.lead_vocalist_panel_playback,
-            Panel::LeadGuitarist => &self.lead_guitarist_panel_playback,
             Panel::RhythmGuitarist => &self.rhythm_guitarist_panel_playback,
+            Panel::LeadGuitarist => &self.lead_guitarist_panel_playback,
             Panel::Bass => &self.bass_panel_playback,
             Panel::Drums => &self.drums_panel_playback,
         }
@@ -1206,13 +1206,13 @@ impl WelcomeUi {
                 &mut self.lead_vocalist_panel_overlay,
                 &mut self.lead_vocalist_panel_playback,
             ),
-            Panel::LeadGuitarist => (
-                &mut self.lead_guitarist_panel_overlay,
-                &mut self.lead_guitarist_panel_playback,
-            ),
             Panel::RhythmGuitarist => (
                 &mut self.rhythm_guitarist_panel_overlay,
                 &mut self.rhythm_guitarist_panel_playback,
+            ),
+            Panel::LeadGuitarist => (
+                &mut self.lead_guitarist_panel_overlay,
+                &mut self.lead_guitarist_panel_playback,
             ),
             Panel::Bass => (&mut self.bass_panel_overlay, &mut self.bass_panel_playback),
             Panel::Drums => (

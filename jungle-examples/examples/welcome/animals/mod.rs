@@ -11,36 +11,36 @@ mod bassist;
 #[cfg(feature = "drums")]
 mod drummer;
 #[cfg(feature = "leadguitar")]
-mod lead_guitarist;
+mod rhythm_guitarist;
 #[cfg(feature = "vocals")]
 mod lead_vocalist;
 #[cfg(feature = "rhythmguitar")]
-mod rhythm_guitarist;
+mod lead_guitarist;
 #[cfg(feature = "bass")]
 pub use bassist::*;
 #[cfg(feature = "drums")]
 pub use drummer::*;
 #[cfg(feature = "leadguitar")]
-pub use lead_guitarist::*;
+pub use rhythm_guitarist::*;
 #[cfg(feature = "vocals")]
 pub use lead_vocalist::*;
 #[cfg(feature = "rhythmguitar")]
-pub use rhythm_guitarist::*;
+pub use lead_guitarist::*;
 
 #[cfg(not(test))]
 #[derive(Animals)]
-pub struct WelcomeAnimals(LeadVocalist, LeadGuitarist, RhythmGuitarist, Bass, Drums);
+pub struct WelcomeAnimals(LeadVocalist, RhythmGuitarist, LeadGuitarist, Bass, Drums);
 
-pub struct RhythmGuitarist;
+pub struct LeadGuitarist;
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct RhythmGuitaristState {
+pub struct LeadGuitaristState {
     #[jungle(focus)]
     articulation: ElectricGuitarArticulation,
     riff_loops_remaining: u8,
     transition_loops_remaining: u8,
     sustain_loops_remaining: u8,
 }
-impl Default for RhythmGuitaristState {
+impl Default for LeadGuitaristState {
     fn default() -> Self {
         Self {
             articulation: ElectricGuitarArticulation::default(),
@@ -51,13 +51,13 @@ impl Default for RhythmGuitaristState {
     }
 }
 #[jungle::animal(id = 2, generation = 0)]
-impl Animal for RhythmGuitarist {
-    type State = RhythmGuitaristState;
+impl Animal for LeadGuitarist {
+    type State = LeadGuitaristState;
     type Seed = ();
     #[cfg(feature = "rhythmguitar")]
-    type Journey = RhythmGuitarFlow;
+    type Journey = LeadGuitarFlow;
     #[cfg(not(feature = "rhythmguitar"))]
-    type Journey = StubFlow<(), RhythmGuitaristState>;
+    type Journey = StubFlow<(), LeadGuitaristState>;
 }
 
 pub struct LeadVocalist;
@@ -522,14 +522,14 @@ impl Animal for LeadVocalist {
     type Journey = StubFlow<LeadVocalistSeed, LeadVocalistState>;
 }
 
-pub struct LeadGuitarist;
+pub struct RhythmGuitarist;
 #[derive(Optic, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct LeadGuitaristState {
+pub struct RhythmGuitaristState {
     #[jungle(focus)]
     articulation: ElectricGuitarArticulation,
     riff_loops_remaining: u8,
 }
-impl Default for LeadGuitaristState {
+impl Default for RhythmGuitaristState {
     fn default() -> Self {
         Self {
             articulation: ElectricGuitarArticulation::Sustained,
@@ -538,13 +538,13 @@ impl Default for LeadGuitaristState {
     }
 }
 #[jungle::animal(id = 1, generation = 0)]
-impl Animal for LeadGuitarist {
-    type State = LeadGuitaristState;
+impl Animal for RhythmGuitarist {
+    type State = RhythmGuitaristState;
     type Seed = ();
     #[cfg(feature = "leadguitar")]
-    type Journey = LeadGuitarIntro;
+    type Journey = RhythmGuitarIntro;
     #[cfg(not(feature = "leadguitar"))]
-    type Journey = StubFlow<(), LeadGuitaristState>;
+    type Journey = StubFlow<(), RhythmGuitaristState>;
 }
 
 pub struct Bass;

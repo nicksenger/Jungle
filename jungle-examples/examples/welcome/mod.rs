@@ -37,7 +37,7 @@ use testcontainers_modules::postgres::Postgres;
 
 use crate::{
     animals::{
-        Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, LeadVocalistSeed, RhythmGuitarist,
+        Bass as BassAnimal, Drums, RhythmGuitarist, LeadVocalist, LeadVocalistSeed, LeadGuitarist,
     },
     ecosystem::{AnimalVolumes, TheJungle},
     instrumentation::SynthHandle,
@@ -892,20 +892,6 @@ fn run_runtime_thread(
                 Ok(None)
             }
         };
-        let lead_guitarist_fut = async {
-            if enabled_animals.contains(&SelectedAnimal::LeadGuitarist) {
-                client
-                    .start_journey::<LeadGuitarist>(seed.clone())
-                    .await
-                    .map(Some)
-                    .map_err(|err| {
-                        error!(error = %err, "failed starting lead guitarist journey");
-                        err.to_string()
-                    })
-            } else {
-                Ok(None)
-            }
-        };
         let rhythm_guitarist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::RhythmGuitarist) {
                 client
@@ -914,6 +900,20 @@ fn run_runtime_thread(
                     .map(Some)
                     .map_err(|err| {
                         error!(error = %err, "failed starting rhythm guitarist journey");
+                        err.to_string()
+                    })
+            } else {
+                Ok(None)
+            }
+        };
+        let lead_guitarist_fut = async {
+            if enabled_animals.contains(&SelectedAnimal::LeadGuitarist) {
+                client
+                    .start_journey::<LeadGuitarist>(seed.clone())
+                    .await
+                    .map(Some)
+                    .map_err(|err| {
+                        error!(error = %err, "failed starting lead guitarist journey");
                         err.to_string()
                     })
             } else {
@@ -948,24 +948,24 @@ fn run_runtime_thread(
                 Ok(None)
             }
         };
-        let (lead_vocalist, lead_guitarist, rhythm_guitarist, bass, drums) = tokio::join!(
+        let (lead_vocalist, rhythm_guitarist, lead_guitarist, bass, drums) = tokio::join!(
             lead_vocalist_fut,
-            lead_guitarist_fut,
             rhythm_guitarist_fut,
+            lead_guitarist_fut,
             bass_fut,
             drums_fut,
         );
         let journeys = ui::JourneyIds {
             lead_vocalist: lead_vocalist?,
-            lead_guitarist: lead_guitarist?,
             rhythm_guitarist: rhythm_guitarist?,
+            lead_guitarist: lead_guitarist?,
             bass: bass?,
             drums: drums?,
         };
         info!(
             lead_vocalist = ?journeys.lead_vocalist,
-            lead_guitarist = ?journeys.lead_guitarist,
             rhythm_guitarist = ?journeys.rhythm_guitarist,
+            lead_guitarist = ?journeys.lead_guitarist,
             bass = ?journeys.bass,
             drums = ?journeys.drums,
             "welcome journey id mapping"
@@ -1040,10 +1040,10 @@ fn spawn_headless_lag_probe(client: ui::DeferredJungleClient<UiClient>, journeys
     if let Some(id) = journeys.lead_vocalist {
         probe_journeys.push(id);
     }
-    if let Some(id) = journeys.lead_guitarist {
+    if let Some(id) = journeys.rhythm_guitarist {
         probe_journeys.push(id);
     }
-    if let Some(id) = journeys.rhythm_guitarist {
+    if let Some(id) = journeys.lead_guitarist {
         probe_journeys.push(id);
     }
     if let Some(id) = journeys.bass {
@@ -1106,10 +1106,10 @@ fn spawn_ui_subscription_forwarders(
     if let Some(id) = journeys.lead_vocalist {
         journey_ids.push(id);
     }
-    if let Some(id) = journeys.lead_guitarist {
+    if let Some(id) = journeys.rhythm_guitarist {
         journey_ids.push(id);
     }
-    if let Some(id) = journeys.rhythm_guitarist {
+    if let Some(id) = journeys.lead_guitarist {
         journey_ids.push(id);
     }
     if let Some(id) = journeys.bass {
@@ -1438,11 +1438,11 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             SelectedAnimal::LeadVocalist => {
                 animal_volumes.with_lead_vocalist(override_entry.volume)
             }
-            SelectedAnimal::LeadGuitarist => {
-                animal_volumes.with_lead_guitarist(override_entry.volume)
-            }
             SelectedAnimal::RhythmGuitarist => {
                 animal_volumes.with_rhythm_guitarist(override_entry.volume)
+            }
+            SelectedAnimal::LeadGuitarist => {
+                animal_volumes.with_lead_guitarist(override_entry.volume)
             }
             SelectedAnimal::Bassist => animal_volumes.with_bassist(override_entry.volume),
             SelectedAnimal::Drummer => animal_volumes.with_drummer(override_entry.volume),
@@ -1486,7 +1486,7 @@ fn parse_animal_volume_value(value: &str) -> Result<AnimalVolumeOverride, String
     };
     let animal = SelectedAnimal::from_cli_name(animal_raw).ok_or_else(|| {
         format!(
-            "invalid animal in `{value}`: `{animal_raw}` (expected one of: lead-vocalist, lead-guitarist, rhythm-guitarist, bassist, drummer)"
+            "invalid animal in `{value}`: `{animal_raw}` (expected one of: lead-vocalist, rhythm-guitarist, lead-guitarist, bassist, drummer)"
         )
     })?;
     let volume = volume_raw
@@ -1564,8 +1564,8 @@ fn parse_synth_queue_size_value(value: &str) -> Result<usize, String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum SelectedAnimal {
     LeadVocalist,
-    LeadGuitarist,
     RhythmGuitarist,
+    LeadGuitarist,
     Bassist,
     Drummer,
 }
@@ -1574,8 +1574,8 @@ impl SelectedAnimal {
     fn all() -> BTreeSet<Self> {
         [
             Self::LeadVocalist,
-            Self::LeadGuitarist,
             Self::RhythmGuitarist,
+            Self::LeadGuitarist,
             Self::Bassist,
             Self::Drummer,
         ]
@@ -1586,8 +1586,8 @@ impl SelectedAnimal {
     fn as_cli_name(self) -> &'static str {
         match self {
             Self::LeadVocalist => "lead-vocalist",
-            Self::LeadGuitarist => "lead-guitarist",
             Self::RhythmGuitarist => "rhythm-guitarist",
+            Self::LeadGuitarist => "lead-guitarist",
             Self::Bassist => "bassist",
             Self::Drummer => "drummer",
         }
@@ -1596,8 +1596,8 @@ impl SelectedAnimal {
     fn from_cli_name(value: &str) -> Option<Self> {
         match value {
             "lead-vocalist" => Some(Self::LeadVocalist),
-            "lead-guitarist" => Some(Self::LeadGuitarist),
             "rhythm-guitarist" => Some(Self::RhythmGuitarist),
+            "lead-guitarist" => Some(Self::LeadGuitarist),
             "bassist" | "bass" => Some(Self::Bassist),
             "drummer" | "drums" => Some(Self::Drummer),
             _ => None,
@@ -1609,8 +1609,8 @@ impl SelectedAnimal {
 #[value(rename_all = "kebab-case")]
 enum SelectedAnimalCli {
     LeadVocalist,
-    LeadGuitarist,
     RhythmGuitarist,
+    LeadGuitarist,
     #[value(alias = "bass")]
     Bassist,
     #[value(alias = "drums")]
@@ -1621,8 +1621,8 @@ impl From<SelectedAnimalCli> for SelectedAnimal {
     fn from(value: SelectedAnimalCli) -> Self {
         match value {
             SelectedAnimalCli::LeadVocalist => Self::LeadVocalist,
-            SelectedAnimalCli::LeadGuitarist => Self::LeadGuitarist,
             SelectedAnimalCli::RhythmGuitarist => Self::RhythmGuitarist,
+            SelectedAnimalCli::LeadGuitarist => Self::LeadGuitarist,
             SelectedAnimalCli::Bassist => Self::Bassist,
             SelectedAnimalCli::Drummer => Self::Drummer,
         }

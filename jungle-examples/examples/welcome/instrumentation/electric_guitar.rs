@@ -30,7 +30,7 @@ impl ElectricGuitar {
 pub enum ElectricGuitarArticulation {
     /// Standard picked note with normal sustain and release.
     Sustained,
-    /// A sustained rhythm-guitar chord voice.
+    /// A sustained lead-guitar chord voice.
     RhythmSustained,
 }
 

@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use super::{Double, Quad, RhythmGuitarist, RhythmGuitaristState};
+use super::{Double, Quad, LeadGuitarist, LeadGuitaristState};
 use crate::action::{MergeUnit as GenericMergeUnit, Rest as GenericRest};
 use crate::effect::{Rest, Sound, SoundInput};
 use crate::instrumentation::{
@@ -8,7 +8,7 @@ use crate::instrumentation::{
     Strum as LaneStrum, Vocals, VocalsArticulation,
 };
 
-const RHYTHM_GUITAR_LANE_ID: u8 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
+const RHYTHM_GUITAR_LANE_ID: u8 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
 const INTRO_START_DELAY_TICKS: u32 = 0;
 type MergeUnit = GenericMergeUnit<ElectricGuitarArticulation>;
 type PostMergeRest<const TICKS: u32> =
@@ -131,15 +131,15 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
 }
 
 pub struct RhythmRiffLoopRemaining;
-impl Predicate<(&RhythmGuitaristState, &())> for RhythmRiffLoopRemaining {
-    fn eval((state, _): &(&RhythmGuitaristState, &())) -> bool {
+impl Predicate<(&LeadGuitaristState, &())> for RhythmRiffLoopRemaining {
+    fn eval((state, _): &(&LeadGuitaristState, &())) -> bool {
         state.riff_loops_remaining > 0
     }
 }
 
 pub struct UseRhythmTurnaroundSection;
-impl Predicate<(RhythmGuitaristState, ())> for UseRhythmTurnaroundSection {
-    fn eval((state, _): &(RhythmGuitaristState, ())) -> bool {
+impl Predicate<(LeadGuitaristState, ())> for UseRhythmTurnaroundSection {
+    fn eval((state, _): &(LeadGuitaristState, ())) -> bool {
         state.riff_loops_remaining <= 0
     }
 }
@@ -152,13 +152,13 @@ impl Action for DecrementRhythmRiffLoop {
     type Output = ();
 
     fn emit(
-        _state: &RhythmGuitaristState,
+        _state: &LeadGuitaristState,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
     }
 
     fn absorb(
-        state: &mut RhythmGuitaristState,
+        state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("rhythm riff loop decrement should complete");
@@ -174,13 +174,13 @@ impl Action for MergeRhythmTurnaroundChoice {
     type Output = ();
 
     fn emit(
-        _state: &RhythmGuitaristState,
+        _state: &LeadGuitaristState,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
     }
 
     fn absorb(
-        _state: &mut RhythmGuitaristState,
+        _state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("rhythm turnaround branch merge should complete");
@@ -208,10 +208,10 @@ pub struct RhythmRiffLoopBody(
 );
 
 #[derive(Flow)]
-pub struct RhythmGuitarFlow(
+pub struct LeadGuitarFlow(
     Transparent<
         IntroSectionMeta,
-        Step<GenericRest<RhythmGuitaristState, INTRO_START_DELAY_TICKS, RHYTHM_GUITAR_LANE_ID>>,
+        Step<GenericRest<LeadGuitaristState, INTRO_START_DELAY_TICKS, RHYTHM_GUITAR_LANE_ID>>,
     >,
     Transparent<IntroSectionMeta, RhythmSection01>,
     Transparent<IntroSectionMeta, RhythmSection02>,
@@ -1585,14 +1585,14 @@ impl Action for RhythmTailStub {
     type Output = ();
 
     fn emit(
-        _state: &RhythmGuitaristState,
+        _state: &LeadGuitaristState,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
         ()
     }
 
     fn absorb(
-        _state: &mut RhythmGuitaristState,
+        _state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("rhythm tail stub should succeed");
@@ -1618,13 +1618,13 @@ impl Action for RhythmLoopDecrementStub {
     type Output = ();
 
     fn emit(
-        _state: &RhythmGuitaristState,
+        _state: &LeadGuitaristState,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
     }
 
     fn absorb(
-        state: &mut RhythmGuitaristState,
+        state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("test loop decrement should succeed");
@@ -1659,14 +1659,14 @@ pub struct RhythmJoinSound100Animal;
 #[cfg(test)]
 #[jungle::animal(id = 2, generation = 0)]
 impl Animal for RhythmJoinSound100Animal {
-    type State = RhythmGuitaristState;
-    type Seed = RhythmGuitaristState;
+    type State = LeadGuitaristState;
+    type Seed = LeadGuitaristState;
     type Journey = RhythmJoinSound100Flow;
 }
 
 #[cfg(test)]
-impl From<RhythmGuitaristState> for () {
-    fn from(_value: RhythmGuitaristState) -> Self {}
+impl From<LeadGuitaristState> for () {
+    fn from(_value: LeadGuitaristState) -> Self {}
 }
 #[cfg(test)]
 mod tests {
@@ -1677,12 +1677,12 @@ mod tests {
     use jungle_sdk::prelude::*;
     use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
 
-    use super::super::RhythmGuitarist;
-    use super::{RhythmGuitaristState, RhythmJoinSound100Animal};
+    use super::super::LeadGuitarist;
+    use super::{LeadGuitaristState, RhythmJoinSound100Animal};
     use crate::ecosystem::TheJungle;
     const DUPLICATE_EXECUTION_WORKER_COUNT: usize = 5;
     const DUPLICATE_EXECUTION_TEST_BPM: f32 = 123.0;
-    // Deterministic default RhythmGuitarFlow path executes 1,221 effect steps:
+    // Deterministic default LeadGuitarFlow path executes 1,221 effect steps:
     // each step emits one EffectInput and one EffectSuccessOutput.
     const EXPECTED_DUPLICATE_EXECUTION_INPUT_EVENTS: u32 = 1_221;
     const EXPECTED_DUPLICATE_EXECUTION_SUCCESS_EVENTS: u32 = 1_221;
@@ -1814,7 +1814,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 16)]
-    async fn rhythm_guitarist_flow_multi_worker_local_client_has_exact_event_counts() {
+    async fn lead_guitarist_flow_multi_worker_local_client_has_exact_event_counts() {
         let namespace = format!("welcome-rhythm-dup-exec-{}", uuid::Uuid::new_v4());
         let client = LocalClient::builder()
             .namespace(&namespace)
@@ -1840,7 +1840,7 @@ mod tests {
 
         let seed = postcard::to_allocvec(&()).expect("seed should serialize");
         let journey_id = client
-            .start_journey::<RhythmGuitarist>(seed)
+            .start_journey::<LeadGuitarist>(seed)
             .await
             .expect("journey should start");
 
@@ -1913,7 +1913,7 @@ mod tests {
 
         let seed = postcard::to_allocvec(&()).expect("seed should serialize");
         let journey_id = client
-            .start_journey::<RhythmGuitarist>(seed)
+            .start_journey::<LeadGuitarist>(seed)
             .await
             .expect("journey should start");
 
@@ -1966,7 +1966,7 @@ mod tests {
         }
 
         let seed =
-            postcard::to_allocvec(&RhythmGuitaristState::default()).expect("seed should serialize");
+            postcard::to_allocvec(&LeadGuitaristState::default()).expect("seed should serialize");
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client

@@ -4,9 +4,9 @@ use crate::action::{MergeEither, MergeUnit as GenericMergeUnit, Rest as GenericR
 use crate::effect::Rest;
 use crate::instrumentation::{ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck};
 
-use super::{Double, LeadGuitarist, LeadGuitaristState};
+use super::{Double, RhythmGuitarist, RhythmGuitaristState};
 
-const LEAD_GUITAR_LANE_ID: u8 = <<LeadGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
+const LEAD_GUITAR_LANE_ID: u8 = <<RhythmGuitarist as Animal>::Id as AnimalIdValue>::U32 as u8;
 type Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
     LanePick<NOTE, NOTE_TICK, REST_TICK, LEAD_GUITAR_LANE_ID>;
 type Pluck<const NOTE_1: u8, const NOTE_2: u8, const NOTE_TICK: u32, const REST_TICK: u32> =
@@ -72,15 +72,15 @@ pub struct QuadHit<
 );
 
 pub struct LeadRiffLoopRemaining;
-impl Predicate<(&LeadGuitaristState, &())> for LeadRiffLoopRemaining {
-    fn eval((state, _): &(&LeadGuitaristState, &())) -> bool {
+impl Predicate<(&RhythmGuitaristState, &())> for LeadRiffLoopRemaining {
+    fn eval((state, _): &(&RhythmGuitaristState, &())) -> bool {
         state.riff_loops_remaining > 0
     }
 }
 
 pub struct UseLeadTurnaroundSection;
-impl Predicate<(LeadGuitaristState, ())> for UseLeadTurnaroundSection {
-    fn eval((state, _): &(LeadGuitaristState, ())) -> bool {
+impl Predicate<(RhythmGuitaristState, ())> for UseLeadTurnaroundSection {
+    fn eval((state, _): &(RhythmGuitaristState, ())) -> bool {
         state.riff_loops_remaining <= 0
     }
 }
@@ -93,13 +93,13 @@ impl Action for DecrementLeadRiffLoop {
     type Output = ();
 
     fn emit(
-        _state: &LeadGuitaristState,
+        _state: &RhythmGuitaristState,
         _input: Self::Input,
     ) -> <Self::Effect as EffectSchema>::In {
     }
 
     fn absorb(
-        state: &mut LeadGuitaristState,
+        state: &mut RhythmGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
         output.expect("lead riff loop decrement should complete");
@@ -125,14 +125,14 @@ pub struct LeadRiffLoopBody(
     Transparent<IntroSectionMeta, LeadSection03>,
     Transparent<IntroSectionMeta, LeadSection04>,
     Conditional<UseLeadTurnaroundSection, LeadRiffLoopFinalTail, LeadRiffLoopNormalTail>,
-    Step<MergeEither<(), LeadGuitaristState>>,
+    Step<MergeEither<(), RhythmGuitaristState>>,
 );
 
 #[derive(Flow)]
-pub struct LeadGuitarIntro(
+pub struct RhythmGuitarIntro(
     Transparent<
         IntroSectionMeta,
-        Step<GenericRest<LeadGuitaristState, INTRO_START_DELAY_TICKS, LEAD_GUITAR_LANE_ID>>,
+        Step<GenericRest<RhythmGuitaristState, INTRO_START_DELAY_TICKS, LEAD_GUITAR_LANE_ID>>,
     >,
     Transparent<IntroSectionMeta, LeadSection01>,
     While<LeadRiffLoopRemaining, LeadRiffLoopBody>,
@@ -1241,13 +1241,13 @@ mod tests {
     use jungle_sdk::prelude::JourneyStatus;
     use jungle_sdk::{JungleClient, LocalClient};
 
-    use super::super::LeadGuitarist;
+    use super::super::RhythmGuitarist;
     use crate::ecosystem::TheJungle;
 
     #[tokio::test]
     async fn full_song_journey_starts_and_stays_alive() {
         let client = LocalClient::builder()
-            .namespace("welcome-lead-guitar-intro-test")
+            .namespace("welcome-rhythm-guitar-intro-test")
             .build()
             .await
             .expect("local client should build");
@@ -1262,7 +1262,7 @@ mod tests {
 
         let seed = postcard::to_allocvec(&()).expect("seed should serialize");
         let journey_id = client
-            .start_journey::<LeadGuitarist>(seed)
+            .start_journey::<RhythmGuitarist>(seed)
             .await
             .expect("journey should start");
 
