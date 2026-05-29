@@ -668,7 +668,7 @@ impl<T, S> Act for Stub<T, S> {
 #[cfg(test)]
 #[derive(Animals)]
 pub struct WelcomeAnimals(
-    BassJoinMonad100Animal,
-    RhythmJoinMonad100Animal,
-    ConditionalJoinMonad100Animal,
+    BassJoinSound100Animal,
+    RhythmJoinSound100Animal,
+    ConditionalJoinSound100Animal,
 );

@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 
 use super::{Double, Quad, RhythmGuitarist, RhythmGuitaristState};
-use crate::effect::{Monad, Rest};
+use crate::effect::{Sound, Rest};
 use crate::instrumentation::{
     ElectricGuitar, ElectricGuitarArticulation, Pick as LanePick, Pluck as LanePluck,
     Strum as LaneStrum, Vocals, VocalsArticulation,
@@ -32,7 +32,7 @@ pub struct JoinPick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinPick<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<ElectricGuitar, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<ElectricGuitar, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -117,7 +117,7 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<Vocals, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Vocals, RHYTHM_GUITAR_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -1651,7 +1651,7 @@ impl Act for RhythmTailStub {
 #[cfg(test)]
 #[derive(Flow)]
 #[jungle(focus = ElectricGuitarArticulation)]
-pub struct RhythmJoinMonad100JoinAndRest(
+pub struct RhythmJoinSound100JoinAndRest(
     Join<JoinPluck<54, 47, 100, 0>, Step<HarmonySing<71, 100, 0>>>,
     Step<MergeUnit>,
 );
@@ -1683,8 +1683,8 @@ impl Act for RhythmLoopDecrementStub {
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct RhythmJoinMonad100LoopBody(
-    Transparent<IntroSectionMeta, RhythmJoinMonad100JoinAndRest>,
+pub struct RhythmJoinSound100LoopBody(
+    Transparent<IntroSectionMeta, RhythmJoinSound100JoinAndRest>,
     Step<RhythmTailStub>,
     Step<RhythmTailStub>,
     Step<RhythmTailStub>,
@@ -1700,17 +1700,17 @@ pub struct RhythmJoinMonad100LoopBody(
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct RhythmJoinMonad100Flow(While<RhythmRiffLoopRemaining, RhythmJoinMonad100LoopBody>);
+pub struct RhythmJoinSound100Flow(While<RhythmRiffLoopRemaining, RhythmJoinSound100LoopBody>);
 
 #[cfg(test)]
-pub struct RhythmJoinMonad100Animal;
+pub struct RhythmJoinSound100Animal;
 
 #[cfg(test)]
 #[jungle::animal(id = 2, generation = 0)]
-impl Animal for RhythmJoinMonad100Animal {
+impl Animal for RhythmJoinSound100Animal {
     type State = RhythmGuitaristState;
     type Seed = RhythmGuitaristState;
-    type Journey = RhythmJoinMonad100Flow;
+    type Journey = RhythmJoinSound100Flow;
 }
 
 #[cfg(test)]
@@ -1727,7 +1727,7 @@ mod tests {
     use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
 
     use super::super::RhythmGuitarist;
-    use super::{RhythmGuitaristState, RhythmJoinMonad100Animal};
+    use super::{RhythmGuitaristState, RhythmJoinSound100Animal};
     use crate::ecosystem::TheJungle;
     const DUPLICATE_EXECUTION_WORKER_COUNT: usize = 5;
     const DUPLICATE_EXECUTION_TEST_BPM: f32 = 123.0;
@@ -1983,12 +1983,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn join_monad_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client(
+    async fn join_Sound_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client(
     ) {
         const PARALLEL_JOURNEYS: usize = 1;
 
         let namespace = format!(
-            "welcome-rhythm-join-monad-100-test-{}",
+            "welcome-rhythm-join-Sound-100-test-{}",
             uuid::Uuid::new_v4()
         );
         let client = LocalClient::builder()
@@ -2019,7 +2019,7 @@ mod tests {
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client
-                .start_journey::<RhythmJoinMonad100Animal>(seed.clone())
+                .start_journey::<RhythmJoinSound100Animal>(seed.clone())
                 .await
                 .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
             journey_ids.push(journey_id);

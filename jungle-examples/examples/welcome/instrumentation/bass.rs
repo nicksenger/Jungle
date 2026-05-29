@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 use welcome_audio::{PlayPriority, PlayRequest};
 
-use crate::effect::Monad;
+use crate::effect::Sound;
 
 use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
@@ -52,7 +52,7 @@ pub struct Thump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, con
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Act
     for Thump<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect = Monad<Bass, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Bass, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 

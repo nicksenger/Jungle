@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{Monad, Rest};
+use crate::effect::{Sound, Rest};
 use crate::instrumentation::{
     Cymbal, CymbalArticulation, HiHat, HiHatArticulation, KickDrum, KickDrumArticulation,
     SnareDrum, SnareDrumArticulation, Toms, TomsArticulation,
@@ -39,7 +39,7 @@ pub struct Hat<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Hat<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<HiHat, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<HiHat, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -57,7 +57,7 @@ pub struct Boot<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Boot<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<KickDrum, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<KickDrum, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -75,7 +75,7 @@ pub struct Snap<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Snap<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<SnareDrum, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<SnareDrum, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -93,7 +93,7 @@ pub struct Blast<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for Blast<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<Cymbal, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Cymbal, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -111,7 +111,7 @@ pub struct TomHit<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>;
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for TomHit<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<Toms, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Toms, DRUMS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -195,7 +195,7 @@ impl Act for MergeGrooveVariantChoice {
 pub struct ConditionalJoinTailStub;
 #[jungle::act]
 impl Act for ConditionalJoinTailStub {
-    type Effect = Monad<HiHat, DRUMS_LANE_ID, 46, 1, 0>;
+    type Effect = Sound<HiHat, DRUMS_LANE_ID, 46, 1, 0>;
     type Input = Either<(), ()>;
     type Output = Either<(), ()>;
 
@@ -2429,7 +2429,7 @@ pub struct DrumPart68(
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct ConditionalJoinMonad100LeftArm(
+pub struct ConditionalJoinSound100LeftArm(
     Join<Step<Hat<46, 100, 0>>, Step<Hat<42, 100, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<0>>,
@@ -2437,7 +2437,7 @@ pub struct ConditionalJoinMonad100LeftArm(
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct ConditionalJoinMonad100RightArm(
+pub struct ConditionalJoinSound100RightArm(
     Join<Step<Boot<36, 100, 0>>, Step<Hat<44, 100, 0>>>,
     Step<MergeUnit>,
     Step<PostMergeRest<0>>,
@@ -2445,11 +2445,11 @@ pub struct ConditionalJoinMonad100RightArm(
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct ConditionalJoinMonad100Flow(
+pub struct ConditionalJoinSound100Flow(
     Conditional<
         UseHat46GrooveVariant,
-        ConditionalJoinMonad100LeftArm,
-        ConditionalJoinMonad100RightArm,
+        ConditionalJoinSound100LeftArm,
+        ConditionalJoinSound100RightArm,
     >,
     Step<ConditionalJoinTailStub>,
     Step<ConditionalJoinTailStub>,
@@ -2464,13 +2464,13 @@ pub struct ConditionalJoinMonad100Flow(
 );
 
 #[cfg(test)]
-pub struct ConditionalJoinMonad100Animal;
+pub struct ConditionalJoinSound100Animal;
 #[cfg(test)]
 #[jungle::animal(id = 0, generation = 0)]
-impl Animal for ConditionalJoinMonad100Animal {
+impl Animal for ConditionalJoinSound100Animal {
     type State = DrummerState;
     type Seed = DrummerState;
-    type Journey = ConditionalJoinMonad100Flow;
+    type Journey = ConditionalJoinSound100Flow;
 }
 
 #[cfg(test)]
@@ -2487,7 +2487,7 @@ mod tests {
     use jungle_sdk::prelude::*;
     use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
 
-    use super::super::{ConditionalJoinMonad100Animal, Drums};
+    use super::super::{ConditionalJoinSound100Animal, Drums};
     use crate::ecosystem::TheJungle;
 
     async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
@@ -2617,11 +2617,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn conditional_join_monad_100_ticks_zero_rest_completes_with_local_client() {
+    async fn conditional_join_Sound_100_ticks_zero_rest_completes_with_local_client() {
         const PARALLEL_JOURNEYS: usize = 5;
 
         let client = LocalClient::builder()
-            .namespace("welcome-conditional-join-monad-test")
+            .namespace("welcome-conditional-join-Sound-test")
             .build()
             .await
             .expect("local client should build");
@@ -2668,7 +2668,7 @@ mod tests {
         for (index, seed_state) in seeds.iter().enumerate() {
             let seed = postcard::to_allocvec(seed_state).expect("seed should serialize");
             let journey_id = client
-                .start_journey::<ConditionalJoinMonad100Animal>(seed)
+                .start_journey::<ConditionalJoinSound100Animal>(seed)
                 .await
                 .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
             journey_ids.push(journey_id);

@@ -1,7 +1,7 @@
 use jungle_sdk::prelude::*;
 use welcome_audio::{PlayPriority, PlayRequest};
 
-use crate::effect::{Monad, Rest};
+use crate::effect::{Sound, Rest};
 
 use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
@@ -58,7 +58,7 @@ pub struct Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, cons
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Act
     for Pick<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect = Monad<ElectricGuitar, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<ElectricGuitar, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 

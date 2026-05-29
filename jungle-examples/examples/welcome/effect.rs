@@ -21,7 +21,7 @@ const EFFECT_WAKE_DRIFT_WARN_THRESHOLD: Duration = Duration::from_millis(200);
 static EFFECT_CYCLE_COUNT: AtomicUsize = AtomicUsize::new(0);
 static EFFECT_SKIPPED_NOTES: AtomicUsize = AtomicUsize::new(0);
 
-pub struct Monad<
+pub struct Sound<
     I: Instrument,
     const LANE_ID: u8,
     const NOTE: u8,
@@ -81,7 +81,7 @@ impl<const LANE_ID: u8, const REST_TICKS: u32> Effect<TheJungle> for Rest<LANE_I
 
 #[effect(id = 0)]
 impl<I, const LANE_ID: u8, const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
-    Effect<TheJungle> for Monad<I, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
+    Effect<TheJungle> for Sound<I, LANE_ID, NOTE, NOTE_TICK, REST_TICK>
 where
     I: Instrument,
     for<'a> &'a I: From<&'a TheJungle>,

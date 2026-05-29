@@ -2,7 +2,7 @@ use jungle_sdk::prelude::*;
 use std::{sync::Arc, time::Duration};
 use welcome_audio::{PlayPriority, PlayRequest};
 
-use crate::{animals::LeadVocalistState, effect::Monad};
+use crate::{animals::LeadVocalistState, effect::Sound};
 
 use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
 
@@ -92,7 +92,7 @@ pub struct Generate<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, 
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8> Act
     for Generate<NOTE, NOTE_TICK, REST_TICK, LANE_ID>
 {
-    type Effect = Monad<Vocals, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Vocals, LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 

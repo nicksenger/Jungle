@@ -1,6 +1,6 @@
 use jungle_sdk::prelude::*;
 
-use crate::effect::{Monad, Rest};
+use crate::effect::{Sound, Rest};
 use crate::flow::loop2::Loop2;
 use crate::instrumentation::{
     Bass as BassInstrument, BassArticulation, Thump as LaneThump, Vocals, VocalsArticulation,
@@ -21,7 +21,7 @@ pub struct JoinThump<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32>
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for JoinThump<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<BassInstrument, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<BassInstrument, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -65,7 +65,7 @@ pub struct HarmonySing<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u3
 impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Act
     for HarmonySing<NOTE, NOTE_TICK, REST_TICK>
 {
-    type Effect = Monad<Vocals, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
+    type Effect = Sound<Vocals, BASS_LANE_ID, NOTE, NOTE_TICK, REST_TICK>;
     type Input = ();
     type Output = ();
 
@@ -3163,7 +3163,7 @@ impl Act for BassTailStub {
 #[cfg(test)]
 #[derive(Flow)]
 #[jungle(focus = BassArticulation)]
-pub struct BassJoinMonad100JoinAndRest(
+pub struct BassJoinSound100JoinAndRest(
     Join<Step<JoinThump<35, 100, 0>>, Step<HarmonySing<71, 100, 0>>>,
     Step<MergeUnit>,
 );
@@ -3188,8 +3188,8 @@ impl Act for BassLoopDecrementStub {
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct BassJoinMonad100LoopBody(
-    Transparent<IntroSectionMeta, BassJoinMonad100JoinAndRest>,
+pub struct BassJoinSound100LoopBody(
+    Transparent<IntroSectionMeta, BassJoinSound100JoinAndRest>,
     Step<BassTailStub>,
     Step<BassTailStub>,
     Step<BassTailStub>,
@@ -3205,17 +3205,17 @@ pub struct BassJoinMonad100LoopBody(
 
 #[cfg(test)]
 #[derive(Flow)]
-pub struct BassJoinMonad100Flow(While<BassRiffLoopRemaining, BassJoinMonad100LoopBody>);
+pub struct BassJoinSound100Flow(While<BassRiffLoopRemaining, BassJoinSound100LoopBody>);
 
 #[cfg(test)]
-pub struct BassJoinMonad100Animal;
+pub struct BassJoinSound100Animal;
 
 #[cfg(test)]
 #[jungle::animal(id = 1, generation = 0)]
-impl Animal for BassJoinMonad100Animal {
+impl Animal for BassJoinSound100Animal {
     type State = BassistState;
     type Seed = BassistState;
-    type Journey = BassJoinMonad100Flow;
+    type Journey = BassJoinSound100Flow;
 }
 
 #[cfg(test)]
@@ -3233,7 +3233,7 @@ mod tests {
     use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
 
     use super::super::Bass;
-    use super::{BassJoinMonad100Animal, BassistState};
+    use super::{BassJoinSound100Animal, BassistState};
     use crate::ecosystem::TheJungle;
 
     async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
@@ -3342,11 +3342,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn join_monad_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client(
+    async fn join_Sound_100_ticks_zero_rest_with_tail_streams_events_and_completes_with_local_client(
     ) {
         const PARALLEL_JOURNEYS: usize = 1;
 
-        let namespace = format!("welcome-bass-join-monad-100-test-{}", uuid::Uuid::new_v4());
+        let namespace = format!("welcome-bass-join-Sound-100-test-{}", uuid::Uuid::new_v4());
         let client = LocalClient::builder()
             .namespace(&namespace)
             .build()
@@ -3374,7 +3374,7 @@ mod tests {
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client
-                .start_journey::<BassJoinMonad100Animal>(seed.clone())
+                .start_journey::<BassJoinSound100Animal>(seed.clone())
                 .await
                 .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
             journey_ids.push(journey_id);
