@@ -1,5 +1,5 @@
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 mod rules;
 
@@ -114,7 +114,7 @@ fn flags_for_character(character: char) -> CharacterFlag {
     }
 }
 
-static CHARACTER_RULES: Lazy<Vec<ReciterRule>> = Lazy::new(|| {
+static CHARACTER_RULES: LazyLock<Vec<ReciterRule>> = LazyLock::new(|| {
     rules::CHARACTER_RULES
         .iter()
         .map(|(pattern, replacement)| {
@@ -128,7 +128,7 @@ static CHARACTER_RULES: Lazy<Vec<ReciterRule>> = Lazy::new(|| {
         .collect()
 });
 
-static RULES: Lazy<HashMap<char, Vec<ReciterRule>>> = Lazy::new(|| {
+static RULES: LazyLock<HashMap<char, Vec<ReciterRule>>> = LazyLock::new(|| {
     let mut rules_per_character: HashMap<char, Vec<ReciterRule>> = HashMap::new();
 
     for (pattern, replacement) in rules::RULES {

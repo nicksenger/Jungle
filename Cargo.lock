@@ -6615,7 +6615,6 @@ version = "0.1.0"
 dependencies = [
  "cpal",
  "futures",
- "once_cell",
  "serde",
  "thiserror 2.0.18",
  "tracing",
