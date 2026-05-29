@@ -112,6 +112,35 @@ pub trait LoopCondition<State> {
     fn should_continue(state: &State) -> bool;
 }
 
+/// Unified predicate contract for control-flow decisions.
+pub trait Predicate<Input> {
+    fn eval(input: &Input) -> bool;
+}
+
+/// Compatibility adapter from legacy [`Condition`] into [`Predicate`].
+pub struct ConditionPredicate<P>(PhantomData<fn() -> P>);
+
+impl<In, P> Predicate<In> for ConditionPredicate<P>
+where
+    P: Condition<In>,
+{
+    fn eval(input: &In) -> bool {
+        <P as Condition<In>>::choose(input)
+    }
+}
+
+/// Compatibility adapter from legacy [`LoopCondition`] into [`Predicate`].
+pub struct LoopConditionPredicate<C>(PhantomData<fn() -> C>);
+
+impl<'a, State, In, C> Predicate<(&'a State, &'a In)> for LoopConditionPredicate<C>
+where
+    C: LoopCondition<State, Arg = In>,
+{
+    fn eval((state, _): &(&'a State, &'a In)) -> bool {
+        <C as LoopCondition<State>>::should_continue(state)
+    }
+}
+
 /// Adapts a [`Condition`] defined over a focused view to run against a larger root state.
 ///
 /// This is useful for scoped flow templates where branch predicates are authored against
@@ -1457,13 +1486,13 @@ impl<P, L, R, M> Running for Conditional<P, L, R, M>
 where
     L: Running,
     R: Running<In = L::In>,
-    P: Condition<L::In>,
+    ConditionPredicate<P>: Predicate<L::In>,
 {
     type In = L::In;
     type Out = Either<L::Out, R::Out>;
 
     fn run(input: Self::In) -> Self::Out {
-        if <P as Condition<L::In>>::choose(&input) {
+        if <ConditionPredicate<P> as Predicate<L::In>>::eval(&input) {
             Either::Left(<L as Running>::run(input))
         } else {
             Either::Right(<R as Running>::run(input))

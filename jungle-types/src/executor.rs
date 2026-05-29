@@ -1,7 +1,7 @@
 use crate::{
     Animal, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    Effect, EffectCompletion, EffectSchema, Either, Join, LoopCondition, Noop, Running, Scoped,
-    Select, Transparent, While,
+    Effect, EffectCompletion, EffectSchema, Either, Join, Noop, Running, Scoped, Select,
+    Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -83,9 +83,9 @@ where
 
 impl<State, C, F, M> ArgputForState<State> for While<C, F, M>
 where
-    C: LoopCondition<State>,
+    C: crate::LoopCondition<State>,
 {
-    type Carry = <C as LoopCondition<State>>::Arg;
+    type Carry = <C as crate::LoopCondition<State>>::Arg;
 }
 
 impl<State> ArgputForState<State> for list::Empty {
@@ -2352,7 +2352,6 @@ where
 
 impl<State, In, C, F, M> FlowCarry<State> for While<C, F, M>
 where
-    C: LoopCondition<State, Arg = In>,
     F: FlowCarry<State, In = In>,
 {
     type In = In;
@@ -2521,10 +2520,10 @@ where
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(&(
-                    state.clone(),
-                    input.clone(),
-                ))
+                <crate::ConditionPredicate<P> as crate::Predicate<(
+                    State,
+                    <L as ArgputForState<State>>::Carry,
+                )>>::eval(&(state.clone(), input.clone()))
             },
         );
         steps.push(Box::new(ConditionalErasedFlow::<
@@ -2539,7 +2538,7 @@ where
 impl<State, In, C, F, M> BuildFlow<DynFlow<State>> for While<C, F, M>
 where
     State: Send + 'static,
-    C: LoopCondition<State, Arg = In> + 'static,
+    C: crate::LoopCondition<State, Arg = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + FlowCarry<State, In = In> + 'static,
 {
@@ -2547,8 +2546,10 @@ where
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
-        let should_continue = Box::new(|state: &State, _input: &In| {
-            <C as LoopCondition<State>>::should_continue(state)
+        let should_continue = Box::new(|state: &State, input: &In| {
+            <crate::LoopConditionPredicate<C> as crate::Predicate<(&State, &In)>>::eval(&(
+                state, input,
+            ))
         });
         let build_body = Box::new(|| <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         steps.push(Box::new(WhileErasedFlow::<State, In>::new(
@@ -3086,10 +3087,10 @@ where
         ));
         let choose_left = Box::new(
             |state: &State, input: &<L as ArgputForState<State>>::Carry| {
-                <P as crate::Condition<(State, <L as ArgputForState<State>>::Carry)>>::choose(&(
-                    state.clone(),
-                    input.clone(),
-                ))
+                <crate::ConditionPredicate<P> as crate::Predicate<(
+                    State,
+                    <L as ArgputForState<State>>::Carry,
+                )>>::eval(&(state.clone(), input.clone()))
             },
         );
         steps.push(Box::new(ConditionalContextErasedFlow::<
@@ -3423,7 +3424,7 @@ impl<Context, State, In, C, F, M> BuildFlowWithContext<(Arc<Context>, DynFlow<St
 where
     Context: Send + Sync + 'static,
     State: Send + 'static,
-    C: LoopCondition<State, Arg = In> + 'static,
+    C: crate::LoopCondition<State, Arg = In> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
@@ -3435,8 +3436,10 @@ where
 
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
-        let should_continue = Box::new(|state: &State, _input: &In| {
-            <C as LoopCondition<State>>::should_continue(state)
+        let should_continue = Box::new(|state: &State, input: &In| {
+            <crate::LoopConditionPredicate<C> as crate::Predicate<(&State, &In)>>::eval(&(
+                state, input,
+            ))
         });
         let context_for_body = Arc::clone(&context);
         let build_body = Box::new(move || {
