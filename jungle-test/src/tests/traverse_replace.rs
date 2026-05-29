@@ -161,11 +161,9 @@ impl BoundAction<TraverseAnimal> for StepD {
 }
 
 struct KeepLooping;
-impl LoopCondition<i32> for KeepLooping {
-    type Arg = ();
-
-    fn should_continue(state: &i32) -> bool {
-        *state < 1
+impl Predicate<(&i32, &())> for KeepLooping {
+    fn eval((state, _): &(&i32, &())) -> bool {
+        **state < 1
     }
 }
 

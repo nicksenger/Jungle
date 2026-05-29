@@ -49,11 +49,9 @@ impl Action for TickSpec {
 type TickFlow = BoundFlowStep<Looper, <TickSpec as Action>::Bind<Looper>>;
 
 pub struct LessThanThree;
-impl LoopCondition<i32> for LessThanThree {
-    type Arg = i32;
-
-    fn should_continue(state: &i32) -> bool {
-        *state < 3
+impl Predicate<(&i32, &i32)> for LessThanThree {
+    fn eval((state, _): &(&i32, &i32)) -> bool {
+        **state < 3
     }
 }
 type WhileTickFlow = While<LessThanThree, TickFlow>;
@@ -147,19 +145,15 @@ impl Animal for NestedLooper {
 }
 
 pub struct InnerContinue;
-impl LoopCondition<NestedState> for InnerContinue {
-    type Arg = ();
-
-    fn should_continue(state: &NestedState) -> bool {
+impl Predicate<(&NestedState, &())> for InnerContinue {
+    fn eval((state, _): &(&NestedState, &())) -> bool {
         state.inner_step < 2
     }
 }
 
 pub struct OuterContinue;
-impl LoopCondition<NestedState> for OuterContinue {
-    type Arg = ();
-
-    fn should_continue(state: &NestedState) -> bool {
+impl Predicate<(&NestedState, &())> for OuterContinue {
+    fn eval((state, _): &(&NestedState, &())) -> bool {
         state.outer_round < 3
     }
 }
@@ -244,11 +238,9 @@ impl Action for EchoBoolSpec {
 }
 
 pub struct RunOnce;
-impl LoopCondition<u8> for RunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &u8) -> bool {
-        *state == 0
+impl Predicate<(&u8, &())> for RunOnce {
+    fn eval((state, _): &(&u8, &())) -> bool {
+        **state == 0
     }
 }
 
@@ -268,20 +260,16 @@ impl Animal for WhileInlineNoopThenEffectAnimal {
 }
 
 pub struct InnerRunOnce;
-impl LoopCondition<u8> for InnerRunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &u8) -> bool {
-        *state == 0
+impl Predicate<(&u8, &())> for InnerRunOnce {
+    fn eval((state, _): &(&u8, &())) -> bool {
+        **state == 0
     }
 }
 
 pub struct OuterRunOnce;
-impl LoopCondition<u8> for OuterRunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &u8) -> bool {
-        *state == 0
+impl Predicate<(&u8, &())> for OuterRunOnce {
+    fn eval((state, _): &(&u8, &())) -> bool {
+        **state == 0
     }
 }
 
@@ -307,19 +295,15 @@ pub struct NestedInlineCarryState {
 }
 
 pub struct NestedInlineInnerRunOnce;
-impl LoopCondition<NestedInlineCarryState> for NestedInlineInnerRunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &NestedInlineCarryState) -> bool {
+impl Predicate<(&NestedInlineCarryState, &())> for NestedInlineInnerRunOnce {
+    fn eval((state, _): &(&NestedInlineCarryState, &())) -> bool {
         !state.inner_done
     }
 }
 
 pub struct NestedInlineOuterRunOnce;
-impl LoopCondition<NestedInlineCarryState> for NestedInlineOuterRunOnce {
-    type Arg = ();
-
-    fn should_continue(state: &NestedInlineCarryState) -> bool {
+impl Predicate<(&NestedInlineCarryState, &())> for NestedInlineOuterRunOnce {
+    fn eval((state, _): &(&NestedInlineCarryState, &())) -> bool {
         !state.outer_done
     }
 }
@@ -373,10 +357,8 @@ pub struct RhythmLikeLoopState {
 }
 
 pub struct RhythmLikeLoopRemaining;
-impl LoopCondition<RhythmLikeLoopState> for RhythmLikeLoopRemaining {
-    type Arg = ();
-
-    fn should_continue(state: &RhythmLikeLoopState) -> bool {
+impl Predicate<(&RhythmLikeLoopState, &())> for RhythmLikeLoopRemaining {
+    fn eval((state, _): &(&RhythmLikeLoopState, &())) -> bool {
         state.loops_remaining > 0
     }
 }

@@ -31,10 +31,8 @@ impl<J> Effect<J> for AddEffect {
 }
 
 pub struct SleepNotComplete;
-impl LoopCondition<SleepState> for SleepNotComplete {
-    type Arg = ();
-
-    fn should_continue(state: &SleepState) -> bool {
+impl Predicate<(&SleepState, &())> for SleepNotComplete {
+    fn eval((state, _): &(&SleepState, &())) -> bool {
         state.phase < 3
     }
 }

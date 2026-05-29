@@ -37,10 +37,8 @@ impl<J> Effect<J> for MultiWorkerSleepEffect {
 }
 
 pub struct MultiWorkerContinue;
-impl LoopCondition<MultiWorkerState> for MultiWorkerContinue {
-    type Arg = ();
-
-    fn should_continue(state: &MultiWorkerState) -> bool {
+impl Predicate<(&MultiWorkerState, &())> for MultiWorkerContinue {
+    fn eval((state, _): &(&MultiWorkerState, &())) -> bool {
         state.iteration < LOOP_ITERATIONS
     }
 }

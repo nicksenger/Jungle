@@ -117,10 +117,8 @@ impl Predicate<(ObserveState, ())> for ObserveChooseSleep {
 }
 
 pub struct ObserveLoopForever;
-impl LoopCondition<ObserveState> for ObserveLoopForever {
-    type Arg = ();
-
-    fn should_continue(_state: &ObserveState) -> bool {
+impl Predicate<(&ObserveState, &())> for ObserveLoopForever {
+    fn eval((_state, _): &(&ObserveState, &())) -> bool {
         true
     }
 }

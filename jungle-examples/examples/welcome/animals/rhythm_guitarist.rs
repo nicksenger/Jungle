@@ -131,10 +131,8 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
 }
 
 pub struct RhythmRiffLoopRemaining;
-impl LoopCondition<RhythmGuitaristState> for RhythmRiffLoopRemaining {
-    type Arg = ();
-
-    fn should_continue(state: &RhythmGuitaristState) -> bool {
+impl Predicate<(&RhythmGuitaristState, &())> for RhythmRiffLoopRemaining {
+    fn eval((state, _): &(&RhythmGuitaristState, &())) -> bool {
         state.riff_loops_remaining > 0
     }
 }

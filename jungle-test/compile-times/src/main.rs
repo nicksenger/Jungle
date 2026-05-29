@@ -152,10 +152,8 @@ impl<const SEGMENT_ID: usize> Predicate<(CompileState, ())> for CompileChooseLef
 }
 
 pub struct CompileLoopOnce<const SEGMENT_ID: usize>;
-impl<const SEGMENT_ID: usize> LoopCondition<CompileState> for CompileLoopOnce<SEGMENT_ID> {
-    type Arg = ();
-
-    fn should_continue(state: &CompileState) -> bool {
+impl<const SEGMENT_ID: usize> Predicate<(&CompileState, &())> for CompileLoopOnce<SEGMENT_ID> {
+    fn eval((state, _): &(&CompileState, &())) -> bool {
         black_box(SEGMENT_ID);
         state.counter == 0
     }

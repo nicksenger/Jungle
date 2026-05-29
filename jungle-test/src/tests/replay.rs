@@ -118,13 +118,11 @@ impl ReplayPhaseState for ReplayGateState {
 }
 
 pub struct ReplayPhaseNotComplete;
-impl<S> LoopCondition<S> for ReplayPhaseNotComplete
+impl<S> Predicate<(&S, &())> for ReplayPhaseNotComplete
 where
     S: ReplayPhaseState,
 {
-    type Arg = ();
-
-    fn should_continue(state: &S) -> bool {
+    fn eval((state, _): &(&S, &())) -> bool {
         state.phase() < 5
     }
 }

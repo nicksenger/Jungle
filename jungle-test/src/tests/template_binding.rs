@@ -1539,10 +1539,8 @@ impl<St> Action for Loop2DecrementCounterSpec<St> {
 }
 
 struct Loop2CounterGt0;
-impl<St> LoopCondition<Loop2Container<St>> for Loop2CounterGt0 {
-    type Arg = i32;
-
-    fn should_continue(state: &Loop2Container<St>) -> bool {
+impl<St> Predicate<(&Loop2Container<St>, &i32)> for Loop2CounterGt0 {
+    fn eval((state, _): &(&Loop2Container<St>, &i32)) -> bool {
         state.counter > 0
     }
 }
@@ -1818,10 +1816,8 @@ impl<T, S> Action for NoopFlattenEither<T, S> {
 }
 
 struct NoopLoop2CounterGt0;
-impl<St> LoopCondition<Loop2Container<St>> for NoopLoop2CounterGt0 {
-    type Arg = ();
-
-    fn should_continue(state: &Loop2Container<St>) -> bool {
+impl<St> Predicate<(&Loop2Container<St>, &())> for NoopLoop2CounterGt0 {
+    fn eval((state, _): &(&Loop2Container<St>, &())) -> bool {
         state.counter > 0
     }
 }
@@ -2404,18 +2400,14 @@ impl NodeMetadata for SharedMeta {
 }
 
 pub struct KeepLoopingShared;
-impl LoopCondition<ComplexAlphaState> for KeepLoopingShared {
-    type Arg = i32;
-
-    fn should_continue(state: &ComplexAlphaState) -> bool {
+impl Predicate<(&ComplexAlphaState, &i32)> for KeepLoopingShared {
+    fn eval((state, _): &(&ComplexAlphaState, &i32)) -> bool {
         state.loops < 2
     }
 }
 
-impl LoopCondition<ComplexBetaState> for KeepLoopingShared {
-    type Arg = i32;
-
-    fn should_continue(state: &ComplexBetaState) -> bool {
+impl Predicate<(&ComplexBetaState, &i32)> for KeepLoopingShared {
+    fn eval((state, _): &(&ComplexBetaState, &i32)) -> bool {
         state.iterations < 2
     }
 }

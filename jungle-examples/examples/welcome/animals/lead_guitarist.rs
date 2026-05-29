@@ -72,10 +72,8 @@ pub struct QuadHit<
 );
 
 pub struct LeadRiffLoopRemaining;
-impl LoopCondition<LeadGuitaristState> for LeadRiffLoopRemaining {
-    type Arg = ();
-
-    fn should_continue(state: &LeadGuitaristState) -> bool {
+impl Predicate<(&LeadGuitaristState, &())> for LeadRiffLoopRemaining {
+    fn eval((state, _): &(&LeadGuitaristState, &())) -> bool {
         state.riff_loops_remaining > 0
     }
 }

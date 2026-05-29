@@ -84,10 +84,8 @@ impl<T, S> Action for FlattenEither<T, S> {
 }
 
 pub struct Loop2CounterGt0;
-impl<St> LoopCondition<Loop2Container<St>> for Loop2CounterGt0 {
-    type Arg = ();
-
-    fn should_continue(state: &Loop2Container<St>) -> bool {
+impl<St> Predicate<(&Loop2Container<St>, &())> for Loop2CounterGt0 {
+    fn eval((state, _): &(&Loop2Container<St>, &())) -> bool {
         state.counter > 0
     }
 }

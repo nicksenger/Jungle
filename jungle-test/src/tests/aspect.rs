@@ -300,10 +300,8 @@ pub struct GorillaLoopTemplate(
 );
 
 pub struct GorillaUnderAgeHundred;
-impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
-    type Arg = i32;
-
-    fn should_continue(state: &GorillaState) -> bool {
+impl Predicate<(&GorillaState, &i32)> for GorillaUnderAgeHundred {
+    fn eval((state, _): &(&GorillaState, &i32)) -> bool {
         state.core.age < 100
     }
 }
@@ -378,10 +376,8 @@ pub struct TigerLoopTemplate(
 );
 
 pub struct TigerUnderHundredStripes;
-impl LoopCondition<TigerState> for TigerUnderHundredStripes {
-    type Arg = i32;
-
-    fn should_continue(state: &TigerState) -> bool {
+impl Predicate<(&TigerState, &i32)> for TigerUnderHundredStripes {
+    fn eval((state, _): &(&TigerState, &i32)) -> bool {
         state.core.energy < 100
     }
 }

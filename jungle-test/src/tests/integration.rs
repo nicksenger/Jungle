@@ -86,10 +86,8 @@ impl<J> Effect<J> for AddTwoEffect {
 }
 
 pub struct KeepRunning;
-impl LoopCondition<IntegrationState> for KeepRunning {
-    type Arg = ();
-
-    fn should_continue(state: &IntegrationState) -> bool {
+impl Predicate<(&IntegrationState, &())> for KeepRunning {
+    fn eval((state, _): &(&IntegrationState, &())) -> bool {
         state.after_steps < 2
     }
 }

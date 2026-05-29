@@ -173,17 +173,15 @@ where
 /// Adapts a [`LoopCondition`] defined over a focused view to run against a larger root state.
 pub struct FocusedLoopCondition<C, View>(PhantomData<fn() -> (C, View)>);
 
-impl<State, View, C> LoopCondition<State> for FocusedLoopCondition<C, View>
+impl<'a, State, View, Arg, C> Predicate<(&'a State, &'a Arg)> for FocusedLoopCondition<C, View>
 where
     State: ViewProject<View> + Clone,
-    C: LoopCondition<View>,
+    C: for<'b> Predicate<(&'b View, &'b Arg)>,
 {
-    type Arg = <C as LoopCondition<View>>::Arg;
-
-    fn should_continue(state: &State) -> bool {
-        let mut projected_state = state.clone();
+    fn eval((state, arg): &(&'a State, &'a Arg)) -> bool {
+        let mut projected_state = (*state).clone();
         let view = <State as ViewProject<View>>::project_view(&mut projected_state);
-        <C as LoopCondition<View>>::should_continue(view)
+        <C as Predicate<(&View, &Arg)>>::eval(&(view, arg))
     }
 }
 

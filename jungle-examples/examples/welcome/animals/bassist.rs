@@ -54,10 +54,8 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
 }
 
 pub struct BassRiffLoopRemaining;
-impl LoopCondition<BassistState> for BassRiffLoopRemaining {
-    type Arg = ();
-
-    fn should_continue(state: &BassistState) -> bool {
+impl Predicate<(&BassistState, &())> for BassRiffLoopRemaining {
+    fn eval((state, _): &(&BassistState, &())) -> bool {
         state.riff_loops_remaining > 0
     }
 }

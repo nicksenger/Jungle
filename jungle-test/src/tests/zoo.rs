@@ -319,10 +319,8 @@ impl<J> Effect<J> for SlowRunnerEffect {
 }
 
 pub struct RunnerKeepGoing;
-impl LoopCondition<RunnerState> for RunnerKeepGoing {
-    type Arg = ();
-
-    fn should_continue(state: &RunnerState) -> bool {
+impl Predicate<(&RunnerState, &())> for RunnerKeepGoing {
+    fn eval((state, _): &(&RunnerState, &())) -> bool {
         state.0 < 4
     }
 }
@@ -627,19 +625,15 @@ impl Action for TigerEatTaskSpec {
 }
 
 pub struct ApeKeepRunning;
-impl LoopCondition<ExecutorApeState> for ApeKeepRunning {
-    type Arg = i32;
-
-    fn should_continue(state: &ExecutorApeState) -> bool {
+impl Predicate<(&ExecutorApeState, &i32)> for ApeKeepRunning {
+    fn eval((state, _): &(&ExecutorApeState, &i32)) -> bool {
         state.core.rounds < 4
     }
 }
 
 pub struct TigerKeepRunning;
-impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
-    type Arg = i32;
-
-    fn should_continue(state: &ExecutorCatState) -> bool {
+impl Predicate<(&ExecutorCatState, &i32)> for TigerKeepRunning {
+    fn eval((state, _): &(&ExecutorCatState, &i32)) -> bool {
         state.core.energy < 15
     }
 }

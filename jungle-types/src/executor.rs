@@ -83,9 +83,9 @@ where
 
 impl<State, C, F, M> ArgputForState<State> for While<C, F, M>
 where
-    C: crate::LoopCondition<State>,
+    F: FlowCarry<State>,
 {
-    type Carry = <C as crate::LoopCondition<State>>::Arg;
+    type Carry = <F as FlowCarry<State>>::In;
 }
 
 impl<State> ArgputForState<State> for list::Empty {
@@ -2300,7 +2300,7 @@ pub trait BuildFlow<Input> {
     }
 }
 
-trait FlowCarry<State> {
+pub trait FlowCarry<State> {
     type In;
     type Out;
 }
@@ -2538,7 +2538,7 @@ where
 impl<State, In, C, F, M> BuildFlow<DynFlow<State>> for While<C, F, M>
 where
     State: Send + 'static,
-    C: crate::LoopCondition<State, Arg = In> + 'static,
+    C: for<'a> crate::Predicate<(&'a State, &'a In)> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + FlowCarry<State, In = In> + 'static,
 {
@@ -2547,9 +2547,7 @@ where
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
         let should_continue = Box::new(|state: &State, input: &In| {
-            <crate::LoopConditionPredicate<C> as crate::Predicate<(&State, &In)>>::eval(&(
-                state, input,
-            ))
+            <C as crate::Predicate<(&State, &In)>>::eval(&(state, input))
         });
         let build_body = Box::new(|| <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         steps.push(Box::new(WhileErasedFlow::<State, In>::new(
@@ -3424,7 +3422,7 @@ impl<Context, State, In, C, F, M> BuildFlowWithContext<(Arc<Context>, DynFlow<St
 where
     Context: Send + Sync + 'static,
     State: Send + 'static,
-    C: crate::LoopCondition<State, Arg = In> + 'static,
+    C: for<'a> crate::Predicate<(&'a State, &'a In)> + 'static,
     In: DeserializeOwned + Serialize + 'static,
     F: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
@@ -3437,9 +3435,7 @@ where
     fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
         let _marker = core::marker::PhantomData::<(C, In)>;
         let should_continue = Box::new(|state: &State, input: &In| {
-            <crate::LoopConditionPredicate<C> as crate::Predicate<(&State, &In)>>::eval(&(
-                state, input,
-            ))
+            <C as crate::Predicate<(&State, &In)>>::eval(&(state, input))
         });
         let context_for_body = Arc::clone(&context);
         let build_body = Box::new(move || {
