@@ -382,8 +382,8 @@ impl LoopCondition<RhythmLikeLoopState> for RhythmLikeLoopRemaining {
 }
 
 pub struct UseRhythmLikeFinalTail;
-impl Condition<(RhythmLikeLoopState, ())> for UseRhythmLikeFinalTail {
-    fn choose((state, _): &(RhythmLikeLoopState, ())) -> bool {
+impl Predicate<(RhythmLikeLoopState, ())> for UseRhythmLikeFinalTail {
+    fn eval((state, _): &(RhythmLikeLoopState, ())) -> bool {
         state.choose_final_tail
     }
 }

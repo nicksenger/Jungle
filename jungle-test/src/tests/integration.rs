@@ -95,50 +95,50 @@ impl LoopCondition<IntegrationState> for KeepRunning {
 }
 
 pub struct IsBeforeFocusedSubFlow;
-impl Condition<(IntegrationState, ())> for IsBeforeFocusedSubFlow {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
+impl Predicate<(IntegrationState, ())> for IsBeforeFocusedSubFlow {
+    fn eval((state, _): &(IntegrationState, ())) -> bool {
         state.before_steps < 2
     }
 }
 
 pub struct UseFirstBeforeFullStateTask;
-impl Condition<(IntegrationState, ())> for UseFirstBeforeFullStateTask {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
+impl Predicate<(IntegrationState, ())> for UseFirstBeforeFullStateTask {
+    fn eval((state, _): &(IntegrationState, ())) -> bool {
         state.before_steps == 0
     }
 }
 
 pub struct IsInFocusedSubFlow;
-impl Condition<(IntegrationState, ())> for IsInFocusedSubFlow {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
+impl Predicate<(IntegrationState, ())> for IsInFocusedSubFlow {
+    fn eval((state, _): &(IntegrationState, ())) -> bool {
         state.focused.updates < 2
     }
 }
 
 pub struct UseFirstFocusedTask;
-impl Condition<(IntegrationState, ())> for UseFirstFocusedTask {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
+impl Predicate<(IntegrationState, ())> for UseFirstFocusedTask {
+    fn eval((state, _): &(IntegrationState, ())) -> bool {
         state.focused.updates == 0
     }
 }
 
 pub struct IsInDeepFocusedSubFlow;
-impl Condition<(IntegrationState, ())> for IsInDeepFocusedSubFlow {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
+impl Predicate<(IntegrationState, ())> for IsInDeepFocusedSubFlow {
+    fn eval((state, _): &(IntegrationState, ())) -> bool {
         state.focused.nested.updates < 2
     }
 }
 
 pub struct UseFirstDeepFocusedTask;
-impl Condition<(IntegrationState, ())> for UseFirstDeepFocusedTask {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
+impl Predicate<(IntegrationState, ())> for UseFirstDeepFocusedTask {
+    fn eval((state, _): &(IntegrationState, ())) -> bool {
         state.focused.nested.updates == 0
     }
 }
 
 pub struct UseFirstAfterFullStateTask;
-impl Condition<(IntegrationState, ())> for UseFirstAfterFullStateTask {
-    fn choose((state, _): &(IntegrationState, ())) -> bool {
+impl Predicate<(IntegrationState, ())> for UseFirstAfterFullStateTask {
+    fn eval((state, _): &(IntegrationState, ())) -> bool {
         state.after_steps == 0
     }
 }

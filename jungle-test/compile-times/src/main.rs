@@ -143,8 +143,8 @@ impl<const EFFECT_ID: usize> Action for JoinFlattenSpec<EFFECT_ID> {
 }
 
 pub struct CompileChooseLeft<const SEGMENT_ID: usize>;
-impl<const SEGMENT_ID: usize> Condition<(CompileState, ())> for CompileChooseLeft<SEGMENT_ID> {
-    fn choose(input: &(CompileState, ())) -> bool {
+impl<const SEGMENT_ID: usize> Predicate<(CompileState, ())> for CompileChooseLeft<SEGMENT_ID> {
+    fn eval(input: &(CompileState, ())) -> bool {
         black_box(input);
         black_box(SEGMENT_ID);
         SEGMENT_ID.is_multiple_of(2)

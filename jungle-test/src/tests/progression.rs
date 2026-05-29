@@ -249,8 +249,8 @@ impl Action for BranchStepBSpec {
 }
 
 pub struct UseDerivedBranch;
-impl Condition<(i32, ())> for UseDerivedBranch {
-    fn choose((state, _): &(i32, ())) -> bool {
+impl Predicate<(i32, ())> for UseDerivedBranch {
+    fn eval((state, _): &(i32, ())) -> bool {
         *state >= 0
     }
 }

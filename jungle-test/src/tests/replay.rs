@@ -130,11 +130,11 @@ where
 }
 
 pub struct ReplayPhaseIs<const N: u8>;
-impl<S, Arg, const N: u8> Condition<(S, Arg)> for ReplayPhaseIs<N>
+impl<S, Arg, const N: u8> Predicate<(S, Arg)> for ReplayPhaseIs<N>
 where
     S: ReplayPhaseState,
 {
-    fn choose((state, _): &(S, Arg)) -> bool {
+    fn eval((state, _): &(S, Arg)) -> bool {
         state.phase() == N
     }
 }

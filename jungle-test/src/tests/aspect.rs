@@ -312,8 +312,8 @@ impl LoopCondition<GorillaState> for GorillaUnderAgeHundred {
 pub struct GorillaJourneyTemplate(While<GorillaUnderAgeHundred, GorillaLoopTemplate>);
 
 pub struct TigerStripesAreEven;
-impl Condition<(TigerState, i32)> for TigerStripesAreEven {
-    fn choose((state, _): &(TigerState, i32)) -> bool {
+impl Predicate<(TigerState, i32)> for TigerStripesAreEven {
+    fn eval((state, _): &(TigerState, i32)) -> bool {
         state.stripes % 2 == 0
     }
 }

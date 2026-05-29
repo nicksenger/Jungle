@@ -328,8 +328,8 @@ impl LoopCondition<RunnerState> for RunnerKeepGoing {
 }
 
 pub struct RunnerUseStepOne;
-impl jungle_sdk::types::Condition<(RunnerState, ())> for RunnerUseStepOne {
-    fn choose((state, _): &(RunnerState, ())) -> bool {
+impl jungle_sdk::types::Predicate<(RunnerState, ())> for RunnerUseStepOne {
+    fn eval((state, _): &(RunnerState, ())) -> bool {
         state.0 % 2 == 0
     }
 }
@@ -645,8 +645,8 @@ impl LoopCondition<ExecutorCatState> for TigerKeepRunning {
 }
 
 pub struct TigerChooseHunt;
-impl jungle_sdk::types::Condition<(ExecutorCatState, i32)> for TigerChooseHunt {
-    fn choose((state, _): &(ExecutorCatState, i32)) -> bool {
+impl jungle_sdk::types::Predicate<(ExecutorCatState, i32)> for TigerChooseHunt {
+    fn eval((state, _): &(ExecutorCatState, i32)) -> bool {
         state.stripes % 2 == 0
     }
 }

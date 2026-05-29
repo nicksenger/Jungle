@@ -40,15 +40,15 @@ impl LoopCondition<SleepState> for SleepNotComplete {
 }
 
 pub struct SleepPhaseZero;
-impl Condition<(SleepState, ())> for SleepPhaseZero {
-    fn choose((state, _): &(SleepState, ())) -> bool {
+impl Predicate<(SleepState, ())> for SleepPhaseZero {
+    fn eval((state, _): &(SleepState, ())) -> bool {
         state.phase == 0
     }
 }
 
 pub struct SleepPhaseOne;
-impl Condition<(SleepState, ())> for SleepPhaseOne {
-    fn choose((state, _): &(SleepState, ())) -> bool {
+impl Predicate<(SleepState, ())> for SleepPhaseOne {
+    fn eval((state, _): &(SleepState, ())) -> bool {
         state.phase == 1
     }
 }

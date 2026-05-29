@@ -157,8 +157,8 @@ pub struct HatBoot<
 );
 
 pub struct UseHat46GrooveVariant;
-impl Condition<(DrummerState, ())> for UseHat46GrooveVariant {
-    fn choose((state, _): &(DrummerState, ())) -> bool {
+impl Predicate<(DrummerState, ())> for UseHat46GrooveVariant {
+    fn eval((state, _): &(DrummerState, ())) -> bool {
         state.groove_variant_is_46
     }
 }

@@ -46,8 +46,8 @@ impl LoopCondition<MultiWorkerState> for MultiWorkerContinue {
 }
 
 pub struct MultiWorkerChooseLeft;
-impl Condition<(MultiWorkerState, ())> for MultiWorkerChooseLeft {
-    fn choose((state, _): &(MultiWorkerState, ())) -> bool {
+impl Predicate<(MultiWorkerState, ())> for MultiWorkerChooseLeft {
+    fn eval((state, _): &(MultiWorkerState, ())) -> bool {
         state.iteration % 2 == 0
     }
 }

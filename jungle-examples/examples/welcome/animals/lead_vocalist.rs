@@ -55,8 +55,8 @@ impl Action for ApplyLeadVocalistSeed {
 }
 
 pub struct UseLeadVocalPickup;
-impl Condition<(LeadVocalistState, ())> for UseLeadVocalPickup {
-    fn choose((state, _): &(LeadVocalistState, ())) -> bool {
+impl Predicate<(LeadVocalistState, ())> for UseLeadVocalPickup {
+    fn eval((state, _): &(LeadVocalistState, ())) -> bool {
         state.intro_pickup_remaining > 0
     }
 }

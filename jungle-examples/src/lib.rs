@@ -110,8 +110,8 @@ impl BoundAction<ObserveAnimal> for ObserveBump {
 }
 
 pub struct ObserveChooseSleep;
-impl Condition<(ObserveState, ())> for ObserveChooseSleep {
-    fn choose((state, _): &(ObserveState, ())) -> bool {
+impl Predicate<(ObserveState, ())> for ObserveChooseSleep {
+    fn eval((state, _): &(ObserveState, ())) -> bool {
         state.tick % 2 == 0
     }
 }

@@ -447,8 +447,8 @@ impl Animal for JoinComposableAnimal {
 }
 
 pub struct ConditionalPrefersLeft;
-impl Condition<(SelectJoinState, ())> for ConditionalPrefersLeft {
-    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+impl Predicate<(SelectJoinState, ())> for ConditionalPrefersLeft {
+    fn eval((state, _): &(SelectJoinState, ())) -> bool {
         state.winner == 0
     }
 }
@@ -579,8 +579,8 @@ impl Action for JoinMutatesWinnerSpec {
 }
 
 pub struct RightBranchUsesWinnerZero;
-impl Condition<(SelectJoinState, ())> for RightBranchUsesWinnerZero {
-    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+impl Predicate<(SelectJoinState, ())> for RightBranchUsesWinnerZero {
+    fn eval((state, _): &(SelectJoinState, ())) -> bool {
         state.winner == 0
     }
 }
@@ -689,8 +689,8 @@ impl Animal for JoinStateDependentAnimal {
 }
 
 pub struct LocalConditionalPrefersLeft;
-impl Condition<(SelectJoinState, ())> for LocalConditionalPrefersLeft {
-    fn choose((state, _): &(SelectJoinState, ())) -> bool {
+impl Predicate<(SelectJoinState, ())> for LocalConditionalPrefersLeft {
+    fn eval((state, _): &(SelectJoinState, ())) -> bool {
         state.winner == 0
     }
 }

@@ -63,8 +63,8 @@ impl LoopCondition<BassistState> for BassRiffLoopRemaining {
 }
 
 pub struct UseBassTurnaroundSection;
-impl Condition<(BassistState, ())> for UseBassTurnaroundSection {
-    fn choose((state, _): &(BassistState, ())) -> bool {
+impl Predicate<(BassistState, ())> for UseBassTurnaroundSection {
+    fn eval((state, _): &(BassistState, ())) -> bool {
         state.riff_loops_remaining <= 0
     }
 }

@@ -91,8 +91,8 @@ type LeftFlow = jungle_sdk::types::Step<LeftSpec>;
 type RightFlow = jungle_sdk::types::Step<RightSpec>;
 
 pub struct PreferLeftWhenStateIsNonNegative;
-impl jungle_sdk::types::Condition<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
-    fn choose((state, _): &(i32, i32)) -> bool {
+impl jungle_sdk::types::Predicate<(i32, i32)> for PreferLeftWhenStateIsNonNegative {
+    fn eval((state, _): &(i32, i32)) -> bool {
         *state >= 0
     }
 }

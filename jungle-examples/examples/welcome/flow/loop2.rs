@@ -93,8 +93,8 @@ impl<St> LoopCondition<Loop2Container<St>> for Loop2CounterGt0 {
 }
 
 pub struct Loop2CounterIsEven;
-impl<St> Condition<(Loop2Container<St>, ())> for Loop2CounterIsEven {
-    fn choose((state, _): &(Loop2Container<St>, ())) -> bool {
+impl<St> Predicate<(Loop2Container<St>, ())> for Loop2CounterIsEven {
+    fn eval((state, _): &(Loop2Container<St>, ())) -> bool {
         state.counter % 2 == 0
     }
 }

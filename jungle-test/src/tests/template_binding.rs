@@ -1548,8 +1548,8 @@ impl<St> LoopCondition<Loop2Container<St>> for Loop2CounterGt0 {
 }
 
 struct Loop2CounterIsEven;
-impl<St> Condition<(Loop2Container<St>, i32)> for Loop2CounterIsEven {
-    fn choose((state, _): &(Loop2Container<St>, i32)) -> bool {
+impl<St> Predicate<(Loop2Container<St>, i32)> for Loop2CounterIsEven {
+    fn eval((state, _): &(Loop2Container<St>, i32)) -> bool {
         state.counter % 2 == 0
     }
 }
@@ -1827,8 +1827,8 @@ impl<St> LoopCondition<Loop2Container<St>> for NoopLoop2CounterGt0 {
 }
 
 struct NoopLoop2CounterIsEven;
-impl<St> Condition<(Loop2Container<St>, ())> for NoopLoop2CounterIsEven {
-    fn choose((state, _): &(Loop2Container<St>, ())) -> bool {
+impl<St> Predicate<(Loop2Container<St>, ())> for NoopLoop2CounterIsEven {
+    fn eval((state, _): &(Loop2Container<St>, ())) -> bool {
         state.counter % 2 == 0
     }
 }
@@ -2027,8 +2027,8 @@ async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_
 }
 
 pub struct InheritedControlCondition;
-impl Condition<(NestedLensRootState, i32)> for InheritedControlCondition {
-    fn choose((_state, _): &(NestedLensRootState, i32)) -> bool {
+impl Predicate<(NestedLensRootState, i32)> for InheritedControlCondition {
+    fn eval((_state, _): &(NestedLensRootState, i32)) -> bool {
         true
     }
 }
@@ -2131,8 +2131,8 @@ pub struct ConditionalJoinMergeState {
 }
 
 pub struct PreferLeftWhenMarkerNonNegative;
-impl Condition<(ConditionalJoinMergeState, ())> for PreferLeftWhenMarkerNonNegative {
-    fn choose((state, _): &(ConditionalJoinMergeState, ())) -> bool {
+impl Predicate<(ConditionalJoinMergeState, ())> for PreferLeftWhenMarkerNonNegative {
+    fn eval((state, _): &(ConditionalJoinMergeState, ())) -> bool {
         state.marker != -1
     }
 }
@@ -2421,14 +2421,14 @@ impl LoopCondition<ComplexBetaState> for KeepLoopingShared {
 }
 
 pub struct ChooseUniqueAlpha;
-impl Condition<(ComplexAlphaState, i32)> for ChooseUniqueAlpha {
-    fn choose((_state, _): &(ComplexAlphaState, i32)) -> bool {
+impl Predicate<(ComplexAlphaState, i32)> for ChooseUniqueAlpha {
+    fn eval((_state, _): &(ComplexAlphaState, i32)) -> bool {
         true
     }
 }
 
-impl Condition<(ComplexBetaState, i32)> for ChooseUniqueAlpha {
-    fn choose((_state, _): &(ComplexBetaState, i32)) -> bool {
+impl Predicate<(ComplexBetaState, i32)> for ChooseUniqueAlpha {
+    fn eval((_state, _): &(ComplexBetaState, i32)) -> bool {
         false
     }
 }

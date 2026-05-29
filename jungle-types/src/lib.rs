@@ -117,6 +117,15 @@ pub trait Predicate<Input> {
     fn eval(input: &Input) -> bool;
 }
 
+impl<In, P> Condition<In> for P
+where
+    P: Predicate<In>,
+{
+    fn choose(input: &In) -> bool {
+        <P as Predicate<In>>::eval(input)
+    }
+}
+
 /// Compatibility adapter from legacy [`Condition`] into [`Predicate`].
 pub struct ConditionPredicate<P>(PhantomData<fn() -> P>);
 
@@ -147,17 +156,17 @@ where
 /// the focused scope type, but runtime evaluation happens on the full animal state.
 pub struct FocusedCondition<P, View>(PhantomData<fn() -> (P, View)>);
 
-impl<State, View, Arg, P> Condition<(State, Arg)> for FocusedCondition<P, View>
+impl<State, View, Arg, P> Predicate<(State, Arg)> for FocusedCondition<P, View>
 where
     State: ViewProject<View> + Clone,
     View: Clone,
     Arg: Clone,
-    P: Condition<(View, Arg)>,
+    P: Predicate<(View, Arg)>,
 {
-    fn choose((state, arg): &(State, Arg)) -> bool {
+    fn eval((state, arg): &(State, Arg)) -> bool {
         let mut projected_state = state.clone();
         let view = <State as ViewProject<View>>::project_view(&mut projected_state).clone();
-        <P as Condition<(View, Arg)>>::choose(&(view, arg.clone()))
+        <P as Predicate<(View, Arg)>>::eval(&(view, arg.clone()))
     }
 }
 

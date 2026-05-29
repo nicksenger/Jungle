@@ -81,8 +81,8 @@ impl LoopCondition<LeadGuitaristState> for LeadRiffLoopRemaining {
 }
 
 pub struct UseLeadTurnaroundSection;
-impl Condition<(LeadGuitaristState, ())> for UseLeadTurnaroundSection {
-    fn choose((state, _): &(LeadGuitaristState, ())) -> bool {
+impl Predicate<(LeadGuitaristState, ())> for UseLeadTurnaroundSection {
+    fn eval((state, _): &(LeadGuitaristState, ())) -> bool {
         state.riff_loops_remaining <= 0
     }
 }
