@@ -1299,11 +1299,6 @@ impl WelcomeUi {
                     request,
                     now,
                 );
-            } else {
-                Self::stop_region_playback(
-                    self.app_overlay.as_ref(),
-                    &mut self.app_overlay_playback,
-                );
             }
 
             for panel in Panel::ALL {
@@ -1318,9 +1313,6 @@ impl WelcomeUi {
                     );
                     let (overlay, playback) = self.panel_slot_mut(panel);
                     Self::start_region_playback(overlay.as_ref(), playback, request, now);
-                } else {
-                    let (overlay, playback) = self.panel_slot_mut(panel);
-                    Self::stop_region_playback(overlay.as_ref(), playback);
                 }
             }
         }
@@ -1413,20 +1405,6 @@ impl WelcomeUi {
                 .unwrap_or(now),
         );
         playback.fade_out_started = false;
-    }
-
-    #[cfg(feature = "video")]
-    fn stop_region_playback(
-        overlay: Option<&iced_av1::widget::State>,
-        playback: &mut RegionPlayback,
-    ) {
-        if let Some(overlay) = overlay {
-            overlay.set_opacity(0.0);
-            if let Err(error) = overlay.pause() {
-                warn!(error = %error, "failed to pause AV overlay for hidden region");
-            }
-        }
-        *playback = RegionPlayback::hidden();
     }
 
     fn current_rhythm_tick(&self) -> u64 {
