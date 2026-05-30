@@ -53,6 +53,11 @@ mod duration_millis {
         Ok(duration)
     }
 }
+
+#[cfg(feature = "video")]
+const fn default_cover_offset() -> f32 {
+    0.5
+}
 #[cfg(feature = "video")]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum VideoAsset {
@@ -594,6 +599,7 @@ struct VideoPlaybackRequest {
     #[serde(with = "duration_millis")]
     duration: Duration,
     opacity: f32,
+    #[serde(default = "default_cover_offset")]
     cover_offset: f32,
 }
 
