@@ -25,7 +25,7 @@ const DEFERRED_STREAM_LAG_WARN_MS: u64 = 150;
 const DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS: i64 = 2_000;
 const DEFERRED_STREAM_SLOW_DECISION_WARN_US: u128 = 500;
 const UI_TICK_INTERVAL: Duration = Duration::from_millis(500);
-const PANEL_PULSE_DURATION: Duration = Duration::from_millis(420);
+const PANEL_PULSE_DURATION: Duration = Duration::from_millis(200);
 const PANEL_PULSE_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const LOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#;
 const UNLOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M16 11V7a4 4 0 0 0-7.5-2"/></svg>"#;
