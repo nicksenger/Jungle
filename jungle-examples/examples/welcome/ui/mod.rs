@@ -791,13 +791,20 @@ impl RegionPlayback {
     }
 }
 
+#[cfg(feature = "video")]
+struct VideoOverlayLayer {
+    id: u64,
+    state: iced_av1::widget::State,
+    playback: RegionPlayback,
+}
+
 #[derive(Debug, Clone)]
 enum Message {
     Panel(Panel, jungle_vision::EjectedViewerMessage),
     #[cfg(feature = "video")]
-    AppVideo(iced_av1::widget::Message),
+    AppVideoLayer(u64, iced_av1::widget::Message),
     #[cfg(feature = "video")]
-    PanelVideo(Panel, iced_av1::widget::Message),
+    PanelVideoLayer(Panel, u64, iced_av1::widget::Message),
     Keyboard(iced::keyboard::Event),
     TogglePanelAutoViewport(Panel),
     Tick,
@@ -816,9 +823,9 @@ impl Message {
             },
             Message::Keyboard(_) => "Keyboard",
             #[cfg(feature = "video")]
-            Message::AppVideo(_) => "AppVideo",
+            Message::AppVideoLayer(_, _) => "AppVideoLayer",
             #[cfg(feature = "video")]
-            Message::PanelVideo(panel, _) => match panel {
+            Message::PanelVideoLayer(panel, _, _) => match panel {
                 Panel::LeadVocalist => "PanelVideo(LeadVocalist)",
                 Panel::RhythmGuitarist => "PanelVideo(RhythmGuitarist)",
                 Panel::LeadGuitarist => "PanelVideo(LeadGuitarist)",
@@ -851,29 +858,19 @@ struct WelcomeUi {
     #[cfg(feature = "video")]
     applied_ticks: HashSet<u32>,
     #[cfg(feature = "video")]
-    app_overlay: Option<iced_av1::widget::State>,
+    next_video_layer_id: u64,
     #[cfg(feature = "video")]
-    app_overlay_playback: RegionPlayback,
+    app_overlay_layers: Vec<VideoOverlayLayer>,
     #[cfg(feature = "video")]
-    lead_vocalist_panel_overlay: Option<iced_av1::widget::State>,
+    lead_vocalist_panel_overlay_layers: Vec<VideoOverlayLayer>,
     #[cfg(feature = "video")]
-    rhythm_guitarist_panel_overlay: Option<iced_av1::widget::State>,
+    rhythm_guitarist_panel_overlay_layers: Vec<VideoOverlayLayer>,
     #[cfg(feature = "video")]
-    lead_guitarist_panel_overlay: Option<iced_av1::widget::State>,
+    lead_guitarist_panel_overlay_layers: Vec<VideoOverlayLayer>,
     #[cfg(feature = "video")]
-    bass_panel_overlay: Option<iced_av1::widget::State>,
+    bass_panel_overlay_layers: Vec<VideoOverlayLayer>,
     #[cfg(feature = "video")]
-    drums_panel_overlay: Option<iced_av1::widget::State>,
-    #[cfg(feature = "video")]
-    lead_vocalist_panel_playback: RegionPlayback,
-    #[cfg(feature = "video")]
-    rhythm_guitarist_panel_playback: RegionPlayback,
-    #[cfg(feature = "video")]
-    lead_guitarist_panel_playback: RegionPlayback,
-    #[cfg(feature = "video")]
-    bass_panel_playback: RegionPlayback,
-    #[cfg(feature = "video")]
-    drums_panel_playback: RegionPlayback,
+    drums_panel_overlay_layers: Vec<VideoOverlayLayer>,
     #[cfg(feature = "video")]
     video_playback_plan: Option<VideoPlaybackPlan>,
     shutdown: ShutdownFlag,
@@ -913,44 +910,6 @@ impl WelcomeUi {
                 .eject_live_animal::<Drums, _>(client, journey)
         });
 
-        #[cfg(feature = "video")]
-        let initial_video = VideoAsset::Jungle;
-        #[cfg(feature = "video")]
-        let app_overlay = init_video_state(
-            "app overlay",
-            iced_av1::ScaleMode::Stretch,
-            initial_video.bytes(),
-        );
-        #[cfg(feature = "video")]
-        let lead_vocalist_panel_overlay = init_video_state(
-            "lead vocalist panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video.bytes(),
-        );
-        #[cfg(feature = "video")]
-        let rhythm_guitarist_panel_overlay = init_video_state(
-            "rhythm guitarist panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video.bytes(),
-        );
-        #[cfg(feature = "video")]
-        let lead_guitarist_panel_overlay = init_video_state(
-            "lead guitarist panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video.bytes(),
-        );
-        #[cfg(feature = "video")]
-        let bass_panel_overlay = init_video_state(
-            "bass panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video.bytes(),
-        );
-        #[cfg(feature = "video")]
-        let drums_panel_overlay = init_video_state(
-            "drums panel overlay",
-            iced_av1::ScaleMode::Cover { offset: 0.5 },
-            initial_video.bytes(),
-        );
         (
             Self {
                 lead_vocalist,
@@ -962,29 +921,19 @@ impl WelcomeUi {
                 #[cfg(feature = "video")]
                 applied_ticks: HashSet::new(),
                 #[cfg(feature = "video")]
-                app_overlay,
+                next_video_layer_id: 0,
                 #[cfg(feature = "video")]
-                app_overlay_playback: RegionPlayback::hidden(),
+                app_overlay_layers: Vec::new(),
                 #[cfg(feature = "video")]
-                lead_vocalist_panel_overlay,
+                lead_vocalist_panel_overlay_layers: Vec::new(),
                 #[cfg(feature = "video")]
-                rhythm_guitarist_panel_overlay,
+                rhythm_guitarist_panel_overlay_layers: Vec::new(),
                 #[cfg(feature = "video")]
-                lead_guitarist_panel_overlay,
+                lead_guitarist_panel_overlay_layers: Vec::new(),
                 #[cfg(feature = "video")]
-                bass_panel_overlay,
+                bass_panel_overlay_layers: Vec::new(),
                 #[cfg(feature = "video")]
-                drums_panel_overlay,
-                #[cfg(feature = "video")]
-                lead_vocalist_panel_playback: RegionPlayback::hidden(),
-                #[cfg(feature = "video")]
-                rhythm_guitarist_panel_playback: RegionPlayback::hidden(),
-                #[cfg(feature = "video")]
-                lead_guitarist_panel_playback: RegionPlayback::hidden(),
-                #[cfg(feature = "video")]
-                bass_panel_playback: RegionPlayback::hidden(),
-                #[cfg(feature = "video")]
-                drums_panel_playback: RegionPlayback::hidden(),
+                drums_panel_overlay_layers: Vec::new(),
                 #[cfg(feature = "video")]
                 video_playback_plan: video_plan,
                 shutdown,
@@ -1019,16 +968,24 @@ impl WelcomeUi {
             }
             Message::Keyboard(_) => Task::none(),
             #[cfg(feature = "video")]
-            Message::AppVideo(event) => {
-                self.app_overlay.as_mut().map_or_else(Task::none, |video| {
-                    video.update(event);
-                    Task::none()
-                })
+            Message::AppVideoLayer(layer_id, event) => {
+                if let Some(layer) = self
+                    .app_overlay_layers
+                    .iter_mut()
+                    .find(|layer| layer.id == layer_id)
+                {
+                    layer.state.update(event);
+                }
+                Task::none()
             }
             #[cfg(feature = "video")]
-            Message::PanelVideo(panel, event) => {
-                if let Some(video) = self.panel_overlay_mut(panel) {
-                    video.update(event);
+            Message::PanelVideoLayer(panel, layer_id, event) => {
+                if let Some(layer) = self
+                    .panel_overlay_layers_mut(panel)
+                    .iter_mut()
+                    .find(|layer| layer.id == layer_id)
+                {
+                    layer.state.update(event);
                 }
                 Task::none()
             }
@@ -1104,31 +1061,21 @@ impl WelcomeUi {
         subscriptions.push(iced::time::every(UI_TICK_INTERVAL).map(|_| Message::Tick));
         #[cfg(feature = "video")]
         {
-            if let Some(video) = self.app_overlay.as_ref() {
-                subscriptions.push(video.subscription(Message::AppVideo));
-            }
-            if let Some(video) = self.lead_vocalist_panel_overlay.as_ref() {
+            for layer in &self.app_overlay_layers {
+                let layer_id = layer.id;
                 subscriptions.push(
-                    video.subscription(|event| Message::PanelVideo(Panel::LeadVocalist, event)),
+                    layer
+                        .state
+                        .subscription(move |event| Message::AppVideoLayer(layer_id, event)),
                 );
             }
-            if let Some(video) = self.rhythm_guitarist_panel_overlay.as_ref() {
-                subscriptions.push(
-                    video.subscription(|event| Message::PanelVideo(Panel::RhythmGuitarist, event)),
-                );
-            }
-            if let Some(video) = self.lead_guitarist_panel_overlay.as_ref() {
-                subscriptions.push(
-                    video.subscription(|event| Message::PanelVideo(Panel::LeadGuitarist, event)),
-                );
-            }
-            if let Some(video) = self.bass_panel_overlay.as_ref() {
-                subscriptions
-                    .push(video.subscription(|event| Message::PanelVideo(Panel::Bass, event)));
-            }
-            if let Some(video) = self.drums_panel_overlay.as_ref() {
-                subscriptions
-                    .push(video.subscription(|event| Message::PanelVideo(Panel::Drums, event)));
+            for panel in Panel::ALL {
+                for layer in self.panel_overlay_layers(panel) {
+                    let layer_id = layer.id;
+                    subscriptions.push(layer.state.subscription(move |event| {
+                        Message::PanelVideoLayer(panel, layer_id, event)
+                    }));
+                }
             }
         }
         Subscription::batch(subscriptions)
@@ -1192,19 +1139,11 @@ impl WelcomeUi {
             .into();
 
         #[cfg(feature = "video")]
-        if self.app_overlay_playback.enabled {
-            if let Some(overlay) = self
-                .app_overlay
-                .as_ref()
-                .and_then(|video| video.overlay_view(Message::AppVideo))
-            {
-                return stack([app, overlay])
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .into();
-            }
+        {
+            return self.stack_app_overlays(app);
         }
 
+        #[cfg(not(feature = "video"))]
         app
     }
 
@@ -1217,21 +1156,11 @@ impl WelcomeUi {
         let auto_viewport_enabled = self.panel_auto_viewport_enabled(panel_kind);
         let base = panel(label, content, panel_kind, auto_viewport_enabled);
         #[cfg(feature = "video")]
-        if self.panel_playback(panel_kind).enabled {
-            if let Some(overlay) = self
-                .panel_overlay(panel_kind)
-                .and_then(|video| video.overlay_view(map_panel_video_message))
-            {
-                return stack([
-                    base,
-                    overlay.map(move |event| Message::PanelVideo(panel_kind, event)),
-                ])
-                .width(Length::FillPortion(1))
-                .height(Length::Fill)
-                .into();
-            }
+        {
+            return self.stack_panel_overlays(base, panel_kind);
         }
 
+        #[cfg(not(feature = "video"))]
         base
     }
 
@@ -1313,19 +1242,15 @@ impl WelcomeUi {
 
             let now = Instant::now();
             if let Some(request) = plan.app_overlay {
-                self.app_overlay = init_video_state(
-                    "app overlay",
-                    iced_av1::ScaleMode::Stretch,
-                    request.video.bytes(),
-                );
                 info!(
                     tick = plan.tick,
                     video = request.video.name(),
                     "selected app overlay video from playback request"
                 );
-                Self::start_region_playback(
-                    self.app_overlay.as_ref(),
-                    &mut self.app_overlay_playback,
+                self.push_overlay_layer(
+                    None,
+                    "app overlay",
+                    iced_av1::ScaleMode::Stretch,
                     request,
                     now,
                 );
@@ -1333,7 +1258,6 @@ impl WelcomeUi {
 
             for panel in Panel::ALL {
                 if let Some(request) = plan.panel_request(panel) {
-                    self.reinitialize_panel_overlay(panel, request.video, request.cover_offset);
                     info!(
                         tick = plan.tick,
                         panel = panel.name(),
@@ -1341,8 +1265,15 @@ impl WelcomeUi {
                         cover_offset = request.cover_offset,
                         "selected panel overlay video from playback request"
                     );
-                    let (overlay, playback) = self.panel_slot_mut(panel);
-                    Self::start_region_playback(overlay.as_ref(), playback, request, now);
+                    self.push_overlay_layer(
+                        Some(panel),
+                        panel.video_region_name(),
+                        iced_av1::ScaleMode::Cover {
+                            offset: request.cover_offset.clamp(-1.0, 1.0),
+                        },
+                        request,
+                        now,
+                    );
                 }
             }
         }
@@ -1351,20 +1282,47 @@ impl WelcomeUi {
     #[cfg(feature = "video")]
     fn update_playback_regions(&mut self) {
         let now = Instant::now();
-        Self::tick_region(
-            self.app_overlay.as_ref(),
-            &mut self.app_overlay_playback,
-            now,
-        );
+        Self::tick_overlay_layers(&mut self.app_overlay_layers, now);
         for panel in Panel::ALL {
-            let (overlay, playback) = self.panel_slot_mut(panel);
-            Self::tick_region(overlay.as_ref(), playback, now);
+            Self::tick_overlay_layers(self.panel_overlay_layers_mut(panel), now);
         }
     }
 
     #[cfg(feature = "video")]
+    fn push_overlay_layer(
+        &mut self,
+        panel: Option<Panel>,
+        region: &str,
+        scale_mode: iced_av1::ScaleMode,
+        request: VideoPlaybackRequest,
+        now: Instant,
+    ) {
+        let Some(state) = init_video_state(region, scale_mode, request.video.bytes()) else {
+            return;
+        };
+        let mut layer = VideoOverlayLayer {
+            id: self.allocate_video_layer_id(),
+            state,
+            playback: RegionPlayback::hidden(),
+        };
+        Self::start_region_playback(&layer.state, &mut layer.playback, request, now);
+        match panel {
+            None => self.app_overlay_layers.push(layer),
+            Some(panel) => self.panel_overlay_layers_mut(panel).push(layer),
+        }
+    }
+
+    #[cfg(feature = "video")]
+    fn tick_overlay_layers(layers: &mut Vec<VideoOverlayLayer>, now: Instant) {
+        for layer in layers.iter_mut() {
+            Self::tick_region(&layer.state, &mut layer.playback, now);
+        }
+        layers.retain(|layer| layer.playback.enabled);
+    }
+
+    #[cfg(feature = "video")]
     fn tick_region(
-        overlay: Option<&iced_av1::widget::State>,
+        overlay: &iced_av1::widget::State,
         playback: &mut RegionPlayback,
         now: Instant,
     ) {
@@ -1375,14 +1333,12 @@ impl WelcomeUi {
         if !playback.fade_out_started {
             if let Some(fade_out_at) = playback.fade_out_at {
                 if now >= fade_out_at {
-                    if let Some(overlay) = overlay {
-                        overlay.tween_to_opacity_with(
-                            0.0,
-                            iced_av1::OpacityTween {
-                                duration: playback.fade_out_duration,
-                            },
-                        );
-                    }
+                    overlay.tween_to_opacity_with(
+                        0.0,
+                        iced_av1::OpacityTween {
+                            duration: playback.fade_out_duration,
+                        },
+                    );
                     playback.fade_out_started = true;
                 }
             }
@@ -1390,11 +1346,9 @@ impl WelcomeUi {
 
         if let Some(visible_until) = playback.visible_until {
             if now >= visible_until {
-                if let Some(overlay) = overlay {
-                    overlay.set_opacity(0.0);
-                    if let Err(error) = overlay.pause() {
-                        warn!(error = %error, "failed to pause AV overlay after visibility ended");
-                    }
+                overlay.set_opacity(0.0);
+                if let Err(error) = overlay.pause() {
+                    warn!(error = %error, "failed to pause AV overlay after visibility ended");
                 }
                 *playback = RegionPlayback::hidden();
             }
@@ -1403,28 +1357,26 @@ impl WelcomeUi {
 
     #[cfg(feature = "video")]
     fn start_region_playback(
-        overlay: Option<&iced_av1::widget::State>,
+        overlay: &iced_av1::widget::State,
         playback: &mut RegionPlayback,
         request: VideoPlaybackRequest,
         now: Instant,
     ) {
-        if let Some(overlay) = overlay {
-            if let Err(error) = overlay.resume() {
-                warn!(error = %error, "failed to resume AV overlay before playback");
-                return;
-            }
-            if let Err(error) = overlay.seek(duration_to_ns(request.offset)) {
-                warn!(error = %error, "failed to seek AV overlay to requested offset");
-                return;
-            }
-            overlay.set_opacity(0.0);
-            overlay.tween_to_opacity_with(
-                request.opacity,
-                iced_av1::OpacityTween {
-                    duration: request.fade_in.min(request.duration),
-                },
-            );
+        if let Err(error) = overlay.resume() {
+            warn!(error = %error, "failed to resume AV overlay before playback");
+            return;
         }
+        if let Err(error) = overlay.seek(duration_to_ns(request.offset)) {
+            warn!(error = %error, "failed to seek AV overlay to requested offset");
+            return;
+        }
+        overlay.set_opacity(0.0);
+        overlay.tween_to_opacity_with(
+            request.opacity,
+            iced_av1::OpacityTween {
+                duration: request.fade_in.min(request.duration),
+            },
+        );
 
         let visible_until = now + request.duration;
         let fade_out_duration = request.fade_out.min(request.duration);
@@ -1451,80 +1403,72 @@ impl WelcomeUi {
     }
 
     #[cfg(feature = "video")]
-    fn panel_overlay(&self, panel: Panel) -> Option<&iced_av1::widget::State> {
+    fn allocate_video_layer_id(&mut self) -> u64 {
+        let id = self.next_video_layer_id;
+        self.next_video_layer_id = self.next_video_layer_id.wrapping_add(1);
+        id
+    }
+
+    #[cfg(feature = "video")]
+    fn stack_app_overlays<'a>(&'a self, app: Element<'a, Message>) -> Element<'a, Message> {
+        let mut composed = app;
+        for layer in self.app_overlay_layers.iter().filter(|layer| layer.playback.enabled) {
+            let layer_id = layer.id;
+            if let Some(overlay) = layer.state.overlay_view(map_video_message) {
+                let overlay = overlay.map(move |event| Message::AppVideoLayer(layer_id, event));
+                composed = stack([composed, overlay])
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into();
+            }
+        }
+        composed
+    }
+
+    #[cfg(feature = "video")]
+    fn stack_panel_overlays<'a>(
+        &'a self,
+        panel: Element<'a, Message>,
+        panel_kind: Panel,
+    ) -> Element<'a, Message> {
+        let mut composed = panel;
+        for layer in self
+            .panel_overlay_layers(panel_kind)
+            .iter()
+            .filter(|layer| layer.playback.enabled)
+        {
+            let layer_id = layer.id;
+            if let Some(overlay) = layer.state.overlay_view(map_video_message) {
+                let overlay =
+                    overlay.map(move |event| Message::PanelVideoLayer(panel_kind, layer_id, event));
+                composed = stack([composed, overlay])
+                    .width(Length::FillPortion(1))
+                    .height(Length::Fill)
+                    .into();
+            }
+        }
+        composed
+    }
+
+    #[cfg(feature = "video")]
+    fn panel_overlay_layers(&self, panel: Panel) -> &[VideoOverlayLayer] {
         match panel {
-            Panel::LeadVocalist => self.lead_vocalist_panel_overlay.as_ref(),
-            Panel::RhythmGuitarist => self.rhythm_guitarist_panel_overlay.as_ref(),
-            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay.as_ref(),
-            Panel::Bass => self.bass_panel_overlay.as_ref(),
-            Panel::Drums => self.drums_panel_overlay.as_ref(),
+            Panel::LeadVocalist => &self.lead_vocalist_panel_overlay_layers,
+            Panel::RhythmGuitarist => &self.rhythm_guitarist_panel_overlay_layers,
+            Panel::LeadGuitarist => &self.lead_guitarist_panel_overlay_layers,
+            Panel::Bass => &self.bass_panel_overlay_layers,
+            Panel::Drums => &self.drums_panel_overlay_layers,
         }
     }
 
     #[cfg(feature = "video")]
-    fn panel_overlay_mut(&mut self, panel: Panel) -> Option<&mut iced_av1::widget::State> {
+    fn panel_overlay_layers_mut(&mut self, panel: Panel) -> &mut Vec<VideoOverlayLayer> {
         match panel {
-            Panel::LeadVocalist => self.lead_vocalist_panel_overlay.as_mut(),
-            Panel::RhythmGuitarist => self.rhythm_guitarist_panel_overlay.as_mut(),
-            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay.as_mut(),
-            Panel::Bass => self.bass_panel_overlay.as_mut(),
-            Panel::Drums => self.drums_panel_overlay.as_mut(),
-        }
-    }
-
-    #[cfg(feature = "video")]
-    fn panel_playback(&self, panel: Panel) -> &RegionPlayback {
-        match panel {
-            Panel::LeadVocalist => &self.lead_vocalist_panel_playback,
-            Panel::RhythmGuitarist => &self.rhythm_guitarist_panel_playback,
-            Panel::LeadGuitarist => &self.lead_guitarist_panel_playback,
-            Panel::Bass => &self.bass_panel_playback,
-            Panel::Drums => &self.drums_panel_playback,
-        }
-    }
-
-    #[cfg(feature = "video")]
-    fn panel_slot_mut(
-        &mut self,
-        panel: Panel,
-    ) -> (&mut Option<iced_av1::widget::State>, &mut RegionPlayback) {
-        match panel {
-            Panel::LeadVocalist => (
-                &mut self.lead_vocalist_panel_overlay,
-                &mut self.lead_vocalist_panel_playback,
-            ),
-            Panel::RhythmGuitarist => (
-                &mut self.rhythm_guitarist_panel_overlay,
-                &mut self.rhythm_guitarist_panel_playback,
-            ),
-            Panel::LeadGuitarist => (
-                &mut self.lead_guitarist_panel_overlay,
-                &mut self.lead_guitarist_panel_playback,
-            ),
-            Panel::Bass => (&mut self.bass_panel_overlay, &mut self.bass_panel_playback),
-            Panel::Drums => (
-                &mut self.drums_panel_overlay,
-                &mut self.drums_panel_playback,
-            ),
-        }
-    }
-
-    #[cfg(feature = "video")]
-    fn reinitialize_panel_overlay(&mut self, panel: Panel, video: VideoAsset, cover_offset: f32) {
-        let clamped_cover_offset = cover_offset.clamp(-1.0, 1.0);
-        let overlay = init_video_state(
-            panel.video_region_name(),
-            iced_av1::ScaleMode::Cover {
-                offset: clamped_cover_offset,
-            },
-            video.bytes(),
-        );
-        match panel {
-            Panel::LeadVocalist => self.lead_vocalist_panel_overlay = overlay,
-            Panel::RhythmGuitarist => self.rhythm_guitarist_panel_overlay = overlay,
-            Panel::LeadGuitarist => self.lead_guitarist_panel_overlay = overlay,
-            Panel::Bass => self.bass_panel_overlay = overlay,
-            Panel::Drums => self.drums_panel_overlay = overlay,
+            Panel::LeadVocalist => &mut self.lead_vocalist_panel_overlay_layers,
+            Panel::RhythmGuitarist => &mut self.rhythm_guitarist_panel_overlay_layers,
+            Panel::LeadGuitarist => &mut self.lead_guitarist_panel_overlay_layers,
+            Panel::Bass => &mut self.bass_panel_overlay_layers,
+            Panel::Drums => &mut self.drums_panel_overlay_layers,
         }
     }
 }
@@ -1567,7 +1511,7 @@ fn init_video_state(
 }
 
 #[cfg(feature = "video")]
-fn map_panel_video_message(message: iced_av1::widget::Message) -> iced_av1::widget::Message {
+fn map_video_message(message: iced_av1::widget::Message) -> iced_av1::widget::Message {
     message
 }
 
