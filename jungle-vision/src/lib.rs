@@ -1261,6 +1261,91 @@ fn node_phase_for_display(
     Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
 }
 
+fn repaired_live_states_for_display(
+    model: &GraphModel,
+    live_data: Option<&LiveData>,
+    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
+) -> HashMap<u32, RuntimeState> {
+    let Some(live) = live_data else {
+        return HashMap::new();
+    };
+
+    let mut states = HashMap::<u32, RuntimeState>::new();
+    for node in &model.nodes {
+        let phase = node_phase_for_display(
+            Some(live),
+            node.id,
+            node.runtime_node_id,
+            &node.proxy_runtime_ids,
+            condition_successor_runtime_ids,
+        );
+        let state = match phase {
+            Phase::Live(state) => state,
+            Phase::Static => RuntimeState::Pending,
+        };
+        states.insert(node.id, state);
+    }
+
+    let mut incoming = HashMap::<u32, Vec<u32>>::new();
+    for (from, to) in &model.edges {
+        incoming.entry(*to).or_default().push(*from);
+    }
+
+    let mut queue = std::collections::VecDeque::<u32>::new();
+    let mut queued = HashSet::<u32>::new();
+    for (node_id, state) in &states {
+        if matches!(state, RuntimeState::Running | RuntimeState::Completed) {
+            queue.push_back(*node_id);
+            queued.insert(*node_id);
+        }
+    }
+
+    while let Some(node_id) = queue.pop_front() {
+        queued.remove(&node_id);
+        let Some(predecessors) = incoming.get(&node_id) else {
+            continue;
+        };
+        for predecessor in predecessors {
+            let predecessor_state = states
+                .get(predecessor)
+                .copied()
+                .unwrap_or(RuntimeState::Pending);
+            if !matches!(
+                predecessor_state,
+                RuntimeState::Pending | RuntimeState::Running
+            ) {
+                continue;
+            }
+            states.insert(*predecessor, RuntimeState::Completed);
+            if queued.insert(*predecessor) {
+                queue.push_back(*predecessor);
+            }
+        }
+    }
+
+    states
+}
+
+fn node_phase_for_display_with_repairs(
+    live_data: Option<&LiveData>,
+    display_id: u32,
+    runtime_id: Option<u32>,
+    proxy_runtime_ids: &[u32],
+    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
+    repaired_live_states: &HashMap<u32, RuntimeState>,
+) -> Phase<RuntimeState> {
+    if let Some(repaired) = repaired_live_states.get(&display_id).copied() {
+        return Phase::Live(repaired);
+    }
+    node_phase_for_display(
+        live_data,
+        display_id,
+        runtime_id,
+        proxy_runtime_ids,
+        condition_successor_runtime_ids,
+    )
+}
+
 fn sidebar<'a>(
     journey_name: &'a str,
     model: &'a GraphModel,
@@ -1371,6 +1456,11 @@ where
     let memberships = &model.derived.memberships;
     let runtime_by_display_id = &model.derived.runtime_by_display_id;
     let proxy_runtime_ids_by_display_id = &model.derived.proxy_runtime_ids_by_display_id;
+    let repaired_live_states = Arc::new(repaired_live_states_for_display(
+        model,
+        live_data,
+        condition_successor_runtime_ids,
+    ));
 
     let cluster_phase = move |cluster: &ClusterInfo| -> Phase<ClusterLive> {
         if let Some(live) = live_data {
@@ -1469,12 +1559,13 @@ where
         if owner != VisibleOwner::Node(node.id) {
             continue;
         }
-        let phase = node_phase_for_display(
+        let phase = node_phase_for_display_with_repairs(
             live_data,
             node.id,
             node.runtime_node_id,
             &node.proxy_runtime_ids,
             &condition_successor_runtime_ids,
+            repaired_live_states.as_ref(),
         );
         let step_ctx = StepViewCtx {
             display_id: node.id,
@@ -1624,17 +1715,21 @@ where
         let condition_successors_for_nodes = condition_successor_runtime_ids;
         let condition_successors_for_edge_colors = condition_successor_runtime_ids;
         let condition_successors_for_edge_strokes = condition_successor_runtime_ids;
+        let repaired_live_states_for_nodes = repaired_live_states.clone();
+        let repaired_live_states_for_edge_colors = repaired_live_states.clone();
+        let repaired_live_states_for_edge_strokes = repaired_live_states.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
                 if visible_nodes.contains(&node_id) {
                     if let Some(node) = node_map.get(&node_id) {
-                        let phase = node_phase_for_display(
+                        let phase = node_phase_for_display_with_repairs(
                             live_data,
                             node.id,
                             node.runtime_node_id,
                             &node.proxy_runtime_ids,
                             &condition_successors_for_nodes,
+                            repaired_live_states_for_nodes.as_ref(),
                         );
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
@@ -1712,7 +1807,7 @@ where
                         target_runtime_id,
                         source_has_proxy_runtime,
                         target_has_proxy_runtime,
-                        source_phase: node_phase_for_display(
+                        source_phase: node_phase_for_display_with_repairs(
                             live_data,
                             ctx.edge.0,
                             source_runtime_id,
@@ -1721,8 +1816,9 @@ where
                                 .map(Vec::as_slice)
                                 .unwrap_or(&[]),
                             &condition_successors_for_edge_colors,
+                            repaired_live_states_for_edge_colors.as_ref(),
                         ),
-                        target_phase: node_phase_for_display(
+                        target_phase: node_phase_for_display_with_repairs(
                             live_data,
                             ctx.edge.1,
                             target_runtime_id,
@@ -1731,6 +1827,7 @@ where
                                 .map(Vec::as_slice)
                                 .unwrap_or(&[]),
                             &condition_successors_for_edge_colors,
+                            repaired_live_states_for_edge_colors.as_ref(),
                         ),
                         extent: ctx.transition_progress,
                     },
@@ -1766,7 +1863,7 @@ where
                         target_runtime_id,
                         source_has_proxy_runtime,
                         target_has_proxy_runtime,
-                        source_phase: node_phase_for_display(
+                        source_phase: node_phase_for_display_with_repairs(
                             live_data,
                             ctx.edge.0,
                             source_runtime_id,
@@ -1775,8 +1872,9 @@ where
                                 .map(Vec::as_slice)
                                 .unwrap_or(&[]),
                             &condition_successors_for_edge_strokes,
+                            repaired_live_states_for_edge_strokes.as_ref(),
                         ),
-                        target_phase: node_phase_for_display(
+                        target_phase: node_phase_for_display_with_repairs(
                             live_data,
                             ctx.edge.1,
                             target_runtime_id,
@@ -1785,6 +1883,7 @@ where
                                 .map(Vec::as_slice)
                                 .unwrap_or(&[]),
                             &condition_successors_for_edge_strokes,
+                            repaired_live_states_for_edge_strokes.as_ref(),
                         ),
                         extent: ctx.transition_progress,
                     },
@@ -3157,6 +3256,91 @@ mod tests {
             ),
             Phase::Live(RuntimeState::Completed)
         );
+    }
+
+    #[test]
+    fn repaired_live_states_promote_running_predecessor_to_completed() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "A" },
+            JourneyAst::Step { label: "B" },
+        ]);
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let a_id = id_for("A");
+        let b_id = id_for("B");
+
+        let mut live = LiveData::default();
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 1,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn repaired_live_states_backfill_pending_chain_when_downstream_runs() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "A" },
+            JourneyAst::Step { label: "B" },
+            JourneyAst::Step { label: "C" },
+        ]);
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let a_id = id_for("A");
+        let b_id = id_for("B");
+        let c_id = id_for("C");
+
+        let mut live = LiveData::default();
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 2,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&c_id).copied(), Some(RuntimeState::Running));
     }
 
     #[test]
