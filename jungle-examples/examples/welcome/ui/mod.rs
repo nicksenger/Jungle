@@ -1641,17 +1641,27 @@ fn panel<'a>(
     auto_viewport_enabled: bool,
     pulse_strength: f32,
 ) -> Element<'a, Message> {
+    // Keep the pulse in "jungle greens": deep forest -> neon leaf, without whitening.
     let border_base = Color::from_rgb8(24, 63, 43);
-    let border_bright = Color::from_rgb8(64, 171, 102);
-    let border_peak = Color::from_rgb8(108, 238, 146);
-    let header_base = Color::from_rgb8(198, 229, 211);
-    let header_bright = Color::from_rgb8(182, 252, 198);
-    let header_peak = Color::from_rgb8(225, 255, 232);
-    let primary = pulse_strength.clamp(0.0, 1.0);
-    let additive = (pulse_strength - 1.0).clamp(0.0, 1.0);
-    let border_color = lerp_color(lerp_color(border_base, border_bright, primary), border_peak, additive);
-    let header_color = lerp_color(lerp_color(header_base, header_bright, primary), header_peak, additive);
-    let border_width = 1.5 + primary * 0.3 + additive * 0.5;
+    let border_bright = Color::from_rgb8(50, 147, 74);
+    let border_peak = Color::from_rgb8(78, 193, 82);
+    let header_base = Color::from_rgb8(112, 171, 104);
+    let header_bright = Color::from_rgb8(142, 217, 94);
+    let header_peak = Color::from_rgb8(162, 236, 102);
+    let scaled_strength = pulse_strength.max(0.0) * 0.72;
+    let primary = scaled_strength.clamp(0.0, 1.0);
+    let additive = ((scaled_strength - 1.0) * 0.35).clamp(0.0, 1.0);
+    let border_color = lerp_color(
+        lerp_color(border_base, border_bright, primary),
+        border_peak,
+        additive,
+    );
+    let header_color = lerp_color(
+        lerp_color(header_base, header_bright, primary),
+        header_peak,
+        additive,
+    );
+    let border_width = 1.4 + primary * 0.18 + additive * 0.18;
     let lock_icon = if auto_viewport_enabled {
         LOCK_ICON_SVG
     } else {
