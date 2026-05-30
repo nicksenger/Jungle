@@ -1499,7 +1499,7 @@ impl WelcomeUi {
 
     #[cfg(feature = "video")]
     fn reinitialize_panel_overlay(&mut self, panel: Panel, video: VideoAsset, cover_offset: f32) {
-        let clamped_cover_offset = cover_offset.clamp(0.0, 1.0);
+        let clamped_cover_offset = cover_offset.clamp(-1.0, 1.0);
         let overlay = init_video_state(
             panel.video_region_name(),
             iced_av1::ScaleMode::Cover {
