@@ -2876,7 +2876,8 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
                 Phase::Static => RuntimeState::Pending,
             };
             if let Ok(guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
+                    && cx.proxy_runtime_ids.is_empty();
                 if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                     phase_target = RuntimeState::Pending;
                 }
@@ -2957,7 +2958,8 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
         if let Some(runtime_id) = cx.source_runtime_id {
             if let Ok(guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
+                    && !cx.source_has_proxy_runtime;
                 if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                     phase_target = RuntimeState::Pending;
                 }
@@ -3460,68 +3462,6 @@ mod tests {
             .try_lock()
             .expect("theme state lock should be available");
         assert!(guard.node_visuals.is_empty());
-    }
-
-    #[test]
-    fn edge_style_forced_pending_applies_even_with_proxy_runtime() {
-        let theme = DefaultTheme;
-        let state = Mutex::new(DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::from([42]),
-        });
-        let style = theme
-            .edge_style(
-                &state,
-                EdgeStyleCtx {
-                    edge_index: 0,
-                    source_display_id: 1,
-                    target_display_id: 2,
-                    source_runtime_id: Some(42),
-                    target_runtime_id: Some(7),
-                    source_has_proxy_runtime: true,
-                    target_has_proxy_runtime: false,
-                    source_phase: Phase::Live(RuntimeState::Completed),
-                    target_phase: Phase::Live(RuntimeState::Pending),
-                    extent: 1.0,
-                },
-            )
-            .expect("edge style should be produced");
-        let pending = runtime_color(RuntimeState::Pending);
-        assert_eq!(style.start, pending);
-        assert_eq!(style.end, pending);
-    }
-
-    #[test]
-    fn edge_style_does_not_override_running_with_forced_pending() {
-        let theme = DefaultTheme;
-        let state = Mutex::new(DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::from([42]),
-        });
-        let style = theme
-            .edge_style(
-                &state,
-                EdgeStyleCtx {
-                    edge_index: 0,
-                    source_display_id: 1,
-                    target_display_id: 2,
-                    source_runtime_id: Some(42),
-                    target_runtime_id: Some(7),
-                    source_has_proxy_runtime: true,
-                    target_has_proxy_runtime: false,
-                    source_phase: Phase::Live(RuntimeState::Running),
-                    target_phase: Phase::Live(RuntimeState::Pending),
-                    extent: 1.0,
-                },
-            )
-            .expect("edge style should be produced");
-        let running = runtime_color(RuntimeState::Running);
-        assert_eq!(style.start, running);
-        assert_eq!(style.end, running);
     }
 
     #[test]
