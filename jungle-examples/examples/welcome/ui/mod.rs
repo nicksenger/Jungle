@@ -1025,7 +1025,14 @@ impl WelcomeUi {
                 Task::none()
             }
             Message::Panel(panel, event) => {
-                self.trigger_panel_pulse(panel);
+                // Pulse only on actual live update applications, not on every
+                // internal viewer message, to avoid flooding the UI event loop.
+                if matches!(
+                    &event,
+                    jungle_vision::EjectedViewerMessage::ApplyLiveEvent { .. }
+                ) {
+                    self.trigger_panel_pulse(panel);
+                }
                 match panel {
                     Panel::LeadVocalist => {
                         self.lead_vocalist.as_mut().map_or_else(Task::none, |v| {
