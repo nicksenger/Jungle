@@ -119,8 +119,8 @@ where
     }
 
     fn as_element(&self, fill: Color) -> Element<'_, Message> {
-        let accent_border = vary_green_shade(Color::from_rgb8(58, 122, 86), self.step_id);
-        let accent_role = vary_green_shade(Color::from_rgb8(168, 198, 181), self.step_id);
+        let accent_border = vary_highlight_shade(Color::from_rgb8(152, 134, 58), self.step_id);
+        let accent_role = vary_highlight_shade(Color::from_rgb8(218, 205, 148), self.step_id);
         let body = column![
             text(self.role.as_str()).size(10).color(accent_role),
             text(self.label.as_str())
@@ -136,7 +136,7 @@ where
                 let (styled_fill, border_color, border_width, shadow) = match status {
                     button::Status::Hovered => (
                         mix_color(fill, Color::from_rgb8(20, 74, 45), 0.62),
-                        Color::from_rgb8(120, 214, 160),
+                        Color::from_rgb8(227, 206, 96),
                         2.2,
                         iced::Shadow {
                             color: Color::from_rgba8(7, 23, 14, 0.55),
@@ -146,7 +146,7 @@ where
                     ),
                     button::Status::Pressed => (
                         mix_color(fill, Color::from_rgb8(11, 52, 31), 0.8),
-                        Color::from_rgb8(153, 235, 189),
+                        Color::from_rgb8(237, 219, 125),
                         2.8,
                         iced::Shadow {
                             color: Color::from_rgba8(5, 17, 10, 0.68),
@@ -372,8 +372,8 @@ fn ease_out_cubic(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
 }
 
-fn vary_green_shade(base: Color, step_id: u32) -> Color {
-    // Deterministic tiny variation in [-0.035, +0.035] keeps shades close to the base green.
+fn vary_highlight_shade(base: Color, step_id: u32) -> Color {
+    // Deterministic tiny variation in [-0.035, +0.035] keeps shades close to the base highlight.
     let noise = (step_id as u64)
         .wrapping_mul(1_103_515_245)
         .wrapping_add(12_345)
