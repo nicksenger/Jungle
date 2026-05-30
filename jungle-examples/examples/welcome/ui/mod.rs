@@ -10,6 +10,8 @@ use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
 #[cfg(feature = "video")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "video")]
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -26,7 +28,33 @@ const UI_TICK_INTERVAL: Duration = Duration::from_millis(500);
 const LOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#;
 const UNLOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M16 11V7a4 4 0 0 0-7.5-2"/></svg>"#;
 #[cfg(feature = "video")]
-#[derive(Debug, Clone, Copy)]
+mod duration_millis {
+    use serde::de::Error;
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::time::Duration;
+
+    pub fn serialize<S>(value: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(u64::try_from(value.as_millis()).unwrap_or(u64::MAX))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let millis = u64::deserialize(deserializer)?;
+        let duration = Duration::from_millis(millis);
+        let round_trip = u64::try_from(duration.as_millis()).map_err(D::Error::custom)?;
+        if round_trip != millis {
+            return Err(D::Error::custom("duration milliseconds out of range"));
+        }
+        Ok(duration)
+    }
+}
+#[cfg(feature = "video")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum VideoAsset {
     Baboons,
     Chimp,
@@ -490,6 +518,7 @@ pub fn run_ui(
     journeys: JourneyIds,
     metronome: Metronome,
     shutdown: ShutdownFlag,
+    #[cfg(feature = "video")] video_plan: Option<VideoPlaybackPlan>,
 ) -> iced::Result {
     let title = "Welcome to the Jungle";
     iced::application(
@@ -499,6 +528,8 @@ pub fn run_ui(
                 journeys,
                 metronome.clone(),
                 shutdown.clone(),
+                #[cfg(feature = "video")]
+                video_plan.clone(),
             )
         },
         WelcomeUi::update,
@@ -555,10 +586,12 @@ impl Panel {
 }
 
 #[cfg(feature = "video")]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct VideoPlaybackRequest {
     video: VideoAsset,
+    #[serde(with = "duration_millis")]
     offset: Duration,
+    #[serde(with = "duration_millis")]
     duration: Duration,
     opacity: f32,
     cover_offset: f32,
@@ -584,7 +617,7 @@ impl VideoPlaybackRequest {
 }
 
 #[cfg(feature = "video")]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct TickPlaybackPlan {
     tick: u32,
     app_overlay: Option<VideoPlaybackRequest>,
@@ -593,6 +626,23 @@ struct TickPlaybackPlan {
     lead_guitarist_panel: Option<VideoPlaybackRequest>,
     bass_panel: Option<VideoPlaybackRequest>,
     drums_panel: Option<VideoPlaybackRequest>,
+}
+
+#[cfg(feature = "video")]
+#[derive(Debug, Clone)]
+pub struct VideoPlaybackPlan(Vec<TickPlaybackPlan>);
+
+#[cfg(feature = "video")]
+impl VideoPlaybackPlan {
+    pub fn from_json_str(json: &str) -> Result<Self, String> {
+        serde_json::from_str::<Vec<TickPlaybackPlan>>(json)
+            .map(Self)
+            .map_err(|err| format!("failed to deserialize video plan JSON: {err}"))
+    }
+
+    fn plans(&self) -> &[TickPlaybackPlan] {
+        &self.0
+    }
 }
 
 #[cfg(feature = "video")]
@@ -779,6 +829,8 @@ struct WelcomeUi {
     bass_panel_playback: RegionPlayback,
     #[cfg(feature = "video")]
     drums_panel_playback: RegionPlayback,
+    #[cfg(feature = "video")]
+    video_playback_plan: Option<VideoPlaybackPlan>,
     shutdown: ShutdownFlag,
 }
 
@@ -788,6 +840,7 @@ impl WelcomeUi {
         journeys: JourneyIds,
         metronome: Metronome,
         shutdown: ShutdownFlag,
+        #[cfg(feature = "video")] video_plan: Option<VideoPlaybackPlan>,
     ) -> (Self, Task<Message>) {
         let lead_vocalist = journeys.lead_vocalist.map(|journey| {
             jungle_vision::JungleViewerBuilder::new()
@@ -887,6 +940,8 @@ impl WelcomeUi {
                 bass_panel_playback: RegionPlayback::hidden(),
                 #[cfg(feature = "video")]
                 drums_panel_playback: RegionPlayback::hidden(),
+                #[cfg(feature = "video")]
+                video_playback_plan: video_plan,
                 shutdown,
             },
             Task::none(),
@@ -1198,7 +1253,12 @@ impl WelcomeUi {
     #[cfg(feature = "video")]
     fn apply_playback_plan(&mut self) {
         let rhythm_tick = self.current_rhythm_tick();
-        for plan in VIDEO_PLAYBACK_PLAN {
+        let plan_source = self
+            .video_playback_plan
+            .as_ref()
+            .map_or(&VIDEO_PLAYBACK_PLAN[..], VideoPlaybackPlan::plans);
+        let plans = plan_source.to_vec();
+        for plan in plans {
             if rhythm_tick < u64::from(plan.tick) {
                 continue;
             }

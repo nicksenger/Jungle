@@ -2780,6 +2780,7 @@ dependencies = [
  "jungle-vision",
  "postcard",
  "serde",
+ "serde_json",
  "testcontainers",
  "testcontainers-modules",
  "thiserror 2.0.18",
