@@ -27,7 +27,7 @@ const WINDOW_HEIGHT: f32 = 900.0;
 const NODE_WIDTH: f64 = 240.0;
 const NODE_HEIGHT: f64 = 80.0;
 const GRAPH_WIDGET_ID: &str = "jungle-vision";
-const DEFAULT_CLUSTER_FILL: Color = Color::from_rgba8(20, 46, 30, 0.24);
+const DEFAULT_CLUSTER_FILL: Color = Color::from_rgba8(20, 46, 30, 0.05);
 const NODE_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_BORDER_ANIMATION_DURATION: Duration = Duration::from_millis(320);
 const CLUSTER_RECOLLAPSE_DELAY: Duration = Duration::from_secs(2);
@@ -2767,8 +2767,10 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         (
             AnimatedStepNode::<ViewerEvent<Self::Message>>::new(
                 cx.display_id,
+                cx.runtime_id,
                 role,
                 cx.label.to_string(),
+                cx.metadata.map(str::to_string),
                 fill,
                 NODE_ANIMATION_DURATION,
             )

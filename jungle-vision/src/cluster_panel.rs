@@ -17,33 +17,33 @@ pub fn target_color(kind: ClusterKind, phase: Phase<ClusterLive>) -> Color {
             }
         }
     };
-    Color::from_rgba8(20, 46, 30, (alpha + 0.1).clamp(0.0, 1.0))
+    Color::from_rgba8(20, 46, 30, alpha.clamp(0.0, 1.0))
 }
 
 fn kind_pending_alpha(kind: ClusterKind) -> f32 {
     match kind {
-        ClusterKind::While => 0.14,
-        ClusterKind::Transparent => 0.08,
+        ClusterKind::While => 0.05,
+        ClusterKind::Transparent => 0.04,
     }
 }
 
 fn kind_running_alpha(kind: ClusterKind) -> f32 {
     match kind {
-        ClusterKind::While => 0.24,
-        ClusterKind::Transparent => 0.16,
+        ClusterKind::While => 0.07,
+        ClusterKind::Transparent => 0.06,
     }
 }
 
 fn kind_completed_alpha(kind: ClusterKind) -> f32 {
     match kind {
-        ClusterKind::While => 0.19,
-        ClusterKind::Transparent => 0.12,
+        ClusterKind::While => 0.06,
+        ClusterKind::Transparent => 0.05,
     }
 }
 
 fn kind_failed_alpha(kind: ClusterKind) -> f32 {
     match kind {
-        ClusterKind::While => 0.26,
-        ClusterKind::Transparent => 0.18,
+        ClusterKind::While => 0.08,
+        ClusterKind::Transparent => 0.07,
     }
 }

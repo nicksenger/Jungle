@@ -10,6 +10,7 @@ use iced::{Color, Element, Event, Length, Rectangle, Theme};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use tracing::info;
 
 const FRAME_DURATION: Duration = Duration::from_millis(16);
 static TWEEN_CACHE: OnceLock<Mutex<HashMap<u32, TweenState>>> = OnceLock::new();
@@ -42,8 +43,10 @@ where
     Message: Clone + 'static,
 {
     step_id: u32,
+    runtime_id: Option<u32>,
     role: String,
     label: String,
+    metadata: Option<String>,
     target_fill: Color,
     duration: Duration,
     _marker: std::marker::PhantomData<Message>,
@@ -55,15 +58,19 @@ where
 {
     pub fn new(
         step_id: u32,
+        runtime_id: Option<u32>,
         role: impl Into<String>,
         label: impl Into<String>,
+        metadata: Option<String>,
         target_fill: Color,
         duration: Duration,
     ) -> Self {
         Self {
             step_id,
+            runtime_id,
             role: role.into(),
             label: label.into(),
+            metadata,
             target_fill,
             duration,
             _marker: std::marker::PhantomData,
@@ -116,11 +123,21 @@ where
         button(body)
             .padding([8, 10])
             .width(Length::Shrink)
-            .style(move |_theme, _status| iced::widget::button::Style {
-                background: Some(iced::Background::Color(Color { a: 0.8, ..fill })),
-                text_color: Color::from_rgb8(223, 245, 230),
-                border: iced::border::rounded(10).color(accent_border).width(1.0),
-                ..Default::default()
+            .style(move |_theme, status| {
+                let brightened_fill = match status {
+                    button::Status::Hovered => brighten_color(fill, 0.16),
+                    button::Status::Pressed => brighten_color(fill, 0.24),
+                    _ => fill,
+                };
+                iced::widget::button::Style {
+                    background: Some(iced::Background::Color(Color {
+                        a: 0.8,
+                        ..brightened_fill
+                    })),
+                    text_color: Color::from_rgb8(223, 245, 230),
+                    border: iced::border::rounded(10).color(accent_border).width(1.0),
+                    ..Default::default()
+                }
             })
             .into()
     }
@@ -179,6 +196,18 @@ where
             _ => Instant::now(),
         };
         self.sync_target(state, now, shell);
+        if let Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)) = event {
+            if cursor.is_over(layout.bounds()) {
+                info!(
+                    step_display_id = self.step_id,
+                    step_runtime_id = ?self.runtime_id,
+                    step_role = %self.role,
+                    step_label = %self.label,
+                    step_metadata = %self.metadata.as_deref().unwrap_or(""),
+                    "jungle-vision step node clicked"
+                );
+            }
+        }
 
         if let Event::Window(iced::window::Event::RedrawRequested(now)) = event {
             if is_animating(*state, *now, self.duration) {
@@ -235,6 +264,9 @@ where
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> mouse::Interaction {
+        if cursor.is_over(layout.bounds()) {
+            return mouse::Interaction::Pointer;
+        }
         let state = tree.state.downcast_ref::<TweenState>();
         let fill = sample_color(*state, Instant::now(), self.duration);
         let element = self.as_element(fill);
@@ -314,6 +346,15 @@ fn vary_green_shade(base: Color, step_id: u32) -> Color {
         g: (base.g + delta).clamp(0.0, 1.0),
         b: (base.b + delta).clamp(0.0, 1.0),
         a: base.a,
+    }
+}
+
+fn brighten_color(color: Color, amount: f32) -> Color {
+    Color {
+        r: color.r + (1.0 - color.r) * amount,
+        g: color.g + (1.0 - color.g) * amount,
+        b: color.b + (1.0 - color.b) * amount,
+        a: color.a,
     }
 }
 
