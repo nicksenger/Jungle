@@ -244,7 +244,7 @@ struct WelcomeCliArgs {
     /// Comma-delimited `animal:volume` values (0..=1), for example `lead-vocalist:0.8,bassist:0.2`.
     #[clap(long = "animal-volumes", value_delimiter = ',', value_parser = parse_animal_volume_value)]
     animal_volumes: Vec<AnimalVolumeOverride>,
-    /// Path to JSON serialized video tick playback plan. Uses built-in plan when omitted.
+    /// Path to TOML serialized video tick playback plan (`[[plans]]` with inline request tables). Uses built-in plan when omitted.
     #[cfg(feature = "video")]
     #[clap(long = "video-plan")]
     video_plan: Option<PathBuf>,
@@ -1470,13 +1470,13 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     }
     #[cfg(feature = "video")]
     let video_playback_plan = if let Some(path) = parsed.video_plan.as_ref() {
-        let json = std::fs::read_to_string(path).map_err(|err| {
+        let toml_str = std::fs::read_to_string(path).map_err(|err| {
             std::io::Error::other(format!(
                 "failed reading --video-plan file `{}`: {err}",
                 path.display()
             ))
         })?;
-        Some(ui::VideoPlaybackPlan::from_json_str(&json).map_err(|err| {
+        Some(ui::VideoPlaybackPlan::from_toml_str(&toml_str).map_err(|err| {
             std::io::Error::other(format!(
                 "invalid --video-plan file `{}`: {err}",
                 path.display()

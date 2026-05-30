@@ -639,11 +639,17 @@ struct TickPlaybackPlan {
 pub struct VideoPlaybackPlan(Vec<TickPlaybackPlan>);
 
 #[cfg(feature = "video")]
+#[derive(Debug, Clone, Deserialize)]
+struct VideoPlaybackPlanDocument {
+    plans: Vec<TickPlaybackPlan>,
+}
+
+#[cfg(feature = "video")]
 impl VideoPlaybackPlan {
-    pub fn from_json_str(json: &str) -> Result<Self, String> {
-        serde_json::from_str::<Vec<TickPlaybackPlan>>(json)
-            .map(Self)
-            .map_err(|err| format!("failed to deserialize video plan JSON: {err}"))
+    pub fn from_toml_str(toml_str: &str) -> Result<Self, String> {
+        toml::from_str::<VideoPlaybackPlanDocument>(toml_str)
+            .map(|doc| Self(doc.plans))
+            .map_err(|err| format!("failed to deserialize video plan TOML: {err}"))
     }
 
     fn plans(&self) -> &[TickPlaybackPlan] {
@@ -1655,5 +1661,49 @@ fn update_max_usize(max_value: &AtomicUsize, candidate: usize) {
             Ok(_) => break,
             Err(updated) => current = updated,
         }
+    }
+}
+
+#[cfg(all(test, feature = "video"))]
+mod tests {
+    use super::{VideoAsset, VideoPlaybackPlan};
+    use std::time::Duration;
+
+    #[test]
+    fn parse_video_plan_toml_array_of_tables() {
+        let toml_str = r#"
+[[plans]]
+tick = 6700
+app_overlay = { video = "Jungle2", offset = 0, duration = 3000, opacity = 0.3, cover_offset = 0.5 }
+
+[[plans]]
+tick = 88000
+lead_vocalist_panel = { video = "Jackfruit", offset = 0, duration = 2000, opacity = 0.3, cover_offset = 0.5 }
+rhythm_guitarist_panel = { video = "Jackfruit", offset = 0, duration = 2000, opacity = 0.15, cover_offset = 0.5 }
+lead_guitarist_panel = { video = "Jackfruit", offset = 0, duration = 2000, opacity = 0.15, cover_offset = 0.5 }
+"#;
+
+        let plan = VideoPlaybackPlan::from_toml_str(toml_str).expect("plan should parse");
+        let plans = plan.plans();
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].tick, 6700);
+        let first_overlay = plans[0]
+            .app_overlay
+            .as_ref()
+            .expect("first plan should set app_overlay");
+        assert!(matches!(first_overlay.video, VideoAsset::Jungle2));
+        assert_eq!(first_overlay.offset, Duration::from_millis(0));
+        assert_eq!(first_overlay.duration, Duration::from_millis(3000));
+        assert!((first_overlay.opacity - 0.3).abs() < f32::EPSILON);
+        assert!((first_overlay.cover_offset - 0.5).abs() < f32::EPSILON);
+        assert!(plans[0].lead_vocalist_panel.is_none());
+
+        assert_eq!(plans[1].tick, 88000);
+        assert!(plans[1].app_overlay.is_none());
+        assert!(plans[1].lead_vocalist_panel.is_some());
+        assert!(plans[1].rhythm_guitarist_panel.is_some());
+        assert!(plans[1].lead_guitarist_panel.is_some());
+        assert!(plans[1].bass_panel.is_none());
+        assert!(plans[1].drums_panel.is_none());
     }
 }
