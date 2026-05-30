@@ -9,7 +9,7 @@ use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, R
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Observable,
-    Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
+    Noop, Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -831,6 +831,7 @@ where
     Initial: Serialize + Clone,
 {
     let mut index = 0usize;
+    let noop_effect_type = core::any::type_name::<Noop>();
     while !executor.is_complete() {
         if index >= history.len() {
             break;
@@ -845,22 +846,24 @@ where
         let expected_input = request.request_bytes();
         let effect_type = request.effect_type();
 
-        let Some(RunnerOut::EffectInput {
-            node_id,
-            data,
-            uuid,
-        }) = history.get(index)
-        else {
+        let matched_effect_input = matches!(
+            history.get(index),
+            Some(RunnerOut::EffectInput {
+                node_id,
+                data,
+                uuid
+            }) if *uuid == journey_id && *node_id == request_node_id && data.as_slice() == expected_input
+        );
+        if matched_effect_input {
+            index = index.saturating_add(1);
+        } else if effect_type == noop_effect_type {
+            // Backward-compatibility path: older histories may not have persisted inline Noop events.
+            send_recovered_effect_input(tx, journey_id, request_node_id, expected_input).await?;
+        } else {
             return Err(ExecutorError::ClientTransport(
                 "history replay expected EffectInput event".to_string(),
             ));
-        };
-        if *uuid != journey_id || *node_id != request_node_id || data.as_slice() != expected_input {
-            return Err(ExecutorError::ClientTransport(
-                "history replay EffectInput mismatch".to_string(),
-            ));
         }
-        index = index.saturating_add(1);
 
         let completion = if effect_type == core::any::type_name::<Sleep>() {
             while matches!(
@@ -944,6 +947,32 @@ async fn send_recovered_completion(
         RunnerChannelResponse::Ack => Ok(()),
         RunnerChannelResponse::ClaimedPerturbation(_) => Err(ExecutorError::ClientTransport(
             "runner expected ack response while replaying recovered completion".to_string(),
+        )),
+    }
+}
+
+async fn send_recovered_effect_input(
+    tx: &mut RunnerChannelTx,
+    journey_id: Uuid,
+    node_id: u32,
+    data: &[u8],
+) -> Result<(), ExecutorError> {
+    let out = RunnerOut::EffectInput {
+        node_id,
+        data: data.to_vec(),
+        uuid: journey_id,
+    };
+    let (done_tx, done_rx) = oneshot::channel();
+    tx.send((RunnerChannelMessage::History(out), done_tx))
+        .await
+        .map_err(|_| ExecutorError::ClientTransportClosed)?;
+    match done_rx
+        .await
+        .map_err(|_| ExecutorError::ClientTransportAckDropped)??
+    {
+        RunnerChannelResponse::Ack => Ok(()),
+        RunnerChannelResponse::ClaimedPerturbation(_) => Err(ExecutorError::ClientTransport(
+            "runner expected ack response while replaying recovered effect input".to_string(),
         )),
     }
 }
