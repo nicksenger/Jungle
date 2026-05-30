@@ -693,7 +693,7 @@ impl WelcomeUi {
         }
         if let Some(viewer) = self.lead_guitarist.as_ref() {
             panels = panels.push(self.panel_with_overlay(
-                "Baz (Guitar)",
+                "Qux (Guitar)",
                 viewer.view(),
                 Panel::LeadGuitarist,
             ));
