@@ -1136,7 +1136,7 @@ impl WelcomeUi {
         }
         if let Some(viewer) = self.rhythm_guitarist.as_ref() {
             panels = panels.push(self.panel_with_overlay(
-                "Bar (Rhythm Guitar)",
+                "Bar (Guitar)",
                 viewer.view(),
                 Panel::RhythmGuitarist,
             ));
@@ -1152,7 +1152,7 @@ impl WelcomeUi {
         }
         if let Some(viewer) = self.lead_guitarist.as_ref() {
             panels = panels.push(self.panel_with_overlay(
-                "Qux (Lead Guitar)",
+                "Baz (Guitar)",
                 viewer.view(),
                 Panel::LeadGuitarist,
             ));
