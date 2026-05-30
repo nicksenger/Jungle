@@ -25,7 +25,7 @@ const DEFERRED_STREAM_LAG_WARN_MS: u64 = 150;
 const DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS: i64 = 2_000;
 const DEFERRED_STREAM_SLOW_DECISION_WARN_US: u128 = 500;
 const UI_TICK_INTERVAL: Duration = Duration::from_millis(500);
-const PANEL_PULSE_DURATION: Duration = Duration::from_millis(200);
+const PANEL_PULSE_DURATION: Duration = Duration::from_millis(100);
 const PANEL_PULSE_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const LOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#;
 const UNLOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M16 11V7a4 4 0 0 0-7.5-2"/></svg>"#;
@@ -1643,25 +1643,27 @@ fn panel<'a>(
 ) -> Element<'a, Message> {
     // Keep the pulse in "jungle greens": deep forest -> neon leaf, without whitening.
     let border_base = Color::from_rgb8(24, 63, 43);
-    let border_bright = Color::from_rgb8(50, 147, 74);
-    let border_peak = Color::from_rgb8(78, 193, 82);
+    let border_bright = Color::from_rgb8(41, 116, 62);
+    let border_peak = Color::from_rgb8(54, 139, 69);
     let header_base = Color::from_rgb8(112, 171, 104);
     let header_bright = Color::from_rgb8(142, 217, 94);
     let header_peak = Color::from_rgb8(162, 236, 102);
     let scaled_strength = pulse_strength.max(0.0) * 0.72;
     let primary = scaled_strength.clamp(0.0, 1.0);
     let additive = ((scaled_strength - 1.0) * 0.35).clamp(0.0, 1.0);
+    let border_primary = primary * 0.65;
+    let border_additive = additive * 0.45;
     let border_color = lerp_color(
-        lerp_color(border_base, border_bright, primary),
+        lerp_color(border_base, border_bright, border_primary),
         border_peak,
-        additive,
+        border_additive,
     );
     let header_color = lerp_color(
         lerp_color(header_base, header_bright, primary),
         header_peak,
         additive,
     );
-    let border_width = 1.4 + primary * 0.18 + additive * 0.18;
+    let border_width = 1.35 + border_primary * 0.08 + border_additive * 0.08;
     let lock_icon = if auto_viewport_enabled {
         LOCK_ICON_SVG
     } else {
