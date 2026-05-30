@@ -886,11 +886,11 @@ struct WelcomeUi {
     drums_panel_overlay_layers: Vec<VideoOverlayLayer>,
     #[cfg(feature = "video")]
     video_playback_plan: Option<VideoPlaybackPlan>,
-    lead_vocalist_pulse_started_at: Option<Instant>,
-    rhythm_guitarist_pulse_started_at: Option<Instant>,
-    lead_guitarist_pulse_started_at: Option<Instant>,
-    bass_pulse_started_at: Option<Instant>,
-    drums_pulse_started_at: Option<Instant>,
+    lead_vocalist_pulses: Vec<Instant>,
+    rhythm_guitarist_pulses: Vec<Instant>,
+    lead_guitarist_pulses: Vec<Instant>,
+    bass_pulses: Vec<Instant>,
+    drums_pulses: Vec<Instant>,
     shutdown: ShutdownFlag,
 }
 
@@ -954,11 +954,11 @@ impl WelcomeUi {
                 drums_panel_overlay_layers: Vec::new(),
                 #[cfg(feature = "video")]
                 video_playback_plan: video_plan,
-                lead_vocalist_pulse_started_at: None,
-                rhythm_guitarist_pulse_started_at: None,
-                lead_guitarist_pulse_started_at: None,
-                bass_pulse_started_at: None,
-                drums_pulse_started_at: None,
+                lead_vocalist_pulses: Vec::new(),
+                rhythm_guitarist_pulses: Vec::new(),
+                lead_guitarist_pulses: Vec::new(),
+                bass_pulses: Vec::new(),
+                drums_pulses: Vec::new(),
                 shutdown,
             },
             Task::none(),
@@ -972,13 +972,17 @@ impl WelcomeUi {
                 if self.shutdown.should_shutdown() {
                     return iced::exit();
                 }
+                self.prune_panel_pulses(Instant::now());
                 #[cfg(feature = "video")]
                 self.apply_playback_plan();
                 #[cfg(feature = "video")]
                 self.update_playback_regions();
                 Task::none()
             }
-            Message::PulseFrame => Task::none(),
+            Message::PulseFrame => {
+                self.prune_panel_pulses(Instant::now());
+                Task::none()
+            }
             Message::Keyboard(iced::keyboard::Event::KeyPressed { key, repeat, .. }) => {
                 if !repeat
                     && matches!(
@@ -1206,37 +1210,63 @@ impl WelcomeUi {
         base
     }
 
-    fn panel_pulse_started_at(&self, panel: Panel) -> Option<Instant> {
+    fn panel_pulses(&self, panel: Panel) -> &[Instant] {
         match panel {
-            Panel::LeadVocalist => self.lead_vocalist_pulse_started_at,
-            Panel::RhythmGuitarist => self.rhythm_guitarist_pulse_started_at,
-            Panel::LeadGuitarist => self.lead_guitarist_pulse_started_at,
-            Panel::Bass => self.bass_pulse_started_at,
-            Panel::Drums => self.drums_pulse_started_at,
+            Panel::LeadVocalist => &self.lead_vocalist_pulses,
+            Panel::RhythmGuitarist => &self.rhythm_guitarist_pulses,
+            Panel::LeadGuitarist => &self.lead_guitarist_pulses,
+            Panel::Bass => &self.bass_pulses,
+            Panel::Drums => &self.drums_pulses,
+        }
+    }
+
+    fn panel_pulses_mut(&mut self, panel: Panel) -> &mut Vec<Instant> {
+        match panel {
+            Panel::LeadVocalist => &mut self.lead_vocalist_pulses,
+            Panel::RhythmGuitarist => &mut self.rhythm_guitarist_pulses,
+            Panel::LeadGuitarist => &mut self.lead_guitarist_pulses,
+            Panel::Bass => &mut self.bass_pulses,
+            Panel::Drums => &mut self.drums_pulses,
         }
     }
 
     fn trigger_panel_pulse(&mut self, panel: Panel) {
-        let pulse_started_at = match panel {
-            Panel::LeadVocalist => &mut self.lead_vocalist_pulse_started_at,
-            Panel::RhythmGuitarist => &mut self.rhythm_guitarist_pulse_started_at,
-            Panel::LeadGuitarist => &mut self.lead_guitarist_pulse_started_at,
-            Panel::Bass => &mut self.bass_pulse_started_at,
-            Panel::Drums => &mut self.drums_pulse_started_at,
-        };
-        *pulse_started_at = Some(Instant::now());
+        let now = Instant::now();
+        let pulses = self.panel_pulses_mut(panel);
+        pulses.retain(|started_at| now.saturating_duration_since(*started_at) < PANEL_PULSE_DURATION);
+        pulses.push(now);
+        if pulses.len() > 32 {
+            let keep_from = pulses.len().saturating_sub(32);
+            pulses.drain(0..keep_from);
+        }
+    }
+
+    fn prune_panel_pulses(&mut self, now: Instant) {
+        for panel in [
+            Panel::LeadVocalist,
+            Panel::RhythmGuitarist,
+            Panel::LeadGuitarist,
+            Panel::Bass,
+            Panel::Drums,
+        ] {
+            self.panel_pulses_mut(panel)
+                .retain(|started_at| now.saturating_duration_since(*started_at) < PANEL_PULSE_DURATION);
+        }
     }
 
     fn panel_pulse_intensity(&self, panel: Panel, now: Instant) -> f32 {
-        let Some(started_at) = self.panel_pulse_started_at(panel) else {
-            return 0.0;
-        };
-        let elapsed = now.saturating_duration_since(started_at);
-        if elapsed >= PANEL_PULSE_DURATION {
-            return 0.0;
-        }
-        let progress = (elapsed.as_secs_f32() / PANEL_PULSE_DURATION.as_secs_f32()).clamp(0.0, 1.0);
-        (std::f32::consts::PI * progress).sin().max(0.0)
+        self.panel_pulses(panel)
+            .iter()
+            .map(|started_at| {
+                let elapsed = now.saturating_duration_since(*started_at);
+                if elapsed >= PANEL_PULSE_DURATION {
+                    return 0.0;
+                }
+                let progress =
+                    (elapsed.as_secs_f32() / PANEL_PULSE_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+                (std::f32::consts::PI * progress).sin().max(0.0)
+            })
+            .sum()
     }
 
     fn any_panel_pulse_active(&self) -> bool {
@@ -1609,18 +1639,19 @@ fn panel<'a>(
     content: Element<'a, jungle_vision::EjectedViewerMessage>,
     target: Panel,
     auto_viewport_enabled: bool,
-    pulse_intensity: f32,
+    pulse_strength: f32,
 ) -> Element<'a, Message> {
-    let border_color = lerp_color(
-        Color::from_rgb8(24, 63, 43),
-        Color::from_rgb8(64, 171, 102),
-        pulse_intensity,
-    );
-    let header_color = lerp_color(
-        Color::from_rgb8(198, 229, 211),
-        Color::from_rgb8(182, 252, 198),
-        pulse_intensity,
-    );
+    let border_base = Color::from_rgb8(24, 63, 43);
+    let border_bright = Color::from_rgb8(64, 171, 102);
+    let border_peak = Color::from_rgb8(108, 238, 146);
+    let header_base = Color::from_rgb8(198, 229, 211);
+    let header_bright = Color::from_rgb8(182, 252, 198);
+    let header_peak = Color::from_rgb8(225, 255, 232);
+    let primary = pulse_strength.clamp(0.0, 1.0);
+    let additive = (pulse_strength - 1.0).clamp(0.0, 1.0);
+    let border_color = lerp_color(lerp_color(border_base, border_bright, primary), border_peak, additive);
+    let header_color = lerp_color(lerp_color(header_base, header_bright, primary), header_peak, additive);
+    let border_width = 1.5 + primary * 0.3 + additive * 0.5;
     let lock_icon = if auto_viewport_enabled {
         LOCK_ICON_SVG
     } else {
@@ -1653,7 +1684,7 @@ fn panel<'a>(
     .padding(10)
     .width(Length::FillPortion(1))
     .height(Length::Fill)
-    .style(move |_theme| panel_style(border_color))
+    .style(move |_theme| panel_style(border_color, border_width))
     .into()
 }
 
@@ -1664,10 +1695,10 @@ fn app_background(_theme: &iced::Theme) -> iced::widget::container::Style {
     }
 }
 
-fn panel_style(border_color: Color) -> iced::widget::container::Style {
+fn panel_style(border_color: Color, border_width: f32) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(Color::from_rgb8(10, 26, 17))),
-        border: iced::border::rounded(8).color(border_color).width(1.5),
+        border: iced::border::rounded(8).color(border_color).width(border_width),
         ..Default::default()
     }
 }
