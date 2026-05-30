@@ -89,6 +89,7 @@ enum VideoAsset {
     Shrooms,
     Toucan,
     ToucanFly,
+    Welcome,
     Zebra,
 }
 
@@ -124,6 +125,7 @@ impl VideoAsset {
             Self::Shrooms => "shrooms.mkv",
             Self::Toucan => "toucan.mkv",
             Self::ToucanFly => "toucanfly.mkv",
+            Self::Welcome => "welcome.mkv",
             Self::Zebra => "zebra.mkv",
         }
     }
@@ -158,6 +160,7 @@ impl VideoAsset {
             Self::Shrooms => include_bytes!("../assets/shrooms.mkv"),
             Self::Toucan => include_bytes!("../assets/toucan.mkv"),
             Self::ToucanFly => include_bytes!("../assets/toucanfly.mkv"),
+            Self::Welcome => include_bytes!("../assets/welcome.mkv"),
             Self::Zebra => include_bytes!("../assets/zebra.mkv"),
         }
     }
