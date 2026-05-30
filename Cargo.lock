@@ -2775,7 +2775,6 @@ dependencies = [
  "clap",
  "futures",
  "iced",
- "iced-av1",
  "jungle-sdk",
  "jungle-vision",
  "postcard",
@@ -2789,6 +2788,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "welcome-audio",
+ "welcome-video",
 ]
 
 [[package]]
@@ -6668,6 +6668,17 @@ dependencies = [
  "futures",
  "serde",
  "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "welcome-video"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "iced-av1",
+ "serde",
+ "toml",
  "tracing",
 ]
 

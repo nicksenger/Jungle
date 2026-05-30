@@ -59,8 +59,7 @@ where
 {
     fn cache_key(&self) -> u64 {
         let runtime = u64::from(self.runtime_id.unwrap_or(u32::MAX));
-        self.cache_namespace
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        self.cache_namespace.wrapping_mul(0x9E37_79B9_7F4A_7C15)
             ^ ((runtime << 32) | u64::from(self.step_id))
     }
 

@@ -1,0 +1,14 @@
+[package]
+name = "welcome-video"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.14", features = ["tokio", "svg"] }
+iced-av1 = { path = "../../../../../iced-av1" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tracing = "0.1"
+
+[lints]
+workspace = true

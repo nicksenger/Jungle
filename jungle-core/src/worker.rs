@@ -8,8 +8,8 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
-    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Observable,
-    Noop, Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
+    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Noop, Observable,
+    Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};

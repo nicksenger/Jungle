@@ -31,6 +31,8 @@ use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 use uuid::Uuid;
 use welcome_audio::{AudioEngine, AudioHandle, StubAudioKeepAlive};
+#[cfg(feature = "video")]
+use welcome_video::VideoPlaybackPlan;
 
 #[cfg(feature = "postgres")]
 use testcontainers::runners::AsyncRunner;
@@ -176,7 +178,7 @@ struct CliArgs {
     enabled_animals: BTreeSet<SelectedAnimal>,
     animal_volumes: AnimalVolumes,
     #[cfg(feature = "video")]
-    video_playback_plan: Option<ui::VideoPlaybackPlan>,
+    video_playback_plan: Option<VideoPlaybackPlan>,
     #[cfg(feature = "transport")]
     server_addr: Option<SocketAddr>,
     #[cfg(feature = "transport")]
@@ -289,7 +291,7 @@ fn run_with_ui(
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
     animal_volumes: AnimalVolumes,
-    #[cfg(feature = "video")] video_playback_plan: Option<ui::VideoPlaybackPlan>,
+    #[cfg(feature = "video")] video_playback_plan: Option<VideoPlaybackPlan>,
     #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -1476,14 +1478,12 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
                 path.display()
             ))
         })?;
-        Some(
-            ui::VideoPlaybackPlan::from_toml_str(&toml_str).map_err(|err| {
-                std::io::Error::other(format!(
-                    "invalid --video-plan file `{}`: {err}",
-                    path.display()
-                ))
-            })?,
-        )
+        Some(VideoPlaybackPlan::from_toml_str(&toml_str).map_err(|err| {
+            std::io::Error::other(format!(
+                "invalid --video-plan file `{}`: {err}",
+                path.display()
+            ))
+        })?)
     } else {
         None
     };
