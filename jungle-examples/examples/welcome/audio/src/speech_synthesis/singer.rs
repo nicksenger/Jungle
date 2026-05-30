@@ -569,10 +569,10 @@ fn hash_noise(value: u64) -> f64 {
 mod tests {
     use std::time::Duration;
 
+    use super::{parser, reciter};
     use super::{
         render_vocal_note, EnhancementProfile, LyricInput, PitchMode, VocalNote, VoiceParams,
     };
-    use super::{parser, reciter};
 
     #[test]
     fn defaults_pin_high_quality_path() {

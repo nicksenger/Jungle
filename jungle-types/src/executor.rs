@@ -462,7 +462,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -495,7 +496,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -664,7 +666,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -697,7 +700,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }

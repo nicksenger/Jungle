@@ -16,8 +16,8 @@ pub use behavior::{
     UnitEmit,
 };
 pub use behavior::{
-    Action, Aspect, BoundAction, BoundFlowStep, Effect, EffectCompletion, EffectRequest, EffectSchema,
-    Identity, ScopeReboundAction, ScopedAction, ScopedAnimal, StateCarrier, Step,
+    Action, Aspect, BoundAction, BoundFlowStep, Effect, EffectCompletion, EffectRequest,
+    EffectSchema, Identity, ScopeReboundAction, ScopedAction, ScopedAnimal, StateCarrier, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
 pub use error::Error;

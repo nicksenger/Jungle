@@ -1,11 +1,11 @@
-use crate::UiClient;
 use crate::animals::{Bass, Drums, LeadGuitarist, LeadVocalist, RhythmGuitarist};
 use crate::metronome::Metronome;
+use crate::UiClient;
 use async_trait::async_trait;
 use futures::StreamExt;
 #[cfg(feature = "video")]
 use iced::widget::stack;
-use iced::widget::{Row, Space, button, column, container, svg, text};
+use iced::widget::{button, column, container, svg, text, Row, Space};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
@@ -13,8 +13,8 @@ use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "video")]
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, trace, warn};
 use uuid::Uuid;
@@ -25,6 +25,8 @@ const DEFERRED_STREAM_LAG_WARN_MS: u64 = 150;
 const DEFERRED_STREAM_SOURCE_EVENT_AGE_WARN_MS: i64 = 2_000;
 const DEFERRED_STREAM_SLOW_DECISION_WARN_US: u128 = 500;
 const UI_TICK_INTERVAL: Duration = Duration::from_millis(500);
+const PANEL_PULSE_DURATION: Duration = Duration::from_millis(420);
+const PANEL_PULSE_FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const LOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>"#;
 const UNLOCK_ICON_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M16 11V7a4 4 0 0 0-7.5-2"/></svg>"#;
 #[cfg(feature = "video")]
@@ -817,12 +819,14 @@ enum Message {
     Keyboard(iced::keyboard::Event),
     TogglePanelAutoViewport(Panel),
     Tick,
+    PulseFrame,
 }
 
 impl Message {
     fn name(&self) -> &'static str {
         match self {
             Message::Tick => "Tick",
+            Message::PulseFrame => "PulseFrame",
             Message::Panel(panel, _) => match panel {
                 Panel::LeadVocalist => "Panel(LeadVocalist)",
                 Panel::RhythmGuitarist => "Panel(RhythmGuitarist)",
@@ -882,6 +886,11 @@ struct WelcomeUi {
     drums_panel_overlay_layers: Vec<VideoOverlayLayer>,
     #[cfg(feature = "video")]
     video_playback_plan: Option<VideoPlaybackPlan>,
+    lead_vocalist_pulse_started_at: Option<Instant>,
+    rhythm_guitarist_pulse_started_at: Option<Instant>,
+    lead_guitarist_pulse_started_at: Option<Instant>,
+    bass_pulse_started_at: Option<Instant>,
+    drums_pulse_started_at: Option<Instant>,
     shutdown: ShutdownFlag,
 }
 
@@ -945,6 +954,11 @@ impl WelcomeUi {
                 drums_panel_overlay_layers: Vec::new(),
                 #[cfg(feature = "video")]
                 video_playback_plan: video_plan,
+                lead_vocalist_pulse_started_at: None,
+                rhythm_guitarist_pulse_started_at: None,
+                lead_guitarist_pulse_started_at: None,
+                bass_pulse_started_at: None,
+                drums_pulse_started_at: None,
                 shutdown,
             },
             Task::none(),
@@ -964,6 +978,7 @@ impl WelcomeUi {
                 self.update_playback_regions();
                 Task::none()
             }
+            Message::PulseFrame => Task::none(),
             Message::Keyboard(iced::keyboard::Event::KeyPressed { key, repeat, .. }) => {
                 if !repeat
                     && matches!(
@@ -1002,30 +1017,37 @@ impl WelcomeUi {
                 self.toggle_panel_auto_viewport(panel);
                 Task::none()
             }
-            Message::Panel(panel, event) => match panel {
-                Panel::LeadVocalist => self.lead_vocalist.as_mut().map_or_else(Task::none, |v| {
-                    v.update(event)
-                        .map(move |next| Message::Panel(Panel::LeadVocalist, next))
-                }),
-                Panel::RhythmGuitarist => {
-                    self.rhythm_guitarist.as_mut().map_or_else(Task::none, |v| {
+            Message::Panel(panel, event) => {
+                self.trigger_panel_pulse(panel);
+                match panel {
+                    Panel::LeadVocalist => {
+                        self.lead_vocalist.as_mut().map_or_else(Task::none, |v| {
+                            v.update(event)
+                                .map(move |next| Message::Panel(Panel::LeadVocalist, next))
+                        })
+                    }
+                    Panel::RhythmGuitarist => {
+                        self.rhythm_guitarist.as_mut().map_or_else(Task::none, |v| {
+                            v.update(event)
+                                .map(move |next| Message::Panel(Panel::RhythmGuitarist, next))
+                        })
+                    }
+                    Panel::LeadGuitarist => {
+                        self.lead_guitarist.as_mut().map_or_else(Task::none, |v| {
+                            v.update(event)
+                                .map(move |next| Message::Panel(Panel::LeadGuitarist, next))
+                        })
+                    }
+                    Panel::Bass => self.bass.as_mut().map_or_else(Task::none, |v| {
                         v.update(event)
-                            .map(move |next| Message::Panel(Panel::RhythmGuitarist, next))
-                    })
+                            .map(move |next| Message::Panel(Panel::Bass, next))
+                    }),
+                    Panel::Drums => self.drums.as_mut().map_or_else(Task::none, |v| {
+                        v.update(event)
+                            .map(move |next| Message::Panel(Panel::Drums, next))
+                    }),
                 }
-                Panel::LeadGuitarist => self.lead_guitarist.as_mut().map_or_else(Task::none, |v| {
-                    v.update(event)
-                        .map(move |next| Message::Panel(Panel::LeadGuitarist, next))
-                }),
-                Panel::Bass => self.bass.as_mut().map_or_else(Task::none, |v| {
-                    v.update(event)
-                        .map(move |next| Message::Panel(Panel::Bass, next))
-                }),
-                Panel::Drums => self.drums.as_mut().map_or_else(Task::none, |v| {
-                    v.update(event)
-                        .map(move |next| Message::Panel(Panel::Drums, next))
-                }),
-            },
+            }
         }
     }
 
@@ -1068,6 +1090,10 @@ impl WelcomeUi {
         }
         subscriptions.push(iced::keyboard::listen().map(Message::Keyboard));
         subscriptions.push(iced::time::every(UI_TICK_INTERVAL).map(|_| Message::Tick));
+        if self.any_panel_pulse_active() {
+            subscriptions
+                .push(iced::time::every(PANEL_PULSE_FRAME_INTERVAL).map(|_| Message::PulseFrame));
+        }
         #[cfg(feature = "video")]
         {
             for layer in &self.app_overlay_layers {
@@ -1163,7 +1189,14 @@ impl WelcomeUi {
         panel_kind: Panel,
     ) -> Element<'a, Message> {
         let auto_viewport_enabled = self.panel_auto_viewport_enabled(panel_kind);
-        let base = panel(label, content, panel_kind, auto_viewport_enabled);
+        let pulse_intensity = self.panel_pulse_intensity(panel_kind, Instant::now());
+        let base = panel(
+            label,
+            content,
+            panel_kind,
+            auto_viewport_enabled,
+            pulse_intensity,
+        );
         #[cfg(feature = "video")]
         {
             return self.stack_panel_overlays(base, panel_kind);
@@ -1171,6 +1204,52 @@ impl WelcomeUi {
 
         #[cfg(not(feature = "video"))]
         base
+    }
+
+    fn panel_pulse_started_at(&self, panel: Panel) -> Option<Instant> {
+        match panel {
+            Panel::LeadVocalist => self.lead_vocalist_pulse_started_at,
+            Panel::RhythmGuitarist => self.rhythm_guitarist_pulse_started_at,
+            Panel::LeadGuitarist => self.lead_guitarist_pulse_started_at,
+            Panel::Bass => self.bass_pulse_started_at,
+            Panel::Drums => self.drums_pulse_started_at,
+        }
+    }
+
+    fn trigger_panel_pulse(&mut self, panel: Panel) {
+        let pulse_started_at = match panel {
+            Panel::LeadVocalist => &mut self.lead_vocalist_pulse_started_at,
+            Panel::RhythmGuitarist => &mut self.rhythm_guitarist_pulse_started_at,
+            Panel::LeadGuitarist => &mut self.lead_guitarist_pulse_started_at,
+            Panel::Bass => &mut self.bass_pulse_started_at,
+            Panel::Drums => &mut self.drums_pulse_started_at,
+        };
+        *pulse_started_at = Some(Instant::now());
+    }
+
+    fn panel_pulse_intensity(&self, panel: Panel, now: Instant) -> f32 {
+        let Some(started_at) = self.panel_pulse_started_at(panel) else {
+            return 0.0;
+        };
+        let elapsed = now.saturating_duration_since(started_at);
+        if elapsed >= PANEL_PULSE_DURATION {
+            return 0.0;
+        }
+        let progress = (elapsed.as_secs_f32() / PANEL_PULSE_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+        (std::f32::consts::PI * progress).sin().max(0.0)
+    }
+
+    fn any_panel_pulse_active(&self) -> bool {
+        let now = Instant::now();
+        [
+            Panel::LeadVocalist,
+            Panel::RhythmGuitarist,
+            Panel::LeadGuitarist,
+            Panel::Bass,
+            Panel::Drums,
+        ]
+        .into_iter()
+        .any(|panel| self.panel_pulse_intensity(panel, now) > 0.0)
     }
 
     fn panel_auto_viewport_enabled(&self, panel: Panel) -> bool {
@@ -1330,11 +1409,7 @@ impl WelcomeUi {
     }
 
     #[cfg(feature = "video")]
-    fn tick_region(
-        overlay: &iced_av1::widget::State,
-        playback: &mut RegionPlayback,
-        now: Instant,
-    ) {
+    fn tick_region(overlay: &iced_av1::widget::State, playback: &mut RegionPlayback, now: Instant) {
         if !playback.enabled {
             return;
         }
@@ -1391,11 +1466,7 @@ impl WelcomeUi {
         let fade_out_duration = request.fade_out.min(request.duration);
         playback.enabled = true;
         playback.visible_until = Some(visible_until);
-        playback.fade_out_at = Some(
-            visible_until
-                .checked_sub(fade_out_duration)
-                .unwrap_or(now),
-        );
+        playback.fade_out_at = Some(visible_until.checked_sub(fade_out_duration).unwrap_or(now));
         playback.fade_out_duration = fade_out_duration;
         playback.fade_out_started = false;
     }
@@ -1421,7 +1492,11 @@ impl WelcomeUi {
     #[cfg(feature = "video")]
     fn stack_app_overlays<'a>(&'a self, app: Element<'a, Message>) -> Element<'a, Message> {
         let mut composed = app;
-        for layer in self.app_overlay_layers.iter().filter(|layer| layer.playback.enabled) {
+        for layer in self
+            .app_overlay_layers
+            .iter()
+            .filter(|layer| layer.playback.enabled)
+        {
             let layer_id = layer.id;
             if let Some(overlay) = layer.state.overlay_view(map_video_message) {
                 let overlay = overlay.map(move |event| Message::AppVideoLayer(layer_id, event));
@@ -1534,7 +1609,18 @@ fn panel<'a>(
     content: Element<'a, jungle_vision::EjectedViewerMessage>,
     target: Panel,
     auto_viewport_enabled: bool,
+    pulse_intensity: f32,
 ) -> Element<'a, Message> {
+    let border_color = lerp_color(
+        Color::from_rgb8(24, 63, 43),
+        Color::from_rgb8(64, 171, 102),
+        pulse_intensity,
+    );
+    let header_color = lerp_color(
+        Color::from_rgb8(198, 229, 211),
+        Color::from_rgb8(182, 252, 198),
+        pulse_intensity,
+    );
     let lock_icon = if auto_viewport_enabled {
         LOCK_ICON_SVG
     } else {
@@ -1555,7 +1641,7 @@ fn panel<'a>(
     container(
         column![
             Row::new()
-                .push(text(label).size(13).color(Color::from_rgb8(198, 229, 211)))
+                .push(text(label).size(13).color(header_color))
                 .push(Space::new().width(Length::Fill))
                 .push(lock_button),
             container(content.map(move |event| Message::Panel(target, event)))
@@ -1567,7 +1653,7 @@ fn panel<'a>(
     .padding(10)
     .width(Length::FillPortion(1))
     .height(Length::Fill)
-    .style(panel_style)
+    .style(move |_theme| panel_style(border_color))
     .into()
 }
 
@@ -1578,13 +1664,21 @@ fn app_background(_theme: &iced::Theme) -> iced::widget::container::Style {
     }
 }
 
-fn panel_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+fn panel_style(border_color: Color) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(Color::from_rgb8(10, 26, 17))),
-        border: iced::border::rounded(8)
-            .color(Color::from_rgb8(24, 63, 43))
-            .width(1.0),
+        border: iced::border::rounded(8).color(border_color).width(1.5),
         ..Default::default()
+    }
+}
+
+fn lerp_color(from: Color, to: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    Color {
+        r: from.r + (to.r - from.r) * t,
+        g: from.g + (to.g - from.g) * t,
+        b: from.b + (to.b - from.b) * t,
+        a: from.a + (to.a - from.a) * t,
     }
 }
 

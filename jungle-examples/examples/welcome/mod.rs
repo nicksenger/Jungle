@@ -39,7 +39,7 @@ use testcontainers_modules::postgres::Postgres;
 
 use crate::{
     animals::{
-        Bass as BassAnimal, Drums, RhythmGuitarist, LeadVocalist, LeadVocalistSeed, LeadGuitarist,
+        Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, LeadVocalistSeed, RhythmGuitarist,
     },
     ecosystem::{AnimalVolumes, TheJungle},
     instrumentation::SynthHandle,
@@ -1476,12 +1476,14 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
                 path.display()
             ))
         })?;
-        Some(ui::VideoPlaybackPlan::from_toml_str(&toml_str).map_err(|err| {
-            std::io::Error::other(format!(
-                "invalid --video-plan file `{}`: {err}",
-                path.display()
-            ))
-        })?)
+        Some(
+            ui::VideoPlaybackPlan::from_toml_str(&toml_str).map_err(|err| {
+                std::io::Error::other(format!(
+                    "invalid --video-plan file `{}`: {err}",
+                    path.display()
+                ))
+            })?,
+        )
     } else {
         None
     };

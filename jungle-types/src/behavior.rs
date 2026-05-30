@@ -181,8 +181,10 @@ where
     InnerAct: BoundAction<ScopedAnimal<A, ScopeState>>,
 {
     type Effect = <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::Effect;
-    type Aspect =
-        ComposeCarrier<ScopeCarrier, <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::Aspect>;
+    type Aspect = ComposeCarrier<
+        ScopeCarrier,
+        <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::Aspect,
+    >;
     type Input = <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::Input;
     type Output = <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::Output;
     type Carry = <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::Carry;
@@ -213,7 +215,9 @@ where
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Self::Output {
-        <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::absorb_with_carry(view, output, carry)
+        <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::absorb_with_carry(
+            view, output, carry,
+        )
     }
 }
 
@@ -231,8 +235,12 @@ where
         Carry = <S as Action>::Carry,
     >,
 {
-    type BoundAction =
-        ScopeReboundAction<A, ScopeState, ScopeCarrier, <S as Action>::Bind<ScopedAnimal<A, ScopeState>>>;
+    type BoundAction = ScopeReboundAction<
+        A,
+        ScopeState,
+        ScopeCarrier,
+        <S as Action>::Bind<ScopedAnimal<A, ScopeState>>,
+    >;
 }
 
 /// Forward half of [`BoundAction`], responsible for producing an effect request input.

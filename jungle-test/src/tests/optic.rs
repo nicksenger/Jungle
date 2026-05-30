@@ -214,10 +214,10 @@ fn seed_state() -> RootState {
 
 #[test]
 fn state_lens_single_index_short_flow() {
-    let (state, request) =
-        <BoundFlowStep<OpticAnimal, <LensOnBranchSpec as Action>::Bind<OpticAnimal>> as Running>::run(
-            (seed_state(), 3),
-        );
+    let (state, request) = <BoundFlowStep<
+        OpticAnimal,
+        <LensOnBranchSpec as Action>::Bind<OpticAnimal>,
+    > as Running>::run((seed_state(), 3));
     assert_eq!(request.0.into_input(), 7);
 
     let (state, emitted) = <BoundFlowStep<

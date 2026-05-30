@@ -81,11 +81,13 @@ mod tests {
 
         let phonemes = tuples
             .iter()
-            .map(|&[index, length, stress]| crate::speech_synthesis::parser::Phoneme {
-                length,
-                index: index as usize,
-                stress,
-            })
+            .map(
+                |&[index, length, stress]| crate::speech_synthesis::parser::Phoneme {
+                    length,
+                    index: index as usize,
+                    stress,
+                },
+            )
             .collect::<Vec<_>>();
 
         let frequency_data = set_mouth_and_throat(64, 96);
@@ -232,11 +234,13 @@ mod tests {
 
         let phonemes = tuples
             .iter()
-            .map(|&[index, length, stress]| crate::speech_synthesis::parser::Phoneme {
-                length,
-                index: index as usize,
-                stress,
-            })
+            .map(
+                |&[index, length, stress]| crate::speech_synthesis::parser::Phoneme {
+                    length,
+                    index: index as usize,
+                    stress,
+                },
+            )
             .collect::<Vec<_>>();
 
         let result = create_transitions(&mut frames, &phonemes);
@@ -400,11 +404,13 @@ mod tests {
 
         let phonemes = tuples
             .iter()
-            .map(|&[index, length, stress]| crate::speech_synthesis::parser::Phoneme {
-                length,
-                index: index as usize,
-                stress,
-            })
+            .map(
+                |&[index, length, stress]| crate::speech_synthesis::parser::Phoneme {
+                    length,
+                    index: index as usize,
+                    stress,
+                },
+            )
             .collect::<Vec<_>>();
 
         let result = create_transitions(&mut frames, &phonemes);
