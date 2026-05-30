@@ -37,6 +37,7 @@ const VISION_APPLY_QUEUE_DELAY_WARN_MS: i64 = 100;
 const VISION_END_TO_END_AGE_WARN_MS: i64 = 2_000;
 const VISION_SLOW_APPLY_WARN_MS: u128 = 20;
 const VISION_SLOW_THEME_UPDATE_WARN_MS: u128 = 20;
+const RUNNING_REPAIR_PROMOTION_SEQUENCE_GAP: usize = 2;
 
 static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
 static VISION_LIVE_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -1271,7 +1272,26 @@ fn repaired_live_states_for_display(
     };
 
     let mut states = HashMap::<u32, RuntimeState>::new();
+    let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
     for node in &model.nodes {
+        let mut latest_sequence = node
+            .runtime_node_id
+            .and_then(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied());
+        for proxy_runtime_id in &node.proxy_runtime_ids {
+            let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
+                continue;
+            };
+            if latest_sequence
+                .map(|current| sequence > current)
+                .unwrap_or(true)
+            {
+                latest_sequence = Some(sequence);
+            }
+        }
+        if let Some(sequence) = latest_sequence {
+            latest_sequence_by_display_id.insert(node.id, sequence);
+        }
+
         let phase = node_phase_for_display(
             Some(live),
             node.id,
@@ -1315,6 +1335,21 @@ fn repaired_live_states_for_display(
                 RuntimeState::Pending | RuntimeState::Running
             ) {
                 continue;
+            }
+            if matches!(predecessor_state, RuntimeState::Running) {
+                let can_promote_running = match (
+                    latest_sequence_by_display_id.get(&node_id).copied(),
+                    latest_sequence_by_display_id.get(predecessor).copied(),
+                ) {
+                    (Some(trigger_sequence), Some(predecessor_sequence)) => {
+                        trigger_sequence.saturating_sub(predecessor_sequence)
+                            >= RUNNING_REPAIR_PROMOTION_SEQUENCE_GAP
+                    }
+                    _ => true,
+                };
+                if !can_promote_running {
+                    continue;
+                }
             }
             states.insert(*predecessor, RuntimeState::Completed);
             if queued.insert(*predecessor) {
@@ -3287,7 +3322,7 @@ mod tests {
     }
 
     #[test]
-    fn repaired_live_states_promote_running_predecessor_to_completed() {
+    fn repaired_live_states_delay_running_predecessor_promotion() {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::Step { label: "A" },
             JourneyAst::Step { label: "B" },
@@ -3327,8 +3362,59 @@ mod tests {
             Some(&live),
             &model.derived.condition_successor_runtime_ids,
         );
-        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Running));
         assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn repaired_live_states_eventually_promote_running_predecessor() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "A" },
+            JourneyAst::Step { label: "B" },
+        ]);
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let a_id = id_for("A");
+
+        let mut live = LiveData::default();
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 1,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 3,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectSuccessOutput {
+                node_id: 1,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
     }
 
     #[test]
