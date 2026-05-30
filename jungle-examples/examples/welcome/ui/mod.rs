@@ -75,14 +75,11 @@ const fn default_video_fade_out() -> Duration {
 #[cfg(feature = "video")]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum VideoAsset {
-    Baboons,
     Chimp,
     Chimp2,
     Chimp3,
     Chimp4,
     Croc,
-    Croc2,
-    Croc3,
     Croc4,
     Elephants,
     Elephants2,
@@ -99,9 +96,7 @@ enum VideoAsset {
     Jungle2,
     JungleDown,
     JungleDown2,
-    Lions,
     Lions2,
-    Lions3,
     Monkey,
     Ostrich,
     Rhino,
@@ -119,14 +114,11 @@ enum VideoAsset {
 impl VideoAsset {
     const fn name(self) -> &'static str {
         match self {
-            Self::Baboons => "baboons.mkv",
             Self::Chimp => "chimp.mkv",
             Self::Chimp2 => "chimp2.mkv",
             Self::Chimp3 => "chimp3.mkv",
             Self::Chimp4 => "chimp4.mkv",
             Self::Croc => "croc.mkv",
-            Self::Croc2 => "croc2.mkv",
-            Self::Croc3 => "croc3.mkv",
             Self::Croc4 => "croc4.mkv",
             Self::Elephants => "elephants.mkv",
             Self::Elephants2 => "elephants2.mkv",
@@ -143,9 +135,7 @@ impl VideoAsset {
             Self::Jungle2 => "jungle2.mkv",
             Self::JungleDown => "jungledown.mkv",
             Self::JungleDown2 => "jungledown2.mkv",
-            Self::Lions => "lions.mkv",
             Self::Lions2 => "lions2.mkv",
-            Self::Lions3 => "lions3.mkv",
             Self::Monkey => "monkey.mkv",
             Self::Ostrich => "ostrich.mkv",
             Self::Rhino => "rhino.mkv",
@@ -162,14 +152,11 @@ impl VideoAsset {
 
     const fn bytes(self) -> &'static [u8] {
         match self {
-            Self::Baboons => include_bytes!("../assets/baboons.mkv"),
             Self::Chimp => include_bytes!("../assets/chimp.mkv"),
             Self::Chimp2 => include_bytes!("../assets/chimp2.mkv"),
             Self::Chimp3 => include_bytes!("../assets/chimp3.mkv"),
             Self::Chimp4 => include_bytes!("../assets/chimp4.mkv"),
             Self::Croc => include_bytes!("../assets/croc.mkv"),
-            Self::Croc2 => include_bytes!("../assets/croc2.mkv"),
-            Self::Croc3 => include_bytes!("../assets/croc3.mkv"),
             Self::Croc4 => include_bytes!("../assets/croc4.mkv"),
             Self::Elephants => include_bytes!("../assets/elephants.mkv"),
             Self::Elephants2 => include_bytes!("../assets/elephants2.mkv"),
@@ -186,9 +173,7 @@ impl VideoAsset {
             Self::Jungle2 => include_bytes!("../assets/jungle2.mkv"),
             Self::JungleDown => include_bytes!("../assets/jungledown.mkv"),
             Self::JungleDown2 => include_bytes!("../assets/jungledown2.mkv"),
-            Self::Lions => include_bytes!("../assets/lions.mkv"),
             Self::Lions2 => include_bytes!("../assets/lions2.mkv"),
-            Self::Lions3 => include_bytes!("../assets/lions3.mkv"),
             Self::Monkey => include_bytes!("../assets/monkey.mkv"),
             Self::Ostrich => include_bytes!("../assets/ostrich.mkv"),
             Self::Rhino => include_bytes!("../assets/rhino.mkv"),
@@ -646,27 +631,6 @@ struct VideoPlaybackRequest {
     opacity: f32,
     #[serde(default = "default_cover_offset")]
     cover_offset: f32,
-}
-
-#[cfg(feature = "video")]
-impl VideoPlaybackRequest {
-    const fn new(
-        video: VideoAsset,
-        offset_ms: u64,
-        duration_ms: u64,
-        opacity: f32,
-        cover_offset: f32,
-    ) -> Self {
-        Self {
-            video,
-            offset: Duration::from_millis(offset_ms),
-            duration: Duration::from_millis(duration_ms),
-            fade_in: VIDEO_FADE_IN,
-            fade_out: VIDEO_FADE_OUT,
-            opacity,
-            cover_offset,
-        }
-    }
 }
 
 #[cfg(feature = "video")]
