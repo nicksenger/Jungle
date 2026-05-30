@@ -6,7 +6,7 @@ edition = "2021"
 [features]
 default = []
 viewer = ["dep:jungle-vision", "dep:iced"]
-video = ["dep:iced-av1"]
+video = ["dep:welcome-video"]
 audio = ["dep:welcome-audio"]
 redb = []
 postgres = ["dep:testcontainers", "dep:testcontainers-modules", "jungle_sdk/pg"]
@@ -22,10 +22,11 @@ futures = { workspace = true }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "local"] }
 jungle-vision = { path = "../jungle-vision", optional = true }
 iced = { version = "0.14", features = ["tokio", "svg"], optional = true }
-iced-av1 = { path = "../../iced-av1", optional = true }
 welcome-audio = { path = "examples/welcome/audio", optional = true }
+welcome-video = { path = "examples/welcome/video", optional = true }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true }
+toml = "0.8"
 thiserror = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 tracing = "0.1"

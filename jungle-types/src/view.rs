@@ -1,5 +1,6 @@
 use crate::{
-    Action, BoundFlowStep, Conditional, Join, NodeMetadata, Scoped, Select, Step, Transparent, While,
+    Action, BoundFlowStep, Conditional, Join, NodeMetadata, Scoped, Select, Step, Transparent,
+    While,
 };
 use inception::*;
 

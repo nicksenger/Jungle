@@ -1,5 +1,6 @@
 pub mod dsp;
 mod mixer;
+pub mod speech_synthesis;
 pub mod vocals;
 
 use std::sync::{

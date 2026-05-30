@@ -275,7 +275,10 @@ impl Action for AddTwoAfterFullStateSpec {
 
 type MultiMatchBeforeFlow = Conditional<
     UseFirstBeforeFullStateTask,
-    BoundFlowStep<IntegrationAnimal, <AddOneBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>>,
+    BoundFlowStep<
+        IntegrationAnimal,
+        <AddOneBeforeFullStateSpec as Action>::Bind<IntegrationAnimal>,
+    >,
     Conditional<
         UseFirstBeforeFullStateTask,
         BoundFlowStep<

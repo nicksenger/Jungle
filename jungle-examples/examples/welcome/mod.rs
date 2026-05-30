@@ -13,6 +13,8 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 #[cfg(feature = "transport")]
 use std::net::{Ipv6Addr, SocketAddr, UdpSocket};
+#[cfg(feature = "video")]
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -29,6 +31,8 @@ use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 use uuid::Uuid;
 use welcome_audio::{AudioEngine, AudioHandle, StubAudioKeepAlive};
+#[cfg(feature = "video")]
+use welcome_video::VideoPlaybackPlan;
 
 #[cfg(feature = "postgres")]
 use testcontainers::runners::AsyncRunner;
@@ -37,7 +41,7 @@ use testcontainers_modules::postgres::Postgres;
 
 use crate::{
     animals::{
-        Bass as BassAnimal, Drums, RhythmGuitarist, LeadVocalist, LeadVocalistSeed, LeadGuitarist,
+        Bass as BassAnimal, Drums, LeadGuitarist, LeadVocalist, LeadVocalistSeed, RhythmGuitarist,
     },
     ecosystem::{AnimalVolumes, TheJungle},
     instrumentation::SynthHandle,
@@ -119,6 +123,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             args.event_lead_time_ms,
             args.enabled_animals,
             args.animal_volumes,
+            #[cfg(feature = "video")]
+            args.video_playback_plan,
             args.server_addr,
         );
     }
@@ -151,6 +157,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.event_lead_time_ms,
         args.enabled_animals,
         args.animal_volumes,
+        #[cfg(feature = "video")]
+        args.video_playback_plan,
         #[cfg(feature = "transport")]
         args.server_addr,
     )
@@ -169,6 +177,8 @@ struct CliArgs {
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
     animal_volumes: AnimalVolumes,
+    #[cfg(feature = "video")]
+    video_playback_plan: Option<VideoPlaybackPlan>,
     #[cfg(feature = "transport")]
     server_addr: Option<SocketAddr>,
     #[cfg(feature = "transport")]
@@ -236,6 +246,10 @@ struct WelcomeCliArgs {
     /// Comma-delimited `animal:volume` values (0..=1), for example `lead-vocalist:0.8,bassist:0.2`.
     #[clap(long = "animal-volumes", value_delimiter = ',', value_parser = parse_animal_volume_value)]
     animal_volumes: Vec<AnimalVolumeOverride>,
+    /// Path to TOML serialized video tick playback plan (`[[plans]]` with inline request tables). Uses built-in plan when omitted.
+    #[cfg(feature = "video")]
+    #[clap(long = "video-plan")]
+    video_plan: Option<PathBuf>,
     /// Connect to an already-running jungle transport server instead of starting one locally.
     #[cfg(feature = "transport")]
     #[clap(long = "server-addr", value_parser = parse_server_addr_value)]
@@ -277,6 +291,7 @@ fn run_with_ui(
     event_lead_time_ms: u64,
     enabled_animals: BTreeSet<SelectedAnimal>,
     animal_volumes: AnimalVolumes,
+    #[cfg(feature = "video")] video_playback_plan: Option<VideoPlaybackPlan>,
     #[cfg(feature = "transport")] server_addr: Option<SocketAddr>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<UiSetup, String>>(1);
@@ -324,7 +339,14 @@ fn run_with_ui(
         ))
     })?;
 
-    ui::run_ui(setup.client, setup.journeys, setup.metronome, ui_shutdown)?;
+    ui::run_ui(
+        setup.client,
+        setup.journeys,
+        setup.metronome,
+        ui_shutdown,
+        #[cfg(feature = "video")]
+        video_playback_plan,
+    )?;
 
     let thread_result = runtime_thread.join().map_err(|_| {
         error!("runtime thread panicked while running welcome example");
@@ -1448,6 +1470,23 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
             SelectedAnimal::Drummer => animal_volumes.with_drummer(override_entry.volume),
         };
     }
+    #[cfg(feature = "video")]
+    let video_playback_plan = if let Some(path) = parsed.video_plan.as_ref() {
+        let toml_str = std::fs::read_to_string(path).map_err(|err| {
+            std::io::Error::other(format!(
+                "failed reading --video-plan file `{}`: {err}",
+                path.display()
+            ))
+        })?;
+        Some(VideoPlaybackPlan::from_toml_str(&toml_str).map_err(|err| {
+            std::io::Error::other(format!(
+                "invalid --video-plan file `{}`: {err}",
+                path.display()
+            ))
+        })?)
+    } else {
+        None
+    };
     Ok(CliArgs {
         bpm: parsed.bpm,
         lyrics,
@@ -1461,6 +1500,8 @@ fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         event_lead_time_ms: parsed.event_lead_time_ms,
         enabled_animals,
         animal_volumes,
+        #[cfg(feature = "video")]
+        video_playback_plan,
         #[cfg(feature = "transport")]
         server_addr: parsed.server_addr,
         #[cfg(feature = "transport")]

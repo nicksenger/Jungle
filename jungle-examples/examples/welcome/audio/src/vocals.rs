@@ -1,6 +1,9 @@
 use std::{sync::Arc, time::Duration};
 
-use rustsam::singer::{render_vocal_note, LyricInput, VocalNote, VoiceParams};
+use crate::speech_synthesis::{
+    parser, reciter,
+    singer::{render_vocal_note, LyricInput, VocalNote, VoiceParams},
+};
 use tracing::warn;
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
@@ -13,7 +16,7 @@ pub struct Phoneme {
 pub fn phonemes_from_text(text: &str) -> [Option<Phoneme>; 12] {
     let mut output = [None; 12];
 
-    let parsed_text = match rustsam::reciter::text_to_phonemes(text) {
+    let parsed_text = match reciter::text_to_phonemes(text) {
         Ok(parsed_text) => parsed_text,
         Err(err) => {
             warn!(word = text, error = %err, "failed to recite text into rustsam phonemes");
@@ -21,7 +24,7 @@ pub fn phonemes_from_text(text: &str) -> [Option<Phoneme>; 12] {
         }
     };
 
-    let parsed_phonemes = match rustsam::parser::parse_phonemes(&parsed_text) {
+    let parsed_phonemes = match parser::parse_phonemes(&parsed_text) {
         Ok(parsed_phonemes) => parsed_phonemes,
         Err(err) => {
             warn!(word = text, error = %err, "failed to parse rustsam phoneme string");
@@ -60,10 +63,10 @@ pub fn synthesize_formant_vocals(
     const FORMANT_TARGET_PEAK: f32 = 0.92;
     const FORMANT_MAX_MAKEUP_GAIN: f32 = 4.0;
 
-    let phonemes: Vec<rustsam::parser::Phoneme> = phonemes
+    let phonemes: Vec<parser::Phoneme> = phonemes
         .into_iter()
         .flatten()
-        .map(|phoneme| rustsam::parser::Phoneme {
+        .map(|phoneme| parser::Phoneme {
             length: phoneme.length,
             index: phoneme.index,
             stress: phoneme.stress,

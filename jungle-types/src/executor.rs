@@ -462,7 +462,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -495,12 +496,36 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
-            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
-                return Err((state, err));
-            }
-            self.pending_inline_input = Some(input);
-            return Err((state, ExecutorError::Complete));
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        {
+            let typed_input = match deserialize_step_input::<A::Input>(&input) {
+                Ok(typed_input) => typed_input,
+                Err(err) => return Err((state, err)),
+            };
+            let (state, (request, carry)) =
+                <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+            self.pending_carry = Some(carry);
+            let request = match postcard::to_allocvec(&request.into_input()) {
+                Ok(request) => request,
+                Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+            };
+            let runner: EffectRunner = Box::new(move || {
+                Box::pin(async move {
+                    let completion = Ok(postcard::to_allocvec(&())
+                        .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
+                    Ok(completion)
+                })
+            });
+            self.waiting_completion = true;
+            return Ok((
+                state,
+                ExecutableEffectRequest::new(
+                    self.node_id,
+                    core::any::type_name::<<A as BoundAction<T>>::Effect>(),
+                    request,
+                    runner,
+                ),
+            ));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {
@@ -664,7 +689,8 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        {
             if let Err(err) = deserialize_step_input::<A::Input>(&input) {
                 return Err((state, err));
             }
@@ -697,12 +723,36 @@ where
         if self.waiting_completion {
             return Err((state, ExecutorError::AwaitingCompletion));
         }
-        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>() {
-            if let Err(err) = deserialize_step_input::<A::Input>(&input) {
-                return Err((state, err));
-            }
-            self.pending_inline_input = Some(input);
-            return Err((state, ExecutorError::Complete));
+        if core::any::type_name::<<A as BoundAction<T>>::Effect>() == core::any::type_name::<Noop>()
+        {
+            let typed_input = match deserialize_step_input::<A::Input>(&input) {
+                Ok(typed_input) => typed_input,
+                Err(err) => return Err((state, err)),
+            };
+            let (state, (request, carry)) =
+                <BoundFlowStep<T, A> as Running>::run((state, typed_input));
+            self.pending_carry = Some(carry);
+            let request = match postcard::to_allocvec(&request.into_input()) {
+                Ok(request) => request,
+                Err(err) => return Err((state, ExecutorError::RequestSerialize(err.to_string()))),
+            };
+            let runner: EffectRunner = Box::new(move || {
+                Box::pin(async move {
+                    let completion = Ok(postcard::to_allocvec(&())
+                        .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?);
+                    Ok(completion)
+                })
+            });
+            self.waiting_completion = true;
+            return Ok((
+                state,
+                ExecutableEffectRequest::new(
+                    self.node_id,
+                    core::any::type_name::<<A as BoundAction<T>>::Effect>(),
+                    request,
+                    runner,
+                ),
+            ));
         }
 
         let typed_input = match deserialize_step_input::<A::Input>(&input) {

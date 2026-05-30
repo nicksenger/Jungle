@@ -132,7 +132,7 @@ impl LocalClient {
             .map_err(|err| ExecutorError::ClientTransport(err.to_string()))?;
         let backend_handle_elapsed_ms = backend_handle_started_at.elapsed().as_millis();
         if backend_handle_elapsed_ms > LOCAL_REQUEST_SLOW_BACKEND_HANDLE_WARN_MS {
-            warn!(
+            debug!(
                 namespace = %self.namespace,
                 request_kind,
                 backend_handle_elapsed_ms,
@@ -245,7 +245,7 @@ impl LocalClient {
                                 "local subscription received stale journey update"
                             );
                         } else if recv_wait_ms > LOCAL_SUBSCRIPTION_SLOW_RECV_WARN_MS {
-                            warn!(
+                            debug!(
                                 journey_id = ?subscribed_journey_id,
                                 event_count,
                                 sequence_id = update.sequence_id,
