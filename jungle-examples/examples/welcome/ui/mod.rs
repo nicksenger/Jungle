@@ -58,6 +58,16 @@ mod duration_millis {
 const fn default_cover_offset() -> f32 {
     0.5
 }
+
+#[cfg(feature = "video")]
+const fn default_video_fade_in() -> Duration {
+    VIDEO_FADE_IN
+}
+
+#[cfg(feature = "video")]
+const fn default_video_fade_out() -> Duration {
+    VIDEO_FADE_OUT
+}
 #[cfg(feature = "video")]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum VideoAsset {
@@ -601,6 +611,10 @@ struct VideoPlaybackRequest {
     offset: Duration,
     #[serde(with = "duration_millis")]
     duration: Duration,
+    #[serde(default = "default_video_fade_in", with = "duration_millis")]
+    fade_in: Duration,
+    #[serde(default = "default_video_fade_out", with = "duration_millis")]
+    fade_out: Duration,
     opacity: f32,
     #[serde(default = "default_cover_offset")]
     cover_offset: f32,
@@ -619,6 +633,8 @@ impl VideoPlaybackRequest {
             video,
             offset: Duration::from_millis(offset_ms),
             duration: Duration::from_millis(duration_ms),
+            fade_in: VIDEO_FADE_IN,
+            fade_out: VIDEO_FADE_OUT,
             opacity,
             cover_offset,
         }
@@ -746,6 +762,7 @@ struct RegionPlayback {
     enabled: bool,
     visible_until: Option<Instant>,
     fade_out_at: Option<Instant>,
+    fade_out_duration: Duration,
     fade_out_started: bool,
 }
 
@@ -756,6 +773,7 @@ impl RegionPlayback {
             enabled: false,
             visible_until: None,
             fade_out_at: None,
+            fade_out_duration: VIDEO_FADE_OUT,
             fade_out_started: false,
         }
     }
@@ -1349,7 +1367,7 @@ impl WelcomeUi {
                         overlay.tween_to_opacity_with(
                             0.0,
                             iced_av1::OpacityTween {
-                                duration: VIDEO_FADE_OUT,
+                                duration: playback.fade_out_duration,
                             },
                         );
                     }
@@ -1391,19 +1409,21 @@ impl WelcomeUi {
             overlay.tween_to_opacity_with(
                 request.opacity,
                 iced_av1::OpacityTween {
-                    duration: VIDEO_FADE_IN.min(request.duration),
+                    duration: request.fade_in.min(request.duration),
                 },
             );
         }
 
         let visible_until = now + request.duration;
+        let fade_out_duration = request.fade_out.min(request.duration);
         playback.enabled = true;
         playback.visible_until = Some(visible_until);
         playback.fade_out_at = Some(
             visible_until
-                .checked_sub(VIDEO_FADE_OUT.min(request.duration))
+                .checked_sub(fade_out_duration)
                 .unwrap_or(now),
         );
+        playback.fade_out_duration = fade_out_duration;
         playback.fade_out_started = false;
     }
 
