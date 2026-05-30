@@ -13,9 +13,9 @@ use std::time::{Duration, Instant};
 use tracing::info;
 
 const FRAME_DURATION: Duration = Duration::from_millis(16);
-static TWEEN_CACHE: OnceLock<Mutex<HashMap<u32, TweenState>>> = OnceLock::new();
+static TWEEN_CACHE: OnceLock<Mutex<HashMap<u64, TweenState>>> = OnceLock::new();
 
-fn tween_cache() -> &'static Mutex<HashMap<u32, TweenState>> {
+fn tween_cache() -> &'static Mutex<HashMap<u64, TweenState>> {
     TWEEN_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -42,6 +42,7 @@ pub struct AnimatedStepNode<Message>
 where
     Message: Clone + 'static,
 {
+    cache_namespace: u64,
     step_id: u32,
     runtime_id: Option<u32>,
     role: String,
@@ -56,7 +57,15 @@ impl<Message> AnimatedStepNode<Message>
 where
     Message: Clone + 'static,
 {
+    fn cache_key(&self) -> u64 {
+        let runtime = u64::from(self.runtime_id.unwrap_or(u32::MAX));
+        self.cache_namespace
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            ^ ((runtime << 32) | u64::from(self.step_id))
+    }
+
     pub fn new(
+        cache_namespace: u64,
         step_id: u32,
         runtime_id: Option<u32>,
         role: impl Into<String>,
@@ -66,6 +75,7 @@ where
         duration: Duration,
     ) -> Self {
         Self {
+            cache_namespace,
             step_id,
             runtime_id,
             role: role.into(),
@@ -82,7 +92,7 @@ where
             let cached = tween_cache()
                 .lock()
                 .ok()
-                .and_then(|cache| cache.get(&self.step_id).copied());
+                .and_then(|cache| cache.get(&self.cache_key()).copied());
             if let Some(cached) = cached {
                 *state = cached;
             } else {
@@ -105,7 +115,7 @@ where
 
     fn persist_state(&self, state: TweenState) {
         if let Ok(mut cache) = tween_cache().lock() {
-            cache.insert(self.step_id, state);
+            cache.insert(self.cache_key(), state);
         }
     }
 

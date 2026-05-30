@@ -2892,6 +2892,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
         (
             AnimatedStepNode::<ViewerEvent<Self::Message>>::new(
+                state as *const Self::State as usize as u64,
                 cx.display_id,
                 cx.runtime_id,
                 role,
