@@ -922,13 +922,13 @@ fn panel<'a>(
     auto_viewport_enabled: bool,
     pulse_strength: f32,
 ) -> Element<'a, Message> {
-    // Keep the pulse in "jungle greens": deep forest -> neon leaf, without whitening.
+    // Keep the base jungle panel color, but make the active pulse read clearly yellow.
     let border_base = Color::from_rgb8(24, 63, 43);
-    let border_bright = Color::from_rgb8(41, 116, 62);
-    let border_peak = Color::from_rgb8(54, 139, 69);
+    let border_bright = Color::from_rgb8(154, 140, 48);
+    let border_peak = Color::from_rgb8(198, 182, 68);
     let header_base = Color::from_rgb8(112, 171, 104);
-    let header_bright = Color::from_rgb8(142, 217, 94);
-    let header_peak = Color::from_rgb8(162, 236, 102);
+    let header_bright = Color::from_rgb8(198, 188, 92);
+    let header_peak = Color::from_rgb8(224, 214, 118);
     let scaled_strength = pulse_strength.max(0.0) * 0.72;
     let primary = scaled_strength.clamp(0.0, 1.0);
     let additive = ((scaled_strength - 1.0) * 0.35).clamp(0.0, 1.0);
