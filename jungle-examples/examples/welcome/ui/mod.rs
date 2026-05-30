@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+#[cfg(feature = "video")]
+use std::sync::LazyLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, trace, warn};
 use uuid::Uuid;
@@ -716,71 +718,14 @@ impl TickPlaybackPlan {
 }
 
 #[cfg(feature = "video")]
-const VIDEO_PLAYBACK_PLAN: [TickPlaybackPlan; 3] = [
-    TickPlaybackPlan {
-        tick: 0,
-        app_overlay: Some(VideoPlaybackRequest::new(
-            VideoAsset::Jungle,
-            0,
-            2_000,
-            0.3,
-            0.5,
-        )),
-        lead_vocalist_panel: None,
-        rhythm_guitarist_panel: None,
-        lead_guitarist_panel: None,
-        bass_panel: None,
-        drums_panel: None,
-    },
-    TickPlaybackPlan {
-        tick: 4,
-        app_overlay: None,
-        lead_vocalist_panel: Some(VideoPlaybackRequest::new(
-            VideoAsset::Toucan,
-            0,
-            2_000,
-            0.3,
-            0.5,
-        )),
-        rhythm_guitarist_panel: Some(VideoPlaybackRequest::new(
-            VideoAsset::Serpentine,
-            0,
-            2_000,
-            0.3,
-            0.5,
-        )),
-        lead_guitarist_panel: Some(VideoPlaybackRequest::new(
-            VideoAsset::Jaguar,
-            0,
-            2_000,
-            0.3,
-            0.5,
-        )),
-        bass_panel: Some(VideoPlaybackRequest::new(
-            VideoAsset::Hippo,
-            0,
-            2_000,
-            0.3,
-            0.5,
-        )),
-        drums_panel: Some(VideoPlaybackRequest::new(
-            VideoAsset::Croc4,
-            0,
-            2_000,
-            0.3,
-            0.5,
-        )),
-    },
-    TickPlaybackPlan {
-        tick: 40,
-        app_overlay: None,
-        lead_vocalist_panel: None,
-        rhythm_guitarist_panel: None,
-        lead_guitarist_panel: None,
-        bass_panel: None,
-        drums_panel: None,
-    },
-];
+const VIDEO_PLAYBACK_PLAN_TOML: &str = include_str!("../assets/default_video_playback_plan.toml");
+
+#[cfg(feature = "video")]
+static VIDEO_PLAYBACK_PLAN: LazyLock<Vec<TickPlaybackPlan>> = LazyLock::new(|| {
+    toml::from_str::<VideoPlaybackPlanDocument>(VIDEO_PLAYBACK_PLAN_TOML)
+        .map(|doc| doc.plans)
+        .expect("default video playback plan TOML should deserialize")
+});
 
 #[cfg(feature = "video")]
 #[derive(Debug, Clone)]
@@ -1351,7 +1296,7 @@ impl WelcomeUi {
         let plan_source = self
             .video_playback_plan
             .as_ref()
-            .map_or(&VIDEO_PLAYBACK_PLAN[..], VideoPlaybackPlan::plans);
+            .map_or_else(|| VIDEO_PLAYBACK_PLAN.as_slice(), VideoPlaybackPlan::plans);
         let plans = plan_source.to_vec();
         for plan in plans {
             if rhythm_tick < u64::from(plan.tick) {
