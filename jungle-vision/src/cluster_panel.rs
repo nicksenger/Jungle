@@ -22,28 +22,28 @@ pub fn target_color(kind: ClusterKind, phase: Phase<ClusterLive>) -> Color {
 
 fn kind_pending_alpha(kind: ClusterKind) -> f32 {
     match kind {
-        ClusterKind::While => 0.05,
-        ClusterKind::Transparent => 0.04,
+        ClusterKind::While => 0.10,
+        ClusterKind::Transparent => 0.10,
     }
 }
 
 fn kind_running_alpha(kind: ClusterKind) -> f32 {
     match kind {
-        ClusterKind::While => 0.07,
-        ClusterKind::Transparent => 0.06,
+        ClusterKind::While => 0.10,
+        ClusterKind::Transparent => 0.10,
     }
 }
 
 fn kind_completed_alpha(kind: ClusterKind) -> f32 {
     match kind {
-        ClusterKind::While => 0.06,
-        ClusterKind::Transparent => 0.05,
+        ClusterKind::While => 0.10,
+        ClusterKind::Transparent => 0.10,
     }
 }
 
 fn kind_failed_alpha(kind: ClusterKind) -> f32 {
     match kind {
-        ClusterKind::While => 0.08,
-        ClusterKind::Transparent => 0.07,
+        ClusterKind::While => 0.10,
+        ClusterKind::Transparent => 0.10,
     }
 }

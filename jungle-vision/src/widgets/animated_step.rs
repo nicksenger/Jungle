@@ -124,18 +124,48 @@ where
             .padding([8, 10])
             .width(Length::Shrink)
             .style(move |_theme, status| {
-                let brightened_fill = match status {
-                    button::Status::Hovered => brighten_color(fill, 0.16),
-                    button::Status::Pressed => brighten_color(fill, 0.24),
-                    _ => fill,
+                let (styled_fill, border_color, border_width, shadow) = match status {
+                    button::Status::Hovered => (
+                        mix_color(fill, Color::from_rgb8(20, 74, 45), 0.62),
+                        Color::from_rgb8(120, 214, 160),
+                        2.2,
+                        iced::Shadow {
+                            color: Color::from_rgba8(7, 23, 14, 0.55),
+                            offset: iced::Vector::new(0.0, 4.0),
+                            blur_radius: 9.0,
+                        },
+                    ),
+                    button::Status::Pressed => (
+                        mix_color(fill, Color::from_rgb8(11, 52, 31), 0.8),
+                        Color::from_rgb8(153, 235, 189),
+                        2.8,
+                        iced::Shadow {
+                            color: Color::from_rgba8(5, 17, 10, 0.68),
+                            offset: iced::Vector::new(0.0, 2.0),
+                            blur_radius: 6.0,
+                        },
+                    ),
+                    _ => (
+                        fill,
+                        accent_border,
+                        1.0,
+                        iced::Shadow {
+                            color: Color::from_rgba8(7, 23, 14, 0.25),
+                            offset: iced::Vector::new(0.0, 1.0),
+                            blur_radius: 3.0,
+                        },
+                    ),
                 };
                 iced::widget::button::Style {
                     background: Some(iced::Background::Color(Color {
                         a: 0.8,
-                        ..brightened_fill
+                        ..styled_fill
                     })),
                     text_color: Color::from_rgb8(223, 245, 230),
-                    border: iced::border::rounded(10).color(accent_border).width(1.0),
+                    border: iced::border::rounded(10)
+                        .color(border_color)
+                        .width(border_width),
+                    shadow,
                     ..Default::default()
                 }
             })
@@ -349,12 +379,12 @@ fn vary_green_shade(base: Color, step_id: u32) -> Color {
     }
 }
 
-fn brighten_color(color: Color, amount: f32) -> Color {
+fn mix_color(from: Color, to: Color, t: f32) -> Color {
     Color {
-        r: color.r + (1.0 - color.r) * amount,
-        g: color.g + (1.0 - color.g) * amount,
-        b: color.b + (1.0 - color.b) * amount,
-        a: color.a,
+        r: from.r + (to.r - from.r) * t,
+        g: from.g + (to.g - from.g) * t,
+        b: from.b + (to.b - from.b) * t,
+        a: from.a + (to.a - from.a) * t,
     }
 }
 
