@@ -121,7 +121,7 @@ impl Predicate<(&CronExpr, &())> for CronfishLoopForever {
 }
 
 #[derive(Flow)]
-pub struct CronfishJourney(
+pub struct CronJob(
     Step<ApplyCronfishSeed>,
     While<CronfishLoopForever, CronfishLoopBody>,
 );
@@ -131,16 +131,41 @@ pub struct Cronfish;
 impl Animal for Cronfish {
     type State = CronExpr;
     type Seed = CronExpr;
-    type Journey = CronfishJourney;
+    type Journey = CronJob;
 }
 
 #[derive(Animals)]
 pub struct CronfishAnimals(Cronfish);
 
-pub struct CronfishEcosystem;
-impl Ecosystem for CronfishEcosystem {
+pub struct PaleozoicEcosystem;
+impl Ecosystem for PaleozoicEcosystem {
     const NAME: &'static str = "cronfish-ecosystem";
     type Animals = CronfishAnimals;
+}
+
+#[tokio::main]
+async fn main() {
+    let seed: CronExpr = std::env::args()
+        .nth(1)
+        .expect("usage: cronfish \"<cron expression>\"");
+
+    let client = LocalClient::builder()
+        .build()
+        .await
+        .expect("cronfish local client should build");
+    let worker = JungleWorker::new(PaleozoicEcosystem, client.clone());
+    tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let seed = postcard::to_allocvec(&seed).expect("cronfish seed should serialize");
+    let journey_id = client
+        .start_journey::<Cronfish>(seed)
+        .await
+        .expect("cronfish journey should start");
+    println!("cronfish journey started: {journey_id}");
+
+    await_journey_completion(&client, journey_id).await;
 }
 
 async fn await_journey_completion(client: &LocalClient, journey_id: uuid::Uuid) {
@@ -159,29 +184,4 @@ async fn await_journey_completion(client: &LocalClient, journey_id: uuid::Uuid) 
             }
         }
     }
-}
-
-#[tokio::main]
-async fn main() {
-    let seed: CronExpr = std::env::args()
-        .nth(1)
-        .expect("usage: cronfish \"<cron expression>\"");
-
-    let client = LocalClient::builder()
-        .build()
-        .await
-        .expect("cronfish local client should build");
-    let worker = JungleWorker::new(CronfishEcosystem, client.clone());
-    tokio::spawn(async move {
-        let _ = worker.spawn().await;
-    });
-
-    let seed = postcard::to_allocvec(&seed).expect("cronfish seed should serialize");
-    let journey_id = client
-        .start_journey::<Cronfish>(seed)
-        .await
-        .expect("cronfish journey should start");
-    println!("cronfish journey started: {journey_id}");
-
-    await_journey_completion(&client, journey_id).await;
 }
