@@ -138,10 +138,13 @@ impl BoundAction<OpticAnimal> for LensOnLeafValue {
         (<Self as BoundAction<OpticAnimal>>::emit(view, input), ())
     }
 
-    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        view: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
         let out = output.expect("lens list should succeed");
         *view = out;
-        out
+        Ok(out)
     }
 }
 
@@ -167,8 +170,11 @@ impl BoundAction<OpticAnimal> for RootStatePulse {
         (<Self as BoundAction<OpticAnimal>>::emit(view, input), ())
     }
 
-    fn absorb(_view: &mut RootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("echo root should succeed")
+    fn absorb(
+        _view: &mut RootState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        Ok(output.expect("echo root should succeed"))
     }
 }
 

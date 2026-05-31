@@ -83,8 +83,12 @@ impl BoundAction<TraverseAnimal> for StepA {
         (<Self as BoundAction<TraverseAnimal>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
         output.expect("step A should succeed");
+        Ok(())
     }
 }
 
@@ -107,8 +111,12 @@ impl BoundAction<TraverseAnimal> for StepB {
         (<Self as BoundAction<TraverseAnimal>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
         output.expect("step B should succeed");
+        Ok(())
     }
 }
 
@@ -131,8 +139,12 @@ impl BoundAction<TraverseAnimal> for StepC {
         (<Self as BoundAction<TraverseAnimal>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
         output.expect("step C should succeed");
+        Ok(())
     }
 }
 
@@ -155,8 +167,12 @@ impl BoundAction<TraverseAnimal> for StepD {
         (<Self as BoundAction<TraverseAnimal>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        _state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
         output.expect("step D should succeed");
+        Ok(())
     }
 }
 

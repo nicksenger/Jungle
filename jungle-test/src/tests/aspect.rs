@@ -143,10 +143,13 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(core: &mut CoreState, output: EffectCompletion<Sleep>) -> Self::Output {
+    fn absorb(
+        core: &mut CoreState,
+        output: EffectCompletion<Sleep>,
+    ) -> Result<Self::Output, Failure> {
         let value = output.expect("sleep should succeed");
         core.energy = value;
-        value
+        Ok(value)
     }
 }
 
@@ -172,10 +175,13 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(core: &mut CoreState, output: EffectCompletion<Eat>) -> Self::Output {
+    fn absorb(
+        core: &mut CoreState,
+        output: EffectCompletion<Eat>,
+    ) -> Result<Self::Output, Failure> {
         let value = output.expect("eat should succeed");
         core.energy = value;
-        value
+        Ok(value)
     }
 }
 
@@ -204,13 +210,16 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Output {
+    fn absorb(
+        value: &mut i32,
+        output: EffectCompletion<A>,
+    ) -> Result<Self::Output, Failure> {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("effect should succeed"),
         };
         *value += delta;
-        *value
+        Ok(*value)
     }
 }
 
@@ -239,13 +248,16 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Self::Output {
+    fn absorb(
+        value: &mut i32,
+        output: EffectCompletion<A>,
+    ) -> Result<Self::Output, Failure> {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("effect should succeed"),
         };
         *value -= delta;
-        *value
+        Ok(*value)
     }
 }
 

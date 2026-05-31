@@ -1,7 +1,7 @@
 use crate::{
     Animal, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    Effect, EffectCompletion, EffectSchema, Either, Join, Noop, Running, Scoped, Select,
-    Transparent, While,
+    Effect, EffectCompletion, EffectSchema, Either, Failure, Join, Noop, Running, Scoped, Select,
+    StateCarrier, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -352,6 +352,8 @@ pub enum ExecutorError {
     ClientTransport(String),
     #[error("backend error: {0}")]
     Backend(#[source] BackendError),
+    #[error("action failure: {0}")]
+    ActionFailure(#[source] Failure),
     #[error("not enough completions to advance to end")]
     NotEnoughCompletions,
 }
@@ -586,8 +588,10 @@ where
             .pending_carry
             .take()
             .expect("carry must exist while waiting for completion");
-        let (state, emitted) =
-            <BoundFlowStep<T, A> as crate::Waiting>::accept((state, typed_completion, carry));
+        let mut state = state;
+        let view = <<A as BoundAction<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
+        let emitted = <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry)
+            .map_err(ExecutorError::ActionFailure)?;
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;
@@ -817,8 +821,10 @@ where
             .pending_carry
             .take()
             .expect("carry must exist while waiting for completion");
-        let (state, emitted) =
-            <BoundFlowStep<T, A> as crate::Waiting>::accept((state, typed_completion, carry));
+        let mut state = state;
+        let view = <<A as BoundAction<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
+        let emitted = <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry)
+            .map_err(ExecutorError::ActionFailure)?;
         let emitted = postcard::to_allocvec(&emitted)
             .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))?;
         self.waiting_completion = false;

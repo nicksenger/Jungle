@@ -170,6 +170,7 @@ pub enum WireIn {
         wake_at_unix_ms: i64,
     },
     JourneyComplete(Uuid),
+    JourneyDead(Uuid),
     PollStep {
         namespace: String,
         supported_animals: Vec<SupportedAnimal>,

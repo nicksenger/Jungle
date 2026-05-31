@@ -811,6 +811,35 @@ fn type_tokens_match(a: &Type, b: &Type) -> bool {
     quote!(#a).to_string() == quote!(#b).to_string()
 }
 
+fn return_type_is_result(sig: &syn::Signature) -> bool {
+    let syn::ReturnType::Type(_, ty) = &sig.output else {
+        return false;
+    };
+    let Type::Path(type_path) = ty.as_ref() else {
+        return false;
+    };
+    type_path
+        .path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "Result")
+}
+
+fn normalize_absorb_signature(
+    mut absorb_fn: ImplItemFn,
+    types: &Path,
+) -> Result<ImplItemFn, syn::Error> {
+    let already_result = return_type_is_result(&absorb_fn.sig);
+    absorb_fn.sig.output = parse_quote!(-> ::core::result::Result<Self::Output, #types::Failure>);
+    if !already_result {
+        let body = absorb_fn.block;
+        absorb_fn.block = parse_quote!({
+            ::core::result::Result::Ok((|| #body)())
+        });
+    }
+    Ok(absorb_fn)
+}
+
 fn self_type_ident(self_ty: &Type) -> Result<syn::Ident, syn::Error> {
     let Type::Path(tp) = self_ty else {
         return Err(syn::Error::new_spanned(
@@ -1305,6 +1334,10 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
         let legacy_methods = if explicit_carry {
             quote! {}
         } else {
+            let absorb_fn = match normalize_absorb_signature(absorb_fn.clone(), &types) {
+                Ok(func) => func,
+                Err(err) => return err.to_compile_error().into(),
+            };
             quote! {
                 #emit_fn
                 #absorb_fn
@@ -1313,7 +1346,11 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
         let carry_methods = if explicit_carry {
             let mut emit_with_carry_fn = emit_fn.clone();
             emit_with_carry_fn.sig.ident = format_ident!("emit_with_carry");
-            let mut absorb_with_carry_fn = absorb_fn.clone();
+            let mut absorb_with_carry_fn = match normalize_absorb_signature(absorb_fn.clone(), &types)
+            {
+                Ok(func) => func,
+                Err(err) => return err.to_compile_error().into(),
+            };
             absorb_with_carry_fn.sig.ident = format_ident!("absorb_with_carry");
             quote! {
                 #emit_with_carry_fn
@@ -1336,7 +1373,7 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
                     >>::Focus,
                     output: #types::EffectCompletion<Self::Effect>,
                     _carry: Self::Carry,
-                ) -> Self::Output {
+                ) -> ::core::result::Result<Self::Output, #types::Failure> {
                     <Self as #types::BoundAction<#animal_ident>>::absorb(view, output)
                 }
             }
@@ -1359,7 +1396,7 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
                         <#animal_ident as #types::Animal>::State,
                     >>::Focus,
                     output: #types::EffectCompletion<Self::Effect>,
-                ) -> Self::Output {
+                ) -> ::core::result::Result<Self::Output, #types::Failure> {
                     let _ = (view, output);
                     panic!("`absorb` is unavailable for carry-enabled actions; use `absorb_with_carry`.");
                 }

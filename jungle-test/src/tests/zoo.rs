@@ -142,8 +142,12 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut T::State, output: EffectCompletion<A>) -> Self::Output {
+    fn absorb(
+        _state: &mut T::State,
+        output: EffectCompletion<A>,
+    ) -> Result<Self::Output, Failure> {
         output.expect("workflow effect should succeed");
+        Ok(())
     }
 }
 
@@ -571,10 +575,13 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(value: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        value: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
         let delta = output.expect("add i32 step should succeed");
         *value += delta;
-        *value
+        Ok(*value)
     }
 }
 

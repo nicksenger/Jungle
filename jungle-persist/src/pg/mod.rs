@@ -542,6 +542,28 @@ impl JungleStore for PgStore {
         Ok(())
     }
 
+    async fn journey_dead(&self, journey_id: Uuid) -> Result<()> {
+        let result = sqlx::query!(
+            r#"
+            UPDATE journeys
+            SET status = $2
+            WHERE id = $1
+            "#,
+            journey_id,
+            encode_journey_status(JourneyStatus::Dead)
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+        if result.rows_affected() == 0 {
+            return Err(crate::PersistenceError::Message(format!(
+                "journey not found: {journey_id}"
+            )));
+        }
+
+        Ok(())
+    }
+
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()> {
         sqlx::query!(
             r#"

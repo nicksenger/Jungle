@@ -188,6 +188,7 @@ pub trait JungleStore: DynClone + Send + Sync {
     ) -> Result<()>;
     async fn claim_owner_wake(&self, owner_id: Uuid) -> Result<Option<OwnerWake>>;
     async fn journey_complete(&self, journey_id: Uuid) -> Result<()>;
+    async fn journey_dead(&self, journey_id: Uuid) -> Result<()>;
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()>;
     async fn claim_work(
         &self,

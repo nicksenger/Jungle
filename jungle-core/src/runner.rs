@@ -3,7 +3,7 @@ use futures::SinkExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError,
-    Observable, ObservationBridge, Perturbable, PerturbationBridge, RunnerOut, Sleep,
+    Failure, Observable, ObservationBridge, Perturbable, PerturbationBridge, RunnerOut, Sleep,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -12,6 +12,7 @@ use uuid::Uuid;
 pub enum RunnerAdvance {
     Completed,
     SuspendedSleep { wake_at_unix_ms: i64, node_id: u32 },
+    Failed { failure: Failure },
 }
 
 pub struct JungleRunner<T> {
@@ -58,6 +59,7 @@ where
                 "runner.spawn encountered Sleep; use worker runtime for sleep-capable flows"
                     .to_string(),
             )),
+            RunnerAdvance::Failed { failure } => Err(ExecutorError::ActionFailure(failure)),
         }
     }
 
@@ -145,10 +147,16 @@ where
             }
 
             let completion = request.run().await?;
-            apply_completion_and_emit_appearance::<T, A>(
+            if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
                 executor, journey_id, tx, node_id, completion,
             )
-            .await?;
+            .await
+            {
+                return match err {
+                    ExecutorError::ActionFailure(failure) => Ok(RunnerAdvance::Failed { failure }),
+                    other => Err(other),
+                };
+            }
         }
         Ok(RunnerAdvance::Completed)
     }

@@ -78,9 +78,13 @@ impl BoundAction<ObserveAnimal> for ObserveSleep {
         (<Self as BoundAction<ObserveAnimal>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut ObserveState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
         output.expect("sleep branch should complete");
         state.tick = state.tick.saturating_add(1);
+        Ok(())
     }
 }
 
@@ -103,9 +107,13 @@ impl BoundAction<ObserveAnimal> for ObserveBump {
         (<Self as BoundAction<ObserveAnimal>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut ObserveState, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(
+        state: &mut ObserveState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
         output.expect("bump branch should complete");
         state.tick = state.tick.saturating_add(1);
+        Ok(())
     }
 }
 

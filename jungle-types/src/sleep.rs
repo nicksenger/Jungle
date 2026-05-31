@@ -1,5 +1,6 @@
 use crate::{
-    Animal, Aspect, BoundAction, Effect, EffectCompletion, EffectSchema, Id, Identity, StateCarrier,
+    Animal, Aspect, BoundAction, Effect, EffectCompletion, EffectSchema, Failure, Id, Identity,
+    StateCarrier,
 };
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -63,7 +64,7 @@ where
     fn absorb(
         _view: &mut <Focus as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("Sleep effect should be resumed by worker runtime");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|err| Failure::Message(err.message))
     }
 }

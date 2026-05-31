@@ -42,6 +42,9 @@ type JourneyHistoryHandler =
 type FlowCompleteHandlerFuture =
     Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> FlowCompleteHandlerFuture + Send + Sync + 'static>;
+type FlowDeadHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
+type FlowDeadHandler = Arc<dyn Fn(Uuid) -> FlowDeadHandlerFuture + Send + Sync + 'static>;
 type FlowAppearanceUpdateHandler =
     Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
 type ClaimPerturbationHandlerFuture = Pin<
@@ -82,6 +85,7 @@ pub struct MockClient {
     on_wait_for_worker_wake: WaitForWorkerWakeHandler,
     on_schedule_sleep_timer: ScheduleSleepTimerHandler,
     on_flow_complete: FlowCompleteHandler,
+    on_flow_dead: FlowDeadHandler,
     on_poll_timers: PollTimersHandler,
     on_poll_work: PollStepHandler,
     on_effect_input: Handler,
@@ -245,6 +249,10 @@ impl JungleClient for MockClient {
         (self.on_flow_complete)(id).await
     }
 
+    async fn dead_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
+        (self.on_flow_dead)(id).await
+    }
+
     async fn poll_timers(&self) -> Result<Option<()>, ExecutorError> {
         (self.on_poll_timers)().await
     }
@@ -308,6 +316,7 @@ pub struct MockClientBuilder {
     on_wait_for_worker_wake: Option<WaitForWorkerWakeHandler>,
     on_schedule_sleep_timer: Option<ScheduleSleepTimerHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
+    on_flow_dead: Option<FlowDeadHandler>,
     on_poll_timers: Option<PollTimersHandler>,
     on_poll_work: Option<PollStepHandler>,
     on_effect_input: Option<Handler>,
@@ -332,6 +341,7 @@ impl Default for MockClientBuilder {
             on_wait_for_worker_wake: None,
             on_schedule_sleep_timer: None,
             on_flow_complete: None,
+            on_flow_dead: None,
             on_poll_timers: None,
             on_poll_work: None,
             on_effect_input: None,
@@ -489,6 +499,15 @@ impl MockClientBuilder {
         self
     }
 
+    pub fn on_flow_dead<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
+    {
+        self.on_flow_dead = Some(Arc::new(move |id| Box::pin(f(id))));
+        self
+    }
+
     pub fn on_schedule_sleep_timer<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(Uuid, Uuid, i64) -> Fut + Send + Sync + 'static,
@@ -558,6 +577,7 @@ impl MockClientBuilder {
             Arc::new(|_, _, _| Box::pin(async { Ok(()) }));
         let default_flow_complete_handler: FlowCompleteHandler =
             Arc::new(|_| Box::pin(async { Ok(()) }));
+        let default_flow_dead_handler: FlowDeadHandler = Arc::new(|_| Box::pin(async { Ok(()) }));
         let default_poll_timers_handler: PollTimersHandler =
             Arc::new(|| Box::pin(async { Ok(None) }));
         let default_poll_work_handler: PollStepHandler = Arc::new(|_| Box::pin(async { Ok(None) }));
@@ -602,6 +622,9 @@ impl MockClientBuilder {
             on_flow_complete: self
                 .on_flow_complete
                 .unwrap_or_else(|| default_flow_complete_handler.clone()),
+            on_flow_dead: self
+                .on_flow_dead
+                .unwrap_or_else(|| default_flow_dead_handler.clone()),
             on_poll_timers: self
                 .on_poll_timers
                 .unwrap_or_else(|| default_poll_timers_handler.clone()),

@@ -26,6 +26,7 @@ type HeartbeatJourneyLeaseHandler =
     Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
 type ClaimOwnerWakeHandler = Arc<dyn Fn(Uuid) -> Result<Option<OwnerWake>> + Send + Sync + 'static>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
+type FlowDeadHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type FlowAliveIfCreatedHandler = Arc<dyn Fn(Uuid) -> Result<()> + Send + Sync + 'static>;
 type AppendHistoryHandler = Arc<dyn Fn(RunnerOut, i64) -> Result<()> + Send + Sync + 'static>;
 type ScheduleSleepTimerHandler = Arc<dyn Fn(Uuid, Uuid, i64) -> Result<()> + Send + Sync + 'static>;
@@ -46,6 +47,7 @@ pub struct MockStore {
     on_heartbeat_journey_lease: HeartbeatJourneyLeaseHandler,
     on_claim_owner_wake: ClaimOwnerWakeHandler,
     on_flow_complete: FlowCompleteHandler,
+    on_flow_dead: FlowDeadHandler,
     on_flow_alive_if_created: FlowAliveIfCreatedHandler,
     on_claim_work: ClaimWorkHandler,
     on_append_history: AppendHistoryHandler,
@@ -138,6 +140,10 @@ impl JungleStore for MockStore {
         (self.on_flow_complete)(journey_id)
     }
 
+    async fn journey_dead(&self, journey_id: Uuid) -> Result<()> {
+        (self.on_flow_dead)(journey_id)
+    }
+
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()> {
         (self.on_flow_alive_if_created)(journey_id)
     }
@@ -186,6 +192,7 @@ pub struct MockStoreBuilder {
     on_heartbeat_journey_lease: Option<HeartbeatJourneyLeaseHandler>,
     on_claim_owner_wake: Option<ClaimOwnerWakeHandler>,
     on_flow_complete: Option<FlowCompleteHandler>,
+    on_flow_dead: Option<FlowDeadHandler>,
     on_flow_alive_if_created: Option<FlowAliveIfCreatedHandler>,
     on_claim_work: Option<ClaimWorkHandler>,
     on_append_history: Option<AppendHistoryHandler>,
@@ -299,6 +306,14 @@ impl MockStoreBuilder {
         self
     }
 
+    pub fn on_flow_dead<F>(mut self, f: F) -> Self
+    where
+        F: Fn(Uuid) -> Result<()> + Send + Sync + 'static,
+    {
+        self.on_flow_dead = Some(Arc::new(f));
+        self
+    }
+
     pub fn on_flow_alive_if_created<F>(mut self, f: F) -> Self
     where
         F: Fn(Uuid) -> Result<()> + Send + Sync + 'static,
@@ -354,6 +369,7 @@ impl MockStoreBuilder {
             Arc::new(|_, _, _| Ok(()));
         let default_claim_owner_wake: ClaimOwnerWakeHandler = Arc::new(|_| Ok(None));
         let default_flow_complete: FlowCompleteHandler = Arc::new(|_| Ok(()));
+        let default_flow_dead: FlowDeadHandler = Arc::new(|_| Ok(()));
         let default_flow_alive_if_created: FlowAliveIfCreatedHandler = Arc::new(|_| Ok(()));
         let default_claim_work: ClaimWorkHandler = Arc::new(|_, _| Ok(None));
         let default_append_history: AppendHistoryHandler = Arc::new(|_, _| Ok(()));
@@ -398,6 +414,9 @@ impl MockStoreBuilder {
             on_flow_complete: self
                 .on_flow_complete
                 .unwrap_or_else(|| default_flow_complete.clone()),
+            on_flow_dead: self
+                .on_flow_dead
+                .unwrap_or_else(|| default_flow_dead.clone()),
             on_flow_alive_if_created: self
                 .on_flow_alive_if_created
                 .unwrap_or_else(|| default_flow_alive_if_created.clone()),

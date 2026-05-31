@@ -819,6 +819,30 @@ where
         }
     }
 
+    async fn dead_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::JourneyDead(id))
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Ack => Ok(()),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedPerturbable(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for dead_journey".to_string(),
+            )),
+            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for dead_journey".to_string(),
+            )),
+        }
+    }
+
     async fn poll_timers(&self) -> Result<Option<()>, ExecutorError> {
         let response = self
             .send_wire_message(WireIn::PollTimers)

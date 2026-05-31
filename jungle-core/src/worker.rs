@@ -8,7 +8,8 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
-    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Noop, Observable,
+    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Failure, Noop,
+    Observable,
     Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
@@ -431,6 +432,9 @@ async fn handle_in_flight_result<T>(
                 JourneyStartOutcome::Completed => {
                     client.complete_journey(journey_id).await?;
                 }
+                JourneyStartOutcome::Failed { failure: _ } => {
+                    client.dead_journey(journey_id).await?;
+                }
                 JourneyStartOutcome::Sleeping {
                     wake_at_unix_ms,
                     journey,
@@ -455,6 +459,9 @@ async fn handle_in_flight_result<T>(
             match outcome {
                 SuspendedOutcome::Completed => {
                     client.complete_journey(journey_id).await?;
+                }
+                SuspendedOutcome::Failed { failure: _ } => {
+                    client.dead_journey(journey_id).await?;
                 }
                 SuspendedOutcome::Sleeping {
                     wake_at_unix_ms,
@@ -548,6 +555,9 @@ where
 pub enum JourneyStartOutcome<T> {
     NotMatched,
     Completed,
+    Failed {
+        failure: Failure,
+    },
     Sleeping {
         wake_at_unix_ms: i64,
         journey: Box<dyn SuspendedJourney<T> + Send>,
@@ -556,6 +566,9 @@ pub enum JourneyStartOutcome<T> {
 
 pub enum SuspendedOutcome {
     Completed,
+    Failed {
+        failure: Failure,
+    },
     Sleeping { wake_at_unix_ms: i64, node_id: u32 },
 }
 
@@ -603,6 +616,7 @@ where
                 .await?;
             match advance {
                 RunnerAdvance::Completed => Ok(SuspendedOutcome::Completed),
+                RunnerAdvance::Failed { failure } => Ok(SuspendedOutcome::Failed { failure }),
                 RunnerAdvance::SuspendedSleep {
                     wake_at_unix_ms,
                     node_id,
@@ -730,6 +744,9 @@ where
                     .await?
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
+                    RunnerAdvance::Failed { failure } => {
+                        Ok(JourneyStartOutcome::Failed { failure })
+                    }
                     RunnerAdvance::SuspendedSleep {
                         wake_at_unix_ms,
                         node_id,
@@ -771,14 +788,22 @@ where
                     seed.into();
                 let state: Head::State = Default::default();
                 let mut executor = runner.new_executor::<Head>(state);
-                replay_history::<T, Head, _>(
+                if let Err(err) = replay_history::<T, Head, _>(
                     &mut executor,
                     initial_input.clone(),
                     journey_id,
                     &history,
                     &mut tx,
                 )
-                .await?;
+                .await
+                {
+                    match err {
+                        ExecutorError::ActionFailure(failure) => {
+                            return Ok(JourneyStartOutcome::Failed { failure });
+                        }
+                        other => return Err(other),
+                    }
+                }
                 let appearance = runner.initial_appearance::<Head>(&executor)?;
                 runner
                     .emit_appearance(journey_id, appearance, &mut tx)
@@ -793,6 +818,9 @@ where
                     .await?
                 {
                     RunnerAdvance::Completed => Ok(JourneyStartOutcome::Completed),
+                    RunnerAdvance::Failed { failure } => {
+                        Ok(JourneyStartOutcome::Failed { failure })
+                    }
                     RunnerAdvance::SuspendedSleep {
                         wake_at_unix_ms,
                         node_id,

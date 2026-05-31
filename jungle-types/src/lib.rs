@@ -20,7 +20,7 @@ pub use behavior::{
     EffectSchema, Identity, ScopeReboundAction, ScopedAction, ScopedAnimal, StateCarrier, Step,
 };
 pub use behavior::{FocusedAbsorb, FocusedEmit};
-pub use error::Error;
+pub use error::{Error, Failure};
 pub use executor::{
     ArgputForState, BuildFlow, BuildFlowWithContext, ContextExecutor, ContextualTypedErasedStep,
     DynFlow, ErasedStep, ExecutableEffectRequest, Executor, ExecutorError, ExecutorFlow,

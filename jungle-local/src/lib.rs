@@ -320,6 +320,7 @@ fn wire_in_kind(input: &WireIn) -> &'static str {
         WireIn::PollOwnerWake { .. } => "PollOwnerWake",
         WireIn::ScheduleSleep { .. } => "ScheduleSleep",
         WireIn::JourneyComplete(..) => "JourneyComplete",
+        WireIn::JourneyDead(..) => "JourneyDead",
         WireIn::PollStep { .. } => "PollStep",
         WireIn::WaitForWorkerWake { .. } => "WaitForWorkerWake",
         WireIn::PollTimers => "PollTimers",
@@ -539,6 +540,16 @@ impl JungleClient for LocalClient {
             WireOut::Ack => Ok(()),
             _ => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
+            )),
+        }
+    }
+
+    async fn dead_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
+        let response = self.send_wire_message(WireIn::JourneyDead(id)).await?;
+        match response {
+            WireOut::Ack => Ok(()),
+            _ => Err(ExecutorError::ClientTransport(
+                "unexpected non-ack response for dead_journey".to_string(),
             )),
         }
     }

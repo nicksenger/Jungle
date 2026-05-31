@@ -40,19 +40,26 @@ impl<J> Effect<J> for PulseEffect {
 
 struct StoreValueAbsorb;
 impl AbsorbMapper<HelperState, EchoEffect, i32> for StoreValueAbsorb {
-    fn absorb(state: &mut HelperState, output: EffectCompletion<EchoEffect>) -> i32 {
+    fn absorb(
+        state: &mut HelperState,
+        output: EffectCompletion<EchoEffect>,
+    ) -> Result<i32, Failure> {
         let value = output.expect("echo should succeed");
         state.value = value;
-        value
+        Ok(value)
     }
 }
 
 struct CountPulseAbsorb;
 impl AbsorbMapper<HelperState, PulseEffect, ()> for CountPulseAbsorb {
-    fn absorb(state: &mut HelperState, output: EffectCompletion<PulseEffect>) {
+    fn absorb(
+        state: &mut HelperState,
+        output: EffectCompletion<PulseEffect>,
+    ) -> Result<(), Failure> {
         let value = output.expect("pulse should succeed");
         state.pulse_count += 1;
         state.value += value;
+        Ok(())
     }
 }
 

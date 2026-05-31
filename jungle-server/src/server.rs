@@ -482,6 +482,25 @@ impl JungleServer for Server {
                     WireOut::Ack
                 }
             }
+            Some(WireIn::JourneyDead(journey_id)) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    self.store
+                        .journey_dead(journey_id)
+                        .await
+                        .map_err(|err| {
+                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                        })?;
+                    #[cfg(feature = "redb")]
+                    self.journey_update_notify.notify_waiters();
+                    WireOut::Ack
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = journey_id;
+                    WireOut::Ack
+                }
+            }
             Some(WireIn::PollStep {
                 namespace,
                 supported_animals,
@@ -818,6 +837,7 @@ fn wire_in_kind(input: &WireIn) -> &'static str {
         WireIn::PollOwnerWake { .. } => "PollOwnerWake",
         WireIn::ScheduleSleep { .. } => "ScheduleSleep",
         WireIn::JourneyComplete(..) => "JourneyComplete",
+        WireIn::JourneyDead(..) => "JourneyDead",
         WireIn::PollStep { .. } => "PollStep",
         WireIn::WaitForWorkerWake { .. } => "WaitForWorkerWake",
         WireIn::PollTimers => "PollTimers",

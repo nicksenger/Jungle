@@ -766,6 +766,10 @@ impl JungleStore for RedbStore {
         self.update_journey_status(journey_id, JourneyStatus::Completed, None)
     }
 
+    async fn journey_dead(&self, journey_id: Uuid) -> Result<()> {
+        self.update_journey_status(journey_id, JourneyStatus::Dead, None)
+    }
+
     async fn journey_alive_if_created(&self, journey_id: Uuid) -> Result<()> {
         self.update_journey_status(
             journey_id,

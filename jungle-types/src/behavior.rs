@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use crate::{
     Animal, EffectIdentity, EffectMember, JourneyEffects, ReplaceFlow, ReplaceNode,
     ReplaceNodesWith, ReplaceStep, ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith,
-    Waiting,
+    Waiting, Failure,
 };
 use inception::primitive;
 use typosaurus::collections::sp::Node;
@@ -121,7 +121,7 @@ pub trait BoundAction<T: Animal> {
     fn absorb(
         view: &mut <<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output;
+    ) -> Result<Self::Output, Failure>;
 
     fn emit_with_carry(
         view: &<<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
@@ -132,7 +132,7 @@ pub trait BoundAction<T: Animal> {
         view: &mut <<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
         _carry: Self::Carry,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         Self::absorb(view, output)
     }
 }
@@ -199,7 +199,7 @@ where
     fn absorb(
         view: &mut <<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::absorb(view, output)
     }
 
@@ -214,7 +214,7 @@ where
         view: &mut <<Self as BoundAction<A>>::Aspect as StateCarrier<A::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         <InnerAct as BoundAction<ScopedAnimal<A, ScopeState>>>::absorb_with_carry(
             view, output, carry,
         )
@@ -267,7 +267,7 @@ pub trait Absorb<T: Animal> {
         view: &mut <Self::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
-    ) -> Self::Ret;
+    ) -> Result<Self::Ret, Failure>;
 }
 
 /// Emits by forwarding carry input directly as effect input.
@@ -355,7 +355,7 @@ pub trait AbsorbMapper<View, A, Out>
 where
     A: EffectSchema,
 {
-    fn absorb(view: &mut View, output: EffectCompletion<A>) -> Out;
+    fn absorb(view: &mut View, output: EffectCompletion<A>) -> Result<Out, Failure>;
 }
 
 /// Absorbs via a type-level mapper function.
@@ -377,7 +377,7 @@ where
         view: &mut <Self::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
         _carry: Self::Carry,
-    ) -> Self::Ret {
+    ) -> Result<Self::Ret, Failure> {
         <F as AbsorbMapper<<Focus as StateCarrier<T::State>>::Focus, A, Out>>::absorb(view, output)
     }
 }
@@ -412,7 +412,7 @@ where
     fn absorb(
         _view: &mut <<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         _output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         panic!("`absorb` is unavailable for carry-enabled fused acts; use `absorb_with_carry`.")
     }
 
@@ -427,7 +427,7 @@ where
         view: &mut <<Self as BoundAction<T>>::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         <A as Absorb<T>>::absorb(view, output, carry)
     }
 }
@@ -472,7 +472,7 @@ where
         view: &mut <Self::Aspect as StateCarrier<T::State>>::Focus,
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
-    ) -> Self::Ret {
+    ) -> Result<Self::Ret, Failure> {
         <A as Absorb<T>>::absorb(view, output, carry)
     }
 }
@@ -587,7 +587,8 @@ where
 
     fn accept((mut state, output, carry): Self::In) -> Self::Out {
         let view = <<A as BoundAction<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
-        let emitted = <A as BoundAction<T>>::absorb_with_carry(view, output, carry);
+        let emitted = <A as BoundAction<T>>::absorb_with_carry(view, output, carry)
+            .expect("absorb failures must be handled by the executor");
         (state, emitted)
     }
 }

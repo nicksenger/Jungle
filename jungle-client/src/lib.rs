@@ -60,6 +60,7 @@ pub trait JungleClient: DynClone + Send + Sync {
         wake_at_unix_ms: i64,
     ) -> Result<(), ExecutorError>;
     async fn complete_journey(&self, id: Uuid) -> Result<(), ExecutorError>;
+    async fn dead_journey(&self, id: Uuid) -> Result<(), ExecutorError>;
     async fn poll_timers(&self) -> Result<Option<()>, ExecutorError>;
     async fn poll_work(
         &self,
