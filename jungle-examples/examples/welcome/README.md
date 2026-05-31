@@ -14,13 +14,11 @@ Each `Animal` is gated behind a feature-flag: `bass`, `drums`, `leadguitar`, `rh
 cargo run --example welcome --release --features viewer,audio,video,vocals,bass,drums,leadguitar,rhythmguitar
 ```
 
-This is most likely due to a combination of both:
-- shitty proofs used for `jungle` (typosaurus in particular is mostly exploratory and not optimized)
-- rustc is not tailored to this obscure use-case
+The 5-second, 480p (standard definition), animal video overlays are originally from the Planet Earth series, and property of BBC.
 
-The 5-second, 480p (standard definition), animal video overlays were sourced from my private DVD collection, but are property of BBC. They are provided here for educational (type theory, programming, user interface design) purposes only. Any derivation of entertainment from these materials is prohibited by law.
+The Guns'n'Roses song "Welcome to the Jungle," originally published by Axl Rose, Slash, Duff McKagan, and Izzy Stradlin, is property of Universal Music Publishing Group under the label Geffen Records.
 
-The Guns'n'Roses song "Welcome to the Jungle," originally published by Axl Rose, Slash, Duff McKagan, and Izzy Stradlin, is property of Universal Music Publishing Group under the label Geffen Records. Its notation is represented here for educational (type theory, programming, audio engineering) purposes only. Any derivation of entertainment from these materials is prohibited by law.
+The notation for "Welcome to the Jungle" used here is adapted from "Welcome to the Jungle v5," which was uploaded to [onlinesequencer.net](https://onlinesequencer.net) by AuroraSonica.
 
-These statements are made in accordance with the project's [COPYRIGHT DISCLAIMER](./assets/COPYRIGHT_DISCLAIMER.md).
+These materials are provided strictly for educational purposes, in accordance with the project's [COPYRIGHT DISCLAIMER](./assets/COPYRIGHT_DISCLAIMER.md).
 
