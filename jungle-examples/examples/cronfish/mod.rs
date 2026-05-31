@@ -93,7 +93,7 @@ impl Action for CronfishUntilNextFire {
         _state: &mut CronState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = output.map_err(|_err| Failure::from("cron duration step should complete"))?;
+        let __absorb_out_2 = output?;
         Ok(__absorb_out_2)
     }
 }
@@ -163,7 +163,7 @@ impl Action for CronfishFire {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_4 = {
-            output.map_err(|_err| Failure::from("cron fire script step should complete"))?;
+            output?;
         };
         Ok(__absorb_out_4)
     }

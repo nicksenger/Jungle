@@ -45,7 +45,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_1 = {
-            output.map_err(|_err| Failure::from("hi-hat playback should succeed"))?;
+            output?;
         };
         Ok(__absorb_out_1)
     }
@@ -75,7 +75,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_2 = {
-            output.map_err(|_err| Failure::from("kick playback should succeed"))?;
+            output?;
         };
         Ok(__absorb_out_2)
     }
@@ -105,7 +105,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_3 = {
-            output.map_err(|_err| Failure::from("snare playback should succeed"))?;
+            output?;
         };
         Ok(__absorb_out_3)
     }
@@ -135,7 +135,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_4 = {
-            output.map_err(|_err| Failure::from("cymbal playback should succeed"))?;
+            output?;
         };
         Ok(__absorb_out_4)
     }
@@ -165,7 +165,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_5 = {
-            output.map_err(|_err| Failure::from("tom playback should succeed"))?;
+            output?;
         };
         Ok(__absorb_out_5)
     }
@@ -217,7 +217,7 @@ impl Action for ConditionalJoinTailStub {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_6 = {
-            output.map_err(|_err| Failure::from("conditional join tail stub should succeed"))?;
+            output?;
             Either::Left(())
         };
         Ok(__absorb_out_6)

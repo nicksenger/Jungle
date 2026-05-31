@@ -70,7 +70,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: 
         _state: &mut BassArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.map_err(|_err| Failure::from("note playback should succeed"))?;
+        output?;
         Ok(())
     }
 }

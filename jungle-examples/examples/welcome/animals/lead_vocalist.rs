@@ -40,7 +40,7 @@ impl Action for ApplyLeadVocalistSeed {
         state: &mut LeadVocalistState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let seed = output.map_err(|_err| Failure::from("lead vocalist seed step should complete"))?;
+        let seed = output?;
         if let Some(lyrics) = seed.lyrics {
             let phonemes = lyrics
                 .iter()
