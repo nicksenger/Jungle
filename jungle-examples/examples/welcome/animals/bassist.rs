@@ -49,10 +49,8 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         _state: &mut BassArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = {
-            output?;
-        };
-        Ok(__absorb_out_1)
+        output?;
+        Ok(())
     }
 }
 

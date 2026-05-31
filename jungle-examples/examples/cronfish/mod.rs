@@ -93,8 +93,7 @@ impl Action for CronfishUntilNextFire {
         _state: &mut CronState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = output?;
-        Ok(__absorb_out_2)
+        Ok(output?)
     }
 }
 
@@ -162,10 +161,8 @@ impl Action for CronfishFire {
         _state: &mut CronState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = {
-            output?;
-        };
-        Ok(__absorb_out_4)
+        output?;
+        Ok(())
     }
 }
 
