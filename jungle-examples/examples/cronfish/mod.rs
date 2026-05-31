@@ -1,35 +1,24 @@
 use jungle_sdk::prelude::*;
-use jungle_sdk::effect;
 use std::str::FromStr;
 
-pub struct CronfishSeedPass;
-#[effect(id = 0)]
-impl<J> Effect<J> for CronfishSeedPass {
-    type In = String;
-    type Out = String;
-    type Err = ();
-
-    fn effect(
-        _jungle: &J,
-        input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
-        std::future::ready(Ok(input))
-    }
-}
-
 pub struct ApplyCronfishSeed;
-#[jungle::action]
+#[jungle::action(carry = String)]
 impl Action for ApplyCronfishSeed {
-    type Effect = CronfishSeedPass;
+    type Effect = Noop;
     type Input = String;
     type Output = ();
 
-    fn emit(_state: &String, input: Self::Input) -> <Self::Effect as EffectSchema>::In {
-        input
+    fn emit(_state: &String, input: Self::Input) -> (<Self::Effect as EffectSchema>::In, String) {
+        ((), input)
     }
 
-    fn absorb(state: &mut String, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        *state = output.expect("cronfish seed step should complete");
+    fn absorb(
+        state: &mut String,
+        output: EffectCompletion<Self::Effect>,
+        seed: String,
+    ) -> Self::Output {
+        output.expect("cronfish seed step should complete");
+        *state = seed;
     }
 }
 
