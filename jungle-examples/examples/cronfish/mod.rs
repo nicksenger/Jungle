@@ -6,21 +6,26 @@ use std::str::FromStr;
 use std::time::Duration;
 use chrono::Utc;
 
+type CronExpr = String;
+
 pub struct ApplyCronfishSeed;
-#[jungle::action(carry = String)]
+#[jungle::action(carry = CronExpr)]
 impl Action for ApplyCronfishSeed {
     type Effect = Noop;
-    type Input = String;
+    type Input = CronExpr;
     type Output = ();
 
-    fn emit(_state: &String, input: Self::Input) -> (<Self::Effect as EffectSchema>::In, String) {
+    fn emit(
+        _state: &CronExpr,
+        input: Self::Input,
+    ) -> (<Self::Effect as EffectSchema>::In, CronExpr) {
         ((), input)
     }
 
     fn absorb(
-        state: &mut String,
+        state: &mut CronExpr,
         _output: EffectCompletion<Self::Effect>,
-        seed: String,
+        seed: CronExpr,
     ) -> Self::Output {
         *state = seed;
     }
@@ -29,7 +34,7 @@ impl Action for ApplyCronfishSeed {
 pub struct CronfishUntilNextFireEffect;
 #[effect(id = 0)]
 impl<J> Effect<J> for CronfishUntilNextFireEffect {
-    type In = String;
+    type In = CronExpr;
     type Out = Duration;
     type Err = String;
 
@@ -61,11 +66,11 @@ impl Action for CronfishUntilNextFire {
     type Input = ();
     type Output = Duration;
 
-    fn emit(state: &String, _input: Self::Input) -> String {
+    fn emit(state: &CronExpr, _input: Self::Input) -> CronExpr {
         state.clone()
     }
 
-    fn absorb(_state: &mut String, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(_state: &mut CronExpr, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("cron duration step should complete")
     }
 }
@@ -77,11 +82,11 @@ impl Action for CronfishSleep {
     type Input = Duration;
     type Output = ();
 
-    fn emit(_state: &String, input: Self::Input) -> Duration {
+    fn emit(_state: &CronExpr, input: Self::Input) -> Duration {
         input
     }
 
-    fn absorb(_state: &mut String, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(_state: &mut CronExpr, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("cron sleep step should complete");
     }
 }
@@ -93,9 +98,9 @@ impl Action for CronfishFire {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &String, _input: Self::Input) -> () {}
+    fn emit(_state: &CronExpr, _input: Self::Input) -> () {}
 
-    fn absorb(_state: &mut String, output: EffectCompletion<Self::Effect>) -> Self::Output {
+    fn absorb(_state: &mut CronExpr, output: EffectCompletion<Self::Effect>) -> Self::Output {
         output.expect("cron fire print step should complete");
         println!("fired!");
     }
@@ -109,8 +114,8 @@ pub struct CronfishLoopBody(
 );
 
 pub struct CronfishLoopForever;
-impl Predicate<(&String, &())> for CronfishLoopForever {
-    fn eval((_state, _): &(&String, &())) -> bool {
+impl Predicate<(&CronExpr, &())> for CronfishLoopForever {
+    fn eval((_state, _): &(&CronExpr, &())) -> bool {
         true
     }
 }
@@ -124,8 +129,8 @@ pub struct CronfishJourney(
 pub struct Cronfish;
 #[jungle::animal(id = 0, generation = 0)]
 impl Animal for Cronfish {
-    type State = String;
-    type Seed = String;
+    type State = CronExpr;
+    type Seed = CronExpr;
     type Journey = CronfishJourney;
 }
 
@@ -158,7 +163,7 @@ async fn await_journey_completion(client: &LocalClient, journey_id: uuid::Uuid) 
 
 #[tokio::main]
 async fn main() {
-    let seed = std::env::args()
+    let seed: CronExpr = std::env::args()
         .nth(1)
         .expect("usage: cronfish \"<cron expression>\"");
 
