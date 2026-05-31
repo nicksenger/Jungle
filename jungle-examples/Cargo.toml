@@ -16,6 +16,7 @@ drums = []
 leadguitar = []
 vocals = []
 rhythmguitar = []
+cron = ["dep:cron"]
 
 [dependencies]
 futures = { workspace = true }
@@ -36,6 +37,7 @@ testcontainers = { version = "0.23", optional = true }
 testcontainers-modules = { version = "0.11", features = ["postgres"], optional = true }
 async-trait = { workspace = true }
 clap = { version = "4.6", features = ["derive"] }
+cron = { version = "0.16", optional = true }
 
 [[example]]
 name = "welcome"
@@ -45,6 +47,7 @@ required-features = ["viewer", "audio"]
 [[example]]
 name = "cronfish"
 path = "examples/cronfish/mod.rs"
+required-features = ["cron"]
 
 [lints]
 workspace = true
