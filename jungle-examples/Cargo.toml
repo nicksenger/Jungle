@@ -42,5 +42,9 @@ name = "welcome"
 path = "examples/welcome/mod.rs"
 required-features = ["viewer", "audio"]
 
+[[example]]
+name = "cronfish"
+path = "examples/cronfish/mod.rs"
+
 [lints]
 workspace = true
