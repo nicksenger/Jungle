@@ -142,7 +142,7 @@ impl BoundAction<OpticAnimal> for LensOnLeafValue {
         view: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let out = output.expect("lens list should succeed");
+        let out = output.map_err(|_err| Failure::from("lens list should succeed"))?;
         *view = out;
         Ok(out)
     }
@@ -174,7 +174,7 @@ impl BoundAction<OpticAnimal> for RootStatePulse {
         _view: &mut RootState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        Ok(output.expect("echo root should succeed"))
+        Ok(output.map_err(|_err| Failure::from("echo root should succeed"))?)
     }
 }
 
@@ -195,11 +195,11 @@ impl Action for LensOnBranchSpec {
         view: &mut Branch,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            let out = output.expect("lens single should succeed");
+        let __absorb_out_1 = {
+            let out = output.map_err(|_err| Failure::from("lens single should succeed"))?;
             view.spare = out;
             out
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }

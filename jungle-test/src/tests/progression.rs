@@ -47,11 +47,11 @@ impl Action for SeedSpec {
         state: &mut i32,
         output: EffectCompletion<SeedEffect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            let value = output.expect("seed effect should succeed");
+        let __absorb_out_1 = {
+            let value = output.map_err(|_err| Failure::from("seed effect should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -71,11 +71,11 @@ impl Action for FinishSpec {
         state: &mut i32,
         output: EffectCompletion<FinishEffect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            let value = output.expect("finish effect should succeed");
+        let __absorb_out_2 = {
+            let value = output.map_err(|_err| Failure::from("finish effect should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -243,9 +243,9 @@ impl Action for BranchStepASpec {
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            *state = output.expect("branch step A should succeed");
-        })();
+        let __absorb_out_3 = {
+            *state = output.map_err(|_err| Failure::from("branch step A should succeed"))?;
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -265,9 +265,9 @@ impl Action for BranchStepBSpec {
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
-            *state = output.expect("branch step B should succeed");
-        })();
+        let __absorb_out_4 = {
+            *state = output.map_err(|_err| Failure::from("branch step B should succeed"))?;
+        };
         Ok(__absorb_out_4)
     }
 }

@@ -613,10 +613,10 @@ impl<Focus> Action for DecrementCounter<Focus> {
         view: &mut u8,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            output.expect("counter decrement should succeed");
+        let __absorb_out_1 = {
+            output.map_err(|_err| Failure::from("counter decrement should succeed"))?;
             *view = view.saturating_sub(1);
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -634,7 +634,7 @@ impl Action for StubStepSpec {
         _state: &mut (),
         _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {})();
+        let __absorb_out_2 = {};
         Ok(__absorb_out_2)
     }
 }
@@ -654,9 +654,9 @@ impl Action for SleepFiveMinutesSpec {
         _state: &mut (),
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            output.expect("sleep step should complete after worker wakeup");
-        })();
+        let __absorb_out_3 = {
+            output.map_err(|_err| Failure::from("sleep step should complete after worker wakeup"))?;
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -684,7 +684,7 @@ impl<T, S> Action for Stub<T, S> {
         _state: &mut S,
         _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {})();
+        let __absorb_out_4 = {};
         Ok(__absorb_out_4)
     }
 }

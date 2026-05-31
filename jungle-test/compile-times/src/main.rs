@@ -69,11 +69,10 @@ impl<const EFFECT_ID: usize> Action for TickSpec<EFFECT_ID> {
     }
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
+        let __absorb_out_1 = {
         black_box(EFFECT_ID);
-        output.expect("touch effect should succeed");
-    
-        })();
+        output.map_err(|_err| Failure::from("touch effect should succeed"))?;
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -90,11 +89,10 @@ impl<const EFFECT_ID: usize> Action for FocusTickSpec<EFFECT_ID> {
     }
 
     fn absorb(_state: &mut FocusState, output: EffectCompletion<Self::Effect>) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
+        let __absorb_out_2 = {
         black_box(EFFECT_ID);
-        output.expect("focused noop effect should succeed");
-    
-        })();
+        output.map_err(|_err| Failure::from("focused noop effect should succeed"))?;
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -111,11 +109,10 @@ impl<const EFFECT_ID: usize> Action for FocusJoinMergeSpec<EFFECT_ID> {
     }
 
     fn absorb(_state: &mut FocusState, output: EffectCompletion<Self::Effect>) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
+        let __absorb_out_3 = {
         black_box(EFFECT_ID);
-        output.expect("focused join merge effect should succeed");
-    
-        })();
+        output.map_err(|_err| Failure::from("focused join merge effect should succeed"))?;
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -132,11 +129,10 @@ impl<const EFFECT_ID: usize> Action for JoinTickSpec<EFFECT_ID> {
     }
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
+        let __absorb_out_4 = {
         black_box(EFFECT_ID);
-        output.expect("join branch effect should succeed");
-    
-        })();
+        output.map_err(|_err| Failure::from("join branch effect should succeed"))?;
+        };
         Ok(__absorb_out_4)
     }
 }
@@ -153,11 +149,10 @@ impl<const EFFECT_ID: usize> Action for JoinFlattenSpec<EFFECT_ID> {
     }
 
     fn absorb(_state: &mut CompileState, output: EffectCompletion<Self::Effect>) -> Result<Self::Output, Failure> {
-        let __absorb_out_5 = (|| {
+        let __absorb_out_5 = {
         black_box(EFFECT_ID);
-        output.expect("join flatten effect should succeed");
-    
-        })();
+        output.map_err(|_err| Failure::from("join flatten effect should succeed"))?;
+        };
         Ok(__absorb_out_5)
     }
 }
@@ -194,12 +189,11 @@ impl<const EFFECT_ID: usize> Action for IncrementCounterSpec<EFFECT_ID> {
         state: &mut CompileState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_6 = (|| {
+        let __absorb_out_6 = {
         black_box(EFFECT_ID);
-        output.expect("counter increment effect should succeed");
+        output.map_err(|_err| Failure::from("counter increment effect should succeed"))?;
         state.counter = state.counter.saturating_add(1);
-    
-        })();
+        };
         Ok(__absorb_out_6)
     }
 }

@@ -64,10 +64,10 @@ impl Action for AddBeforeSleepSpec {
         state: &mut SleepState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            state.counter += output.expect("add before sleep should succeed");
+        let __absorb_out_1 = {
+            state.counter += output.map_err(|_err| Failure::from("add before sleep should succeed"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -87,10 +87,10 @@ impl Action for SleepForStateWakeSpec {
         state: &mut SleepState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            output.expect("sleep should resume successfully");
+        let __absorb_out_2 = {
+            output.map_err(|_err| Failure::from("sleep should resume successfully"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -108,10 +108,10 @@ impl Action for AddAfterSleepSpec {
         state: &mut SleepState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            state.counter += output.expect("add after sleep should succeed");
+        let __absorb_out_3 = {
+            state.counter += output.map_err(|_err| Failure::from("add after sleep should succeed"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -144,9 +144,9 @@ impl Action for MergeEitherUnitSpec {
         _state: &mut SleepState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
-            output.expect("merge either unit should succeed");
-        })();
+        let __absorb_out_4 = {
+            output.map_err(|_err| Failure::from("merge either unit should succeed"))?;
+        };
         Ok(__absorb_out_4)
     }
 }

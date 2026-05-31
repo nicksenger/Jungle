@@ -38,9 +38,9 @@ impl<const NOTE: u8, const D_TICK: u8> Action for GenericActSpec<NOTE, D_TICK> {
         _state: &mut (),
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            output.expect("generic act effect should succeed");
-        })();
+        let __absorb_out_1 = {
+            output.map_err(|_err| Failure::from("generic act effect should succeed"))?;
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -88,11 +88,11 @@ impl Action for CarryActSpec {
         output: EffectCompletion<Self::Effect>,
         carry: Self::Carry,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            let value = output.expect("carry act effect should succeed");
+        let __absorb_out_2 = {
+            let value = output.map_err(|_err| Failure::from("carry act effect should succeed"))?;
             *state = value + carry;
             *state
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -124,11 +124,11 @@ impl Action for CarryAttrActSpec {
         output: EffectCompletion<Self::Effect>,
         carry: i32,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            let value = output.expect("carry attr act effect should succeed");
+        let __absorb_out_3 = {
+            let value = output.map_err(|_err| Failure::from("carry attr act effect should succeed"))?;
             *state = value + carry;
             *state
-        })();
+        };
         Ok(__absorb_out_3)
     }
 }

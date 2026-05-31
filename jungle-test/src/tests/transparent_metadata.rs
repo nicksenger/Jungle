@@ -41,11 +41,11 @@ impl Action for TransparentStepSpec {
         state: &mut i32,
         output: EffectCompletion<TransparentEffect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            let value = output.expect("transparent step effect should succeed");
+        let __absorb_out_1 = {
+            let value = output.map_err(|_err| Failure::from("transparent step effect should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }

@@ -62,8 +62,9 @@ impl Action for MultiWorkerConditionalLeftSpec {
     fn absorb(
         _state: &mut MultiWorkerState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("conditional left step should succeed");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("conditional left step should succeed"))?;
+        Ok(())
     }
 }
 
@@ -79,8 +80,9 @@ impl Action for MultiWorkerConditionalRightSpec {
     fn absorb(
         _state: &mut MultiWorkerState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("conditional right step should succeed");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("conditional right step should succeed"))?;
+        Ok(())
     }
 }
 
@@ -96,8 +98,9 @@ impl Action for MultiWorkerJoinLeftSpec {
     fn absorb(
         _state: &mut MultiWorkerState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("join left step should succeed");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("join left step should succeed"))?;
+        Ok(())
     }
 }
 
@@ -113,8 +116,9 @@ impl Action for MultiWorkerJoinRightSpec {
     fn absorb(
         _state: &mut MultiWorkerState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("join right step should succeed");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("join right step should succeed"))?;
+        Ok(())
     }
 }
 
@@ -130,8 +134,9 @@ impl Action for MultiWorkerJoinMergeSpec {
     fn absorb(
         _state: &mut MultiWorkerState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("join merge step should succeed");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("join merge step should succeed"))?;
+        Ok(())
     }
 }
 
@@ -147,8 +152,9 @@ impl Action for MultiWorkerWorkSpec {
     fn absorb(
         _state: &mut MultiWorkerState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("work step should succeed");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("work step should succeed"))?;
+        Ok(())
     }
 }
 
@@ -166,8 +172,9 @@ impl Action for MultiWorkerShortSleepSpec {
     fn absorb(
         _state: &mut MultiWorkerState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("short sleep step should succeed");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("short sleep step should succeed"))?;
+        Ok(())
     }
 }
 
@@ -183,9 +190,10 @@ impl Action for MultiWorkerAdvanceIterationSpec {
     fn absorb(
         state: &mut MultiWorkerState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("advance iteration step should succeed");
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("advance iteration step should succeed"))?;
         state.iteration = state.iteration.saturating_add(1);
+        Ok(())
     }
 }
 

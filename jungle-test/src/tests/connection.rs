@@ -45,8 +45,12 @@ impl Action for ConnectionStepSpec7 {
 
     fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("connection animal 7 effect should succeed");
+    fn absorb(
+        _state: &mut (),
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("connection animal 7 effect should succeed"))?;
+        Ok(())
     }
 }
 
@@ -87,8 +91,12 @@ impl Action for ConnectionStepSpec9 {
 
     fn emit(_state: &(), _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("connection animal 9 effect should succeed");
+    fn absorb(
+        _state: &mut (),
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output.map_err(|_err| Failure::from("connection animal 9 effect should succeed"))?;
+        Ok(())
     }
 }
 

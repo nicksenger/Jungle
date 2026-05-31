@@ -43,9 +43,9 @@ impl Action for ApplyCronfishSeed {
         _output: EffectCompletion<Self::Effect>,
         seed: CronState,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
+        let __absorb_out_1 = {
             *state = seed;
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -93,7 +93,7 @@ impl Action for CronfishUntilNextFire {
         _state: &mut CronState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| output.expect("cron duration step should complete"))();
+        let __absorb_out_2 = output.map_err(|_err| Failure::from("cron duration step should complete"))?;
         Ok(__absorb_out_2)
     }
 }
@@ -113,9 +113,9 @@ impl Action for CronfishSleep {
         _state: &mut CronState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            output.expect("cron sleep step should complete");
-        })();
+        let __absorb_out_3 = {
+            output.map_err(|_err| Failure::from("cron sleep step should complete"))?;
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -162,9 +162,9 @@ impl Action for CronfishFire {
         _state: &mut CronState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
-            output.expect("cron fire script step should complete");
-        })();
+        let __absorb_out_4 = {
+            output.map_err(|_err| Failure::from("cron fire script step should complete"))?;
+        };
         Ok(__absorb_out_4)
     }
 }

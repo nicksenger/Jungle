@@ -147,7 +147,7 @@ where
         core: &mut CoreState,
         output: EffectCompletion<Sleep>,
     ) -> Result<Self::Output, Failure> {
-        let value = output.expect("sleep should succeed");
+        let value = output.map_err(|_err| Failure::from("sleep should succeed"))?;
         core.energy = value;
         Ok(value)
     }
@@ -179,7 +179,7 @@ where
         core: &mut CoreState,
         output: EffectCompletion<Eat>,
     ) -> Result<Self::Output, Failure> {
-        let value = output.expect("eat should succeed");
+        let value = output.map_err(|_err| Failure::from("eat should succeed"))?;
         core.energy = value;
         Ok(value)
     }
@@ -286,12 +286,12 @@ impl Action for GorillaSleepManualSpec {
         state: &mut GorillaState,
         output: EffectCompletion<Sleep>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            let value = output.expect("sleep should succeed");
+        let __absorb_out_1 = {
+            let value = output.map_err(|_err| Failure::from("sleep should succeed"))?;
             state.core.energy = value;
             state.core.age += 1;
             value
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -361,11 +361,11 @@ impl Action for TigerSleepFromEitherSpec {
         state: &mut TigerState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            let value = output.expect("sleep should succeed");
+        let __absorb_out_2 = {
+            let value = output.map_err(|_err| Failure::from("sleep should succeed"))?;
             state.core.energy = value;
             value
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -383,11 +383,11 @@ impl Action for TigerHuntFromEnergySpec {
         state: &mut TigerState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            let delta = output.expect("hunt should succeed");
+        let __absorb_out_3 = {
+            let delta = output.map_err(|_err| Failure::from("hunt should succeed"))?;
             state.core.energy += delta;
             state.core.energy
-        })();
+        };
         Ok(__absorb_out_3)
     }
 }

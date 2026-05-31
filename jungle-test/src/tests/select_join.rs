@@ -66,7 +66,7 @@ impl Action for SelectFastSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| output.expect("fast effect should succeed"))();
+        let __absorb_out_1 = output.map_err(|_err| Failure::from("fast effect should succeed"))?;
         Ok(__absorb_out_1)
     }
 }
@@ -86,7 +86,7 @@ impl Action for SelectSlowSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| output.expect("slow effect should succeed"))();
+        let __absorb_out_2 = output.map_err(|_err| Failure::from("slow effect should succeed"))?;
         Ok(__absorb_out_2)
     }
 }
@@ -109,9 +109,9 @@ impl Action for CaptureSelectWinnerSpec {
         state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            state.winner = output.expect("winner capture should succeed");
-        })();
+        let __absorb_out_3 = {
+            state.winner = output.map_err(|_err| Failure::from("winner capture should succeed"))?;
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -146,7 +146,7 @@ impl Action for JoinFastSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| output.expect("join fast should succeed"))();
+        let __absorb_out_4 = output.map_err(|_err| Failure::from("join fast should succeed"))?;
         Ok(__absorb_out_4)
     }
 }
@@ -166,7 +166,7 @@ impl Action for JoinSlowSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_5 = (|| output.expect("join slow should succeed"))();
+        let __absorb_out_5 = output.map_err(|_err| Failure::from("join slow should succeed"))?;
         Ok(__absorb_out_5)
     }
 }
@@ -186,9 +186,9 @@ impl Action for CaptureJoinSumSpec {
         state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_6 = (|| {
-            state.joined_sum = output.expect("join sum capture should succeed");
-        })();
+        let __absorb_out_6 = {
+            state.joined_sum = output.map_err(|_err| Failure::from("join sum capture should succeed"))?;
+        };
         Ok(__absorb_out_6)
     }
 }
@@ -223,11 +223,11 @@ impl Action for TimeoutSleepSpec {
         state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_7 = (|| {
-            output.expect("timeout sleep should succeed");
+        let __absorb_out_7 = {
+            output.map_err(|_err| Failure::from("timeout sleep should succeed"))?;
             state.winner = -1;
             -1
-        })();
+        };
         Ok(__absorb_out_7)
     }
 }
@@ -247,11 +247,11 @@ impl Action for TimeoutSlowSpec {
         state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_8 = (|| {
-            let value = output.expect("timeout slow should succeed");
+        let __absorb_out_8 = {
+            let value = output.map_err(|_err| Failure::from("timeout slow should succeed"))?;
             state.winner = value;
             value
-        })();
+        };
         Ok(__absorb_out_8)
     }
 }
@@ -283,9 +283,9 @@ impl Action for SelectBranchPrefixFastSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_9 = (|| {
-            output.expect("select fast prefix should succeed");
-        })();
+        let __absorb_out_9 = {
+            output.map_err(|_err| Failure::from("select fast prefix should succeed"))?;
+        };
         Ok(__absorb_out_9)
     }
 }
@@ -305,9 +305,9 @@ impl Action for SelectBranchPrefixSlowSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_10 = (|| {
-            output.expect("select slow prefix should succeed");
-        })();
+        let __absorb_out_10 = {
+            output.map_err(|_err| Failure::from("select slow prefix should succeed"))?;
+        };
         Ok(__absorb_out_10)
     }
 }
@@ -327,7 +327,7 @@ impl Action for SelectBranchWinnerFastSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_11 = (|| output.expect("select fast winner should succeed"))();
+        let __absorb_out_11 = output.map_err(|_err| Failure::from("select fast winner should succeed"))?;
         Ok(__absorb_out_11)
     }
 }
@@ -347,7 +347,7 @@ impl Action for SelectBranchWinnerSlowSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_12 = (|| output.expect("select slow winner should succeed"))();
+        let __absorb_out_12 = output.map_err(|_err| Failure::from("select slow winner should succeed"))?;
         Ok(__absorb_out_12)
     }
 }
@@ -394,9 +394,9 @@ impl Action for JoinBranchLeftPrefixSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_13 = (|| {
-            output.expect("join left prefix should succeed");
-        })();
+        let __absorb_out_13 = {
+            output.map_err(|_err| Failure::from("join left prefix should succeed"))?;
+        };
         Ok(__absorb_out_13)
     }
 }
@@ -416,9 +416,9 @@ impl Action for JoinBranchRightPrefixSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_14 = (|| {
-            output.expect("join right prefix should succeed");
-        })();
+        let __absorb_out_14 = {
+            output.map_err(|_err| Failure::from("join right prefix should succeed"))?;
+        };
         Ok(__absorb_out_14)
     }
 }
@@ -438,7 +438,7 @@ impl Action for JoinBranchLeftValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_15 = (|| output.expect("join left value should succeed"))();
+        let __absorb_out_15 = output.map_err(|_err| Failure::from("join left value should succeed"))?;
         Ok(__absorb_out_15)
     }
 }
@@ -458,7 +458,7 @@ impl Action for JoinBranchRightValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_16 = (|| output.expect("join right value should succeed"))();
+        let __absorb_out_16 = output.map_err(|_err| Failure::from("join right value should succeed"))?;
         Ok(__absorb_out_16)
     }
 }
@@ -512,7 +512,7 @@ impl Action for ConditionalLeftPassthroughSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_17 = (|| output.expect("conditional left passthrough should succeed"))();
+        let __absorb_out_17 = output.map_err(|_err| Failure::from("conditional left passthrough should succeed"))?;
         Ok(__absorb_out_17)
     }
 }
@@ -532,7 +532,7 @@ impl Action for ConditionalRightPassthroughSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_18 = (|| output.expect("conditional right passthrough should succeed"))();
+        let __absorb_out_18 = output.map_err(|_err| Failure::from("conditional right passthrough should succeed"))?;
         Ok(__absorb_out_18)
     }
 }
@@ -555,7 +555,7 @@ impl Action for JoinFromConditionalLeftSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_19 = (|| output.expect("join from conditional left should succeed"))();
+        let __absorb_out_19 = output.map_err(|_err| Failure::from("join from conditional left should succeed"))?;
         Ok(__absorb_out_19)
     }
 }
@@ -578,7 +578,7 @@ impl Action for JoinFromConditionalRightSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_20 = (|| output.expect("join from conditional right should succeed"))();
+        let __absorb_out_20 = output.map_err(|_err| Failure::from("join from conditional right should succeed"))?;
         Ok(__absorb_out_20)
     }
 }
@@ -623,11 +623,11 @@ impl Action for JoinMutatesWinnerSpec {
         state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_21 = (|| {
-            let value = output.expect("join mutates winner should succeed");
+        let __absorb_out_21 = {
+            let value = output.map_err(|_err| Failure::from("join mutates winner should succeed"))?;
             state.winner = value;
             value
-        })();
+        };
         Ok(__absorb_out_21)
     }
 }
@@ -654,9 +654,9 @@ impl Action for RightZeroPrefixSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_22 = (|| {
-            output.expect("right zero prefix should succeed");
-        })();
+        let __absorb_out_22 = {
+            output.map_err(|_err| Failure::from("right zero prefix should succeed"))?;
+        };
         Ok(__absorb_out_22)
     }
 }
@@ -676,7 +676,7 @@ impl Action for RightZeroValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_23 = (|| output.expect("right zero value should succeed"))();
+        let __absorb_out_23 = output.map_err(|_err| Failure::from("right zero value should succeed"))?;
         Ok(__absorb_out_23)
     }
 }
@@ -696,7 +696,7 @@ impl Action for RightNonZeroValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_24 = (|| output.expect("right non-zero value should succeed"))();
+        let __absorb_out_24 = output.map_err(|_err| Failure::from("right non-zero value should succeed"))?;
         Ok(__absorb_out_24)
     }
 }
@@ -722,7 +722,7 @@ impl Action for RightBranchMergeValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_25 = (|| output.expect("right branch merge value should succeed"))();
+        let __absorb_out_25 = output.map_err(|_err| Failure::from("right branch merge value should succeed"))?;
         Ok(__absorb_out_25)
     }
 }
@@ -770,9 +770,9 @@ impl Action for LocalJoinLeftStubASpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_26 = (|| {
-            output.expect("local left join stub A should succeed");
-        })();
+        let __absorb_out_26 = {
+            output.map_err(|_err| Failure::from("local left join stub A should succeed"))?;
+        };
         Ok(__absorb_out_26)
     }
 }
@@ -792,9 +792,9 @@ impl Action for LocalJoinLeftStubBSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_27 = (|| {
-            output.expect("local left join stub B should succeed");
-        })();
+        let __absorb_out_27 = {
+            output.map_err(|_err| Failure::from("local left join stub B should succeed"))?;
+        };
         Ok(__absorb_out_27)
     }
 }
@@ -814,9 +814,9 @@ impl Action for LocalJoinRightStubASpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_28 = (|| {
-            output.expect("local right join stub A should succeed");
-        })();
+        let __absorb_out_28 = {
+            output.map_err(|_err| Failure::from("local right join stub A should succeed"))?;
+        };
         Ok(__absorb_out_28)
     }
 }
@@ -836,9 +836,9 @@ impl Action for LocalJoinRightStubBSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_29 = (|| {
-            output.expect("local right join stub B should succeed");
-        })();
+        let __absorb_out_29 = {
+            output.map_err(|_err| Failure::from("local right join stub B should succeed"))?;
+        };
         Ok(__absorb_out_29)
     }
 }
@@ -856,9 +856,9 @@ impl Action for FlattenJoinedUnitTupleSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_30 = (|| {
-            output.expect("flatten joined unit tuple should succeed");
-        })();
+        let __absorb_out_30 = {
+            output.map_err(|_err| Failure::from("flatten joined unit tuple should succeed"))?;
+        };
         Ok(__absorb_out_30)
     }
 }
@@ -878,11 +878,11 @@ impl Action for LocalTailStubSpec {
         state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_31 = (|| {
-            output.expect("local tail stub should succeed");
+        let __absorb_out_31 = {
+            output.map_err(|_err| Failure::from("local tail stub should succeed"))?;
             state.joined_sum = state.joined_sum.saturating_add(1);
             Either::Left(())
-        })();
+        };
         Ok(__absorb_out_31)
     }
 }
@@ -942,9 +942,9 @@ impl Action for NestedJoinInnerLeftSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_32 = (|| {
-            let _ = output.expect("nested join inner left should succeed");
-        })();
+        let __absorb_out_32 = {
+            let _ = output.map_err(|_err| Failure::from("nested join inner left should succeed"))?;
+        };
         Ok(__absorb_out_32)
     }
 }
@@ -964,9 +964,9 @@ impl Action for NestedJoinInnerRightSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_33 = (|| {
-            let _ = output.expect("nested join inner right should succeed");
-        })();
+        let __absorb_out_33 = {
+            let _ = output.map_err(|_err| Failure::from("nested join inner right should succeed"))?;
+        };
         Ok(__absorb_out_33)
     }
 }
@@ -984,9 +984,9 @@ impl Action for NestedJoinInnerMergeSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_34 = (|| {
-            output.expect("nested join inner merge should succeed");
-        })();
+        let __absorb_out_34 = {
+            output.map_err(|_err| Failure::from("nested join inner merge should succeed"))?;
+        };
         Ok(__absorb_out_34)
     }
 }
@@ -1006,9 +1006,9 @@ impl Action for NestedJoinOuterRightSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_35 = (|| {
-            let _ = output.expect("nested join outer right should succeed");
-        })();
+        let __absorb_out_35 = {
+            let _ = output.map_err(|_err| Failure::from("nested join outer right should succeed"))?;
+        };
         Ok(__absorb_out_35)
     }
 }
@@ -1026,9 +1026,9 @@ impl Action for NestedJoinOuterMergeSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_36 = (|| {
-            output.expect("nested join outer merge should succeed");
-        })();
+        let __absorb_out_36 = {
+            output.map_err(|_err| Failure::from("nested join outer merge should succeed"))?;
+        };
         Ok(__absorb_out_36)
     }
 }
@@ -1048,10 +1048,10 @@ impl Action for NestedJoinTailCaptureSpec {
         state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_37 = (|| {
-            let value = output.expect("nested join tail capture should succeed");
+        let __absorb_out_37 = {
+            let value = output.map_err(|_err| Failure::from("nested join tail capture should succeed"))?;
             state.joined_sum = state.joined_sum.saturating_add(value);
-        })();
+        };
         Ok(__absorb_out_37)
     }
 }

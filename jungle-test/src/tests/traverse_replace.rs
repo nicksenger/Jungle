@@ -87,7 +87,7 @@ impl BoundAction<TraverseAnimal> for StepA {
         _state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.expect("step A should succeed");
+        output.map_err(|_err| Failure::from("step A should succeed"))?;
         Ok(())
     }
 }
@@ -115,7 +115,7 @@ impl BoundAction<TraverseAnimal> for StepB {
         _state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.expect("step B should succeed");
+        output.map_err(|_err| Failure::from("step B should succeed"))?;
         Ok(())
     }
 }
@@ -143,7 +143,7 @@ impl BoundAction<TraverseAnimal> for StepC {
         _state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.expect("step C should succeed");
+        output.map_err(|_err| Failure::from("step C should succeed"))?;
         Ok(())
     }
 }
@@ -171,7 +171,7 @@ impl BoundAction<TraverseAnimal> for StepD {
         _state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.expect("step D should succeed");
+        output.map_err(|_err| Failure::from("step D should succeed"))?;
         Ok(())
     }
 }

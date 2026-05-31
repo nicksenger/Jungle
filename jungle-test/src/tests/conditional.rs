@@ -66,11 +66,11 @@ impl Action for LeftSpec {
         state: &mut i32,
         output: EffectCompletion<LeftEffect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            let value = output.expect("left effect should succeed");
+        let __absorb_out_1 = {
+            let value = output.map_err(|_err| Failure::from("left effect should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -90,11 +90,11 @@ impl Action for RightSpec {
         state: &mut i32,
         output: EffectCompletion<RightEffect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            let value = output.expect("right effect should succeed");
+        let __absorb_out_2 = {
+            let value = output.map_err(|_err| Failure::from("right effect should succeed"))?;
             *state = value;
             value % 2 == 0
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -145,11 +145,11 @@ impl Action for LeftIntSpec {
         state: &mut i32,
         output: EffectCompletion<EchoEffect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            let value = output.expect("left-int effect should succeed");
+        let __absorb_out_3 = {
+            let value = output.map_err(|_err| Failure::from("left-int effect should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -169,11 +169,11 @@ impl Action for RightIntSpec {
         state: &mut i32,
         output: EffectCompletion<EchoEffect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
-            let value = output.expect("right-int effect should succeed");
+        let __absorb_out_4 = {
+            let value = output.map_err(|_err| Failure::from("right-int effect should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_4)
     }
 }
@@ -195,11 +195,11 @@ impl Action for MergeEitherSpec {
         state: &mut i32,
         output: EffectCompletion<EchoEffect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_5 = (|| {
-            let value = output.expect("merge-either effect should succeed");
+        let __absorb_out_5 = {
+            let value = output.map_err(|_err| Failure::from("merge-either effect should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_5)
     }
 }

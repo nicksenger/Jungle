@@ -145,11 +145,11 @@ where
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            let value = output.expect("counter add step should succeed");
+        let __absorb_out_1 = {
+            let value = output.map_err(|_err| Failure::from("counter add step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -180,11 +180,11 @@ where
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            let value = output.expect("ledger add step should succeed");
+        let __absorb_out_2 = {
+            let value = output.map_err(|_err| Failure::from("ledger add step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -215,11 +215,11 @@ where
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            let value = output.expect("counter commit step should succeed");
+        let __absorb_out_3 = {
+            let value = output.map_err(|_err| Failure::from("counter commit step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -250,11 +250,11 @@ where
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
-            let value = output.expect("ledger commit step should succeed");
+        let __absorb_out_4 = {
+            let value = output.map_err(|_err| Failure::from("ledger commit step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_4)
     }
 }
@@ -285,11 +285,11 @@ where
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_5 = (|| {
-            let value = output.expect("generic add step should succeed");
+        let __absorb_out_5 = {
+            let value = output.map_err(|_err| Failure::from("generic add step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_5)
     }
 }
@@ -324,11 +324,11 @@ where
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_6 = (|| {
-            let value = output.expect("generic commit step should succeed");
+        let __absorb_out_6 = {
+            let value = output.map_err(|_err| Failure::from("generic commit step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_6)
     }
 }
@@ -590,11 +590,11 @@ where
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_7 = (|| {
-            let value = output.expect("context-bound step should succeed");
+        let __absorb_out_7 = {
+            let value = output.map_err(|_err| Failure::from("context-bound step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_7)
     }
 }
@@ -900,11 +900,11 @@ where
         view: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_8 = (|| {
-            let out = output.expect("lens spare step should succeed");
+        let __absorb_out_8 = {
+            let out = output.map_err(|_err| Failure::from("lens spare step should succeed"))?;
             *view = out;
             out
-        })();
+        };
         Ok(__absorb_out_8)
     }
 }
@@ -935,11 +935,11 @@ where
         view: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_9 = (|| {
-            let out = output.expect("lens leaf step should succeed");
+        let __absorb_out_9 = {
+            let out = output.map_err(|_err| Failure::from("lens leaf step should succeed"))?;
             *view = out;
             out
-        })();
+        };
         Ok(__absorb_out_9)
     }
 }
@@ -970,11 +970,11 @@ where
         state: &mut LensRootState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_10 = (|| {
-            let out = output.expect("lens commit should succeed");
+        let __absorb_out_10 = {
+            let out = output.map_err(|_err| Failure::from("lens commit should succeed"))?;
             state.committed = out;
             out
-        })();
+        };
         Ok(__absorb_out_10)
     }
 }
@@ -1223,11 +1223,11 @@ where
         view: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_11 = (|| {
-            let out = output.expect("nested branch spare step should succeed");
+        let __absorb_out_11 = {
+            let out = output.map_err(|_err| Failure::from("nested branch spare step should succeed"))?;
             *view = out;
             out
-        })();
+        };
         Ok(__absorb_out_11)
     }
 }
@@ -1258,11 +1258,11 @@ where
         view: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_12 = (|| {
-            let out = output.expect("nested leaf value step should succeed");
+        let __absorb_out_12 = {
+            let out = output.map_err(|_err| Failure::from("nested leaf value step should succeed"))?;
             *view = out;
             out
-        })();
+        };
         Ok(__absorb_out_12)
     }
 }
@@ -1293,11 +1293,11 @@ where
         view: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_13 = (|| {
-            let out = output.expect("nested leaf noise step should succeed");
+        let __absorb_out_13 = {
+            let out = output.map_err(|_err| Failure::from("nested leaf noise step should succeed"))?;
             *view = out;
             out
-        })();
+        };
         Ok(__absorb_out_13)
     }
 }
@@ -1338,11 +1338,11 @@ impl Action for NestedAutoBranchSpec {
         state: &mut NestedLensBranch,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_14 = (|| {
-            let out = output.expect("nested auto branch step should succeed");
+        let __absorb_out_14 = {
+            let out = output.map_err(|_err| Failure::from("nested auto branch step should succeed"))?;
             state.spare = out;
             out
-        })();
+        };
         Ok(__absorb_out_14)
     }
 }
@@ -1590,10 +1590,10 @@ impl<St> Action for Loop2SetCounterTo2Spec<St> {
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_15 = (|| {
+        let __absorb_out_15 = {
             state.counter = 2;
-            output.expect("loop2 set-counter step should succeed")
-        })();
+            output.map_err(|_err| Failure::from("loop2 set-counter step should succeed"))?
+        };
         Ok(__absorb_out_15)
     }
 }
@@ -1616,11 +1616,11 @@ impl<St> Action for Loop2DecrementCounterSpec<St> {
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_16 = (|| {
-            let value = output.expect("loop2 decrement step should succeed");
+        let __absorb_out_16 = {
+            let value = output.map_err(|_err| Failure::from("loop2 decrement step should succeed"))?;
             state.counter = state.counter.saturating_sub(1);
             (state.counter > 0, value)
-        })();
+        };
         Ok(__absorb_out_16)
     }
 }
@@ -1668,11 +1668,11 @@ impl Action for Loop2LeftSpec {
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_17 = (|| {
-            let value = output.expect("loop2 left step should succeed");
+        let __absorb_out_17 = {
+            let value = output.map_err(|_err| Failure::from("loop2 left step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_17)
     }
 }
@@ -1692,11 +1692,11 @@ impl Action for Loop2RightSpec {
         state: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_18 = (|| {
-            let value = output.expect("loop2 right step should succeed");
+        let __absorb_out_18 = {
+            let value = output.map_err(|_err| Failure::from("loop2 right step should succeed"))?;
             *state = value;
             value
-        })();
+        };
         Ok(__absorb_out_18)
     }
 }
@@ -1867,9 +1867,9 @@ impl<St> Action for NoopLoop2SetCounter<St> {
         state: &mut Loop2Container<St>,
         _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_19 = (|| {
+        let __absorb_out_19 = {
             state.counter = 2;
-        })();
+        };
         Ok(__absorb_out_19)
     }
 }
@@ -1888,10 +1888,10 @@ impl<St> Action for NoopLoop2DecCounter<St> {
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_20 = (|| {
-            output.expect("noop loop2 decrement step should succeed");
+        let __absorb_out_20 = {
+            output.map_err(|_err| Failure::from("noop loop2 decrement step should succeed"))?;
             state.counter = state.counter.saturating_sub(1);
-        })();
+        };
         Ok(__absorb_out_20)
     }
 }
@@ -1913,12 +1913,12 @@ impl<T, S> Action for NoopFlattenEither<T, S> {
         output: EffectCompletion<Self::Effect>,
         carry: Either<T, T>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_21 = (|| {
-            output.expect("noop loop2 flatten step should succeed");
+        let __absorb_out_21 = {
+            output.map_err(|_err| Failure::from("noop loop2 flatten step should succeed"))?;
             match carry {
                 Either::Left(value) | Either::Right(value) => value,
             }
-        })();
+        };
         Ok(__absorb_out_21)
     }
 }
@@ -1950,11 +1950,11 @@ impl Action for NoopLoop2LeftSpec {
         state: &mut NoopLoop2TraceState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_22 = (|| {
-            output.expect("noop loop2 left arm should succeed");
+        let __absorb_out_22 = {
+            output.map_err(|_err| Failure::from("noop loop2 left arm should succeed"))?;
             state.left_hits = state.left_hits.saturating_add(1);
             state.order = state.order.saturating_mul(10).saturating_add(1);
-        })();
+        };
         Ok(__absorb_out_22)
     }
 }
@@ -1972,11 +1972,11 @@ impl Action for NoopLoop2RightSpec {
         state: &mut NoopLoop2TraceState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_23 = (|| {
-            output.expect("noop loop2 right arm should succeed");
+        let __absorb_out_23 = {
+            output.map_err(|_err| Failure::from("noop loop2 right arm should succeed"))?;
             state.right_hits = state.right_hits.saturating_add(1);
             state.order = state.order.saturating_mul(10).saturating_add(2);
-        })();
+        };
         Ok(__absorb_out_23)
     }
 }
@@ -2262,10 +2262,10 @@ impl Action for LeftJoinFirstSpec {
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_24 = (|| {
-            output.expect("left join first should succeed");
+        let __absorb_out_24 = {
+            output.map_err(|_err| Failure::from("left join first should succeed"))?;
             state.left_join_hits = state.left_join_hits.saturating_add(1);
-        })();
+        };
         Ok(__absorb_out_24)
     }
 }
@@ -2285,10 +2285,10 @@ impl Action for LeftJoinSecondSpec {
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_25 = (|| {
-            output.expect("left join second should succeed");
+        let __absorb_out_25 = {
+            output.map_err(|_err| Failure::from("left join second should succeed"))?;
             state.left_join_hits = state.left_join_hits.saturating_add(1);
-        })();
+        };
         Ok(__absorb_out_25)
     }
 }
@@ -2308,10 +2308,10 @@ impl Action for RightJoinFirstSpec {
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_26 = (|| {
-            output.expect("right join first should succeed");
+        let __absorb_out_26 = {
+            output.map_err(|_err| Failure::from("right join first should succeed"))?;
             state.right_join_hits = state.right_join_hits.saturating_add(1);
-        })();
+        };
         Ok(__absorb_out_26)
     }
 }
@@ -2331,10 +2331,10 @@ impl Action for RightJoinSecondSpec {
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_27 = (|| {
-            output.expect("right join second should succeed");
+        let __absorb_out_27 = {
+            output.map_err(|_err| Failure::from("right join second should succeed"))?;
             state.right_join_hits = state.right_join_hits.saturating_add(1);
-        })();
+        };
         Ok(__absorb_out_27)
     }
 }
@@ -2354,10 +2354,10 @@ impl Action for MergeJoinedUnitSpec {
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_28 = (|| {
-            output.expect("merge joined unit should succeed");
+        let __absorb_out_28 = {
+            output.map_err(|_err| Failure::from("merge joined unit should succeed"))?;
             state.join_merge_hits = state.join_merge_hits.saturating_add(1);
-        })();
+        };
         Ok(__absorb_out_28)
     }
 }
@@ -2377,10 +2377,10 @@ impl Action for MergeConditionalUnitSpec {
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_29 = (|| {
-            output.expect("merge conditional unit should succeed");
+        let __absorb_out_29 = {
+            output.map_err(|_err| Failure::from("merge conditional unit should succeed"))?;
             state.terminal_merge_hits = state.terminal_merge_hits.saturating_add(1);
-        })();
+        };
         Ok(__absorb_out_29)
     }
 }
@@ -2595,7 +2595,7 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_30 = (|| output.expect("join-left effect should succeed"))();
+        let __absorb_out_30 = output.map_err(|_err| Failure::from("join-left effect should succeed"))?;
         Ok(__absorb_out_30)
     }
 }
@@ -2626,7 +2626,7 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_31 = (|| output.expect("join-right effect should succeed"))();
+        let __absorb_out_31 = output.map_err(|_err| Failure::from("join-right effect should succeed"))?;
         Ok(__absorb_out_31)
     }
 }
@@ -2657,11 +2657,11 @@ where
         state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_32 = (|| {
-            let value = output.expect("join-to-carry should succeed");
+        let __absorb_out_32 = {
+            let value = output.map_err(|_err| Failure::from("join-to-carry should succeed"))?;
             A::set_join_sum(state, value);
             value
-        })();
+        };
         Ok(__absorb_out_32)
     }
 }
@@ -2692,7 +2692,7 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_33 = (|| output.expect("select-fast effect should succeed"))();
+        let __absorb_out_33 = output.map_err(|_err| Failure::from("select-fast effect should succeed"))?;
         Ok(__absorb_out_33)
     }
 }
@@ -2723,7 +2723,7 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_34 = (|| output.expect("select-slow effect should succeed"))();
+        let __absorb_out_34 = output.map_err(|_err| Failure::from("select-slow effect should succeed"))?;
         Ok(__absorb_out_34)
     }
 }
@@ -2756,11 +2756,11 @@ where
         state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_35 = (|| {
-            let value = output.expect("select-to-carry should succeed");
+        let __absorb_out_35 = {
+            let value = output.map_err(|_err| Failure::from("select-to-carry should succeed"))?;
             A::set_select_winner(state, value);
             value
-        })();
+        };
         Ok(__absorb_out_35)
     }
 }
@@ -2791,12 +2791,12 @@ where
         state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_36 = (|| {
-            let value = output.expect("loop-advance should succeed");
+        let __absorb_out_36 = {
+            let value = output.map_err(|_err| Failure::from("loop-advance should succeed"))?;
             A::set_shared_work(state, value);
             A::inc_loop(state);
             value
-        })();
+        };
         Ok(__absorb_out_36)
     }
 }
@@ -2827,11 +2827,11 @@ where
         state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_37 = (|| {
-            let value = output.expect("unique-alpha should succeed");
+        let __absorb_out_37 = {
+            let value = output.map_err(|_err| Failure::from("unique-alpha should succeed"))?;
             A::set_unique_alpha(state, value);
             value
-        })();
+        };
         Ok(__absorb_out_37)
     }
 }
@@ -2862,11 +2862,11 @@ where
         state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_38 = (|| {
-            let value = output.expect("unique-beta should succeed");
+        let __absorb_out_38 = {
+            let value = output.map_err(|_err| Failure::from("unique-beta should succeed"))?;
             A::set_unique_beta(state, value);
             value
-        })();
+        };
         Ok(__absorb_out_38)
     }
 }
@@ -2897,11 +2897,11 @@ where
         state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_39 = (|| {
-            let value = output.expect("finalize should succeed");
+        let __absorb_out_39 = {
+            let value = output.map_err(|_err| Failure::from("finalize should succeed"))?;
             A::set_final(state, value);
             value
-        })();
+        };
         Ok(__absorb_out_39)
     }
 }
@@ -2934,7 +2934,7 @@ where
         _state: &mut A::State,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_40 = (|| output.expect("unique-to-carry should succeed"))();
+        let __absorb_out_40 = output.map_err(|_err| Failure::from("unique-to-carry should succeed"))?;
         Ok(__absorb_out_40)
     }
 }

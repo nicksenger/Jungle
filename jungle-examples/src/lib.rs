@@ -82,7 +82,7 @@ impl BoundAction<ObserveAnimal> for ObserveSleep {
         state: &mut ObserveState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.expect("sleep branch should complete");
+        output.map_err(|_err| Failure::from("sleep branch should complete"))?;
         state.tick = state.tick.saturating_add(1);
         Ok(())
     }
@@ -111,7 +111,7 @@ impl BoundAction<ObserveAnimal> for ObserveBump {
         state: &mut ObserveState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.expect("bump branch should complete");
+        output.map_err(|_err| Failure::from("bump branch should complete"))?;
         state.tick = state.tick.saturating_add(1);
         Ok(())
     }

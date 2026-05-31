@@ -35,11 +35,11 @@ impl Action for NoopIncrementSpec {
         state: &mut NoopState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            output.expect("noop effect should succeed");
+        let __absorb_out_1 = {
+            output.map_err(|_err| Failure::from("noop effect should succeed"))?;
             state.count += 1;
             state.count
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -59,9 +59,9 @@ impl Action for CaptureValueSpec {
         state: &mut NoopState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            state.seen = output.expect("echo effect should succeed");
-        })();
+        let __absorb_out_2 = {
+            state.seen = output.map_err(|_err| Failure::from("echo effect should succeed"))?;
+        };
         Ok(__absorb_out_2)
     }
 }

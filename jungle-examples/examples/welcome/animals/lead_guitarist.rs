@@ -57,7 +57,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         _state: &mut ElectricGuitarArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("join note playback should succeed");
+        output.map_err(|_err| Failure::from("join note playback should succeed"))?;
     }
 }
 
@@ -126,7 +126,7 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         _state: &mut ElectricGuitarArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("backup vocal playback should succeed");
+        output.map_err(|_err| Failure::from("backup vocal playback should succeed"))?;
     }
 }
 
@@ -161,7 +161,7 @@ impl Action for DecrementLeadRiffLoop {
         state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("rhythm riff loop decrement should complete");
+        output.map_err(|_err| Failure::from("rhythm riff loop decrement should complete"))?;
         state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
     }
 }
@@ -183,7 +183,7 @@ impl Action for MergeLeadTurnaroundChoice {
         _state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("rhythm turnaround branch merge should complete");
+        output.map_err(|_err| Failure::from("rhythm turnaround branch merge should complete"))?;
     }
 }
 
@@ -1595,7 +1595,7 @@ impl Action for LeadTailStub {
         _state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("rhythm tail stub should succeed");
+        output.map_err(|_err| Failure::from("rhythm tail stub should succeed"))?;
     }
 }
 
@@ -1627,7 +1627,7 @@ impl Action for LeadLoopDecrementStub {
         state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("test loop decrement should succeed");
+        output.map_err(|_err| Failure::from("test loop decrement should succeed"))?;
         state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
     }
 }

@@ -54,7 +54,7 @@ impl<St> Action for Loop2DecCounter<St> {
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
     ) -> Self::Output {
-        output.expect("loop2 decrement step should succeed");
+        output.map_err(|_err| Failure::from("loop2 decrement step should succeed"))?;
         state.counter = state.counter.saturating_sub(1);
     }
 }

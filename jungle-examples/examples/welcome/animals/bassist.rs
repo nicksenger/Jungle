@@ -49,9 +49,9 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         _state: &mut BassArticulation,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            output.expect("backup vocal playback should succeed");
-        })();
+        let __absorb_out_1 = {
+            output.map_err(|_err| Failure::from("backup vocal playback should succeed"))?;
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -83,10 +83,10 @@ impl Action for DecrementBassRiffLoop {
         state: &mut BassistState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            output.expect("riff loop decrement should complete");
+        let __absorb_out_2 = {
+            output.map_err(|_err| Failure::from("riff loop decrement should complete"))?;
             state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -104,9 +104,9 @@ impl Action for MergeBassTurnaroundChoice {
         _state: &mut BassistState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            output.expect("bass turnaround branch merge should complete");
-        })();
+        let __absorb_out_3 = {
+            output.map_err(|_err| Failure::from("bass turnaround branch merge should complete"))?;
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -3109,9 +3109,9 @@ impl Action for BassTailStub {
         _state: &mut BassistState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
-            output.expect("bass tail stub should succeed");
-        })();
+        let __absorb_out_4 = {
+            output.map_err(|_err| Failure::from("bass tail stub should succeed"))?;
+        };
         Ok(__absorb_out_4)
     }
 }
@@ -3140,10 +3140,10 @@ impl Action for BassLoopDecrementStub {
         state: &mut BassistState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_5 = (|| {
-            output.expect("test loop decrement should succeed");
+        let __absorb_out_5 = {
+            output.map_err(|_err| Failure::from("test loop decrement should succeed"))?;
             state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
-        })();
+        };
         Ok(__absorb_out_5)
     }
 }

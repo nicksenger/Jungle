@@ -44,7 +44,7 @@ impl AbsorbMapper<HelperState, EchoEffect, i32> for StoreValueAbsorb {
         state: &mut HelperState,
         output: EffectCompletion<EchoEffect>,
     ) -> Result<i32, Failure> {
-        let value = output.expect("echo should succeed");
+        let value = output.map_err(|_err| Failure::from("echo should succeed"))?;
         state.value = value;
         Ok(value)
     }
@@ -56,7 +56,7 @@ impl AbsorbMapper<HelperState, PulseEffect, ()> for CountPulseAbsorb {
         state: &mut HelperState,
         output: EffectCompletion<PulseEffect>,
     ) -> Result<(), Failure> {
-        let value = output.expect("pulse should succeed");
+        let value = output.map_err(|_err| Failure::from("pulse should succeed"))?;
         state.pulse_count += 1;
         state.value += value;
         Ok(())
@@ -123,9 +123,9 @@ impl Action for BridgeToUnitSpec {
         _state: &mut HelperState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            output.expect("bridge-to-unit should succeed");
-        })();
+        let __absorb_out_1 = {
+            output.map_err(|_err| Failure::from("bridge-to-unit should succeed"))?;
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -161,11 +161,11 @@ impl Action for BridgeFromUnitSpec {
         state: &mut HelperState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            let value = output.expect("bridge-from-unit should succeed");
+        let __absorb_out_2 = {
+            let value = output.map_err(|_err| Failure::from("bridge-from-unit should succeed"))?;
             state.value += value;
             value
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }

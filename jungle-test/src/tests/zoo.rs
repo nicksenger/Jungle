@@ -143,7 +143,7 @@ where
     }
 
     fn absorb(_state: &mut T::State, output: EffectCompletion<A>) -> Result<Self::Output, Failure> {
-        output.expect("workflow effect should succeed");
+        output.map_err(|_err| Failure::from("workflow effect should succeed"))?;
         Ok(())
     }
 }
@@ -346,9 +346,9 @@ impl Action for RunnerStepOneSpec {
         state: &mut RunnerState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            state.0 += output.expect("runner step one should succeed");
-        })();
+        let __absorb_out_1 = {
+            state.0 += output.map_err(|_err| Failure::from("runner step one should succeed"))?;
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -366,9 +366,9 @@ impl Action for RunnerStepTwoSpec {
         state: &mut RunnerState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            state.0 += output.expect("runner step two should succeed");
-        })();
+        let __absorb_out_2 = {
+            state.0 += output.map_err(|_err| Failure::from("runner step two should succeed"))?;
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -386,9 +386,9 @@ impl Action for SlowRunnerStepSpec {
         state: &mut RunnerState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            state.0 += output.expect("slow runner step should succeed");
-        })();
+        let __absorb_out_3 = {
+            state.0 += output.map_err(|_err| Failure::from("slow runner step should succeed"))?;
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -594,7 +594,7 @@ where
         value: &mut i32,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let delta = output.expect("add i32 step should succeed");
+        let delta = output.map_err(|_err| Failure::from("add i32 step should succeed"))?;
         *value += delta;
         Ok(*value)
     }

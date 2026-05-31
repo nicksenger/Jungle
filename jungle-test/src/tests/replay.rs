@@ -167,10 +167,10 @@ impl Action for ReplayPreSpec {
         state: &mut ReplayGateState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            output.expect("pre increment should succeed");
+        let __absorb_out_1 = {
+            output.map_err(|_err| Failure::from("pre increment should succeed"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -188,10 +188,10 @@ impl Action for ReplayGateSpec {
         state: &mut ReplayGateState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            output.expect("gate effect should succeed");
+        let __absorb_out_2 = {
+            output.map_err(|_err| Failure::from("gate effect should succeed"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -209,10 +209,10 @@ impl Action for ReplayPostSpec {
         state: &mut ReplayGateState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            output.expect("post increment should succeed");
+        let __absorb_out_3 = {
+            output.map_err(|_err| Failure::from("post increment should succeed"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -445,10 +445,10 @@ impl Action for ReplayTimeoutPreSpec {
         state: &mut ReplayTimeoutState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
-            output.expect("pre-timeout increment should succeed");
+        let __absorb_out_4 = {
+            output.map_err(|_err| Failure::from("pre-timeout increment should succeed"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_4)
     }
 }
@@ -468,10 +468,10 @@ impl Action for ReplayTimeoutSleepSpec {
         state: &mut ReplayTimeoutState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_5 = (|| {
-            output.expect("timeout sleep should succeed");
+        let __absorb_out_5 = {
+            output.map_err(|_err| Failure::from("timeout sleep should succeed"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_5)
     }
 }
@@ -489,10 +489,10 @@ impl Action for ReplayTimeoutPostSpec {
         state: &mut ReplayTimeoutState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_6 = (|| {
-            output.expect("post-timeout increment should succeed");
+        let __absorb_out_6 = {
+            output.map_err(|_err| Failure::from("post-timeout increment should succeed"))?;
             state.phase += 1;
-        })();
+        };
         Ok(__absorb_out_6)
     }
 }

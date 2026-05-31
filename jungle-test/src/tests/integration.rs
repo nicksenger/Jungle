@@ -154,10 +154,10 @@ impl Action for AddOneBeforeFullStateSpec {
         state: &mut IntegrationState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = (|| {
-            state.total += output.expect("first pre-focused full-state effect should succeed");
+        let __absorb_out_1 = {
+            state.total += output.map_err(|_err| Failure::from("first pre-focused full-state effect should succeed"))?;
             state.before_steps += 1;
-        })();
+        };
         Ok(__absorb_out_1)
     }
 }
@@ -175,10 +175,10 @@ impl Action for AddTwoBeforeFullStateSpec {
         state: &mut IntegrationState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_2 = (|| {
-            state.total += output.expect("second pre-focused full-state effect should succeed");
+        let __absorb_out_2 = {
+            state.total += output.map_err(|_err| Failure::from("second pre-focused full-state effect should succeed"))?;
             state.before_steps += 1;
-        })();
+        };
         Ok(__absorb_out_2)
     }
 }
@@ -196,10 +196,10 @@ impl Action for AddOneFocusedSpec {
         state: &mut SubFlowState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = (|| {
-            state.value += output.expect("first focused integration effect should succeed");
+        let __absorb_out_3 = {
+            state.value += output.map_err(|_err| Failure::from("first focused integration effect should succeed"))?;
             state.updates += 1;
-        })();
+        };
         Ok(__absorb_out_3)
     }
 }
@@ -217,10 +217,10 @@ impl Action for AddTwoFocusedSpec {
         state: &mut SubFlowState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_4 = (|| {
-            state.value += output.expect("second focused integration effect should succeed");
+        let __absorb_out_4 = {
+            state.value += output.map_err(|_err| Failure::from("second focused integration effect should succeed"))?;
             state.updates += 1;
-        })();
+        };
         Ok(__absorb_out_4)
     }
 }
@@ -238,10 +238,10 @@ impl Action for AddOneDeepFocusedSpec {
         state: &mut DeepFocusState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_5 = (|| {
-            state.value += output.expect("first deep-focused integration effect should succeed");
+        let __absorb_out_5 = {
+            state.value += output.map_err(|_err| Failure::from("first deep-focused integration effect should succeed"))?;
             state.updates += 1;
-        })();
+        };
         Ok(__absorb_out_5)
     }
 }
@@ -259,10 +259,10 @@ impl Action for AddTwoDeepFocusedSpec {
         state: &mut DeepFocusState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_6 = (|| {
-            state.value += output.expect("second deep-focused integration effect should succeed");
+        let __absorb_out_6 = {
+            state.value += output.map_err(|_err| Failure::from("second deep-focused integration effect should succeed"))?;
             state.updates += 1;
-        })();
+        };
         Ok(__absorb_out_6)
     }
 }
@@ -280,10 +280,10 @@ impl Action for AddOneAfterFullStateSpec {
         state: &mut IntegrationState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_7 = (|| {
-            state.total += output.expect("first post-focused full-state effect should succeed");
+        let __absorb_out_7 = {
+            state.total += output.map_err(|_err| Failure::from("first post-focused full-state effect should succeed"))?;
             state.after_steps += 1;
-        })();
+        };
         Ok(__absorb_out_7)
     }
 }
@@ -301,10 +301,10 @@ impl Action for AddTwoAfterFullStateSpec {
         state: &mut IntegrationState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_8 = (|| {
-            state.total += output.expect("second post-focused full-state effect should succeed");
+        let __absorb_out_8 = {
+            state.total += output.map_err(|_err| Failure::from("second post-focused full-state effect should succeed"))?;
             state.after_steps += 1;
-        })();
+        };
         Ok(__absorb_out_8)
     }
 }
