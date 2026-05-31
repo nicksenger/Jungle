@@ -1,8 +1,8 @@
-use clap::Parser;
 use chrono::Utc;
-use jungle_sdk::prelude::*;
+use clap::Parser;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::effect;
+use jungle_sdk::prelude::*;
 use jungle_sdk::{JungleClient, LocalClient};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -42,8 +42,11 @@ impl Action for ApplyCronfishSeed {
         state: &mut CronState,
         _output: EffectCompletion<Self::Effect>,
         seed: CronState,
-    ) -> Self::Output {
-        *state = seed;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            *state = seed;
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -86,8 +89,12 @@ impl Action for CronfishUntilNextFire {
         state.expr.clone()
     }
 
-    fn absorb(_state: &mut CronState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("cron duration step should complete")
+    fn absorb(
+        _state: &mut CronState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| output.expect("cron duration step should complete"))();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -102,8 +109,14 @@ impl Action for CronfishSleep {
         input
     }
 
-    fn absorb(_state: &mut CronState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("cron sleep step should complete");
+    fn absorb(
+        _state: &mut CronState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            output.expect("cron sleep step should complete");
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -145,8 +158,14 @@ impl Action for CronfishFire {
         state.script.clone()
     }
 
-    fn absorb(_state: &mut CronState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("cron fire script step should complete");
+    fn absorb(
+        _state: &mut CronState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {
+            output.expect("cron fire script step should complete");
+        })();
+        Ok(__absorb_out_4)
     }
 }
 

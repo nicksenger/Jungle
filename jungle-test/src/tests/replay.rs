@@ -163,9 +163,15 @@ impl Action for ReplayPreSpec {
 
     fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("pre increment should succeed");
-        state.phase += 1;
+    fn absorb(
+        state: &mut ReplayGateState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            output.expect("pre increment should succeed");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -178,9 +184,15 @@ impl Action for ReplayGateSpec {
 
     fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("gate effect should succeed");
-        state.phase += 1;
+    fn absorb(
+        state: &mut ReplayGateState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            output.expect("gate effect should succeed");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -193,9 +205,15 @@ impl Action for ReplayPostSpec {
 
     fn emit(_state: &ReplayGateState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut ReplayGateState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("post increment should succeed");
-        state.phase += 1;
+    fn absorb(
+        state: &mut ReplayGateState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            output.expect("post increment should succeed");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -426,9 +444,12 @@ impl Action for ReplayTimeoutPreSpec {
     fn absorb(
         state: &mut ReplayTimeoutState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("pre-timeout increment should succeed");
-        state.phase += 1;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {
+            output.expect("pre-timeout increment should succeed");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_4)
     }
 }
 
@@ -446,9 +467,12 @@ impl Action for ReplayTimeoutSleepSpec {
     fn absorb(
         state: &mut ReplayTimeoutState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("timeout sleep should succeed");
-        state.phase += 1;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_5 = (|| {
+            output.expect("timeout sleep should succeed");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_5)
     }
 }
 
@@ -464,9 +488,12 @@ impl Action for ReplayTimeoutPostSpec {
     fn absorb(
         state: &mut ReplayTimeoutState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("post-timeout increment should succeed");
-        state.phase += 1;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_6 = (|| {
+            output.expect("post-timeout increment should succeed");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_6)
     }
 }
 

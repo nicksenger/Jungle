@@ -141,10 +141,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("counter add step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            let value = output.expect("counter add step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -170,10 +176,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("ledger add step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            let value = output.expect("ledger add step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -199,10 +211,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("counter commit step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            let value = output.expect("counter commit step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -228,10 +246,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("ledger commit step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {
+            let value = output.expect("ledger commit step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_4)
     }
 }
 
@@ -257,10 +281,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("generic add step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_5 = (|| {
+            let value = output.expect("generic add step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_5)
     }
 }
 
@@ -290,10 +320,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("generic commit step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_6 = (|| {
+            let value = output.expect("generic commit step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_6)
     }
 }
 
@@ -550,10 +586,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("context-bound step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_7 = (|| {
+            let value = output.expect("context-bound step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_7)
     }
 }
 
@@ -854,10 +896,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("lens spare step should succeed");
-        *view = out;
-        out
+    fn absorb(
+        view: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_8 = (|| {
+            let out = output.expect("lens spare step should succeed");
+            *view = out;
+            out
+        })();
+        Ok(__absorb_out_8)
     }
 }
 
@@ -883,10 +931,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("lens leaf step should succeed");
-        *view = out;
-        out
+    fn absorb(
+        view: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_9 = (|| {
+            let out = output.expect("lens leaf step should succeed");
+            *view = out;
+            out
+        })();
+        Ok(__absorb_out_9)
     }
 }
 
@@ -912,10 +966,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut LensRootState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("lens commit should succeed");
-        state.committed = out;
-        out
+    fn absorb(
+        state: &mut LensRootState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_10 = (|| {
+            let out = output.expect("lens commit should succeed");
+            state.committed = out;
+            out
+        })();
+        Ok(__absorb_out_10)
     }
 }
 
@@ -1159,10 +1219,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("nested branch spare step should succeed");
-        *view = out;
-        out
+    fn absorb(
+        view: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_11 = (|| {
+            let out = output.expect("nested branch spare step should succeed");
+            *view = out;
+            out
+        })();
+        Ok(__absorb_out_11)
     }
 }
 
@@ -1188,10 +1254,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("nested leaf value step should succeed");
-        *view = out;
-        out
+    fn absorb(
+        view: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_12 = (|| {
+            let out = output.expect("nested leaf value step should succeed");
+            *view = out;
+            out
+        })();
+        Ok(__absorb_out_12)
     }
 }
 
@@ -1217,10 +1289,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(view: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("nested leaf noise step should succeed");
-        *view = out;
-        out
+    fn absorb(
+        view: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_13 = (|| {
+            let out = output.expect("nested leaf noise step should succeed");
+            *view = out;
+            out
+        })();
+        Ok(__absorb_out_13)
     }
 }
 
@@ -1259,10 +1337,13 @@ impl Action for NestedAutoBranchSpec {
     fn absorb(
         state: &mut NestedLensBranch,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        let out = output.expect("nested auto branch step should succeed");
-        state.spare = out;
-        out
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_14 = (|| {
+            let out = output.expect("nested auto branch step should succeed");
+            state.spare = out;
+            out
+        })();
+        Ok(__absorb_out_14)
     }
 }
 
@@ -1508,9 +1589,12 @@ impl<St> Action for Loop2SetCounterTo2Spec<St> {
     fn absorb(
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.counter = 2;
-        output.expect("loop2 set-counter step should succeed")
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_15 = (|| {
+            state.counter = 2;
+            output.expect("loop2 set-counter step should succeed")
+        })();
+        Ok(__absorb_out_15)
     }
 }
 
@@ -1531,10 +1615,13 @@ impl<St> Action for Loop2DecrementCounterSpec<St> {
     fn absorb(
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        let value = output.expect("loop2 decrement step should succeed");
-        state.counter = state.counter.saturating_sub(1);
-        (state.counter > 0, value)
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_16 = (|| {
+            let value = output.expect("loop2 decrement step should succeed");
+            state.counter = state.counter.saturating_sub(1);
+            (state.counter > 0, value)
+        })();
+        Ok(__absorb_out_16)
     }
 }
 
@@ -1577,10 +1664,16 @@ impl Action for Loop2LeftSpec {
         input + 10
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("loop2 left step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_17 = (|| {
+            let value = output.expect("loop2 left step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_17)
     }
 }
 
@@ -1595,10 +1688,16 @@ impl Action for Loop2RightSpec {
         input + 100
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("loop2 right step should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_18 = (|| {
+            let value = output.expect("loop2 right step should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_18)
     }
 }
 
@@ -1767,8 +1866,11 @@ impl<St> Action for NoopLoop2SetCounter<St> {
     fn absorb(
         state: &mut Loop2Container<St>,
         _output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.counter = 2;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_19 = (|| {
+            state.counter = 2;
+        })();
+        Ok(__absorb_out_19)
     }
 }
 
@@ -1785,9 +1887,12 @@ impl<St> Action for NoopLoop2DecCounter<St> {
     fn absorb(
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("noop loop2 decrement step should succeed");
-        state.counter = state.counter.saturating_sub(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_20 = (|| {
+            output.expect("noop loop2 decrement step should succeed");
+            state.counter = state.counter.saturating_sub(1);
+        })();
+        Ok(__absorb_out_20)
     }
 }
 
@@ -1807,11 +1912,14 @@ impl<T, S> Action for NoopFlattenEither<T, S> {
         _state: &mut S,
         output: EffectCompletion<Self::Effect>,
         carry: Either<T, T>,
-    ) -> Self::Output {
-        output.expect("noop loop2 flatten step should succeed");
-        match carry {
-            Either::Left(value) | Either::Right(value) => value,
-        }
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_21 = (|| {
+            output.expect("noop loop2 flatten step should succeed");
+            match carry {
+                Either::Left(value) | Either::Right(value) => value,
+            }
+        })();
+        Ok(__absorb_out_21)
     }
 }
 
@@ -1841,10 +1949,13 @@ impl Action for NoopLoop2LeftSpec {
     fn absorb(
         state: &mut NoopLoop2TraceState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("noop loop2 left arm should succeed");
-        state.left_hits = state.left_hits.saturating_add(1);
-        state.order = state.order.saturating_mul(10).saturating_add(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_22 = (|| {
+            output.expect("noop loop2 left arm should succeed");
+            state.left_hits = state.left_hits.saturating_add(1);
+            state.order = state.order.saturating_mul(10).saturating_add(1);
+        })();
+        Ok(__absorb_out_22)
     }
 }
 
@@ -1860,10 +1971,13 @@ impl Action for NoopLoop2RightSpec {
     fn absorb(
         state: &mut NoopLoop2TraceState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("noop loop2 right arm should succeed");
-        state.right_hits = state.right_hits.saturating_add(1);
-        state.order = state.order.saturating_mul(10).saturating_add(2);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_23 = (|| {
+            output.expect("noop loop2 right arm should succeed");
+            state.right_hits = state.right_hits.saturating_add(1);
+            state.order = state.order.saturating_mul(10).saturating_add(2);
+        })();
+        Ok(__absorb_out_23)
     }
 }
 
@@ -2147,9 +2261,12 @@ impl Action for LeftJoinFirstSpec {
     fn absorb(
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("left join first should succeed");
-        state.left_join_hits = state.left_join_hits.saturating_add(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_24 = (|| {
+            output.expect("left join first should succeed");
+            state.left_join_hits = state.left_join_hits.saturating_add(1);
+        })();
+        Ok(__absorb_out_24)
     }
 }
 
@@ -2167,9 +2284,12 @@ impl Action for LeftJoinSecondSpec {
     fn absorb(
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("left join second should succeed");
-        state.left_join_hits = state.left_join_hits.saturating_add(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_25 = (|| {
+            output.expect("left join second should succeed");
+            state.left_join_hits = state.left_join_hits.saturating_add(1);
+        })();
+        Ok(__absorb_out_25)
     }
 }
 
@@ -2187,9 +2307,12 @@ impl Action for RightJoinFirstSpec {
     fn absorb(
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("right join first should succeed");
-        state.right_join_hits = state.right_join_hits.saturating_add(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_26 = (|| {
+            output.expect("right join first should succeed");
+            state.right_join_hits = state.right_join_hits.saturating_add(1);
+        })();
+        Ok(__absorb_out_26)
     }
 }
 
@@ -2207,9 +2330,12 @@ impl Action for RightJoinSecondSpec {
     fn absorb(
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("right join second should succeed");
-        state.right_join_hits = state.right_join_hits.saturating_add(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_27 = (|| {
+            output.expect("right join second should succeed");
+            state.right_join_hits = state.right_join_hits.saturating_add(1);
+        })();
+        Ok(__absorb_out_27)
     }
 }
 
@@ -2227,9 +2353,12 @@ impl Action for MergeJoinedUnitSpec {
     fn absorb(
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("merge joined unit should succeed");
-        state.join_merge_hits = state.join_merge_hits.saturating_add(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_28 = (|| {
+            output.expect("merge joined unit should succeed");
+            state.join_merge_hits = state.join_merge_hits.saturating_add(1);
+        })();
+        Ok(__absorb_out_28)
     }
 }
 
@@ -2247,9 +2376,12 @@ impl Action for MergeConditionalUnitSpec {
     fn absorb(
         state: &mut ConditionalJoinMergeState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("merge conditional unit should succeed");
-        state.terminal_merge_hits = state.terminal_merge_hits.saturating_add(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_29 = (|| {
+            output.expect("merge conditional unit should succeed");
+            state.terminal_merge_hits = state.terminal_merge_hits.saturating_add(1);
+        })();
+        Ok(__absorb_out_29)
     }
 }
 
@@ -2459,8 +2591,12 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("join-left effect should succeed")
+    fn absorb(
+        _state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_30 = (|| output.expect("join-left effect should succeed"))();
+        Ok(__absorb_out_30)
     }
 }
 
@@ -2486,8 +2622,12 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("join-right effect should succeed")
+    fn absorb(
+        _state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_31 = (|| output.expect("join-right effect should succeed"))();
+        Ok(__absorb_out_31)
     }
 }
 
@@ -2513,10 +2653,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("join-to-carry should succeed");
-        A::set_join_sum(state, value);
-        value
+    fn absorb(
+        state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_32 = (|| {
+            let value = output.expect("join-to-carry should succeed");
+            A::set_join_sum(state, value);
+            value
+        })();
+        Ok(__absorb_out_32)
     }
 }
 
@@ -2542,8 +2688,12 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("select-fast effect should succeed")
+    fn absorb(
+        _state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_33 = (|| output.expect("select-fast effect should succeed"))();
+        Ok(__absorb_out_33)
     }
 }
 
@@ -2569,8 +2719,12 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("select-slow effect should succeed")
+    fn absorb(
+        _state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_34 = (|| output.expect("select-slow effect should succeed"))();
+        Ok(__absorb_out_34)
     }
 }
 
@@ -2598,10 +2752,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("select-to-carry should succeed");
-        A::set_select_winner(state, value);
-        value
+    fn absorb(
+        state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_35 = (|| {
+            let value = output.expect("select-to-carry should succeed");
+            A::set_select_winner(state, value);
+            value
+        })();
+        Ok(__absorb_out_35)
     }
 }
 
@@ -2627,11 +2787,17 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("loop-advance should succeed");
-        A::set_shared_work(state, value);
-        A::inc_loop(state);
-        value
+    fn absorb(
+        state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_36 = (|| {
+            let value = output.expect("loop-advance should succeed");
+            A::set_shared_work(state, value);
+            A::inc_loop(state);
+            value
+        })();
+        Ok(__absorb_out_36)
     }
 }
 
@@ -2657,10 +2823,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("unique-alpha should succeed");
-        A::set_unique_alpha(state, value);
-        value
+    fn absorb(
+        state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_37 = (|| {
+            let value = output.expect("unique-alpha should succeed");
+            A::set_unique_alpha(state, value);
+            value
+        })();
+        Ok(__absorb_out_37)
     }
 }
 
@@ -2686,10 +2858,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("unique-beta should succeed");
-        A::set_unique_beta(state, value);
-        value
+    fn absorb(
+        state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_38 = (|| {
+            let value = output.expect("unique-beta should succeed");
+            A::set_unique_beta(state, value);
+            value
+        })();
+        Ok(__absorb_out_38)
     }
 }
 
@@ -2715,10 +2893,16 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("finalize should succeed");
-        A::set_final(state, value);
-        value
+    fn absorb(
+        state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_39 = (|| {
+            let value = output.expect("finalize should succeed");
+            A::set_final(state, value);
+            value
+        })();
+        Ok(__absorb_out_39)
     }
 }
 
@@ -2746,8 +2930,12 @@ where
         (<Self as BoundAction<A>>::emit(view, input), ())
     }
 
-    fn absorb(_state: &mut A::State, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("unique-to-carry should succeed")
+    fn absorb(
+        _state: &mut A::State,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_40 = (|| output.expect("unique-to-carry should succeed"))();
+        Ok(__absorb_out_40)
     }
 }
 

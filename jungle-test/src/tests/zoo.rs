@@ -142,10 +142,7 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(
-        _state: &mut T::State,
-        output: EffectCompletion<A>,
-    ) -> Result<Self::Output, Failure> {
+    fn absorb(_state: &mut T::State, output: EffectCompletion<A>) -> Result<Self::Output, Failure> {
         output.expect("workflow effect should succeed");
         Ok(())
     }
@@ -345,8 +342,14 @@ impl Action for RunnerStepOneSpec {
 
     fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.0 += output.expect("runner step one should succeed");
+    fn absorb(
+        state: &mut RunnerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            state.0 += output.expect("runner step one should succeed");
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -359,8 +362,14 @@ impl Action for RunnerStepTwoSpec {
 
     fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.0 += output.expect("runner step two should succeed");
+    fn absorb(
+        state: &mut RunnerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            state.0 += output.expect("runner step two should succeed");
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -373,8 +382,14 @@ impl Action for SlowRunnerStepSpec {
 
     fn emit(_state: &RunnerState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut RunnerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.0 += output.expect("slow runner step should succeed");
+    fn absorb(
+        state: &mut RunnerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            state.0 += output.expect("slow runner step should succeed");
+        })();
+        Ok(__absorb_out_3)
     }
 }
 

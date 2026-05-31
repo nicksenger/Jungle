@@ -39,10 +39,16 @@ impl Action for TickSpec {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<TickEffect>) -> Self::Output {
-        let value = output.expect("tick effect should succeed");
-        *state = value;
-        (*state < 3, value)
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<TickEffect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            let value = output.expect("tick effect should succeed");
+            *state = value;
+            (*state < 3, value)
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -95,14 +101,20 @@ impl Action for TailAfterLoopSpec {
         input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<TailEchoEffect>) -> Self::Output {
-        let (loop_should_continue, value) = output.expect("tail effect should succeed");
-        *state = if loop_should_continue {
-            -999
-        } else {
-            value + 10
-        };
-        *state
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<TailEchoEffect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            let (loop_should_continue, value) = output.expect("tail effect should succeed");
+            *state = if loop_should_continue {
+                -999
+            } else {
+                value + 10
+            };
+            *state
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -167,8 +179,14 @@ impl Action for InnerWorkSpec {
 
     fn emit(_state: &NestedState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut NestedState, _output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.inner_step = state.inner_step.saturating_add(1);
+    fn absorb(
+        state: &mut NestedState,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            state.inner_step = state.inner_step.saturating_add(1);
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -181,10 +199,16 @@ impl Action for FinishOuterRoundSpec {
 
     fn emit(_state: &NestedState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut NestedState, _output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.outer_iterations_done = state.outer_iterations_done.saturating_add(1);
-        state.outer_round = state.outer_round.saturating_add(1);
-        state.inner_step = 0;
+    fn absorb(
+        state: &mut NestedState,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {
+            state.outer_iterations_done = state.outer_iterations_done.saturating_add(1);
+            state.outer_round = state.outer_round.saturating_add(1);
+            state.inner_step = 0;
+        })();
+        Ok(__absorb_out_4)
     }
 }
 
@@ -213,9 +237,15 @@ impl Action for InlineNoopFalseSpec {
 
     fn emit(_state: &u8, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(_state: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("noop should succeed");
-        false
+    fn absorb(
+        _state: &mut u8,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_5 = (|| {
+            output.expect("noop should succeed");
+            false
+        })();
+        Ok(__absorb_out_5)
     }
 }
 
@@ -230,10 +260,16 @@ impl Action for EchoBoolSpec {
         input
     }
 
-    fn absorb(state: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let echoed = output.expect("echo bool should succeed");
-        assert!(!echoed, "expected inline noop output to feed false");
-        *state = state.saturating_add(1);
+    fn absorb(
+        state: &mut u8,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_6 = (|| {
+            let echoed = output.expect("echo bool should succeed");
+            assert!(!echoed, "expected inline noop output to feed false");
+            *state = state.saturating_add(1);
+        })();
+        Ok(__absorb_out_6)
     }
 }
 
@@ -320,10 +356,13 @@ impl Action for NestedInlineInnerNoopFalseSpec {
     fn absorb(
         state: &mut NestedInlineCarryState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("nested inner noop should succeed");
-        state.inner_done = true;
-        false
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_7 = (|| {
+            output.expect("nested inner noop should succeed");
+            state.inner_done = true;
+            false
+        })();
+        Ok(__absorb_out_7)
     }
 }
 
@@ -341,10 +380,13 @@ impl Action for NestedInlineOuterEchoBoolSpec {
     fn absorb(
         state: &mut NestedInlineCarryState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        let echoed = output.expect("nested outer echo bool should succeed");
-        assert!(!echoed, "nested outer step should receive inline false");
-        state.outer_done = true;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_8 = (|| {
+            let echoed = output.expect("nested outer echo bool should succeed");
+            assert!(!echoed, "nested outer step should receive inline false");
+            state.outer_done = true;
+        })();
+        Ok(__absorb_out_8)
     }
 }
 
@@ -386,8 +428,14 @@ impl Action for RhythmLikeJoinLeftSpec {
         0
     }
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let _ = output.expect("rhythm-like join left should succeed");
+    fn absorb(
+        _state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_9 = (|| {
+            let _ = output.expect("rhythm-like join left should succeed");
+        })();
+        Ok(__absorb_out_9)
     }
 }
 
@@ -402,8 +450,14 @@ impl Action for RhythmLikeJoinRightSpec {
         1
     }
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let _ = output.expect("rhythm-like join right should succeed");
+    fn absorb(
+        _state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_10 = (|| {
+            let _ = output.expect("rhythm-like join right should succeed");
+        })();
+        Ok(__absorb_out_10)
     }
 }
 
@@ -416,8 +470,14 @@ impl Action for RhythmLikeMergeUnitSpec {
 
     fn emit(_state: &i32, _input: Self::Input) -> () {}
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("rhythm-like merge unit should succeed");
+    fn absorb(
+        _state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_11 = (|| {
+            output.expect("rhythm-like merge unit should succeed");
+        })();
+        Ok(__absorb_out_11)
     }
 }
 
@@ -432,8 +492,14 @@ impl Action for RhythmLikePostMergeRestSpec {
         std::time::Duration::from_millis(1)
     }
 
-    fn absorb(_state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("rhythm-like post merge rest should succeed");
+    fn absorb(
+        _state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_12 = (|| {
+            output.expect("rhythm-like post merge rest should succeed");
+        })();
+        Ok(__absorb_out_12)
     }
 }
 
@@ -449,9 +515,12 @@ impl Action for RhythmLikeDecrementLoopSpec {
     fn absorb(
         state: &mut RhythmLikeLoopState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("rhythm-like decrement should succeed");
-        state.loops_remaining = state.loops_remaining.saturating_sub(1);
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_13 = (|| {
+            output.expect("rhythm-like decrement should succeed");
+            state.loops_remaining = state.loops_remaining.saturating_sub(1);
+        })();
+        Ok(__absorb_out_13)
     }
 }
 
@@ -467,8 +536,11 @@ impl Action for RhythmLikeMergeChoiceSpec {
     fn absorb(
         _state: &mut RhythmLikeLoopState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        output.expect("rhythm-like conditional merge should succeed");
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_14 = (|| {
+            output.expect("rhythm-like conditional merge should succeed");
+        })();
+        Ok(__absorb_out_14)
     }
 }
 

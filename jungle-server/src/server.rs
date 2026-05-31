@@ -485,12 +485,9 @@ impl JungleServer for Server {
             Some(WireIn::JourneyDead(journey_id)) => {
                 #[cfg(any(feature = "postgres", feature = "redb"))]
                 {
-                    self.store
-                        .journey_dead(journey_id)
-                        .await
-                        .map_err(|err| {
-                            crate::ServerError::Backend(BackendError::Message(err.to_string()))
-                        })?;
+                    self.store.journey_dead(journey_id).await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
                     #[cfg(feature = "redb")]
                     self.journey_update_notify.notify_waiters();
                     WireOut::Ack

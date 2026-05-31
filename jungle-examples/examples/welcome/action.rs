@@ -11,7 +11,13 @@ impl<S> Action for MergeUnit<S> {
     type Output = ();
 
     fn emit(_state: &S, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
-    fn absorb(_state: &mut S, output: EffectCompletion<Self::Effect>) -> Self::Output {}
+    fn absorb(
+        _state: &mut S,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {})();
+        Ok(__absorb_out_1)
+    }
 }
 
 pub struct MergeEither<T, S>(PhantomData<T>, PhantomData<S>);
@@ -26,8 +32,13 @@ impl<T, S> Action for MergeEither<T, S> {
             Either::Left(t) | Either::Right(t) => ((), t),
         }
     }
-    fn absorb(_state: &mut S, output: EffectCompletion<Self::Effect>, carry: T) -> Self::Output {
-        carry
+    fn absorb(
+        _state: &mut S,
+        output: EffectCompletion<Self::Effect>,
+        carry: T,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| carry)();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -44,5 +55,11 @@ impl<S, const REST_TICK: u32, const LANE_ID: u8> Action for Rest<S, REST_TICK, L
             ticks: REST_TICK,
         }
     }
-    fn absorb(_state: &mut S, _output: EffectCompletion<Self::Effect>) -> Self::Output {}
+    fn absorb(
+        _state: &mut S,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {})();
+        Ok(__absorb_out_3)
+    }
 }

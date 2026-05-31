@@ -210,10 +210,7 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(
-        value: &mut i32,
-        output: EffectCompletion<A>,
-    ) -> Result<Self::Output, Failure> {
+    fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Result<Self::Output, Failure> {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("effect should succeed"),
@@ -248,10 +245,7 @@ where
         (<Self as BoundAction<T>>::emit(view, input), ())
     }
 
-    fn absorb(
-        value: &mut i32,
-        output: EffectCompletion<A>,
-    ) -> Result<Self::Output, Failure> {
+    fn absorb(value: &mut i32, output: EffectCompletion<A>) -> Result<Self::Output, Failure> {
         let delta = match output {
             Ok(delta) => delta,
             Err(_) => panic!("effect should succeed"),
@@ -288,11 +282,17 @@ impl Action for GorillaSleepManualSpec {
         state.core.energy + input
     }
 
-    fn absorb(state: &mut GorillaState, output: EffectCompletion<Sleep>) -> Self::Output {
-        let value = output.expect("sleep should succeed");
-        state.core.energy = value;
-        state.core.age += 1;
-        value
+    fn absorb(
+        state: &mut GorillaState,
+        output: EffectCompletion<Sleep>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            let value = output.expect("sleep should succeed");
+            state.core.energy = value;
+            state.core.age += 1;
+            value
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -357,10 +357,16 @@ impl Action for TigerSleepFromEitherSpec {
         }
     }
 
-    fn absorb(state: &mut TigerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("sleep should succeed");
-        state.core.energy = value;
-        value
+    fn absorb(
+        state: &mut TigerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            let value = output.expect("sleep should succeed");
+            state.core.energy = value;
+            value
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -373,10 +379,16 @@ impl Action for TigerHuntFromEnergySpec {
 
     fn emit(_state: &TigerState, _input: Self::Input) -> () {}
 
-    fn absorb(state: &mut TigerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let delta = output.expect("hunt should succeed");
-        state.core.energy += delta;
-        state.core.energy
+    fn absorb(
+        state: &mut TigerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            let delta = output.expect("hunt should succeed");
+            state.core.energy += delta;
+            state.core.energy
+        })();
+        Ok(__absorb_out_3)
     }
 }
 

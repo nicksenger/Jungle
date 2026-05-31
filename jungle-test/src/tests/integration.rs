@@ -153,9 +153,12 @@ impl Action for AddOneBeforeFullStateSpec {
     fn absorb(
         state: &mut IntegrationState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.total += output.expect("first pre-focused full-state effect should succeed");
-        state.before_steps += 1;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            state.total += output.expect("first pre-focused full-state effect should succeed");
+            state.before_steps += 1;
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -171,9 +174,12 @@ impl Action for AddTwoBeforeFullStateSpec {
     fn absorb(
         state: &mut IntegrationState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.total += output.expect("second pre-focused full-state effect should succeed");
-        state.before_steps += 1;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            state.total += output.expect("second pre-focused full-state effect should succeed");
+            state.before_steps += 1;
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -186,9 +192,15 @@ impl Action for AddOneFocusedSpec {
 
     fn emit(_state: &SubFlowState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.value += output.expect("first focused integration effect should succeed");
-        state.updates += 1;
+    fn absorb(
+        state: &mut SubFlowState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            state.value += output.expect("first focused integration effect should succeed");
+            state.updates += 1;
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -201,9 +213,15 @@ impl Action for AddTwoFocusedSpec {
 
     fn emit(_state: &SubFlowState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut SubFlowState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.value += output.expect("second focused integration effect should succeed");
-        state.updates += 1;
+    fn absorb(
+        state: &mut SubFlowState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {
+            state.value += output.expect("second focused integration effect should succeed");
+            state.updates += 1;
+        })();
+        Ok(__absorb_out_4)
     }
 }
 
@@ -216,9 +234,15 @@ impl Action for AddOneDeepFocusedSpec {
 
     fn emit(_state: &DeepFocusState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.value += output.expect("first deep-focused integration effect should succeed");
-        state.updates += 1;
+    fn absorb(
+        state: &mut DeepFocusState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_5 = (|| {
+            state.value += output.expect("first deep-focused integration effect should succeed");
+            state.updates += 1;
+        })();
+        Ok(__absorb_out_5)
     }
 }
 
@@ -231,9 +255,15 @@ impl Action for AddTwoDeepFocusedSpec {
 
     fn emit(_state: &DeepFocusState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut DeepFocusState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.value += output.expect("second deep-focused integration effect should succeed");
-        state.updates += 1;
+    fn absorb(
+        state: &mut DeepFocusState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_6 = (|| {
+            state.value += output.expect("second deep-focused integration effect should succeed");
+            state.updates += 1;
+        })();
+        Ok(__absorb_out_6)
     }
 }
 
@@ -249,9 +279,12 @@ impl Action for AddOneAfterFullStateSpec {
     fn absorb(
         state: &mut IntegrationState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.total += output.expect("first post-focused full-state effect should succeed");
-        state.after_steps += 1;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_7 = (|| {
+            state.total += output.expect("first post-focused full-state effect should succeed");
+            state.after_steps += 1;
+        })();
+        Ok(__absorb_out_7)
     }
 }
 
@@ -267,9 +300,12 @@ impl Action for AddTwoAfterFullStateSpec {
     fn absorb(
         state: &mut IntegrationState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
-        state.total += output.expect("second post-focused full-state effect should succeed");
-        state.after_steps += 1;
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_8 = (|| {
+            state.total += output.expect("second post-focused full-state effect should succeed");
+            state.after_steps += 1;
+        })();
+        Ok(__absorb_out_8)
     }
 }
 

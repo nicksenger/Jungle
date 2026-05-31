@@ -60,9 +60,15 @@ impl Action for AddBeforeSleepSpec {
 
     fn emit(_state: &SleepState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.counter += output.expect("add before sleep should succeed");
-        state.phase += 1;
+    fn absorb(
+        state: &mut SleepState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            state.counter += output.expect("add before sleep should succeed");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -77,9 +83,15 @@ impl Action for SleepForStateWakeSpec {
         Duration::from_millis(state.sleep_for_ms)
     }
 
-    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("sleep should resume successfully");
-        state.phase += 1;
+    fn absorb(
+        state: &mut SleepState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            output.expect("sleep should resume successfully");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -92,9 +104,15 @@ impl Action for AddAfterSleepSpec {
 
     fn emit(_state: &SleepState, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        state.counter += output.expect("add after sleep should succeed");
-        state.phase += 1;
+    fn absorb(
+        state: &mut SleepState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            state.counter += output.expect("add after sleep should succeed");
+            state.phase += 1;
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -122,8 +140,14 @@ impl Action for MergeEitherUnitSpec {
 
     fn emit(_state: &SleepState, _input: Self::Input) -> () {}
 
-    fn absorb(_state: &mut SleepState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("merge either unit should succeed");
+    fn absorb(
+        _state: &mut SleepState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {
+            output.expect("merge either unit should succeed");
+        })();
+        Ok(__absorb_out_4)
     }
 }
 

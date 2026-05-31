@@ -9,8 +9,7 @@ use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, R
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
     BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Failure, Noop,
-    Observable,
-    Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
+    Observable, Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -566,9 +565,7 @@ pub enum JourneyStartOutcome<T> {
 
 pub enum SuspendedOutcome {
     Completed,
-    Failed {
-        failure: Failure,
-    },
+    Failed { failure: Failure },
     Sleeping { wake_at_unix_ms: i64, node_id: u32 },
 }
 

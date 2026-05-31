@@ -43,10 +43,16 @@ impl Action for SeedSpec {
         input + 1
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<SeedEffect>) -> Self::Output {
-        let value = output.expect("seed effect should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<SeedEffect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            let value = output.expect("seed effect should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -61,10 +67,16 @@ impl Action for FinishSpec {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<FinishEffect>) -> Self::Output {
-        let value = output.expect("finish effect should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<FinishEffect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            let value = output.expect("finish effect should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -227,8 +239,14 @@ impl Action for BranchStepASpec {
         *state
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        *state = output.expect("branch step A should succeed");
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            *state = output.expect("branch step A should succeed");
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -243,8 +261,14 @@ impl Action for BranchStepBSpec {
         *state
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        *state = output.expect("branch step B should succeed");
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {
+            *state = output.expect("branch step B should succeed");
+        })();
+        Ok(__absorb_out_4)
     }
 }
 

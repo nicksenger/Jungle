@@ -609,9 +609,15 @@ impl<Focus> Action for DecrementCounter<Focus> {
 
     fn emit(_view: &u8, _input: Self::Input) -> Self::Input {}
 
-    fn absorb(view: &mut u8, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("counter decrement should succeed");
-        *view = view.saturating_sub(1);
+    fn absorb(
+        view: &mut u8,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            output.expect("counter decrement should succeed");
+            *view = view.saturating_sub(1);
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -624,7 +630,13 @@ impl Action for StubStepSpec {
 
     fn emit(_state: &(), _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
 
-    fn absorb(_state: &mut (), _output: EffectCompletion<Self::Effect>) -> Self::Output {}
+    fn absorb(
+        _state: &mut (),
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {})();
+        Ok(__absorb_out_2)
+    }
 }
 
 pub struct SleepFiveMinutesSpec;
@@ -638,8 +650,14 @@ impl Action for SleepFiveMinutesSpec {
         Duration::from_secs(5 * 60)
     }
 
-    fn absorb(_state: &mut (), output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("sleep step should complete after worker wakeup");
+    fn absorb(
+        _state: &mut (),
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            output.expect("sleep step should complete after worker wakeup");
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -662,7 +680,13 @@ impl<T, S> Action for Stub<T, S> {
     type Output = ();
 
     fn emit(_state: &S, _input: Self::Input) -> <Self::Effect as EffectSchema>::In {}
-    fn absorb(_state: &mut S, _output: EffectCompletion<Self::Effect>) -> Self::Output {}
+    fn absorb(
+        _state: &mut S,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {})();
+        Ok(__absorb_out_4)
+    }
 }
 
 #[cfg(test)]

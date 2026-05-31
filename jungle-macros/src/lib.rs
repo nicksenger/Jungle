@@ -1346,11 +1346,11 @@ pub fn action(attr: TokenStream, item: TokenStream) -> TokenStream {
         let carry_methods = if explicit_carry {
             let mut emit_with_carry_fn = emit_fn.clone();
             emit_with_carry_fn.sig.ident = format_ident!("emit_with_carry");
-            let mut absorb_with_carry_fn = match normalize_absorb_signature(absorb_fn.clone(), &types)
-            {
-                Ok(func) => func,
-                Err(err) => return err.to_compile_error().into(),
-            };
+            let mut absorb_with_carry_fn =
+                match normalize_absorb_signature(absorb_fn.clone(), &types) {
+                    Ok(func) => func,
+                    Err(err) => return err.to_compile_error().into(),
+                };
             absorb_with_carry_fn.sig.ident = format_ident!("absorb_with_carry");
             quote! {
                 #emit_with_carry_fn

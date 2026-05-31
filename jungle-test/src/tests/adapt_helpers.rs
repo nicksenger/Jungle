@@ -119,8 +119,14 @@ impl Action for BridgeToUnitSpec {
         input
     }
 
-    fn absorb(_state: &mut HelperState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("bridge-to-unit should succeed");
+    fn absorb(
+        _state: &mut HelperState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            output.expect("bridge-to-unit should succeed");
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -151,10 +157,16 @@ impl Action for BridgeFromUnitSpec {
         input
     }
 
-    fn absorb(state: &mut HelperState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let value = output.expect("bridge-from-unit should succeed");
-        state.value += value;
-        value
+    fn absorb(
+        state: &mut HelperState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            let value = output.expect("bridge-from-unit should succeed");
+            state.value += value;
+            value
+        })();
+        Ok(__absorb_out_2)
     }
 }
 

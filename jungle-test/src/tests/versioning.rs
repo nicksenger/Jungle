@@ -49,8 +49,14 @@ impl Action for LegacyStepSpec {
 
     fn emit(_state: &i32, _input: Self::Input) {}
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        *state = output.expect("legacy step should succeed");
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            *state = output.expect("legacy step should succeed");
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -63,8 +69,14 @@ impl Action for ModernStepSpec {
 
     fn emit(_state: &i32, _input: Self::Input) {}
 
-    fn absorb(state: &mut i32, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        *state = output.expect("modern step should succeed");
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            *state = output.expect("modern step should succeed");
+        })();
+        Ok(__absorb_out_2)
     }
 }
 

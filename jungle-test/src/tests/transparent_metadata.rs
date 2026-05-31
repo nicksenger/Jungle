@@ -37,10 +37,16 @@ impl Action for TransparentStepSpec {
         *state + input
     }
 
-    fn absorb(state: &mut i32, output: EffectCompletion<TransparentEffect>) -> Self::Output {
-        let value = output.expect("transparent step effect should succeed");
-        *state = value;
-        value
+    fn absorb(
+        state: &mut i32,
+        output: EffectCompletion<TransparentEffect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            let value = output.expect("transparent step effect should succeed");
+            *state = value;
+            value
+        })();
+        Ok(__absorb_out_1)
     }
 }
 

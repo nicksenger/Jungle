@@ -40,8 +40,14 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         }
     }
 
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("hi-hat playback should succeed");
+    fn absorb(
+        _state: &mut DrummerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            output.expect("hi-hat playback should succeed");
+        })();
+        Ok(__absorb_out_1)
     }
 }
 
@@ -64,8 +70,14 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         }
     }
 
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("kick playback should succeed");
+    fn absorb(
+        _state: &mut DrummerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_2 = (|| {
+            output.expect("kick playback should succeed");
+        })();
+        Ok(__absorb_out_2)
     }
 }
 
@@ -88,8 +100,14 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         }
     }
 
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("snare playback should succeed");
+    fn absorb(
+        _state: &mut DrummerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_3 = (|| {
+            output.expect("snare playback should succeed");
+        })();
+        Ok(__absorb_out_3)
     }
 }
 
@@ -112,8 +130,14 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         }
     }
 
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("cymbal playback should succeed");
+    fn absorb(
+        _state: &mut DrummerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_4 = (|| {
+            output.expect("cymbal playback should succeed");
+        })();
+        Ok(__absorb_out_4)
     }
 }
 
@@ -136,8 +160,14 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
         }
     }
 
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("tom playback should succeed");
+    fn absorb(
+        _state: &mut DrummerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_5 = (|| {
+            output.expect("tom playback should succeed");
+        })();
+        Ok(__absorb_out_5)
     }
 }
 
@@ -182,9 +212,15 @@ impl Action for ConditionalJoinTailStub {
         }
     }
 
-    fn absorb(_state: &mut DrummerState, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        output.expect("conditional join tail stub should succeed");
-        Either::Left(())
+    fn absorb(
+        _state: &mut DrummerState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_6 = (|| {
+            output.expect("conditional join tail stub should succeed");
+            Either::Left(())
+        })();
+        Ok(__absorb_out_6)
     }
 }
 

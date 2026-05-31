@@ -191,10 +191,16 @@ impl Action for LensOnBranchSpec {
         view.leaf.value + input
     }
 
-    fn absorb(view: &mut Branch, output: EffectCompletion<Self::Effect>) -> Self::Output {
-        let out = output.expect("lens single should succeed");
-        view.spare = out;
-        out
+    fn absorb(
+        view: &mut Branch,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let __absorb_out_1 = (|| {
+            let out = output.expect("lens single should succeed");
+            view.spare = out;
+            out
+        })();
+        Ok(__absorb_out_1)
     }
 }
 

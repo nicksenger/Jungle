@@ -4,9 +4,9 @@ use std::future::Future;
 use std::marker::PhantomData;
 
 use crate::{
-    Animal, EffectIdentity, EffectMember, JourneyEffects, ReplaceFlow, ReplaceNode,
+    Animal, EffectIdentity, EffectMember, Failure, JourneyEffects, ReplaceFlow, ReplaceNode,
     ReplaceNodesWith, ReplaceStep, ReplaceWith, Running, TraverseFlow, TraverseStep, TraverseWith,
-    Waiting, Failure,
+    Waiting,
 };
 use inception::primitive;
 use typosaurus::collections::sp::Node;
