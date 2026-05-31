@@ -1,7 +1,9 @@
 use jungle_sdk::prelude::*;
 use jungle_sdk::effect;
-use std::time::Duration;
+use jungle_sdk::core::JungleWorker;
+use jungle_sdk::{JungleClient, LocalClient};
 use std::str::FromStr;
+use std::time::Duration;
 use chrono::Utc;
 
 pub struct ApplyCronfishSeed;
@@ -127,7 +129,54 @@ impl Animal for Cronfish {
     type Journey = CronfishJourney;
 }
 
-fn main() {
-    let _executor = Executor::<Cronfish>::new("0 */5 * * * * *".to_string());
-    println!("cronfish animal initialized");
+#[derive(Animals)]
+pub struct CronfishAnimals(Cronfish);
+
+pub struct CronfishEcosystem;
+impl Ecosystem for CronfishEcosystem {
+    const NAME: &'static str = "cronfish-ecosystem";
+    type Animals = CronfishAnimals;
+}
+
+async fn await_journey_completion(client: &LocalClient, journey_id: uuid::Uuid) {
+    loop {
+        let status = client
+            .journey_details(journey_id)
+            .await
+            .expect("cronfish journey details should be available");
+        match status {
+            JourneyStatus::Completed => break,
+            JourneyStatus::Dead | JourneyStatus::Stopped => {
+                panic!("cronfish journey reached terminal non-complete status: {status:?}");
+            }
+            JourneyStatus::Created | JourneyStatus::Alive => {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let seed = std::env::args()
+        .nth(1)
+        .expect("usage: cronfish \"<cron expression>\"");
+
+    let client = LocalClient::builder()
+        .build()
+        .await
+        .expect("cronfish local client should build");
+    let worker = JungleWorker::new(CronfishEcosystem, client.clone());
+    tokio::spawn(async move {
+        let _ = worker.spawn().await;
+    });
+
+    let seed = postcard::to_allocvec(&seed).expect("cronfish seed should serialize");
+    let journey_id = client
+        .start_journey::<Cronfish>(seed)
+        .await
+        .expect("cronfish journey should start");
+    println!("cronfish journey started: {journey_id}");
+
+    await_journey_completion(&client, journey_id).await;
 }
