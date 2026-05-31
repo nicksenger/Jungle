@@ -14,10 +14,9 @@ impl Action for ApplyCronfishSeed {
 
     fn absorb(
         state: &mut String,
-        output: EffectCompletion<Self::Effect>,
+        _output: EffectCompletion<Self::Effect>,
         seed: String,
     ) -> Self::Output {
-        output.expect("cronfish seed step should complete");
         *state = seed;
     }
 }
