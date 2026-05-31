@@ -310,6 +310,10 @@ where
         self.inner.complete_journey(id).await
     }
 
+    async fn dead_journey(&self, id: Uuid) -> Result<(), ExecutorError> {
+        self.inner.dead_journey(id).await
+    }
+
     async fn poll_timers(&self) -> Result<Option<()>, ExecutorError> {
         self.inner.poll_timers().await
     }
