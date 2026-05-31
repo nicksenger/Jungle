@@ -101,9 +101,10 @@ impl Action for DecrementRhythmRiffLoop {
     fn absorb(
         state: &mut RhythmGuitaristState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("lead riff loop decrement should complete"))?;
         state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
+        Ok(())
     }
 }
 

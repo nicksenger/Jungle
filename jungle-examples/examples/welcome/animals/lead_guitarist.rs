@@ -56,8 +56,9 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     fn absorb(
         _state: &mut ElectricGuitarArticulation,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("join note playback should succeed"))?;
+        Ok(())
     }
 }
 
@@ -125,8 +126,9 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32> Action
     fn absorb(
         _state: &mut ElectricGuitarArticulation,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("backup vocal playback should succeed"))?;
+        Ok(())
     }
 }
 
@@ -160,9 +162,10 @@ impl Action for DecrementLeadRiffLoop {
     fn absorb(
         state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("rhythm riff loop decrement should complete"))?;
         state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
+        Ok(())
     }
 }
 
@@ -182,8 +185,9 @@ impl Action for MergeLeadTurnaroundChoice {
     fn absorb(
         _state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("rhythm turnaround branch merge should complete"))?;
+        Ok(())
     }
 }
 
@@ -1594,8 +1598,9 @@ impl Action for LeadTailStub {
     fn absorb(
         _state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("rhythm tail stub should succeed"))?;
+        Ok(())
     }
 }
 
@@ -1626,9 +1631,10 @@ impl Action for LeadLoopDecrementStub {
     fn absorb(
         state: &mut LeadGuitaristState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("test loop decrement should succeed"))?;
         state.riff_loops_remaining = state.riff_loops_remaining.saturating_sub(1);
+        Ok(())
     }
 }
 

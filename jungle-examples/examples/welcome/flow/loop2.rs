@@ -53,9 +53,10 @@ impl<St> Action for Loop2DecCounter<St> {
     fn absorb(
         state: &mut Loop2Container<St>,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("loop2 decrement step should succeed"))?;
         state.counter = state.counter.saturating_sub(1);
+        Ok(())
     }
 }
 

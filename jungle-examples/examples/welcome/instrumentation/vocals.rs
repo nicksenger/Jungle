@@ -119,8 +119,9 @@ impl<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: 
     fn absorb(
         state: &mut LeadVocalistState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("note playback should succeed"))?;
         let _ = state.lyrics.phonemes.pop();
+        Ok(())
     }
 }

@@ -39,7 +39,7 @@ impl Action for ApplyLeadVocalistSeed {
     fn absorb(
         state: &mut LeadVocalistState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         let seed = output.map_err(|_err| Failure::from("lead vocalist seed step should complete"))?;
         if let Some(lyrics) = seed.lyrics {
             let phonemes = lyrics
@@ -51,6 +51,7 @@ impl Action for ApplyLeadVocalistSeed {
                 state.lyrics.phonemes = phonemes;
             }
         }
+        Ok(())
     }
 }
 
@@ -74,9 +75,10 @@ impl Action for ConsumeLeadVocalPickup {
     fn absorb(
         state: &mut LeadVocalistState,
         output: EffectCompletion<Self::Effect>,
-    ) -> Self::Output {
+    ) -> Result<Self::Output, Failure> {
         output.map_err(|_err| Failure::from("lead vocal pickup consume should complete"))?;
         state.intro_pickup_remaining = state.intro_pickup_remaining.saturating_sub(1);
+        Ok(())
     }
 }
 
