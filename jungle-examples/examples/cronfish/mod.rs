@@ -1,18 +1,8 @@
 use jungle_sdk::prelude::*;
 use std::str::FromStr;
 
-pub struct CronfishState {
-    pub schedule: cron::Schedule,
-}
-
-impl Default for CronfishState {
-    fn default() -> Self {
-        Self {
-            schedule: cron::Schedule::from_str("0 * * * * * *")
-                .expect("default cronfish schedule should parse"),
-        }
-    }
-}
+#[derive(Default)]
+pub struct CronfishState(pub Option<cron::Schedule>);
 
 pub struct CronfishTick;
 #[jungle::action]
@@ -41,8 +31,10 @@ impl Animal for Cronfish {
 
 fn main() {
     let mut state = CronfishState::default();
-    state.schedule = cron::Schedule::from_str("0 */5 * * * * *")
-        .expect("example cronfish schedule should parse");
+    state.0 = Some(
+        cron::Schedule::from_str("0 */5 * * * * *")
+            .expect("example cronfish schedule should parse"),
+    );
     let _executor = Executor::<Cronfish>::new(state);
     println!("cronfish animal initialized");
 }
