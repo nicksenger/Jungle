@@ -11,7 +11,7 @@ default = ["opt-in"]
 opt-in = []
 
 [dependencies]
-inception-derive-gen = { path = "../../inception/inception-derive-gen", version = "0.1.0" }
+inception-derive-gen = { git = "https://github.com/nicksenger/inception.git", branch = "jungle", version = "0.1.0" }
 proc-macro-crate = "3"
 proc-macro2 = "1"
 quote = "1"

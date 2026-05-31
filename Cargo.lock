@@ -2214,6 +2214,7 @@ dependencies = [
 [[package]]
 name = "iced-av1"
 version = "0.1.0"
+source = "git+https://github.com/nicksenger/iced-av1.git?branch=jungle#e2ad3e9e8b0edf1a8e1917f189e9fc30b6d07bee"
 dependencies = [
  "bytemuck",
  "futures-lite",
@@ -2231,6 +2232,7 @@ dependencies = [
 [[package]]
 name = "iced-sugiyama"
 version = "0.1.0"
+source = "git+https://github.com/nicksenger/iced-sugiyama.git?branch=jungle#f727452143f9ac787d2df58f08e6ec1dbec9343b"
 dependencies = [
  "iced",
  "iced-sugiyama-core",
@@ -2241,6 +2243,7 @@ dependencies = [
 [[package]]
 name = "iced-sugiyama-core"
 version = "0.1.0"
+source = "git+https://github.com/nicksenger/iced-sugiyama.git?branch=jungle#f727452143f9ac787d2df58f08e6ec1dbec9343b"
 dependencies = [
  "log",
  "petgraph",
@@ -2567,6 +2570,7 @@ checksum = "edcd27d72f2f071c64249075f42e205ff93c9a4c5f6c6da53e79ed9f9832c285"
 [[package]]
 name = "inception"
 version = "0.1.0"
+source = "git+https://github.com/nicksenger/inception.git?branch=jungle#c7cb20912de18dbab3c7f80eb8e376cae93f4b19"
 dependencies = [
  "inception-macros",
 ]
@@ -2574,6 +2578,7 @@ dependencies = [
 [[package]]
 name = "inception-derive-gen"
 version = "0.1.0"
+source = "git+https://github.com/nicksenger/inception.git?branch=jungle#c7cb20912de18dbab3c7f80eb8e376cae93f4b19"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2584,6 +2589,7 @@ dependencies = [
 [[package]]
 name = "inception-macros"
 version = "0.1.0"
+source = "git+https://github.com/nicksenger/inception.git?branch=jungle#c7cb20912de18dbab3c7f80eb8e376cae93f4b19"
 dependencies = [
  "inception-derive-gen",
  "proc-macro2",
@@ -6151,6 +6157,7 @@ checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 [[package]]
 name = "typosaurus"
 version = "0.2.0"
+source = "git+https://github.com/nicksenger/typosaurus.git?branch=jungle#a5b04c149c5429ebf8937d1968bd196e88dcc43f"
 dependencies = [
  "typenum",
 ]
