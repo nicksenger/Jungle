@@ -196,7 +196,8 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
     let journey_id = client
         .spawn::<LegacyAnimal>(&seed)
         .await
-        .expect("spawn legacy should succeed");
+        .expect("spawn legacy should succeed")
+        .journey_id;
 
     let worker = JungleWorker::new(VersionedZoo, client.clone());
     let worker_handle = tokio::spawn(async move {

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::stream;
-use jungle_client::{JourneyUpdateSubscription, JungleClient};
+use jungle_client::{JourneyHandle, JourneyUpdateSubscription, JungleClient};
 use jungle_server::{JungleServer, Server, ServerError, WireRx, WireTx};
 use jungle_types::{
     Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyStatus,
@@ -351,7 +351,7 @@ pub enum FusedClientError {
 
 #[async_trait]
 impl JungleClient for FusedClient {
-    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
         A: Animal,
@@ -371,7 +371,10 @@ impl JungleClient for FusedClient {
             .await?;
 
         match response {
-            WireOut::JourneyCreated(journey_id) => Ok(journey_id),
+            WireOut::JourneyCreated(journey_id) => Ok(JourneyHandle::new(
+                journey_id,
+                Box::new(self.clone()),
+            )),
             _ => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-created response for spawn".to_string(),
             )),

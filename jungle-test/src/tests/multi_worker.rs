@@ -288,7 +288,8 @@ async fn local_client_multi_worker_example_flow_has_expected_events_without_repl
         let journey_id = client
             .spawn::<MultiWorkerAnimal>(&seed)
             .await
-            .expect("journey should start");
+            .expect("journey should start")
+        .journey_id;
         journey_ids.push(journey_id);
     }
 
@@ -388,7 +389,8 @@ async fn local_client_single_worker_single_journey_example_flow_has_expected_eve
         let journey_id = client
             .spawn::<MultiWorkerAnimal>(&seed)
             .await
-            .expect("journey should start");
+            .expect("journey should start")
+        .journey_id;
         journey_ids.push(journey_id);
     }
 

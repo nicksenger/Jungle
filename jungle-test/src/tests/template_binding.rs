@@ -503,13 +503,15 @@ async fn template_binding_local_client_reuses_one_template_for_two_animals_end_t
             &3_i32,
         )
         .await
-        .expect("alpha journey should start");
+        .expect("alpha journey should start")
+        .journey_id;
     let beta_id = client
         .spawn::<LocalTemplateBetaAnimal>(
             &3_i32,
         )
         .await
-        .expect("beta journey should start");
+        .expect("beta journey should start")
+        .journey_id;
 
     await_completion(&client, alpha_id).await;
     await_completion(&client, beta_id).await;
@@ -655,7 +657,8 @@ async fn template_binding_unbound_effect_with_context_bound_runs_end_to_end_with
             &4_i32,
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     await_completion(&client, journey_id).await;
 
@@ -806,13 +809,15 @@ async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal(
             &3_i32,
         )
         .await
-        .expect("alpha journey should start");
+        .expect("alpha journey should start")
+        .journey_id;
     let beta_id = client
         .spawn::<ComposedBetaAnimal>(
             &3_i32,
         )
         .await
-        .expect("beta journey should start");
+        .expect("beta journey should start")
+        .journey_id;
 
     await_completion(&client, alpha_id).await;
     await_completion(&client, beta_id).await;
@@ -1133,7 +1138,8 @@ async fn template_binding_unbound_lens_template_runs_end_to_end() {
             &30_i32,
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     await_completion(&client, journey_id).await;
 
@@ -1464,7 +1470,8 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
             &3_i32,
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     await_completion(&client, journey_id).await;
 
@@ -1536,7 +1543,8 @@ async fn template_binding_generic_focus_nested_concrete_focus_runs_end_to_end_lo
             &3_i32,
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     await_completion(&client, journey_id).await;
 
@@ -1819,7 +1827,8 @@ async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_l
             &5_i32,
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     await_completion(&client, journey_id).await;
 
@@ -2118,7 +2127,8 @@ async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_
             &3_i32,
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     await_completion(&client, journey_id).await;
 
@@ -2213,7 +2223,8 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
             &3_i32,
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     await_completion(&client, journey_id).await;
 
@@ -2453,7 +2464,8 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
             },
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     await_completion(&client, journey_id).await;
 
@@ -3183,13 +3195,15 @@ async fn template_binding_long_shared_and_unique_segments_with_different_animal_
             &5_i32,
         )
         .await
-        .expect("alpha journey should start");
+        .expect("alpha journey should start")
+        .journey_id;
     let beta_id = client
         .spawn::<ComplexBetaAnimal>(
             &5_i32,
         )
         .await
-        .expect("beta journey should start");
+        .expect("beta journey should start")
+        .journey_id;
 
     await_completion(&client, alpha_id).await;
     await_completion(&client, beta_id).await;

@@ -1,4 +1,4 @@
-use crate::JungleClient;
+use crate::{JourneyHandle, JungleClient};
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::Stream;
@@ -519,13 +519,13 @@ impl<J> Client<J> {
 #[async_trait]
 impl<J> JungleClient for Client<J>
 where
-    J: Ecosystem,
+    J: Ecosystem + 'static,
     J::Animals: Animals,
     <J::Animals as Animals>::List: FlattenNodes,
     SPFlatten<<J::Animals as Animals>::List>: StripAnimalHeaders,
     AnimalSet<J::Animals>: Container,
 {
-    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
         A: Animal,
@@ -535,12 +535,14 @@ where
     {
         let seed = postcard::to_allocvec(seed)
             .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
-        self.spawn_by_id(
+        let journey_id = self
+            .spawn_by_id(
             <A::Id as AnimalIdValue>::U32,
             <A::Generation as Unsigned>::U32,
             seed,
         )
-        .await
+        .await?;
+        Ok(JourneyHandle::new(journey_id, Box::new(self.clone())))
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {

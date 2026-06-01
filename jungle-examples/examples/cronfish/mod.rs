@@ -64,7 +64,8 @@ async fn main() {
     let journey_id = client
         .spawn::<Cronfish>(&seed)
         .await
-        .expect("cronfish journey should start");
+        .expect("cronfish journey should start")
+        .journey_id;
     println!("cronfish journey started: {journey_id}");
 
     await_journey_completion(&client, journey_id).await;

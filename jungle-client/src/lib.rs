@@ -3,6 +3,7 @@
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::channel::{mpsc, oneshot};
+use futures::StreamExt;
 use jungle_types::{
     Animal, AnimalIdValue, ClaimedPerturbable, ExecutorError, JourneyStatus, OwnerWake, RunnerOut,
     SupportedAnimal, Work,
@@ -19,9 +20,69 @@ pub use client::{
 };
 pub use mock::{MockClient, MockClientBuilder};
 
+pub struct JourneyHandle {
+    pub journey_id: Uuid,
+    client: Box<dyn JungleClient>,
+}
+
+impl core::fmt::Debug for JourneyHandle {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("JourneyHandle")
+            .field("journey_id", &self.journey_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl JourneyHandle {
+    pub fn new(journey_id: Uuid, client: Box<dyn JungleClient>) -> Self {
+        Self { journey_id, client }
+    }
+
+    pub async fn journey_history(&self) -> Result<Vec<RunnerOut>, ExecutorError> {
+        self.client.journey_history(self.journey_id).await
+    }
+
+    pub async fn subscribe_step_updates(
+        &self,
+        after_sequence_id: Option<u64>,
+    ) -> Result<JourneyUpdateSubscription, ExecutorError> {
+        self.client
+            .subscribe_step_updates(self.journey_id, after_sequence_id)
+            .await
+    }
+
+    pub async fn journey_details(&self) -> Result<JourneyStatus, ExecutorError> {
+        self.client.journey_details(self.journey_id).await
+    }
+
+    pub async fn cancel(&self) -> Result<(), ExecutorError> {
+        self.client.dead_journey(self.journey_id).await
+    }
+
+    pub async fn complete(&self) -> Result<(), ExecutorError> {
+        self.client.complete_journey(self.journey_id).await
+    }
+
+    pub async fn await_completion(&self) -> Result<JourneyStatus, ExecutorError> {
+        match self.journey_details().await? {
+            JourneyStatus::Completed | JourneyStatus::Dead | JourneyStatus::Stopped => {
+                return Ok(self.journey_details().await?);
+            }
+            JourneyStatus::Created | JourneyStatus::Alive => {}
+        }
+
+        let mut subscription = self.subscribe_step_updates(None).await?;
+        while let Some(update) = subscription.next().await {
+            update?;
+        }
+
+        self.journey_details().await
+    }
+}
+
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
-    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
         A: Animal,

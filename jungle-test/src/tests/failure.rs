@@ -261,7 +261,8 @@ macro_rules! run_case {
         let journey_id = client
             .spawn::<$animal>(&seed)
             .await
-            .expect("journey should start");
+            .expect("journey should start")
+        .journey_id;
         let status = wait_for_terminal(&client, journey_id).await;
         let history = client
             .journey_history(journey_id)
@@ -1162,7 +1163,8 @@ async fn local_client_marks_journey_dead_when_absorb_returns_failure() {
     let journey_id = client
         .spawn::<FailureAnimal>(&seed)
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     let final_status = wait_for_status(&client, journey_id, JourneyStatus::Dead).await;
 
@@ -1189,7 +1191,8 @@ async fn attempt_catches_failure_and_journey_completes() {
     let journey_id = client
         .spawn::<AttemptFailureAnimal>(&seed)
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     let final_status = wait_for_status(&client, journey_id, JourneyStatus::Completed).await;
     assert_eq!(final_status, JourneyStatus::Completed);
@@ -1215,7 +1218,8 @@ async fn attempt_wraps_success_and_journey_completes() {
     let journey_id = client
         .spawn::<AttemptSuccessAnimal>(&seed)
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
 
     let final_status = wait_for_status(&client, journey_id, JourneyStatus::Completed).await;
     assert_eq!(final_status, JourneyStatus::Completed);

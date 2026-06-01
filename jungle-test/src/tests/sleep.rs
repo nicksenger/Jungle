@@ -226,7 +226,8 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
     let journey_id = client
         .spawn::<SleepAnimal>(&seed)
         .await
-        .expect("spawn should succeed for sleep flow");
+        .expect("spawn should succeed for sleep flow")
+        .journey_id;
 
     let worker_exited_early = Arc::new(AtomicBool::new(false));
     let completion = tokio::time::timeout(Duration::from_secs(8), async {

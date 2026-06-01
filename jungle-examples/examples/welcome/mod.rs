@@ -25,7 +25,7 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::server::ServerBuilder;
 #[cfg(not(feature = "transport"))]
 use jungle_sdk::FusedClient;
-use jungle_sdk::{ExecutorError, JourneyUpdateEvent, JungleClient};
+use jungle_sdk::{ExecutorError, JourneyHandle, JourneyUpdateEvent, JungleClient};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
@@ -640,7 +640,7 @@ impl UiClient {
 
 #[async_trait]
 impl JungleClient for UiClient {
-    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
         A: jungle_sdk::Animal,

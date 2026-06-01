@@ -287,7 +287,8 @@ async fn replay_after_worker_crash_does_not_repeat_pre_gate_side_effects() {
     let journey_id = control_client
         .spawn::<ReplayGateAnimal>(&seed)
         .await
-        .expect("spawn should succeed");
+        .expect("spawn should succeed")
+        .journey_id;
 
     tokio::time::timeout(Duration::from_secs(5), reached_rx.recv())
         .await
@@ -585,7 +586,8 @@ async fn replay_after_owner_dies_during_timeout_uses_other_worker_without_repeat
     let journey_id = control_client
         .spawn::<ReplayTimeoutAnimal>(&seed)
         .await
-        .expect("spawn should succeed");
+        .expect("spawn should succeed")
+        .journey_id;
 
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {

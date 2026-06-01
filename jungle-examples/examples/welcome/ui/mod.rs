@@ -6,7 +6,7 @@ use futures::StreamExt;
 use iced::widget::{button, column, container, svg, text, Row, Space};
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use jungle_sdk::client::JourneyUpdateSubscription;
-use jungle_sdk::{ExecutorError, JungleClient, RunnerOut, SupportedAnimal, Work};
+use jungle_sdk::{ExecutorError, JourneyHandle, JungleClient, RunnerOut, SupportedAnimal, Work};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -71,7 +71,7 @@ impl<C> JungleClient for DeferredJungleClient<C>
 where
     C: JungleClient + Clone + 'static,
 {
-    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
         A: jungle_sdk::Animal,

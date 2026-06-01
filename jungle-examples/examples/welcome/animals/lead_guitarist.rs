@@ -1848,7 +1848,8 @@ mod tests {
         let journey_id = client
             .spawn::<LeadGuitarist>(&seed)
             .await
-            .expect("journey should start");
+            .expect("journey should start")
+        .journey_id;
 
         let stream = client
             .subscribe_step_updates(journey_id, None)
@@ -1921,7 +1922,8 @@ mod tests {
         let journey_id = client
             .spawn::<LeadGuitarist>(&seed)
             .await
-            .expect("journey should start");
+            .expect("journey should start")
+        .journey_id;
 
         tokio::time::sleep(Duration::from_secs(2)).await;
         let status = client

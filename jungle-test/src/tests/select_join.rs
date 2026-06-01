@@ -1241,7 +1241,8 @@ async fn conditional_join_then_tail_streams_events_and_completes_with_local_clie
             &SelectJoinState::default(),
         )
         .await
-        .expect("journey should start");
+        .expect("journey should start")
+        .journey_id;
     let mut subscription = client
         .subscribe_step_updates(journey_id, None)
         .await

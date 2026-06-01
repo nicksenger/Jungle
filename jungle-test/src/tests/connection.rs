@@ -219,7 +219,8 @@ async fn client_exchanges_messages_with_mock_server() {
     let created_flow = client
         .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("spawn should succeed");
+        .expect("spawn should succeed")
+        .journey_id;
     assert_eq!(created_flow, journey_id);
 
     let status = client
@@ -353,7 +354,8 @@ async fn flow_status_moves_created_to_alive_to_completed() {
     let journey_id = client
         .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("spawn should succeed");
+        .expect("spawn should succeed")
+        .journey_id;
 
     let created = client
         .journey_details(journey_id)
@@ -406,7 +408,8 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
     let journey_id = client
         .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("spawn should succeed");
+        .expect("spawn should succeed")
+        .journey_id;
 
     client
         .effect_input(journey_id, 12, vec![9, 9])
@@ -480,7 +483,8 @@ async fn dropping_one_client_clone_does_not_close_transport_for_others() {
     let journey_id = survivor
         .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("remaining client clone should still open streams");
+        .expect("remaining client clone should still open streams")
+        .journey_id;
 
     let status = survivor
         .journey_details(journey_id)
@@ -513,7 +517,8 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
     let journey_id = client
         .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("spawn should succeed");
+        .expect("spawn should succeed")
+        .journey_id;
 
     let first_work = client
         .poll_work(default_supported(7))
@@ -771,11 +776,13 @@ async fn poll_work_is_scoped_by_namespace() {
     let alpha_id = alpha
         .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("alpha spawn should succeed");
+        .expect("alpha spawn should succeed")
+        .journey_id;
     let beta_id = beta
         .spawn::<ConnectionAnimal9>(&())
         .await
-        .expect("beta spawn should succeed");
+        .expect("beta spawn should succeed")
+        .journey_id;
 
     let alpha_work = alpha
         .poll_work(default_supported(7))

@@ -574,7 +574,8 @@ async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
     let journey_id = client
         .spawn::<IntegrationAnimal>(&seed)
         .await
-        .expect("spawn should succeed");
+        .expect("spawn should succeed")
+        .journey_id;
     let perturb_payload = postcard::to_allocvec(&IntegrationPerturbation { delta: 1000 })
         .expect("perturb payload should serialize");
     client
@@ -658,7 +659,8 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
     let journey_id = client
         .spawn::<IntegrationAnimal>(&seed)
         .await
-        .expect("spawn should succeed");
+        .expect("spawn should succeed")
+        .journey_id;
 
     let mut subscription = client
         .subscribe_step_updates(journey_id, None)

@@ -1,6 +1,6 @@
 use crate::{
-    JourneyUpdateSubscription, JungleClient, RunnerChannelMessage, RunnerChannelResponse,
-    RunnerChannelRx,
+    JourneyHandle, JourneyUpdateSubscription, JungleClient, RunnerChannelMessage,
+    RunnerChannelResponse, RunnerChannelRx,
 };
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -107,8 +107,12 @@ impl MockClient {
         animal_id: u32,
         _generation: u32,
         seed: Vec<u8>,
-    ) -> Result<Uuid, ExecutorError> {
-        (self.on_create_flow)(animal_id, seed).await
+    ) -> Result<JourneyHandle, ExecutorError> {
+        let journey_id = (self.on_create_flow)(animal_id, seed).await?;
+        Ok(JourneyHandle::new(
+            journey_id,
+            Box::new(self.clone()),
+        ))
     }
 
     pub async fn serve_runner_channel(&self, mut rx: RunnerChannelRx) {
@@ -163,7 +167,7 @@ impl Default for MockClient {
 
 #[async_trait]
 impl JungleClient for MockClient {
-    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<JourneyHandle, ExecutorError>
     where
         Self: Sized,
         A: Animal,

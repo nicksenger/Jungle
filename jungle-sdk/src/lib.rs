@@ -4,7 +4,7 @@ pub use crate::prelude::*;
 pub use inception;
 pub use inception::Inception as Jungle;
 pub use jungle_client as client;
-pub use jungle_client::{Client, JungleClient, MockClient};
+pub use jungle_client::{Client, JourneyHandle, JungleClient, MockClient};
 pub use jungle_core as core;
 #[cfg(feature = "fusion")]
 pub use jungle_fusion as fusion;

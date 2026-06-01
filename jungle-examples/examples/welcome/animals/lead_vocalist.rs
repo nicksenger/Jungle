@@ -651,7 +651,8 @@ mod tests {
         let journey_id = client
             .spawn::<LeadVocalist>(&seed)
             .await
-            .expect("journey should start");
+            .expect("journey should start")
+        .journey_id;
 
         tokio::time::sleep(Duration::from_secs(2)).await;
         let status = client
