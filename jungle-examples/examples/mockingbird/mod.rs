@@ -2,6 +2,8 @@ use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+mod effect;
+
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct MockingBirdState;
 
