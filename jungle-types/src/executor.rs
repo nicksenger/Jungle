@@ -634,9 +634,17 @@ where
     A: BoundAction<T>,
     <A as BoundAction<T>>::Carry: Send + 'static,
     <A as BoundAction<T>>::Effect: Effect<Context>,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::In: 'static,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: Serialize + DeserializeOwned + 'static,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize + DeserializeOwned + 'static,
+    <A as BoundAction<T>>::Effect: EffectSchema<
+        Context,
+        In = <<A as BoundAction<T>>::Effect as EffectSchema>::In,
+        Out = <<A as BoundAction<T>>::Effect as EffectSchema>::Out,
+        Err = <<A as BoundAction<T>>::Effect as EffectSchema>::Err,
+    >,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::In: 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Out:
+        Serialize + DeserializeOwned + 'static,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Err:
+        Serialize + DeserializeOwned + 'static,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {
@@ -3180,10 +3188,16 @@ where
     A: BoundAction<T> + 'static,
     <A as BoundAction<T>>::Carry: Send + 'static,
     <A as BoundAction<T>>::Effect: Effect<Context> + 'static,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: Serialize,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: Serialize,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Out: DeserializeOwned,
-    <<A as BoundAction<T>>::Effect as EffectSchema>::Err: DeserializeOwned,
+    <A as BoundAction<T>>::Effect: EffectSchema<
+        Context,
+        In = <<A as BoundAction<T>>::Effect as EffectSchema>::In,
+        Out = <<A as BoundAction<T>>::Effect as EffectSchema>::Out,
+        Err = <<A as BoundAction<T>>::Effect as EffectSchema>::Err,
+    >,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Out: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Err: Serialize,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Out: DeserializeOwned,
+    <<A as BoundAction<T>>::Effect as EffectSchema<Context>>::Err: DeserializeOwned,
     A::Input: DeserializeOwned,
     A::Output: Serialize,
 {

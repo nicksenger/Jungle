@@ -11,8 +11,8 @@ use crate::{
 use inception::primitive;
 use typosaurus::collections::sp::Node;
 
-/// Canonical, context-agnostic effect contract used by flow shape and wire schema.
-pub trait EffectSchema {
+/// Canonical effect contract used by flow shape and wire schema.
+pub trait EffectSchema<J = ()> {
     /// A type-level identifier for this Effect.
     type Id;
 
@@ -27,7 +27,7 @@ pub trait EffectSchema {
 }
 
 /// Context-bound effect execution contract.
-pub trait Effect<J>: EffectSchema {
+pub trait Effect<J>: EffectSchema<J> {
     /// Process one input into one output in the provided context.
     fn effect(
         jungle: &J,
@@ -36,24 +36,24 @@ pub trait Effect<J>: EffectSchema {
 }
 
 /// A typed effect request emitted by a yielding workflow phase.
-pub struct EffectRequest<A: EffectSchema> {
-    pub input: A::In,
+pub struct EffectRequest<A: EffectSchema<J>, J = ()> {
+    pub input: <A as EffectSchema<J>>::In,
     marker: PhantomData<fn() -> A>,
 }
 
-impl<A: EffectSchema> EffectRequest<A> {
-    pub fn new(input: A::In) -> Self {
+impl<A: EffectSchema<J>, J> EffectRequest<A, J> {
+    pub fn new(input: <A as EffectSchema<J>>::In) -> Self {
         Self {
             input,
             marker: PhantomData,
         }
     }
 
-    pub fn into_input(self) -> A::In {
+    pub fn into_input(self) -> <A as EffectSchema<J>>::In {
         self.input
     }
 
-    pub fn effect<'a, J>(self, jungle: &'a J) -> impl Future<Output = Result<A::Out, A::Err>> + 'a
+    pub fn effect<'a>(self, jungle: &'a J) -> impl Future<Output = Result<<A as EffectSchema<J>>::Out, <A as EffectSchema<J>>::Err>> + 'a
     where
         A: Effect<J> + 'a,
     {
@@ -62,7 +62,8 @@ impl<A: EffectSchema> EffectRequest<A> {
 }
 
 /// A completed effect result consumed by an awaiting workflow phase.
-pub type EffectCompletion<A> = Result<<A as EffectSchema>::Out, <A as EffectSchema>::Err>;
+pub type EffectCompletion<A, J = ()> =
+    Result<<A as EffectSchema<J>>::Out, <A as EffectSchema<J>>::Err>;
 
 /// Projects a larger state into a focused mutable substate.
 pub trait StateCarrier<State> {

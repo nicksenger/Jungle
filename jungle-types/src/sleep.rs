@@ -14,7 +14,7 @@ pub struct SleepError {
 
 pub struct Sleep;
 
-impl EffectSchema for Sleep {
+impl<J> EffectSchema<J> for Sleep {
     type Id = Id<U65535>;
     type In = Duration;
     type Out = ();

@@ -7,7 +7,7 @@ use typosaurus::num::consts::U654;
 /// request/completion roundtrip overhead.
 pub struct Noop;
 
-impl EffectSchema for Noop {
+impl<J> EffectSchema<J> for Noop {
     type Id = Id<U654>;
     type In = ();
     type Out = ();

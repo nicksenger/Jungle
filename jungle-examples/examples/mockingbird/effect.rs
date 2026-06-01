@@ -5,7 +5,7 @@ use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use image::ImageReader;
 use image_compare::Algorithm;
 use jungle_sdk::effect;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use spectrs::io::audio::read_audio_file_mono;
 use spectrs::io::image::{save_spectrogram_image, Colormap};
 use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
@@ -138,34 +138,34 @@ impl<J> Effect<J> for CheckSampler {
     }
 }
 
-pub struct SearchTreeSelect<Tag, Data, Error>(PhantomData<fn() -> (Tag, Data, Error)>);
+pub struct SearchTreeSelect<Tag>(PhantomData<fn() -> Tag>);
 #[effect(id = 9)]
-impl<J, Tag, Data, Error> Effect<J> for SearchTreeSelect<Tag, Data, Error>
+impl<J, Tag> Effect<J> for SearchTreeSelect<Tag>
 where
-    J: SearchTree<Tag, Data = Data, Error = Error> + Sync,
-    Data: Serialize + DeserializeOwned + Send + 'static,
-    Error: Send + 'static,
+    J: SearchTree<Tag> + Sync,
+    <J as SearchTree<Tag>>::Data: Send + 'static,
+    <J as SearchTree<Tag>>::Error: Send + 'static,
 {
     type In = ();
-    type Out = Data;
-    type Err = Error;
+    type Out = <J as SearchTree<Tag>>::Data;
+    type Err = <J as SearchTree<Tag>>::Error;
 
     fn effect(jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move { <J as SearchTree<Tag>>::select(jungle).await }
     }
 }
 
-pub struct SearchTreeSubmit<Tag, Data, Error>(PhantomData<fn() -> (Tag, Data, Error)>);
+pub struct SearchTreeSubmit<Tag>(PhantomData<fn() -> Tag>);
 #[effect(id = 10)]
-impl<J, Tag, Data, Error> Effect<J> for SearchTreeSubmit<Tag, Data, Error>
+impl<J, Tag> Effect<J> for SearchTreeSubmit<Tag>
 where
-    J: SearchTree<Tag, Data = Data, Error = Error> + Sync,
-    Data: Serialize + DeserializeOwned + Send + 'static,
-    Error: Send + 'static,
+    J: SearchTree<Tag> + Sync,
+    <J as SearchTree<Tag>>::Data: Send + 'static,
+    <J as SearchTree<Tag>>::Error: Send + 'static,
 {
-    type In = (Data, f32);
+    type In = (<J as SearchTree<Tag>>::Data, f32);
     type Out = ();
-    type Err = Error;
+    type Err = <J as SearchTree<Tag>>::Error;
 
     fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
