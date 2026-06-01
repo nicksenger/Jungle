@@ -71,12 +71,13 @@ impl<C> JungleClient for DeferredJungleClient<C>
 where
     C: JungleClient + Clone + 'static,
 {
-    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: jungle_sdk::Animal,
         A::Id: jungle_sdk::AnimalIdValue,
         A::Generation: jungle_sdk::typosaurus::num::Unsigned,
+        A::Seed: Sync,
     {
         self.inner.start_journey::<A>(seed).await
     }

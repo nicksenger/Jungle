@@ -351,13 +351,16 @@ pub enum LocalClientError {
 
 #[async_trait]
 impl JungleClient for LocalClient {
-    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: Animal,
         A::Id: AnimalIdValue,
         A::Generation: Unsigned,
+        A::Seed: Sync,
     {
+        let seed = postcard::to_allocvec(seed)
+            .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
         let response = self
             .send_wire_message(WireIn::CreateJourney {
                 namespace: self.namespace.clone(),

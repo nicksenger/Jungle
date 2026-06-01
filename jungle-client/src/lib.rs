@@ -21,12 +21,13 @@ pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
-    async fn start_journey<A>(&self, seed: Vec<u8>) -> Result<Uuid, ExecutorError>
+    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: Animal,
         A::Id: AnimalIdValue,
-        A::Generation: Unsigned;
+        A::Generation: Unsigned,
+        A::Seed: Sync;
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError>;
     async fn subscribe_step_updates(
         &self,

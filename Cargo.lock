@@ -2821,6 +2821,7 @@ dependencies = [
  "jungle-client",
  "jungle-server",
  "jungle-types",
+ "postcard",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

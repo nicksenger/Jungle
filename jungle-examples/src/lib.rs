@@ -210,14 +210,13 @@ pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
         });
     });
 
-    let seed = postcard::to_allocvec(&ObserveState {
+    let seed = ObserveState {
         tick: 0,
         sleep_ms: 1_200,
-    })
-    .expect("observe seed should serialize");
+    };
 
     let journey_id = setup_runtime
-        .block_on(client.start_journey::<ObserveAnimal>(seed))
+        .block_on(client.start_journey::<ObserveAnimal>(&seed))
         .expect("start_journey observe animal should succeed");
 
     (client, journey_id)

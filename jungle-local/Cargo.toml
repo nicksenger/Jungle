@@ -9,6 +9,7 @@ futures = { workspace = true }
 jungle-client = { path = "../jungle-client" }
 jungle-server = { path = "../jungle-server", features = ["redb"] }
 jungle-types = { path = "../jungle-types" }
+postcard = { workspace = true, features = ["alloc"] }
 thiserror = { workspace = true }
 tokio = { version = "1", features = ["sync", "rt"] }
 typosaurus = { workspace = true }
