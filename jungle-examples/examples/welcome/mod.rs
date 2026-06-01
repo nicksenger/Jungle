@@ -1,5 +1,3 @@
-#![recursion_limit = "16384"]
-
 mod action;
 mod animals;
 mod ecosystem;
