@@ -2,20 +2,21 @@
 
 use jungle_sdk::effect;
 use std::future::{ready, Future};
+use uuid::Uuid;
 
 fn stub_ok<T>(value: T) -> impl Future<Output = Result<T, String>> {
     ready(Ok(value))
 }
 
-pub struct GenSessionID;
+pub struct GenUuid;
 #[effect(id = 0)]
-impl<J> Effect<J> for GenSessionID {
+impl<J> Effect<J> for GenUuid {
     type In = ();
-    type Out = String;
+    type Out = Uuid;
     type Err = String;
 
     fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok("mockingbird-session-stub".to_string())
+        stub_ok(Uuid::new_v4())
     }
 }
 
