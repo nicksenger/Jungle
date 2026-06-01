@@ -15,7 +15,7 @@ pub mod tokens;
 
 use crate::tokens::{Content, Message, TokenPredictor, Tool, ToolCall};
 
-const DEFAULT_TOKENS_MODEL: &str = "gpt-4.1-mini";
+const DEFAULT_TOKENS_MODEL: &str = "qwen/qwen3.6-27b";
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct MockingBirdState;
