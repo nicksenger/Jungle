@@ -1,2 +1,8 @@
 jungle-examples/examples/welcome/assets/** filter=lfs diff=lfs merge=lfs -text
 *.mkv filter=lfs diff=lfs merge=lfs -text
+jungle-examples/examples/audioslave/assets/bass_4s.png filter=lfs diff=lfs merge=lfs -text
+jungle-examples/examples/audioslave/assets/drums_4s.png filter=lfs diff=lfs merge=lfs -text
+jungle-examples/examples/audioslave/assets/guitar_intro_4s.png filter=lfs diff=lfs merge=lfs -text
+jungle-examples/examples/audioslave/assets/guitar_solo_4s.png filter=lfs diff=lfs merge=lfs -text
+jungle-examples/examples/audioslave/assets/vocals_4s.png filter=lfs diff=lfs merge=lfs -text
+jungle-examples/examples/audioslave/assets/backup_vocals_4s.png filter=lfs diff=lfs merge=lfs -text
