@@ -9,6 +9,9 @@ use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
 use spectrs::spectrogram::stft::{par_compute_spectrogram, SpectrogramType};
 use std::future::{ready, Future};
 use std::path::Path;
+use std::process::Stdio;
+use tokio::process::Command;
+use tokio::time::{timeout, Duration};
 
 fn stub_ok<T>(value: T) -> impl Future<Output = Result<T, String>> {
     ready(Ok(value))
@@ -18,6 +21,8 @@ const MEL_N_FFT: usize = 2048;
 const MEL_HOP_LENGTH: usize = 512;
 const MEL_WIN_LENGTH: usize = 2048;
 const MEL_N_MELS: usize = 128;
+const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/mockingbird/sample/Cargo.toml";
+const SAMPLER_COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub struct CreateSessionDB;
 #[effect(id = 1)]
@@ -101,24 +106,24 @@ impl<J> Effect<J> for WriteFile {
 pub struct CompileSampler;
 #[effect(id = 7)]
 impl<J> Effect<J> for CompileSampler {
-    type In = String;
-    type Out = ();
+    type In = ();
+    type Out = bool;
     type Err = String;
 
     fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(())
+        run_sampler_cargo(["build", "--release"])
     }
 }
 
 pub struct CheckSampler;
 #[effect(id = 8)]
 impl<J> Effect<J> for CheckSampler {
-    type In = String;
+    type In = ();
     type Out = bool;
     type Err = String;
 
     fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(false)
+        run_sampler_cargo(["check"])
     }
 }
 
@@ -194,4 +199,34 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
             .map_err(|err| format!("failed to compare spectrograms: {err}"))?;
 
     Ok(similarity.score as f32)
+}
+
+async fn run_sampler_cargo<const N: usize>(args: [&str; N]) -> Result<bool, String> {
+    let mut child = Command::new("cargo")
+        .args(args)
+        .arg("--manifest-path")
+        .arg(SAMPLER_MANIFEST_PATH)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|err| format!("failed to spawn cargo {}: {err}", args.join(" ")))?;
+
+    match timeout(SAMPLER_COMMAND_TIMEOUT, child.wait()).await {
+        Ok(wait_result) => {
+            let status = wait_result
+                .map_err(|err| format!("failed to wait for cargo {}: {err}", args.join(" ")))?;
+            Ok(status.success())
+        }
+        Err(_) => {
+            child.kill().await.map_err(|err| {
+                format!(
+                    "timed out and failed to kill cargo {}: {err}",
+                    args.join(" ")
+                )
+            })?;
+            let _ = child.wait().await;
+            Ok(false)
+        }
+    }
 }
