@@ -51,8 +51,8 @@ path = "examples/cronfish/mod.rs"
 required-features = ["cron"]
 
 [[example]]
-name = "audioslave"
-path = "examples/audioslave/mod.rs"
+name = "mockingbird"
+path = "examples/mockingbird/mod.rs"
 
 [lints]
 workspace = true
