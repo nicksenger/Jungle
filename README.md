@@ -4,7 +4,7 @@ Welcome to the `jungle`, we've got fun and games (unmute to hear the `jungle` `A
 
 https://github.com/user-attachments/assets/97682c49-485b-4b6f-bff4-586c51c8b5dc
 
-The video is of the [welcome](./jungle-examples/examples/welcome/) example, which showcases some of the things possible in the `jungle` by representing Guns'n'Roses' 1987 hit single "Welcome to the Jungle" as a `jungle` `Flow` performed by `jungle` `Animal`s, and visualized using `jungle-vision`.
+The video is of the [welcome](./jungle-examples/examples/welcome/) example, which showcases some of the things possible in the `jungle` by representing Guns N' Roses' 1987 hit single "Welcome to the Jungle" as a `jungle` `Flow` performed by `jungle` `Animal`s, and visualized using `jungle-vision`.
 
 The run shown uses the postgres persistence layer in combination with a fused (single-process) `JungleClient` + `JungleServer`, and 3 `JungleWorker`s. 
 
