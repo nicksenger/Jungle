@@ -50,5 +50,9 @@ name = "cronfish"
 path = "examples/cronfish/mod.rs"
 required-features = ["cron"]
 
+[[example]]
+name = "audioslave"
+path = "examples/audioslave/mod.rs"
+
 [lints]
 workspace = true
