@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::Parser;
@@ -22,6 +22,9 @@ struct Cli {
     /// Tempo in beats per minute.
     #[arg(long = "bpm", value_parser = parse_bpm, default_value_t = DEFAULT_BPM)]
     bpm: f64,
+    /// Optional explicit output path for the rendered WAV.
+    #[arg(long = "output-path")]
+    output_path: Option<PathBuf>,
     /// One or more score specs, e.g. `electric-guitar(sustained):[0,60,192],[384,64,96]`.
     #[arg(required = true)]
     specs: Vec<String>,
@@ -327,7 +330,7 @@ async fn run() -> Result<(), CliError> {
         }
     }
 
-    let path = write_wav_to_temp(&left, &right)?;
+    let path = write_wav(&left, &right, cli.output_path.as_deref())?;
     println!("{}", path.display());
     Ok(())
 }
@@ -609,12 +612,18 @@ fn mix_pcm_stereo(left: &mut [f32], right: &mut [f32], pcm: &[f32], event: Synth
     }
 }
 
-fn write_wav_to_temp(left: &[f32], right: &[f32]) -> Result<PathBuf, CliError> {
-    let file = Builder::new()
-        .prefix("mockingbird-sample-")
-        .suffix(".wav")
-        .tempfile()?;
-    let (_, path) = file.keep().map_err(|err| err.error)?;
+fn write_wav(left: &[f32], right: &[f32], output_path: Option<&Path>) -> Result<PathBuf, CliError> {
+    let path = match output_path {
+        Some(path) => path.to_path_buf(),
+        None => {
+            let file = Builder::new()
+                .prefix("mockingbird-sample-")
+                .suffix(".wav")
+                .tempfile()?;
+            let (_, path) = file.keep().map_err(|err| err.error)?;
+            path
+        }
+    };
     let spec = hound::WavSpec {
         channels: 2,
         sample_rate: SAMPLE_RATE,
