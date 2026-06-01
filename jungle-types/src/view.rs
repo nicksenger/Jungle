@@ -1,6 +1,6 @@
 use crate::{
-    Action, BoundFlowStep, Conditional, Join, NodeMetadata, Scoped, Select, Step, Transparent,
-    While,
+    Action, Attempt, BoundFlowStep, Conditional, Join, NodeMetadata, Scoped, Select, Step,
+    Transparent, While,
 };
 use inception::*;
 
@@ -24,6 +24,11 @@ pub enum JourneyAst {
         body: Box<JourneyAst>,
     },
     Transparent {
+        label: &'static str,
+        metadata: &'static str,
+        body: Box<JourneyAst>,
+    },
+    Attempt {
         label: &'static str,
         metadata: &'static str,
         body: Box<JourneyAst>,
@@ -196,6 +201,26 @@ where
         nodes.push(JourneyAst::Transparent {
             label: core::any::type_name::<M>(),
             metadata: M::METADATA,
+            body: Box::new(body),
+        });
+        nodes
+    }
+}
+
+#[inception::primitive(property = JungleJourneyAst)]
+impl<F, M> BuildJourneyAst<Vec<JourneyAst>> for Attempt<F, M>
+where
+    M: NodeMetadata + 'static,
+    F: BuildJourneyAst<Vec<JourneyAst>, Output = Vec<JourneyAst>>,
+{
+    type Output = Vec<JourneyAst>;
+
+    fn push_ast(mut nodes: Vec<JourneyAst>) -> Self::Output {
+        let body =
+            JourneyAst::sequence(<F as BuildJourneyAst<Vec<JourneyAst>>>::push_ast(Vec::new()));
+        nodes.push(JourneyAst::Attempt {
+            label: "Attempt",
+            metadata: <Attempt<F, M> as NodeMetadata>::METADATA,
             body: Box::new(body),
         });
         nodes

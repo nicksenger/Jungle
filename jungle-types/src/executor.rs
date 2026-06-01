@@ -1,7 +1,7 @@
 use crate::{
-    Animal, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep, Conditional,
-    Effect, EffectCompletion, EffectSchema, Either, Failure, Join, Noop, Running, Scoped, Select,
-    StateCarrier, Transparent, While,
+    Animal, Attempt, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep,
+    Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, Noop, Running,
+    Scoped, Select, StateCarrier, Transparent, While,
 };
 use inception::*;
 use serde::de::DeserializeOwned;
@@ -79,6 +79,13 @@ where
     R: ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
 {
     type Carry = <L as ArgputForState<State>>::Carry;
+}
+
+impl<State, M, F> ArgputForState<State> for Attempt<F, M>
+where
+    F: ArgputForState<State>,
+{
+    type Carry = <F as ArgputForState<State>>::Carry;
 }
 
 impl<State, C, F, M> ArgputForState<State> for While<C, F, M>
@@ -1381,6 +1388,341 @@ where
     Ok((state, trace.emitted))
 }
 
+struct AttemptErasedFlow<State, Out> {
+    node_id: u32,
+    inner: DynFlow<State>,
+    cursor: usize,
+    pending_input: Option<Serialized>,
+    waiting_completion: bool,
+    complete: bool,
+    marker: core::marker::PhantomData<fn() -> Out>,
+}
+
+impl<State, Out> AttemptErasedFlow<State, Out>
+where
+    Out: Serialize + DeserializeOwned,
+{
+    fn new(inner: DynFlow<State>) -> Self {
+        Self {
+            node_id: 0,
+            inner,
+            cursor: 0,
+            pending_input: None,
+            waiting_completion: false,
+            complete: false,
+            marker: core::marker::PhantomData,
+        }
+    }
+
+    fn encode_success(emitted: Serialized) -> Result<Serialized, ExecutorError> {
+        let output = deserialize_emitted::<Out>(emitted)?;
+        postcard::to_allocvec(&Ok::<Out, Failure>(output))
+            .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))
+    }
+
+    fn encode_failure(failure: Failure) -> Result<Serialized, ExecutorError> {
+        postcard::to_allocvec(&Err::<Out, Failure>(failure))
+            .map_err(|err| ExecutorError::EmitSerialize(err.to_string()))
+    }
+}
+
+impl<State, Out> ErasedFlow<State> for AttemptErasedFlow<State, Out>
+where
+    State: Clone + Send + 'static,
+    Out: Serialize + DeserializeOwned + Send + 'static,
+{
+    fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
+        if self.complete {
+            return Err((state, ExecutorError::Complete));
+        }
+        if self.waiting_completion {
+            return Err((state, ExecutorError::AwaitingCompletion));
+        }
+
+        let mut last_input = input.clone();
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+                Ok(state) => state,
+                Err(ExecutorError::ActionFailure(failure)) => {
+                    let emitted = match Self::encode_failure(failure) {
+                        Ok(emitted) => emitted,
+                        Err(err) => return Err((state, err)),
+                    };
+                    self.complete = true;
+                    self.pending_input = Some(emitted);
+                    return Err((state, ExecutorError::Complete));
+                }
+                Err(err) => return Err((state, err)),
+            };
+        if self.cursor >= self.inner.len() {
+            let emitted = match Self::encode_success(last_input) {
+                Ok(emitted) => emitted,
+                Err(err) => return Err((state, err)),
+            };
+            self.complete = true;
+            self.pending_input = Some(emitted);
+            return Err((state, ExecutorError::Complete));
+        }
+
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        match node.request(state, last_input.clone()) {
+            Ok((next_state, request)) => {
+                self.pending_input = Some(last_input);
+                self.waiting_completion = true;
+                Ok((next_state, request))
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                let (next_state, emitted, completed) =
+                    match node.try_complete_without_progress(next_state.clone()) {
+                        Ok(result) => result,
+                        Err(ExecutorError::ActionFailure(failure)) => {
+                            let emitted = match Self::encode_failure(failure) {
+                                Ok(emitted) => emitted,
+                                Err(err) => return Err((next_state, err)),
+                            };
+                            self.complete = true;
+                            self.pending_input = Some(emitted);
+                            return Err((next_state, ExecutorError::Complete));
+                        }
+                        Err(err) => return Err((next_state, err)),
+                    };
+                if let Some(emitted) = emitted {
+                    self.pending_input = Some(emitted);
+                } else {
+                    self.pending_input = Some(last_input);
+                }
+                if completed {
+                    self.cursor += 1;
+                    return Err((next_state, ExecutorError::Complete));
+                }
+                Err((next_state, ExecutorError::Complete))
+            }
+            Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                let emitted = match Self::encode_failure(failure) {
+                    Ok(emitted) => emitted,
+                    Err(err) => return Err((next_state, err)),
+                };
+                self.complete = true;
+                self.pending_input = Some(emitted);
+                Err((next_state, ExecutorError::Complete))
+            }
+            Err((next_state, err)) => Err((next_state, err)),
+        }
+    }
+
+    fn complete(
+        &mut self,
+        state: State,
+        completion: SerializedCompletion,
+    ) -> Result<(State, Serialized), ExecutorError> {
+        if self.complete {
+            return Err(ExecutorError::Complete);
+        }
+        if !self.waiting_completion {
+            return Err(ExecutorError::NoPendingRequest);
+        }
+        if self.cursor >= self.inner.len() {
+            return Err(ExecutorError::Complete);
+        }
+
+        let last_input = self.pending_input.take().ok_or(ExecutorError::NoPendingRequest)?;
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        match node.complete(state.clone(), completion) {
+            Ok((next_state, emitted)) => {
+                self.waiting_completion = false;
+                let mut last_input = emitted;
+                if node.is_complete() {
+                    self.cursor += 1;
+                }
+                let next_state = match settle_subflow_without_progress(
+                    &mut self.inner,
+                    &mut self.cursor,
+                    next_state.clone(),
+                    &mut last_input,
+                ) {
+                    Ok(state) => state,
+                    Err(ExecutorError::ActionFailure(failure)) => {
+                        let emitted = Self::encode_failure(failure)?;
+                        self.complete = true;
+                        return Ok((next_state, emitted));
+                    }
+                    Err(err) => return Err(err),
+                };
+                if self.cursor >= self.inner.len() {
+                    self.complete = true;
+                    return Ok((next_state, Self::encode_success(last_input)?));
+                }
+                Ok((next_state, last_input))
+            }
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.waiting_completion = false;
+                self.complete = true;
+                Ok((state, Self::encode_failure(failure)?))
+            }
+            Err(err) => {
+                self.waiting_completion = false;
+                self.pending_input = Some(last_input);
+                Err(err)
+            }
+        }
+    }
+
+    fn request_executable(
+        &mut self,
+        state: State,
+        input: Serialized,
+    ) -> RequestResult<State, ExecutableEffectRequest> {
+        if self.complete {
+            return Err((state, ExecutorError::Complete));
+        }
+        if self.waiting_completion {
+            return Err((state, ExecutorError::AwaitingCompletion));
+        }
+
+        let mut last_input = input.clone();
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+                Ok(state) => state,
+                Err(ExecutorError::ActionFailure(failure)) => {
+                    let emitted = match Self::encode_failure(failure) {
+                        Ok(emitted) => emitted,
+                        Err(err) => return Err((state, err)),
+                    };
+                    self.complete = true;
+                    self.pending_input = Some(emitted);
+                    return Err((state, ExecutorError::Complete));
+                }
+                Err(err) => return Err((state, err)),
+            };
+        if self.cursor >= self.inner.len() {
+            let emitted = match Self::encode_success(last_input) {
+                Ok(emitted) => emitted,
+                Err(err) => return Err((state, err)),
+            };
+            self.complete = true;
+            self.pending_input = Some(emitted);
+            return Err((state, ExecutorError::Complete));
+        }
+
+        let node = self
+            .inner
+            .get_mut(self.cursor)
+            .expect("cursor was checked against steps len");
+        match node.request_executable(state, last_input.clone()) {
+            Ok((next_state, request)) => {
+                self.pending_input = Some(last_input);
+                self.waiting_completion = true;
+                Ok((next_state, request))
+            }
+            Err((next_state, ExecutorError::Complete)) => {
+                let (next_state, emitted, completed) =
+                    match node.try_complete_without_progress(next_state.clone()) {
+                        Ok(result) => result,
+                        Err(ExecutorError::ActionFailure(failure)) => {
+                            let emitted = match Self::encode_failure(failure) {
+                                Ok(emitted) => emitted,
+                                Err(err) => return Err((next_state, err)),
+                            };
+                            self.complete = true;
+                            self.pending_input = Some(emitted);
+                            return Err((next_state, ExecutorError::Complete));
+                        }
+                        Err(err) => return Err((next_state, err)),
+                    };
+                if let Some(emitted) = emitted {
+                    self.pending_input = Some(emitted);
+                } else {
+                    self.pending_input = Some(last_input);
+                }
+                if completed {
+                    self.cursor += 1;
+                    return Err((next_state, ExecutorError::Complete));
+                }
+                Err((next_state, ExecutorError::Complete))
+            }
+            Err((next_state, ExecutorError::ActionFailure(failure))) => {
+                let emitted = match Self::encode_failure(failure) {
+                    Ok(emitted) => emitted,
+                    Err(err) => return Err((next_state, err)),
+                };
+                self.complete = true;
+                self.pending_input = Some(emitted);
+                Err((next_state, ExecutorError::Complete))
+            }
+            Err((next_state, err)) => Err((next_state, err)),
+        }
+    }
+
+    fn try_complete_without_progress(
+        &mut self,
+        state: State,
+    ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
+        if self.complete {
+            if let Some(emitted) = self.pending_input.take() {
+                return Ok((state, Some(emitted), true));
+            }
+            return Ok((state, None, true));
+        }
+        if self.waiting_completion {
+            return Ok((state, None, false));
+        }
+
+        let Some(mut last_input) = self.pending_input.take() else {
+            return Ok((state, None, false));
+        };
+        let state = match settle_subflow_without_progress(
+            &mut self.inner,
+            &mut self.cursor,
+            state.clone(),
+            &mut last_input,
+        ) {
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                self.complete = true;
+                return Ok((state, Some(Self::encode_failure(failure)?), true));
+            }
+            Err(err) => return Err(err),
+        };
+        if self.cursor >= self.inner.len() {
+            self.complete = true;
+            return Ok((state, Some(Self::encode_success(last_input)?), true));
+        }
+
+        self.pending_input = Some(last_input);
+        Ok((state, None, false))
+    }
+
+    fn is_waiting_completion(&self) -> bool {
+        self.waiting_completion
+    }
+
+    fn is_complete(&self) -> bool {
+        self.complete
+    }
+
+    fn assign_node_ids(&mut self, next_id: &mut u32) {
+        self.node_id = *next_id;
+        *next_id = next_id.saturating_add(1);
+        for node in &mut self.inner {
+            node.assign_node_ids(next_id);
+        }
+    }
+}
+
 impl<State> ErasedFlow<State> for SelectErasedFlow<State>
 where
     State: Clone + Send + 'static,
@@ -2402,6 +2744,14 @@ where
     type Out = (<L as FlowCarry<State>>::Out, <R as FlowCarry<State>>::Out);
 }
 
+impl<State, M, F> FlowCarry<State> for Attempt<F, M>
+where
+    F: FlowCarry<State>,
+{
+    type In = <F as FlowCarry<State>>::In;
+    type Out = Result<<F as FlowCarry<State>>::Out, Failure>;
+}
+
 impl<State> BuildFlow<DynFlow<State>> for list::Empty {
     type Output = DynFlow<State>;
 
@@ -2626,6 +2976,24 @@ where
             build_left,
             build_right,
         )));
+        steps
+    }
+}
+
+#[inception::primitive(property = crate::JungleDynFlow)]
+impl<State, M, F> BuildFlow<DynFlow<State>> for Attempt<F, M>
+where
+    State: Clone + Send + 'static,
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + FlowCarry<State>,
+    <F as FlowCarry<State>>::Out: Serialize + DeserializeOwned + Send + 'static,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
+        let inner = <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
+        steps.push(Box::new(
+            AttemptErasedFlow::<State, <F as FlowCarry<State>>::Out>::new(inner),
+        ));
         steps
     }
 }
@@ -3475,6 +3843,31 @@ where
 
     fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
         <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
+    }
+}
+
+#[inception::primitive(property = JungleDynFlowContext)]
+impl<Context, State, M, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)> for Attempt<F, M>
+where
+    Context: Send + Sync + 'static,
+    State: Clone + Send + 'static,
+    F: BuildFlowWithContext<
+            (Arc<Context>, DynFlow<State>),
+            Output = (Arc<Context>, DynFlow<State>),
+        > + FlowCarry<State>,
+    <F as FlowCarry<State>>::Out: Serialize + DeserializeOwned + Send + 'static,
+{
+    type Output = (Arc<Context>, DynFlow<State>);
+
+    fn push_steps((context, mut steps): (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        let (_, inner) = <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps((
+            Arc::clone(&context),
+            Vec::new(),
+        ));
+        steps.push(Box::new(
+            AttemptErasedFlow::<State, <F as FlowCarry<State>>::Out>::new(inner),
+        ));
+        (context, steps)
     }
 }
 

@@ -2451,6 +2451,62 @@ impl GraphBuilder {
                     members: body_flow.members,
                 }
             }
+            JourneyAst::Attempt {
+                label,
+                metadata,
+                body,
+            } => {
+                let parent_cluster = self.cluster_stack.last().copied();
+                let cluster_index = self.clusters.len();
+                let cluster_id = self.cluster_next_id;
+                self.cluster_next_id = self.cluster_next_id.saturating_add(1);
+                let depth = self.cluster_stack.len();
+                let cluster = Cluster::new(Vec::new()).padding(24.0);
+                let cluster = if let Some(parent) = parent_cluster {
+                    cluster.parent(parent)
+                } else {
+                    cluster
+                };
+                self.clusters.push(cluster);
+
+                let cluster_label = if metadata.trim().is_empty() {
+                    format!("attempt: {}", short_type_name_str(label))
+                } else {
+                    format!("attempt: {} :: {}", short_type_name_str(label), metadata)
+                };
+                self.cluster_labels.push(cluster_label.clone());
+                self.cluster_info.push(ClusterInfo {
+                    id: cluster_id,
+                    kind: ClusterKind::Transparent,
+                    label: cluster_label,
+                    metadata: if metadata.trim().is_empty() {
+                        None
+                    } else {
+                        Some((*metadata).to_string())
+                    },
+                    parent: parent_cluster,
+                    nodes: Vec::new(),
+                    root_nodes: Vec::new(),
+                    depth,
+                });
+
+                self.cluster_stack.push(cluster_index);
+                let body_flow = self.flatten(body);
+                let _ = self.cluster_stack.pop();
+
+                let cluster_nodes = dedup(body_flow.members.clone());
+                if !cluster_nodes.is_empty() {
+                    self.clusters[cluster_index].nodes = cluster_nodes.clone();
+                    self.cluster_info[cluster_index].nodes = cluster_nodes;
+                }
+                self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
+
+                Flattened {
+                    roots: body_flow.roots.clone(),
+                    exits: body_flow.exits,
+                    members: body_flow.members,
+                }
+            }
             JourneyAst::Select {
                 label,
                 metadata,

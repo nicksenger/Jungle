@@ -252,6 +252,9 @@ pub struct Select<L, R, M = NoMetadata>(PhantomData<fn() -> (L, R, M)>);
 /// A flow combinator that runs two activities and resolves when both complete.
 pub struct Join<L, R, M = NoMetadata>(PhantomData<fn() -> (L, R, M)>);
 
+/// A flow combinator that catches inner action failures and emits them as data.
+pub struct Attempt<F, M = NoMetadata>(PhantomData<fn() -> (F, M)>);
+
 /// Type-level metadata marker for flow nodes.
 pub trait NodeMetadata {
     const METADATA: &'static str = "";
@@ -808,6 +811,14 @@ where
     type Out = Join<<L as BindFlow<A, Scope>>::Out, <R as BindFlow<A, Scope>>::Out, M>;
 }
 
+impl<A, Scope, F, M> BindFlow<A, Scope> for Attempt<F, M>
+where
+    A: Animal,
+    F: BindFlow<A, Scope>,
+{
+    type Out = Attempt<<F as BindFlow<A, Scope>>::Out, M>;
+}
+
 impl<A, View, F> BindFlow<A, RootScope> for Scoped<View, F>
 where
     A: Animal,
@@ -1065,6 +1076,10 @@ impl<L, R, M> ScopedFieldListNormalize for Select<L, R, M> {
 
 impl<L, R, M> ScopedFieldListNormalize for Join<L, R, M> {
     type Output = TList<(Join<L, R, M>, list::Empty)>;
+}
+
+impl<F, M> ScopedFieldListNormalize for Attempt<F, M> {
+    type Output = TList<(Attempt<F, M>, list::Empty)>;
 }
 
 impl<M, F> ScopedFieldListNormalize for Transparent<M, F> {
@@ -1649,6 +1664,87 @@ where
 }
 
 #[primitive(property = JungleRunning)]
+impl<M, F> Running for Attempt<F, M>
+where
+    F: Running,
+{
+    type In = F::In;
+    type Out = Result<F::Out, Failure>;
+
+    fn run(input: Self::In) -> Self::Out {
+        Ok(<F as Running>::run(input))
+    }
+}
+
+#[primitive(property = JungleWaiting)]
+impl<M, F> Waiting for Attempt<F, M>
+where
+    F: Waiting,
+{
+    type In = F::In;
+    type Out = Result<F::Out, Failure>;
+
+    fn accept(input: Self::In) -> Self::Out {
+        Ok(<F as Waiting>::accept(input))
+    }
+}
+
+#[primitive(property = JungleFlow)]
+impl<M, F> JourneyEffects for Attempt<F, M>
+where
+    F: JourneyEffects,
+{
+    type List = F::List;
+}
+
+#[primitive(property = JungleTraverseFlow)]
+impl<M, F> TraverseFlowShape for Attempt<F, M>
+where
+    F: TraverseFlow,
+{
+    type Output = Attempt<<F as TraverseFlow>::Output, M>;
+}
+
+impl<M, F> TraverseFlow for Attempt<F, M>
+where
+    F: TraverseFlow,
+{
+    type Output = Attempt<<F as TraverseFlow>::Output, M>;
+}
+
+impl<M, F, Traversal> TraverseWith<Traversal> for Attempt<F, M>
+where
+    F: TraverseWith<Traversal>,
+{
+    type Output = Attempt<<F as TraverseWith<Traversal>>::Output, M>;
+}
+
+#[primitive(property = JungleReplaceFlow)]
+impl<M, F> ReplaceFlow for Attempt<F, M>
+where
+    F: ReplaceFlow,
+{
+    type Output = Attempt<<F as ReplaceFlow>::Output, M>;
+}
+
+impl<M, F, Replacer> ReplaceWith<Replacer> for Attempt<F, M>
+where
+    F: ReplaceWith<Replacer>,
+{
+    type Output = Attempt<<F as ReplaceWith<Replacer>>::Output, M>;
+}
+
+impl<M, F, Replacer> ReplaceNodesWith<Replacer> for Attempt<F, M>
+where
+    F: ReplaceNodesWith<Replacer>,
+    Replacer: ReplaceNode<Attempt<<F as ReplaceNodesWith<Replacer>>::Output, M>>,
+{
+    type Output = <Replacer as ReplaceNode<
+        Attempt<<F as ReplaceNodesWith<Replacer>>::Output, M>,
+    >>::Output;
+}
+
+#[primitive(property = JungleRunning)]
 impl<View, F> Running for Scoped<View, F>
 where
     F: Running,
@@ -1828,6 +1924,13 @@ where
     const METADATA: &'static str = M::METADATA;
 }
 impl<L, R, M> NodeMetadata for Join<L, R, M>
+where
+    M: NodeMetadata,
+{
+    const METADATA: &'static str = M::METADATA;
+}
+
+impl<F, M> NodeMetadata for Attempt<F, M>
 where
     M: NodeMetadata,
 {
