@@ -2226,7 +2226,7 @@ dependencies = [
 [[package]]
 name = "iced-av1"
 version = "0.1.0"
-source = "git+https://github.com/nicksenger/iced-av1.git?branch=jungle#e2ad3e9e8b0edf1a8e1917f189e9fc30b6d07bee"
+source = "git+https://github.com/nicksenger/iced-av1.git?branch=jungle#6fe3f424206c56c8b4672cc31eeb122c93d88692"
 dependencies = [
  "bytemuck",
  "futures-lite",
