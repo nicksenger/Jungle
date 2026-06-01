@@ -91,9 +91,21 @@ impl<J> Effect<J> for CompileSampler {
     }
 }
 
-pub struct SubmitResult;
+pub struct CheckSampler;
 #[effect(id = 8)]
-impl<J> Effect<J> for SubmitResult {
+impl<J> Effect<J> for CheckSampler {
+    type In = String;
+    type Out = bool;
+    type Err = String;
+
+    fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        stub_ok(false)
+    }
+}
+
+pub struct InsertNode;
+#[effect(id = 10)]
+impl<J> Effect<J> for InsertNode {
     type In = String;
     type Out = ();
     type Err = String;
