@@ -2,6 +2,8 @@ use crate::action::{DetermineNextTick, Jump, SeedState, SleepFor};
 use crate::CronState;
 use jungle_sdk::prelude::*;
 
+type SeedCronState = SeedState<CronState, CronState>;
+
 #[derive(Flow)]
 pub struct CronfishLoopBody(
     Step<DetermineNextTick>,
@@ -18,6 +20,6 @@ impl Predicate<(&CronState, &())> for CronfishLoopForever {
 
 #[derive(Flow)]
 pub struct CronJob(
-    Step<SeedState>,
+    Step<SeedCronState>,
     While<CronfishLoopForever, CronfishLoopBody>,
 );

@@ -1,28 +1,29 @@
 use crate::effect::{ParseNext, RunBash};
 use crate::{CronExpr, CronState};
 use jungle_sdk::prelude::*;
+use std::marker::PhantomData;
 use std::time::Duration;
 
-pub struct SeedState;
-#[jungle::action(carry = CronState)]
-impl Action for SeedState {
+pub struct SeedState<Seed, State>(PhantomData<Seed>, PhantomData<State>);
+#[jungle::action(carry = Seed)]
+impl<Seed, State> Action for SeedState<Seed, State>
+where
+    Seed: Into<State>,
+{
     type Effect = Noop;
-    type Input = CronState;
+    type Input = Seed;
     type Output = ();
 
-    fn emit(
-        _state: &CronState,
-        input: Self::Input,
-    ) -> (<Self::Effect as EffectSchema>::In, CronState) {
+    fn emit(_state: &State, input: Self::Input) -> (<Self::Effect as EffectSchema>::In, Seed) {
         ((), input)
     }
 
     fn absorb(
-        state: &mut CronState,
+        state: &mut State,
         _output: EffectCompletion<Self::Effect>,
-        seed: CronState,
+        seed: Seed,
     ) -> Result<Self::Output, Failure> {
-        *state = seed;
+        *state = seed.into();
         Ok(())
     }
 }
