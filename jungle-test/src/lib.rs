@@ -15,6 +15,7 @@ mod tests {
     mod conditional;
     mod connection;
     mod effect_attr;
+    mod failure;
     mod generic_act;
     mod integration;
     mod migration;
