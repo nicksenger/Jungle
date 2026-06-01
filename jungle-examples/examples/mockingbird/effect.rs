@@ -3,6 +3,7 @@
 use image::ImageReader;
 use image_compare::Algorithm;
 use jungle_sdk::effect;
+use serde::{Deserialize, Serialize};
 use spectrs::io::audio::read_audio_file_mono;
 use spectrs::io::image::{save_spectrogram_image, Colormap};
 use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
@@ -23,6 +24,7 @@ const MEL_WIN_LENGTH: usize = 2048;
 const MEL_N_MELS: usize = 128;
 const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/mockingbird/sample/Cargo.toml";
 const SAMPLER_COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
+const SAMPLER_BINARY_PATH: &str = "./target/release/mockingbird-sample";
 
 pub struct CreateSessionDB;
 #[effect(id = 1)]
@@ -151,6 +153,28 @@ impl<J> Effect<J> for SearchTreeMove {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RunSamplerInput {
+    pub duration_secs: f64,
+    pub output_path: String,
+    pub score_specs: Vec<String>,
+}
+
+pub struct RunSampler;
+#[effect(id = 11)]
+impl<J> Effect<J> for RunSampler {
+    type In = RunSamplerInput;
+    type Out = String;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            run_sampler(input.duration_secs, &input.output_path, &input.score_specs).await?;
+            Ok(input.output_path)
+        }
+    }
+}
+
 fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), String> {
     let input = Path::new(wav_path);
     let output = Path::new(output_path);
@@ -227,6 +251,57 @@ async fn run_sampler_cargo<const N: usize>(args: [&str; N]) -> Result<bool, Stri
             })?;
             let _ = child.wait().await;
             Ok(false)
+        }
+    }
+}
+
+async fn run_sampler(
+    duration_secs: f64,
+    output_path: &str,
+    score_specs: &[String],
+) -> Result<(), String> {
+    if !duration_secs.is_finite() || duration_secs <= 0.0 {
+        return Err("duration seconds must be a finite value > 0".to_string());
+    }
+    if score_specs.is_empty() {
+        return Err("run sampler requires at least one score spec".to_string());
+    }
+
+    let mut command = Command::new(SAMPLER_BINARY_PATH);
+    command
+        .arg("--duration-secs")
+        .arg(duration_secs.to_string())
+        .arg("--output-path")
+        .arg(output_path)
+        .args(score_specs)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let mut child = command.spawn().map_err(|err| {
+        format!(
+            "failed to spawn sampler binary {}: {err}",
+            SAMPLER_BINARY_PATH
+        )
+    })?;
+
+    match timeout(SAMPLER_COMMAND_TIMEOUT, child.wait()).await {
+        Ok(wait_result) => {
+            let status =
+                wait_result.map_err(|err| format!("failed to wait for sampler binary: {err}"))?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("sampler binary exited unsuccessfully: {status}"))
+            }
+        }
+        Err(_) => {
+            child
+                .kill()
+                .await
+                .map_err(|err| format!("timed out and failed to kill sampler binary: {err}"))?;
+            let _ = child.wait().await;
+            Err("sampler binary timed out".to_string())
         }
     }
 }
