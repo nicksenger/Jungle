@@ -1,11 +1,11 @@
-use crate::effect::{CronfishFiredEffect, CronfishUntilNextFireEffect};
+use crate::effect::{ParseNext, RunBash};
 use crate::{CronExpr, CronState};
 use jungle_sdk::prelude::*;
 use std::time::Duration;
 
-pub struct ApplyCronfishSeed;
+pub struct SeedState;
 #[jungle::action(carry = CronState)]
-impl Action for ApplyCronfishSeed {
+impl Action for SeedState {
     type Effect = Noop;
     type Input = CronState;
     type Output = ();
@@ -29,10 +29,10 @@ impl Action for ApplyCronfishSeed {
     }
 }
 
-pub struct CronfishUntilNextFire;
+pub struct DetermineNextTick;
 #[jungle::action]
-impl Action for CronfishUntilNextFire {
-    type Effect = CronfishUntilNextFireEffect;
+impl Action for DetermineNextTick {
+    type Effect = ParseNext;
     type Input = ();
     type Output = Duration;
 
@@ -48,9 +48,9 @@ impl Action for CronfishUntilNextFire {
     }
 }
 
-pub struct CronfishSleep;
+pub struct SleepFor;
 #[jungle::action]
-impl Action for CronfishSleep {
+impl Action for SleepFor {
     type Effect = Sleep;
     type Input = Duration;
     type Output = ();
@@ -70,10 +70,10 @@ impl Action for CronfishSleep {
     }
 }
 
-pub struct CronfishFire;
+pub struct Fire;
 #[jungle::action]
-impl Action for CronfishFire {
-    type Effect = CronfishFiredEffect;
+impl Action for Fire {
+    type Effect = RunBash;
     type Input = ();
     type Output = ();
 

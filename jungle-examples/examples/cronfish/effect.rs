@@ -4,9 +4,9 @@ use jungle_sdk::effect;
 use std::str::FromStr;
 use std::time::Duration;
 
-pub struct CronfishUntilNextFireEffect;
+pub struct ParseNext;
 #[effect(id = 0)]
-impl<J> Effect<J> for CronfishUntilNextFireEffect {
+impl<J> Effect<J> for ParseNext {
     type In = CronExpr;
     type Out = Duration;
     type Err = String;
@@ -32,9 +32,9 @@ impl<J> Effect<J> for CronfishUntilNextFireEffect {
     }
 }
 
-pub struct CronfishFiredEffect;
+pub struct RunBash;
 #[effect(id = 1)]
-impl<J> Effect<J> for CronfishFiredEffect {
+impl<J> Effect<J> for RunBash {
     type In = String;
     type Out = ();
     type Err = String;

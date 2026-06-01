@@ -36,12 +36,12 @@ impl Animal for Cronfish {
 }
 
 #[derive(Animals)]
-pub struct CronfishAnimals(Cronfish);
+pub struct PaleozoicAnimals(Cronfish);
 
 pub struct PaleozoicEcosystem;
 impl Ecosystem for PaleozoicEcosystem {
     const NAME: &'static str = "cronfish-ecosystem";
-    type Animals = CronfishAnimals;
+    type Animals = PaleozoicAnimals;
 }
 
 #[tokio::main]

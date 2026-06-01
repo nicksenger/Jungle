@@ -1,12 +1,12 @@
-use crate::action::{ApplyCronfishSeed, CronfishFire, CronfishSleep, CronfishUntilNextFire};
+use crate::action::{DetermineNextTick, Fire, SeedState, SleepFor};
 use crate::CronState;
 use jungle_sdk::prelude::*;
 
 #[derive(Flow)]
 pub struct CronfishLoopBody(
-    Step<CronfishUntilNextFire>,
-    Step<CronfishSleep>,
-    Step<CronfishFire>,
+    Step<DetermineNextTick>,
+    Step<SleepFor>,
+    Step<Fire>,
 );
 
 pub struct CronfishLoopForever;
@@ -18,6 +18,6 @@ impl Predicate<(&CronState, &())> for CronfishLoopForever {
 
 #[derive(Flow)]
 pub struct CronJob(
-    Step<ApplyCronfishSeed>,
+    Step<SeedState>,
     While<CronfishLoopForever, CronfishLoopBody>,
 );
