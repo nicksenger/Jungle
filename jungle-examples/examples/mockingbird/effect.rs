@@ -2,22 +2,9 @@
 
 use jungle_sdk::effect;
 use std::future::{ready, Future};
-use uuid::Uuid;
 
 fn stub_ok<T>(value: T) -> impl Future<Output = Result<T, String>> {
     ready(Ok(value))
-}
-
-pub struct GenUuid;
-#[effect(id = 0)]
-impl<J> Effect<J> for GenUuid {
-    type In = ();
-    type Out = Uuid;
-    type Err = String;
-
-    fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(Uuid::new_v4())
-    }
 }
 
 pub struct CreateSessionDB;
@@ -116,9 +103,9 @@ impl<J> Effect<J> for SubmitResult {
     }
 }
 
-pub struct NextMCTS;
+pub struct SearchTreeMove;
 #[effect(id = 9)]
-impl<J> Effect<J> for NextMCTS {
+impl<J> Effect<J> for SearchTreeMove {
     type In = ();
     type Out = ();
     type Err = String;
