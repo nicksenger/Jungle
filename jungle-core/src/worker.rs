@@ -857,6 +857,7 @@ where
 {
     let mut index = 0usize;
     let noop_effect_type = core::any::type_name::<Noop>();
+    let sleep_effect_type = core::any::type_name::<Sleep>();
     while !executor.is_complete() {
         if index >= history.len() {
             break;
@@ -871,6 +872,27 @@ where
         let expected_input = request.request_bytes();
         let effect_type = request.effect_type();
 
+        // Appearance snapshots are informational and can interleave with step history.
+        while matches!(
+            history.get(index),
+            Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id
+        ) {
+            index = index.saturating_add(1);
+        }
+        // Non-sleep requests should ignore stale sleep bookkeeping records that may remain
+        // after restart recovery.
+        while effect_type != sleep_effect_type
+            && (matches!(
+                history.get(index),
+                Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
+            ) || matches!(
+                history.get(index),
+                Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
+            ))
+        {
+            index = index.saturating_add(1);
+        }
+
         let matched_effect_input = matches!(
             history.get(index),
             Some(RunnerOut::EffectInput {
@@ -881,19 +903,54 @@ where
         );
         if matched_effect_input {
             index = index.saturating_add(1);
-        } else if effect_type == noop_effect_type {
-            // Backward-compatibility path: older histories may not have persisted inline Noop events.
-            send_recovered_effect_input(tx, journey_id, request_node_id, expected_input).await?;
         } else {
-            return Err(ExecutorError::ClientTransport(
-                "history replay expected EffectInput event".to_string(),
-            ));
+            // Recovery path: tolerate history records where EffectInput is missing but completion/sleep bookkeeping exists.
+            let has_recoverable_cursor_event = matches!(
+                history.get(index),
+                Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
+                    if *uuid == journey_id && *node_id == request_node_id
+            ) || matches!(
+                history.get(index),
+                Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
+                    if *uuid == journey_id && *node_id == request_node_id
+            ) || (effect_type == sleep_effect_type
+                && matches!(
+                    history.get(index),
+                    Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
+                ))
+                || (effect_type == sleep_effect_type
+                    && matches!(
+                        history.get(index),
+                        Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id
+                    ));
+
+            if effect_type == noop_effect_type || has_recoverable_cursor_event {
+                send_recovered_effect_input(tx, journey_id, request_node_id, expected_input).await?;
+            } else {
+                return Err(ExecutorError::ClientTransport(
+                    format!(
+                        "history replay expected EffectInput event (journey={journey_id}, node_id={request_node_id}, effect_type={effect_type}, history_index={index}, history_event={:?})",
+                        history.get(index)
+                    ),
+                ));
+            }
         }
 
-        let completion = if effect_type == core::any::type_name::<Sleep>() {
+        // Appearance snapshots can also be emitted after completion events.
+        while matches!(
+            history.get(index),
+            Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id
+        ) {
+            index = index.saturating_add(1);
+        }
+
+        let completion = if effect_type == sleep_effect_type {
             while matches!(
                 history.get(index),
                 Some(RunnerOut::SleepScheduled { uuid, .. }) if *uuid == journey_id
+            ) || matches!(
+                history.get(index),
+                Some(RunnerOut::Appearance { uuid, .. }) if *uuid == journey_id
             ) {
                 index = index.saturating_add(1);
             }
@@ -901,9 +958,36 @@ where
             match history.get(index) {
                 Some(RunnerOut::SleepFired { uuid, .. }) if *uuid == journey_id => {
                     index = index.saturating_add(1);
+                    while matches!(
+                        history.get(index),
+                        Some(RunnerOut::EffectSuccessOutput { node_id, uuid, .. })
+                            if *uuid == journey_id && *node_id == request_node_id
+                    ) || matches!(
+                        history.get(index),
+                        Some(RunnerOut::EffectFailureOutput { node_id, uuid, .. })
+                            if *uuid == journey_id && *node_id == request_node_id
+                    ) {
+                        index = index.saturating_add(1);
+                    }
                     let sleep_out = postcard::to_allocvec(&())
                         .map_err(|err| ExecutorError::OutputSerialize(err.to_string()))?;
                     Ok(sleep_out)
+                }
+                Some(RunnerOut::EffectSuccessOutput {
+                    node_id,
+                    data,
+                    uuid,
+                }) if *uuid == journey_id && *node_id == request_node_id => {
+                    index = index.saturating_add(1);
+                    Ok(data.clone())
+                }
+                Some(RunnerOut::EffectFailureOutput {
+                    node_id,
+                    data,
+                    uuid,
+                }) if *uuid == journey_id && *node_id == request_node_id => {
+                    index = index.saturating_add(1);
+                    Err(data.clone())
                 }
                 _ => {
                     let completion = request.run().await?;
