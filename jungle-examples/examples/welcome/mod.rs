@@ -903,7 +903,7 @@ fn run_runtime_thread(
                 client
                     .spawn::<LeadVocalist>(&lead_vocalist_seed)
                     .await
-                    .map(Some)
+                    .map(|journey| Some(journey.journey_id))
                     .map_err(|err| {
                         error!(error = %err, "failed starting lead vocalist journey");
                         err.to_string()
@@ -917,7 +917,7 @@ fn run_runtime_thread(
                 client
                     .spawn::<RhythmGuitarist>(&seed)
                     .await
-                    .map(Some)
+                    .map(|journey| Some(journey.journey_id))
                     .map_err(|err| {
                         error!(error = %err, "failed starting rhythm guitarist journey");
                         err.to_string()
@@ -931,7 +931,7 @@ fn run_runtime_thread(
                 client
                     .spawn::<LeadGuitarist>(&seed)
                     .await
-                    .map(Some)
+                    .map(|journey| Some(journey.journey_id))
                     .map_err(|err| {
                         error!(error = %err, "failed starting lead guitarist journey");
                         err.to_string()
@@ -945,7 +945,7 @@ fn run_runtime_thread(
                 client
                     .spawn::<BassAnimal>(&seed)
                     .await
-                    .map(Some)
+                    .map(|journey| Some(journey.journey_id))
                     .map_err(|err| {
                         error!(error = %err, "failed starting bass journey");
                         err.to_string()
@@ -959,7 +959,7 @@ fn run_runtime_thread(
                 client
                     .spawn::<Drums>(&seed)
                     .await
-                    .map(Some)
+                    .map(|journey| Some(journey.journey_id))
                     .map_err(|err| {
                         error!(error = %err, "failed starting drums journey");
                         err.to_string()
