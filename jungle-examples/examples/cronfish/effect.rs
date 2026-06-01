@@ -23,11 +23,11 @@ impl<J> Effect<J> for ParseNext {
             let next = schedule
                 .after(&now)
                 .next()
-                .ok_or_else(|| "cron schedule has no future fire time".to_string())?;
+                .ok_or_else(|| "cron schedule has no future jump time".to_string())?;
             let remaining = next.signed_duration_since(now);
             remaining
                 .to_std()
-                .map_err(|err| format!("invalid fire duration: {err}"))
+                .map_err(|err| format!("invalid jump duration: {err}"))
         })();
         std::future::ready(result)
     }
@@ -49,11 +49,11 @@ impl<J> Effect<J> for RunBash {
                 .arg("-lc")
                 .arg(&input)
                 .status()
-                .map_err(|err| format!("failed to run fired cmd: {err}"))?;
+                .map_err(|err| format!("failed to run jumped cmd: {err}"))?;
             if status.success() {
                 Ok(())
             } else {
-                Err(format!("fired cmd failed with status: {status}"))
+                Err(format!("jumped cmd failed with status: {status}"))
             }
         })();
         std::future::ready(result)

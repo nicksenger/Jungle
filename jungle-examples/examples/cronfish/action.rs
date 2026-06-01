@@ -65,9 +65,9 @@ impl Action for SleepFor {
     }
 }
 
-pub struct Fire;
+pub struct Jump;
 #[jungle::action]
-impl Action for Fire {
+impl Action for Jump {
     type Effect = RunBash;
     type Input = ();
     type Output = ();

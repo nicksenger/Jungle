@@ -1,4 +1,4 @@
-use crate::action::{DetermineNextTick, Fire, SeedState, SleepFor};
+use crate::action::{DetermineNextTick, Jump, SeedState, SleepFor};
 use crate::CronState;
 use jungle_sdk::prelude::*;
 
@@ -6,7 +6,7 @@ use jungle_sdk::prelude::*;
 pub struct CronfishLoopBody(
     Step<DetermineNextTick>,
     Step<SleepFor>,
-    Step<Fire>,
+    Step<Jump>,
 );
 
 pub struct CronfishLoopForever;

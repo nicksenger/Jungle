@@ -22,7 +22,7 @@ pub struct CronState {
 #[command(name = "cronfish")]
 struct Args {
     expr: CronExpr,
-    #[arg(long, default_value = "echo \"cronfish fired!\"")]
+    #[arg(long, default_value = "echo \"cronfish jumped!\"")]
     cmd: String,
 }
 
