@@ -655,7 +655,8 @@ impl Action for SleepFiveMinutesSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_3 = {
-            output.map_err(|_err| Failure::from("sleep step should complete after worker wakeup"))?;
+            output
+                .map_err(|_err| Failure::from("sleep step should complete after worker wakeup"))?;
         };
         Ok(__absorb_out_3)
     }

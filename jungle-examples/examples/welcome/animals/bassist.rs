@@ -3190,7 +3190,7 @@ mod tests {
     use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
-    use jungle_sdk::{JungleClient, FusedClient, RunnerUpdateOut};
+    use jungle_sdk::{FusedClient, JungleClient, RunnerUpdateOut};
 
     use super::super::Bass;
     use super::{BassJoinSound100Animal, BassistState};
@@ -3284,7 +3284,7 @@ mod tests {
             .spawn::<Bass>(&seed)
             .await
             .expect("journey should start")
-        .journey_id;
+            .journey_id;
 
         tokio::time::sleep(Duration::from_secs(2)).await;
         let status = client

@@ -12,13 +12,10 @@ impl<J> Effect<J> for ParseNext {
     type Out = Duration;
     type Err = String;
 
-    fn effect(
-        _jungle: &J,
-        input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
-            let schedule =
-                cron::Schedule::from_str(&input).map_err(|err| format!("cron parse failed: {err}"))?;
+            let schedule = cron::Schedule::from_str(&input)
+                .map_err(|err| format!("cron parse failed: {err}"))?;
             let now = Utc::now();
             let next = schedule
                 .after(&now)
@@ -39,10 +36,7 @@ impl<J> Effect<J> for RunBash {
     type Out = ();
     type Err = String;
 
-    fn effect(
-        _jungle: &J,
-        input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             let status = std::process::Command::new("bash")
                 .arg("-lc")

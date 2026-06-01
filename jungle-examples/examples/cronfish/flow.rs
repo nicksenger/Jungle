@@ -5,11 +5,7 @@ use jungle_sdk::prelude::*;
 type SeedCronState = SeedState<CronState, CronState>;
 
 #[derive(Flow)]
-pub struct CronfishLoopBody(
-    Step<DetermineNextTick>,
-    Step<SleepFor>,
-    Step<Jump>,
-);
+pub struct CronfishLoopBody(Step<DetermineNextTick>, Step<SleepFor>, Step<Jump>);
 
 pub struct CronfishLoopForever;
 impl Predicate<(&CronState, &())> for CronfishLoopForever {

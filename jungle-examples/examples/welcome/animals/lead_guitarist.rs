@@ -1681,7 +1681,7 @@ mod tests {
     use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
-    use jungle_sdk::{JungleClient, FusedClient, RunnerUpdateOut};
+    use jungle_sdk::{FusedClient, JungleClient, RunnerUpdateOut};
 
     use super::super::LeadGuitarist;
     use super::{LeadGuitaristState, LeadJoinSound100Animal};
@@ -1849,7 +1849,7 @@ mod tests {
             .spawn::<LeadGuitarist>(&seed)
             .await
             .expect("journey should start")
-        .journey_id;
+            .journey_id;
 
         let stream = client
             .subscribe_step_updates(journey_id, None)
@@ -1923,7 +1923,7 @@ mod tests {
             .spawn::<LeadGuitarist>(&seed)
             .await
             .expect("journey should start")
-        .journey_id;
+            .journey_id;
 
         tokio::time::sleep(Duration::from_secs(2)).await;
         let status = client

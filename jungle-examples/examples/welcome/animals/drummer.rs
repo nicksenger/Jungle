@@ -2493,7 +2493,7 @@ mod tests {
     use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
-    use jungle_sdk::{JungleClient, FusedClient, RunnerUpdateOut};
+    use jungle_sdk::{FusedClient, JungleClient, RunnerUpdateOut};
 
     use super::super::{ConditionalJoinSound100Animal, Drums};
     use crate::ecosystem::TheJungle;
@@ -2607,7 +2607,7 @@ mod tests {
             .spawn::<Drums>(&seed)
             .await
             .expect("journey should start")
-        .journey_id;
+            .journey_id;
 
         tokio::time::sleep(Duration::from_secs(2)).await;
         let status = client

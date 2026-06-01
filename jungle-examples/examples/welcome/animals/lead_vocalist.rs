@@ -626,7 +626,7 @@ mod tests {
 
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::JourneyStatus;
-    use jungle_sdk::{JungleClient, FusedClient};
+    use jungle_sdk::{FusedClient, JungleClient};
 
     use super::super::LeadVocalist;
     use crate::ecosystem::TheJungle;
@@ -652,7 +652,7 @@ mod tests {
             .spawn::<LeadVocalist>(&seed)
             .await
             .expect("journey should start")
-        .journey_id;
+            .journey_id;
 
         tokio::time::sleep(Duration::from_secs(2)).await;
         let status = client
