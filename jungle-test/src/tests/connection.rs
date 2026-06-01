@@ -217,9 +217,9 @@ async fn client_exchanges_messages_with_mock_server() {
     let client = connect_client_with_retry(listen_addr).await;
 
     let created_flow = client
-        .start_journey::<ConnectionAnimal7>(&())
+        .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("start_journey should succeed");
+        .expect("spawn should succeed");
     assert_eq!(created_flow, journey_id);
 
     let status = client
@@ -351,9 +351,9 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey::<ConnectionAnimal7>(&())
+        .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("start_journey should succeed");
+        .expect("spawn should succeed");
 
     let created = client
         .journey_details(journey_id)
@@ -404,9 +404,9 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey::<ConnectionAnimal7>(&())
+        .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("start_journey should succeed");
+        .expect("spawn should succeed");
 
     client
         .effect_input(journey_id, 12, vec![9, 9])
@@ -478,7 +478,7 @@ async fn dropping_one_client_clone_does_not_close_transport_for_others() {
     drop(client);
 
     let journey_id = survivor
-        .start_journey::<ConnectionAnimal7>(&())
+        .spawn::<ConnectionAnimal7>(&())
         .await
         .expect("remaining client clone should still open streams");
 
@@ -511,9 +511,9 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey::<ConnectionAnimal7>(&())
+        .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("start_journey should succeed");
+        .expect("spawn should succeed");
 
     let first_work = client
         .poll_work(default_supported(7))
@@ -769,13 +769,13 @@ async fn poll_work_is_scoped_by_namespace() {
     let beta = connect_client_with_retry_namespace(listen_addr, "beta").await;
 
     let alpha_id = alpha
-        .start_journey::<ConnectionAnimal7>(&())
+        .spawn::<ConnectionAnimal7>(&())
         .await
-        .expect("alpha start_journey should succeed");
+        .expect("alpha spawn should succeed");
     let beta_id = beta
-        .start_journey::<ConnectionAnimal9>(&())
+        .spawn::<ConnectionAnimal9>(&())
         .await
-        .expect("beta start_journey should succeed");
+        .expect("beta spawn should succeed");
 
     let alpha_work = alpha
         .poll_work(default_supported(7))

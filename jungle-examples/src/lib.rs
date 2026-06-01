@@ -216,8 +216,8 @@ pub fn spawn_observe_runtime() -> (jungle_sdk::Client, Uuid) {
     };
 
     let journey_id = setup_runtime
-        .block_on(client.start_journey::<ObserveAnimal>(&seed))
-        .expect("start_journey observe animal should succeed");
+        .block_on(client.spawn::<ObserveAnimal>(&seed))
+        .expect("spawn observe animal should succeed");
 
     (client, journey_id)
 }

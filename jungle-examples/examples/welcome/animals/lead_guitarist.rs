@@ -1846,7 +1846,7 @@ mod tests {
 
         let seed = ();
         let journey_id = client
-            .start_journey::<LeadGuitarist>(&seed)
+            .spawn::<LeadGuitarist>(&seed)
             .await
             .expect("journey should start");
 
@@ -1919,7 +1919,7 @@ mod tests {
 
         let seed = ();
         let journey_id = client
-            .start_journey::<LeadGuitarist>(&seed)
+            .spawn::<LeadGuitarist>(&seed)
             .await
             .expect("journey should start");
 
@@ -1975,7 +1975,7 @@ mod tests {
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client
-                .start_journey::<LeadJoinSound100Animal>(&seed)
+                .spawn::<LeadJoinSound100Animal>(&seed)
                 .await
                 .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
             journey_ids.push(journey_id);

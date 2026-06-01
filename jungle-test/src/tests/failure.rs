@@ -259,7 +259,7 @@ macro_rules! run_case {
 
         let seed = ();
         let journey_id = client
-            .start_journey::<$animal>(&seed)
+            .spawn::<$animal>(&seed)
             .await
             .expect("journey should start");
         let status = wait_for_terminal(&client, journey_id).await;
@@ -1160,7 +1160,7 @@ async fn local_client_marks_journey_dead_when_absorb_returns_failure() {
 
     let seed = ();
     let journey_id = client
-        .start_journey::<FailureAnimal>(&seed)
+        .spawn::<FailureAnimal>(&seed)
         .await
         .expect("journey should start");
 
@@ -1187,7 +1187,7 @@ async fn attempt_catches_failure_and_journey_completes() {
 
     let seed = ();
     let journey_id = client
-        .start_journey::<AttemptFailureAnimal>(&seed)
+        .spawn::<AttemptFailureAnimal>(&seed)
         .await
         .expect("journey should start");
 
@@ -1213,7 +1213,7 @@ async fn attempt_wraps_success_and_journey_completes() {
 
     let seed = ();
     let journey_id = client
-        .start_journey::<AttemptSuccessAnimal>(&seed)
+        .spawn::<AttemptSuccessAnimal>(&seed)
         .await
         .expect("journey should start");
 

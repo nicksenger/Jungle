@@ -194,9 +194,9 @@ async fn multiple_generations_share_id_but_dispatch_uses_latest_generation() {
 
     let seed = 0_i32;
     let journey_id = client
-        .start_journey::<LegacyAnimal>(&seed)
+        .spawn::<LegacyAnimal>(&seed)
         .await
-        .expect("start_journey legacy should succeed");
+        .expect("spawn legacy should succeed");
 
     let worker = JungleWorker::new(VersionedZoo, client.clone());
     let worker_handle = tokio::spawn(async move {
@@ -273,9 +273,9 @@ async fn create_journey_fails_when_client_generation_exceeds_server_latest() {
 
     let seed = 0_i32;
     let err = client
-        .start_journey::<FutureAnimal>(&seed)
+        .spawn::<FutureAnimal>(&seed)
         .await
-        .expect_err("start_journey should fail when client generation is ahead");
+        .expect_err("spawn should fail when client generation is ahead");
     let message = err.to_string();
     assert!(
         message.contains("client generation 2 exceeds latest server generation 1"),

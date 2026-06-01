@@ -1263,7 +1263,7 @@ mod tests {
 
         let seed = ();
         let journey_id = client
-            .start_journey::<RhythmGuitarist>(&seed)
+            .spawn::<RhythmGuitarist>(&seed)
             .await
             .expect("journey should start");
 

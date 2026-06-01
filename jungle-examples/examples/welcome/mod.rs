@@ -640,7 +640,7 @@ impl UiClient {
 
 #[async_trait]
 impl JungleClient for UiClient {
-    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: jungle_sdk::Animal,
@@ -648,7 +648,7 @@ impl JungleClient for UiClient {
         A::Generation: jungle_sdk::typosaurus::num::Unsigned,
         A::Seed: Sync,
     {
-        self.inner.start_journey::<A>(seed).await
+        self.inner.spawn::<A>(seed).await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<jungle_sdk::RunnerOut>, ExecutorError> {
@@ -901,7 +901,7 @@ fn run_runtime_thread(
         let lead_vocalist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::LeadVocalist) {
                 client
-                    .start_journey::<LeadVocalist>(&lead_vocalist_seed)
+                    .spawn::<LeadVocalist>(&lead_vocalist_seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -915,7 +915,7 @@ fn run_runtime_thread(
         let rhythm_guitarist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::RhythmGuitarist) {
                 client
-                    .start_journey::<RhythmGuitarist>(&seed)
+                    .spawn::<RhythmGuitarist>(&seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -929,7 +929,7 @@ fn run_runtime_thread(
         let lead_guitarist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::LeadGuitarist) {
                 client
-                    .start_journey::<LeadGuitarist>(&seed)
+                    .spawn::<LeadGuitarist>(&seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -943,7 +943,7 @@ fn run_runtime_thread(
         let bass_fut = async {
             if enabled_animals.contains(&SelectedAnimal::Bassist) {
                 client
-                    .start_journey::<BassAnimal>(&seed)
+                    .spawn::<BassAnimal>(&seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -957,7 +957,7 @@ fn run_runtime_thread(
         let drums_fut = async {
             if enabled_animals.contains(&SelectedAnimal::Drummer) {
                 client
-                    .start_journey::<Drums>(&seed)
+                    .spawn::<Drums>(&seed)
                     .await
                     .map(Some)
                     .map_err(|err| {

@@ -351,7 +351,7 @@ pub enum FusedClientError {
 
 #[async_trait]
 impl JungleClient for FusedClient {
-    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: Animal,
@@ -373,7 +373,7 @@ impl JungleClient for FusedClient {
         match response {
             WireOut::JourneyCreated(journey_id) => Ok(journey_id),
             _ => Err(ExecutorError::ClientTransport(
-                "unexpected non-journey-created response for start_journey".to_string(),
+                "unexpected non-journey-created response for spawn".to_string(),
             )),
         }
     }

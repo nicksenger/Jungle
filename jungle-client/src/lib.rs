@@ -21,7 +21,7 @@ pub use mock::{MockClient, MockClientBuilder};
 
 #[async_trait]
 pub trait JungleClient: DynClone + Send + Sync {
-    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: Animal,

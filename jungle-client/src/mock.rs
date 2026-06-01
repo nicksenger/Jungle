@@ -102,7 +102,7 @@ impl MockClient {
         &self.namespace
     }
 
-    pub(crate) async fn start_journey_by_id(
+    pub(crate) async fn spawn_by_id(
         &self,
         animal_id: u32,
         _generation: u32,
@@ -163,7 +163,7 @@ impl Default for MockClient {
 
 #[async_trait]
 impl JungleClient for MockClient {
-    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: Animal,
@@ -173,7 +173,7 @@ impl JungleClient for MockClient {
     {
         let seed = postcard::to_allocvec(seed)
             .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
-        self.start_journey_by_id(
+        self.spawn_by_id(
             <A::Id as AnimalIdValue>::U32,
             <A::Generation as Unsigned>::U32,
             seed,

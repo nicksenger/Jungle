@@ -483,7 +483,7 @@ impl<J> Client<J> {
         ))
     }
 
-    pub(crate) async fn start_journey_by_id(
+    pub(crate) async fn spawn_by_id(
         &self,
         animal_id: u32,
         generation: u32,
@@ -510,7 +510,7 @@ impl<J> Client<J> {
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
-                "unexpected non-journey-created response for start_journey_by_id".to_string(),
+                "unexpected non-journey-created response for spawn_by_id".to_string(),
             )),
         }
     }
@@ -525,7 +525,7 @@ where
     SPFlatten<<J::Animals as Animals>::List>: StripAnimalHeaders,
     AnimalSet<J::Animals>: Container,
 {
-    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: Animal,
@@ -535,7 +535,7 @@ where
     {
         let seed = postcard::to_allocvec(seed)
             .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
-        self.start_journey_by_id(
+        self.spawn_by_id(
             <A::Id as AnimalIdValue>::U32,
             <A::Generation as Unsigned>::U32,
             seed,

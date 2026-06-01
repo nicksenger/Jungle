@@ -62,7 +62,7 @@ async fn main() {
     });
 
     let journey_id = client
-        .start_journey::<Cronfish>(&seed)
+        .spawn::<Cronfish>(&seed)
         .await
         .expect("cronfish journey should start");
     println!("cronfish journey started: {journey_id}");

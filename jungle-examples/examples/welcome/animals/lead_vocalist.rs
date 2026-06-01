@@ -649,7 +649,7 @@ mod tests {
 
         let seed = super::LeadVocalistSeed::default();
         let journey_id = client
-            .start_journey::<LeadVocalist>(&seed)
+            .spawn::<LeadVocalist>(&seed)
             .await
             .expect("journey should start");
 

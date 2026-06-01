@@ -71,7 +71,7 @@ impl<C> JungleClient for DeferredJungleClient<C>
 where
     C: JungleClient + Clone + 'static,
 {
-    async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
+    async fn spawn<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,
         A: jungle_sdk::Animal,
@@ -79,7 +79,7 @@ where
         A::Generation: jungle_sdk::typosaurus::num::Unsigned,
         A::Seed: Sync,
     {
-        self.inner.start_journey::<A>(seed).await
+        self.inner.spawn::<A>(seed).await
     }
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {

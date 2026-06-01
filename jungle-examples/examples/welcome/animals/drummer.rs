@@ -2604,7 +2604,7 @@ mod tests {
 
         let seed = ();
         let journey_id = client
-            .start_journey::<Drums>(&seed)
+            .spawn::<Drums>(&seed)
             .await
             .expect("journey should start");
 
@@ -2675,7 +2675,7 @@ mod tests {
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for (index, seed_state) in seeds.iter().enumerate() {
             let journey_id = client
-                .start_journey::<ConditionalJoinSound100Animal>(seed_state)
+                .spawn::<ConditionalJoinSound100Animal>(seed_state)
                 .await
                 .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
             journey_ids.push(journey_id);

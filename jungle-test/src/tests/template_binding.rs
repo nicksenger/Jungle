@@ -499,13 +499,13 @@ async fn template_binding_local_client_reuses_one_template_for_two_animals_end_t
     });
 
     let alpha_id = client
-        .start_journey::<LocalTemplateAlphaAnimal>(
+        .spawn::<LocalTemplateAlphaAnimal>(
             &3_i32,
         )
         .await
         .expect("alpha journey should start");
     let beta_id = client
-        .start_journey::<LocalTemplateBetaAnimal>(
+        .spawn::<LocalTemplateBetaAnimal>(
             &3_i32,
         )
         .await
@@ -651,7 +651,7 @@ async fn template_binding_unbound_effect_with_context_bound_runs_end_to_end_with
     });
 
     let journey_id = client
-        .start_journey::<LocalTemplateContextAnimal>(
+        .spawn::<LocalTemplateContextAnimal>(
             &4_i32,
         )
         .await
@@ -802,13 +802,13 @@ async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal(
     });
 
     let alpha_id = client
-        .start_journey::<ComposedAlphaAnimal>(
+        .spawn::<ComposedAlphaAnimal>(
             &3_i32,
         )
         .await
         .expect("alpha journey should start");
     let beta_id = client
-        .start_journey::<ComposedBetaAnimal>(
+        .spawn::<ComposedBetaAnimal>(
             &3_i32,
         )
         .await
@@ -1129,7 +1129,7 @@ async fn template_binding_unbound_lens_template_runs_end_to_end() {
     });
 
     let journey_id = client
-        .start_journey::<LensAlphaAnimal>(
+        .spawn::<LensAlphaAnimal>(
             &30_i32,
         )
         .await
@@ -1460,7 +1460,7 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
     });
 
     let journey_id = client
-        .start_journey::<NestedScopeAnimal>(
+        .spawn::<NestedScopeAnimal>(
             &3_i32,
         )
         .await
@@ -1532,7 +1532,7 @@ async fn template_binding_generic_focus_nested_concrete_focus_runs_end_to_end_lo
     });
 
     let journey_id = client
-        .start_journey::<GenericNestedScopeAnimal>(
+        .spawn::<GenericNestedScopeAnimal>(
             &3_i32,
         )
         .await
@@ -1815,7 +1815,7 @@ async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_l
     });
 
     let journey_id = client
-        .start_journey::<Loop2CompositeAnimal>(
+        .spawn::<Loop2CompositeAnimal>(
             &5_i32,
         )
         .await
@@ -2114,7 +2114,7 @@ async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_
     });
 
     let journey_id = client
-        .start_journey::<InheritedAutoFocusAnimal>(
+        .spawn::<InheritedAutoFocusAnimal>(
             &3_i32,
         )
         .await
@@ -2209,7 +2209,7 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
     });
 
     let journey_id = client
-        .start_journey::<InheritedAutoFocusConditionalAnimal>(
+        .spawn::<InheritedAutoFocusConditionalAnimal>(
             &3_i32,
         )
         .await
@@ -2446,7 +2446,7 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
     });
 
     let journey_id = client
-        .start_journey::<ConditionalJoinMergeAnimal>(
+        .spawn::<ConditionalJoinMergeAnimal>(
             &ConditionalJoinMergeState {
                 marker: 1,
                 ..ConditionalJoinMergeState::default()
@@ -3179,13 +3179,13 @@ async fn template_binding_long_shared_and_unique_segments_with_different_animal_
     });
 
     let alpha_id = client
-        .start_journey::<ComplexAlphaAnimal>(
+        .spawn::<ComplexAlphaAnimal>(
             &5_i32,
         )
         .await
         .expect("alpha journey should start");
     let beta_id = client
-        .start_journey::<ComplexBetaAnimal>(
+        .spawn::<ComplexBetaAnimal>(
             &5_i32,
         )
         .await
