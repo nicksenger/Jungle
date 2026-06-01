@@ -7,9 +7,9 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::any::type_name;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -184,6 +184,10 @@ impl PulseCodeParadise {
         Ok(selected_data)
     }
 
+    fn select_mcts_for_type<Tag>(&self) -> Result<Value, PulseCodeParadiseError> {
+        self.select_mcts(type_name::<Tag>())
+    }
+
     fn submit_mcts(
         &self,
         tag: &str,
@@ -233,6 +237,14 @@ impl PulseCodeParadise {
         Ok(())
     }
 
+    fn submit_mcts_for_type<Tag>(
+        &self,
+        data: Value,
+        score: f32,
+    ) -> Result<(), PulseCodeParadiseError> {
+        self.submit_mcts(type_name::<Tag>(), data, score)
+    }
+
     #[cfg(test)]
     fn load_tree_for_test(
         &self,
@@ -278,27 +290,20 @@ impl TokenPredictor for PulseCodeParadise {
     }
 }
 
-impl<Tag> SearchTree<Tag> for PulseCodeParadise
-where
-    Tag: Display,
-{
+impl<Tag> SearchTree<Tag> for PulseCodeParadise {
     type Error = PulseCodeParadiseError;
     type Data = Value;
 
-    fn select(
-        &self,
-        tag: Tag,
-    ) -> impl std::future::Future<Output = Result<Self::Data, Self::Error>> {
-        async move { self.select_mcts(&tag.to_string()) }
+    fn select(&self) -> impl std::future::Future<Output = Result<Self::Data, Self::Error>> {
+        async move { self.select_mcts_for_type::<Tag>() }
     }
 
     fn submit(
         &self,
-        tag: Tag,
         data: Self::Data,
         score: f32,
     ) -> impl std::future::Future<Output = Result<(), Self::Error>> {
-        async move { self.submit_mcts(&tag.to_string(), data, score) }
+        async move { self.submit_mcts_for_type::<Tag>(data, score) }
     }
 }
 
@@ -723,6 +728,9 @@ mod tests {
     use futures::executor::block_on;
     use uuid::Uuid;
 
+    struct BasslineTag;
+    struct DrumsTag;
+
     fn temp_db_path(name: &str) -> PathBuf {
         std::env::temp_dir()
             .join("jungle-mockingbird-tests")
@@ -787,19 +795,20 @@ mod tests {
     fn persists_mcts_selection_between_processes_and_backprops() {
         let db_path = temp_db_path("persisted-mcts");
         let tokens_url = Url::parse("https://api.openai.com/v1").unwrap();
-        let tag = "bassline";
 
         let first =
             PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone())).unwrap();
-        let selected = block_on(SearchTree::select(&first, tag)).unwrap();
+        let selected = block_on(<PulseCodeParadise as SearchTree<BasslineTag>>::select(
+            &first,
+        ))
+        .unwrap();
         assert_eq!(selected, Value::Null);
         drop(first);
 
         let second =
             PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone())).unwrap();
-        block_on(SearchTree::submit(
+        block_on(<PulseCodeParadise as SearchTree<BasslineTag>>::submit(
             &second,
-            tag,
             json!({ "prompt": "add syncopation" }),
             0.75,
         ))
@@ -807,7 +816,9 @@ mod tests {
         drop(second);
 
         let third = PulseCodeParadise::new(tokens_url, None, Some(db_path.clone())).unwrap();
-        let (tree, nodes) = third.load_tree_for_test(tag).unwrap();
+        let (tree, nodes) = third
+            .load_tree_for_test(type_name::<BasslineTag>())
+            .unwrap();
         let root = nodes.get(&ROOT_NODE_ID).unwrap();
         let child = nodes.get(&1).unwrap();
 
@@ -830,9 +841,8 @@ mod tests {
         )
         .unwrap();
 
-        let submit_err = block_on(SearchTree::submit(
+        let submit_err = block_on(<PulseCodeParadise as SearchTree<DrumsTag>>::submit(
             &ecosystem,
-            "drums",
             json!({ "prompt": "fill" }),
             0.3,
         ))
@@ -841,8 +851,14 @@ mod tests {
             .to_string()
             .contains("select must precede submit"));
 
-        let _ = block_on(SearchTree::select(&ecosystem, "drums")).unwrap();
-        let select_err = block_on(SearchTree::select(&ecosystem, "drums")).unwrap_err();
+        let _ = block_on(<PulseCodeParadise as SearchTree<DrumsTag>>::select(
+            &ecosystem,
+        ))
+        .unwrap();
+        let select_err = block_on(<PulseCodeParadise as SearchTree<DrumsTag>>::select(
+            &ecosystem,
+        ))
+        .unwrap_err();
         assert!(select_err.to_string().contains("submit must follow select"));
     }
 }
