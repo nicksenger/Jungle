@@ -21,7 +21,9 @@ fn stub_ok<T>(value: T) -> impl Future<Output = Result<T, String>> {
 const MEL_N_FFT: usize = 2048;
 const MEL_HOP_LENGTH: usize = 512;
 const MEL_WIN_LENGTH: usize = 2048;
-const MEL_N_MELS: usize = 128;
+const MEL_N_MELS: usize = 25;
+const MEL_F_MIN_HZ: f32 = 20.0;
+const MEL_F_MAX_HZ: f32 = 16_000.0;
 const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/mockingbird/sample/Cargo.toml";
 const SAMPLER_COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
 const SAMPLER_BINARY_PATH: &str = "./target/release/mockingbird-sample";
@@ -195,8 +197,8 @@ fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), Str
         sample_rate,
         MEL_N_FFT,
         MEL_N_MELS,
-        None,
-        None,
+        Some(MEL_F_MIN_HZ),
+        Some(MEL_F_MAX_HZ),
         MelScale::Slaney,
     );
 
