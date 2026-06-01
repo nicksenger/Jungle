@@ -1,5 +1,4 @@
-use clap::{Parser, Subcommand};
-use futures::StreamExt;
+use clap::Parser;
 use jungle_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -19,19 +18,7 @@ pub struct CronState {
 
 #[derive(Parser, Debug)]
 #[command(name = "cronfish")]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand, Debug)]
-enum Command {
-    Job(JobArgs),
-    Monitor(JobArgs),
-}
-
-#[derive(Parser, Debug)]
-struct JobArgs {
+struct Args {
     expr: CronExpr,
     #[arg(long, default_value = "echo \"cronfish jumped!\"")]
     cmd: String,
@@ -56,13 +43,10 @@ impl Ecosystem for PaleozoicEcosystem {
 
 #[tokio::main]
 async fn main() {
-    let args = Cli::parse();
-    let job = match &args.command {
-        Command::Job(job) | Command::Monitor(job) => job,
-    };
+    let args = Args::parse();
     let seed = CronState {
-        expr: job.expr.clone(),
-        cmd: job.cmd.clone(),
+        expr: args.expr,
+        cmd: args.cmd,
     };
 
     let client = FusedClient::builder()
@@ -80,17 +64,11 @@ async fn main() {
         .expect("cronfish journey should start");
     println!("cronfish journey started: {}", journey.journey_id);
 
-    if matches!(args.command, Command::Monitor(_)) {
-        let mut updates = journey
-            .subscribe_step_updates(None)
-            .await
-            .expect("cronfish monitor subscription should start");
-        while let Some(update) = updates.next().await {
-            let update = update.expect("cronfish monitor update should decode");
-            println!(
-                "cronfish update {}: {:?}",
-                update.sequence_id, update.event
-            );
-        }
+    let final_status = journey
+        .await_completion()
+        .await
+        .expect("cronfish journey completion wait should succeed");
+    if !matches!(final_status, JourneyStatus::Completed) {
+        panic!("cronfish journey reached terminal non-complete status: {final_status:?}");
     }
 }
