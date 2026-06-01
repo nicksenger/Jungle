@@ -1,7 +1,5 @@
 use clap::Parser;
-use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
-use jungle_sdk::{JungleClient, FusedClient};
 use serde::{Deserialize, Serialize};
 
 mod action;
