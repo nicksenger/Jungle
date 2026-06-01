@@ -1,6 +1,7 @@
 use crate::CronExpr;
 use chrono::Utc;
 use jungle_sdk::effect;
+use std::future::Future;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -14,7 +15,7 @@ impl<J> Effect<J> for ParseNext {
     fn effect(
         _jungle: &J,
         input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         let result = (|| {
             let schedule =
                 cron::Schedule::from_str(&input).map_err(|err| format!("cron parse failed: {err}"))?;
@@ -42,7 +43,7 @@ impl<J> Effect<J> for RunBash {
     fn effect(
         _jungle: &J,
         input: Self::In,
-    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         let result = (|| {
             let status = std::process::Command::new("bash")
                 .arg("-lc")
