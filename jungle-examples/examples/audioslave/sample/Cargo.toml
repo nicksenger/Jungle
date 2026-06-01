@@ -1,0 +1,10 @@
+[package]
+name = "audioslave-sample"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+welcome-audio = { path = "../../welcome/audio" }
+
+[lints]
+workspace = true
