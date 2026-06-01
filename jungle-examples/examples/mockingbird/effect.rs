@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use image::ImageReader;
+use image_compare::Algorithm;
 use jungle_sdk::effect;
 use spectrs::io::audio::read_audio_file_mono;
 use spectrs::io::image::{save_spectrogram_image, Colormap};
@@ -60,12 +62,15 @@ impl<J> Effect<J> for GenSpectrogram {
 pub struct CompareSpectrograms;
 #[effect(id = 4)]
 impl<J> Effect<J> for CompareSpectrograms {
-    type In = (Vec<u8>, Vec<u8>);
+    type In = (String, String);
     type Out = f32;
     type Err = String;
 
-    fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(0.0)
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            let (left_path, right_path) = input;
+            compare_spectrograms(&left_path, &right_path)
+        }
     }
 }
 
@@ -170,4 +175,23 @@ fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), Str
         .map_err(|err| format!("failed to write mel spectrogram: {err}"))?;
 
     Ok(())
+}
+
+fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String> {
+    let left = ImageReader::open(left_path)
+        .map_err(|err| format!("failed to open spectrogram image {}: {err}", left_path))?
+        .decode()
+        .map_err(|err| format!("failed to decode spectrogram image {}: {err}", left_path))?
+        .into_luma8();
+    let right = ImageReader::open(right_path)
+        .map_err(|err| format!("failed to open spectrogram image {}: {err}", right_path))?
+        .decode()
+        .map_err(|err| format!("failed to decode spectrogram image {}: {err}", right_path))?
+        .into_luma8();
+
+    let similarity =
+        image_compare::gray_similarity_structure(&Algorithm::MSSIMSimple, &left, &right)
+            .map_err(|err| format!("failed to compare spectrograms: {err}"))?;
+
+    Ok(similarity.score as f32)
 }
