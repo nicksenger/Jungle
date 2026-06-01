@@ -140,7 +140,7 @@ pub struct FailureAnimal;
 impl Animal for FailureAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = FailureJourney;
+    type Flow = FailureJourney;
 }
 
 #[derive(Flow)]
@@ -157,7 +157,7 @@ pub struct AttemptFailureAnimal;
 impl Animal for AttemptFailureAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = AttemptFailureJourney;
+    type Flow = AttemptFailureJourney;
 }
 
 #[derive(Flow)]
@@ -174,7 +174,7 @@ pub struct AttemptSuccessAnimal;
 impl Animal for AttemptSuccessAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = AttemptSuccessJourney;
+    type Flow = AttemptSuccessJourney;
 }
 
 #[derive(Animals)]
@@ -966,7 +966,7 @@ pub struct ConditionalOutsideAttemptFailAnimal;
 impl Animal for ConditionalOutsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = ConditionalOutsideAttemptFailJourney;
+    type Flow = ConditionalOutsideAttemptFailJourney;
 }
 
 pub struct ConditionalInsideAttemptFailAnimal;
@@ -974,7 +974,7 @@ pub struct ConditionalInsideAttemptFailAnimal;
 impl Animal for ConditionalInsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = ConditionalInsideAttemptFailJourney;
+    type Flow = ConditionalInsideAttemptFailJourney;
 }
 
 pub struct ConditionalInsideAttemptOkAnimal;
@@ -982,7 +982,7 @@ pub struct ConditionalInsideAttemptOkAnimal;
 impl Animal for ConditionalInsideAttemptOkAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = ConditionalInsideAttemptOkJourney;
+    type Flow = ConditionalInsideAttemptOkJourney;
 }
 
 pub struct WhileOutsideAttemptFailAnimal;
@@ -990,7 +990,7 @@ pub struct WhileOutsideAttemptFailAnimal;
 impl Animal for WhileOutsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = WhileOutsideAttemptFailJourney;
+    type Flow = WhileOutsideAttemptFailJourney;
 }
 
 pub struct WhileInsideAttemptFailAnimal;
@@ -998,7 +998,7 @@ pub struct WhileInsideAttemptFailAnimal;
 impl Animal for WhileInsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = WhileInsideAttemptFailJourney;
+    type Flow = WhileInsideAttemptFailJourney;
 }
 
 pub struct WhileInsideAttemptOkAnimal;
@@ -1006,7 +1006,7 @@ pub struct WhileInsideAttemptOkAnimal;
 impl Animal for WhileInsideAttemptOkAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = WhileInsideAttemptOkJourney;
+    type Flow = WhileInsideAttemptOkJourney;
 }
 
 pub struct TransparentOutsideAttemptFailAnimal;
@@ -1014,7 +1014,7 @@ pub struct TransparentOutsideAttemptFailAnimal;
 impl Animal for TransparentOutsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = TransparentOutsideAttemptFailJourney;
+    type Flow = TransparentOutsideAttemptFailJourney;
 }
 
 pub struct TransparentInsideAttemptFailAnimal;
@@ -1022,7 +1022,7 @@ pub struct TransparentInsideAttemptFailAnimal;
 impl Animal for TransparentInsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = TransparentInsideAttemptFailJourney;
+    type Flow = TransparentInsideAttemptFailJourney;
 }
 
 pub struct TransparentInsideAttemptOkAnimal;
@@ -1030,7 +1030,7 @@ pub struct TransparentInsideAttemptOkAnimal;
 impl Animal for TransparentInsideAttemptOkAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = TransparentInsideAttemptOkJourney;
+    type Flow = TransparentInsideAttemptOkJourney;
 }
 
 pub struct JoinOutsideAttemptFailAnimal;
@@ -1038,7 +1038,7 @@ pub struct JoinOutsideAttemptFailAnimal;
 impl Animal for JoinOutsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = JoinOutsideAttemptFailJourney;
+    type Flow = JoinOutsideAttemptFailJourney;
 }
 
 pub struct JoinInsideAttemptFailAnimal;
@@ -1046,7 +1046,7 @@ pub struct JoinInsideAttemptFailAnimal;
 impl Animal for JoinInsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = JoinInsideAttemptFailJourney;
+    type Flow = JoinInsideAttemptFailJourney;
 }
 
 pub struct JoinInsideAttemptOkAnimal;
@@ -1054,7 +1054,7 @@ pub struct JoinInsideAttemptOkAnimal;
 impl Animal for JoinInsideAttemptOkAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = JoinInsideAttemptOkJourney;
+    type Flow = JoinInsideAttemptOkJourney;
 }
 
 pub struct SelectOutsideAttemptFailAnimal;
@@ -1062,7 +1062,7 @@ pub struct SelectOutsideAttemptFailAnimal;
 impl Animal for SelectOutsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = SelectOutsideAttemptFailJourney;
+    type Flow = SelectOutsideAttemptFailJourney;
 }
 
 pub struct SelectInsideAttemptFailAnimal;
@@ -1070,7 +1070,7 @@ pub struct SelectInsideAttemptFailAnimal;
 impl Animal for SelectInsideAttemptFailAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = SelectInsideAttemptFailJourney;
+    type Flow = SelectInsideAttemptFailJourney;
 }
 
 pub struct SelectInsideAttemptOkAnimal;
@@ -1078,7 +1078,7 @@ pub struct SelectInsideAttemptOkAnimal;
 impl Animal for SelectInsideAttemptOkAnimal {
     type State = FailureState;
     type Seed = ();
-    type Journey = SelectInsideAttemptOkJourney;
+    type Flow = SelectInsideAttemptOkJourney;
 }
 
 #[derive(Animals)]

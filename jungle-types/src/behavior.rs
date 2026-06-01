@@ -163,7 +163,7 @@ where
     type Generation = A::Generation;
     type State = Scope;
     type Seed = A::Seed;
-    type Journey = A::Journey;
+    type Flow = A::Flow;
 }
 
 /// Adapts an `BoundAction` bound to `ScopedAnimal<A, ScopeState>` to run on `A` by

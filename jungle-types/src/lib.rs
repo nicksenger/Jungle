@@ -298,7 +298,7 @@ pub trait Animal {
     ///
     /// Framework/runtime sites bind this to the concrete animal via [`BindAnimal`]
     /// before execution.
-    type Journey;
+    type Flow;
 }
 
 /// Bridge invoked by executors/runners to optionally snapshot appearance bytes.
@@ -669,9 +669,9 @@ pub trait BoundAnimal: Animal {
 impl<A> BoundAnimal for A
 where
     A: Animal,
-    A::Journey: BindAnimal<A>,
+    A::Flow: BindAnimal<A>,
 {
-    type BoundJourney = BoundFlow<A::Journey, A>;
+    type BoundJourney = BoundFlow<A::Flow, A>;
 }
 
 /// Convenience alias for an [`Animal`]'s bound journey.

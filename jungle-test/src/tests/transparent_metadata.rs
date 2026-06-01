@@ -23,7 +23,7 @@ pub struct TransparentAnimal;
 impl Animal for TransparentAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = TransparentFlowTemplate;
+    type Flow = TransparentFlowTemplate;
 }
 
 pub struct TransparentStepSpec;

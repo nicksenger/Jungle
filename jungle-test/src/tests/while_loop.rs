@@ -25,7 +25,7 @@ pub struct Looper;
 impl Animal for Looper {
     type State = i32;
     type Seed = i32;
-    type Journey = LoopFlowTemplate;
+    type Flow = LoopFlowTemplate;
 }
 
 pub struct TickSpec;
@@ -87,7 +87,7 @@ pub struct LooperWithTail;
 impl Animal for LooperWithTail {
     type State = i32;
     type Seed = i32;
-    type Journey = LoopWithTailFlowTemplate;
+    type Flow = LoopWithTailFlowTemplate;
 }
 
 pub struct TailAfterLoopSpec;
@@ -153,7 +153,7 @@ pub struct NestedLooper;
 impl Animal for NestedLooper {
     type State = NestedState;
     type Seed = NestedState;
-    type Journey = NestedLoopFlowTemplate;
+    type Flow = NestedLoopFlowTemplate;
 }
 
 pub struct InnerContinue;
@@ -292,7 +292,7 @@ pub struct WhileInlineNoopThenEffectAnimal;
 impl Animal for WhileInlineNoopThenEffectAnimal {
     type State = u8;
     type Seed = u8;
-    type Journey = WhileInlineNoopThenEffectFlow;
+    type Flow = WhileInlineNoopThenEffectFlow;
 }
 
 pub struct InnerRunOnce;
@@ -321,7 +321,7 @@ pub struct NestedWhileInlineNoopThenEffectAnimal;
 impl Animal for NestedWhileInlineNoopThenEffectAnimal {
     type State = u8;
     type Seed = u8;
-    type Journey = NestedWhileInlineNoopThenEffectFlow;
+    type Flow = NestedWhileInlineNoopThenEffectFlow;
 }
 
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -578,7 +578,7 @@ pub struct RhythmLikeConditionalLoopAnimal;
 impl Animal for RhythmLikeConditionalLoopAnimal {
     type State = RhythmLikeLoopState;
     type Seed = RhythmLikeLoopState;
-    type Journey = RhythmLikeConditionalLoopFlow;
+    type Flow = RhythmLikeConditionalLoopFlow;
 }
 
 #[derive(Flow)]
@@ -599,7 +599,7 @@ pub struct NestedInlineWhileCarryAnimal;
 impl Animal for NestedInlineWhileCarryAnimal {
     type State = NestedInlineCarryState;
     type Seed = NestedInlineCarryState;
-    type Journey = NestedInlineWhileCarryFlow;
+    type Flow = NestedInlineWhileCarryFlow;
 }
 
 #[derive(Flow)]

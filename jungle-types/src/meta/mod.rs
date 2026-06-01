@@ -628,12 +628,12 @@ macro_rules! collect_animal_journey_effects_len_impl {
         impl<$h0> CollectAnimalJourneyEffects for list_chain!($h0)
         where
             $h0: Animal,
-            <$h0 as Animal>::Journey: JourneyEffects,
-            <<$h0 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-            SPFlatten<<<$h0 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+            <$h0 as Animal>::Flow: JourneyEffects,
+            <<$h0 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+            SPFlatten<<<$h0 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
         {
             type Out = list_chain!(
-                <SPFlatten<<<$h0 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out
+                <SPFlatten<<<$h0 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out
             );
         }
     };
@@ -641,13 +641,13 @@ macro_rules! collect_animal_journey_effects_len_impl {
         impl<$h0, $($rest,)+> CollectAnimalJourneyEffects for list_chain!($h0, $($rest),+)
         where
             $h0: Animal,
-            <$h0 as Animal>::Journey: JourneyEffects,
-            <<$h0 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-            SPFlatten<<<$h0 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+            <$h0 as Animal>::Flow: JourneyEffects,
+            <<$h0 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+            SPFlatten<<<$h0 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
             list_chain!($($rest),+): CollectAnimalJourneyEffects,
         {
             type Out = list_chain_tail!(
-                <SPFlatten<<<$h0 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out ;
+                <SPFlatten<<<$h0 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out ;
                 <list_chain!($($rest),+) as CollectAnimalJourneyEffects>::Out
             );
         }
@@ -664,48 +664,48 @@ impl<H0, H1, H2, H3, H4, H5, H6, H7, Tail> CollectAnimalJourneyEffects
     for list::List<(H0, list_chain_tail!(H1, H2, H3, H4, H5, H6, H7 ; Tail))>
 where
     H0: Animal,
-    <H0 as Animal>::Journey: JourneyEffects,
-    <<H0 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<H0 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    <H0 as Animal>::Flow: JourneyEffects,
+    <<H0 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<H0 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
     H1: Animal,
-    <H1 as Animal>::Journey: JourneyEffects,
-    <<H1 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<H1 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    <H1 as Animal>::Flow: JourneyEffects,
+    <<H1 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<H1 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
     H2: Animal,
-    <H2 as Animal>::Journey: JourneyEffects,
-    <<H2 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<H2 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    <H2 as Animal>::Flow: JourneyEffects,
+    <<H2 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<H2 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
     H3: Animal,
-    <H3 as Animal>::Journey: JourneyEffects,
-    <<H3 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<H3 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    <H3 as Animal>::Flow: JourneyEffects,
+    <<H3 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<H3 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
     H4: Animal,
-    <H4 as Animal>::Journey: JourneyEffects,
-    <<H4 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<H4 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    <H4 as Animal>::Flow: JourneyEffects,
+    <<H4 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<H4 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
     H5: Animal,
-    <H5 as Animal>::Journey: JourneyEffects,
-    <<H5 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<H5 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    <H5 as Animal>::Flow: JourneyEffects,
+    <<H5 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<H5 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
     H6: Animal,
-    <H6 as Animal>::Journey: JourneyEffects,
-    <<H6 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<H6 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    <H6 as Animal>::Flow: JourneyEffects,
+    <<H6 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<H6 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
     H7: Animal,
-    <H7 as Animal>::Journey: JourneyEffects,
-    <<H7 as Animal>::Journey as JourneyEffects>::List: FlattenNodes,
-    SPFlatten<<<H7 as Animal>::Journey as JourneyEffects>::List>: KeepEffectNodes,
+    <H7 as Animal>::Flow: JourneyEffects,
+    <<H7 as Animal>::Flow as JourneyEffects>::List: FlattenNodes,
+    SPFlatten<<<H7 as Animal>::Flow as JourneyEffects>::List>: KeepEffectNodes,
     Tail: CollectAnimalJourneyEffects,
 {
     type Out = list_chain_tail!(
-        <SPFlatten<<<H0 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
-        <SPFlatten<<<H1 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
-        <SPFlatten<<<H2 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
-        <SPFlatten<<<H3 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
-        <SPFlatten<<<H4 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
-        <SPFlatten<<<H5 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
-        <SPFlatten<<<H6 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out,
-        <SPFlatten<<<H7 as Animal>::Journey as JourneyEffects>::List> as KeepEffectNodes>::Out ;
+        <SPFlatten<<<H0 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<<H1 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<<H2 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<<H3 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<<H4 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<<H5 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<<H6 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out,
+        <SPFlatten<<<H7 as Animal>::Flow as JourneyEffects>::List> as KeepEffectNodes>::Out ;
         <Tail as CollectAnimalJourneyEffects>::Out
     );
 }

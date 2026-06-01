@@ -381,7 +381,7 @@ pub struct IntegrationAnimal;
 impl Animal for IntegrationAnimal {
     type State = IntegrationState;
     type Seed = IntegrationState;
-    type Journey = IntegrationJourneyTemplate;
+    type Flow = IntegrationJourneyTemplate;
 }
 
 impl Observe for IntegrationAnimal {

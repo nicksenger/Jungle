@@ -3175,7 +3175,7 @@ pub struct BassJoinSound100Animal;
 impl Animal for BassJoinSound100Animal {
     type State = BassistState;
     type Seed = BassistState;
-    type Journey = BassJoinSound100Flow;
+    type Flow = BassJoinSound100Flow;
 }
 
 #[cfg(test)]

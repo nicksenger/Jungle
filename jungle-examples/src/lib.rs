@@ -146,7 +146,7 @@ impl Animal for ObserveAnimal {
     type Generation = U0;
     type State = ObserveState;
     type Seed = ObserveState;
-    type Journey = ObserveJourney;
+    type Flow = ObserveJourney;
 }
 impl jungle_sdk::types::Observable for ObserveAnimal {
     type Observation = jungle_sdk::types::ObserveObservation;

@@ -441,7 +441,7 @@ pub struct Animal01;
 impl Animal for Animal01 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = animal01_journey::TierJourney;
+    type Flow = animal01_journey::TierJourney;
 }
 
 pub struct Animal02;
@@ -449,7 +449,7 @@ pub struct Animal02;
 impl Animal for Animal02 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = animal02_journey::TierJourney;
+    type Flow = animal02_journey::TierJourney;
 }
 
 pub struct Animal03;
@@ -457,7 +457,7 @@ pub struct Animal03;
 impl Animal for Animal03 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = animal03_journey::TierJourney;
+    type Flow = animal03_journey::TierJourney;
 }
 
 pub struct Animal04;
@@ -465,7 +465,7 @@ pub struct Animal04;
 impl Animal for Animal04 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = animal04_journey::TierJourney;
+    type Flow = animal04_journey::TierJourney;
 }
 
 pub struct Animal05;
@@ -473,7 +473,7 @@ pub struct Animal05;
 impl Animal for Animal05 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = animal05_journey::TierJourney;
+    type Flow = animal05_journey::TierJourney;
 }
 
 pub struct Animal06;
@@ -481,7 +481,7 @@ pub struct Animal06;
 impl Animal for Animal06 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = animal06_journey::TierJourney;
+    type Flow = animal06_journey::TierJourney;
 }
 
 pub struct Animal07;
@@ -489,7 +489,7 @@ pub struct Animal07;
 impl Animal for Animal07 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = animal07_journey::TierJourney;
+    type Flow = animal07_journey::TierJourney;
 }
 
 pub struct Animal08;
@@ -497,7 +497,7 @@ pub struct Animal08;
 impl Animal for Animal08 {
     type State = CompileState;
     type Seed = CompileState;
-    type Journey = animal08_journey::TierJourney;
+    type Flow = animal08_journey::TierJourney;
 }
 
 #[cfg(all(

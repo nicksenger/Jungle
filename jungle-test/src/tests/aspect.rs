@@ -415,7 +415,7 @@ pub struct Gorilla;
 impl Animal for Gorilla {
     type State = GorillaState;
     type Seed = GorillaState;
-    type Journey = GorillaJourneyTemplate;
+    type Flow = GorillaJourneyTemplate;
 }
 pub struct Tiger;
 
@@ -423,7 +423,7 @@ pub struct Tiger;
 impl Animal for Tiger {
     type State = TigerState;
     type Seed = TigerState;
-    type Journey = TigerJourneyTemplate;
+    type Flow = TigerJourneyTemplate;
 }
 
 #[test]

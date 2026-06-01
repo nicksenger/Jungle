@@ -196,7 +196,7 @@ struct HelperAnimal;
 impl Animal for HelperAnimal {
     type State = HelperState;
     type Seed = HelperState;
-    type Journey = AdaptHelpersFlowTemplate;
+    type Flow = AdaptHelpersFlowTemplate;
 }
 
 #[test]

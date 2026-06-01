@@ -228,7 +228,7 @@ pub struct ReplayGateAnimal;
 impl Animal for ReplayGateAnimal {
     type State = ReplayGateState;
     type Seed = ReplayGateState;
-    type Journey = ReplayGateJourney;
+    type Flow = ReplayGateJourney;
 }
 
 #[derive(Animals)]
@@ -511,7 +511,7 @@ pub struct ReplayTimeoutAnimal;
 impl Animal for ReplayTimeoutAnimal {
     type State = ReplayTimeoutState;
     type Seed = ReplayTimeoutState;
-    type Journey = ReplayTimeoutJourney;
+    type Flow = ReplayTimeoutJourney;
 }
 
 #[derive(Animals)]

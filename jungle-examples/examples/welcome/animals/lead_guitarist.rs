@@ -1667,7 +1667,7 @@ pub struct LeadJoinSound100Animal;
 impl Animal for LeadJoinSound100Animal {
     type State = LeadGuitaristState;
     type Seed = LeadGuitaristState;
-    type Journey = LeadJoinSound100Flow;
+    type Flow = LeadJoinSound100Flow;
 }
 
 #[cfg(test)]

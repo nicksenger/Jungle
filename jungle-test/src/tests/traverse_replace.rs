@@ -226,5 +226,5 @@ fn traverse_and_replace_are_type_level_transformations() {
 impl Animal for TraverseAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = SourceFlow;
+    type Flow = SourceFlow;
 }

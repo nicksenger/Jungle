@@ -247,7 +247,7 @@ impl JungleViewerBuilder {
     pub fn view_animal<A>(self) -> iced::Result
     where
         A: Animal + 'static,
-        A::Journey: JourneyAstSource,
+        A::Flow: JourneyAstSource,
     {
         self.view_animal_with_theme::<A, _, AnyAnimal>(DefaultTheme)
     }
@@ -255,12 +255,12 @@ impl JungleViewerBuilder {
     pub fn view_animal_with_theme<A, T, Scope>(self, theme: T) -> iced::Result
     where
         A: Animal + 'static,
-        A::Journey: JourneyAstSource,
+        A::Flow: JourneyAstSource,
         T: JunglePanelTheme<Scope, Message = ()>,
         Scope: 'static,
     {
-        let ast = <A::Journey as JourneyAstSource>::journey_ast();
-        let journey_name = short_type_name::<A::Journey>();
+        let ast = <A::Flow as JourneyAstSource>::journey_ast();
+        let journey_name = short_type_name::<A::Flow>();
         let model = GraphModel::from_ast(ast);
 
         self.run(
@@ -275,12 +275,12 @@ impl JungleViewerBuilder {
     pub fn eject_animal_with_theme<A, T, Scope>(self, theme: T) -> EjectedViewer<T, Scope>
     where
         A: Animal + 'static,
-        A::Journey: JourneyAstSource,
+        A::Flow: JourneyAstSource,
         T: JunglePanelTheme<Scope, Message = ()>,
         Scope: 'static,
     {
-        let ast = <A::Journey as JourneyAstSource>::journey_ast();
-        let journey_name = short_type_name::<A::Journey>();
+        let ast = <A::Flow as JourneyAstSource>::journey_ast();
+        let journey_name = short_type_name::<A::Flow>();
         let model = GraphModel::from_ast(ast);
         EjectedViewer::new(
             ViewMode::Static {
@@ -297,7 +297,7 @@ impl JungleViewerBuilder {
     pub fn eject_animal<A>(self) -> EjectedViewer<DefaultTheme, AnyAnimal>
     where
         A: Animal + 'static,
-        A::Journey: JourneyAstSource,
+        A::Flow: JourneyAstSource,
     {
         self.eject_animal_with_theme::<A, _, AnyAnimal>(DefaultTheme)
     }
@@ -305,7 +305,7 @@ impl JungleViewerBuilder {
     pub fn view_live_animal<A, C>(self, client: C, journey_id: Uuid) -> iced::Result
     where
         A: Animal + 'static,
-        A::Journey: JourneyAstSource,
+        A::Flow: JourneyAstSource,
         C: JungleClient + 'static,
     {
         self.view_live_animal_with_theme::<A, C, _, AnyAnimal>(client, journey_id, DefaultTheme)
@@ -319,13 +319,13 @@ impl JungleViewerBuilder {
     ) -> iced::Result
     where
         A: Animal + 'static,
-        A::Journey: JourneyAstSource,
+        A::Flow: JourneyAstSource,
         C: JungleClient + 'static,
         T: JunglePanelTheme<Scope, Message = ()>,
         Scope: 'static,
     {
-        let ast = <A::Journey as JourneyAstSource>::journey_ast();
-        let journey_name = short_type_name::<A::Journey>();
+        let ast = <A::Flow as JourneyAstSource>::journey_ast();
+        let journey_name = short_type_name::<A::Flow>();
         let model = GraphModel::from_ast(ast);
         let client: Arc<dyn JungleClient> = Arc::new(client);
 
@@ -348,13 +348,13 @@ impl JungleViewerBuilder {
     ) -> EjectedViewer<T, Scope>
     where
         A: Animal + 'static,
-        A::Journey: JourneyAstSource,
+        A::Flow: JourneyAstSource,
         C: JungleClient + 'static,
         T: JunglePanelTheme<Scope, Message = ()>,
         Scope: 'static,
     {
-        let ast = <A::Journey as JourneyAstSource>::journey_ast();
-        let journey_name = short_type_name::<A::Journey>();
+        let ast = <A::Flow as JourneyAstSource>::journey_ast();
+        let journey_name = short_type_name::<A::Flow>();
         let model = GraphModel::from_ast(ast);
         let client: Arc<dyn JungleClient> = Arc::new(client);
 
@@ -379,7 +379,7 @@ impl JungleViewerBuilder {
     ) -> EjectedViewer<DefaultTheme, AnyAnimal>
     where
         A: Animal + 'static,
-        A::Journey: JourneyAstSource,
+        A::Flow: JourneyAstSource,
         C: JungleClient + 'static,
     {
         self.eject_live_animal_with_theme::<A, C, _, AnyAnimal>(client, journey_id, DefaultTheme)
@@ -425,7 +425,7 @@ impl JungleViewerBuilder {
 pub fn view_animal<A>() -> iced::Result
 where
     A: Animal + 'static,
-    A::Journey: JourneyAstSource,
+    A::Flow: JourneyAstSource,
 {
     JungleViewerBuilder::new().view_animal::<A>()
 }
@@ -433,7 +433,7 @@ where
 pub fn view_live_animal<A, C>(client: C, journey_id: Uuid) -> iced::Result
 where
     A: Animal + 'static,
-    A::Journey: JourneyAstSource,
+    A::Flow: JourneyAstSource,
     C: JungleClient + 'static,
 {
     JungleViewerBuilder::new().view_live_animal::<A, C>(client, journey_id)
@@ -774,9 +774,9 @@ pub struct DebugGraph {
 pub fn debug_graph_for_animal<A>() -> DebugGraph
 where
     A: Animal + 'static,
-    A::Journey: JourneyAstSource,
+    A::Flow: JourneyAstSource,
 {
-    let ast = <A::Journey as JourneyAstSource>::journey_ast();
+    let ast = <A::Flow as JourneyAstSource>::journey_ast();
     let model = GraphModel::from_ast(ast);
     DebugGraph {
         nodes: model

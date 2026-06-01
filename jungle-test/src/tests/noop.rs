@@ -75,7 +75,7 @@ pub struct NoopAnimal;
 impl Animal for NoopAnimal {
     type State = NoopState;
     type Seed = NoopState;
-    type Journey = NoopFlowTemplate;
+    type Flow = NoopFlowTemplate;
 }
 
 #[tokio::test]

@@ -39,7 +39,7 @@ pub struct ConditionalAnimal;
 impl Animal for ConditionalAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = ConditionalFlowTemplate;
+    type Flow = ConditionalFlowTemplate;
 }
 
 pub struct ConditionalThenMergeAnimal;
@@ -48,7 +48,7 @@ pub struct ConditionalThenMergeAnimal;
 impl Animal for ConditionalThenMergeAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = ConditionalThenMergeFlowTemplate;
+    type Flow = ConditionalThenMergeFlowTemplate;
 }
 
 pub struct LeftSpec;

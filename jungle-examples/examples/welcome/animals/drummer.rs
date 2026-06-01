@@ -2478,7 +2478,7 @@ pub struct ConditionalJoinSound100Animal;
 impl Animal for ConditionalJoinSound100Animal {
     type State = DrummerState;
     type Seed = DrummerState;
-    type Journey = ConditionalJoinSound100Flow;
+    type Flow = ConditionalJoinSound100Flow;
 }
 
 #[cfg(test)]

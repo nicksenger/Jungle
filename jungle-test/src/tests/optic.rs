@@ -211,7 +211,7 @@ pub struct OpticJourneyTemplate(Step<LensOnBranchSpec>);
 impl Animal for OpticAnimal {
     type State = RootState;
     type Seed = RootState;
-    type Journey = OpticJourneyTemplate;
+    type Flow = OpticJourneyTemplate;
 }
 
 fn seed_state() -> RootState {

@@ -91,7 +91,7 @@ pub struct LegacyAnimal;
 impl Animal for LegacyAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = LegacyFlowTemplate;
+    type Flow = LegacyFlowTemplate;
 }
 impl Observe for LegacyAnimal {
     type Appearance = i32;
@@ -106,7 +106,7 @@ pub struct ModernAnimal;
 impl Animal for ModernAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = ModernFlowTemplate;
+    type Flow = ModernFlowTemplate;
 }
 impl Observe for ModernAnimal {
     type Appearance = i32;
@@ -121,7 +121,7 @@ pub struct FutureAnimal;
 impl Animal for FutureAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = ModernFlowTemplate;
+    type Flow = ModernFlowTemplate;
 }
 impl Observe for FutureAnimal {
     type Appearance = i32;

@@ -89,7 +89,7 @@ pub struct ProgressAnimal;
 impl Animal for ProgressAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = ProgressFlowTemplate;
+    type Flow = ProgressFlowTemplate;
 }
 
 pub struct ProgressContext;
@@ -297,7 +297,7 @@ pub struct BranchAnimal;
 impl Animal for BranchAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = BranchFlowTemplate;
+    type Flow = BranchFlowTemplate;
 }
 
 pub struct BranchContext;

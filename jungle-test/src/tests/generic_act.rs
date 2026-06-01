@@ -7,7 +7,7 @@ pub struct GenericActAnimal;
 impl Animal for GenericActAnimal {
     type State = ();
     type Seed = ();
-    type Journey = GenericActFlow;
+    type Flow = GenericActFlow;
 }
 
 pub struct GenericActEffect<const NOTE: u8>;
@@ -53,7 +53,7 @@ pub struct CarryActAnimal;
 impl Animal for CarryActAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = CarryActFlow;
+    type Flow = CarryActFlow;
 }
 
 pub struct CarryActEffect;
@@ -105,7 +105,7 @@ pub struct CarryAttrActAnimal;
 impl Animal for CarryAttrActAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = CarryAttrActFlow;
+    type Flow = CarryAttrActFlow;
 }
 
 pub struct CarryAttrActSpec;

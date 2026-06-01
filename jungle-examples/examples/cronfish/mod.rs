@@ -29,7 +29,7 @@ pub struct Cronfish;
 impl Animal for Cronfish {
     type State = CronState;
     type Seed = CronState;
-    type Journey = CronJob;
+    type Flow = CronJob;
 }
 
 #[derive(Animals)]

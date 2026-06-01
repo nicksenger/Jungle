@@ -55,9 +55,9 @@ impl Animal for LeadGuitarist {
     type State = LeadGuitaristState;
     type Seed = ();
     #[cfg(feature = "leadguitar")]
-    type Journey = LeadGuitarFlow;
+    type Flow = LeadGuitarFlow;
     #[cfg(not(feature = "leadguitar"))]
-    type Journey = StubFlow<(), LeadGuitaristState>;
+    type Flow = StubFlow<(), LeadGuitaristState>;
 }
 
 pub struct LeadVocalist;
@@ -517,9 +517,9 @@ impl Animal for LeadVocalist {
     type State = LeadVocalistState;
     type Seed = LeadVocalistSeed;
     #[cfg(feature = "vocals")]
-    type Journey = LeadVocalIntro;
+    type Flow = LeadVocalIntro;
     #[cfg(not(feature = "vocals"))]
-    type Journey = StubFlow<LeadVocalistSeed, LeadVocalistState>;
+    type Flow = StubFlow<LeadVocalistSeed, LeadVocalistState>;
 }
 
 pub struct RhythmGuitarist;
@@ -542,9 +542,9 @@ impl Animal for RhythmGuitarist {
     type State = RhythmGuitaristState;
     type Seed = ();
     #[cfg(feature = "rhythmguitar")]
-    type Journey = RhythmGuitarIntro;
+    type Flow = RhythmGuitarIntro;
     #[cfg(not(feature = "rhythmguitar"))]
-    type Journey = StubFlow<(), RhythmGuitaristState>;
+    type Flow = StubFlow<(), RhythmGuitaristState>;
 }
 
 pub struct Bass;
@@ -572,9 +572,9 @@ impl Animal for Bass {
     type State = BassistState;
     type Seed = ();
     #[cfg(feature = "bass")]
-    type Journey = BassIntro;
+    type Flow = BassIntro;
     #[cfg(not(feature = "bass"))]
-    type Journey = StubFlow<(), BassistState>;
+    type Flow = StubFlow<(), BassistState>;
 }
 
 pub struct Drums;
@@ -594,9 +594,9 @@ impl Animal for Drums {
     type State = DrummerState;
     type Seed = ();
     #[cfg(feature = "drums")]
-    type Journey = DrummerIntro;
+    type Flow = DrummerIntro;
     #[cfg(not(feature = "drums"))]
-    type Journey = StubFlow<(), DrummerState>;
+    type Flow = StubFlow<(), DrummerState>;
 }
 
 #[allow(unused)]

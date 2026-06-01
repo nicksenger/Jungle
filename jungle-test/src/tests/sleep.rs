@@ -172,7 +172,7 @@ pub struct SleepAnimal;
 impl Animal for SleepAnimal {
     type State = SleepState;
     type Seed = SleepState;
-    type Journey = SleepJourneyTemplate;
+    type Flow = SleepJourneyTemplate;
 }
 
 impl Observe for SleepAnimal {

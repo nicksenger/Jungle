@@ -249,7 +249,7 @@ pub struct MultiWorkerAnimal;
 impl Animal for MultiWorkerAnimal {
     type State = MultiWorkerState;
     type Seed = MultiWorkerState;
-    type Journey = ExampleFlow;
+    type Flow = ExampleFlow;
 }
 
 #[derive(Animals)]

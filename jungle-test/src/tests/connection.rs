@@ -33,7 +33,7 @@ pub struct ConnectionAnimal7;
 impl Animal for ConnectionAnimal7 {
     type State = ();
     type Seed = ();
-    type Journey = ConnectionFlowTemplate7;
+    type Flow = ConnectionFlowTemplate7;
 }
 
 pub struct ConnectionStepSpec7;
@@ -79,7 +79,7 @@ pub struct ConnectionAnimal9;
 impl Animal for ConnectionAnimal9 {
     type State = ();
     type Seed = ();
-    type Journey = ConnectionFlowTemplate9;
+    type Flow = ConnectionFlowTemplate9;
 }
 
 pub struct ConnectionStepSpec9;

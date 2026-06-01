@@ -128,7 +128,7 @@ pub struct SelectAnimal;
 impl Animal for SelectAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = SelectFlowTemplate;
+    type Flow = SelectFlowTemplate;
 }
 
 pub struct JoinFastSpec;
@@ -205,7 +205,7 @@ pub struct JoinAnimal;
 impl Animal for JoinAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = JoinFlowTemplate;
+    type Flow = JoinFlowTemplate;
 }
 
 pub struct TimeoutSleepSpec;
@@ -265,7 +265,7 @@ pub struct TimeoutAnimal;
 impl Animal for TimeoutAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = TimeoutFlowTemplate;
+    type Flow = TimeoutFlowTemplate;
 }
 
 pub struct SelectBranchPrefixFastSpec;
@@ -376,7 +376,7 @@ pub struct SelectComposableAnimal;
 impl Animal for SelectComposableAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = SelectComposableFlowTemplate;
+    type Flow = SelectComposableFlowTemplate;
 }
 
 pub struct JoinBranchLeftPrefixSpec;
@@ -487,7 +487,7 @@ pub struct JoinComposableAnimal;
 impl Animal for JoinComposableAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = JoinComposableFlowTemplate;
+    type Flow = JoinComposableFlowTemplate;
 }
 
 pub struct ConditionalPrefersLeft;
@@ -605,7 +605,7 @@ pub struct ConditionalThenJoinAnimal;
 impl Animal for ConditionalThenJoinAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = ConditionalThenJoinTemplate;
+    type Flow = ConditionalThenJoinTemplate;
 }
 
 pub struct JoinMutatesWinnerSpec;
@@ -745,7 +745,7 @@ pub struct JoinStateDependentAnimal;
 impl Animal for JoinStateDependentAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = JoinStateDependentFlowTemplate;
+    type Flow = JoinStateDependentFlowTemplate;
 }
 
 pub struct LocalConditionalPrefersLeft;
@@ -924,7 +924,7 @@ pub struct LocalConditionalJoinTailAnimal;
 impl Animal for LocalConditionalJoinTailAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = LocalConditionalJoinTailFlow;
+    type Flow = LocalConditionalJoinTailFlow;
 }
 
 pub struct NestedJoinInnerLeftSpec;
@@ -1075,7 +1075,7 @@ pub struct NestedJoinWithInnerNoopAnimal;
 impl Animal for NestedJoinWithInnerNoopAnimal {
     type State = SelectJoinState;
     type Seed = SelectJoinState;
-    type Journey = NestedJoinWithInnerNoopFlow;
+    type Flow = NestedJoinWithInnerNoopFlow;
 }
 
 #[derive(Animals)]

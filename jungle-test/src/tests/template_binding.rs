@@ -98,7 +98,7 @@ struct CounterAnimal;
 impl Animal for CounterAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = CounterFlowTemplate;
+    type Flow = CounterFlowTemplate;
 }
 
 impl LateBoundPolicy for CounterAnimal {
@@ -111,7 +111,7 @@ struct LedgerAnimal;
 impl Animal for LedgerAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = LedgerFlowTemplate;
+    type Flow = LedgerFlowTemplate;
 }
 
 impl LateBoundPolicy for LedgerAnimal {
@@ -413,7 +413,7 @@ struct BoundTemplateAnimal;
 impl Animal for BoundTemplateAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = TestFlow;
+    type Flow = TestFlow;
 }
 
 trait LateBoundPolicy {
@@ -455,7 +455,7 @@ struct LocalTemplateAlphaAnimal;
 impl Animal for LocalTemplateAlphaAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = TestFlow;
+    type Flow = TestFlow;
 }
 
 impl LateBoundPolicy for LocalTemplateAlphaAnimal {
@@ -468,7 +468,7 @@ struct LocalTemplateBetaAnimal;
 impl Animal for LocalTemplateBetaAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = TestFlow;
+    type Flow = TestFlow;
 }
 
 impl LateBoundPolicy for LocalTemplateBetaAnimal {
@@ -609,7 +609,7 @@ struct LocalTemplateContextAnimal;
 impl Animal for LocalTemplateContextAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = ContextBoundFlow;
+    type Flow = ContextBoundFlow;
 }
 
 #[derive(Animals)]
@@ -761,7 +761,7 @@ struct ComposedAlphaAnimal;
 impl Animal for ComposedAlphaAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = composed_templates::ComposedPipeline;
+    type Flow = composed_templates::ComposedPipeline;
 }
 
 impl LateBoundPolicy for ComposedAlphaAnimal {
@@ -774,7 +774,7 @@ struct ComposedBetaAnimal;
 impl Animal for ComposedBetaAnimal {
     type State = i32;
     type Seed = i32;
-    type Journey = composed_templates::ComposedPipeline;
+    type Flow = composed_templates::ComposedPipeline;
 }
 
 impl LateBoundPolicy for ComposedBetaAnimal {
@@ -1033,7 +1033,7 @@ struct LensAlphaAnimal;
 impl Animal for LensAlphaAnimal {
     type State = LensRootState;
     type Seed = i32;
-    type Journey = LensFlow;
+    type Flow = LensFlow;
 }
 
 impl Observe for LensAlphaAnimal {
@@ -1403,7 +1403,7 @@ struct GenericNestedScopeAnimal;
 impl Animal for GenericNestedScopeAnimal {
     type State = GenericNestedRootState;
     type Seed = i32;
-    type Journey = GenericFocusedOuterFlow;
+    type Flow = GenericFocusedOuterFlow;
 }
 
 impl Observe for GenericNestedScopeAnimal {
@@ -1428,7 +1428,7 @@ struct NestedScopeAnimal;
 impl Animal for NestedScopeAnimal {
     type State = NestedLensRootState;
     type Seed = i32;
-    type Journey = NestedBranchScopedFlow;
+    type Flow = NestedBranchScopedFlow;
 }
 
 impl Observe for NestedScopeAnimal {
@@ -1743,7 +1743,7 @@ struct Loop2CompositeAnimal;
 impl Animal for Loop2CompositeAnimal {
     type State = Loop2HostState;
     type Seed = i32;
-    type Journey = Loop2Journey;
+    type Flow = Loop2Journey;
 }
 
 impl Observe for Loop2CompositeAnimal {
@@ -2037,7 +2037,7 @@ struct NoopLoop2HarnessAnimal;
 impl Animal for NoopLoop2HarnessAnimal {
     type State = NoopLoop2HarnessState;
     type Seed = NoopLoop2TraceState;
-    type Journey = NoopLoop2Journey;
+    type Flow = NoopLoop2Journey;
 }
 
 #[test]
@@ -2073,7 +2073,7 @@ struct InheritedAutoFocusAnimal;
 impl Animal for InheritedAutoFocusAnimal {
     type State = NestedLensRootState;
     type Seed = i32;
-    type Journey = InheritedAutoFocusRootFlow;
+    type Flow = InheritedAutoFocusRootFlow;
 }
 
 impl Observe for InheritedAutoFocusAnimal {
@@ -2167,7 +2167,7 @@ struct InheritedAutoFocusConditionalAnimal;
 impl Animal for InheritedAutoFocusConditionalAnimal {
     type State = NestedLensRootState;
     type Seed = i32;
-    type Journey = InheritedAutoFocusConditionalRootFlow;
+    type Flow = InheritedAutoFocusConditionalRootFlow;
 }
 
 impl Observe for InheritedAutoFocusConditionalAnimal {
@@ -2419,7 +2419,7 @@ struct ConditionalJoinMergeAnimal;
 impl Animal for ConditionalJoinMergeAnimal {
     type State = ConditionalJoinMergeState;
     type Seed = ConditionalJoinMergeState;
-    type Journey = ConditionalJoinMergeFlow;
+    type Flow = ConditionalJoinMergeFlow;
 }
 
 impl Observe for ConditionalJoinMergeAnimal {
@@ -3068,7 +3068,7 @@ struct ComplexAlphaAnimal;
 impl Animal for ComplexAlphaAnimal {
     type State = ComplexAlphaState;
     type Seed = i32;
-    type Journey = LongMixedFlow;
+    type Flow = LongMixedFlow;
 }
 
 impl ComplexFlowBinding for ComplexAlphaAnimal {
@@ -3120,7 +3120,7 @@ struct ComplexBetaAnimal;
 impl Animal for ComplexBetaAnimal {
     type State = ComplexBetaState;
     type Seed = i32;
-    type Journey = LongMixedFlow;
+    type Flow = LongMixedFlow;
 }
 
 impl ComplexFlowBinding for ComplexBetaAnimal {

@@ -186,7 +186,7 @@ pub struct Gorilla;
 impl Animal for Gorilla {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = PreyWorkflowTemplate;
+    type Flow = PreyWorkflowTemplate;
 }
 pub struct Chimpanzee;
 
@@ -194,7 +194,7 @@ pub struct Chimpanzee;
 impl Animal for Chimpanzee {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = PreyWorkflowTemplate;
+    type Flow = PreyWorkflowTemplate;
 }
 pub struct Tiger;
 
@@ -202,7 +202,7 @@ pub struct Tiger;
 impl Animal for Tiger {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = PredatorWorkflowTemplate;
+    type Flow = PredatorWorkflowTemplate;
 }
 pub struct Jaguar;
 
@@ -210,7 +210,7 @@ pub struct Jaguar;
 impl Animal for Jaguar {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = PredatorWorkflowTemplate;
+    type Flow = PredatorWorkflowTemplate;
 }
 pub struct Anaconda;
 
@@ -218,7 +218,7 @@ pub struct Anaconda;
 impl Animal for Anaconda {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = PredatorWorkflowTemplate;
+    type Flow = PredatorWorkflowTemplate;
 }
 pub struct Hippo;
 
@@ -226,7 +226,7 @@ pub struct Hippo;
 impl Animal for Hippo {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = PreyWorkflowTemplate;
+    type Flow = PreyWorkflowTemplate;
 }
 pub struct Elephant;
 
@@ -234,7 +234,7 @@ pub struct Elephant;
 impl Animal for Elephant {
     type State = SharedState;
     type Seed = SharedState;
-    type Journey = PreyWorkflowTemplate;
+    type Flow = PreyWorkflowTemplate;
 }
 
 #[derive(Animals)]
@@ -414,7 +414,7 @@ pub struct RunnerAnimal;
 impl Animal for RunnerAnimal {
     type State = RunnerState;
     type Seed = RunnerState;
-    type Journey = RunnerJourneyTemplate;
+    type Flow = RunnerJourneyTemplate;
 }
 
 pub struct SlowRunnerAnimal;
@@ -423,7 +423,7 @@ pub struct SlowRunnerAnimal;
 impl Animal for SlowRunnerAnimal {
     type State = RunnerState;
     type Seed = RunnerState;
-    type Journey = SlowRunnerJourneyTemplate;
+    type Flow = SlowRunnerJourneyTemplate;
 }
 
 #[derive(Animals)]
@@ -478,7 +478,7 @@ fn animal_state_set() {
     impl Animal for StatefulGorilla {
         type State = ApeState;
         type Seed = ApeState;
-        type Journey = StatefulGorillaJourney;
+        type Flow = StatefulGorillaJourney;
     }
     struct StatefulTiger;
 
@@ -486,7 +486,7 @@ fn animal_state_set() {
     impl Animal for StatefulTiger {
         type State = CatState;
         type Seed = CatState;
-        type Journey = StatefulTigerJourney;
+        type Flow = StatefulTigerJourney;
     }
 
     #[derive(Animals)]
@@ -688,7 +688,7 @@ pub struct WorkflowGorilla;
 impl Animal for WorkflowGorilla {
     type State = ExecutorApeState;
     type Seed = ExecutorApeState;
-    type Journey = WorkflowGorillaJourneyTemplate;
+    type Flow = WorkflowGorillaJourneyTemplate;
 }
 pub struct WorkflowTiger;
 
@@ -696,7 +696,7 @@ pub struct WorkflowTiger;
 impl Animal for WorkflowTiger {
     type State = ExecutorCatState;
     type Seed = ExecutorCatState;
-    type Journey = WorkflowTigerJourneyTemplate;
+    type Flow = WorkflowTigerJourneyTemplate;
 }
 
 #[tokio::test]
