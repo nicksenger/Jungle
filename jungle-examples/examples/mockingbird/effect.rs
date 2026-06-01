@@ -96,16 +96,7 @@ where
     type Err = String;
 
     fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move {
-            let Prompt {
-                messages,
-                tools: _tools,
-            } = input;
-            jungle
-                .predict(messages)
-                .await
-                .map_err(|err| err.to_string())
-        }
+        async move { jungle.predict(input).await.map_err(|err| err.to_string()) }
     }
 }
 

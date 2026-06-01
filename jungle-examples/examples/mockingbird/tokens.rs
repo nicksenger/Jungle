@@ -44,7 +44,7 @@ pub trait TokenPredictor {
 
     fn predict(
         &self,
-        messages: Vec<Message>,
+        prompt: Prompt,
     ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> + Send;
 }
 
@@ -81,21 +81,20 @@ impl PulseCodeParadise {
         )
     }
 
-    fn chat_completions_request(
-        &self,
-        messages: &[Message],
-    ) -> Result<Value, PulseCodeParadiseError> {
+    fn chat_completions_request(&self, prompt: &Prompt) -> Result<Value, PulseCodeParadiseError> {
         let mut request = json!({
             "model": self.tokens_model,
-            "messages": messages
+            "messages": prompt
+                .messages
                 .iter()
                 .map(openai_message)
                 .collect::<Result<Vec<_>, _>>()?,
         });
 
-        if !self.tools.is_empty() {
+        let effective_tools: Vec<&Tool> = self.tools.iter().chain(prompt.tools.iter()).collect();
+        if !effective_tools.is_empty() {
             request["tool_choice"] = Value::String("auto".to_owned());
-            request["tools"] = Value::Array(self.tools.iter().map(openai_tool).collect());
+            request["tools"] = Value::Array(effective_tools.into_iter().map(openai_tool).collect());
         }
 
         Ok(request)
@@ -107,10 +106,10 @@ impl TokenPredictor for PulseCodeParadise {
 
     fn predict(
         &self,
-        messages: Vec<Message>,
+        prompt: Prompt,
     ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> + Send {
         async move {
-            let request = self.chat_completions_request(&messages)?;
+            let request = self.chat_completions_request(&prompt)?;
             let response = self
                 .client
                 .post(self.chat_completions_endpoint())
@@ -309,5 +308,36 @@ mod tests {
                 arguments: json!({ "score": 0.8 }),
             }]
         );
+    }
+
+    #[test]
+    fn request_uses_prompt_tools() {
+        let ecosystem = PulseCodeParadise::new(
+            Url::parse("https://api.openai.com/v1").unwrap(),
+            None,
+            Some(temp_db_path("request-tools")),
+        )
+        .unwrap();
+        let request = ecosystem
+            .chat_completions_request(&Prompt {
+                messages: vec![Message {
+                    role: "user".to_owned(),
+                    contents: vec![Content::Text("hello".to_owned())],
+                }],
+                tools: vec![Tool {
+                    name: "insert_node".to_owned(),
+                    description: "Insert a node".to_owned(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "score": { "type": "number" }
+                        }
+                    }),
+                }],
+            })
+            .unwrap();
+
+        assert_eq!(request["tools"][0]["function"]["name"], "insert_node");
+        assert_eq!(request["tool_choice"], "auto");
     }
 }
