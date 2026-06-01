@@ -39,6 +39,7 @@ async-trait = { workspace = true }
 clap = { version = "4.6", features = ["derive"] }
 cron = { version = "0.16", optional = true }
 chrono = { version = "0.4", optional = true }
+spectrs = { version = "0.2.1", default-features = false, features = ["image"] }
 
 [[example]]
 name = "welcome"

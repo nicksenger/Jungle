@@ -1,11 +1,21 @@
 #![allow(dead_code)]
 
 use jungle_sdk::effect;
+use spectrs::io::audio::read_audio_file_mono;
+use spectrs::io::image::{save_spectrogram_image, Colormap};
+use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
+use spectrs::spectrogram::stft::{par_compute_spectrogram, SpectrogramType};
 use std::future::{ready, Future};
+use std::path::Path;
 
 fn stub_ok<T>(value: T) -> impl Future<Output = Result<T, String>> {
     ready(Ok(value))
 }
+
+const MEL_N_FFT: usize = 2048;
+const MEL_HOP_LENGTH: usize = 512;
+const MEL_WIN_LENGTH: usize = 2048;
+const MEL_N_MELS: usize = 128;
 
 pub struct CreateSessionDB;
 #[effect(id = 1)]
@@ -34,12 +44,16 @@ impl<J> Effect<J> for GenSample {
 pub struct GenSpectrogram;
 #[effect(id = 3)]
 impl<J> Effect<J> for GenSpectrogram {
-    type In = Vec<u8>;
-    type Out = Vec<u8>;
+    type In = (String, String);
+    type Out = String;
     type Err = String;
 
     fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(Vec::new())
+        async move {
+            let (wav_path, output_path) = _input;
+            generate_mel_spectrogram(&wav_path, &output_path)?;
+            Ok(output_path)
+        }
     }
 }
 
@@ -125,4 +139,35 @@ impl<J> Effect<J> for SearchTreeMove {
     fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         stub_ok(())
     }
+}
+
+fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), String> {
+    let input = Path::new(wav_path);
+    let output = Path::new(output_path);
+
+    let (audio, sample_rate) =
+        read_audio_file_mono(input).map_err(|err| format!("failed to read wav file: {err}"))?;
+
+    let spectrogram = par_compute_spectrogram(
+        &audio,
+        MEL_N_FFT,
+        MEL_HOP_LENGTH,
+        MEL_WIN_LENGTH,
+        true,
+        SpectrogramType::Power,
+    );
+    let mel = par_convert_to_mel(
+        &spectrogram,
+        sample_rate,
+        MEL_N_FFT,
+        MEL_N_MELS,
+        None,
+        None,
+        MelScale::Slaney,
+    );
+
+    save_spectrogram_image(&mel, output.to_path_buf(), Colormap::Viridis)
+        .map_err(|err| format!("failed to write mel spectrogram: {err}"))?;
+
+    Ok(())
 }
