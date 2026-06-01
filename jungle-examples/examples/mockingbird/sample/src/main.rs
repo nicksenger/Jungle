@@ -10,13 +10,19 @@ use welcome_audio::instrumentation::{
     VocalsArticulation,
 };
 
+const DEFAULT_BPM: f64 = 123.0;
+const TICKS_PER_BEAT: f64 = 384.0;
+
 #[derive(Debug, Parser)]
 #[command(name = "mockingbird-sample")]
 struct Cli {
     /// Output WAV duration in seconds.
     #[arg(long = "duration-secs", value_parser = parse_duration_secs)]
     duration_secs: f64,
-    /// One or more score specs, e.g. `electric-guitar(sustained):[0.0,60,0.5],[1.0,64,0.25]`.
+    /// Tempo in beats per minute.
+    #[arg(long = "bpm", value_parser = parse_bpm, default_value_t = DEFAULT_BPM)]
+    bpm: f64,
+    /// One or more score specs, e.g. `electric-guitar(sustained):[0,60,192],[384,64,96]`.
     #[arg(required = true)]
     specs: Vec<String>,
 }
@@ -55,9 +61,9 @@ struct ParsedSpec {
 
 #[derive(Debug, Clone, Copy)]
 struct NoteEvent {
-    start_seconds: f64,
+    start_ticks: u64,
     midi: u8,
-    duration_seconds: f64,
+    duration_ticks: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -88,6 +94,7 @@ async fn run() -> Result<(), CliError> {
     let mut left = vec![0.0f32; total_frames];
     let mut right = vec![0.0f32; total_frames];
     let synth = SynthHandle::new();
+    let tick_seconds = tick_duration_seconds(cli.bpm);
 
     for spec in specs {
         let ParsedSpec {
@@ -98,13 +105,14 @@ async fn run() -> Result<(), CliError> {
 
         for event in events {
             let synth_event = SynthEvent {
-                start_frame: seconds_to_frame(event.start_seconds),
+                start_frame: seconds_to_frame(ticks_to_seconds(event.start_ticks, tick_seconds)),
                 pan: 0.0,
                 gain: 1.0,
                 playback_rate: 1.0,
             };
 
-            let note_duration = Duration::from_secs_f64(event.duration_seconds);
+            let note_duration =
+                Duration::from_secs_f64(ticks_to_seconds(event.duration_ticks, tick_seconds));
             match normalized_token(&instrument).as_str() {
                 "electric-guitar" => {
                     let articulation =
@@ -334,6 +342,16 @@ fn parse_duration_secs(value: &str) -> Result<f64, String> {
     Ok(duration_secs)
 }
 
+fn parse_bpm(value: &str) -> Result<f64, String> {
+    let bpm = value
+        .parse::<f64>()
+        .map_err(|_| format!("invalid bpm argument: {value}"))?;
+    if !bpm.is_finite() || bpm <= 0.0 {
+        return Err("bpm must be a finite value > 0".to_string());
+    }
+    Ok(bpm)
+}
+
 fn parse_spec(spec: &str) -> Result<ParsedSpec, CliError> {
     let (head, tail) = spec.split_once(':').ok_or_else(|| CliError::InvalidSpec {
         spec: spec.to_string(),
@@ -396,8 +414,9 @@ fn extract_tuples<'a>(tail: &'a str, spec: &str) -> Result<Vec<&'a str>, CliErro
         if !remainder.starts_with('[') {
             return Err(CliError::InvalidSpec {
                 spec: spec.to_string(),
-                reason: "note list must contain bracketed tuples like [start,midi,duration]"
-                    .to_string(),
+                reason:
+                    "note list must contain bracketed tuples like [start_ticks,midi,duration_ticks]"
+                        .to_string(),
             });
         }
         let close_idx = remainder.find(']').ok_or_else(|| CliError::InvalidSpec {
@@ -434,7 +453,7 @@ fn parse_tuple(spec: &str, tuple: &str) -> Result<NoteEvent, CliError> {
     let start = parts.next().ok_or_else(|| CliError::InvalidTuple {
         spec: spec.to_string(),
         tuple: tuple.to_string(),
-        reason: "missing start seconds".to_string(),
+        reason: "missing start ticks".to_string(),
     })?;
     let midi = parts.next().ok_or_else(|| CliError::InvalidTuple {
         spec: spec.to_string(),
@@ -444,7 +463,7 @@ fn parse_tuple(spec: &str, tuple: &str) -> Result<NoteEvent, CliError> {
     let duration = parts.next().ok_or_else(|| CliError::InvalidTuple {
         spec: spec.to_string(),
         tuple: tuple.to_string(),
-        reason: "missing duration seconds".to_string(),
+        reason: "missing duration ticks".to_string(),
     })?;
 
     if parts.next().is_some() {
@@ -455,22 +474,22 @@ fn parse_tuple(spec: &str, tuple: &str) -> Result<NoteEvent, CliError> {
         });
     }
 
-    let start_seconds = parse_nonnegative_secs(start).map_err(|reason| CliError::InvalidTuple {
+    let start_ticks = parse_nonnegative_ticks(start).map_err(|reason| CliError::InvalidTuple {
         spec: spec.to_string(),
         tuple: tuple.to_string(),
         reason,
     })?;
-    let duration_seconds =
-        parse_nonnegative_secs(duration).map_err(|reason| CliError::InvalidTuple {
+    let duration_ticks =
+        parse_nonnegative_ticks(duration).map_err(|reason| CliError::InvalidTuple {
             spec: spec.to_string(),
             tuple: tuple.to_string(),
             reason,
         })?;
-    if duration_seconds == 0.0 {
+    if duration_ticks == 0 {
         return Err(CliError::InvalidTuple {
             spec: spec.to_string(),
             tuple: tuple.to_string(),
-            reason: "duration seconds must be > 0".to_string(),
+            reason: "duration ticks must be > 0".to_string(),
         });
     }
 
@@ -490,20 +509,24 @@ fn parse_tuple(spec: &str, tuple: &str) -> Result<NoteEvent, CliError> {
         })?;
 
     Ok(NoteEvent {
-        start_seconds,
+        start_ticks,
         midi,
-        duration_seconds,
+        duration_ticks,
     })
 }
 
-fn parse_nonnegative_secs(value: &str) -> Result<f64, String> {
-    let secs = value
-        .parse::<f64>()
-        .map_err(|_| format!("invalid float value `{value}`"))?;
-    if !secs.is_finite() || secs < 0.0 {
-        return Err(format!("value `{value}` must be a finite number >= 0"));
-    }
-    Ok(secs)
+fn parse_nonnegative_ticks(value: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .map_err(|_| format!("invalid tick value `{value}`; expected integer >= 0"))
+}
+
+fn tick_duration_seconds(bpm: f64) -> f64 {
+    60.0 / (bpm * TICKS_PER_BEAT)
+}
+
+fn ticks_to_seconds(ticks: u64, tick_seconds: f64) -> f64 {
+    (ticks as f64) * tick_seconds
 }
 
 fn normalized_token(value: &str) -> String {
