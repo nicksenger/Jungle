@@ -218,14 +218,13 @@ async fn sleep_effect_suspends_then_resumes_flow_to_completion() {
     let worker = JungleWorker::new(SleepZoo, worker_client);
     let worker_handle = tokio::spawn(async move { worker.spawn().await });
 
-    let seed = postcard::to_allocvec(&SleepState {
+    let seed = SleepState {
         counter: 0,
         phase: 0,
         sleep_for_ms: 250,
-    })
-    .expect("sleep test seed should serialize");
+    };
     let journey_id = client
-        .start_journey::<SleepAnimal>(seed)
+        .start_journey::<SleepAnimal>(&seed)
         .await
         .expect("start_journey should succeed for sleep flow");
 

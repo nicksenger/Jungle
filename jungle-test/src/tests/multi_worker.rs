@@ -282,11 +282,11 @@ async fn local_client_multi_worker_example_flow_has_expected_events_without_repl
         }));
     }
 
-    let seed = postcard::to_allocvec(&MultiWorkerState::default()).expect("seed should serialize");
+    let seed = MultiWorkerState::default();
     let mut journey_ids = Vec::with_capacity(JOURNEY_COUNT);
     for _ in 0..JOURNEY_COUNT {
         let journey_id = client
-            .start_journey::<MultiWorkerAnimal>(seed.clone())
+            .start_journey::<MultiWorkerAnimal>(&seed)
             .await
             .expect("journey should start");
         journey_ids.push(journey_id);
@@ -382,11 +382,11 @@ async fn local_client_single_worker_single_journey_example_flow_has_expected_eve
         }));
     }
 
-    let seed = postcard::to_allocvec(&MultiWorkerState::default()).expect("seed should serialize");
+    let seed = MultiWorkerState::default();
     let mut journey_ids = Vec::with_capacity(SINGLE_JOURNEY_COUNT);
     for _ in 0..SINGLE_JOURNEY_COUNT {
         let journey_id = client
-            .start_journey::<MultiWorkerAnimal>(seed.clone())
+            .start_journey::<MultiWorkerAnimal>(&seed)
             .await
             .expect("journey should start");
         journey_ids.push(journey_id);

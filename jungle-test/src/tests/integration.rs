@@ -572,7 +572,7 @@ async fn run_client_worker_flow_runs_to_completion(listen_addr: SocketAddr) {
 
     let seed = integration_seed();
     let journey_id = client
-        .start_journey::<IntegrationAnimal>(seed)
+        .start_journey::<IntegrationAnimal>(&seed)
         .await
         .expect("start_journey should succeed");
     let perturb_payload = postcard::to_allocvec(&IntegrationPerturbation { delta: 1000 })
@@ -656,7 +656,7 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
 
     let seed = integration_seed();
     let journey_id = client
-        .start_journey::<IntegrationAnimal>(seed)
+        .start_journey::<IntegrationAnimal>(&seed)
         .await
         .expect("start_journey should succeed");
 
@@ -744,8 +744,8 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
     let _ = worker_handle.await;
 }
 
-fn integration_seed() -> Vec<u8> {
-    postcard::to_allocvec(&IntegrationState {
+fn integration_seed() -> IntegrationState {
+    IntegrationState {
         total: 0,
         focused: SubFlowState {
             nested: DeepFocusState {
@@ -757,8 +757,7 @@ fn integration_seed() -> Vec<u8> {
         },
         before_steps: 0,
         after_steps: 0,
-    })
-    .expect("seed should serialize")
+    }
 }
 
 #[test]

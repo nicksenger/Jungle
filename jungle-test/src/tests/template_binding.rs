@@ -500,13 +500,13 @@ async fn template_binding_local_client_reuses_one_template_for_two_animals_end_t
 
     let alpha_id = client
         .start_journey::<LocalTemplateAlphaAnimal>(
-            postcard::to_allocvec(&3_i32).expect("alpha seed should serialize"),
+            &3_i32,
         )
         .await
         .expect("alpha journey should start");
     let beta_id = client
         .start_journey::<LocalTemplateBetaAnimal>(
-            postcard::to_allocvec(&3_i32).expect("beta seed should serialize"),
+            &3_i32,
         )
         .await
         .expect("beta journey should start");
@@ -652,7 +652,7 @@ async fn template_binding_unbound_effect_with_context_bound_runs_end_to_end_with
 
     let journey_id = client
         .start_journey::<LocalTemplateContextAnimal>(
-            postcard::to_allocvec(&4_i32).expect("seed should serialize"),
+            &4_i32,
         )
         .await
         .expect("journey should start");
@@ -803,13 +803,13 @@ async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal(
 
     let alpha_id = client
         .start_journey::<ComposedAlphaAnimal>(
-            postcard::to_allocvec(&3_i32).expect("alpha seed should serialize"),
+            &3_i32,
         )
         .await
         .expect("alpha journey should start");
     let beta_id = client
         .start_journey::<ComposedBetaAnimal>(
-            postcard::to_allocvec(&3_i32).expect("beta seed should serialize"),
+            &3_i32,
         )
         .await
         .expect("beta journey should start");
@@ -1130,7 +1130,7 @@ async fn template_binding_unbound_lens_template_runs_end_to_end() {
 
     let journey_id = client
         .start_journey::<LensAlphaAnimal>(
-            postcard::to_allocvec(&30_i32).expect("seed should serialize"),
+            &30_i32,
         )
         .await
         .expect("journey should start");
@@ -1461,7 +1461,7 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
 
     let journey_id = client
         .start_journey::<NestedScopeAnimal>(
-            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+            &3_i32,
         )
         .await
         .expect("journey should start");
@@ -1533,7 +1533,7 @@ async fn template_binding_generic_focus_nested_concrete_focus_runs_end_to_end_lo
 
     let journey_id = client
         .start_journey::<GenericNestedScopeAnimal>(
-            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+            &3_i32,
         )
         .await
         .expect("journey should start");
@@ -1816,7 +1816,7 @@ async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_l
 
     let journey_id = client
         .start_journey::<Loop2CompositeAnimal>(
-            postcard::to_allocvec(&5_i32).expect("seed should serialize"),
+            &5_i32,
         )
         .await
         .expect("journey should start");
@@ -2115,7 +2115,7 @@ async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_
 
     let journey_id = client
         .start_journey::<InheritedAutoFocusAnimal>(
-            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+            &3_i32,
         )
         .await
         .expect("journey should start");
@@ -2210,7 +2210,7 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
 
     let journey_id = client
         .start_journey::<InheritedAutoFocusConditionalAnimal>(
-            postcard::to_allocvec(&3_i32).expect("seed should serialize"),
+            &3_i32,
         )
         .await
         .expect("journey should start");
@@ -2447,11 +2447,10 @@ async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_e
 
     let journey_id = client
         .start_journey::<ConditionalJoinMergeAnimal>(
-            postcard::to_allocvec(&ConditionalJoinMergeState {
+            &ConditionalJoinMergeState {
                 marker: 1,
                 ..ConditionalJoinMergeState::default()
-            })
-            .expect("seed should serialize"),
+            },
         )
         .await
         .expect("journey should start");
@@ -3181,13 +3180,13 @@ async fn template_binding_long_shared_and_unique_segments_with_different_animal_
 
     let alpha_id = client
         .start_journey::<ComplexAlphaAnimal>(
-            postcard::to_allocvec(&5_i32).expect("alpha seed should serialize"),
+            &5_i32,
         )
         .await
         .expect("alpha journey should start");
     let beta_id = client
         .start_journey::<ComplexBetaAnimal>(
-            postcard::to_allocvec(&5_i32).expect("beta seed should serialize"),
+            &5_i32,
         )
         .await
         .expect("beta journey should start");

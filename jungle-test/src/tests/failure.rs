@@ -257,9 +257,9 @@ macro_rules! run_case {
             let _ = worker.spawn().await;
         });
 
-        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let seed = ();
         let journey_id = client
-            .start_journey::<$animal>(seed)
+            .start_journey::<$animal>(&seed)
             .await
             .expect("journey should start");
         let status = wait_for_terminal(&client, journey_id).await;
@@ -1158,9 +1158,9 @@ async fn local_client_marks_journey_dead_when_absorb_returns_failure() {
         let _ = worker.spawn().await;
     });
 
-    let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+    let seed = ();
     let journey_id = client
-        .start_journey::<FailureAnimal>(seed)
+        .start_journey::<FailureAnimal>(&seed)
         .await
         .expect("journey should start");
 
@@ -1185,9 +1185,9 @@ async fn attempt_catches_failure_and_journey_completes() {
         let _ = worker.spawn().await;
     });
 
-    let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+    let seed = ();
     let journey_id = client
-        .start_journey::<AttemptFailureAnimal>(seed)
+        .start_journey::<AttemptFailureAnimal>(&seed)
         .await
         .expect("journey should start");
 
@@ -1211,9 +1211,9 @@ async fn attempt_wraps_success_and_journey_completes() {
         let _ = worker.spawn().await;
     });
 
-    let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+    let seed = ();
     let journey_id = client
-        .start_journey::<AttemptSuccessAnimal>(seed)
+        .start_journey::<AttemptSuccessAnimal>(&seed)
         .await
         .expect("journey should start");
 

@@ -1238,7 +1238,7 @@ async fn conditional_join_then_tail_streams_events_and_completes_with_local_clie
 
     let journey_id = client
         .start_journey::<LocalConditionalJoinTailAnimal>(
-            postcard::to_allocvec(&SelectJoinState::default()).expect("seed should serialize"),
+            &SelectJoinState::default(),
         )
         .await
         .expect("journey should start");

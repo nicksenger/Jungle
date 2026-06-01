@@ -107,11 +107,12 @@ pub struct ConnectionFlowTemplate9(Step<ConnectionStepSpec9>);
 async fn client_exchanges_messages_with_mock_server() {
     let journey_id = Uuid::from_u128(0x11111111111111111111111111111111);
     let effect_id = Uuid::from_u128(0x22222222222222222222222222222222);
+    let unit_seed = postcard::to_allocvec(&()).expect("unit seed should serialize");
     let expected_work = Work::StartJourney {
         journey_id,
         animal_id: 7,
         generation: 0,
-        seed: vec![1, 2, 3],
+        seed: unit_seed.clone(),
     };
 
     let captured_requests: Arc<Mutex<Vec<WireIn>>> = Arc::new(Mutex::new(Vec::new()));
@@ -122,11 +123,13 @@ async fn client_exchanges_messages_with_mock_server() {
             let captured_requests = Arc::clone(&captured_requests);
             let request_count = Arc::clone(&request_count);
             let expected_work = expected_work.clone();
+            let unit_seed = unit_seed.clone();
 
             move |request| {
                 let captured_requests = Arc::clone(&captured_requests);
                 let request_count = Arc::clone(&request_count);
                 let expected_work = expected_work.clone();
+                let unit_seed = unit_seed.clone();
 
                 Box::pin(async move {
                     if let Some(msg) = request {
@@ -144,7 +147,7 @@ async fn client_exchanges_messages_with_mock_server() {
                                     if namespace == "default"
                                         && animal_id == 7
                                         && generation == 0
-                                        && seed == vec![1, 2, 3]
+                                        && seed == unit_seed
                                     {
                                         Ok(WireOut::JourneyCreated(journey_id))
                                     } else {
@@ -214,7 +217,7 @@ async fn client_exchanges_messages_with_mock_server() {
     let client = connect_client_with_retry(listen_addr).await;
 
     let created_flow = client
-        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(&())
         .await
         .expect("start_journey should succeed");
     assert_eq!(created_flow, journey_id);
@@ -239,7 +242,7 @@ async fn client_exchanges_messages_with_mock_server() {
             assert_eq!(returned_flow, journey_id);
             assert_eq!(animal_id, 7);
             assert_eq!(generation, 0);
-            assert_eq!(seed, vec![1, 2, 3]);
+            assert_eq!(seed, unit_seed);
         }
         Some(Work::ResumeJourney {
             journey_id,
@@ -284,7 +287,7 @@ async fn client_exchanges_messages_with_mock_server() {
         } if namespace == "default"
             && animal_id == 7
             && generation == 0
-            && seed == &vec![1, 2, 3]
+            && seed == &unit_seed
     ));
     assert!(matches!(requests[1], WireIn::JourneyStatus(id) if id == journey_id));
     assert!(
@@ -348,7 +351,7 @@ async fn flow_status_moves_created_to_alive_to_completed() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(&())
         .await
         .expect("start_journey should succeed");
 
@@ -401,7 +404,7 @@ async fn subscribe_journey_updates_streams_history_and_closes_when_terminal() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(&())
         .await
         .expect("start_journey should succeed");
 
@@ -475,7 +478,7 @@ async fn dropping_one_client_clone_does_not_close_transport_for_others() {
     drop(client);
 
     let journey_id = survivor
-        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(&())
         .await
         .expect("remaining client clone should still open streams");
 
@@ -508,7 +511,7 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
 
     let client = connect_client_with_retry(listen_addr).await;
     let journey_id = client
-        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(&())
         .await
         .expect("start_journey should succeed");
 
@@ -547,7 +550,10 @@ async fn poll_timers_promotes_due_sleep_to_resume_work() {
             assert_eq!(resumed, journey_id);
             assert_eq!(animal_id, 7);
             assert_eq!(generation, 0);
-            assert_eq!(seed, vec![1, 2, 3]);
+            assert_eq!(
+                seed,
+                postcard::to_allocvec(&()).expect("unit seed should serialize")
+            );
         }
         Some(Work::StartJourney { .. }) => {
             panic!("expected resume journey work item, got start journey");
@@ -763,11 +769,11 @@ async fn poll_work_is_scoped_by_namespace() {
     let beta = connect_client_with_retry_namespace(listen_addr, "beta").await;
 
     let alpha_id = alpha
-        .start_journey::<ConnectionAnimal7>(vec![1, 2, 3])
+        .start_journey::<ConnectionAnimal7>(&())
         .await
         .expect("alpha start_journey should succeed");
     let beta_id = beta
-        .start_journey::<ConnectionAnimal9>(vec![4, 5, 6])
+        .start_journey::<ConnectionAnimal9>(&())
         .await
         .expect("beta start_journey should succeed");
 
@@ -785,7 +791,10 @@ async fn poll_work_is_scoped_by_namespace() {
             assert_eq!(journey_id, alpha_id);
             assert_eq!(animal_id, 7);
             assert_eq!(generation, 0);
-            assert_eq!(seed, vec![1, 2, 3]);
+            assert_eq!(
+                seed,
+                postcard::to_allocvec(&()).expect("unit seed should serialize")
+            );
         }
         other => panic!("expected alpha start work, got {other:?}"),
     }
@@ -804,7 +813,10 @@ async fn poll_work_is_scoped_by_namespace() {
             assert_eq!(journey_id, beta_id);
             assert_eq!(animal_id, 9);
             assert_eq!(generation, 0);
-            assert_eq!(seed, vec![4, 5, 6]);
+            assert_eq!(
+                seed,
+                postcard::to_allocvec(&()).expect("unit seed should serialize")
+            );
         }
         other => panic!("expected beta start work, got {other:?}"),
     }
