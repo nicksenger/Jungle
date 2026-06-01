@@ -270,7 +270,16 @@ async fn run_job_list(args: JobListArgs) -> Result<(), Box<dyn std::error::Error
 
     let client = connect_client(&args.connection).await?;
     for record in registry.jobs.values() {
-        let status = client.journey_details(record.journey_id).await?;
+        let status = match client.journey_details(record.journey_id).await {
+            Ok(status) => status,
+            Err(err) => {
+                eprintln!(
+                    "warning: failed to fetch status for {}: {}",
+                    record.journey_id, err
+                );
+                continue;
+            }
+        };
         if !args.all && is_terminal(status) {
             continue;
         }
@@ -284,7 +293,12 @@ async fn run_job_list(args: JobListArgs) -> Result<(), Box<dyn std::error::Error
 
 async fn run_job_status(args: JobStatusArgs) -> Result<(), Box<dyn std::error::Error>> {
     let client = connect_client(&args.connection).await?;
-    let status = client.journey_details(args.journey_id).await?;
+    let status = client.journey_details(args.journey_id).await.map_err(|err| {
+        std::io::Error::other(format!(
+            "failed to fetch job status for {}: {}",
+            args.journey_id, err
+        ))
+    })?;
     println!("{}\t{:?}", args.journey_id, status);
     Ok(())
 }
