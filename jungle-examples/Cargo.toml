@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 default = []
+image = ["dep:spectrs", "dep:image", "dep:image-compare"]
 viewer = ["dep:jungle-vision", "dep:iced"]
 video = ["dep:welcome-video"]
 audio = ["dep:welcome-audio"]
@@ -39,9 +40,9 @@ async-trait = { workspace = true }
 clap = { version = "4.6", features = ["derive"] }
 cron = { version = "0.16", optional = true }
 chrono = { version = "0.4", optional = true }
-spectrs = { version = "0.2.1", default-features = false, features = ["image"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
-image-compare = "0.5.0"
+spectrs = { version = "0.2.1", default-features = false, features = ["image"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+image-compare = { version = "0.5.0", optional = true }
 
 [[example]]
 name = "welcome"
@@ -56,6 +57,7 @@ required-features = ["cron"]
 [[example]]
 name = "mockingbird"
 path = "examples/mockingbird/mod.rs"
+required-features = ["image"]
 
 [lints]
 workspace = true
