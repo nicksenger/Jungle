@@ -1,15 +1,17 @@
 #![allow(dead_code)]
 
+use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use image::ImageReader;
 use image_compare::Algorithm;
 use jungle_sdk::effect;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use spectrs::io::audio::read_audio_file_mono;
 use spectrs::io::image::{save_spectrogram_image, Colormap};
 use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
 use spectrs::spectrogram::stft::{par_compute_spectrogram, SpectrogramType};
 use std::future::{ready, Future};
+use std::marker::PhantomData;
 use std::path::Path;
 use std::process::Stdio;
 use tokio::process::Command;
@@ -136,27 +138,40 @@ impl<J> Effect<J> for CheckSampler {
     }
 }
 
-pub struct InsertNode;
-#[effect(id = 10)]
-impl<J> Effect<J> for InsertNode {
-    type In = String;
-    type Out = ();
-    type Err = String;
+pub struct SearchTreeSelect<Tag, Data, Error>(PhantomData<fn() -> (Tag, Data, Error)>);
+#[effect(id = 9)]
+impl<J, Tag, Data, Error> Effect<J> for SearchTreeSelect<Tag, Data, Error>
+where
+    J: SearchTree<Tag, Data = Data, Error = Error> + Sync,
+    Data: Serialize + DeserializeOwned + Send + 'static,
+    Error: Send + 'static,
+{
+    type In = ();
+    type Out = Data;
+    type Err = Error;
 
-    fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(())
+    fn effect(jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { <J as SearchTree<Tag>>::select(jungle).await }
     }
 }
 
-pub struct SearchTreeMove;
-#[effect(id = 9)]
-impl<J> Effect<J> for SearchTreeMove {
-    type In = ();
+pub struct SearchTreeSubmit<Tag, Data, Error>(PhantomData<fn() -> (Tag, Data, Error)>);
+#[effect(id = 10)]
+impl<J, Tag, Data, Error> Effect<J> for SearchTreeSubmit<Tag, Data, Error>
+where
+    J: SearchTree<Tag, Data = Data, Error = Error> + Sync,
+    Data: Serialize + DeserializeOwned + Send + 'static,
+    Error: Send + 'static,
+{
+    type In = (Data, f32);
     type Out = ();
-    type Err = String;
+    type Err = Error;
 
-    fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(())
+    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            let (data, score) = input;
+            <J as SearchTree<Tag>>::submit(jungle, data, score).await
+        }
     }
 }
 

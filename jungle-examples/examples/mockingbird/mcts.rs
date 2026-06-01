@@ -15,10 +15,10 @@ pub trait SearchTree<Tag = ()> {
     type Error;
     type Data: Serialize + DeserializeOwned;
 
-    fn select(&self) -> impl Future<Output = Result<Self::Data, Self::Error>>;
+    fn select(&self) -> impl Future<Output = Result<Self::Data, Self::Error>> + Send;
 
     fn submit(&self, data: Self::Data, score: f32)
-        -> impl Future<Output = Result<(), Self::Error>>;
+        -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
 const ROOT_NODE_ID: u64 = 0;
@@ -177,7 +177,7 @@ impl<Tag> SearchTree<Tag> for PulseCodeParadise {
     type Error = PulseCodeParadiseError;
     type Data = Value;
 
-    fn select(&self) -> impl Future<Output = Result<Self::Data, Self::Error>> {
+    fn select(&self) -> impl Future<Output = Result<Self::Data, Self::Error>> + Send {
         async move { self.select_mcts_for_type::<Tag>() }
     }
 
@@ -185,7 +185,7 @@ impl<Tag> SearchTree<Tag> for PulseCodeParadise {
         &self,
         data: Self::Data,
         score: f32,
-    ) -> impl Future<Output = Result<(), Self::Error>> {
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async move { self.submit_mcts_for_type::<Tag>(data, score) }
     }
 }
