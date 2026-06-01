@@ -1011,12 +1011,12 @@ pub trait ReplaceNodesWith<Replacer> {
 
 /// Normalizes a flow fragment into a list-shaped representation suitable for
 /// focused-field concatenation.
-pub trait ScopedFieldListNormalize {
+pub trait ScopedFieldListNormalize: sealed::Sealed {
     type Output;
 }
 
 /// Concatenates two list-shaped flow fragments.
-pub trait FlowListConcat<Rhs> {
+pub trait FlowListConcat<Rhs>: sealed::Sealed {
     type Output;
 }
 
@@ -2199,6 +2199,37 @@ where
         >,
     >>::Output;
 }
+
+impl sealed::Sealed for list::Empty {}
+
+impl<Head, Tail> sealed::Sealed for TList<(Head, Tail)> {}
+
+impl<T, A> sealed::Sealed for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAction<T>,
+{
+}
+
+impl<S> sealed::Sealed for Step<S>
+where
+    S: Action,
+{
+}
+
+impl<P, L, R, M> sealed::Sealed for Conditional<P, L, R, M> {}
+
+impl<C, F, M> sealed::Sealed for While<C, F, M> {}
+
+impl<L, R, M> sealed::Sealed for Select<L, R, M> {}
+
+impl<L, R, M> sealed::Sealed for Join<L, R, M> {}
+
+impl<F, M> sealed::Sealed for Attempt<F, M> {}
+
+impl<M, F> sealed::Sealed for Transparent<M, F> {}
+
+impl<View, F> sealed::Sealed for Scoped<View, F> {}
 
 impl sealed::Sealed for () {}
 
