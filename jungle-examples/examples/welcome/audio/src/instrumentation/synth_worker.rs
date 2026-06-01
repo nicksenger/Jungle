@@ -8,10 +8,9 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info, trace, warn};
 
 use super::{
-    bass::BassArticulation, cymbal::CymbalArticulation,
-    electric_guitar::ElectricGuitarArticulation, hihat::HiHatArticulation,
-    kick_drum::KickDrumArticulation, snare_drum::SnareDrumArticulation, toms::TomsArticulation,
-    vocals::VocalsArticulation, Error, Note,
+    vocals::to_dsp_articulation, BassArticulation, CymbalArticulation, ElectricGuitarArticulation,
+    Error, HiHatArticulation, KickDrumArticulation, Note, SnareDrumArticulation, TomsArticulation,
+    VocalsArticulation,
 };
 
 const DEFAULT_SYNTH_WORKER_THREADS: usize = 9;
@@ -77,7 +76,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "bass",
             move |response| SynthRequest::Bass { note, response },
-            move || welcome_audio::dsp::bass::synthesize_bass(&to_dsp_note(note, ())),
+            move || crate::dsp::bass::synthesize_bass(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -89,7 +88,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "cymbal",
             move |response| SynthRequest::Cymbal { note, response },
-            move || welcome_audio::dsp::cymbal::synthesize_cymbal(&to_dsp_note(note, ())),
+            move || crate::dsp::cymbal::synthesize_cymbal(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -102,7 +101,7 @@ impl SynthHandle {
             "electric_guitar",
             move |response| SynthRequest::ElectricGuitar { note, response },
             move || {
-                welcome_audio::dsp::electric_guitar::synthesize_electric_guitar(&to_dsp_note(
+                crate::dsp::electric_guitar::synthesize_electric_guitar(&to_dsp_note(
                     note,
                     to_dsp_electric_guitar_articulation(note.articulation),
                 ))
@@ -118,7 +117,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "hihat",
             move |response| SynthRequest::HiHat { note, response },
-            move || welcome_audio::dsp::hihat::synthesize_hihat(&to_dsp_note(note, ())),
+            move || crate::dsp::hihat::synthesize_hihat(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -130,7 +129,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "kick_drum",
             move |response| SynthRequest::KickDrum { note, response },
-            move || welcome_audio::dsp::kick_drum::synthesize_kick_drum(&to_dsp_note(note, ())),
+            move || crate::dsp::kick_drum::synthesize_kick_drum(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -142,7 +141,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "snare_drum",
             move |response| SynthRequest::SnareDrum { note, response },
-            move || welcome_audio::dsp::snare_drum::synthesize_snare_drum(&to_dsp_note(note, ())),
+            move || crate::dsp::snare_drum::synthesize_snare_drum(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -154,7 +153,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "toms",
             move |response| SynthRequest::Toms { note, response },
-            move || welcome_audio::dsp::toms::synthesize_toms(&to_dsp_note(note, ())),
+            move || crate::dsp::toms::synthesize_toms(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -167,9 +166,9 @@ impl SynthHandle {
             "vocals",
             move |response| SynthRequest::Vocals { note, response },
             move || {
-                welcome_audio::dsp::vocals::synthesize_vocals(&to_dsp_note(
+                crate::dsp::vocals::synthesize_vocals(&to_dsp_note(
                     note,
-                    to_dsp_vocals_articulation(note.articulation),
+                    to_dsp_articulation(note.articulation),
                 ))
             },
         )
@@ -349,51 +348,41 @@ fn run_synth_request(worker_index: usize, request: SynthRequest) {
     let started_at = Instant::now();
     match request {
         SynthRequest::Bass { note, response } => {
-            let _ = response.send(welcome_audio::dsp::bass::synthesize_bass(&to_dsp_note(
-                note,
-                (),
-            )));
+            let _ = response.send(crate::dsp::bass::synthesize_bass(&to_dsp_note(note, ())));
         }
         SynthRequest::Cymbal { note, response } => {
-            let _ = response.send(welcome_audio::dsp::cymbal::synthesize_cymbal(&to_dsp_note(
+            let _ = response.send(crate::dsp::cymbal::synthesize_cymbal(&to_dsp_note(
                 note,
                 (),
             )));
         }
         SynthRequest::ElectricGuitar { note, response } => {
-            let _ = response.send(
-                welcome_audio::dsp::electric_guitar::synthesize_electric_guitar(&to_dsp_note(
-                    note,
-                    to_dsp_electric_guitar_articulation(note.articulation),
-                )),
-            );
+            let _ = response.send(crate::dsp::electric_guitar::synthesize_electric_guitar(
+                &to_dsp_note(note, to_dsp_electric_guitar_articulation(note.articulation)),
+            ));
         }
         SynthRequest::HiHat { note, response } => {
-            let _ = response.send(welcome_audio::dsp::hihat::synthesize_hihat(&to_dsp_note(
-                note,
-                (),
-            )));
+            let _ = response.send(crate::dsp::hihat::synthesize_hihat(&to_dsp_note(note, ())));
         }
         SynthRequest::KickDrum { note, response } => {
-            let _ = response.send(welcome_audio::dsp::kick_drum::synthesize_kick_drum(
-                &to_dsp_note(note, ()),
-            ));
-        }
-        SynthRequest::SnareDrum { note, response } => {
-            let _ = response.send(welcome_audio::dsp::snare_drum::synthesize_snare_drum(
-                &to_dsp_note(note, ()),
-            ));
-        }
-        SynthRequest::Toms { note, response } => {
-            let _ = response.send(welcome_audio::dsp::toms::synthesize_toms(&to_dsp_note(
+            let _ = response.send(crate::dsp::kick_drum::synthesize_kick_drum(&to_dsp_note(
                 note,
                 (),
             )));
         }
-        SynthRequest::Vocals { note, response } => {
-            let _ = response.send(welcome_audio::dsp::vocals::synthesize_vocals(&to_dsp_note(
+        SynthRequest::SnareDrum { note, response } => {
+            let _ = response.send(crate::dsp::snare_drum::synthesize_snare_drum(&to_dsp_note(
                 note,
-                to_dsp_vocals_articulation(note.articulation),
+                (),
+            )));
+        }
+        SynthRequest::Toms { note, response } => {
+            let _ = response.send(crate::dsp::toms::synthesize_toms(&to_dsp_note(note, ())));
+        }
+        SynthRequest::Vocals { note, response } => {
+            let _ = response.send(crate::dsp::vocals::synthesize_vocals(&to_dsp_note(
+                note,
+                to_dsp_articulation(note.articulation),
             )));
         }
     }
@@ -428,44 +417,28 @@ fn request_kind(request: &SynthRequest) -> &'static str {
     }
 }
 
-fn to_dsp_note<A, B>(note: Note<A>, articulation: B) -> welcome_audio::dsp::Note<B> {
-    welcome_audio::dsp::Note {
+fn to_dsp_note<A, B>(note: Note<A>, articulation: B) -> crate::dsp::Note<B> {
+    crate::dsp::Note {
         n_midi: note.n_midi,
         duration: note.duration,
         velocity: note.velocity,
-        expression: note
-            .expression
-            .map(|expression| welcome_audio::dsp::Expression {
-                bend: expression.bend,
-                vibrato: expression.vibrato,
-            }),
+        expression: note.expression.map(|expression| crate::dsp::Expression {
+            bend: expression.bend,
+            vibrato: expression.vibrato,
+        }),
         articulation,
     }
 }
 
 fn to_dsp_electric_guitar_articulation(
     articulation: ElectricGuitarArticulation,
-) -> welcome_audio::dsp::electric_guitar::ElectricGuitarArticulation {
+) -> crate::dsp::electric_guitar::ElectricGuitarArticulation {
     match articulation {
         ElectricGuitarArticulation::Sustained => {
-            welcome_audio::dsp::electric_guitar::ElectricGuitarArticulation::Sustained
+            crate::dsp::electric_guitar::ElectricGuitarArticulation::Sustained
         }
         ElectricGuitarArticulation::RhythmSustained => {
-            welcome_audio::dsp::electric_guitar::ElectricGuitarArticulation::RhythmSustained
-        }
-    }
-}
-
-fn to_dsp_vocals_articulation(
-    articulation: VocalsArticulation,
-) -> welcome_audio::dsp::vocals::VocalsArticulation {
-    match articulation {
-        VocalsArticulation::Clean => welcome_audio::dsp::vocals::VocalsArticulation::Clean,
-        VocalsArticulation::GroupHarmony => {
-            welcome_audio::dsp::vocals::VocalsArticulation::GroupHarmony
-        }
-        VocalsArticulation::Formant(phonemes) => {
-            welcome_audio::dsp::vocals::VocalsArticulation::Formant(phonemes)
+            crate::dsp::electric_guitar::ElectricGuitarArticulation::RhythmSustained
         }
     }
 }

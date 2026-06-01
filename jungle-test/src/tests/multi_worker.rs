@@ -2,7 +2,7 @@ use futures::StreamExt;
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
-use jungle_sdk::{Animals, JourneyStatus, JungleClient, FusedClient, RunnerUpdateOut};
+use jungle_sdk::{Animals, FusedClient, JourneyStatus, JungleClient, RunnerUpdateOut};
 use std::time::Duration;
 
 const WORKER_COUNT: usize = 5;
@@ -289,7 +289,7 @@ async fn local_client_multi_worker_example_flow_has_expected_events_without_repl
             .spawn::<MultiWorkerAnimal>(&seed)
             .await
             .expect("journey should start")
-        .journey_id;
+            .journey_id;
         journey_ids.push(journey_id);
     }
 
@@ -390,7 +390,7 @@ async fn local_client_single_worker_single_journey_example_flow_has_expected_eve
             .spawn::<MultiWorkerAnimal>(&seed)
             .await
             .expect("journey should start")
-        .journey_id;
+            .journey_id;
         journey_ids.push(journey_id);
     }
 

@@ -187,7 +187,8 @@ impl Action for CaptureJoinSumSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_6 = {
-            state.joined_sum = output.map_err(|_err| Failure::from("join sum capture should succeed"))?;
+            state.joined_sum =
+                output.map_err(|_err| Failure::from("join sum capture should succeed"))?;
         };
         Ok(__absorb_out_6)
     }
@@ -327,7 +328,8 @@ impl Action for SelectBranchWinnerFastSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_11 = output.map_err(|_err| Failure::from("select fast winner should succeed"))?;
+        let __absorb_out_11 =
+            output.map_err(|_err| Failure::from("select fast winner should succeed"))?;
         Ok(__absorb_out_11)
     }
 }
@@ -347,7 +349,8 @@ impl Action for SelectBranchWinnerSlowSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_12 = output.map_err(|_err| Failure::from("select slow winner should succeed"))?;
+        let __absorb_out_12 =
+            output.map_err(|_err| Failure::from("select slow winner should succeed"))?;
         Ok(__absorb_out_12)
     }
 }
@@ -438,7 +441,8 @@ impl Action for JoinBranchLeftValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_15 = output.map_err(|_err| Failure::from("join left value should succeed"))?;
+        let __absorb_out_15 =
+            output.map_err(|_err| Failure::from("join left value should succeed"))?;
         Ok(__absorb_out_15)
     }
 }
@@ -458,7 +462,8 @@ impl Action for JoinBranchRightValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_16 = output.map_err(|_err| Failure::from("join right value should succeed"))?;
+        let __absorb_out_16 =
+            output.map_err(|_err| Failure::from("join right value should succeed"))?;
         Ok(__absorb_out_16)
     }
 }
@@ -512,7 +517,8 @@ impl Action for ConditionalLeftPassthroughSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_17 = output.map_err(|_err| Failure::from("conditional left passthrough should succeed"))?;
+        let __absorb_out_17 =
+            output.map_err(|_err| Failure::from("conditional left passthrough should succeed"))?;
         Ok(__absorb_out_17)
     }
 }
@@ -532,7 +538,8 @@ impl Action for ConditionalRightPassthroughSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_18 = output.map_err(|_err| Failure::from("conditional right passthrough should succeed"))?;
+        let __absorb_out_18 =
+            output.map_err(|_err| Failure::from("conditional right passthrough should succeed"))?;
         Ok(__absorb_out_18)
     }
 }
@@ -555,7 +562,8 @@ impl Action for JoinFromConditionalLeftSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_19 = output.map_err(|_err| Failure::from("join from conditional left should succeed"))?;
+        let __absorb_out_19 =
+            output.map_err(|_err| Failure::from("join from conditional left should succeed"))?;
         Ok(__absorb_out_19)
     }
 }
@@ -578,7 +586,8 @@ impl Action for JoinFromConditionalRightSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_20 = output.map_err(|_err| Failure::from("join from conditional right should succeed"))?;
+        let __absorb_out_20 =
+            output.map_err(|_err| Failure::from("join from conditional right should succeed"))?;
         Ok(__absorb_out_20)
     }
 }
@@ -624,7 +633,8 @@ impl Action for JoinMutatesWinnerSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_21 = {
-            let value = output.map_err(|_err| Failure::from("join mutates winner should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("join mutates winner should succeed"))?;
             state.winner = value;
             value
         };
@@ -676,7 +686,8 @@ impl Action for RightZeroValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_23 = output.map_err(|_err| Failure::from("right zero value should succeed"))?;
+        let __absorb_out_23 =
+            output.map_err(|_err| Failure::from("right zero value should succeed"))?;
         Ok(__absorb_out_23)
     }
 }
@@ -696,7 +707,8 @@ impl Action for RightNonZeroValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_24 = output.map_err(|_err| Failure::from("right non-zero value should succeed"))?;
+        let __absorb_out_24 =
+            output.map_err(|_err| Failure::from("right non-zero value should succeed"))?;
         Ok(__absorb_out_24)
     }
 }
@@ -722,7 +734,8 @@ impl Action for RightBranchMergeValueSpec {
         _state: &mut SelectJoinState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_25 = output.map_err(|_err| Failure::from("right branch merge value should succeed"))?;
+        let __absorb_out_25 =
+            output.map_err(|_err| Failure::from("right branch merge value should succeed"))?;
         Ok(__absorb_out_25)
     }
 }
@@ -943,7 +956,8 @@ impl Action for NestedJoinInnerLeftSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_32 = {
-            let _ = output.map_err(|_err| Failure::from("nested join inner left should succeed"))?;
+            let _ =
+                output.map_err(|_err| Failure::from("nested join inner left should succeed"))?;
         };
         Ok(__absorb_out_32)
     }
@@ -965,7 +979,8 @@ impl Action for NestedJoinInnerRightSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_33 = {
-            let _ = output.map_err(|_err| Failure::from("nested join inner right should succeed"))?;
+            let _ =
+                output.map_err(|_err| Failure::from("nested join inner right should succeed"))?;
         };
         Ok(__absorb_out_33)
     }
@@ -1007,7 +1022,8 @@ impl Action for NestedJoinOuterRightSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_35 = {
-            let _ = output.map_err(|_err| Failure::from("nested join outer right should succeed"))?;
+            let _ =
+                output.map_err(|_err| Failure::from("nested join outer right should succeed"))?;
         };
         Ok(__absorb_out_35)
     }
@@ -1049,7 +1065,8 @@ impl Action for NestedJoinTailCaptureSpec {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_37 = {
-            let value = output.map_err(|_err| Failure::from("nested join tail capture should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("nested join tail capture should succeed"))?;
             state.joined_sum = state.joined_sum.saturating_add(value);
         };
         Ok(__absorb_out_37)
@@ -1237,9 +1254,7 @@ async fn conditional_join_then_tail_streams_events_and_completes_with_local_clie
     });
 
     let journey_id = client
-        .spawn::<LocalConditionalJoinTailAnimal>(
-            &SelectJoinState::default(),
-        )
+        .spawn::<LocalConditionalJoinTailAnimal>(&SelectJoinState::default())
         .await
         .expect("journey should start")
         .journey_id;

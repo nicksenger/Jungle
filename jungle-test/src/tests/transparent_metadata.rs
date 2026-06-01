@@ -42,7 +42,8 @@ impl Action for TransparentStepSpec {
         output: EffectCompletion<TransparentEffect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_1 = {
-            let value = output.map_err(|_err| Failure::from("transparent step effect should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("transparent step effect should succeed"))?;
             *state = value;
             value
         };

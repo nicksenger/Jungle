@@ -196,7 +196,8 @@ impl Action for MergeEitherSpec {
         output: EffectCompletion<EchoEffect>,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_5 = {
-            let value = output.map_err(|_err| Failure::from("merge-either effect should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("merge-either effect should succeed"))?;
             *state = value;
             value
         };

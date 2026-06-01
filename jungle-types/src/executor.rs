@@ -1446,18 +1446,18 @@ where
             state.clone(),
             &mut last_input,
         ) {
-                Ok(state) => state,
-                Err(ExecutorError::ActionFailure(failure)) => {
-                    let emitted = match Self::encode_failure(failure) {
-                        Ok(emitted) => emitted,
-                        Err(err) => return Err((state, err)),
-                    };
-                    self.complete = true;
-                    self.pending_input = Some(emitted);
-                    return Err((state, ExecutorError::Complete));
-                }
-                Err(err) => return Err((state, err)),
-            };
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                let emitted = match Self::encode_failure(failure) {
+                    Ok(emitted) => emitted,
+                    Err(err) => return Err((state, err)),
+                };
+                self.complete = true;
+                self.pending_input = Some(emitted);
+                return Err((state, ExecutorError::Complete));
+            }
+            Err(err) => return Err((state, err)),
+        };
         if self.cursor >= self.inner.len() {
             let emitted = match Self::encode_success(last_input) {
                 Ok(emitted) => emitted,
@@ -1532,7 +1532,10 @@ where
             return Err(ExecutorError::Complete);
         }
 
-        let last_input = self.pending_input.take().ok_or(ExecutorError::NoPendingRequest)?;
+        let last_input = self
+            .pending_input
+            .take()
+            .ok_or(ExecutorError::NoPendingRequest)?;
         let node = self
             .inner
             .get_mut(self.cursor)
@@ -1596,18 +1599,18 @@ where
             state.clone(),
             &mut last_input,
         ) {
-                Ok(state) => state,
-                Err(ExecutorError::ActionFailure(failure)) => {
-                    let emitted = match Self::encode_failure(failure) {
-                        Ok(emitted) => emitted,
-                        Err(err) => return Err((state, err)),
-                    };
-                    self.complete = true;
-                    self.pending_input = Some(emitted);
-                    return Err((state, ExecutorError::Complete));
-                }
-                Err(err) => return Err((state, err)),
-            };
+            Ok(state) => state,
+            Err(ExecutorError::ActionFailure(failure)) => {
+                let emitted = match Self::encode_failure(failure) {
+                    Ok(emitted) => emitted,
+                    Err(err) => return Err((state, err)),
+                };
+                self.complete = true;
+                self.pending_input = Some(emitted);
+                return Err((state, ExecutorError::Complete));
+            }
+            Err(err) => return Err((state, err)),
+        };
         if self.cursor >= self.inner.len() {
             let emitted = match Self::encode_success(last_input) {
                 Ok(emitted) => emitted,
@@ -2991,9 +2994,10 @@ where
 
     fn push_steps(mut steps: DynFlow<State>) -> Self::Output {
         let inner = <F as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
-        steps.push(Box::new(
-            AttemptErasedFlow::<State, <F as FlowCarry<State>>::Out>::new(inner),
-        ));
+        steps.push(Box::new(AttemptErasedFlow::<
+            State,
+            <F as FlowCarry<State>>::Out,
+        >::new(inner)));
         steps
     }
 }
@@ -3864,9 +3868,10 @@ where
             Arc::clone(&context),
             Vec::new(),
         ));
-        steps.push(Box::new(
-            AttemptErasedFlow::<State, <F as FlowCarry<State>>::Out>::new(inner),
-        ));
+        steps.push(Box::new(AttemptErasedFlow::<
+            State,
+            <F as FlowCarry<State>>::Out,
+        >::new(inner)));
         (context, steps)
     }
 }

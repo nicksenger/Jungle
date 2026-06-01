@@ -125,7 +125,8 @@ impl Action for CarryAttrActSpec {
         carry: i32,
     ) -> Result<Self::Output, Failure> {
         let __absorb_out_3 = {
-            let value = output.map_err(|_err| Failure::from("carry attr act effect should succeed"))?;
+            let value =
+                output.map_err(|_err| Failure::from("carry attr act effect should succeed"))?;
             *state = value + carry;
             *state
         };

@@ -1,63 +1,14 @@
 use jungle_sdk::prelude::*;
-use welcome_audio::{PlayPriority, PlayRequest};
 
 use crate::{
     action::{MergeUnit, Rest as GenericRest},
-    effect::{Rest, Sound, SoundInput},
+    effect::{Sound, SoundInput},
 };
 
-use super::{amplitude_gain, Error, Instrument, Note, SynthHandle};
+use super::{ElectricGuitar, ElectricGuitarArticulation};
 
 type PostMergeRest<const TICKS: u32, const LANE_ID: u8> =
     GenericRest<ElectricGuitarArticulation, TICKS, LANE_ID>;
-
-pub struct ElectricGuitar {
-    audio: welcome_audio::AudioHandle,
-    synth: SynthHandle,
-}
-
-impl ElectricGuitar {
-    pub fn new(audio: welcome_audio::AudioHandle, synth: SynthHandle) -> Self {
-        Self { audio, synth }
-    }
-
-    pub fn audio(&self) -> &welcome_audio::AudioHandle {
-        &self.audio
-    }
-}
-
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum ElectricGuitarArticulation {
-    /// Standard picked note with normal sustain and release.
-    Sustained,
-    /// A sustained lead-guitar chord voice.
-    RhythmSustained,
-}
-
-impl Default for ElectricGuitarArticulation {
-    fn default() -> Self {
-        Self::RhythmSustained
-    }
-}
-
-impl Instrument for ElectricGuitar {
-    type Articulation = ElectricGuitarArticulation;
-
-    async fn play(&self, note: Note<Self::Articulation>) -> Result<(), Error> {
-        let (pcm, gain, playback_rate, pan) = self.synth.electric_guitar(note).await?;
-
-        let mut request = PlayRequest::new(pcm, 1, welcome_audio::dsp::SAMPLE_RATE);
-        request.gain = gain * amplitude_gain(&note);
-        request.playback_rate = playback_rate;
-        request.pan = pan;
-        request.priority = PlayPriority::Low;
-
-        self.audio
-            .play(request)
-            .await
-            .map_err(|_| Error::Submission)
-    }
-}
 
 pub struct Pick<const NOTE: u8, const NOTE_TICK: u32, const REST_TICK: u32, const LANE_ID: u8>;
 #[jungle::action]

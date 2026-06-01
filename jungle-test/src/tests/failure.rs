@@ -1,6 +1,6 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
-use jungle_sdk::{Animals, JourneyStatus, JungleClient, FusedClient, RunnerOut};
+use jungle_sdk::{Animals, FusedClient, JourneyStatus, JungleClient, RunnerOut};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -178,11 +178,7 @@ impl Animal for AttemptSuccessAnimal {
 }
 
 #[derive(Animals)]
-pub struct FailureAnimals(
-    FailureAnimal,
-    AttemptFailureAnimal,
-    AttemptSuccessAnimal,
-);
+pub struct FailureAnimals(FailureAnimal, AttemptFailureAnimal, AttemptSuccessAnimal);
 
 pub struct FailureZoo;
 impl Ecosystem for FailureZoo {
@@ -262,7 +258,7 @@ macro_rules! run_case {
             .spawn::<$animal>(&seed)
             .await
             .expect("journey should start")
-        .journey_id;
+            .journey_id;
         let status = wait_for_terminal(&client, journey_id).await;
         let history = client
             .journey_history(journey_id)
@@ -741,7 +737,8 @@ impl Action for AttemptResultAssertFailEitherStep {
         state: &mut FailureState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let marker = output.map_err(|_err| Failure::from("attempt fail either marker should succeed"))?;
+        let marker =
+            output.map_err(|_err| Failure::from("attempt fail either marker should succeed"))?;
         if marker != 700 {
             return Err(Failure::from("expected Attempt to produce Err"));
         }
@@ -768,7 +765,8 @@ impl Action for AttemptResultAssertOkEitherStep {
         state: &mut FailureState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let marker = output.map_err(|_err| Failure::from("attempt ok either marker should succeed"))?;
+        let marker =
+            output.map_err(|_err| Failure::from("attempt ok either marker should succeed"))?;
         if marker != 800 {
             return Err(Failure::from("expected Attempt to produce Ok"));
         }
@@ -795,7 +793,8 @@ impl Action for AttemptResultAssertFailTupleStep {
         state: &mut FailureState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let marker = output.map_err(|_err| Failure::from("attempt fail tuple marker should succeed"))?;
+        let marker =
+            output.map_err(|_err| Failure::from("attempt fail tuple marker should succeed"))?;
         if marker != 700 {
             return Err(Failure::from("expected Attempt to produce Err"));
         }
@@ -822,7 +821,8 @@ impl Action for AttemptResultAssertOkTupleStep {
         state: &mut FailureState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let marker = output.map_err(|_err| Failure::from("attempt ok tuple marker should succeed"))?;
+        let marker =
+            output.map_err(|_err| Failure::from("attempt ok tuple marker should succeed"))?;
         if marker != 800 {
             return Err(Failure::from("expected Attempt to produce Ok"));
         }
@@ -1311,7 +1311,10 @@ async fn combinator_failures_inside_attempt_complete_and_emit_expected_events() 
         "join-inside-fail"
     );
     assert_eq!(status, JourneyStatus::Completed);
-    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 1, 901, 700, 700]);
+    assert_eq!(
+        decode_i32_effect_inputs(&history),
+        vec![100, 1, 901, 700, 700]
+    );
     assert_history_effect_counts(&history, 5, 5);
 
     let (status, history) = run_case!(
@@ -1320,7 +1323,10 @@ async fn combinator_failures_inside_attempt_complete_and_emit_expected_events() 
         "select-inside-fail"
     );
     assert_eq!(status, JourneyStatus::Completed);
-    assert_eq!(decode_i32_effect_inputs(&history), vec![100, 1, 902, 700, 700]);
+    assert_eq!(
+        decode_i32_effect_inputs(&history),
+        vec![100, 1, 902, 700, 700]
+    );
     assert_history_effect_counts(&history, 5, 5);
 }
 
@@ -1353,11 +1359,7 @@ async fn combinator_attempt_successes_complete_and_emit_expected_events() {
     assert_eq!(decode_i32_effect_inputs(&history), vec![100, 100, 800, 800]);
     assert_history_effect_counts(&history, 4, 4);
 
-    let (status, history) = run_case!(
-        JoinFailureZoo,
-        JoinInsideAttemptOkAnimal,
-        "join-inside-ok"
-    );
+    let (status, history) = run_case!(JoinFailureZoo, JoinInsideAttemptOkAnimal, "join-inside-ok");
     assert_eq!(status, JourneyStatus::Completed);
     assert_eq!(decode_i32_effect_inputs(&history), vec![100, 1, 800, 800]);
     assert_history_effect_counts(&history, 4, 4);
