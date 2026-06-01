@@ -16,7 +16,7 @@ impl<J> Effect<J> for ParseNext {
         _jungle: &J,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        let result = (|| {
+        async move {
             let schedule =
                 cron::Schedule::from_str(&input).map_err(|err| format!("cron parse failed: {err}"))?;
             let now = Utc::now();
@@ -28,8 +28,7 @@ impl<J> Effect<J> for ParseNext {
             remaining
                 .to_std()
                 .map_err(|err| format!("invalid jump duration: {err}"))
-        })();
-        std::future::ready(result)
+        }
     }
 }
 
@@ -44,7 +43,7 @@ impl<J> Effect<J> for RunBash {
         _jungle: &J,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        let result = (|| {
+        async move {
             let status = std::process::Command::new("bash")
                 .arg("-lc")
                 .arg(&input)
@@ -55,7 +54,6 @@ impl<J> Effect<J> for RunBash {
             } else {
                 Err(format!("jumped cmd failed with status: {status}"))
             }
-        })();
-        std::future::ready(result)
+        }
     }
 }
