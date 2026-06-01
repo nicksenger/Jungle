@@ -48,11 +48,11 @@ impl<J> Effect<J> for RunBash {
                 .arg("-lc")
                 .arg(&input)
                 .status()
-                .map_err(|err| format!("failed to run jumped cmd: {err}"))?;
+                .map_err(|err| format!("failed to run cronfish cmd: {err}"))?;
             if status.success() {
                 Ok(())
             } else {
-                Err(format!("jumped cmd failed with status: {status}"))
+                Err(format!("cronfish cmd failed with status: {status}"))
             }
         }
     }
