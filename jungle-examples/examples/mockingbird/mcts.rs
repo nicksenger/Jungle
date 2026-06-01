@@ -1,7 +1,7 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::future::Future;
 
-pub trait SearchTree {
+pub trait SearchTree<Tag = ()> {
     type Error;
     type Data: Serialize + DeserializeOwned;
 
