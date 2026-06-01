@@ -3025,6 +3025,7 @@ dependencies = [
  "jungle-vision",
  "postcard",
  "serde",
+ "serde_json",
  "spectrs",
  "testcontainers",
  "testcontainers-modules",
