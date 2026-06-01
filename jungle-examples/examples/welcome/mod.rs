@@ -653,6 +653,13 @@ impl JungleClient for UiClient {
         self.inner.journey_history(id).await
     }
 
+    async fn list_journeys(
+        &self,
+        namespace: String,
+    ) -> Result<Vec<jungle_sdk::JourneyRecord>, ExecutorError> {
+        self.inner.list_journeys(namespace).await
+    }
+
     async fn subscribe_step_updates(
         &self,
         journey_id: Uuid,
