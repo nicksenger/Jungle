@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use image::ImageReader;
 use image_compare::Algorithm;
 use jungle_sdk::effect;
@@ -85,13 +86,26 @@ impl<J> Effect<J> for CompareSpectrograms {
 
 pub struct PromptModel;
 #[effect(id = 5)]
-impl<J> Effect<J> for PromptModel {
-    type In = String;
-    type Out = String;
+impl<J> Effect<J> for PromptModel
+where
+    J: TokenPredictor + Sync,
+    J::Error: ToString + Send + 'static,
+{
+    type In = Prompt;
+    type Out = Vec<ToolCall>;
     type Err = String;
 
-    fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(String::new())
+    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            let Prompt {
+                messages,
+                tools: _tools,
+            } = input;
+            jungle
+                .predict(messages)
+                .await
+                .map_err(|err| err.to_string())
+        }
     }
 }
 

@@ -33,13 +33,19 @@ pub struct ToolCall {
     pub arguments: Value,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Prompt {
+    pub messages: Vec<Message>,
+    pub tools: Vec<Tool>,
+}
+
 pub trait TokenPredictor {
     type Error;
 
     fn predict(
         &self,
         messages: Vec<Message>,
-    ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>>;
+    ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> + Send;
 }
 
 const DEFAULT_TOKENS_MODEL: &str = "qwen/qwen3.6-27b";
@@ -102,7 +108,7 @@ impl TokenPredictor for PulseCodeParadise {
     fn predict(
         &self,
         messages: Vec<Message>,
-    ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> {
+    ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> + Send {
         async move {
             let request = self.chat_completions_request(&messages)?;
             let response = self
