@@ -1,6 +1,6 @@
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
-use jungle_sdk::{Animals, JourneyStatus, JungleClient, LocalClient, RunnerOut};
+use jungle_sdk::{Animals, JourneyStatus, JungleClient, FusedClient, RunnerOut};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -191,7 +191,7 @@ impl Ecosystem for FailureZoo {
 }
 
 async fn wait_for_status(
-    client: &LocalClient,
+    client: &FusedClient,
     journey_id: uuid::Uuid,
     target: JourneyStatus,
 ) -> JourneyStatus {
@@ -211,7 +211,7 @@ async fn wait_for_status(
     .expect("journey should reach expected status before timeout")
 }
 
-async fn wait_for_terminal(client: &LocalClient, journey_id: uuid::Uuid) -> JourneyStatus {
+async fn wait_for_terminal(client: &FusedClient, journey_id: uuid::Uuid) -> JourneyStatus {
     let terminal = tokio::time::timeout(Duration::from_secs(8), async {
         loop {
             let status = client
@@ -247,7 +247,7 @@ async fn wait_for_terminal(client: &LocalClient, journey_id: uuid::Uuid) -> Jour
 
 macro_rules! run_case {
     ($zoo:expr, $animal:ty, $namespace:expr) => {{
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace($namespace)
             .build()
             .await
@@ -1147,7 +1147,7 @@ impl Ecosystem for SelectFailureZoo {
 
 #[tokio::test]
 async fn local_client_marks_journey_dead_when_absorb_returns_failure() {
-    let client = LocalClient::builder()
+    let client = FusedClient::builder()
         .namespace("absorb-failure-dead")
         .build()
         .await
@@ -1174,7 +1174,7 @@ async fn local_client_marks_journey_dead_when_absorb_returns_failure() {
 
 #[tokio::test]
 async fn attempt_catches_failure_and_journey_completes() {
-    let client = LocalClient::builder()
+    let client = FusedClient::builder()
         .namespace("attempt-catches-failure")
         .build()
         .await
@@ -1200,7 +1200,7 @@ async fn attempt_catches_failure_and_journey_completes() {
 
 #[tokio::test]
 async fn attempt_wraps_success_and_journey_completes() {
-    let client = LocalClient::builder()
+    let client = FusedClient::builder()
         .namespace("attempt-wraps-success")
         .build()
         .await

@@ -4,7 +4,7 @@ members = [
     "jungle-core",
     "jungle-client",
     "jungle-examples",
-    "jungle-local",
+    "jungle-fusion",
     "jungle-macros",
     "jungle-migrate",
     "jungle-server",

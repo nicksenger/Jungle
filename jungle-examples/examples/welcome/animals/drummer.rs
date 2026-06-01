@@ -2493,12 +2493,12 @@ mod tests {
     use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
-    use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
+    use jungle_sdk::{JungleClient, FusedClient, RunnerUpdateOut};
 
     use super::super::{ConditionalJoinSound100Animal, Drums};
     use crate::ecosystem::TheJungle;
 
-    async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
+    async fn await_completion(client: &FusedClient, journey_id: uuid::Uuid) {
         let completion = tokio::time::timeout(Duration::from_secs(8), async {
             loop {
                 let status = client
@@ -2588,7 +2588,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_song_journey_starts_and_stays_alive() {
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace("welcome-drums-intro-test")
             .build()
             .await
@@ -2628,7 +2628,7 @@ mod tests {
     async fn conditional_join_Sound_100_ticks_zero_rest_completes_with_local_client() {
         const PARALLEL_JOURNEYS: usize = 5;
 
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace("welcome-conditional-join-Sound-test")
             .build()
             .await

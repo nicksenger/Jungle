@@ -20,7 +20,7 @@ cron = ["dep:cron", "dep:chrono"]
 
 [dependencies]
 futures = { workspace = true }
-jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "local"] }
+jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "fusion"] }
 jungle-vision = { path = "../jungle-vision", optional = true }
 iced = { version = "0.14", features = ["tokio", "svg"], optional = true }
 welcome-audio = { path = "examples/welcome/audio", optional = true }

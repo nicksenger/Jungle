@@ -30,18 +30,18 @@ static LOCAL_SUBSCRIPTION_MAX_EVENT_AGE_MS: AtomicUsize = AtomicUsize::new(0);
 static LOCAL_SUBSCRIPTION_MAX_RECV_WAIT_MS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone)]
-pub struct LocalClient {
+pub struct FusedClient {
     backend: Arc<dyn JungleServer>,
     namespace: String,
 }
 
 #[derive(Clone)]
-pub struct LocalClientBuilder {
+pub struct FusedClientBuilder {
     namespace: String,
     backend: Option<Arc<dyn JungleServer>>,
 }
 
-impl Default for LocalClientBuilder {
+impl Default for FusedClientBuilder {
     fn default() -> Self {
         Self {
             namespace: DEFAULT_NAMESPACE.to_string(),
@@ -50,7 +50,7 @@ impl Default for LocalClientBuilder {
     }
 }
 
-impl LocalClientBuilder {
+impl FusedClientBuilder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -68,7 +68,7 @@ impl LocalClientBuilder {
         self
     }
 
-    pub async fn build(self) -> Result<LocalClient, LocalClientError> {
+    pub async fn build(self) -> Result<FusedClient, FusedClientError> {
         let backend = if let Some(backend) = self.backend {
             backend
         } else {
@@ -76,20 +76,20 @@ impl LocalClientBuilder {
                 .memory()
                 .build()
                 .await
-                .map_err(|err| LocalClientError::BuildServer(err.to_string()))?;
+                .map_err(|err| FusedClientError::BuildServer(err.to_string()))?;
             Arc::new(server)
         };
 
-        Ok(LocalClient {
+        Ok(FusedClient {
             backend,
             namespace: self.namespace,
         })
     }
 }
 
-impl LocalClient {
-    pub fn builder() -> LocalClientBuilder {
-        LocalClientBuilder::new()
+impl FusedClient {
+    pub fn builder() -> FusedClientBuilder {
+        FusedClientBuilder::new()
     }
 
     pub fn from_backend<S>(backend: S) -> Self
@@ -344,13 +344,13 @@ fn update_max_usize(max_value: &AtomicUsize, candidate: usize) {
 }
 
 #[derive(Debug, Error)]
-pub enum LocalClientError {
+pub enum FusedClientError {
     #[error("failed to build in-memory local server backend: {0}")]
     BuildServer(String),
 }
 
 #[async_trait]
-impl JungleClient for LocalClient {
+impl JungleClient for FusedClient {
     async fn start_journey<A>(&self, seed: &A::Seed) -> Result<Uuid, ExecutorError>
     where
         Self: Sized,

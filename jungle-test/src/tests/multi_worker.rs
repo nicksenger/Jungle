@@ -2,7 +2,7 @@ use futures::StreamExt;
 use jungle_sdk::client::JourneyUpdateSubscription;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
-use jungle_sdk::{Animals, JourneyStatus, JungleClient, LocalClient, RunnerUpdateOut};
+use jungle_sdk::{Animals, JourneyStatus, JungleClient, FusedClient, RunnerUpdateOut};
 use std::time::Duration;
 
 const WORKER_COUNT: usize = 5;
@@ -268,7 +268,7 @@ impl From<MultiWorkerState> for () {
 
 #[tokio::test]
 async fn local_client_multi_worker_example_flow_has_expected_events_without_replays() {
-    let client = LocalClient::builder()
+    let client = FusedClient::builder()
         .namespace("multi-worker-regression")
         .build()
         .await
@@ -368,7 +368,7 @@ async fn local_client_multi_worker_example_flow_has_expected_events_without_repl
 #[tokio::test]
 async fn local_client_single_worker_single_journey_example_flow_has_expected_events_without_replays(
 ) {
-    let client = LocalClient::builder()
+    let client = FusedClient::builder()
         .namespace("single-worker-regression")
         .build()
         .await

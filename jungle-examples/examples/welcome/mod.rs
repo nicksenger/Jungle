@@ -24,7 +24,7 @@ use jungle_sdk::core::JungleWorker;
 #[cfg(feature = "transport")]
 use jungle_sdk::server::ServerBuilder;
 #[cfg(not(feature = "transport"))]
-use jungle_sdk::LocalClient;
+use jungle_sdk::FusedClient;
 use jungle_sdk::{ExecutorError, JourneyUpdateEvent, JungleClient};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
@@ -62,7 +62,7 @@ const RUNTIME_HEARTBEAT_LOG_INTERVAL: u64 = 300;
 #[cfg(feature = "transport")]
 pub(crate) type RuntimeClient = jungle_sdk::Client<TheJungle>;
 #[cfg(not(feature = "transport"))]
-pub(crate) type RuntimeClient = LocalClient;
+pub(crate) type RuntimeClient = FusedClient;
 
 #[cfg(feature = "postgres")]
 type PostgresContainer = testcontainers::ContainerAsync<Postgres>;
@@ -1242,7 +1242,7 @@ async fn setup_local_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive
                 error!(error = %err, "failed building postgres server backend");
                 err.to_string()
             })?;
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .backend(backend)
             .build()
             .await
@@ -1265,7 +1265,7 @@ async fn setup_local_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive
                 error!(error = %err, "failed building redb server backend");
                 err.to_string()
             })?;
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .backend(backend)
             .build()
             .await
@@ -1278,7 +1278,7 @@ async fn setup_local_runtime_client() -> Result<(RuntimeClient, RuntimeKeepAlive
 
     #[cfg(not(any(feature = "redb", feature = "postgres")))]
     {
-        let client = LocalClient::builder().build().await.map_err(|err| {
+        let client = FusedClient::builder().build().await.map_err(|err| {
             error!(error = %err, "failed building in-memory local client");
             err.to_string()
         })?;

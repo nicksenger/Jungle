@@ -6,10 +6,10 @@ pub use inception::Inception as Jungle;
 pub use jungle_client as client;
 pub use jungle_client::{Client, JungleClient, MockClient};
 pub use jungle_core as core;
-#[cfg(feature = "local")]
-pub use jungle_local as local;
-#[cfg(feature = "local")]
-pub use jungle_local::LocalClient;
+#[cfg(feature = "fusion")]
+pub use jungle_fusion as fusion;
+#[cfg(feature = "fusion")]
+pub use jungle_fusion::FusedClient;
 pub use jungle_macros::{
     action, animal, effect, sdk_primitive, Animals, Effects, Flow, Journey, Optic,
 };

@@ -487,7 +487,7 @@ impl Ecosystem for LocalTemplateZoo {
 
 #[tokio::test]
 async fn template_binding_local_client_reuses_one_template_for_two_animals_end_to_end() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-local-template-zoo")
         .build()
         .await
@@ -639,7 +639,7 @@ impl RequiresContextBump for std::sync::Arc<LocalTemplateContextZoo> {
 
 #[tokio::test]
 async fn template_binding_unbound_effect_with_context_bound_runs_end_to_end_with_local_client() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-context-bound-template-zoo")
         .build()
         .await
@@ -675,7 +675,7 @@ async fn template_binding_unbound_effect_with_context_bound_runs_end_to_end_with
     let _ = worker_handle.await;
 }
 
-async fn await_completion(client: &jungle_sdk::LocalClient, journey_id: uuid::Uuid) {
+async fn await_completion(client: &jungle_sdk::FusedClient, journey_id: uuid::Uuid) {
     let completion = tokio::time::timeout(Duration::from_secs(8), async {
         loop {
             let status = client
@@ -790,7 +790,7 @@ impl Ecosystem for ComposedTemplateZoo {
 
 #[tokio::test]
 async fn template_binding_composes_unbound_fragments_then_binds_once_per_animal() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-composed-template-zoo")
         .build()
         .await
@@ -1117,7 +1117,7 @@ fn template_binding_unbound_flow_supports_traverse_and_replace_with_lens_specs()
 
 #[tokio::test]
 async fn template_binding_unbound_lens_template_runs_end_to_end() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-lens-replace-zoo")
         .build()
         .await
@@ -1448,7 +1448,7 @@ async fn template_binding_nested_view_scopes_with_multiple_steps_run_end_to_end(
     type LeafScopedExpected = Scoped<NestedLensLeaf, <NestedLeafScopedFlow as ReplaceFlow>::Output>;
     assert_type_eq!(LeafScopedTraverse, LeafScopedExpected);
 
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-nested-view-scoped-zoo")
         .build()
         .await
@@ -1520,7 +1520,7 @@ fn template_binding_generic_focus_supports_nested_concrete_focus() {
 
 #[tokio::test]
 async fn template_binding_generic_focus_nested_concrete_focus_runs_end_to_end_local() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-generic-nested-scope-zoo")
         .build()
         .await
@@ -1803,7 +1803,7 @@ fn template_binding_higher_order_generic_loop2_container_is_supported() {
 
 #[tokio::test]
 async fn template_binding_higher_order_generic_loop2_container_runs_end_to_end_local() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-loop2-zoo")
         .build()
         .await
@@ -2102,7 +2102,7 @@ async fn template_binding_focus_is_inherited_through_unfocused_nested_flows_for_
     let state = exec.into_state();
     assert_eq!(state.branch.spare, 4);
 
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-inherited-auto-focus-zoo")
         .build()
         .await
@@ -2196,7 +2196,7 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
     let state = exec.into_state();
     assert_eq!(state.branch.spare, 4);
 
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-inherited-auto-focus-conditional-zoo")
         .build()
         .await
@@ -2434,7 +2434,7 @@ impl From<ConditionalJoinMergeState> for () {
 
 #[tokio::test]
 async fn conditional_then_join_branches_then_merge_flattens_unit_output_end_to_end() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("conditional-join-merge-local-client-zoo")
         .build()
         .await
@@ -3167,7 +3167,7 @@ impl Ecosystem for ComplexMixedZoo {
 
 #[tokio::test]
 async fn template_binding_long_shared_and_unique_segments_with_different_animal_states_e2e() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("late-bound-complex-mixed-zoo")
         .build()
         .await

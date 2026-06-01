@@ -1079,12 +1079,12 @@ impl Animal for NestedJoinWithInnerNoopAnimal {
 }
 
 #[derive(Animals)]
-struct SelectJoinLocalClientAnimals(LocalConditionalJoinTailAnimal);
+struct SelectJoinFusedClientAnimals(LocalConditionalJoinTailAnimal);
 
-struct SelectJoinLocalClientZoo;
-impl Ecosystem for SelectJoinLocalClientZoo {
+struct SelectJoinFusedClientZoo;
+impl Ecosystem for SelectJoinFusedClientZoo {
     const NAME: &'static str = "select-join-local-client-zoo";
-    type Animals = SelectJoinLocalClientAnimals;
+    type Animals = SelectJoinFusedClientAnimals;
 }
 
 impl From<SelectJoinState> for () {
@@ -1225,13 +1225,13 @@ async fn join_state_dependent_right_branch_does_not_wedge() {
 
 #[tokio::test]
 async fn conditional_join_then_tail_streams_events_and_completes_with_local_client() {
-    let client = jungle_sdk::LocalClient::builder()
+    let client = jungle_sdk::FusedClient::builder()
         .namespace("select-join-conditional-join-tail")
         .build()
         .await
         .expect("local client should build");
 
-    let worker = jungle_sdk::core::JungleWorker::new(SelectJoinLocalClientZoo, client.clone());
+    let worker = jungle_sdk::core::JungleWorker::new(SelectJoinFusedClientZoo, client.clone());
     let worker_handle = tokio::spawn(async move {
         let _ = worker.spawn().await;
     });

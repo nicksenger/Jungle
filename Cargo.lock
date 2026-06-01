@@ -2812,7 +2812,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "jungle-local"
+name = "jungle-fusion"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -2877,7 +2877,7 @@ dependencies = [
  "inception",
  "jungle-client",
  "jungle-core",
- "jungle-local",
+ "jungle-fusion",
  "jungle-macros",
  "jungle-server",
  "jungle-types",

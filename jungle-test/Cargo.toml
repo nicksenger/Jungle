@@ -8,7 +8,7 @@ default = []
 postgres = []
 
 [dependencies]
-jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["server", "pg", "redb", "local"] }
+jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["server", "pg", "redb", "fusion"] }
 
 [dev-dependencies]
 jungle-persist = { path = "../jungle-persist", features = ["postgres"] }

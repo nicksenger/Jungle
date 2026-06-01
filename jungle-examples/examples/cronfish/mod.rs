@@ -1,7 +1,7 @@
 use clap::Parser;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
-use jungle_sdk::{JungleClient, LocalClient};
+use jungle_sdk::{JungleClient, FusedClient};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -52,7 +52,7 @@ async fn main() {
         cmd: args.cmd,
     };
 
-    let client = LocalClient::builder()
+    let client = FusedClient::builder()
         .build()
         .await
         .expect("cronfish local client should build");
@@ -70,7 +70,7 @@ async fn main() {
     await_journey_completion(&client, journey_id).await;
 }
 
-async fn await_journey_completion(client: &LocalClient, journey_id: uuid::Uuid) {
+async fn await_journey_completion(client: &FusedClient, journey_id: uuid::Uuid) {
     loop {
         let status = client
             .journey_details(journey_id)

@@ -3190,13 +3190,13 @@ mod tests {
     use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
-    use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
+    use jungle_sdk::{JungleClient, FusedClient, RunnerUpdateOut};
 
     use super::super::Bass;
     use super::{BassJoinSound100Animal, BassistState};
     use crate::ecosystem::TheJungle;
 
-    async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
+    async fn await_completion(client: &FusedClient, journey_id: uuid::Uuid) {
         let completion = tokio::time::timeout(Duration::from_secs(8), async {
             loop {
                 let status = client
@@ -3267,7 +3267,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_song_journey_starts_and_stays_alive() {
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace("welcome-bass-intro-test")
             .build()
             .await
@@ -3307,7 +3307,7 @@ mod tests {
         const PARALLEL_JOURNEYS: usize = 1;
 
         let namespace = format!("welcome-bass-join-Sound-100-test-{}", uuid::Uuid::new_v4());
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace(&namespace)
             .build()
             .await

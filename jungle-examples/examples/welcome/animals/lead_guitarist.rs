@@ -1681,7 +1681,7 @@ mod tests {
     use futures::StreamExt;
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::*;
-    use jungle_sdk::{JungleClient, LocalClient, RunnerUpdateOut};
+    use jungle_sdk::{JungleClient, FusedClient, RunnerUpdateOut};
 
     use super::super::LeadGuitarist;
     use super::{LeadGuitaristState, LeadJoinSound100Animal};
@@ -1695,7 +1695,7 @@ mod tests {
     const EXPECTED_DUPLICATE_EXECUTION_TOTAL_EVENTS: u32 = 2_442;
 
     async fn await_completion_with_timeout(
-        client: &LocalClient,
+        client: &FusedClient,
         journey_id: uuid::Uuid,
         timeout: Duration,
     ) {
@@ -1719,7 +1719,7 @@ mod tests {
         assert!(completion.is_ok(), "journey should complete within timeout");
     }
 
-    async fn await_completion(client: &LocalClient, journey_id: uuid::Uuid) {
+    async fn await_completion(client: &FusedClient, journey_id: uuid::Uuid) {
         await_completion_with_timeout(client, journey_id, Duration::from_secs(8)).await;
     }
 
@@ -1822,7 +1822,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 16)]
     async fn lead_guitarist_flow_multi_worker_local_client_has_exact_event_counts() {
         let namespace = format!("welcome-rhythm-dup-exec-{}", uuid::Uuid::new_v4());
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace(&namespace)
             .build()
             .await
@@ -1905,7 +1905,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_song_journey_starts_and_stays_alive() {
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace("welcome-rhythm-intro-test")
             .build()
             .await
@@ -1948,7 +1948,7 @@ mod tests {
             "welcome-rhythm-join-Sound-100-test-{}",
             uuid::Uuid::new_v4()
         );
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace(&namespace)
             .build()
             .await

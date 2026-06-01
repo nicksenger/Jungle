@@ -1240,14 +1240,14 @@ mod tests {
 
     use jungle_sdk::core::JungleWorker;
     use jungle_sdk::prelude::JourneyStatus;
-    use jungle_sdk::{JungleClient, LocalClient};
+    use jungle_sdk::{JungleClient, FusedClient};
 
     use super::super::RhythmGuitarist;
     use crate::ecosystem::TheJungle;
 
     #[tokio::test]
     async fn full_song_journey_starts_and_stays_alive() {
-        let client = LocalClient::builder()
+        let client = FusedClient::builder()
             .namespace("welcome-lead-guitar-intro-test")
             .build()
             .await
