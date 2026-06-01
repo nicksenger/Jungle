@@ -5,8 +5,8 @@ use crate::{
 use async_trait::async_trait;
 use futures::StreamExt;
 use jungle_types::{
-    Animal, AnimalIdValue, ClaimedPerturbable, Ecosystem, ExecutorError, JourneyStatus, OwnerWake,
-    RunnerOut, SupportedAnimal, Work,
+    Animal, AnimalIdValue, ClaimedPerturbable, Ecosystem, ExecutorError, JourneyRecord,
+    JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, Work,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -39,6 +39,9 @@ type JourneyHistoryHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Vec<RunnerOut>, ExecutorError>> + Send + 'static>>;
 type JourneyHistoryHandler =
     Arc<dyn Fn(Uuid) -> JourneyHistoryHandlerFuture + Send + Sync + 'static>;
+type ListJourneysHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<Vec<JourneyRecord>, ExecutorError>> + Send + 'static>>;
+type ListJourneysHandler = Arc<dyn Fn(String) -> ListJourneysHandlerFuture + Send + Sync + 'static>;
 type FlowCompleteHandlerFuture =
     Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
 type FlowCompleteHandler = Arc<dyn Fn(Uuid) -> FlowCompleteHandlerFuture + Send + Sync + 'static>;
@@ -74,6 +77,7 @@ pub struct MockClient {
     namespace: String,
     on_create_flow: CreateFlowHandler,
     on_journey_history: JourneyHistoryHandler,
+    on_list_journeys: ListJourneysHandler,
     on_flow_status: FlowStatusHandler,
     on_flow_appearance: FlowAppearanceHandler,
     on_flow_appearance_update: FlowAppearanceUpdateHandler,
@@ -109,10 +113,7 @@ impl MockClient {
         seed: Vec<u8>,
     ) -> Result<JourneyHandle, ExecutorError> {
         let journey_id = (self.on_create_flow)(animal_id, seed).await?;
-        Ok(JourneyHandle::new(
-            journey_id,
-            Box::new(self.clone()),
-        ))
+        Ok(JourneyHandle::new(journey_id, Box::new(self.clone())))
     }
 
     pub async fn serve_runner_channel(&self, mut rx: RunnerChannelRx) {
@@ -187,6 +188,10 @@ impl JungleClient for MockClient {
 
     async fn journey_history(&self, id: Uuid) -> Result<Vec<RunnerOut>, ExecutorError> {
         (self.on_journey_history)(id).await
+    }
+
+    async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>, ExecutorError> {
+        (self.on_list_journeys)(namespace).await
     }
 
     async fn subscribe_step_updates(
@@ -312,6 +317,7 @@ pub struct MockClientBuilder {
     namespace: String,
     on_create_flow: Option<CreateFlowHandler>,
     on_journey_history: Option<JourneyHistoryHandler>,
+    on_list_journeys: Option<ListJourneysHandler>,
     on_flow_status: Option<FlowStatusHandler>,
     on_flow_appearance: Option<FlowAppearanceHandler>,
     on_flow_appearance_update: Option<FlowAppearanceUpdateHandler>,
@@ -337,6 +343,7 @@ impl Default for MockClientBuilder {
             namespace: "default".to_string(),
             on_create_flow: None,
             on_journey_history: None,
+            on_list_journeys: None,
             on_flow_status: None,
             on_flow_appearance: None,
             on_flow_appearance_update: None,
@@ -396,6 +403,15 @@ impl MockClientBuilder {
         Fut: Future<Output = Result<Vec<RunnerOut>, ExecutorError>> + Send + 'static,
     {
         self.on_journey_history = Some(Arc::new(move |id| Box::pin(f(id))));
+        self
+    }
+
+    pub fn on_list_journeys<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Vec<JourneyRecord>, ExecutorError>> + Send + 'static,
+    {
+        self.on_list_journeys = Some(Arc::new(move |namespace| Box::pin(f(namespace))));
         self
     }
 
@@ -559,6 +575,8 @@ impl MockClientBuilder {
             Arc::new(|_, _| Box::pin(async { Ok(Uuid::new_v4()) }));
         let default_journey_history_handler: JourneyHistoryHandler =
             Arc::new(|_| Box::pin(async { Ok(Vec::new()) }));
+        let default_list_journeys_handler: ListJourneysHandler =
+            Arc::new(|_| Box::pin(async { Ok(Vec::new()) }));
         let default_flow_status_handler: FlowStatusHandler =
             Arc::new(|_| Box::pin(async { Ok(JourneyStatus::Alive) }));
         let default_flow_appearance_handler: FlowAppearanceHandler =
@@ -596,6 +614,9 @@ impl MockClientBuilder {
             on_journey_history: self
                 .on_journey_history
                 .unwrap_or_else(|| default_journey_history_handler.clone()),
+            on_list_journeys: self
+                .on_list_journeys
+                .unwrap_or_else(|| default_list_journeys_handler.clone()),
             on_flow_status: self
                 .on_flow_status
                 .unwrap_or_else(|| default_flow_status_handler.clone()),

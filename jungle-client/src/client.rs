@@ -4,8 +4,8 @@ use chrono::Utc;
 use futures::Stream;
 use jungle_types::{
     Animal, AnimalIdValue, AnimalSet, Animals, BackendError, ClaimedPerturbable, Ecosystem,
-    ExecutorError, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, StripAnimalHeaders,
-    SupportedAnimal, WireIn, WireOut, Work,
+    ExecutorError, JourneyRecord, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
+    StripAnimalHeaders, SupportedAnimal, WireIn, WireOut, Work,
 };
 use quinn::crypto::rustls::QuicClientConfig;
 use rustls::pki_types::CertificateDer;
@@ -509,6 +509,7 @@ impl<J> Client<J> {
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
+            | WireOut::Journeys(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-created response for spawn_by_id".to_string(),
             )),
@@ -537,11 +538,11 @@ where
             .map_err(|err| ExecutorError::InputSerialize(err.to_string()))?;
         let journey_id = self
             .spawn_by_id(
-            <A::Id as AnimalIdValue>::U32,
-            <A::Generation as Unsigned>::U32,
-            seed,
-        )
-        .await?;
+                <A::Id as AnimalIdValue>::U32,
+                <A::Generation as Unsigned>::U32,
+                seed,
+            )
+            .await?;
         Ok(JourneyHandle::new(journey_id, Box::new(self.clone())))
     }
 
@@ -561,8 +562,32 @@ where
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
+            | WireOut::Journeys(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-history response for journey_history".to_string(),
+            )),
+        }
+    }
+
+    async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::ListJourneys { namespace })
+            .await
+            .map_err(Self::transport_error)?;
+
+        match response {
+            WireOut::Journeys(journeys) => Ok(journeys),
+            WireOut::JourneyCreated(_)
+            | WireOut::JourneyHistory(_)
+            | WireOut::JourneyStatus(_)
+            | WireOut::AnimalAppearance(_)
+            | WireOut::ClaimedPerturbable(_)
+            | WireOut::NoAvailableSteps
+            | WireOut::PendingStep(_)
+            | WireOut::OwnerWake(_)
+            | WireOut::JourneyUpdate(_)
+            | WireOut::Ack => Err(ExecutorError::ClientTransport(
+                "unexpected non-journeys response for list_journeys".to_string(),
             )),
         }
     }
@@ -591,6 +616,7 @@ where
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
+            | WireOut::Journeys(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-status response for journey_details".to_string(),
             )),
@@ -613,6 +639,7 @@ where
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
+            | WireOut::Journeys(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected non-animal-appearance response for animal_appearance".to_string(),
             )),
@@ -641,9 +668,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for animal_appearance_update".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for animal_appearance_update".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for animal_appearance_update".to_string(),
+                ))
+            }
         }
     }
 
@@ -668,9 +697,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for perturb_animal".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for perturb_animal".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for perturb_animal".to_string(),
+                ))
+            }
         }
     }
 
@@ -693,6 +724,7 @@ where
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
+            | WireOut::Journeys(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for claim_animal_perturbation".to_string(),
             )),
@@ -724,9 +756,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for ack_animal_perturbation".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for ack_animal_perturbation".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for ack_animal_perturbation".to_string(),
+                ))
+            }
         }
     }
 
@@ -794,9 +828,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for schedule_sleep_timer".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for schedule_sleep_timer".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for schedule_sleep_timer".to_string(),
+                ))
+            }
         }
     }
 
@@ -818,9 +854,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for complete_journey".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for complete_journey".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for complete_journey".to_string(),
+                ))
+            }
         }
     }
 
@@ -842,9 +880,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for dead_journey".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for dead_journey".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for dead_journey".to_string(),
+                ))
+            }
         }
     }
 
@@ -866,9 +906,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for poll_timers".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for poll_timers".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for poll_timers".to_string(),
+                ))
+            }
         }
     }
 
@@ -894,6 +936,7 @@ where
             | WireOut::ClaimedPerturbable(_)
             | WireOut::OwnerWake(_)
             | WireOut::JourneyUpdate(_)
+            | WireOut::Journeys(_)
             | WireOut::Ack => Err(ExecutorError::ClientTransport(
                 "unexpected response for poll_work".to_string(),
             )),
@@ -927,7 +970,8 @@ where
             | WireOut::NoAvailableSteps
             | WireOut::PendingStep(_)
             | WireOut::OwnerWake(_)
-            | WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
+            | WireOut::JourneyUpdate(_)
+            | WireOut::Journeys(_) => Err(ExecutorError::ClientTransport(
                 "unexpected response for wait_for_worker_wake".to_string(),
             )),
         }
@@ -964,9 +1008,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for effect_input".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for effect_input".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for effect_input".to_string(),
+                ))
+            }
         }
     }
 
@@ -1001,9 +1047,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for effect_success_output".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for effect_success_output".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for effect_success_output".to_string(),
+                ))
+            }
         }
     }
 
@@ -1038,9 +1086,11 @@ where
             | WireOut::OwnerWake(_) => Err(ExecutorError::ClientTransport(
                 "unexpected non-ack response for effect_failure_output".to_string(),
             )),
-            WireOut::JourneyUpdate(_) => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for effect_failure_output".to_string(),
-            )),
+            WireOut::JourneyUpdate(_) | WireOut::Journeys(_) => {
+                Err(ExecutorError::ClientTransport(
+                    "unexpected non-ack response for effect_failure_output".to_string(),
+                ))
+            }
         }
     }
 }

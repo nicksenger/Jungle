@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use jungle_types::{
-    ClaimedPerturbable, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, SupportedAnimal,
-    Work,
+    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
+    SupportedAnimal, Work,
 };
 use uuid::Uuid;
 
@@ -13,6 +13,8 @@ type ClaimWorkHandler =
     Arc<dyn Fn(String, Vec<SupportedAnimal>) -> Result<Option<Work>> + Send + Sync + 'static>;
 type CreateFlowHandler = Arc<dyn Fn(String, u32, Vec<u8>) -> Result<Uuid> + Send + Sync + 'static>;
 type JourneyHistoryHandler = Arc<dyn Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static>;
+type ListJourneysHandler =
+    Arc<dyn Fn(String) -> Result<Vec<JourneyRecord>> + Send + Sync + 'static>;
 type JourneyUpdateEventsSinceHandler =
     Arc<dyn Fn(Uuid, Option<u64>) -> Result<Vec<JourneyUpdateEvent>> + Send + Sync + 'static>;
 type FlowStatusHandler = Arc<dyn Fn(Uuid) -> Result<JourneyStatus> + Send + Sync + 'static>;
@@ -37,6 +39,7 @@ type PollTimersHandler = Arc<dyn Fn() -> Result<Option<()>> + Send + Sync + 'sta
 pub struct MockStore {
     on_create_flow: CreateFlowHandler,
     on_journey_history: JourneyHistoryHandler,
+    on_list_journeys: ListJourneysHandler,
     on_journey_update_events_since: JourneyUpdateEventsSinceHandler,
     on_flow_status: FlowStatusHandler,
     on_flow_appearance: FlowAppearanceHandler,
@@ -86,6 +89,10 @@ impl JungleStore for MockStore {
 
     async fn journey_history(&self, journey_id: Uuid) -> Result<Vec<RunnerOut>> {
         (self.on_journey_history)(journey_id)
+    }
+
+    async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>> {
+        (self.on_list_journeys)(namespace)
     }
 
     async fn journey_update_events_since(
@@ -182,6 +189,7 @@ impl JungleStore for MockStore {
 pub struct MockStoreBuilder {
     on_create_flow: Option<CreateFlowHandler>,
     on_journey_history: Option<JourneyHistoryHandler>,
+    on_list_journeys: Option<ListJourneysHandler>,
     on_journey_update_events_since: Option<JourneyUpdateEventsSinceHandler>,
     on_flow_status: Option<FlowStatusHandler>,
     on_flow_appearance: Option<FlowAppearanceHandler>,
@@ -223,6 +231,14 @@ impl MockStoreBuilder {
         F: Fn(Uuid) -> Result<Vec<RunnerOut>> + Send + Sync + 'static,
     {
         self.on_journey_history = Some(Arc::new(f));
+        self
+    }
+
+    pub fn on_list_journeys<F>(mut self, f: F) -> Self
+    where
+        F: Fn(String) -> Result<Vec<JourneyRecord>> + Send + Sync + 'static,
+    {
+        self.on_list_journeys = Some(Arc::new(f));
         self
     }
 
@@ -357,6 +373,7 @@ impl MockStoreBuilder {
     pub fn build(self) -> MockStore {
         let default_create_flow: CreateFlowHandler = Arc::new(|_, _, _| Ok(Uuid::new_v4()));
         let default_journey_history: JourneyHistoryHandler = Arc::new(|_| Ok(Vec::new()));
+        let default_list_journeys: ListJourneysHandler = Arc::new(|_| Ok(Vec::new()));
         let default_journey_update_events_since: JourneyUpdateEventsSinceHandler =
             Arc::new(|_, _| Ok(Vec::new()));
         let default_flow_status: FlowStatusHandler = Arc::new(|_| Ok(JourneyStatus::Alive));
@@ -384,6 +401,9 @@ impl MockStoreBuilder {
             on_journey_history: self
                 .on_journey_history
                 .unwrap_or_else(|| default_journey_history.clone()),
+            on_list_journeys: self
+                .on_list_journeys
+                .unwrap_or_else(|| default_list_journeys.clone()),
             on_journey_update_events_since: self
                 .on_journey_update_events_since
                 .unwrap_or_else(|| default_journey_update_events_since.clone()),

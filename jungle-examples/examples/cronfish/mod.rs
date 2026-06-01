@@ -3,8 +3,6 @@ use futures::StreamExt;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{Client, JourneyHandle};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::fs;
 use std::io;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -20,7 +18,6 @@ const DEFAULT_SERVER_ADDR: &str = "[::1]:4433";
 const DEFAULT_SERVER_NAME: &str = "localhost";
 const DEFAULT_CRONFISH_DIR: &str = ".cronfish";
 const DEFAULT_REDB_FILENAME: &str = "db.redb";
-const DEFAULT_JOBS_FILENAME: &str = "jobs.toml";
 
 pub(crate) type CronExpr = String;
 
@@ -134,18 +131,6 @@ struct MonitorArgs {
     connection: ConnectionArgs,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-struct JobRegistry {
-    jobs: BTreeMap<String, JobRecord>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct JobRecord {
-    journey_id: Uuid,
-    expr: String,
-    cmd: String,
-}
-
 pub struct Cronfish;
 #[jungle::animal(id = 0, generation = 0)]
 impl Animal for Cronfish {
@@ -243,17 +228,6 @@ async fn run_job_start(args: JobStartArgs) -> Result<(), Box<dyn std::error::Err
     let journey = client.spawn::<Cronfish>(&seed).await?;
     println!("started job {}", journey.journey_id);
 
-    let mut registry = load_registry().unwrap_or_default();
-    registry.jobs.insert(
-        journey.journey_id.to_string(),
-        JobRecord {
-            journey_id: journey.journey_id,
-            expr: seed.expr,
-            cmd: seed.cmd,
-        },
-    );
-    save_registry(&registry)?;
-
     if args.follow {
         stream_updates(&journey, None).await?;
     }
@@ -262,43 +236,49 @@ async fn run_job_start(args: JobStartArgs) -> Result<(), Box<dyn std::error::Err
 }
 
 async fn run_job_list(args: JobListArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let registry = load_registry().unwrap_or_default();
-    if registry.jobs.is_empty() {
-        println!("no jobs recorded");
-        return Ok(());
-    }
-
     let client = connect_client(&args.connection).await?;
-    for record in registry.jobs.values() {
-        let status = match client.journey_details(record.journey_id).await {
-            Ok(status) => status,
-            Err(err) => {
-                eprintln!(
-                    "warning: failed to fetch status for {}: {}",
-                    record.journey_id, err
-                );
-                continue;
-            }
-        };
+    let journeys = client
+        .list_journeys(PaleozoicEcosystem::NAME.to_string())
+        .await?;
+    let cronfish_animal_id = <<Cronfish as Animal>::Id as AnimalIdValue>::U32;
+    let mut printed = 0usize;
+    for record in journeys {
+        if record.animal_id != cronfish_animal_id {
+            continue;
+        }
+        let status = record.status;
         if !args.all && is_terminal(status) {
             continue;
         }
-        println!(
-            "{}\t{:?}\t{}\t{}",
-            record.journey_id, status, record.expr, record.cmd
-        );
+        let seed = postcard::from_bytes::<CronState>(&record.seed).ok();
+        let expr = seed
+            .as_ref()
+            .map(|value| value.expr.as_str())
+            .unwrap_or("<seed decode failed>");
+        let cmd = seed
+            .as_ref()
+            .map(|value| value.cmd.as_str())
+            .unwrap_or("<seed decode failed>");
+        println!("{}\t{:?}\t{}\t{}", record.journey_id, status, expr, cmd);
+        printed = printed.saturating_add(1);
+    }
+    if printed == 0 {
+        println!("no jobs found");
     }
     Ok(())
 }
 
 async fn run_job_status(args: JobStatusArgs) -> Result<(), Box<dyn std::error::Error>> {
     let client = connect_client(&args.connection).await?;
-    let status = client.journey_details(args.journey_id).await.map_err(|err| {
-        std::io::Error::other(format!(
-            "failed to fetch job status for {}: {}",
-            args.journey_id, err
-        ))
-    })?;
+    let status = client
+        .journey_details(args.journey_id)
+        .await
+        .map_err(|err| {
+            std::io::Error::other(format!(
+                "failed to fetch job status for {}: {}",
+                args.journey_id, err
+            ))
+        })?;
     println!("{}\t{:?}", args.journey_id, status);
     Ok(())
 }
@@ -372,30 +352,9 @@ fn default_redb_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(cronfish_dir()?.join(DEFAULT_REDB_FILENAME))
 }
 
-fn default_jobs_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    Ok(cronfish_dir()?.join(DEFAULT_JOBS_FILENAME))
-}
-
 fn ensure_parent_dir_exists(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        std::fs::create_dir_all(parent)?;
     }
-    Ok(())
-}
-
-fn load_registry() -> Result<JobRegistry, Box<dyn std::error::Error>> {
-    let path = default_jobs_path()?;
-    match fs::read_to_string(&path) {
-        Ok(content) => Ok(toml::from_str(&content)?),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(JobRegistry::default()),
-        Err(err) => Err(Box::new(err)),
-    }
-}
-
-fn save_registry(registry: &JobRegistry) -> Result<(), Box<dyn std::error::Error>> {
-    let path = default_jobs_path()?;
-    ensure_parent_dir_exists(&path)?;
-    let out = toml::to_string_pretty(registry)?;
-    fs::write(path, out)?;
     Ok(())
 }

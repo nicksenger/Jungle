@@ -186,6 +186,22 @@ impl JungleServer for Server {
                     )));
                 }
             }
+            Some(WireIn::ListJourneys { namespace }) => {
+                #[cfg(any(feature = "postgres", feature = "redb"))]
+                {
+                    let journeys = self.store.list_journeys(namespace).await.map_err(|err| {
+                        crate::ServerError::Backend(BackendError::Message(err.to_string()))
+                    })?;
+                    WireOut::Journeys(journeys)
+                }
+                #[cfg(not(any(feature = "postgres", feature = "redb")))]
+                {
+                    let _ = namespace;
+                    return Err(crate::ServerError::Backend(BackendError::Message(
+                        "list_journeys is unavailable without a persistence backend".to_string(),
+                    )));
+                }
+            }
             Some(WireIn::SubscribeJourneyUpdates {
                 journey_id,
                 after_sequence_id,
@@ -825,6 +841,7 @@ fn wire_in_kind(input: &WireIn) -> &'static str {
         WireIn::CreateJourney { .. } => "CreateJourney",
         WireIn::JourneyHistory(..) => "JourneyHistory",
         WireIn::JourneyStatus(..) => "JourneyStatus",
+        WireIn::ListJourneys { .. } => "ListJourneys",
         WireIn::SubscribeJourneyUpdates { .. } => "SubscribeJourneyUpdates",
         WireIn::AnimalAppearance(..) => "AnimalAppearance",
         WireIn::PerturbAnimal { .. } => "PerturbAnimal",

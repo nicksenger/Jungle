@@ -111,6 +111,16 @@ pub enum JourneyStatus {
     Dead,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyRecord {
+    pub journey_id: Uuid,
+    pub namespace: String,
+    pub animal_id: u32,
+    pub generation: u32,
+    pub status: JourneyStatus,
+    pub seed: Vec<u8>,
+}
+
 /// Work messages sent from external clients to runners.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Work {
@@ -142,6 +152,9 @@ pub enum WireIn {
     },
     JourneyHistory(Uuid),
     JourneyStatus(Uuid),
+    ListJourneys {
+        namespace: String,
+    },
     SubscribeJourneyUpdates {
         journey_id: Uuid,
         after_sequence_id: Option<u64>,
@@ -194,6 +207,7 @@ pub enum WireOut {
     JourneyCreated(Uuid),
     JourneyHistory(Vec<RunnerOut>),
     JourneyStatus(JourneyStatus),
+    Journeys(Vec<JourneyRecord>),
     JourneyUpdate(JourneyUpdateEvent),
     AnimalAppearance(Option<Vec<u8>>),
     ClaimedPerturbable(Option<ClaimedPerturbable>),

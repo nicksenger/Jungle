@@ -1,11 +1,11 @@
 use crate::models::{SchemaVersion, SCHEMA_VERSION};
 use crate::{JungleStore, Result};
 use async_trait::async_trait;
-use jungle_types::JourneyStatus;
 use jungle_types::{
     ClaimedPerturbable, JourneyUpdateEvent, OwnerWake, RunnerOut, RunnerUpdateOut, SupportedAnimal,
     Work,
 };
+use jungle_types::{JourneyRecord, JourneyStatus};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Row;
@@ -323,6 +323,47 @@ impl JungleStore for PgStore {
         })?;
 
         decode_journey_status(status)
+    }
+
+    async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT id, namespace, animal_id, generation, status, seed
+            FROM journeys
+            WHERE namespace = $1
+            ORDER BY id
+            "#,
+            namespace
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(crate::PersistenceError::PostgresQuery)?;
+
+        let mut journeys = Vec::with_capacity(rows.len());
+        for row in rows {
+            let animal_id = u32::try_from(row.animal_id).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "negative animal_id in postgres journeys: {}",
+                    row.animal_id
+                ))
+            })?;
+            let generation = u32::try_from(row.generation).map_err(|_| {
+                crate::PersistenceError::Message(format!(
+                    "negative generation in postgres journeys: {}",
+                    row.generation
+                ))
+            })?;
+            journeys.push(JourneyRecord {
+                journey_id: row.id,
+                namespace: row.namespace,
+                animal_id,
+                generation,
+                status: decode_journey_status(row.status)?,
+                seed: row.seed,
+            });
+        }
+
+        Ok(journeys)
     }
 
     async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {

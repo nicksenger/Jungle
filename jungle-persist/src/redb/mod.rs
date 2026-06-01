@@ -3,8 +3,8 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jungle_types::{
-    ClaimedPerturbable, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut, RunnerUpdateOut,
-    SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, OwnerWake, RunnerOut,
+    RunnerUpdateOut, SupportedAnimal, Work,
 };
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -449,6 +449,49 @@ impl JungleStore for RedbStore {
             "redb journey_status decode journey value",
         )?;
         Ok(flow.status)
+    }
+
+    async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>> {
+        let read_tx = self.db.begin_read().map_err(|err| {
+            crate::PersistenceError::Message(format!("redb list_journeys begin read failed: {err}"))
+        })?;
+        let journeys = read_tx.open_table(JOURNEYS_TABLE).map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb list_journeys open journeys table failed: {err}"
+            ))
+        })?;
+        let iter = journeys.iter().map_err(|err| {
+            crate::PersistenceError::Message(format!(
+                "redb list_journeys iterate journeys failed: {err}"
+            ))
+        })?;
+
+        let mut out = Vec::new();
+        for entry in iter {
+            let (raw_id, raw_journey) = entry.map_err(|err| {
+                crate::PersistenceError::Message(format!(
+                    "redb list_journeys read journeys entry failed: {err}"
+                ))
+            })?;
+            let journey_id = decode_uuid(raw_id.value(), "redb list_journeys decode journey id")?;
+            let journey = decode_journey(
+                raw_journey.value(),
+                "redb list_journeys decode journey value",
+            )?;
+            if journey.namespace != namespace {
+                continue;
+            }
+            out.push(JourneyRecord {
+                journey_id,
+                namespace: journey.namespace,
+                animal_id: journey.animal_id,
+                generation: journey.generation,
+                status: journey.status,
+                seed: journey.seed,
+            });
+        }
+
+        Ok(out)
     }
 
     async fn animal_appearance(&self, journey_id: Uuid) -> Result<Option<Vec<u8>>> {

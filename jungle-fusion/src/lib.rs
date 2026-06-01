@@ -4,8 +4,8 @@ use futures::stream;
 use jungle_client::{JourneyHandle, JourneyUpdateSubscription, JungleClient};
 use jungle_server::{JungleServer, Server, ServerError, WireRx, WireTx};
 use jungle_types::{
-    Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyStatus,
-    OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
+    Animal, AnimalIdValue, BackendError, ClaimedPerturbable, ExecutorError, JourneyRecord,
+    JourneyStatus, OwnerWake, RunnerOut, SupportedAnimal, WireIn, WireOut, Work,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -311,6 +311,7 @@ fn wire_in_kind(input: &WireIn) -> &'static str {
         WireIn::CreateJourney { .. } => "CreateJourney",
         WireIn::JourneyHistory(..) => "JourneyHistory",
         WireIn::JourneyStatus(..) => "JourneyStatus",
+        WireIn::ListJourneys { .. } => "ListJourneys",
         WireIn::SubscribeJourneyUpdates { .. } => "SubscribeJourneyUpdates",
         WireIn::AnimalAppearance(..) => "AnimalAppearance",
         WireIn::PerturbAnimal { .. } => "PerturbAnimal",
@@ -371,10 +372,9 @@ impl JungleClient for FusedClient {
             .await?;
 
         match response {
-            WireOut::JourneyCreated(journey_id) => Ok(JourneyHandle::new(
-                journey_id,
-                Box::new(self.clone()),
-            )),
+            WireOut::JourneyCreated(journey_id) => {
+                Ok(JourneyHandle::new(journey_id, Box::new(self.clone())))
+            }
             _ => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-created response for spawn".to_string(),
             )),
@@ -387,6 +387,18 @@ impl JungleClient for FusedClient {
             WireOut::JourneyHistory(history) => Ok(history),
             _ => Err(ExecutorError::ClientTransport(
                 "unexpected non-journey-history response for journey_history".to_string(),
+            )),
+        }
+    }
+
+    async fn list_journeys(&self, namespace: String) -> Result<Vec<JourneyRecord>, ExecutorError> {
+        let response = self
+            .send_wire_message(WireIn::ListJourneys { namespace })
+            .await?;
+        match response {
+            WireOut::Journeys(journeys) => Ok(journeys),
+            _ => Err(ExecutorError::ClientTransport(
+                "unexpected non-journeys response for list_journeys".to_string(),
             )),
         }
     }
