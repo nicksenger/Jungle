@@ -8,8 +8,9 @@ use futures::StreamExt;
 use jungle_client::{JungleClient, RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     AnimalIdValue, AnimalSet, Animals, ArgputForState, BoundAnimal, BoundAnimalJourney,
-    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Failure, Noop,
-    Observable, Perturbable, RunnerOut, Sleep, StripAnimalHeaders, SupportedAnimal, Work,
+    BuildFlowWithContext, ContextExecutor, DynFlow, Ecosystem, ExecutorError, Failure,
+    JourneyStatus, Noop, Observable, Perturbable, RunnerOut, Sleep, StripAnimalHeaders,
+    SupportedAnimal, Work,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -186,6 +187,12 @@ where
                 && Instant::now() >= next_heartbeat_at
             {
                 for journey_id in suspended.keys().copied().collect::<Vec<_>>() {
+                    if is_terminal_journey_status(self.client.journey_details(journey_id).await?) {
+                        suspended.remove(&journey_id);
+                        pending_wake_ids.remove(&journey_id);
+                        pending_wakes.retain(|id| *id != journey_id);
+                        continue;
+                    }
                     self.client
                         .heartbeat_journey_lease(journey_id, owner_id, self.owner_lease_ttl_ms)
                         .await?;
@@ -210,6 +217,12 @@ where
                     if let Some(wake_journey_id) = pending_wakes.pop_front() {
                         pending_wake_ids.remove(&wake_journey_id);
                         if active_journeys.contains(&wake_journey_id) {
+                            continue;
+                        }
+                        if is_terminal_journey_status(
+                            self.client.journey_details(wake_journey_id).await?,
+                        ) {
+                            suspended.remove(&wake_journey_id);
                             continue;
                         }
                         if let Some(journey) = suspended.remove(&wake_journey_id) {
@@ -406,6 +419,13 @@ fn runner_out_kind(history: &RunnerOut) -> &'static str {
     }
 }
 
+fn is_terminal_journey_status(status: JourneyStatus) -> bool {
+    matches!(
+        status,
+        JourneyStatus::Stopped | JourneyStatus::Completed | JourneyStatus::Dead
+    )
+}
+
 async fn handle_in_flight_result<T>(
     result: InFlightJourneyResult<T>,
     active_journeys: &mut HashSet<Uuid>,
@@ -429,15 +449,22 @@ async fn handle_in_flight_result<T>(
                     )));
                 }
                 JourneyStartOutcome::Completed => {
-                    client.complete_journey(journey_id).await?;
+                    if !is_terminal_journey_status(client.journey_details(journey_id).await?) {
+                        client.complete_journey(journey_id).await?;
+                    }
                 }
                 JourneyStartOutcome::Failed { failure: _ } => {
-                    client.dead_journey(journey_id).await?;
+                    if !is_terminal_journey_status(client.journey_details(journey_id).await?) {
+                        client.dead_journey(journey_id).await?;
+                    }
                 }
                 JourneyStartOutcome::Sleeping {
                     wake_at_unix_ms,
                     journey,
                 } => {
+                    if is_terminal_journey_status(client.journey_details(journey_id).await?) {
+                        return Ok(());
+                    }
                     let timer_id = Uuid::new_v4();
                     client
                         .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
@@ -457,15 +484,22 @@ async fn handle_in_flight_result<T>(
             active_journeys.remove(&journey_id);
             match outcome {
                 SuspendedOutcome::Completed => {
-                    client.complete_journey(journey_id).await?;
+                    if !is_terminal_journey_status(client.journey_details(journey_id).await?) {
+                        client.complete_journey(journey_id).await?;
+                    }
                 }
                 SuspendedOutcome::Failed { failure: _ } => {
-                    client.dead_journey(journey_id).await?;
+                    if !is_terminal_journey_status(client.journey_details(journey_id).await?) {
+                        client.dead_journey(journey_id).await?;
+                    }
                 }
                 SuspendedOutcome::Sleeping {
                     wake_at_unix_ms,
                     node_id: _,
                 } => {
+                    if is_terminal_journey_status(client.journey_details(journey_id).await?) {
+                        return Ok(());
+                    }
                     let timer_id = Uuid::new_v4();
                     client
                         .schedule_sleep_timer(journey_id, timer_id, wake_at_unix_ms)
@@ -925,7 +959,8 @@ where
                     ));
 
             if effect_type == noop_effect_type || has_recoverable_cursor_event {
-                send_recovered_effect_input(tx, journey_id, request_node_id, expected_input).await?;
+                send_recovered_effect_input(tx, journey_id, request_node_id, expected_input)
+                    .await?;
             } else {
                 return Err(ExecutorError::ClientTransport(
                     format!(
