@@ -3,7 +3,6 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{JungleClient, FusedClient};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 mod action;
 mod effect;
@@ -61,30 +60,17 @@ async fn main() {
         let _ = worker.spawn().await;
     });
 
-    let journey_id = client
+    let journey = client
         .spawn::<Cronfish>(&seed)
         .await
-        .expect("cronfish journey should start")
-        .journey_id;
-    println!("cronfish journey started: {journey_id}");
+        .expect("cronfish journey should start");
+    println!("cronfish journey started: {}", journey.journey_id);
 
-    await_journey_completion(&client, journey_id).await;
-}
-
-async fn await_journey_completion(client: &FusedClient, journey_id: uuid::Uuid) {
-    loop {
-        let status = client
-            .journey_details(journey_id)
-            .await
-            .expect("cronfish journey details should be available");
-        match status {
-            JourneyStatus::Completed => break,
-            JourneyStatus::Dead | JourneyStatus::Stopped => {
-                panic!("cronfish journey reached terminal non-complete status: {status:?}");
-            }
-            JourneyStatus::Created | JourneyStatus::Alive => {
-                tokio::time::sleep(Duration::from_millis(25)).await;
-            }
-        }
+    let final_status = journey
+        .await_completion()
+        .await
+        .expect("cronfish journey completion wait should succeed");
+    if !matches!(final_status, JourneyStatus::Completed) {
+        panic!("cronfish journey reached terminal non-complete status: {final_status:?}");
     }
 }
