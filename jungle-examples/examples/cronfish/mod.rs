@@ -40,7 +40,7 @@ pub struct PaleozoicAnimals(Cronfish);
 
 pub struct PaleozoicEcosystem;
 impl Ecosystem for PaleozoicEcosystem {
-    const NAME: &'static str = "cronfish-ecosystem";
+    const NAME: &'static str = "paleozoic-ecosystem";
     type Animals = PaleozoicAnimals;
 }
 
