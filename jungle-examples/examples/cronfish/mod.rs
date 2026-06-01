@@ -44,7 +44,7 @@ enum Command {
     /// Run a long-lived worker.
     Worker(ConnectionArgs),
     /// Run server and worker together in one process.
-    Run(RunArgs),
+    Daemon(DaemonArgs),
     /// One-off job management commands.
     Job {
         #[command(subcommand)]
@@ -63,7 +63,7 @@ struct ServerArgs {
 }
 
 #[derive(Debug, Args)]
-struct RunArgs {
+struct DaemonArgs {
     #[arg(long, default_value = DEFAULT_SERVER_ADDR)]
     listen: SocketAddr,
     #[arg(long)]
@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Command::Server(args) => run_server(args).await?,
         Command::Worker(args) => run_worker(args).await?,
-        Command::Run(args) => run_combined(args).await?,
+        Command::Daemon(args) => run_daemon(args).await?,
         Command::Job { command } => run_job(command).await?,
         Command::Monitor(args) => run_monitor(args).await?,
     }
@@ -194,7 +194,7 @@ async fn run_worker(args: ConnectionArgs) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-async fn run_combined(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_daemon(args: DaemonArgs) -> Result<(), Box<dyn std::error::Error>> {
     let redb_path = args.redb_path.unwrap_or(default_redb_path()?);
     ensure_parent_dir_exists(&redb_path)?;
 
