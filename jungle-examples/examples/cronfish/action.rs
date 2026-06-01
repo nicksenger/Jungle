@@ -22,10 +22,8 @@ impl Action for SeedState {
         _output: EffectCompletion<Self::Effect>,
         seed: CronState,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_1 = {
-            *state = seed;
-        };
-        Ok(__absorb_out_1)
+        *state = seed;
+        Ok(())
     }
 }
 
@@ -63,10 +61,7 @@ impl Action for SleepFor {
         _state: &mut CronState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let __absorb_out_3 = {
-            output.map_err(|_err| Failure::from("cron sleep step should complete"))?;
-        };
-        Ok(__absorb_out_3)
+        Ok(output.map_err(|_err| Failure::from("cron sleep step should complete"))?)
     }
 }
 
@@ -78,7 +73,7 @@ impl Action for Fire {
     type Output = ();
 
     fn emit(state: &CronState, _input: Self::Input) -> String {
-        state.script.clone()
+        state.cmd.clone()
     }
 
     fn absorb(

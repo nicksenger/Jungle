@@ -49,11 +49,11 @@ impl<J> Effect<J> for RunBash {
                 .arg("-lc")
                 .arg(&input)
                 .status()
-                .map_err(|err| format!("failed to run fired script: {err}"))?;
+                .map_err(|err| format!("failed to run fired cmd: {err}"))?;
             if status.success() {
                 Ok(())
             } else {
-                Err(format!("fired script failed with status: {status}"))
+                Err(format!("fired cmd failed with status: {status}"))
             }
         })();
         std::future::ready(result)

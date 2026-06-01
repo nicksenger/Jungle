@@ -16,7 +16,7 @@ pub(crate) type CronExpr = String;
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct CronState {
     pub expr: CronExpr,
-    pub script: String,
+    pub cmd: String,
 }
 
 #[derive(Parser, Debug)]
@@ -24,7 +24,7 @@ pub struct CronState {
 struct Args {
     expr: CronExpr,
     #[arg(long, default_value = "echo \"cronfish fired!\"")]
-    script: String,
+    cmd: String,
 }
 
 pub struct Cronfish;
@@ -49,7 +49,7 @@ async fn main() {
     let args = Args::parse();
     let seed = CronState {
         expr: args.expr,
-        script: args.script,
+        cmd: args.cmd,
     };
 
     let client = LocalClient::builder()
