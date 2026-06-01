@@ -1261,9 +1261,9 @@ mod tests {
             let _ = worker.spawn().await;
         });
 
-        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let seed = ();
         let journey_id = client
-            .start_journey::<RhythmGuitarist>(seed)
+            .start_journey::<RhythmGuitarist>(&seed)
             .await
             .expect("journey should start");
 

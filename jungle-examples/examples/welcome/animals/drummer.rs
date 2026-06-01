@@ -2602,9 +2602,9 @@ mod tests {
             let _ = worker.spawn().await;
         });
 
-        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let seed = ();
         let journey_id = client
-            .start_journey::<Drums>(seed)
+            .start_journey::<Drums>(&seed)
             .await
             .expect("journey should start");
 
@@ -2674,9 +2674,8 @@ mod tests {
 
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for (index, seed_state) in seeds.iter().enumerate() {
-            let seed = postcard::to_allocvec(seed_state).expect("seed should serialize");
             let journey_id = client
-                .start_journey::<ConditionalJoinSound100Animal>(seed)
+                .start_journey::<ConditionalJoinSound100Animal>(seed_state)
                 .await
                 .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
             journey_ids.push(journey_id);

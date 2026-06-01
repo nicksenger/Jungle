@@ -647,10 +647,9 @@ mod tests {
             let _ = worker.spawn().await;
         });
 
-        let seed = postcard::to_allocvec(&super::LeadVocalistSeed::default())
-            .expect("seed should serialize");
+        let seed = super::LeadVocalistSeed::default();
         let journey_id = client
-            .start_journey::<LeadVocalist>(seed)
+            .start_journey::<LeadVocalist>(&seed)
             .await
             .expect("journey should start");
 

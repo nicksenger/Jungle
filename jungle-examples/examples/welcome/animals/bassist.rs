@@ -3279,9 +3279,9 @@ mod tests {
         let worker = JungleWorker::new(ecosystem, client.clone());
         let worker_handle = tokio::spawn(async move { worker.spawn().await });
 
-        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let seed = ();
         let journey_id = client
-            .start_journey::<Bass>(seed)
+            .start_journey::<Bass>(&seed)
             .await
             .expect("journey should start");
 
@@ -3330,11 +3330,11 @@ mod tests {
             }));
         }
 
-        let seed = postcard::to_allocvec(&BassistState::default()).expect("seed should serialize");
+        let seed = BassistState::default();
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client
-                .start_journey::<BassJoinSound100Animal>(seed.clone())
+                .start_journey::<BassJoinSound100Animal>(&seed)
                 .await
                 .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
             journey_ids.push(journey_id);

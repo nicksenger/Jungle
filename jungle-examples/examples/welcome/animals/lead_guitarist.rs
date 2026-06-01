@@ -1844,9 +1844,9 @@ mod tests {
             }));
         }
 
-        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let seed = ();
         let journey_id = client
-            .start_journey::<LeadGuitarist>(seed)
+            .start_journey::<LeadGuitarist>(&seed)
             .await
             .expect("journey should start");
 
@@ -1917,9 +1917,9 @@ mod tests {
         let worker = JungleWorker::new(ecosystem, client.clone());
         let worker_handle = tokio::spawn(async move { worker.spawn().await });
 
-        let seed = postcard::to_allocvec(&()).expect("seed should serialize");
+        let seed = ();
         let journey_id = client
-            .start_journey::<LeadGuitarist>(seed)
+            .start_journey::<LeadGuitarist>(&seed)
             .await
             .expect("journey should start");
 
@@ -1971,12 +1971,11 @@ mod tests {
             }));
         }
 
-        let seed =
-            postcard::to_allocvec(&LeadGuitaristState::default()).expect("seed should serialize");
+        let seed = LeadGuitaristState::default();
         let mut journey_ids = Vec::with_capacity(PARALLEL_JOURNEYS);
         for index in 0..PARALLEL_JOURNEYS {
             let journey_id = client
-                .start_journey::<LeadJoinSound100Animal>(seed.clone())
+                .start_journey::<LeadJoinSound100Animal>(&seed)
                 .await
                 .unwrap_or_else(|err| panic!("journey {index} should start: {err}"));
             journey_ids.push(journey_id);

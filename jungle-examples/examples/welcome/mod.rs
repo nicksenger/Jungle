@@ -889,15 +889,8 @@ fn run_runtime_thread(
             synth_workers, synth_queue_size, "started welcome workers"
         );
 
-        let lead_vocalist_seed =
-            postcard::to_allocvec(&LeadVocalistSeed { lyrics }).map_err(|err| {
-                error!(error = %err, "failed serializing lead vocalist journey seed");
-                err.to_string()
-            })?;
-        let seed = postcard::to_allocvec(&()).map_err(|err| {
-            error!(error = %err, "failed serializing journey seed");
-            err.to_string()
-        })?;
+        let lead_vocalist_seed = LeadVocalistSeed { lyrics };
+        let seed = ();
         if enabled_animals.len() < SelectedAnimal::all().len() {
             let selected = enabled_animals
                 .iter()
@@ -908,7 +901,7 @@ fn run_runtime_thread(
         let lead_vocalist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::LeadVocalist) {
                 client
-                    .start_journey::<LeadVocalist>(lead_vocalist_seed.clone())
+                    .start_journey::<LeadVocalist>(&lead_vocalist_seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -922,7 +915,7 @@ fn run_runtime_thread(
         let rhythm_guitarist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::RhythmGuitarist) {
                 client
-                    .start_journey::<RhythmGuitarist>(seed.clone())
+                    .start_journey::<RhythmGuitarist>(&seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -936,7 +929,7 @@ fn run_runtime_thread(
         let lead_guitarist_fut = async {
             if enabled_animals.contains(&SelectedAnimal::LeadGuitarist) {
                 client
-                    .start_journey::<LeadGuitarist>(seed.clone())
+                    .start_journey::<LeadGuitarist>(&seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -950,7 +943,7 @@ fn run_runtime_thread(
         let bass_fut = async {
             if enabled_animals.contains(&SelectedAnimal::Bassist) {
                 client
-                    .start_journey::<BassAnimal>(seed.clone())
+                    .start_journey::<BassAnimal>(&seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
@@ -964,7 +957,7 @@ fn run_runtime_thread(
         let drums_fut = async {
             if enabled_animals.contains(&SelectedAnimal::Drummer) {
                 client
-                    .start_journey::<Drums>(seed.clone())
+                    .start_journey::<Drums>(&seed)
                     .await
                     .map(Some)
                     .map_err(|err| {
