@@ -61,9 +61,8 @@ async fn main() {
         let _ = worker.spawn().await;
     });
 
-    let seed = postcard::to_allocvec(&seed).expect("cronfish seed should serialize");
     let journey_id = client
-        .start_journey::<Cronfish>(seed)
+        .start_journey::<Cronfish>(&seed)
         .await
         .expect("cronfish journey should start");
     println!("cronfish journey started: {journey_id}");
