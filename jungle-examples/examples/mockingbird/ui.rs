@@ -24,7 +24,7 @@ pub fn run_ui<C>(client: C, journey_id: Uuid) -> Result<(), iced::Error>
 where
     C: JungleClient + Clone + 'static,
 {
-    let title = format!("Mockingbird {journey_id}");
+    let title = "Mockingbird";
     iced::application(
         move || MockingbirdUi::new(client.clone(), journey_id),
         MockingbirdUi::update,
