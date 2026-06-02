@@ -5,9 +5,9 @@ use clap::Parser;
 use tempfile::Builder;
 use welcome_audio::dsp::SAMPLE_RATE;
 use welcome_audio::instrumentation::{
-    BassArticulation, CymbalArticulation, ElectricGuitarArticulation, HiHatArticulation,
-    KickDrumArticulation, Note, SnareDrumArticulation, SynthHandle, TomsArticulation,
-    VocalsArticulation,
+    phonemes_from_text, BassArticulation, CymbalArticulation, ElectricGuitarArticulation,
+    HiHatArticulation, KickDrumArticulation, Note, SnareDrumArticulation, SynthHandle,
+    TomsArticulation, VocalsArticulation,
 };
 
 const DEFAULT_BPM: f64 = 123.0;
@@ -25,7 +25,8 @@ struct Cli {
     /// Optional explicit output path for the rendered WAV.
     #[arg(long = "output-path")]
     output_path: Option<PathBuf>,
-    /// One or more score specs, e.g. `electric-guitar(sustained):[0,60,192],[384,64,96]`.
+    /// One or more score specs, e.g. `electric-guitar(sustained):[0,60,192],[384,64,96]` or
+    /// `vocals(formant):[0,60,192,"jungle"]`.
     #[arg(required = true)]
     specs: Vec<String>,
 }
@@ -62,11 +63,12 @@ struct ParsedSpec {
     events: Vec<NoteEvent>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct NoteEvent {
     start_ticks: u64,
     midi: u8,
     duration_ticks: u64,
+    synthesis_word: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -177,6 +179,21 @@ async fn run() -> Result<(), CliError> {
                         match articulation.as_deref().map(normalized_token).as_deref() {
                             None | Some("clean") => VocalsArticulation::Clean,
                             Some("group-harmony") => VocalsArticulation::GroupHarmony,
+                            Some("formant") => {
+                                let synthesis_word =
+                                    event.synthesis_word.as_deref().ok_or_else(|| {
+                                        CliError::InvalidSpec {
+                                    spec: format!(
+                                        "vocals(formant):[{},{},{}]",
+                                        event.start_ticks, event.midi, event.duration_ticks
+                                    ),
+                                    reason:
+                                        "formant vocals require a synthesis word in each note tuple"
+                                            .to_string(),
+                                }
+                                    })?;
+                                VocalsArticulation::Formant(phonemes_from_text(synthesis_word))
+                            }
                             Some(other) => {
                                 return Err(CliError::UnsupportedArticulation {
                                     instrument: instrument.clone(),
@@ -398,9 +415,12 @@ fn parse_spec(spec: &str) -> Result<ParsedSpec, CliError> {
         });
     }
 
+    let requires_synthesis_word = normalized_token(&instrument) == "vocals"
+        && articulation.as_deref().map(normalized_token).as_deref() == Some("formant");
+
     let mut events = Vec::with_capacity(tuples.len());
     for tuple in tuples {
-        events.push(parse_tuple(spec, tuple)?);
+        events.push(parse_tuple(spec, tuple, requires_synthesis_word)?);
     }
 
     Ok(ParsedSpec {
@@ -442,7 +462,11 @@ fn extract_tuples<'a>(tail: &'a str, spec: &str) -> Result<Vec<&'a str>, CliErro
     Ok(tuples)
 }
 
-fn parse_tuple(spec: &str, tuple: &str) -> Result<NoteEvent, CliError> {
+fn parse_tuple(
+    spec: &str,
+    tuple: &str,
+    requires_synthesis_word: bool,
+) -> Result<NoteEvent, CliError> {
     let inner = tuple
         .strip_prefix('[')
         .and_then(|x| x.strip_suffix(']'))
@@ -452,30 +476,19 @@ fn parse_tuple(spec: &str, tuple: &str) -> Result<NoteEvent, CliError> {
             reason: "tuple must be wrapped in []".to_string(),
         })?;
 
-    let mut parts = inner.split(',').map(str::trim);
-    let start = parts.next().ok_or_else(|| CliError::InvalidTuple {
-        spec: spec.to_string(),
-        tuple: tuple.to_string(),
-        reason: "missing start ticks".to_string(),
-    })?;
-    let midi = parts.next().ok_or_else(|| CliError::InvalidTuple {
-        spec: spec.to_string(),
-        tuple: tuple.to_string(),
-        reason: "missing midi value".to_string(),
-    })?;
-    let duration = parts.next().ok_or_else(|| CliError::InvalidTuple {
-        spec: spec.to_string(),
-        tuple: tuple.to_string(),
-        reason: "missing duration ticks".to_string(),
-    })?;
-
-    if parts.next().is_some() {
+    let parts: Vec<_> = inner.split(',').map(str::trim).collect();
+    let expected_len = if requires_synthesis_word { 4 } else { 3 };
+    if parts.len() != expected_len {
         return Err(CliError::InvalidTuple {
             spec: spec.to_string(),
             tuple: tuple.to_string(),
-            reason: "tuple must contain exactly 3 fields".to_string(),
+            reason: format!("tuple must contain exactly {expected_len} fields"),
         });
     }
+
+    let start = parts[0];
+    let midi = parts[1];
+    let duration = parts[2];
 
     let start_ticks = parse_nonnegative_ticks(start).map_err(|reason| CliError::InvalidTuple {
         spec: spec.to_string(),
@@ -511,11 +524,45 @@ fn parse_tuple(spec: &str, tuple: &str) -> Result<NoteEvent, CliError> {
             })
         })?;
 
+    let synthesis_word = if requires_synthesis_word {
+        Some(parse_synthesis_word(spec, tuple, parts[3])?)
+    } else {
+        None
+    };
+
     Ok(NoteEvent {
         start_ticks,
         midi,
         duration_ticks,
+        synthesis_word,
     })
+}
+
+fn parse_synthesis_word(spec: &str, tuple: &str, value: &str) -> Result<String, CliError> {
+    let quoted = value
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|rest| rest.strip_suffix('\''))
+        })
+        .ok_or_else(|| CliError::InvalidTuple {
+            spec: spec.to_string(),
+            tuple: tuple.to_string(),
+            reason: "formant synthesis word must be a quoted string".to_string(),
+        })?;
+
+    let synthesis_word = quoted.trim();
+    if synthesis_word.is_empty() {
+        return Err(CliError::InvalidTuple {
+            spec: spec.to_string(),
+            tuple: tuple.to_string(),
+            reason: "formant synthesis word cannot be empty".to_string(),
+        });
+    }
+
+    Ok(synthesis_word.to_string())
 }
 
 fn parse_nonnegative_ticks(value: &str) -> Result<u64, String> {
@@ -641,4 +688,33 @@ fn write_wav(left: &[f32], right: &[f32], output_path: Option<&Path>) -> Result<
 
 fn float_to_i16(sample: f32) -> i16 {
     (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_formant_vocals_spec_requires_synthesis_word() {
+        let err = parse_spec("vocals(formant):[0,60,192]").unwrap_err();
+        assert!(matches!(err, CliError::InvalidTuple { .. }));
+        assert!(err.to_string().contains("exactly 4 fields"));
+    }
+
+    #[test]
+    fn parse_formant_vocals_spec_captures_synthesis_word() {
+        let parsed = parse_spec("vocals(formant):[0,60,192,\"jungle\"]").unwrap();
+
+        assert_eq!(parsed.instrument, "vocals");
+        assert_eq!(parsed.articulation.as_deref(), Some("formant"));
+        assert_eq!(parsed.events.len(), 1);
+        assert_eq!(parsed.events[0].synthesis_word.as_deref(), Some("jungle"));
+    }
+
+    #[test]
+    fn parse_non_formant_vocals_spec_rejects_extra_tuple_field() {
+        let err = parse_spec("vocals(clean):[0,60,192,\"jungle\"]").unwrap_err();
+        assert!(matches!(err, CliError::InvalidTuple { .. }));
+        assert!(err.to_string().contains("exactly 3 fields"));
+    }
 }
