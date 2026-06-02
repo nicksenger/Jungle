@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use tempfile::Builder;
-use welcome_audio::dsp::SAMPLE_RATE;
+use welcome_audio::dsp::SAMPLE_RATE as SOURCE_SAMPLE_RATE;
 use welcome_audio::instrumentation::{
     phonemes_from_text, BassArticulation, CymbalArticulation, ElectricGuitarArticulation,
     HiHatArticulation, KickDrumArticulation, Note, SnareDrumArticulation, SynthHandle,
@@ -11,6 +11,7 @@ use welcome_audio::instrumentation::{
 };
 
 const DEFAULT_BPM: f64 = 123.0;
+const OUTPUT_SAMPLE_RATE: u32 = 44_100;
 const TICKS_PER_BEAT: f64 = 384.0;
 
 #[derive(Debug, Parser)]
@@ -618,11 +619,11 @@ fn base_note<A>(midi: u8, duration: Duration, articulation: A) -> Note<A> {
 }
 
 fn duration_to_frames(duration_secs: f64) -> usize {
-    (duration_secs * SAMPLE_RATE as f64).round() as usize
+    (duration_secs * OUTPUT_SAMPLE_RATE as f64).round() as usize
 }
 
 fn seconds_to_frame(seconds: f64) -> usize {
-    (seconds * SAMPLE_RATE as f64).round() as usize
+    (seconds * OUTPUT_SAMPLE_RATE as f64).round() as usize
 }
 
 fn mix_pcm_stereo(left: &mut [f32], right: &mut [f32], pcm: &[f32], event: SynthEvent) {
@@ -639,7 +640,8 @@ fn mix_pcm_stereo(left: &mut [f32], right: &mut [f32], pcm: &[f32], event: Synth
 
     let available = left.len() - event.start_frame;
     for i in 0..available {
-        let src_pos = (i as f32) * event.playback_rate;
+        let src_pos = (i as f32) * event.playback_rate * SOURCE_SAMPLE_RATE as f32
+            / OUTPUT_SAMPLE_RATE as f32;
         let src_idx = src_pos.floor() as usize;
         if src_idx >= pcm.len() {
             break;
@@ -673,7 +675,7 @@ fn write_wav(left: &[f32], right: &[f32], output_path: Option<&Path>) -> Result<
     };
     let spec = hound::WavSpec {
         channels: 2,
-        sample_rate: SAMPLE_RATE,
+        sample_rate: OUTPUT_SAMPLE_RATE,
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
@@ -716,5 +718,20 @@ mod tests {
         let err = parse_spec("vocals(clean):[0,60,192,\"jungle\"]").unwrap_err();
         assert!(matches!(err, CliError::InvalidTuple { .. }));
         assert!(err.to_string().contains("exactly 3 fields"));
+    }
+
+    #[test]
+    fn write_wav_uses_44100_output_rate() {
+        let output = Builder::new()
+            .prefix("mockingbird-sample-test-")
+            .suffix(".wav")
+            .tempfile()
+            .unwrap();
+        let path = output.path().to_path_buf();
+
+        write_wav(&[0.0], &[0.0], Some(&path)).unwrap();
+
+        let reader = hound::WavReader::open(path).unwrap();
+        assert_eq!(reader.spec().sample_rate, OUTPUT_SAMPLE_RATE);
     }
 }
