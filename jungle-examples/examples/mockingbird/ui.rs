@@ -1,6 +1,6 @@
 use crate::{MockingBird, MockingBirdInstrument, MockingBirdInstrumentState, MockingBirdState};
 use iced::widget::{button, column, container, image, row, stack, text};
-use iced::{clipboard, ContentFit, Element, Font, Length, Subscription, Task};
+use iced::{alignment, clipboard, ContentFit, Element, Font, Length, Subscription, Task};
 use jungle_sdk::JungleClient;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::fs::File;
@@ -152,7 +152,7 @@ impl MockingbirdUi {
         .width(Length::FillPortion(1))
         .height(Length::Fill);
 
-        let body = row![image_section, dag_section]
+        let body = row![image_section, divider_vertical(), dag_section]
             .spacing(0)
             .height(Length::Fill)
             .width(Length::Fill);
@@ -238,24 +238,28 @@ impl MockingbirdUi {
             spectrogram_tile(
                 Some(&instrument_state.target_spectrogram_path),
                 Some(instrument.display_name().to_owned()),
+                alignment::Horizontal::Left,
                 sibling_audio_path(&instrument_state.target_spectrogram_path)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
             ),
             spectrogram_tile(
                 initial_spectrogram_path(instrument_state),
                 initial_overlay_label(instrument_state),
+                alignment::Horizontal::Right,
                 initial_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Initial)),
             ),
             spectrogram_tile(
                 current_spectrogram_path(instrument_state),
                 current_overlay_label(instrument_state),
+                alignment::Horizontal::Right,
                 current_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Current)),
             ),
             spectrogram_tile(
                 best_spectrogram_path(instrument_state),
                 best_overlay_label(instrument_state),
+                alignment::Horizontal::Right,
                 best_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Best)),
             ),
@@ -264,15 +268,20 @@ impl MockingbirdUi {
         .width(Length::Fill)
         .height(Length::Fill);
 
-        container(
-            container(cards)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .padding([SNAPSHOT_ROW_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING]),
-        )
+        column![
+            divider_horizontal(),
+            container(
+                container(cards)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding([SNAPSHOT_ROW_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING]),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(snapshot_row_style)
+        ]
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(snapshot_row_style)
         .into()
     }
 }
@@ -294,6 +303,7 @@ fn sibling_audio_path(image_path: &str) -> Option<String> {
 fn spectrogram_tile<'a>(
     spectrogram_path: Option<&'a str>,
     overlay_label: Option<String>,
+    overlay_alignment: alignment::Horizontal,
     activate_message: Option<Message>,
 ) -> Element<'a, Message> {
     let image_panel: Element<'a, Message> = match spectrogram_path.filter(|path| image_exists(path))
@@ -328,7 +338,7 @@ fn spectrogram_tile<'a>(
             text(overlay_label.unwrap_or_default())
                 .size(13)
                 .width(Length::Fill)
-                .align_x(iced::alignment::Horizontal::Right),
+                .align_x(overlay_alignment),
         )
         .width(Length::Fill)
         .height(Length::Fixed(SPECTROGRAM_OVERLAY_HEIGHT))
@@ -353,6 +363,22 @@ fn spectrogram_tile<'a>(
     .width(Length::FillPortion(1))
     .height(Length::Fill)
     .into()
+}
+
+fn divider_horizontal<'a>() -> Element<'a, Message> {
+    container(text(""))
+        .width(Length::Fill)
+        .height(1)
+        .style(divider_style)
+        .into()
+}
+
+fn divider_vertical<'a>() -> Element<'a, Message> {
+    container(text(""))
+        .width(1)
+        .height(Length::Fill)
+        .style(divider_style)
+        .into()
 }
 
 fn current_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
@@ -574,11 +600,6 @@ fn sidebar_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color::from_rgb8(16, 27, 21))),
         text_color: Some(iced::Color::from_rgb8(225, 238, 231)),
-        border: iced::border::Border {
-            width: 1.0,
-            color: iced::Color::from_rgb8(34, 58, 46),
-            ..Default::default()
-        },
         ..Default::default()
     }
 }
@@ -587,11 +608,6 @@ fn header_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color::from_rgb8(14, 24, 19))),
         text_color: Some(iced::Color::from_rgb8(225, 238, 231)),
-        border: iced::border::Border {
-            width: 1.0,
-            color: iced::Color::from_rgb8(34, 58, 46),
-            ..Default::default()
-        },
         ..Default::default()
     }
 }
@@ -600,11 +616,6 @@ fn snapshot_row_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color::from_rgb8(16, 27, 21))),
         text_color: Some(iced::Color::from_rgb8(225, 238, 231)),
-        border: iced::border::Border {
-            width: 1.0,
-            color: iced::Color::from_rgb8(30, 50, 40),
-            ..Default::default()
-        },
         ..Default::default()
     }
 }
@@ -612,9 +623,16 @@ fn snapshot_row_style(_theme: &iced::Theme) -> iced::widget::container::Style {
 fn spectrogram_overlay_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color::from_rgba8(
-            9, 15, 12, 0.64,
+            9, 15, 12, 0.34,
         ))),
         text_color: Some(iced::Color::from_rgb8(237, 246, 241)),
+        ..Default::default()
+    }
+}
+
+fn divider_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb8(34, 58, 46))),
         ..Default::default()
     }
 }
@@ -623,11 +641,6 @@ fn image_placeholder_style(_theme: &iced::Theme) -> iced::widget::container::Sty
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color::from_rgb8(18, 28, 23))),
         text_color: Some(iced::Color::from_rgb8(173, 191, 180)),
-        border: iced::border::Border {
-            width: 1.0,
-            color: iced::Color::from_rgb8(38, 63, 50),
-            radius: 8.0.into(),
-        },
         ..Default::default()
     }
 }
