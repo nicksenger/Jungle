@@ -643,12 +643,12 @@ fn extract_replacement_source(tool_calls: &[ToolCall]) -> Option<String> {
         .iter()
         .rev()
         .find(|tool_call| tool_call.name == MOCKINGBIRD_DSP_TOOL_NAME)
-        .and_then(|tool_call| {
-            tool_call
-                .arguments
+        .and_then(|tool_call| tool_call.arguments_json_value().ok())
+        .and_then(|arguments| {
+            arguments
                 .get("source")
-                .or_else(|| tool_call.arguments.get("content"))
-                .or_else(|| tool_call.arguments.get("contents"))
+                .or_else(|| arguments.get("content"))
+                .or_else(|| arguments.get("contents"))
                 .and_then(|value| value.as_str())
                 .map(ToOwned::to_owned)
         })

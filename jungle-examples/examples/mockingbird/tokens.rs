@@ -30,7 +30,17 @@ pub struct Tool {
 pub struct ToolCall {
     pub id: Option<String>,
     pub name: String,
-    pub arguments: Value,
+    pub arguments: String,
+}
+
+impl ToolCall {
+    pub fn arguments_json_value(&self) -> Result<Value, serde_json::Error> {
+        if self.arguments.trim().is_empty() {
+            Ok(Value::Object(serde_json::Map::new()))
+        } else {
+            serde_json::from_str(&self.arguments)
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -163,13 +173,14 @@ enum OpenAiArguments {
 }
 
 impl OpenAiArguments {
-    fn into_json_value(self) -> Result<Value, serde_json::Error> {
+    fn into_json_string(self) -> Result<String, serde_json::Error> {
         match self {
-            Self::Json(value) => Ok(value),
-            Self::String(arguments) if arguments.trim().is_empty() => {
-                Ok(Value::Object(serde_json::Map::new()))
+            Self::Json(value) => Ok(value.to_string()),
+            Self::String(arguments) if arguments.trim().is_empty() => Ok("{}".to_owned()),
+            Self::String(arguments) => {
+                let value: Value = serde_json::from_str(&arguments)?;
+                Ok(value.to_string())
             }
-            Self::String(arguments) => serde_json::from_str(&arguments),
         }
     }
 }
@@ -242,8 +253,8 @@ fn extract_tool_calls(
                 id: tool_call.id,
                 name: tool_call.function.name,
                 arguments: match tool_call.function.arguments {
-                    Some(arguments) => arguments.into_json_value()?,
-                    None => Value::Object(serde_json::Map::new()),
+                    Some(arguments) => arguments.into_json_string()?,
+                    None => "{}".to_owned(),
                 },
             })
         })
@@ -305,7 +316,7 @@ mod tests {
             vec![ToolCall {
                 id: Some("call_123".to_owned()),
                 name: "insert_node".to_owned(),
-                arguments: json!({ "score": 0.8 }),
+                arguments: "{\"score\":0.8}".to_owned(),
             }]
         );
     }
@@ -339,5 +350,19 @@ mod tests {
 
         assert_eq!(request["tools"][0]["function"]["name"], "insert_node");
         assert_eq!(request["tool_choice"], "auto");
+    }
+
+    #[test]
+    fn tool_calls_round_trip_through_postcard() {
+        let tool_calls = vec![ToolCall {
+            id: Some("call_123".to_owned()),
+            name: "insert_node".to_owned(),
+            arguments: "{\"score\":0.8}".to_owned(),
+        }];
+
+        let bytes = postcard::to_allocvec(&tool_calls).unwrap();
+        let decoded = postcard::from_bytes::<Vec<ToolCall>>(&bytes).unwrap();
+
+        assert_eq!(decoded, tool_calls);
     }
 }
