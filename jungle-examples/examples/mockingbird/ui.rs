@@ -535,6 +535,7 @@ async fn load_snapshot(
     bytes
         .map(|bytes| {
             postcard::from_bytes::<MockingBirdState>(&bytes)
+                .map(|state| state.normalized_for_observation())
                 .map_err(|err| format!("failed to decode mockingbird state snapshot: {err}"))
         })
         .transpose()

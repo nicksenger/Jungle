@@ -212,6 +212,17 @@ impl MockingBirdInstrumentState {
         }
     }
 
+    fn observation_placeholder(instrument: MockingBirdInstrument) -> Self {
+        Self {
+            instrument,
+            target_spectrogram_path: instrument.relative_target_spectrogram_path().to_owned(),
+            dsp_source_path: instrument.relative_dsp_path().to_owned(),
+            initial_dsp_code: DspCode::placeholder_initial(),
+            selected_branch: vec![DspCode::placeholder_initial()],
+            ..Self::default()
+        }
+    }
+
     fn begin_iteration(&mut self, output_root: &str, iteration_id: &str) {
         let iteration_dir = PathBuf::from(output_root).join(iteration_id);
         let sample_stem = self.instrument.output_stem();
@@ -242,6 +253,40 @@ pub struct MockingBirdState {
 }
 
 impl MockingBirdState {
+    pub fn has_all_instrument_states(&self) -> bool {
+        MockingBirdInstrument::ALL.into_iter().all(|instrument| {
+            self.instruments
+                .iter()
+                .any(|state| state.instrument == instrument)
+        })
+    }
+
+    pub fn normalized_for_observation(&self) -> Self {
+        let mut normalized = self.clone();
+        let mut instruments = Vec::with_capacity(MockingBirdInstrument::ALL.len());
+        for instrument in MockingBirdInstrument::ALL {
+            instruments.push(
+                normalized
+                    .instruments
+                    .iter()
+                    .find(|state| state.instrument == instrument)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        MockingBirdInstrumentState::observation_placeholder(instrument)
+                    }),
+            );
+        }
+        normalized.instruments = instruments;
+        if !normalized
+            .instruments
+            .iter()
+            .any(|state| state.instrument == normalized.current_instrument)
+        {
+            normalized.current_instrument = MockingBirdInstrument::ALL[0];
+        }
+        normalized
+    }
+
     pub fn instrument_state(
         &self,
         instrument: MockingBirdInstrument,
@@ -422,7 +467,7 @@ impl Observe for MockingBird {
     type Appearance = MockingBirdState;
 
     fn observe(state: &Self::State) -> Self::Appearance {
-        state.clone()
+        state.normalized_for_observation()
     }
 }
 
@@ -701,12 +746,51 @@ async fn ensure_mockingbird_running(
         .await?;
     let mockingbird_animal_id = <<MockingBird as Animal>::Id as AnimalIdValue>::U32;
 
-    if let Some(existing) = journeys
+    for existing in journeys
         .into_iter()
-        .find(|record| record.animal_id == mockingbird_animal_id && !is_terminal(record.status))
+        .filter(|record| record.animal_id == mockingbird_animal_id && !is_terminal(record.status))
     {
-        info!(journey_id = %existing.journey_id, "reusing existing mockingbird journey");
-        return Ok(existing.journey_id);
+        let appearance = match client.animal_appearance(existing.journey_id).await {
+            Ok(appearance) => appearance,
+            Err(err) => {
+                warn!(
+                    journey_id = %existing.journey_id,
+                    error = %err,
+                    "failed to inspect existing mockingbird journey appearance; spawning a new journey instead"
+                );
+                continue;
+            }
+        };
+        let Some(appearance) = appearance else {
+            warn!(
+                journey_id = %existing.journey_id,
+                "existing mockingbird journey has no appearance yet; spawning a new journey instead"
+            );
+            continue;
+        };
+        let state = match postcard::from_bytes::<MockingBirdState>(&appearance) {
+            Ok(state) => state,
+            Err(err) => {
+                warn!(
+                    journey_id = %existing.journey_id,
+                    error = %err,
+                    "failed to decode existing mockingbird journey appearance; spawning a new journey instead"
+                );
+                continue;
+            }
+        };
+        if state.has_all_instrument_states() {
+            info!(
+                journey_id = %existing.journey_id,
+                "reusing existing mockingbird journey"
+            );
+            return Ok(existing.journey_id);
+        }
+        warn!(
+            journey_id = %existing.journey_id,
+            instrument_count = state.instruments.len(),
+            "existing mockingbird journey is missing instrument state; spawning a new journey instead"
+        );
     }
 
     let journey_id = client.spawn::<MockingBird>(seed).await?.journey_id;
@@ -938,5 +1022,27 @@ mod tests {
         assert_eq!(state.last_similarity, 0.0);
         assert!(state.sample_path.ends_with("00000008/bass_4s.wav"));
         assert!(state.spectrogram_path.ends_with("00000008/bass_4s.png"));
+    }
+
+    #[test]
+    fn observe_normalizes_missing_instrument_states() {
+        let state = MockingBirdState::default();
+
+        let appearance = <MockingBird as Observe>::observe(&state);
+
+        assert_eq!(
+            appearance.instruments.len(),
+            MockingBirdInstrument::ALL.len()
+        );
+        for instrument in MockingBirdInstrument::ALL {
+            assert_eq!(
+                appearance.instrument_state(instrument).instrument,
+                instrument
+            );
+        }
+        assert_eq!(
+            appearance.current_instrument,
+            MockingBirdInstrument::RhythmGuitar
+        );
     }
 }
