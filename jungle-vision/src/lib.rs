@@ -2836,15 +2836,24 @@ impl DefaultThemeState {
             let contains_successor = index.successor_runtime_ids.contains(&runtime_id);
             let is_while_cluster = matches!(index.kind, ClusterKind::While);
 
-            let mut just_opened = false;
+            let mut activated_iteration = false;
             if let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) {
-                if (is_while_cluster && contains_entry) || (!visual.expanded && contains_member) {
+                let while_reentered_via_non_entry_member = is_while_cluster
+                    && contains_member
+                    && !contains_entry
+                    && !contains_successor
+                    && !matches!(visual.border_state, RuntimeState::Running);
+                if (is_while_cluster && contains_entry)
+                    || (!visual.expanded && contains_member)
+                    || while_reentered_via_non_entry_member
+                {
+                    let expansion_changed = !visual.expanded;
                     visual.expanded = true;
                     visual.completed_at = None;
                     let border_changed = visual.border_state != RuntimeState::Running;
                     visual.border_state = RuntimeState::Running;
-                    changed |= border_changed;
-                    just_opened = true;
+                    changed |= border_changed || expansion_changed;
+                    activated_iteration = true;
                 } else if visual.expanded && contains_successor {
                     let border_changed = visual.border_state != RuntimeState::Completed;
                     visual.border_state = RuntimeState::Completed;
@@ -2853,7 +2862,7 @@ impl DefaultThemeState {
                 }
             }
 
-            if just_opened || (is_while_cluster && contains_entry) {
+            if activated_iteration || (is_while_cluster && contains_entry) {
                 changed |= self.reset_cluster_members_to_pending(cluster_id, runtime_id);
             }
         }
@@ -4109,6 +4118,91 @@ mod tests {
             .expect("cluster visual should exist")
             .border_state;
         assert_eq!(border_state, RuntimeState::Running);
+    }
+
+    #[test]
+    fn while_cluster_reentry_via_non_entry_member_resets_previous_children_to_pending() {
+        let mut state = DefaultThemeState {
+            node_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+        };
+
+        let started_at = Instant::now();
+        let cx = ClusterViewCtx {
+            cluster_id: 14,
+            cluster_index: 0,
+            kind: ClusterKind::While,
+            label: "while: flow::MockingBirdLoopForever",
+            metadata: None,
+            parent_cluster_id: None,
+            depth: 0,
+            member_display_ids: &[],
+            entry_runtime_ids: &[10],
+            member_runtime_ids: &[10, 11, 12],
+            successor_runtime_ids: &[20],
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: false,
+            }),
+        };
+        state.register_cluster(&cx);
+
+        let first_entry = started_at + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(10, first_entry));
+        assert!(state.update_node_state(10, RuntimeState::Completed));
+        assert!(state.update_node_state(11, RuntimeState::Completed));
+        assert!(state.update_node_state(12, RuntimeState::Completed));
+
+        let first_exit = first_entry + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(20, first_exit));
+        assert_eq!(
+            state
+                .cluster_visuals
+                .get(&14)
+                .expect("cluster visual should exist")
+                .border_state,
+            RuntimeState::Completed
+        );
+
+        let second_member = first_exit + Duration::from_millis(1);
+        assert!(state.update_node_state(11, RuntimeState::Running));
+        assert!(state.update_clusters_for_effect_input(11, second_member));
+
+        assert_eq!(
+            state
+                .node_visuals
+                .get(&10)
+                .expect("entry node should exist")
+                .state,
+            RuntimeState::Pending
+        );
+        assert_eq!(
+            state
+                .node_visuals
+                .get(&11)
+                .expect("running node should exist")
+                .state,
+            RuntimeState::Running
+        );
+        assert_eq!(
+            state
+                .node_visuals
+                .get(&12)
+                .expect("other child node should exist")
+                .state,
+            RuntimeState::Pending
+        );
+        assert_eq!(
+            state
+                .cluster_visuals
+                .get(&14)
+                .expect("cluster visual should exist")
+                .border_state,
+            RuntimeState::Running
+        );
     }
 
     #[test]
