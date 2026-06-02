@@ -2,6 +2,10 @@
 
 use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
+use crate::{
+    PulseCodeParadise, MOCKINGBIRD_DSP_TOOL_NAME, MOCKINGBIRD_DURATION_SECS,
+    MOCKINGBIRD_SCORE_SPEC, RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
+};
 use image::ImageReader;
 use image_compare::Algorithm;
 use jungle_sdk::effect;
@@ -10,9 +14,10 @@ use spectrs::io::audio::read_audio_file_mono;
 use spectrs::io::image::{save_spectrogram_image, Colormap};
 use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
 use spectrs::spectrogram::stft::{par_compute_spectrogram, SpectrogramType};
+use std::fs;
 use std::future::{ready, Future};
 use std::marker::PhantomData;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
@@ -47,11 +52,19 @@ pub struct GenSample;
 #[effect(id = 2)]
 impl<J> Effect<J> for GenSample {
     type In = String;
-    type Out = Vec<u8>;
+    type Out = String;
     type Err = String;
 
-    fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        stub_ok(Vec::new())
+    fn effect(_jungle: &J, output_path: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            run_sampler(
+                MOCKINGBIRD_DURATION_SECS,
+                &output_path,
+                &[MOCKINGBIRD_SCORE_SPEC.to_owned()],
+            )
+            .await?;
+            Ok(output_path)
+        }
     }
 }
 
@@ -88,17 +101,77 @@ impl<J> Effect<J> for CompareSpectrograms {
 
 pub struct PromptModel;
 #[effect(id = 5)]
-impl<J> Effect<J> for PromptModel
-where
-    J: TokenPredictor + Sync,
-    J::Error: ToString + Send + 'static,
-{
+impl Effect<()> for PromptModel {
     type In = Prompt;
     type Out = Vec<ToolCall>;
     type Err = String;
 
-    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(
+        _jungle: &(),
+        _input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async { Err("PromptModel requires PulseCodeParadise runtime context".to_owned()) }
+    }
+}
+
+#[effect(id = 5)]
+impl Effect<PulseCodeParadise> for PromptModel {
+    type In = Prompt;
+    type Out = Vec<ToolCall>;
+    type Err = String;
+
+    fn effect(
+        jungle: &PulseCodeParadise,
+        input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move { jungle.predict(input).await.map_err(|err| err.to_string()) }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BuildOptimizationPromptInput {
+    pub iteration_id: String,
+    pub generated_spectrogram_path: String,
+    pub target_spectrogram_path: String,
+    pub current_similarity: f32,
+    pub prompt_attempt: u32,
+    pub retry_reason: Option<String>,
+    pub dsp_source_path: String,
+}
+
+pub struct BuildOptimizationPrompt;
+#[effect(id = 12)]
+impl<J> Effect<J> for BuildOptimizationPrompt {
+    type In = BuildOptimizationPromptInput;
+    type Out = Prompt;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { build_optimization_prompt(input) }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ApplyToolCallsInput {
+    pub dsp_source_path: String,
+    pub tool_calls: Vec<ToolCall>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ApplyToolCallsOutcome {
+    pub compile_ok: bool,
+    pub retry_reason: Option<String>,
+}
+
+pub struct ApplyToolCalls;
+#[effect(id = 13)]
+impl<J> Effect<J> for ApplyToolCalls {
+    type In = ApplyToolCallsInput;
+    type Out = ApplyToolCallsOutcome;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { apply_tool_calls(input).await }
     }
 }
 
@@ -200,6 +273,7 @@ impl<J> Effect<J> for RunSampler {
 fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), String> {
     let input = Path::new(wav_path);
     let output = Path::new(output_path);
+    ensure_parent_dir(output)?;
 
     let (audio, sample_rate) =
         read_audio_file_mono(input).map_err(|err| format!("failed to read wav file: {err}"))?;
@@ -289,8 +363,15 @@ async fn run_sampler(
         return Err("run sampler requires at least one score spec".to_string());
     }
 
-    let mut command = Command::new(SAMPLER_BINARY_PATH);
+    ensure_parent_dir(Path::new(output_path))?;
+
+    let mut command = Command::new("cargo");
     command
+        .arg("run")
+        .arg("--release")
+        .arg("--manifest-path")
+        .arg(SAMPLER_MANIFEST_PATH)
+        .arg("--")
         .arg("--duration-secs")
         .arg(duration_secs.to_string())
         .arg("--output-path")
@@ -300,30 +381,192 @@ async fn run_sampler(
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
-    let mut child = command.spawn().map_err(|err| {
-        format!(
-            "failed to spawn sampler binary {}: {err}",
-            SAMPLER_BINARY_PATH
-        )
-    })?;
+    let mut child = command
+        .spawn()
+        .map_err(|err| format!("failed to spawn cargo sampler run: {err}"))?;
 
     match timeout(SAMPLER_COMMAND_TIMEOUT, child.wait()).await {
         Ok(wait_result) => {
             let status =
-                wait_result.map_err(|err| format!("failed to wait for sampler binary: {err}"))?;
+                wait_result.map_err(|err| format!("failed to wait for cargo sampler run: {err}"))?;
             if status.success() {
                 Ok(())
             } else {
-                Err(format!("sampler binary exited unsuccessfully: {status}"))
+                Err(format!("cargo sampler run exited unsuccessfully: {status}"))
             }
         }
         Err(_) => {
             child
                 .kill()
                 .await
-                .map_err(|err| format!("timed out and failed to kill sampler binary: {err}"))?;
+                .map_err(|err| format!("timed out and failed to kill cargo sampler run: {err}"))?;
             let _ = child.wait().await;
-            Err("sampler binary timed out".to_string())
+            Err("cargo sampler run timed out".to_string())
         }
     }
+}
+
+fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prompt, String> {
+    let dsp_source = fs::read_to_string(&input.dsp_source_path).map_err(|err| {
+        format!(
+            "failed to read dsp source {}: {err}",
+            input.dsp_source_path
+        )
+    })?;
+
+    let mut user_text = format!(
+        "Iteration id: {}.\nCurrent spectrogram similarity score: {:.6}.\nPrompt attempt: {}.\n\
+Target score spec: {}\n\n\
+Modify `{}` so the generated guitar spectrogram moves closer to the target.\n\
+Use the `{}` tool to replace the full Rust source for that file.\n\
+Keep the module compiling in the existing `mockingbird-sample` crate and preserve the file's role in the welcome audio pipeline.\n\n\
+Current `{}` contents:\n```rust\n{}\n```\n\nGenerated spectrogram:",
+        input.iteration_id,
+        input.current_similarity,
+        input.prompt_attempt.saturating_add(1),
+        MOCKINGBIRD_SCORE_SPEC,
+        RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
+        MOCKINGBIRD_DSP_TOOL_NAME,
+        RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
+        dsp_source
+    );
+
+    if let Some(retry_reason) = input.retry_reason {
+        user_text.push_str("\n\nPrevious attempt failed and the file was restored.\n");
+        user_text.push_str("Failure details:\n");
+        user_text.push_str(&retry_reason);
+    }
+
+    Ok(Prompt {
+        messages: vec![
+            crate::tokens::Message {
+                role: "system".to_owned(),
+                contents: vec![crate::tokens::Content::Text(format!(
+                    "You are tuning a Rust guitar DSP implementation against a target mel spectrogram. \
+Respond with tool calls only. Only use `{}`.",
+                    MOCKINGBIRD_DSP_TOOL_NAME
+                ))],
+            },
+            crate::tokens::Message {
+                role: "user".to_owned(),
+                contents: vec![
+                    crate::tokens::Content::Text(user_text),
+                    crate::tokens::Content::Image(PathBuf::from(
+                        input.generated_spectrogram_path,
+                    )),
+                    crate::tokens::Content::Text("Target spectrogram:".to_owned()),
+                    crate::tokens::Content::Image(PathBuf::from(input.target_spectrogram_path)),
+                ],
+            },
+        ],
+        tools: Vec::new(),
+    })
+}
+
+async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOutcome, String> {
+    let original = fs::read_to_string(&input.dsp_source_path).map_err(|err| {
+        format!(
+            "failed to read dsp source before tool application {}: {err}",
+            input.dsp_source_path
+        )
+    })?;
+
+    let replacement = match extract_replacement_source(&input.tool_calls) {
+        Some(source) => source,
+        None => {
+            return Ok(ApplyToolCallsOutcome {
+                compile_ok: false,
+                retry_reason: Some(format!(
+                    "no valid `{}` tool call with a `source` string was returned",
+                    MOCKINGBIRD_DSP_TOOL_NAME
+                )),
+            });
+        }
+    };
+
+    fs::write(&input.dsp_source_path, replacement).map_err(|err| {
+        format!(
+            "failed to write replacement dsp source {}: {err}",
+            input.dsp_source_path
+        )
+    })?;
+
+    match check_sampler_compilation().await {
+        Ok(()) => Ok(ApplyToolCallsOutcome {
+            compile_ok: true,
+            retry_reason: None,
+        }),
+        Err(err) => {
+            fs::write(&input.dsp_source_path, original).map_err(|restore_err| {
+                format!(
+                    "sampler compilation failed and restoring {} also failed: {restore_err}; original error: {err}",
+                    input.dsp_source_path
+                )
+            })?;
+            Ok(ApplyToolCallsOutcome {
+                compile_ok: false,
+                retry_reason: Some(err),
+            })
+        }
+    }
+}
+
+fn extract_replacement_source(tool_calls: &[ToolCall]) -> Option<String> {
+    tool_calls
+        .iter()
+        .rev()
+        .find(|tool_call| tool_call.name == MOCKINGBIRD_DSP_TOOL_NAME)
+        .and_then(|tool_call| {
+            tool_call
+                .arguments
+                .get("source")
+                .or_else(|| tool_call.arguments.get("content"))
+                .or_else(|| tool_call.arguments.get("contents"))
+                .and_then(|value| value.as_str())
+                .map(ToOwned::to_owned)
+        })
+}
+
+async fn check_sampler_compilation() -> Result<(), String> {
+    let output = Command::new("cargo")
+        .arg("check")
+        .arg("--manifest-path")
+        .arg(SAMPLER_MANIFEST_PATH)
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .map_err(|err| format!("failed to spawn cargo check for mockingbird-sample: {err}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let details = if stderr.trim().is_empty() {
+        stdout.trim()
+    } else {
+        stderr.trim()
+    };
+
+    Err(format!(
+        "mockingbird-sample compilation failed:\n{}",
+        truncate_retry_reason(details)
+    ))
+}
+
+fn ensure_parent_dir(path: &Path) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create directory {}: {err}", parent.display()))?;
+    }
+    Ok(())
+}
+
+fn truncate_retry_reason(text: &str) -> String {
+    const MAX_LEN: usize = 4_000;
+    if text.len() <= MAX_LEN {
+        return text.to_owned();
+    }
+    format!("{}...", &text[..MAX_LEN])
 }
