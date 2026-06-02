@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::warn;
@@ -14,6 +15,28 @@ const MCTS_TREES_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("mockingbird_mcts_trees");
 const MCTS_NODES_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("mockingbird_mcts_nodes");
+
+pub trait SearchTree {
+    type Error;
+    type Data: Clone + Serialize + for<'de> Deserialize<'de>;
+
+    fn select(
+        &self,
+        instrument: MockingBirdInstrument,
+    ) -> impl Future<Output = Result<Self::Data, Self::Error>> + Send;
+
+    fn submit(
+        &self,
+        instrument: MockingBirdInstrument,
+        data: Self::Data,
+        score: f32,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+
+    fn skip(
+        &self,
+        instrument: MockingBirdInstrument,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct StoredMctsTree {
@@ -221,6 +244,43 @@ impl PulseCodeParadise {
             PulseCodeParadiseError::Persistence(format!("mcts test commit failed: {err}"))
         })?;
         Ok(snapshot)
+    }
+}
+
+impl SearchTree for PulseCodeParadise {
+    type Error = String;
+    type Data = Vec<DspCode>;
+
+    fn select(
+        &self,
+        instrument: MockingBirdInstrument,
+    ) -> impl Future<Output = Result<Self::Data, Self::Error>> + Send {
+        async move {
+            self.select_mockingbird_branch(instrument)
+                .map_err(|err| err.to_string())
+        }
+    }
+
+    fn submit(
+        &self,
+        instrument: MockingBirdInstrument,
+        data: Self::Data,
+        score: f32,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async move {
+            self.submit_mockingbird_branch(instrument, data, score)
+                .map_err(|err| err.to_string())
+        }
+    }
+
+    fn skip(
+        &self,
+        instrument: MockingBirdInstrument,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async move {
+            self.skip_mockingbird_branch(instrument)
+                .map_err(|err| err.to_string())
+        }
     }
 }
 

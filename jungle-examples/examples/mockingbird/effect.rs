@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{DspCode, MockingBirdInstrument, PulseCodeParadise, MOCKINGBIRD_DURATION_SECS};
 use image::ImageReader;
@@ -169,20 +170,18 @@ impl Effect<()> for SearchTreeSelect {
 }
 
 #[effect(id = 9)]
-impl Effect<PulseCodeParadise> for SearchTreeSelect {
+impl<J> Effect<J> for SearchTreeSelect
+where
+    J: SearchTree + Sync,
+    <J as SearchTree>::Data: Send + 'static,
+    <J as SearchTree>::Error: Send + 'static,
+{
     type In = MockingBirdInstrument;
-    type Out = Vec<DspCode>;
-    type Err = String;
+    type Out = <J as SearchTree>::Data;
+    type Err = <J as SearchTree>::Error;
 
-    fn effect(
-        jungle: &PulseCodeParadise,
-        input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move {
-            jungle
-                .select_mockingbird_branch(input)
-                .map_err(|err| err.to_string())
-        }
+    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { <J as SearchTree>::select(jungle, input).await }
     }
 }
 
@@ -202,20 +201,20 @@ impl Effect<()> for SearchTreeSubmit {
 }
 
 #[effect(id = 10)]
-impl Effect<PulseCodeParadise> for SearchTreeSubmit {
-    type In = (MockingBirdInstrument, Vec<DspCode>, f32);
+impl<J> Effect<J> for SearchTreeSubmit
+where
+    J: SearchTree + Sync,
+    <J as SearchTree>::Data: Send + 'static,
+    <J as SearchTree>::Error: Send + 'static,
+{
+    type In = (MockingBirdInstrument, <J as SearchTree>::Data, f32);
     type Out = ();
-    type Err = String;
+    type Err = <J as SearchTree>::Error;
 
-    fn effect(
-        jungle: &PulseCodeParadise,
-        input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             let (instrument, data, score) = input;
-            jungle
-                .submit_mockingbird_branch(instrument, data, score)
-                .map_err(|err| err.to_string())
+            <J as SearchTree>::submit(jungle, instrument, data, score).await
         }
     }
 }
@@ -236,20 +235,18 @@ impl Effect<()> for SearchTreeSkip {
 }
 
 #[effect(id = 14)]
-impl Effect<PulseCodeParadise> for SearchTreeSkip {
+impl<J> Effect<J> for SearchTreeSkip
+where
+    J: SearchTree + Sync,
+    <J as SearchTree>::Data: Send + 'static,
+    <J as SearchTree>::Error: Send + 'static,
+{
     type In = MockingBirdInstrument;
     type Out = ();
-    type Err = String;
+    type Err = <J as SearchTree>::Error;
 
-    fn effect(
-        jungle: &PulseCodeParadise,
-        input: Self::In,
-    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move {
-            jungle
-                .skip_mockingbird_branch(input)
-                .map_err(|err| err.to_string())
-        }
+    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { <J as SearchTree>::skip(jungle, input).await }
     }
 }
 
