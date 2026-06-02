@@ -17,6 +17,8 @@ mod action;
 mod effect;
 pub mod mcts;
 pub mod tokens;
+#[cfg(feature = "viewer")]
+mod ui;
 
 use crate::action::{
     ApplyDspPatch, BeginIteration, BuildPrompt, MockingBirdCompilePending, MockingBirdLoopForever,
@@ -48,6 +50,12 @@ pub struct MockingBirdState {
     pub compile_ready: bool,
     pub prompt_attempt: u32,
     pub last_retry_reason: Option<String>,
+    pub latest_generated_sample_path: Option<String>,
+    pub latest_generated_spectrogram_path: Option<String>,
+    pub latest_generated_similarity: Option<f32>,
+    pub best_generated_sample_path: Option<String>,
+    pub best_generated_spectrogram_path: Option<String>,
+    pub best_similarity: Option<f32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -91,11 +99,19 @@ pub struct MockingBirdJourney(
 );
 
 pub struct MockingBird;
-#[jungle::animal(id = 0, generation = 0)]
+#[jungle::animal(id = 0, generation = 0, observe)]
 impl Animal for MockingBird {
     type State = MockingBirdState;
     type Seed = MockingBirdSeed;
     type Flow = MockingBirdJourney;
+}
+
+impl Observe for MockingBird {
+    type Appearance = MockingBirdState;
+
+    fn observe(state: &Self::State) -> Self::Appearance {
+        state.clone()
+    }
 }
 
 #[derive(Animals)]
@@ -245,8 +261,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "mockingbird active"
     );
 
+    #[cfg(feature = "viewer")]
+    {
+        tokio::task::block_in_place(|| ui::run_ui(client.clone(), journey_id))?;
+    }
+
+    #[cfg(not(feature = "viewer"))]
     tokio::signal::ctrl_c().await?;
+    #[cfg(not(feature = "viewer"))]
     info!("received ctrl-c; shutting down mockingbird workers");
+    #[cfg(feature = "viewer")]
+    info!("mockingbird viewer closed; shutting down mockingbird workers");
 
     for worker_handle in worker_handles.drain(..) {
         worker_handle.abort();

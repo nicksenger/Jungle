@@ -116,6 +116,8 @@ impl Action for RenderSpectrogram {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(Failure::from)?;
+        state.latest_generated_sample_path = Some(state.sample_path.clone());
+        state.latest_generated_spectrogram_path = Some(state.spectrogram_path.clone());
         info!(
             iteration_id = %state.iteration_id,
             spectrogram_path = %state.spectrogram_path,
@@ -144,6 +146,16 @@ impl Action for ScoreSpectrogram {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         state.last_similarity = output.map_err(Failure::from)?;
+        state.latest_generated_similarity = Some(state.last_similarity);
+        let replace_best = state
+            .best_similarity
+            .map(|best| state.last_similarity >= best)
+            .unwrap_or(true);
+        if replace_best {
+            state.best_similarity = Some(state.last_similarity);
+            state.best_generated_sample_path = Some(state.sample_path.clone());
+            state.best_generated_spectrogram_path = Some(state.spectrogram_path.clone());
+        }
         state.compile_ready = false;
         state.prompt_attempt = 0;
         state.last_retry_reason = None;

@@ -7,7 +7,7 @@ edition = "2021"
 default = []
 image = ["dep:spectrs", "dep:image", "dep:image-compare"]
 reqwest = ["dep:reqwest", "dep:base64"]
-viewer = ["dep:jungle-vision", "dep:iced"]
+viewer = ["dep:jungle-vision", "dep:iced", "dep:rodio"]
 video = ["dep:welcome-video"]
 audio = ["dep:welcome-audio"]
 redb = ["dep:redb", "dep:directories-next"]
@@ -24,7 +24,8 @@ cron = ["dep:cron", "dep:chrono"]
 futures = { workspace = true }
 jungle_sdk = { package = "jungle-sdk", path = "../jungle-sdk", features = ["redb", "fusion"] }
 jungle-vision = { path = "../jungle-vision", optional = true }
-iced = { version = "0.14", features = ["tokio", "svg"], optional = true }
+iced = { version = "0.14", features = ["tokio", "svg", "image"], optional = true }
+rodio = { version = "0.20", optional = true }
 welcome-audio = { path = "examples/welcome/audio", optional = true }
 welcome-video = { path = "examples/welcome/video", optional = true }
 postcard = { workspace = true, features = ["alloc"] }
