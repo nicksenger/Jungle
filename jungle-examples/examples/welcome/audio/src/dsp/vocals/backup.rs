@@ -56,15 +56,38 @@ fn articulation_output_shape() -> (f32, f32) {
 }
 
 fn articulation_sample(base_hz: f32, t: f32) -> f32 {
+    // Use base frequency to create stronger harmonics at target bands
     let f = base_hz.clamp(90.0, 880.0);
-    let unison = sine(f * 0.995, t) * 0.42 + sine(f, t) * 0.3 + sine(f * 1.007, t) * 0.28;
-    unison + sine(f * 2.0, t) * 0.15 + hash_noise(t * 4_500.0) * 0.08
+
+    // Enhanced unison with wider detuning for better harmonic spread
+    let unison = sine(f * 0.993, t) * 0.35 + sine(f, t) * 0.3 + sine(f * 1.005, t) * 0.35;
+
+    // Stronger harmonic content at target frequencies
+    // The target shows energy at ~150, 534, 918, 1302, 1686, 2070, 2454, 2838 Hz
+    // These are roughly integer multiples of a fundamental
+    let harmonic_2 = sine(f * 2.0, t) * 0.25;
+    let harmonic_3 = sine(f * 3.0, t) * 0.15;
+    let harmonic_4 = sine(f * 4.0, t) * 0.08;
+
+    // Add some sub-harmonics and formant-like structure
+    let sub_harmonic = sine(f * 0.5, t) * 0.12;
+
+    // Less noise, more musical content
+    let total = unison
+        + harmonic_2
+        + harmonic_3
+        + harmonic_4
+        + sub_harmonic
+        + hash_noise(t * 4_500.0) * 0.05;
+
+    total
 }
 
 fn articulation_envelope(phase: f32) -> f32 {
-    let attack = 0.04;
-    let decay = 0.45;
+    // Slightly faster attack for better spectral definition
+    let attack = 0.03;
+    let decay = 0.5;
     let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
-    let decay_env = (-phase * decay * 4.0).exp();
+    let decay_env = (-phase * decay * 3.5).exp();
     (attack_env * decay_env).clamp(0.0, 1.0)
 }

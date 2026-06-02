@@ -3,15 +3,16 @@ use std::{f32::consts::TAU, sync::Arc, time::Duration};
 use super::{ElectricGuitarArticulation, Expression, Note, SAMPLE_RATE};
 
 #[derive(Clone, Copy)]
-struct ElectricTone {
+struct RhythmTone {
     drive: f32,
     pick_amount: f32,
     cab_smoothing: f32,
     body_mix: f32,
+    top_end: f32,
 }
 
 pub fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
-    let duration = lead_duration(note.duration, note.articulation);
+    let duration = rhythm_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let frequency_hz = midi_to_hz(note.n_midi).max(80.0);
     let velocity_gain = note.velocity.clamp(0.0, 1.0);
@@ -20,175 +21,70 @@ pub fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc
         vibrato: 0.0,
     });
 
+    let groove = groove_shape(duration, note.n_midi);
+
     let mut pcm = Vec::with_capacity(frame_count);
     let mut cab_lowpass = 0.0;
     let mut body_highpass = 0.0;
     let mut prev_cab_lowpass = 0.0;
 
-    let tone = lead_tone(note.articulation);
-    let sustain = 0.35 + velocity_gain * 0.5;
+    let tone = rhythm_tone(note.articulation, groove);
+    let sustain = 0.45 + velocity_gain * 0.35;
 
     for i in 0..frame_count {
         let t = i as f32 / SAMPLE_RATE as f32;
         let phase = t / duration.as_secs_f32().max(1e-6);
 
-        let raw = lead_sample(note.articulation, frequency_hz, phase, t, expression, tone);
-        let envelope = lead_envelope(note.articulation, phase) * sustain;
-        let picked = raw + lead_pick_attack(frequency_hz, phase, t, tone.pick_amount);
-        let driven = lead_amp_distortion(picked * envelope, tone.drive);
+        let raw = rhythm_sample(
+            note.articulation,
+            frequency_hz,
+            phase,
+            t,
+            expression,
+            groove,
+        );
+        let envelope = rhythm_envelope(note.articulation, phase) * sustain;
+        let picked = raw + rhythm_pick_attack(frequency_hz, phase, t, tone.pick_amount, groove);
+        let driven = rhythm_amp_distortion(picked * envelope, tone.drive);
 
-        // Simple cabinet/body voicing so the oscillator stack lands closer to a mic'd amp.
+        // Cabinet/body voicing with improved top-end response for mel target
         cab_lowpass += tone.cab_smoothing * (driven - cab_lowpass);
         body_highpass = tone.body_mix * (body_highpass + cab_lowpass - prev_cab_lowpass);
         prev_cab_lowpass = cab_lowpass;
 
-        let sample = (cab_lowpass + body_highpass * 0.5).clamp(-1.0, 1.0);
+        // Add top-end resonance to match target spectral shape
+        let top_end = sine(frequency_hz * 5.0, t) * tone.top_end;
+
+        let sample = (cab_lowpass + body_highpass * 0.5 + top_end * 0.4).clamp(-1.0, 1.0);
         pcm.push(sample * velocity_gain);
     }
 
-    let (gain, playback_rate) = lead_output_shape(note.articulation);
+    let (gain, playback_rate) = rhythm_output_shape(note.articulation);
     (Arc::from(pcm), gain, playback_rate)
-}
-
-fn lead_tone(articulation: ElectricGuitarArticulation) -> ElectricTone {
-    match articulation {
-        ElectricGuitarArticulation::Sustained => ElectricTone {
-            drive: 3.0,
-            pick_amount: 0.32,
-            cab_smoothing: 0.16,
-            body_mix: 0.06,
-        },
-        ElectricGuitarArticulation::RhythmSustained => ElectricTone {
-            drive: 2.6,
-            pick_amount: 0.3,
-            cab_smoothing: 0.12,
-            body_mix: 0.06,
-        },
-    }
-}
-
-fn lead_duration(base: Duration, articulation: ElectricGuitarArticulation) -> Duration {
-    let scale = match articulation {
-        ElectricGuitarArticulation::Sustained => 1.15,
-        ElectricGuitarArticulation::RhythmSustained => 0.8,
-    };
-
-    Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.03))
-}
-
-fn lead_output_shape(articulation: ElectricGuitarArticulation) -> (f32, f32) {
-    match articulation {
-        ElectricGuitarArticulation::Sustained => (0.86, 1.0),
-        ElectricGuitarArticulation::RhythmSustained => (0.8, 1.0),
-    }
-}
-
-fn lead_sample(
-    articulation: ElectricGuitarArticulation,
-    base_hz: f32,
-    _phase: f32,
-    t: f32,
-    expression: Expression,
-    tone: ElectricTone,
-) -> f32 {
-    let vibrato_depth = expression.vibrato.clamp(-1.0, 1.0) * 0.01;
-    let vibrato = (TAU * 6.1 * t).sin() * vibrato_depth;
-    let bend = expression.bend.clamp(-1.0, 1.0) * 0.32;
-
-    match articulation {
-        ElectricGuitarArticulation::Sustained => {
-            let f = base_hz * (1.0 + bend + vibrato);
-            lead_stack(f, t, 0.95, tone.drive)
-        }
-        ElectricGuitarArticulation::RhythmSustained => lead_stack(base_hz, t, 0.7, tone.drive),
-    }
-}
-
-fn lead_envelope(articulation: ElectricGuitarArticulation, phase: f32) -> f32 {
-    let attack = match articulation {
-        ElectricGuitarArticulation::Sustained => 0.018,
-        ElectricGuitarArticulation::RhythmSustained => 0.018,
-    };
-    let decay = match articulation {
-        ElectricGuitarArticulation::Sustained => 0.5,
-        ElectricGuitarArticulation::RhythmSustained => 0.5,
-    };
-
-    let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
-    let decay_env = (-phase * decay * 4.0).exp();
-    (attack_env * decay_env).clamp(0.0, 1.0)
-}
-
-fn lead_stack(frequency_hz: f32, t: f32, body: f32, drive: f32) -> f32 {
-    let raw = saw(frequency_hz, t) * 0.46
-        + saw(frequency_hz * 2.0, t) * 0.24
-        + sine(frequency_hz * 3.0, t) * 0.18
-        + sine(frequency_hz * 5.0, t) * 0.08;
-    lead_amp_distortion(raw * body, drive)
-}
-
-fn lead_pick_attack(frequency_hz: f32, phase: f32, t: f32, amount: f32) -> f32 {
-    let transient = (1.0 - smoothstep(phase * 18.0)).max(0.0);
-    let noise = hash_noise((t + frequency_hz * 0.0008) * 18_500.0) * 0.8;
-    let click = sine(frequency_hz * 6.0, t) * 0.2;
-    (noise + click) * transient * amount
-}
-
-fn lead_amp_distortion(sample: f32, drive: f32) -> f32 {
-    let pre = sample * drive;
-    let asym = (pre + pre * pre.abs() * 0.12).clamp(-2.2, 2.2);
-    (asym.tanh() * 1.08).clamp(-1.0, 1.0)
-}
-
-#[derive(Clone, Copy)]
-struct GrooveShape {
-    downstroke: f32,
-    amp_jitter: f32,
-}
-
-fn groove_shape(duration: Duration, n_midi: u8) -> GrooveShape {
-    let micros = duration.as_micros() as f32;
-    let stroke_clock =
-        smoothstep((((micros * 0.000_015) + n_midi as f32 * 0.01).sin() + 1.0) * 0.5);
-    let downstroke = 0.82 + stroke_clock * 0.36;
-    let amp_jitter = hash_noise(micros * 0.000_03 + n_midi as f32 * 0.13) * 0.08;
-    GrooveShape {
-        downstroke,
-        amp_jitter,
-    }
-}
-
-#[derive(Clone, Copy)]
-struct RhythmTone {
-    drive: f32,
-    pick_amount: f32,
-    pre_gain: f32,
-    cab_smoothing: f32,
-    body_mix: f32,
 }
 
 fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) -> RhythmTone {
     match articulation {
         ElectricGuitarArticulation::RhythmSustained => RhythmTone {
             drive: 2.55 + groove.amp_jitter,
-            pick_amount: 0.26 * groove.downstroke,
-            pre_gain: 1.0,
+            pick_amount: 0.35 * groove.downstroke,
             cab_smoothing: 0.14,
             body_mix: 0.06,
+            top_end: 0.12,
         },
         ElectricGuitarArticulation::Sustained => RhythmTone {
             drive: 2.4,
             pick_amount: 0.3,
-            pre_gain: 1.0,
             cab_smoothing: 0.12,
             body_mix: 0.08,
+            top_end: 0.08,
         },
     }
 }
 
 fn rhythm_duration(base: Duration, articulation: ElectricGuitarArticulation) -> Duration {
     let scale = match articulation {
-        ElectricGuitarArticulation::RhythmSustained => 1.1,
+        ElectricGuitarArticulation::RhythmSustained => 0.85,
         ElectricGuitarArticulation::Sustained => 1.0,
     };
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.025))
@@ -265,6 +161,24 @@ fn rhythm_amp_distortion(sample: f32, drive: f32) -> f32 {
     let pre = sample * drive;
     let asym = (pre + pre * pre.abs() * 0.1).clamp(-2.2, 2.2);
     (asym.tanh() * 1.08).clamp(-1.0, 1.0)
+}
+
+#[derive(Clone, Copy)]
+struct GrooveShape {
+    downstroke: f32,
+    amp_jitter: f32,
+}
+
+fn groove_shape(duration: Duration, n_midi: u8) -> GrooveShape {
+    let micros = duration.as_micros() as f32;
+    let stroke_clock =
+        smoothstep((((micros * 0.000_015) + n_midi as f32 * 0.01).sin() + 1.0) * 0.5);
+    let downstroke = 0.82 + stroke_clock * 0.36;
+    let amp_jitter = hash_noise(micros * 0.000_03 + n_midi as f32 * 0.13) * 0.08;
+    GrooveShape {
+        downstroke,
+        amp_jitter,
+    }
 }
 
 fn midi_to_hz(midi: u8) -> f32 {

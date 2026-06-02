@@ -206,8 +206,13 @@ impl MockingbirdUi {
         instrument: MockingBirdInstrument,
     ) -> Element<'a, Message> {
         let instrument_state = snapshot.instrument_state(instrument);
+        let latest_title = instrument_state
+            .latest_generated_code
+            .as_ref()
+            .map(|code| format!("Most Recent  {}", code.iteration_id))
+            .unwrap_or_else(|| "Most Recent".to_owned());
         let target = spectrogram_card(
-            "Target",
+            "Target".to_owned(),
             Some(&instrument_state.target_spectrogram_path),
             None,
             sibling_audio_path(&instrument_state.target_spectrogram_path)
@@ -215,7 +220,7 @@ impl MockingbirdUi {
                 .map(|_| Message::PlayTarget(instrument)),
         );
         let latest = spectrogram_card(
-            "Most Recent",
+            latest_title,
             instrument_state
                 .latest_generated_spectrogram_path
                 .as_deref(),
@@ -226,7 +231,7 @@ impl MockingbirdUi {
                 .map(|_| Message::PlayLatest(instrument)),
         );
         let best = spectrogram_card(
-            "Best In Session",
+            "Best In Session".to_owned(),
             instrument_state.best_generated_spectrogram_path.as_deref(),
             instrument_state.best_similarity,
             instrument_state
@@ -247,8 +252,9 @@ impl MockingbirdUi {
         let label = if let Some(snapshot) = self.snapshot.as_ref() {
             let current = snapshot.current_state();
             format!(
-                "iteration {}  active {}  current {:.6}  best {}",
+                "iteration {}  id {}  active {}  current {:.6}  best {}",
                 snapshot.iteration,
+                snapshot.iteration_id,
                 snapshot.current_instrument.slug(),
                 current.last_similarity,
                 current
@@ -281,7 +287,7 @@ fn sibling_audio_path(image_path: &str) -> Option<String> {
 }
 
 fn spectrogram_card<'a>(
-    title: &'a str,
+    title: String,
     spectrogram_path: Option<&'a str>,
     similarity: Option<f32>,
     play_message: Option<Message>,
@@ -289,7 +295,7 @@ fn spectrogram_card<'a>(
     let header = if let Some(similarity) = similarity {
         format!("{title}  {similarity:.6}")
     } else {
-        title.to_owned()
+        title
     };
 
     let image_panel: Element<'a, Message> = match spectrogram_path.filter(|path| !path.is_empty()) {

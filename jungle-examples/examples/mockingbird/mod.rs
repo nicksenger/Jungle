@@ -220,10 +220,6 @@ impl MockingBirdInstrumentState {
         self.compile_ready = false;
         self.prompt_attempt = 0;
         self.last_retry_reason = None;
-        self.latest_generated_code = None;
-        self.latest_generated_sample_path = None;
-        self.latest_generated_spectrogram_path = None;
-        self.latest_generated_similarity = None;
         self.last_similarity = 0.0;
     }
 }
@@ -812,5 +808,52 @@ mod tests {
                 "jungle-examples/examples/mockingbird/assets/guitar_solo_4s.png",
             ]
         );
+    }
+
+    #[test]
+    fn begin_iteration_preserves_previous_most_recent_outputs() {
+        let mut state = MockingBirdInstrumentState {
+            instrument: MockingBirdInstrument::Bass,
+            latest_generated_code: Some(DspCode {
+                iteration_id: "00000007".to_owned(),
+                source: "fn bass() {}".to_owned(),
+                sample_path: "/tmp/old.wav".to_owned(),
+                spectrogram_path: "/tmp/old.png".to_owned(),
+                similarity: Some(0.8),
+            }),
+            latest_generated_sample_path: Some("/tmp/old.wav".to_owned()),
+            latest_generated_spectrogram_path: Some("/tmp/old.png".to_owned()),
+            latest_generated_similarity: Some(0.8),
+            compile_ready: true,
+            prompt_attempt: 3,
+            last_retry_reason: Some("oops".to_owned()),
+            last_similarity: 0.8,
+            ..MockingBirdInstrumentState::default()
+        };
+
+        state.begin_iteration("/tmp/mockingbird", "00000008");
+
+        assert_eq!(
+            state.latest_generated_sample_path.as_deref(),
+            Some("/tmp/old.wav")
+        );
+        assert_eq!(
+            state.latest_generated_spectrogram_path.as_deref(),
+            Some("/tmp/old.png")
+        );
+        assert_eq!(state.latest_generated_similarity, Some(0.8));
+        assert_eq!(
+            state
+                .latest_generated_code
+                .as_ref()
+                .map(|code| code.iteration_id.as_str()),
+            Some("00000007")
+        );
+        assert!(!state.compile_ready);
+        assert_eq!(state.prompt_attempt, 0);
+        assert_eq!(state.last_retry_reason, None);
+        assert_eq!(state.last_similarity, 0.0);
+        assert!(state.sample_path.ends_with("00000008/bass_4s.wav"));
+        assert!(state.spectrogram_path.ends_with("00000008/bass_4s.png"));
     }
 }
