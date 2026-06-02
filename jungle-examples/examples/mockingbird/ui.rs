@@ -12,7 +12,6 @@ use uuid::Uuid;
 const WINDOW_WIDTH: f32 = 1840.0;
 const WINDOW_HEIGHT: f32 = 860.0;
 const PANEL_HEADER_HEIGHT: f32 = 52.0;
-const SNAPSHOT_ROW_HEIGHT: f32 = (WINDOW_HEIGHT - PANEL_HEADER_HEIGHT) / 5.0;
 const WINDOW_HEADER_HORIZONTAL_PADDING: u16 = 12;
 const WINDOW_HEADER_CELL_HORIZONTAL_PADDING: u16 = 10;
 const SECTION_HORIZONTAL_PADDING: u16 = 0;
@@ -210,7 +209,7 @@ impl MockingbirdUi {
                 rows = rows.push(
                     container(self.snapshot_row(snapshot, instrument))
                         .width(Length::Fill)
-                        .height(Length::Fixed(SNAPSHOT_ROW_HEIGHT)),
+                        .height(Length::FillPortion(1)),
                 );
             }
 
