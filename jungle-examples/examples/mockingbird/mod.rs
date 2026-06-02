@@ -21,9 +21,10 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    ApplyDspPatch, BeginIteration, BuildPrompt, FinalizeIterationRender, InstrumentMarker,
-    MockingBirdCompilePending, MockingBirdLoopForever, RequestDspPatch, ScoreSpectrogram,
-    SeedMockingBirdState, SelectDspBranch, SetCurrentInstrument, SubmitDspBranch,
+    ApplyDspPatch, BeginIteration, BuildPrompt, CurrentInstrumentCompileReady,
+    FinalizeIterationRender, FlattenEitherUnit, InstrumentMarker, MockingBirdCompilePending,
+    MockingBirdLoopForever, RequestDspPatch, ScoreSpectrogram, SeedMockingBirdState,
+    SelectDspBranch, SetCurrentInstrument, SkipInstrumentIteration, SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
@@ -31,6 +32,7 @@ const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 8;
 const DEFAULT_LOG_FILTER: &str = "warn,mockingbird=info";
 pub(crate) const MOCKINGBIRD_DURATION_SECS: f64 = 4.0;
+pub(crate) const MAX_COMPILE_PROMPT_ATTEMPTS: u32 = 3;
 pub(crate) const MOCKINGBIRD_SCORE_SPEC: &str =
     "electric-guitar(rhythm-sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
 pub(crate) const VOCALS_SCORE_SPEC: &str = "vocals(formant):[250,66,96,'wel'],[346,68,288,'come'],[634,68,96,'to'],[730,66,96,'the'],[826,71,384,'jun'],[1210,68,192,'gol'],[1786,66,96,'weve'],[1882,68,288,'got'],[2170,68,96,'fun'],[2266,66,192,'and'],[2458,68,288,'games']";
@@ -184,6 +186,7 @@ pub struct MockingBirdInstrumentState {
     pub last_similarity: f32,
     pub compile_ready: bool,
     pub prompt_attempt: u32,
+    pub skipped_this_iteration: bool,
     pub last_retry_reason: Option<String>,
     pub latest_generated_code: Option<DspCode>,
     pub latest_generated_sample_path: Option<String>,
@@ -219,6 +222,7 @@ impl MockingBirdInstrumentState {
             .to_string();
         self.compile_ready = false;
         self.prompt_attempt = 0;
+        self.skipped_this_iteration = false;
         self.last_retry_reason = None;
         self.last_similarity = 0.0;
     }
@@ -313,10 +317,17 @@ pub struct MockingBirdInstrumentOptimization<Marker: InstrumentMarker>(
 );
 
 #[derive(Flow)]
+pub struct MockingBirdInstrumentScoringBody(Step<ScoreSpectrogram>, Step<SubmitDspBranch>);
+
+#[derive(Flow)]
 pub struct MockingBirdInstrumentScoring<Marker: InstrumentMarker>(
     Step<SetCurrentInstrument<Marker>>,
-    Step<ScoreSpectrogram>,
-    Step<SubmitDspBranch>,
+    Conditional<
+        CurrentInstrumentCompileReady,
+        MockingBirdInstrumentScoringBody,
+        Step<SkipInstrumentIteration>,
+    >,
+    Step<FlattenEitherUnit<MockingBirdState>>,
 );
 
 pub struct RhythmGuitarMarker;
@@ -826,6 +837,7 @@ mod tests {
             latest_generated_similarity: Some(0.8),
             compile_ready: true,
             prompt_attempt: 3,
+            skipped_this_iteration: true,
             last_retry_reason: Some("oops".to_owned()),
             last_similarity: 0.8,
             ..MockingBirdInstrumentState::default()
@@ -851,6 +863,7 @@ mod tests {
         );
         assert!(!state.compile_ready);
         assert_eq!(state.prompt_attempt, 0);
+        assert!(!state.skipped_this_iteration);
         assert_eq!(state.last_retry_reason, None);
         assert_eq!(state.last_similarity, 0.0);
         assert!(state.sample_path.ends_with("00000008/bass_4s.wav"));

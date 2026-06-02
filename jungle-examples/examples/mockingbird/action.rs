@@ -4,7 +4,9 @@ use crate::effect::{
     FinalizeIterationSamplesInput, FinalizeIterationSamplesOutcome, PromptModel, SearchTreeSelect,
     SearchTreeSubmit,
 };
-use crate::{DspCode, MockingBirdInstrument, MockingBirdSeed, MockingBirdState};
+use crate::{
+    DspCode, MockingBirdInstrument, MockingBirdSeed, MockingBirdState, MAX_COMPILE_PROMPT_ATTEMPTS,
+};
 use jungle_sdk::prelude::*;
 use std::marker::PhantomData;
 use tracing::{debug, info, warn};
@@ -38,6 +40,23 @@ where
 }
 
 pub type SeedMockingBirdState = SeedState<MockingBirdSeed, MockingBirdState>;
+
+pub struct FlattenEitherUnit<S>(PhantomData<S>);
+#[jungle::action]
+impl<S> Action for FlattenEitherUnit<S> {
+    type Effect = Noop;
+    type Input = Either<(), ()>;
+    type Output = ();
+
+    fn emit(_state: &S, _input: Self::Input) {}
+
+    fn absorb(
+        _state: &mut S,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        Ok(())
+    }
+}
 
 fn selected_leaf(state: &MockingBirdState) -> DspCode {
     let instrument_state = state.current_state();
@@ -188,6 +207,29 @@ impl Action for ScoreSpectrogram {
     }
 }
 
+pub struct SkipInstrumentIteration;
+#[jungle::action]
+impl Action for SkipInstrumentIteration {
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &MockingBirdState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut MockingBirdState,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        info!(
+            iteration_id = %state.iteration_id,
+            instrument = state.current_instrument.slug(),
+            prompt_attempt = state.current_state().prompt_attempt,
+            "skipping mockingbird instrument for this iteration"
+        );
+        Ok(())
+    }
+}
+
 pub struct BuildPrompt;
 #[jungle::action]
 impl Action for BuildPrompt {
@@ -288,6 +330,7 @@ impl Action for ApplyDspPatch {
         let instrument_state = state.current_state_mut();
         instrument_state.compile_ready = compile_ok;
         if compile_ok {
+            instrument_state.skipped_this_iteration = false;
             instrument_state.last_retry_reason = None;
             instrument_state.latest_generated_code = generated_source.map(|source| DspCode {
                 iteration_id: generated_iteration_id.clone(),
@@ -305,13 +348,24 @@ impl Action for ApplyDspPatch {
         } else {
             instrument_state.latest_generated_code = None;
             instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
+            instrument_state.skipped_this_iteration =
+                instrument_state.prompt_attempt >= MAX_COMPILE_PROMPT_ATTEMPTS;
             instrument_state.last_retry_reason = retry_reason;
-            warn!(
-                iteration_id = %iteration_id,
-                instrument = instrument.slug(),
-                prompt_attempt = instrument_state.prompt_attempt,
-                "mockingbird dsp patch failed compilation; retrying"
-            );
+            if instrument_state.skipped_this_iteration {
+                warn!(
+                    iteration_id = %iteration_id,
+                    instrument = instrument.slug(),
+                    prompt_attempt = instrument_state.prompt_attempt,
+                    "mockingbird dsp patch exhausted compile retries; skipping instrument for this iteration"
+                );
+            } else {
+                warn!(
+                    iteration_id = %iteration_id,
+                    instrument = instrument.slug(),
+                    prompt_attempt = instrument_state.prompt_attempt,
+                    "mockingbird dsp patch failed compilation; retrying"
+                );
+            }
         }
 
         Ok(())
@@ -331,6 +385,7 @@ impl Action for FinalizeIterationRender {
             instruments: state
                 .instruments
                 .iter()
+                .filter(|instrument_state| instrument_state.compile_ready)
                 .map(
                     |instrument_state| crate::effect::FinalizeIterationInstrumentInput {
                         instrument: instrument_state.instrument,
@@ -407,6 +462,13 @@ impl Action for SubmitDspBranch {
     }
 }
 
+pub struct CurrentInstrumentCompileReady;
+impl Predicate<(MockingBirdState, ())> for CurrentInstrumentCompileReady {
+    fn eval((state, _): &(MockingBirdState, ())) -> bool {
+        state.current_state().compile_ready
+    }
+}
+
 pub struct MockingBirdLoopForever;
 impl Predicate<(&MockingBirdState, &())> for MockingBirdLoopForever {
     fn eval((_state, _): &(&MockingBirdState, &())) -> bool {
@@ -417,6 +479,39 @@ impl Predicate<(&MockingBirdState, &())> for MockingBirdLoopForever {
 pub struct MockingBirdCompilePending;
 impl Predicate<(&MockingBirdState, &())> for MockingBirdCompilePending {
     fn eval((state, _): &(&MockingBirdState, &())) -> bool {
-        !state.current_state().compile_ready
+        let instrument_state = state.current_state();
+        !instrument_state.compile_ready && !instrument_state.skipped_this_iteration
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn compile_state(
+        prompt_attempt: u32,
+        compile_ready: bool,
+        skipped_this_iteration: bool,
+    ) -> MockingBirdState {
+        MockingBirdState {
+            current_instrument: MockingBirdInstrument::Bass,
+            instruments: vec![crate::MockingBirdInstrumentState {
+                instrument: MockingBirdInstrument::Bass,
+                prompt_attempt,
+                compile_ready,
+                skipped_this_iteration,
+                ..crate::MockingBirdInstrumentState::default()
+            }],
+            ..MockingBirdState::default()
+        }
+    }
+
+    #[test]
+    fn compile_pending_stops_after_skip() {
+        let pending = compile_state(2, false, false);
+        let skipped = compile_state(MAX_COMPILE_PROMPT_ATTEMPTS, false, true);
+
+        assert!(MockingBirdCompilePending::eval(&(&pending, &())));
+        assert!(!MockingBirdCompilePending::eval(&(&skipped, &())));
     }
 }
