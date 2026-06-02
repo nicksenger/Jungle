@@ -1,12 +1,11 @@
 use crate::effect::{
-    ApplyToolCalls, ApplyToolCallsInput, ApplyToolCallsOutcome, BuildOptimizationPrompt,
-    BuildOptimizationPromptInput, CompareSpectrograms, FinalizeIterationSamples,
-    FinalizeIterationSamplesInput, FinalizeIterationSamplesOutcome, PromptModel, SearchTreeSelect,
-    SearchTreeSkip, SearchTreeSubmit,
+    BuildOptimizationPrompt, BuildOptimizationPromptInput, CompareSpectrograms,
+    CompilePreparedPatch, CompilePreparedPatchInput, CompilePreparedPatchOutcome,
+    FinalizeIterationSamples, FinalizeIterationSamplesInput, FinalizeIterationSamplesOutcome,
+    PrepareToolCalls, PrepareToolCallsInput, PrepareToolCallsOutcome, PromptModel,
+    SearchTreeSelect, SearchTreeSkip, SearchTreeSubmit,
 };
-use crate::{
-    DspCode, MockingBirdInstrument, MockingBirdSeed, MockingBirdState, MAX_COMPILE_PROMPT_ATTEMPTS,
-};
+use crate::{DspCode, MockingBirdInstrument, MockingBirdSeed, MockingBirdState};
 use jungle_sdk::prelude::*;
 use std::marker::PhantomData;
 use tracing::{debug, info, warn};
@@ -58,13 +57,21 @@ impl<S> Action for FlattenEitherUnit<S> {
     }
 }
 
-fn selected_leaf(state: &MockingBirdState) -> DspCode {
-    let instrument_state = state.current_state();
-    instrument_state
-        .selected_branch
-        .last()
-        .cloned()
-        .unwrap_or_else(|| instrument_state.initial_dsp_code.clone())
+pub struct FlattenJoinedUnit<S>(PhantomData<S>);
+#[jungle::action]
+impl<S> Action for FlattenJoinedUnit<S> {
+    type Effect = Noop;
+    type Input = ((), ());
+    type Output = ();
+
+    fn emit(_state: &S, _input: Self::Input) {}
+
+    fn absorb(
+        _state: &mut S,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        Ok(())
+    }
 }
 
 pub struct SetCurrentInstrument<Marker>(PhantomData<fn() -> Marker>);
@@ -306,22 +313,20 @@ impl Action for RequestDspPatch {
     }
 }
 
-pub struct ApplyDspPatch;
+pub struct PrepareDspPatch;
 #[jungle::action]
-impl Action for ApplyDspPatch {
-    type Effect = ApplyToolCalls;
+impl Action for PrepareDspPatch {
+    type Effect = PrepareToolCalls;
     type Input = Vec<crate::tokens::ToolCall>;
     type Output = ();
 
-    fn emit(state: &MockingBirdState, input: Self::Input) -> ApplyToolCallsInput {
+    fn emit(state: &MockingBirdState, input: Self::Input) -> PrepareToolCallsInput {
         let instrument_state = state.current_state();
-        ApplyToolCallsInput {
+        PrepareToolCallsInput {
             iteration_id: state.iteration_id.clone(),
             instrument: state.current_instrument,
             prompt_attempt: instrument_state.prompt_attempt.saturating_add(1),
             tool_name: state.current_instrument.tool_name().to_owned(),
-            dsp_source_path: instrument_state.dsp_source_path.clone(),
-            base_source: selected_leaf(state).source,
             tool_calls: input,
         }
     }
@@ -332,19 +337,86 @@ impl Action for ApplyDspPatch {
     ) -> Result<Self::Output, Failure> {
         let instrument = state.current_instrument;
         let iteration_id = state.iteration_id.clone();
-        let generated_iteration_id = iteration_id.clone();
-        let ApplyToolCallsOutcome {
-            compile_ok,
+        let PrepareToolCallsOutcome {
             retry_reason,
             generated_source,
         } = output.map_err(Failure::from)?;
 
         let instrument_state = state.current_state_mut();
+        instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
+        instrument_state.pending_generated_source = generated_source;
+        if instrument_state.pending_generated_source.is_some() {
+            instrument_state.compile_ready = false;
+            instrument_state.skipped_this_iteration = false;
+            instrument_state.last_retry_reason = None;
+            instrument_state.latest_generated_code = None;
+            debug!(
+                iteration_id = %iteration_id,
+                instrument = instrument.slug(),
+                prompt_attempt = instrument_state.prompt_attempt,
+                selected_depth = instrument_state.selected_branch.len().saturating_sub(1),
+                selected_similarity = instrument_state
+                    .selected_branch
+                    .last()
+                    .and_then(|code| code.similarity)
+                    .unwrap_or_default(),
+                "staged mockingbird dsp patch for compilation"
+            );
+        } else {
+            instrument_state.latest_generated_code = None;
+            instrument_state.compile_ready = false;
+            instrument_state.skipped_this_iteration = true;
+            instrument_state.last_retry_reason = retry_reason;
+            warn!(
+                iteration_id = %iteration_id,
+                instrument = instrument.slug(),
+                prompt_attempt = instrument_state.prompt_attempt,
+                "mockingbird dsp patch could not be prepared; skipping instrument for this iteration"
+            );
+        }
+
+        Ok(())
+    }
+}
+
+pub struct CompilePreparedDspPatch;
+#[jungle::action]
+impl Action for CompilePreparedDspPatch {
+    type Effect = CompilePreparedPatch;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &MockingBirdState, _input: Self::Input) -> CompilePreparedPatchInput {
+        let instrument_state = state.current_state();
+        CompilePreparedPatchInput {
+            iteration_id: state.iteration_id.clone(),
+            instrument: state.current_instrument,
+            prompt_attempt: instrument_state.prompt_attempt,
+            dsp_source_path: instrument_state.dsp_source_path.clone(),
+            original_source: instrument_state.initial_dsp_code.source.clone(),
+            generated_source: instrument_state.pending_generated_source.clone(),
+        }
+    }
+
+    fn absorb(
+        state: &mut MockingBirdState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let instrument = state.current_instrument;
+        let iteration_id = state.iteration_id.clone();
+        let generated_iteration_id = iteration_id.clone();
+        let CompilePreparedPatchOutcome {
+            compile_ok,
+            retry_reason,
+        } = output.map_err(Failure::from)?;
+
+        let instrument_state = state.current_state_mut();
+        let pending_source = instrument_state.pending_generated_source.take();
         instrument_state.compile_ready = compile_ok;
         if compile_ok {
             instrument_state.skipped_this_iteration = false;
             instrument_state.last_retry_reason = None;
-            instrument_state.latest_generated_code = generated_source.map(|source| DspCode {
+            instrument_state.latest_generated_code = pending_source.map(|source| DspCode {
                 iteration_id: generated_iteration_id.clone(),
                 source,
                 sample_path: instrument_state.sample_path.clone(),
@@ -354,30 +426,21 @@ impl Action for ApplyDspPatch {
             info!(
                 iteration_id = %iteration_id,
                 instrument = instrument.slug(),
-                prompt_attempt = instrument_state.prompt_attempt.saturating_add(1),
-                "mockingbird dsp patch compiled successfully"
+                prompt_attempt = instrument_state.prompt_attempt,
+                "mockingbird dsp patch compiled successfully and restored the original source"
             );
         } else {
             instrument_state.latest_generated_code = None;
-            instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
-            instrument_state.skipped_this_iteration =
-                instrument_state.prompt_attempt >= MAX_COMPILE_PROMPT_ATTEMPTS;
-            instrument_state.last_retry_reason = retry_reason;
-            if instrument_state.skipped_this_iteration {
-                warn!(
-                    iteration_id = %iteration_id,
-                    instrument = instrument.slug(),
-                    prompt_attempt = instrument_state.prompt_attempt,
-                    "mockingbird dsp patch exhausted compile retries; skipping instrument for this iteration"
-                );
-            } else {
-                warn!(
-                    iteration_id = %iteration_id,
-                    instrument = instrument.slug(),
-                    prompt_attempt = instrument_state.prompt_attempt,
-                    "mockingbird dsp patch failed compilation; retrying"
-                );
+            instrument_state.skipped_this_iteration = true;
+            if let Some(retry_reason) = retry_reason {
+                instrument_state.last_retry_reason = Some(retry_reason);
             }
+            warn!(
+                iteration_id = %iteration_id,
+                instrument = instrument.slug(),
+                prompt_attempt = instrument_state.prompt_attempt,
+                "mockingbird dsp patch failed compilation; skipping instrument for this iteration"
+            );
         }
 
         Ok(())
@@ -401,6 +464,13 @@ impl Action for FinalizeIterationRender {
                 .map(
                     |instrument_state| crate::effect::FinalizeIterationInstrumentInput {
                         instrument: instrument_state.instrument,
+                        dsp_source_path: instrument_state.dsp_source_path.clone(),
+                        original_source: instrument_state.initial_dsp_code.source.clone(),
+                        generated_source: instrument_state
+                            .latest_generated_code
+                            .as_ref()
+                            .map(|code| code.source.clone())
+                            .unwrap_or_default(),
                         sample_path: instrument_state.sample_path.clone(),
                         spectrogram_path: instrument_state.spectrogram_path.clone(),
                     },
@@ -414,6 +484,19 @@ impl Action for FinalizeIterationRender {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let FinalizeIterationSamplesOutcome { rendered } = output.map_err(Failure::from)?;
+        let rendered_instruments = rendered
+            .iter()
+            .map(|instrument| instrument.instrument)
+            .collect::<std::collections::BTreeSet<_>>();
+        for instrument_state in &mut state.instruments {
+            if instrument_state.compile_ready
+                && !rendered_instruments.contains(&instrument_state.instrument)
+            {
+                instrument_state.compile_ready = false;
+                instrument_state.skipped_this_iteration = true;
+                instrument_state.latest_generated_code = None;
+            }
+        }
         for instrument_output in rendered {
             let instrument_state = state.instrument_state_mut(instrument_output.instrument);
             instrument_state.latest_generated_sample_path =
@@ -489,42 +572,5 @@ impl Predicate<(&MockingBirdState, &())> for MockingBirdLoopForever {
     }
 }
 
-pub struct MockingBirdCompilePending;
-impl Predicate<(&MockingBirdState, &())> for MockingBirdCompilePending {
-    fn eval((state, _): &(&MockingBirdState, &())) -> bool {
-        let instrument_state = state.current_state();
-        !instrument_state.compile_ready && !instrument_state.skipped_this_iteration
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn compile_state(
-        prompt_attempt: u32,
-        compile_ready: bool,
-        skipped_this_iteration: bool,
-    ) -> MockingBirdState {
-        MockingBirdState {
-            current_instrument: MockingBirdInstrument::Bass,
-            instruments: vec![crate::MockingBirdInstrumentState {
-                instrument: MockingBirdInstrument::Bass,
-                prompt_attempt,
-                compile_ready,
-                skipped_this_iteration,
-                ..crate::MockingBirdInstrumentState::default()
-            }],
-            ..MockingBirdState::default()
-        }
-    }
-
-    #[test]
-    fn compile_pending_stops_after_skip() {
-        let pending = compile_state(2, false, false);
-        let skipped = compile_state(MAX_COMPILE_PROMPT_ATTEMPTS, false, true);
-
-        assert!(MockingBirdCompilePending::eval(&(&pending, &())));
-        assert!(!MockingBirdCompilePending::eval(&(&skipped, &())));
-    }
-}
+mod tests {}

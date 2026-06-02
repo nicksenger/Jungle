@@ -125,32 +125,57 @@ impl<J> Effect<J> for BuildOptimizationPrompt {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ApplyToolCallsInput {
+pub struct PrepareToolCallsInput {
     pub iteration_id: String,
     pub instrument: MockingBirdInstrument,
     pub prompt_attempt: u32,
     pub tool_name: String,
-    pub dsp_source_path: String,
-    pub base_source: String,
     pub tool_calls: Vec<ToolCall>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ApplyToolCallsOutcome {
-    pub compile_ok: bool,
+pub struct PrepareToolCallsOutcome {
     pub retry_reason: Option<String>,
     pub generated_source: Option<String>,
 }
 
-pub struct ApplyToolCalls;
+pub struct PrepareToolCalls;
 #[effect(id = 13)]
-impl<J> Effect<J> for ApplyToolCalls {
-    type In = ApplyToolCallsInput;
-    type Out = ApplyToolCallsOutcome;
+impl<J> Effect<J> for PrepareToolCalls {
+    type In = PrepareToolCallsInput;
+    type Out = PrepareToolCallsOutcome;
     type Err = String;
 
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { apply_tool_calls(input).await }
+        async move { prepare_tool_calls(input).await }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CompilePreparedPatchInput {
+    pub iteration_id: String,
+    pub instrument: MockingBirdInstrument,
+    pub prompt_attempt: u32,
+    pub dsp_source_path: String,
+    pub original_source: String,
+    pub generated_source: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CompilePreparedPatchOutcome {
+    pub compile_ok: bool,
+    pub retry_reason: Option<String>,
+}
+
+pub struct CompilePreparedPatch;
+#[effect(id = 15)]
+impl<J> Effect<J> for CompilePreparedPatch {
+    type In = CompilePreparedPatchInput;
+    type Out = CompilePreparedPatchOutcome;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { compile_prepared_patch(input).await }
     }
 }
 
@@ -253,6 +278,9 @@ where
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeIterationInstrumentInput {
     pub instrument: MockingBirdInstrument,
+    pub dsp_source_path: String,
+    pub original_source: String,
+    pub generated_source: String,
     pub sample_path: String,
     pub spectrogram_path: String,
 }
@@ -411,17 +439,51 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
 async fn finalize_iteration_samples(
     input: FinalizeIterationSamplesInput,
 ) -> Result<FinalizeIterationSamplesOutcome, String> {
-    build_sampler_release().await?;
-
     let mut rendered = Vec::with_capacity(input.instruments.len());
     for instrument in input.instruments {
-        run_sampler_binary(
+        let build_result = with_temporary_dsp_source(
+            &instrument.dsp_source_path,
+            &instrument.generated_source,
+            &instrument.original_source,
+            || async { build_sampler_release().await },
+        )
+        .await;
+        if let Err(err) = build_result {
+            warn!(
+                iteration_id = %input.iteration_id,
+                instrument = instrument.instrument.slug(),
+                error = %err,
+                "mockingbird sample build failed; skipping instrument render"
+            );
+            continue;
+        }
+
+        if let Err(err) = run_sampler_binary(
             MOCKINGBIRD_DURATION_SECS,
             &instrument.sample_path,
             &[instrument.instrument.score_spec().to_owned()],
         )
-        .await?;
-        generate_mel_spectrogram(&instrument.sample_path, &instrument.spectrogram_path)?;
+        .await
+        {
+            warn!(
+                iteration_id = %input.iteration_id,
+                instrument = instrument.instrument.slug(),
+                error = %err,
+                "mockingbird sampler run failed; skipping instrument render"
+            );
+            continue;
+        }
+        if let Err(err) =
+            generate_mel_spectrogram(&instrument.sample_path, &instrument.spectrogram_path)
+        {
+            warn!(
+                iteration_id = %input.iteration_id,
+                instrument = instrument.instrument.slug(),
+                error = %err,
+                "mockingbird spectrogram generation failed; skipping instrument render"
+            );
+            continue;
+        }
         rendered.push(FinalizeIterationInstrumentOutput {
             instrument: instrument.instrument,
             sample_path: instrument.sample_path,
@@ -467,7 +529,7 @@ Keep the module compiling in the existing `mockingbird-sample` crate and preserv
     );
     if let Some(retry_reason) = input.retry_reason {
         task_description.push_str(
-            "\n\nPrevious attempt failed compilation and the selected branch source was restored.\nFailure details:\n",
+            "\n\nPrevious attempt failed compilation and the original DSP source was restored.\nFailure details:\n",
         );
         task_description.push_str(&retry_reason);
     }
@@ -529,13 +591,15 @@ Respond with tool calls only. Only use `{}`.",
     })
 }
 
-async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOutcome, String> {
+async fn prepare_tool_calls(
+    input: PrepareToolCallsInput,
+) -> Result<PrepareToolCallsOutcome, String> {
     info!(
         iteration_id = %input.iteration_id,
         instrument = input.instrument.slug(),
         prompt_attempt = input.prompt_attempt,
         tool_call_count = input.tool_calls.len(),
-        "applying mockingbird dsp tool calls"
+        "preparing mockingbird dsp tool calls"
     );
 
     let replacement = match extract_replacement_source(&input.tool_calls, &input.tool_name) {
@@ -546,10 +610,9 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
                 instrument = input.instrument.slug(),
                 prompt_attempt = input.prompt_attempt,
                 error = %err,
-                "mockingbird tool call arguments were malformed; retrying prompt"
+                "mockingbird tool call arguments were malformed"
             );
-            return Ok(ApplyToolCallsOutcome {
-                compile_ok: false,
+            return Ok(PrepareToolCallsOutcome {
                 retry_reason: Some(err),
                 generated_source: None,
             });
@@ -561,8 +624,7 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
                 prompt_attempt = input.prompt_attempt,
                 "no valid mockingbird dsp replacement tool call returned"
             );
-            return Ok(ApplyToolCallsOutcome {
-                compile_ok: false,
+            return Ok(PrepareToolCallsOutcome {
                 retry_reason: Some(format!(
                     "no valid `{}` tool call with a `source` string was returned",
                     input.tool_name
@@ -572,52 +634,59 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
         }
     };
 
-    fs::write(&input.dsp_source_path, &replacement).map_err(|err| {
-        format!(
-            "failed to write replacement dsp source {}: {err}",
-            input.dsp_source_path
-        )
-    })?;
     debug!(
         iteration_id = %input.iteration_id,
         instrument = input.instrument.slug(),
         prompt_attempt = input.prompt_attempt,
-        dsp_source_path = %input.dsp_source_path,
-        "wrote candidate mockingbird dsp source"
+        "prepared candidate mockingbird dsp source"
     );
 
-    match check_sampler_compilation().await {
-        Ok(()) => {
-            info!(
-                iteration_id = %input.iteration_id,
-                instrument = input.instrument.slug(),
-                prompt_attempt = input.prompt_attempt,
-                "mockingbird sample compilation succeeded"
-            );
-            Ok(ApplyToolCallsOutcome {
-                compile_ok: true,
-                retry_reason: None,
-                generated_source: Some(replacement),
-            })
-        }
+    Ok(PrepareToolCallsOutcome {
+        retry_reason: None,
+        generated_source: Some(replacement),
+    })
+}
+
+async fn compile_prepared_patch(
+    input: CompilePreparedPatchInput,
+) -> Result<CompilePreparedPatchOutcome, String> {
+    let Some(generated_source) = input.generated_source.as_deref() else {
+        return Ok(CompilePreparedPatchOutcome {
+            compile_ok: false,
+            retry_reason: None,
+        });
+    };
+
+    info!(
+        iteration_id = %input.iteration_id,
+        instrument = input.instrument.slug(),
+        prompt_attempt = input.prompt_attempt,
+        "checking mockingbird dsp patch compilation"
+    );
+
+    match with_temporary_dsp_source(
+        &input.dsp_source_path,
+        generated_source,
+        &input.original_source,
+        || async { check_sampler_compilation().await },
+    )
+    .await
+    {
+        Ok(()) => Ok(CompilePreparedPatchOutcome {
+            compile_ok: true,
+            retry_reason: None,
+        }),
         Err(err) => {
-            fs::write(&input.dsp_source_path, &input.base_source).map_err(|restore_err| {
-                format!(
-                    "sampler compilation failed and restoring {} also failed: {restore_err}; original error: {err}",
-                    input.dsp_source_path
-                )
-            })?;
             warn!(
                 iteration_id = %input.iteration_id,
                 instrument = input.instrument.slug(),
                 prompt_attempt = input.prompt_attempt,
                 error = %err,
-                "mockingbird sample compilation failed; restored dsp source"
+                "mockingbird sample compilation failed; restored original dsp source"
             );
-            Ok(ApplyToolCallsOutcome {
+            Ok(CompilePreparedPatchOutcome {
                 compile_ok: false,
                 retry_reason: Some(err),
-                generated_source: None,
             })
         }
     }
@@ -713,6 +782,41 @@ async fn run_sampler_cargo<const N: usize>(args: [&str; N]) -> Result<bool, Stri
             let _ = child.wait().await;
             Ok(false)
         }
+    }
+}
+
+async fn with_temporary_dsp_source<T, F, Fut>(
+    dsp_source_path: &str,
+    generated_source: &str,
+    original_source: &str,
+    operation: F,
+) -> Result<T, String>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T, String>>,
+{
+    fs::write(dsp_source_path, generated_source).map_err(|err| {
+        format!(
+            "failed to write replacement dsp source {}: {err}",
+            dsp_source_path
+        )
+    })?;
+
+    let operation_result = operation().await;
+    let restore_result = fs::write(dsp_source_path, original_source).map_err(|err| {
+        format!(
+            "failed to restore original dsp source {}: {err}",
+            dsp_source_path
+        )
+    });
+
+    match (operation_result, restore_result) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(err), Ok(())) => Err(err),
+        (Ok(_), Err(restore_err)) => Err(restore_err),
+        (Err(err), Err(restore_err)) => Err(format!(
+            "{err}\nrestoring the original dsp source also failed: {restore_err}"
+        )),
     }
 }
 
@@ -868,6 +972,12 @@ mod tests {
         image.save(path).unwrap();
     }
 
+    fn temp_text_path(name: &str) -> PathBuf {
+        std::env::temp_dir()
+            .join("jungle-mockingbird-tests")
+            .join(format!("{name}-{}.rs", Uuid::new_v4()))
+    }
+
     #[test]
     fn compare_spectrograms_crops_extra_width_from_the_right() {
         let left_path = temp_png_path("left");
@@ -966,5 +1076,45 @@ mod tests {
         .unwrap();
 
         assert!(prompt.tools.is_empty());
+    }
+
+    #[tokio::test]
+    async fn temporary_dsp_source_restores_original_after_success() {
+        let path = temp_text_path("restore-success");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&path, "original").unwrap();
+        let path_string = path.display().to_string();
+
+        let result = with_temporary_dsp_source(&path_string, "generated", "original", || async {
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "generated");
+            Ok::<_, String>("ok")
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(result, "ok");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
+    }
+
+    #[tokio::test]
+    async fn temporary_dsp_source_restores_original_after_failure() {
+        let path = temp_text_path("restore-failure");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&path, "original").unwrap();
+        let path_string = path.display().to_string();
+
+        let err = with_temporary_dsp_source(&path_string, "generated", "original", || async {
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "generated");
+            Err::<(), _>("boom".to_owned())
+        })
+        .await
+        .unwrap_err();
+
+        assert!(err.contains("boom"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
     }
 }
