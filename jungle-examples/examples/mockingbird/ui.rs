@@ -1,6 +1,6 @@
 use crate::{MockingBird, MockingBirdInstrument, MockingBirdInstrumentState, MockingBirdState};
 use iced::widget::{button, column, container, image, row, stack, text};
-use iced::{clipboard, ContentFit, Element, Font, Length, Padding, Subscription, Task};
+use iced::{clipboard, ContentFit, Element, Font, Length, Subscription, Task};
 use jungle_sdk::JungleClient;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::fs::File;
@@ -13,10 +13,13 @@ const WINDOW_WIDTH: f32 = 1840.0;
 const WINDOW_HEIGHT: f32 = 860.0;
 const PANEL_HEADER_HEIGHT: f32 = 52.0;
 const SNAPSHOT_ROW_HEIGHT: f32 = (WINDOW_HEIGHT - PANEL_HEADER_HEIGHT) / 5.0;
+const WINDOW_HEADER_HORIZONTAL_PADDING: u16 = 12;
+const WINDOW_HEADER_CELL_HORIZONTAL_PADDING: u16 = 10;
 const SECTION_HORIZONTAL_PADDING: u16 = 0;
 const HEADER_VERTICAL_PADDING: u16 = 14;
 const SNAPSHOT_ROW_VERTICAL_PADDING: u16 = 0;
 const SNAPSHOT_GAP: f32 = 0.0;
+const SPECTROGRAM_OVERLAY_HEIGHT: f32 = 30.0;
 
 pub fn run_ui<C>(client: C, journey_id: Uuid) -> Result<(), iced::Error>
 where
@@ -173,7 +176,7 @@ impl MockingbirdUi {
         container(header)
             .width(Length::Fill)
             .height(Length::Fixed(PANEL_HEADER_HEIGHT))
-            .padding([HEADER_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
+            .padding([HEADER_VERTICAL_PADDING, WINDOW_HEADER_HORIZONTAL_PADDING])
             .style(header_style)
             .into()
     }
@@ -195,7 +198,7 @@ impl MockingbirdUi {
         container(header)
             .width(Length::Fill)
             .height(Length::Fixed(PANEL_HEADER_HEIGHT))
-            .padding([HEADER_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
+            .padding([HEADER_VERTICAL_PADDING, WINDOW_HEADER_HORIZONTAL_PADDING])
             .style(header_style)
             .into()
     }
@@ -234,7 +237,7 @@ impl MockingbirdUi {
         let cards = row![
             spectrogram_tile(
                 Some(&instrument_state.target_spectrogram_path),
-                None,
+                Some(instrument.display_name().to_owned()),
                 sibling_audio_path(&instrument_state.target_spectrogram_path)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
             ),
@@ -261,28 +264,11 @@ impl MockingbirdUi {
         .width(Length::Fill)
         .height(Length::Fill);
 
-        let overlay = container(
-            container(text(instrument.display_name()).size(16))
-                .padding([4, 8])
-                .style(instrument_badge_style),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_left(Length::Fill)
-        .align_top(Length::Fill)
-        .padding(Padding::default().top(8).left(8));
-
         container(
-            stack([
-                container(cards)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .padding([SNAPSHOT_ROW_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
-                    .into(),
-                overlay.into(),
-            ])
-            .width(Length::Fill)
-            .height(Length::Fill),
+            container(cards)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .padding([SNAPSHOT_ROW_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING]),
         )
         .width(Length::Fill)
         .height(Length::Fill)
@@ -294,6 +280,7 @@ impl MockingbirdUi {
 fn column_header(label: &'static str) -> Element<'static, Message> {
     container(text(label).size(15))
         .width(Length::FillPortion(1))
+        .padding([0, WINDOW_HEADER_CELL_HORIZONTAL_PADDING])
         .into()
 }
 
@@ -337,15 +324,20 @@ fn spectrogram_tile<'a>(
     };
 
     let overlay = container(
-        container(text(overlay_label.unwrap_or_else(String::new)).size(13))
-            .padding([4, 8])
-            .style(instrument_badge_style),
+        container(
+            text(overlay_label.unwrap_or_default())
+                .size(13)
+                .width(Length::Fill)
+                .align_x(iced::alignment::Horizontal::Right),
+        )
+        .width(Length::Fill)
+        .height(Length::Fixed(SPECTROGRAM_OVERLAY_HEIGHT))
+        .padding([4, 8])
+        .style(spectrogram_overlay_style),
     )
     .width(Length::Fill)
     .height(Length::Fill)
-    .align_right(Length::Fill)
-    .align_top(Length::Fill)
-    .padding(Padding::default().top(8).right(8));
+    .align_top(Length::Fill);
 
     container(
         stack([
@@ -617,17 +609,12 @@ fn snapshot_row_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     }
 }
 
-fn instrument_badge_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+fn spectrogram_overlay_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(iced::Background::Color(iced::Color::from_rgba8(
-            9, 15, 12, 0.84,
+            9, 15, 12, 0.64,
         ))),
         text_color: Some(iced::Color::from_rgb8(237, 246, 241)),
-        border: iced::border::Border {
-            width: 1.0,
-            color: iced::Color::from_rgb8(46, 76, 60),
-            radius: 8.0.into(),
-        },
         ..Default::default()
     }
 }
