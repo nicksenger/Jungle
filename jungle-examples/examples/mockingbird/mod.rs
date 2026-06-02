@@ -146,6 +146,10 @@ impl Ecosystem for PulseCodeParadise {
 pub enum PulseCodeParadiseError {
     #[error("failed to construct tokens client: {0}")]
     Client(#[from] reqwest::Error),
+    #[error(
+        "invalid OpenAI API base URL `{url}`: {reason}. Expected an HTTP(S) base URL like `https://api.openai.com/v1` or `http://localhost:11434/v1`, not a full endpoint such as `.../chat/completions`"
+    )]
+    InvalidTokensUrl { url: String, reason: String },
     #[error("invalid bearer token header: {0}")]
     InvalidHeader(#[from] reqwest::header::InvalidHeaderValue),
     #[error("failed to read image content from {path}: {source}")]
@@ -173,7 +177,10 @@ pub enum PulseCodeParadiseError {
 #[derive(Debug, Parser)]
 #[command(name = "mockingbird")]
 struct Cli {
-    #[arg(long = "tokens-url")]
+    #[arg(
+        long = "tokens-url",
+        help = "OpenAI-compatible API base URL, for example https://api.openai.com/v1 or http://localhost:11434/v1"
+    )]
     tokens_url: Url,
     #[arg(long = "tokens-token")]
     tokens_token: Option<String>,
@@ -189,6 +196,7 @@ struct Cli {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let cli = Cli::parse();
+    validate_openai_api_base_url(&cli.tokens_url)?;
     let workspace_root = std::env::current_dir()?;
     let output_root = default_mockingbird_root()?;
     let jungle_redb_path = cli
@@ -321,6 +329,51 @@ fn ensure_parent_dir_exists(path: &Path) -> Result<(), PulseCodeParadiseError> {
     Ok(())
 }
 
+fn validate_openai_api_base_url(tokens_url: &Url) -> Result<(), PulseCodeParadiseError> {
+    match tokens_url.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(PulseCodeParadiseError::InvalidTokensUrl {
+                url: tokens_url.to_string(),
+                reason: format!("unsupported URL scheme `{scheme}`"),
+            });
+        }
+    }
+
+    if tokens_url.query().is_some() {
+        return Err(PulseCodeParadiseError::InvalidTokensUrl {
+            url: tokens_url.to_string(),
+            reason: "query parameters are not allowed".to_owned(),
+        });
+    }
+
+    if tokens_url.fragment().is_some() {
+        return Err(PulseCodeParadiseError::InvalidTokensUrl {
+            url: tokens_url.to_string(),
+            reason: "fragments are not allowed".to_owned(),
+        });
+    }
+
+    let path_segments: Vec<_> = tokens_url
+        .path_segments()
+        .map(|segments| {
+            segments
+                .filter(|segment| !segment.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if path_segments.ends_with(&["chat", "completions"]) {
+        return Err(PulseCodeParadiseError::InvalidTokensUrl {
+            url: tokens_url.to_string(),
+            reason: "received the chat completions endpoint instead of the API base URL"
+                .to_owned(),
+        });
+    }
+
+    Ok(())
+}
+
 fn parse_workers(value: &str) -> Result<usize, String> {
     let workers = value
         .parse::<usize>()
@@ -340,4 +393,41 @@ fn init_tracing() {
         .compact()
         .try_init();
     debug!("mockingbird tracing initialized");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_openai_compatible_api_base_url() {
+        let url = Url::parse("http://localhost:11434/v1").unwrap();
+        validate_openai_api_base_url(&url).unwrap();
+    }
+
+    #[test]
+    fn rejects_chat_completions_endpoint_as_tokens_url() {
+        let url = Url::parse("https://api.openai.com/v1/chat/completions").unwrap();
+        let err = validate_openai_api_base_url(&url).unwrap_err();
+
+        match err {
+            PulseCodeParadiseError::InvalidTokensUrl { reason, .. } => {
+                assert!(reason.contains("chat completions endpoint"));
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+
+    #[test]
+    fn rejects_query_parameters_in_tokens_url() {
+        let url = Url::parse("https://api.openai.com/v1?model=gpt-5").unwrap();
+        let err = validate_openai_api_base_url(&url).unwrap_err();
+
+        match err {
+            PulseCodeParadiseError::InvalidTokensUrl { reason, .. } => {
+                assert!(reason.contains("query parameters"));
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
 }
