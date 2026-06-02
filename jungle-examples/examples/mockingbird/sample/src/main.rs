@@ -696,6 +696,12 @@ fn float_to_i16(sample: f32) -> i16 {
 mod tests {
     use super::*;
 
+    const MOCKINGBIRD_INTRO_SCORE_SPEC: &str = "electric-guitar(rhythm-sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
+    const MOCKINGBIRD_VOCALS_SCORE_SPEC: &str = "vocals(formant):[250,66,96,'wel'],[346,68,288,'come'],[634,68,96,'to'],[730,66,96,'the'],[826,71,384,'jun'],[1210,68,192,'gol'],[1786,66,96,'weve'],[1882,68,288,'got'],[2170,68,96,'fun'],[2266,66,192,'and'],[2458,68,288,'games']";
+    const MOCKINGBIRD_BACKUP_VOCALS_SCORE_SPEC: &str = "vocals(group-harmony):[150,71,384],[534,70,384],[918,68,384],[1302,66,384],[1686,73,384],[2070,72,384],[2454,70,384],[2838,68,384]";
+    const MOCKINGBIRD_GUITAR_SOLO_SCORE_SPEC: &str = "electric-guitar(sustained):[240,60,192],[432,72,128],[560,75,129],[689,82,896],[1585,82,128],[1713,81,129],[1842,80,704],[2546,78,96],[2642,79,96],[2738,73,672],[3410,73,224]";
+    const MOCKINGBIRD_BASS_SCORE_SPEC: &str = "bass:[150,32,192],[342,32,192],[534,30,192],[726,27,96],[822,32,192],[1014,27,96],[1110,30,192],[1302,29,192],[1494,27,192],[1686,32,192],[1878,32,192],[2070,30,192],[2262,27,96],[2358,32,192],[2550,27,96],[2646,42,96],[2838,42,96],[3030,42,96]";
+
     #[test]
     fn parse_formant_vocals_spec_requires_synthesis_word() {
         let err = parse_spec("vocals(formant):[0,60,192]").unwrap_err();
@@ -718,6 +724,29 @@ mod tests {
         let err = parse_spec("vocals(clean):[0,60,192,\"jungle\"]").unwrap_err();
         assert!(matches!(err, CliError::InvalidTuple { .. }));
         assert!(err.to_string().contains("exactly 3 fields"));
+    }
+
+    #[test]
+    fn parse_mockingbird_intro_score_spec_uses_rhythm_sustained_guitar() {
+        let parsed = parse_spec(MOCKINGBIRD_INTRO_SCORE_SPEC).unwrap();
+
+        assert_eq!(parsed.instrument, "electric-guitar");
+        assert_eq!(parsed.articulation.as_deref(), Some("rhythm-sustained"));
+        assert_eq!(parsed.events.len(), 46);
+    }
+
+    #[test]
+    fn parse_remaining_mockingbird_score_specs() {
+        for spec in [
+            MOCKINGBIRD_VOCALS_SCORE_SPEC,
+            MOCKINGBIRD_BACKUP_VOCALS_SCORE_SPEC,
+            MOCKINGBIRD_GUITAR_SOLO_SCORE_SPEC,
+            MOCKINGBIRD_BASS_SCORE_SPEC,
+        ] {
+            let parsed = parse_spec(spec).unwrap();
+            assert!(!parsed.instrument.is_empty());
+            assert!(!parsed.events.is_empty());
+        }
     }
 
     #[test]
