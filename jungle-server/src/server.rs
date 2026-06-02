@@ -26,8 +26,7 @@ const PG_JOURNEY_EVENTS_CHANNEL: &str = "jungle_journey_events";
 const SUBSCRIPTION_LOG_INTERVAL: u64 = 256;
 #[cfg(any(feature = "postgres", feature = "redb"))]
 const SUBSCRIPTION_SLOW_FETCH_WARN_THRESHOLD: Duration = Duration::from_millis(100);
-#[cfg(any(feature = "postgres", feature = "redb"))]
-const WORKER_WAKE_WAIT_WARN_THRESHOLD: Duration = Duration::from_millis(150);
+const WORKER_WAKE_WAIT_WARN_SLACK_MS: u64 = 50;
 const SERVER_REQUEST_SLOW_WARN_MS: u128 = 100;
 const SERVER_RESPONSE_SEND_SLOW_WARN_MS: u128 = 50;
 
@@ -112,6 +111,10 @@ impl JungleServer for Server {
         let request_started_at = Instant::now();
         let request = rx.next().await;
         let request_kind = request.as_ref().map(wire_in_kind).unwrap_or("NoRequest");
+        let request_slow_warn_threshold_ms = request
+            .as_ref()
+            .map(request_slow_warn_threshold_ms)
+            .unwrap_or(SERVER_REQUEST_SLOW_WARN_MS);
         debug!(
             has_request = request.is_some(),
             request_kind, "received request"
@@ -564,12 +567,14 @@ impl JungleServer for Server {
                     let wait_started_at = TokioInstant::now();
                     wait_for_worker_wake(self, timeout).await?;
                     let wait_elapsed = wait_started_at.elapsed();
-                    if wait_elapsed > WORKER_WAKE_WAIT_WARN_THRESHOLD {
+                    let wait_warn_threshold = worker_wake_wait_warn_threshold(timeout);
+                    if wait_elapsed > wait_warn_threshold {
                         warn!(
                             owner_id = %owner_id,
                             timeout_ms = timeout.as_millis(),
                             wait_elapsed_ms = wait_elapsed.as_millis(),
-                            "slow WaitForWorkerWake request handling"
+                            wait_warn_threshold_ms = wait_warn_threshold.as_millis(),
+                            "WaitForWorkerWake exceeded requested timeout"
                         );
                     }
                     WireOut::Ack
@@ -696,10 +701,10 @@ impl JungleServer for Server {
         }
         tx.close().await?;
         let request_elapsed_ms = request_started_at.elapsed().as_millis();
-        if request_elapsed_ms > SERVER_REQUEST_SLOW_WARN_MS {
+        if request_elapsed_ms > request_slow_warn_threshold_ms {
             warn!(
                 request_kind,
-                request_elapsed_ms, "slow server request handling"
+                request_elapsed_ms, request_slow_warn_threshold_ms, "slow server request handling"
             );
         } else {
             debug!(request_kind, request_elapsed_ms, "complete");
@@ -859,6 +864,20 @@ fn wire_in_kind(input: &WireIn) -> &'static str {
     }
 }
 
+fn request_slow_warn_threshold_ms(input: &WireIn) -> u128 {
+    match input {
+        WireIn::WaitForWorkerWake { timeout_ms, .. } => {
+            u128::from(timeout_ms.saturating_add(WORKER_WAKE_WAIT_WARN_SLACK_MS))
+        }
+        _ => SERVER_REQUEST_SLOW_WARN_MS,
+    }
+}
+
+#[cfg(any(feature = "postgres", feature = "redb"))]
+fn worker_wake_wait_warn_threshold(timeout: Duration) -> Duration {
+    timeout.saturating_add(Duration::from_millis(WORKER_WAKE_WAIT_WARN_SLACK_MS))
+}
+
 #[cfg(feature = "postgres")]
 async fn pg_listener_for_store(store: &dyn JungleStore) -> Option<PgListener> {
     let pool = store.postgres_pool()?;
@@ -876,4 +895,39 @@ async fn pg_listener_for_store(store: &dyn JungleStore) -> Option<PgListener> {
     }
 
     Some(listener)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn non_wait_requests_use_default_slow_request_threshold() {
+        assert_eq!(
+            request_slow_warn_threshold_ms(&WireIn::PollTimers),
+            SERVER_REQUEST_SLOW_WARN_MS
+        );
+    }
+
+    #[test]
+    fn wait_for_worker_wake_uses_timeout_aware_request_threshold() {
+        let request = WireIn::WaitForWorkerWake {
+            owner_id: Uuid::nil(),
+            namespace: "pulse-code-paradise".to_owned(),
+            supported_animals: vec![],
+            timeout_ms: 250,
+        };
+
+        assert_eq!(request_slow_warn_threshold_ms(&request), 300);
+    }
+
+    #[cfg(any(feature = "postgres", feature = "redb"))]
+    #[test]
+    fn worker_wake_warn_threshold_allows_timeout_slack() {
+        assert_eq!(
+            worker_wake_wait_warn_threshold(Duration::from_millis(250)),
+            Duration::from_millis(300)
+        );
+    }
 }

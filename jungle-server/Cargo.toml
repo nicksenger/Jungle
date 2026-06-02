@@ -27,5 +27,8 @@ tracing-futures = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sqlx = { version = "0.8", optional = true, features = ["postgres", "runtime-tokio-rustls"] }
 
+[dev-dependencies]
+uuid = { workspace = true }
+
 [lints]
 workspace = true
