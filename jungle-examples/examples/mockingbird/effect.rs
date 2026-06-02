@@ -4,7 +4,7 @@ use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
     DspCode, MockingBirdMctsTag, PulseCodeParadise, MOCKINGBIRD_DSP_TOOL_NAME,
-    MOCKINGBIRD_DURATION_SECS, MOCKINGBIRD_SCORE_SPEC, RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
+    MOCKINGBIRD_DURATION_SECS, MOCKINGBIRD_SCORE_SPEC, RELATIVE_RHYTHM_GUITAR_DSP_PATH,
 };
 use image::ImageReader;
 use image_compare::Algorithm;
@@ -613,7 +613,7 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
 Iteration id: {}.\nPrompt attempt: {}.\nSelected branch depth: {}.\n\
 Target score spec: {}.\nUse the `{}` tool to replace the full Rust source for that file.\n\
 Keep the module compiling in the existing `mockingbird-sample` crate and preserve the file's role in the welcome audio pipeline.",
-        RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
+        RELATIVE_RHYTHM_GUITAR_DSP_PATH,
         input.iteration_id,
         input.prompt_attempt.saturating_add(1),
         input.code_branch.len().saturating_sub(1),
@@ -658,7 +658,7 @@ Keep the module compiling in the existing `mockingbird-sample` crate and preserv
     )));
     contents.push(crate::tokens::Content::Text(format!(
         "Return replacement code by calling `{}` exactly once with the full Rust source for `{}`.",
-        MOCKINGBIRD_DSP_TOOL_NAME, RELATIVE_ELECTRIC_GUITAR_DSP_PATH
+        MOCKINGBIRD_DSP_TOOL_NAME, RELATIVE_RHYTHM_GUITAR_DSP_PATH
     )));
 
     Ok(Prompt {

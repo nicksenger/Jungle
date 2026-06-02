@@ -31,11 +31,11 @@ const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 8;
 const DEFAULT_LOG_FILTER: &str = "warn,mockingbird=info";
 pub(crate) const MOCKINGBIRD_DURATION_SECS: f64 = 4.0;
-pub(crate) const MOCKINGBIRD_DSP_TOOL_NAME: &str = "replace_electric_guitar_dsp";
+pub(crate) const MOCKINGBIRD_DSP_TOOL_NAME: &str = "replace_rhythm_guitar_dsp";
 pub(crate) const RELATIVE_TARGET_SPECTROGRAM_PATH: &str =
     "jungle-examples/examples/mockingbird/assets/guitar_intro_4s.png";
-pub(crate) const RELATIVE_ELECTRIC_GUITAR_DSP_PATH: &str =
-    "jungle-examples/examples/welcome/audio/src/dsp/electric_guitar.rs";
+pub(crate) const RELATIVE_RHYTHM_GUITAR_DSP_PATH: &str =
+    "jungle-examples/examples/welcome/audio/src/dsp/electric_guitar/rhythm.rs";
 pub(crate) const MOCKINGBIRD_SCORE_SPEC: &str =
     "electric-guitar(rhythm-sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
 pub(crate) const VOCALS_SCORE_SPEC: &str = "vocals(formant):[250,66,96,'wel'],[346,68,288,'come'],[634,68,96,'to'],[730,66,96,'the'],[826,71,384,'jun'],[1210,68,192,'gol'],[1786,66,96,'weve'],[1882,68,288,'got'],[2170,68,96,'fun'],[2266,66,192,'and'],[2458,68,288,'games']";
@@ -272,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .jungle_redb_path
         .unwrap_or_else(|| output_root.join("jungle.redb"));
     ensure_parent_dir_exists(&jungle_redb_path)?;
-    let dsp_source_path = workspace_root.join(RELATIVE_ELECTRIC_GUITAR_DSP_PATH);
+    let dsp_source_path = workspace_root.join(RELATIVE_RHYTHM_GUITAR_DSP_PATH);
     let target_spectrogram_path = workspace_root.join(RELATIVE_TARGET_SPECTROGRAM_PATH);
     let initial_dsp_code = effect::capture_current_dsp_code_snapshot(
         "initial",
@@ -284,7 +284,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .map_err(PulseCodeParadiseError::Bootstrap)?;
 
     let ecosystem = PulseCodeParadise::new(cli.tokens_url, cli.tokens_token, cli.db_path)?
-        .with_tools(vec![replace_electric_guitar_tool()])
+        .with_tools(vec![replace_rhythm_guitar_tool()])
         .with_mcts_config(initial_dsp_code.clone(), cli.tree_depth);
     info!(
         workers = cli.workers,
@@ -347,19 +347,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn replace_electric_guitar_tool() -> Tool {
+fn replace_rhythm_guitar_tool() -> Tool {
     Tool {
         name: MOCKINGBIRD_DSP_TOOL_NAME.to_owned(),
         description: format!(
             "Replace the full contents of `{}` with updated Rust source.",
-            RELATIVE_ELECTRIC_GUITAR_DSP_PATH
+            RELATIVE_RHYTHM_GUITAR_DSP_PATH
         ),
         parameters: json!({
             "type": "object",
             "properties": {
                 "source": {
                     "type": "string",
-                    "description": "The complete replacement Rust source for electric_guitar.rs."
+                    "description": "The complete replacement Rust source for rhythm.rs."
                 }
             },
             "required": ["source"],
@@ -380,7 +380,7 @@ fn build_seed(
             .display()
             .to_string(),
         dsp_source_path: workspace_root
-            .join(RELATIVE_ELECTRIC_GUITAR_DSP_PATH)
+            .join(RELATIVE_RHYTHM_GUITAR_DSP_PATH)
             .display()
             .to_string(),
         initial_dsp_code,
