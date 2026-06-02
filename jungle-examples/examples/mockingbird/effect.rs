@@ -319,12 +319,68 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
         .decode()
         .map_err(|err| format!("failed to decode spectrogram image {}: {err}", right_path))?
         .into_luma8();
+    let left = if left.dimensions() == right.dimensions() {
+        left
+    } else {
+        debug!(
+            left_path,
+            right_path,
+            left_width = left.width(),
+            left_height = left.height(),
+            right_width = right.width(),
+            right_height = right.height(),
+            "resizing generated spectrogram to match reference dimensions before comparison"
+        );
+        image::imageops::resize(
+            &left,
+            right.width(),
+            right.height(),
+            image::imageops::FilterType::Lanczos3,
+        )
+    };
 
     let similarity =
         image_compare::gray_similarity_structure(&Algorithm::MSSIMSimple, &left, &right)
             .map_err(|err| format!("failed to compare spectrograms: {err}"))?;
 
     Ok(similarity.score as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{GrayImage, Luma};
+    use uuid::Uuid;
+
+    fn temp_png_path(name: &str) -> PathBuf {
+        std::env::temp_dir()
+            .join("jungle-mockingbird-tests")
+            .join(format!("{name}-{}.png", Uuid::new_v4()))
+    }
+
+    fn write_gray_image(path: &Path, width: u32, height: u32, value: u8) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let image = GrayImage::from_fn(width, height, |_x, _y| Luma([value]));
+        image.save(path).unwrap();
+    }
+
+    #[test]
+    fn compare_spectrograms_handles_dimension_mismatch() {
+        let left_path = temp_png_path("left");
+        let right_path = temp_png_path("right");
+        write_gray_image(&left_path, 372, 256, 0);
+        write_gray_image(&right_path, 341, 256, 0);
+
+        let similarity = compare_spectrograms(
+            &left_path.display().to_string(),
+            &right_path.display().to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(similarity, 1.0);
+    }
 }
 
 async fn run_sampler_cargo<const N: usize>(args: [&str; N]) -> Result<bool, String> {
