@@ -189,9 +189,11 @@ pub struct MockingBirdInstrumentState {
     pub skipped_this_iteration: bool,
     pub last_retry_reason: Option<String>,
     pub latest_generated_code: Option<DspCode>,
+    pub latest_rendered_code: Option<DspCode>,
     pub latest_generated_sample_path: Option<String>,
     pub latest_generated_spectrogram_path: Option<String>,
     pub latest_generated_similarity: Option<f32>,
+    pub best_generated_code: Option<DspCode>,
     pub best_generated_sample_path: Option<String>,
     pub best_generated_spectrogram_path: Option<String>,
     pub best_similarity: Option<f32>,
@@ -832,6 +834,13 @@ mod tests {
                 spectrogram_path: "/tmp/old.png".to_owned(),
                 similarity: Some(0.8),
             }),
+            latest_rendered_code: Some(DspCode {
+                iteration_id: "00000007".to_owned(),
+                source: "fn bass() {}".to_owned(),
+                sample_path: "/tmp/old.wav".to_owned(),
+                spectrogram_path: "/tmp/old.png".to_owned(),
+                similarity: Some(0.8),
+            }),
             latest_generated_sample_path: Some("/tmp/old.wav".to_owned()),
             latest_generated_spectrogram_path: Some("/tmp/old.png".to_owned()),
             latest_generated_similarity: Some(0.8),
@@ -857,6 +866,13 @@ mod tests {
         assert_eq!(
             state
                 .latest_generated_code
+                .as_ref()
+                .map(|code| code.iteration_id.as_str()),
+            Some("00000007")
+        );
+        assert_eq!(
+            state
+                .latest_rendered_code
                 .as_ref()
                 .map(|code| code.iteration_id.as_str()),
             Some("00000007")

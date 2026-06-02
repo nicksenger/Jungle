@@ -1,6 +1,8 @@
-use crate::{MockingBird, MockingBirdInstrument, MockingBirdState};
-use iced::widget::{button, column, container, image, row, scrollable, text, Space};
-use iced::{ContentFit, Element, Font, Length, Subscription, Task};
+use crate::{
+    DspCode, MockingBird, MockingBirdInstrument, MockingBirdInstrumentState, MockingBirdState,
+};
+use iced::widget::{button, column, container, image, row, stack, text};
+use iced::{clipboard, ContentFit, Element, Font, Length, Padding, Subscription, Task};
 use jungle_sdk::JungleClient;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::fs::File;
@@ -11,10 +13,12 @@ use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1840.0;
 const WINDOW_HEIGHT: f32 = 860.0;
-const SIDEBAR_WIDTH: f32 = 980.0;
-const SPECTROGRAM_WIDTH: f32 = 186.0;
-const SPECTROGRAM_HEIGHT: f32 = 128.0;
-const SPECTROGRAM_CARD_WIDTH: f32 = 210.0;
+const HEADER_HEIGHT: f32 = 118.0;
+const SNAPSHOT_ROW_HEIGHT: f32 = (WINDOW_HEIGHT - HEADER_HEIGHT) / 5.0;
+const SECTION_HORIZONTAL_PADDING: u16 = 18;
+const HEADER_VERTICAL_PADDING: u16 = 14;
+const SNAPSHOT_ROW_VERTICAL_PADDING: u16 = 10;
+const SNAPSHOT_GAP: f32 = 12.0;
 
 pub fn run_ui<C>(client: C, journey_id: Uuid) -> Result<(), iced::Error>
 where
@@ -34,13 +38,19 @@ where
     .run()
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SnapshotKind {
+    Initial,
+    Current,
+    Best,
+    Target,
+}
+
 #[derive(Debug, Clone)]
 enum Message {
     Viewer(jungle_vision::EjectedViewerMessage),
     SnapshotLoaded(Result<Option<MockingBirdState>, String>),
-    PlayTarget(MockingBirdInstrument),
-    PlayLatest(MockingBirdInstrument),
-    PlayBest(MockingBirdInstrument),
+    ActivateSpectrogram(MockingBirdInstrument, SnapshotKind),
 }
 
 struct MockingbirdUi {
@@ -104,46 +114,21 @@ impl MockingbirdUi {
                 self.snapshot_error = Some(err);
                 Task::none()
             }
-            Message::PlayTarget(instrument) => {
-                if let Some(path) = self
-                    .snapshot
-                    .as_ref()
-                    .map(|snapshot| snapshot.instrument_state(instrument))
-                    .and_then(|instrument_state| {
-                        sibling_audio_path(&instrument_state.target_spectrogram_path)
-                    })
-                {
-                    if let Err(err) = self.audio.play(&path) {
-                        self.snapshot_error = Some(err);
-                    }
-                }
-                Task::none()
-            }
-            Message::PlayLatest(instrument) => {
-                if let Some(path) = self.snapshot.as_ref().and_then(|snapshot| {
-                    snapshot
-                        .instrument_state(instrument)
-                        .latest_generated_sample_path
-                        .as_deref()
-                }) {
+            Message::ActivateSpectrogram(instrument, kind) => {
+                let Some(snapshot) = self.snapshot.as_ref() else {
+                    return Task::none();
+                };
+                let instrument_state = snapshot.instrument_state(instrument);
+                let (audio_path, source) = spectrogram_action_payload(instrument_state, kind);
+
+                self.snapshot_error = None;
+                if let Some(path) = audio_path.as_deref() {
                     if let Err(err) = self.audio.play(path) {
                         self.snapshot_error = Some(err);
                     }
                 }
-                Task::none()
-            }
-            Message::PlayBest(instrument) => {
-                if let Some(path) = self.snapshot.as_ref().and_then(|snapshot| {
-                    snapshot
-                        .instrument_state(instrument)
-                        .best_generated_sample_path
-                        .as_deref()
-                }) {
-                    if let Err(err) = self.audio.play(path) {
-                        self.snapshot_error = Some(err);
-                    }
-                }
-                Task::none()
+
+                source.map_or_else(Task::none, clipboard::write)
             }
         }
     }
@@ -153,24 +138,15 @@ impl MockingbirdUi {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let sidebar = container(
-            column![
-                self.snapshot_panel(),
-                self.status_line(),
-                self.audio_status_line(),
-                Space::new().height(Length::Fill)
-            ]
-            .spacing(16),
-        )
-        .width(Length::Fixed(SIDEBAR_WIDTH))
-        .height(Length::Fill)
-        .padding(20)
-        .style(sidebar_style);
+        let image_section = container(column![self.snapshot_header(), self.snapshot_panel()])
+            .width(Length::FillPortion(2))
+            .height(Length::Fill)
+            .style(sidebar_style);
 
         let body = row![
-            sidebar,
+            image_section,
             container(self.viewer.view().map(Message::Viewer))
-                .width(Length::Fill)
+                .width(Length::FillPortion(1))
                 .height(Length::Fill)
         ]
         .spacing(0)
@@ -184,20 +160,51 @@ impl MockingbirdUi {
             .into()
     }
 
-    fn snapshot_panel(&self) -> Element<'_, Message> {
-        let mut rows = column![].spacing(12);
-        if let Some(snapshot) = self.snapshot.as_ref() {
-            rows = rows.push(text("Instrument Snapshots").size(16));
-            for instrument in MockingBirdInstrument::ALL {
-                rows = rows.push(self.snapshot_row(snapshot, instrument));
-            }
-        } else {
-            rows = rows.push(text("Loading instrument snapshots").size(16));
-        }
+    fn snapshot_header(&self) -> Element<'_, Message> {
+        let header = column![
+            self.status_line(),
+            self.audio_status_line(),
+            row![
+                column_header("Initial"),
+                column_header("Current"),
+                column_header("Best"),
+                column_header("Target"),
+            ]
+            .spacing(SNAPSHOT_GAP)
+        ]
+        .spacing(12);
 
-        container(scrollable(rows).height(Length::Fixed(620.0)))
+        container(header)
             .width(Length::Fill)
+            .height(Length::Fixed(HEADER_HEIGHT))
+            .padding([HEADER_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
+            .style(header_style)
             .into()
+    }
+
+    fn snapshot_panel(&self) -> Element<'_, Message> {
+        if let Some(snapshot) = self.snapshot.as_ref() {
+            let mut rows = column![].spacing(0).width(Length::Fill);
+            for instrument in MockingBirdInstrument::ALL {
+                rows = rows.push(
+                    container(self.snapshot_row(snapshot, instrument))
+                        .width(Length::Fill)
+                        .height(Length::Fixed(SNAPSHOT_ROW_HEIGHT)),
+                );
+            }
+
+            container(rows)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+        } else {
+            container(text("Loading instrument snapshots").size(16))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .into()
+        }
     }
 
     fn snapshot_row<'a>(
@@ -206,45 +213,62 @@ impl MockingbirdUi {
         instrument: MockingBirdInstrument,
     ) -> Element<'a, Message> {
         let instrument_state = snapshot.instrument_state(instrument);
-        let latest_title = instrument_state
-            .latest_generated_code
-            .as_ref()
-            .map(|code| format!("Most Recent  {}", code.iteration_id))
-            .unwrap_or_else(|| "Most Recent".to_owned());
-        let target = spectrogram_card(
-            "Target".to_owned(),
-            Some(&instrument_state.target_spectrogram_path),
-            None,
-            sibling_audio_path(&instrument_state.target_spectrogram_path)
-                .as_deref()
-                .map(|_| Message::PlayTarget(instrument)),
-        );
-        let latest = spectrogram_card(
-            latest_title,
-            instrument_state
-                .latest_generated_spectrogram_path
-                .as_deref(),
-            instrument_state.latest_generated_similarity,
-            instrument_state
-                .latest_generated_sample_path
-                .as_deref()
-                .map(|_| Message::PlayLatest(instrument)),
-        );
-        let best = spectrogram_card(
-            "Best In Session".to_owned(),
-            instrument_state.best_generated_spectrogram_path.as_deref(),
-            instrument_state.best_similarity,
-            instrument_state
-                .best_generated_sample_path
-                .as_deref()
-                .map(|_| Message::PlayBest(instrument)),
-        );
-
-        column![
-            text(instrument.display_name()).size(16),
-            row![target, latest, best].spacing(16)
+        let cards = row![
+            spectrogram_card(
+                initial_spectrogram_path(instrument_state),
+                Some(snapshot_footer(&instrument_state.initial_dsp_code)),
+                initial_spectrogram_path(instrument_state)
+                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Initial)),
+            ),
+            spectrogram_card(
+                current_spectrogram_path(instrument_state),
+                current_footer(instrument_state),
+                current_spectrogram_path(instrument_state)
+                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Current)),
+            ),
+            spectrogram_card(
+                best_spectrogram_path(instrument_state),
+                best_footer(instrument_state),
+                best_spectrogram_path(instrument_state)
+                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Best)),
+            ),
+            spectrogram_card(
+                Some(&instrument_state.target_spectrogram_path),
+                Some("reference".to_owned()),
+                sibling_audio_path(&instrument_state.target_spectrogram_path)
+                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
+            ),
         ]
-        .spacing(10)
+        .spacing(SNAPSHOT_GAP)
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+        let overlay = container(
+            container(text(instrument.display_name()).size(16))
+                .padding([4, 8])
+                .style(instrument_badge_style),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_left(Length::Fill)
+        .align_top(Length::Fill)
+        .padding(Padding::default().top(8).left(8));
+
+        container(
+            stack([
+                container(cards)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding([SNAPSHOT_ROW_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
+                    .into(),
+                overlay.into(),
+            ])
+            .width(Length::Fill)
+            .height(Length::Fill),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(snapshot_row_style)
         .into()
     }
 
@@ -279,6 +303,12 @@ impl MockingbirdUi {
     }
 }
 
+fn column_header(label: &'static str) -> Element<'static, Message> {
+    container(text(label).size(15))
+        .width(Length::FillPortion(1))
+        .into()
+}
+
 fn sibling_audio_path(image_path: &str) -> Option<String> {
     let audio_path = Path::new(image_path).with_extension("wav");
     audio_path
@@ -287,48 +317,185 @@ fn sibling_audio_path(image_path: &str) -> Option<String> {
 }
 
 fn spectrogram_card<'a>(
-    title: String,
     spectrogram_path: Option<&'a str>,
-    similarity: Option<f32>,
-    play_message: Option<Message>,
+    footer: Option<String>,
+    activate_message: Option<Message>,
 ) -> Element<'a, Message> {
-    let header = if let Some(similarity) = similarity {
-        format!("{title}  {similarity:.6}")
-    } else {
-        title
-    };
-
-    let image_panel: Element<'a, Message> = match spectrogram_path.filter(|path| !path.is_empty()) {
-        Some(path) if Path::new(path).exists() => {
-            let image = image(image::Handle::from_path(path))
+    let image_panel: Element<'a, Message> = match spectrogram_path.filter(|path| image_exists(path))
+    {
+        Some(path) => {
+            let preview = image(image::Handle::from_path(path))
                 .content_fit(ContentFit::Contain)
-                .width(Length::Fixed(SPECTROGRAM_WIDTH))
-                .height(Length::Fixed(SPECTROGRAM_HEIGHT));
-            match play_message {
-                Some(message) => button(image)
+                .width(Length::Fill)
+                .height(Length::Fill);
+            match activate_message {
+                Some(message) => button(preview)
                     .padding(0)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
                     .style(image_button_style)
                     .on_press(message)
                     .into(),
-                None => image.into(),
+                None => preview.into(),
             }
         }
-        _ => container(text("Waiting for spectrogram").size(14))
-            .width(Length::Fixed(SPECTROGRAM_WIDTH))
-            .height(Length::Fixed(SPECTROGRAM_HEIGHT))
-            .center_x(Length::Fixed(SPECTROGRAM_WIDTH))
-            .center_y(Length::Fixed(SPECTROGRAM_HEIGHT))
+        None => container(text("Waiting for spectrogram").size(14))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .style(image_placeholder_style)
             .into(),
     };
 
-    let card = column![text(header).size(15), image_panel].spacing(10);
+    let footer = footer.unwrap_or_else(|| " ".to_owned());
+    let card = column![
+        container(image_panel)
+            .width(Length::Fill)
+            .height(Length::Fill),
+        text(footer).size(13)
+    ]
+    .spacing(8)
+    .width(Length::Fill)
+    .height(Length::Fill);
 
     container(card)
-        .width(Length::Fixed(SPECTROGRAM_CARD_WIDTH))
-        .padding(14)
+        .width(Length::FillPortion(1))
+        .height(Length::Fill)
+        .padding(10)
         .style(card_style)
         .into()
+}
+
+fn current_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+    instrument_state
+        .latest_rendered_code
+        .as_ref()
+        .and_then(|code| non_empty(&code.spectrogram_path))
+        .or_else(|| {
+            instrument_state
+                .latest_generated_spectrogram_path
+                .as_deref()
+                .and_then(non_empty)
+        })
+}
+
+fn current_sample_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+    instrument_state
+        .latest_rendered_code
+        .as_ref()
+        .and_then(|code| non_empty(&code.sample_path))
+        .or_else(|| {
+            instrument_state
+                .latest_generated_sample_path
+                .as_deref()
+                .and_then(non_empty)
+        })
+}
+
+fn current_footer(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
+    instrument_state
+        .latest_rendered_code
+        .as_ref()
+        .map(snapshot_footer)
+        .or_else(|| {
+            current_spectrogram_path(instrument_state)
+                .map(|_| similarity_footer("current", instrument_state.latest_generated_similarity))
+        })
+}
+
+fn best_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+    instrument_state
+        .best_generated_code
+        .as_ref()
+        .and_then(|code| non_empty(&code.spectrogram_path))
+        .or_else(|| {
+            instrument_state
+                .best_generated_spectrogram_path
+                .as_deref()
+                .and_then(non_empty)
+        })
+}
+
+fn best_sample_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+    instrument_state
+        .best_generated_code
+        .as_ref()
+        .and_then(|code| non_empty(&code.sample_path))
+        .or_else(|| {
+            instrument_state
+                .best_generated_sample_path
+                .as_deref()
+                .and_then(non_empty)
+        })
+}
+
+fn best_footer(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
+    instrument_state
+        .best_generated_code
+        .as_ref()
+        .map(snapshot_footer)
+        .or_else(|| {
+            best_spectrogram_path(instrument_state)
+                .map(|_| similarity_footer("best", instrument_state.best_similarity))
+        })
+}
+
+fn initial_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+    non_empty(&instrument_state.initial_dsp_code.spectrogram_path)
+}
+
+fn spectrogram_action_payload(
+    instrument_state: &MockingBirdInstrumentState,
+    kind: SnapshotKind,
+) -> (Option<String>, Option<String>) {
+    match kind {
+        SnapshotKind::Initial => (
+            existing_path(non_empty(&instrument_state.initial_dsp_code.sample_path)),
+            non_empty(&instrument_state.initial_dsp_code.source).map(ToOwned::to_owned),
+        ),
+        SnapshotKind::Current => (
+            existing_path(current_sample_path(instrument_state)),
+            instrument_state
+                .latest_rendered_code
+                .as_ref()
+                .map(|code| code.source.clone()),
+        ),
+        SnapshotKind::Best => (
+            existing_path(best_sample_path(instrument_state)),
+            instrument_state
+                .best_generated_code
+                .as_ref()
+                .map(|code| code.source.clone()),
+        ),
+        SnapshotKind::Target => (
+            sibling_audio_path(&instrument_state.target_spectrogram_path),
+            None,
+        ),
+    }
+}
+
+fn snapshot_footer(code: &DspCode) -> String {
+    similarity_footer(&code.iteration_id, code.similarity)
+}
+
+fn similarity_footer(label: &str, similarity: Option<f32>) -> String {
+    similarity
+        .map(|similarity| format!("{label}  {similarity:.6}"))
+        .unwrap_or_else(|| label.to_owned())
+}
+
+fn non_empty(value: &str) -> Option<&str> {
+    (!value.is_empty()).then_some(value)
+}
+
+fn existing_path(path: Option<&str>) -> Option<String> {
+    path.filter(|path| Path::new(path).exists())
+        .map(ToOwned::to_owned)
+}
+
+fn image_exists(path: &str) -> bool {
+    Path::new(path).exists()
 }
 
 async fn load_snapshot(
@@ -410,6 +577,47 @@ fn sidebar_style(_theme: &iced::Theme) -> iced::widget::container::Style {
             width: 1.0,
             color: iced::Color::from_rgb8(34, 58, 46),
             ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn header_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb8(14, 24, 19))),
+        text_color: Some(iced::Color::from_rgb8(225, 238, 231)),
+        border: iced::border::Border {
+            width: 1.0,
+            color: iced::Color::from_rgb8(34, 58, 46),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn snapshot_row_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb8(16, 27, 21))),
+        text_color: Some(iced::Color::from_rgb8(225, 238, 231)),
+        border: iced::border::Border {
+            width: 1.0,
+            color: iced::Color::from_rgb8(30, 50, 40),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn instrument_badge_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgba8(
+            9, 15, 12, 0.84,
+        ))),
+        text_color: Some(iced::Color::from_rgb8(237, 246, 241)),
+        border: iced::border::Border {
+            width: 1.0,
+            color: iced::Color::from_rgb8(46, 76, 60),
+            radius: 8.0.into(),
         },
         ..Default::default()
     }

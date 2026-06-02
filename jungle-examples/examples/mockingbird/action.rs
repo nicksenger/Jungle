@@ -186,11 +186,20 @@ impl Action for ScoreSpectrogram {
             code.spectrogram_path = instrument_state.spectrogram_path.clone();
             code.similarity = Some(instrument_state.last_similarity);
         }
+        if let Some(code) = instrument_state.latest_rendered_code.as_mut() {
+            code.sample_path = instrument_state.sample_path.clone();
+            code.spectrogram_path = instrument_state.spectrogram_path.clone();
+            code.similarity = Some(instrument_state.last_similarity);
+        }
         let replace_best = instrument_state
             .best_similarity
             .map(|best| instrument_state.last_similarity >= best)
             .unwrap_or(true);
         if replace_best {
+            instrument_state.best_generated_code = instrument_state
+                .latest_rendered_code
+                .clone()
+                .or_else(|| instrument_state.latest_generated_code.clone());
             instrument_state.best_similarity = Some(instrument_state.last_similarity);
             instrument_state.best_generated_sample_path =
                 Some(instrument_state.sample_path.clone());
@@ -415,6 +424,7 @@ impl Action for FinalizeIterationRender {
                 code.sample_path = instrument_output.sample_path.clone();
                 code.spectrogram_path = instrument_output.spectrogram_path.clone();
             }
+            instrument_state.latest_rendered_code = instrument_state.latest_generated_code.clone();
         }
         info!(
             iteration_id = %state.iteration_id,
