@@ -1,10 +1,7 @@
 #![allow(dead_code)]
 
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
-use crate::{
-    build_replace_tool, DspCode, MockingBirdInstrument, PulseCodeParadise,
-    MOCKINGBIRD_DURATION_SECS,
-};
+use crate::{DspCode, MockingBirdInstrument, PulseCodeParadise, MOCKINGBIRD_DURATION_SECS};
 use image::ImageReader;
 use image_compare::Algorithm;
 use jungle_sdk::effect;
@@ -495,7 +492,10 @@ Respond with tool calls only. Only use `{}`.",
                 contents,
             },
         ],
-        tools: vec![build_replace_tool(input.instrument)],
+        // Keep tool definitions out of the prompt payload because `Tool.parameters`
+        // uses `serde_json::Value`, which the worker's postcard transport cannot
+        // deserialize. The runtime registers the replace tools statically instead.
+        tools: Vec::new(),
     })
 }
 
@@ -875,5 +875,26 @@ mod tests {
             extract_replacement_source(&tool_calls, "replace_backup_vocals_dsp"),
             None
         );
+    }
+
+    #[test]
+    fn optimization_prompt_keeps_inline_tools_empty_for_postcard_transport() {
+        let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
+            iteration_id: "00000001".to_owned(),
+            instrument: MockingBirdInstrument::Bass,
+            code_branch: vec![DspCode {
+                iteration_id: "initial".to_owned(),
+                source: "fn bass() {}".to_owned(),
+                sample_path: "/tmp/bass.wav".to_owned(),
+                spectrogram_path: "/tmp/bass.png".to_owned(),
+                similarity: Some(0.5),
+            }],
+            target_spectrogram_path: "/tmp/target.png".to_owned(),
+            prompt_attempt: 0,
+            retry_reason: None,
+        })
+        .unwrap();
+
+        assert!(prompt.tools.is_empty());
     }
 }

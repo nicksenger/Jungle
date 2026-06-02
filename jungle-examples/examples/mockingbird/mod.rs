@@ -520,6 +520,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let instrument_seeds = build_instrument_seeds(&workspace_root, &output_root).await?;
     let ecosystem = PulseCodeParadise::new(cli.tokens_url, cli.tokens_token, cli.db_path)?
+        .with_tools(
+            MockingBirdInstrument::ALL
+                .into_iter()
+                .map(build_replace_tool)
+                .collect(),
+        )
         .with_mcts_config(
             instrument_seeds
                 .iter()
