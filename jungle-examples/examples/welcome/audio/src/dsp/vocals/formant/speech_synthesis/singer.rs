@@ -135,9 +135,8 @@ pub fn render_vocal_note(
         voice.sing_mode,
     );
 
-    // Enhanced formant preservation pipeline
     let post_shifted = if post_shift_semitones != 0.0 {
-        pitch_shift_with_enhanced_formant_compensation(&rendered, post_shift_semitones)
+        pitch_shift_with_formant_compensation(&rendered, post_shift_semitones)
     } else {
         rendered
     };
@@ -145,7 +144,7 @@ pub fn render_vocal_note(
     let resampled = if sample_rate == SAM_SAMPLE_RATE {
         post_shifted
     } else {
-        resample_lanczos(&post_shifted, SAM_SAMPLE_RATE, sample_rate)
+        resample_nearest(&post_shifted, SAM_SAMPLE_RATE, sample_rate)
     };
 
     let mut fitted = fit_to_duration(resampled, note.duration, sample_rate);
@@ -162,7 +161,7 @@ fn midi_note_to_sam_pitch(midi_note: u8) -> u8 {
     pitch.clamp(0, u8::MAX as i16) as u8
 }
 
-fn resample_lanczos(input: &[u8], source_rate: u32, target_rate: u32) -> Vec<u8> {
+fn resample_nearest(input: &[u8], source_rate: u32, target_rate: u32) -> Vec<u8> {
     if input.is_empty() {
         return Vec::new();
     }
@@ -173,47 +172,12 @@ fn resample_lanczos(input: &[u8], source_rate: u32, target_rate: u32) -> Vec<u8>
         return Vec::new();
     }
 
-    let normalized = to_f32(input);
     let mut output = Vec::with_capacity(target_len);
-
-    let ratio = target_rate as f64 / source_rate as f64;
-
     for out_index in 0..target_len {
-        let source_pos = out_index as f64 / ratio;
-        let floor = source_pos.floor() as isize;
-        let ceil = source_pos.ceil() as isize;
-        let frac = (source_pos - floor as f64) as f32;
-
-        // Lanczos interpolation with windowed sinc
-        let mut sum = 0.0_f32;
-        let mut weight_sum = 0.0_f32;
-        let window_radius = 4;
-
-        for k in -window_radius..=window_radius {
-            let offset = floor as f64 + k as f64;
-            if offset < 0.0 || offset > (input.len() as f64) {
-                continue;
-            }
-            let x = frac + k as f32;
-            if x.abs() < 0.001 {
-                weight_sum += 1.0;
-                continue;
-            }
-            let weight = (std::f32::consts::PI * 2.0 * x).sin() / (std::f32::consts::PI * 2.0 * x);
-            let window = (std::f32::consts::PI * 4.0 * x).sin() / (std::f32::consts::PI * 4.0 * x);
-            let w = weight * window;
-            let idx = offset as usize;
-            if idx < normalized.len() {
-                sum += normalized[idx] * w;
-                weight_sum += w.abs();
-            }
-        }
-
-        if weight_sum > 0.0 {
-            sum /= weight_sum;
-        }
-
-        output.push((sum * 127.5 + 127.5).clamp(0.0, 255.0) as u8);
+        let source_index =
+            ((out_index as u128) * (source_rate as u128) / (target_rate as u128)) as usize;
+        let clamped_source_index = source_index.min(input.len() - 1);
+        output.push(input[clamped_source_index]);
     }
 
     output
@@ -227,182 +191,41 @@ fn pitch_shift(input: &[u8], semitones: f32) -> Vec<u8> {
     let ratio = 2.0_f64.powf(semitones as f64 / 12.0);
     let output_len = ((input.len() as f64) / ratio).round().max(1.0) as usize;
 
-    let normalized = to_f32(input);
     let mut output = Vec::with_capacity(output_len);
-
     for out_index in 0..output_len {
-        let source_index = (out_index as f64) * ratio;
-        let floor = source_index.floor() as usize;
-        let ceil = (floor + 1).min(normalized.len() - 1);
-        let frac = source_index as f32 - floor as f32;
-        let sample = normalized[floor] * (1.0 - frac) + normalized[ceil] * frac;
-        output.push((sample * 127.5 + 127.5).clamp(0.0, 255.0) as u8);
+        let source_index = ((out_index as f64) * ratio).round() as usize;
+        let clamped_source_index = source_index.min(input.len() - 1);
+        output.push(input[clamped_source_index]);
     }
 
     output
 }
 
-fn pitch_shift_with_enhanced_formant_compensation(input: &[u8], semitones: f32) -> Vec<u8> {
-    let normalized = to_f32(input);
-
-    // Compute formant bands using spectral analysis
-    let spectrum_length = 256;
-    let hop_length = 64;
-    let num_frames = (normalized.len() - spectrum_length) / hop_length + 1;
-
-    if num_frames < 2 || spectrum_length >= normalized.len() {
-        return pitch_shift(input, semitones);
-    }
-
-    // Extract formant envelope from original signal
-    let mut formant_envelope = vec![0.0_f32; normalized.len()];
-    let mut formant_weights = vec![0.0_f32; normalized.len()];
-
-    for frame_idx in 0..num_frames {
-        let frame_start = frame_idx * hop_length;
-        let frame_end = (frame_start + spectrum_length).min(normalized.len());
-
-        // Apply windowed FFT-like analysis using DFT on overlapping segments
-        let mut spectrum = vec![0.0_f32; spectrum_length / 2];
-        let window = hann_window(spectrum_length);
-
-        for k in 0..spectrum_length / 2 {
-            let mut real = 0.0_f32;
-            let mut imag = 0.0_f32;
-
-            for n in 0..spectrum_length {
-                let idx = frame_start + n;
-                if idx >= normalized.len() {
-                    break;
-                }
-                let angle =
-                    2.0 * std::f32::consts::PI * k as f32 * n as f32 / spectrum_length as f32;
-                let w = window[n];
-                real += normalized[idx] * w * angle.cos();
-                imag += normalized[idx] * w * angle.sin();
-            }
-
-            spectrum[k] = (real * real + imag * imag).sqrt();
-        }
-
-        // Extract formant peaks (formant frequencies)
-        let num_formants = 5;
-        let mut formant_freqs = Vec::new();
-        let mut formant_amps = Vec::new();
-
-        for f in 0..num_formants {
-            let start_idx =
-                (f as f32 * spectrum.len() as f32 / num_formants as f32).floor() as usize;
-            let end_idx =
-                ((f as f32 + 1.0) * spectrum.len() as f32 / num_formants as f32).floor() as usize;
-
-            if start_idx >= spectrum.len() || end_idx > spectrum.len() {
-                continue;
-            }
-
-            let mut max_idx = start_idx;
-            let mut max_val = spectrum[start_idx];
-
-            for idx in start_idx..end_idx.min(spectrum.len()) {
-                if spectrum[idx] > max_val {
-                    max_val = spectrum[idx];
-                    max_idx = idx;
-                }
-            }
-
-            formant_freqs.push(max_idx);
-            formant_amps.push(max_val);
-        }
-
-        // Reconstruct formant-preserving signal
-        for i in 0..spectrum_length {
-            let idx = frame_start + i;
-            if idx >= normalized.len() {
-                break;
-            }
-
-            // Weight formant contributions
-            let mut formant_val = 0.0_f32;
-            let mut weight = 0.0_f32;
-
-            for f in 0..formant_freqs.len() {
-                let freq = formant_freqs[f];
-                let amp = formant_amps[f];
-                let distance = (i as f32 - freq as f32).abs();
-                let weight_val = amp * (1.0 / (1.0 + distance * 0.1));
-                formant_val += weight_val;
-                weight += weight_val;
-            }
-
-            if weight > 0.0 {
-                formant_val = formant_val / weight;
-            }
-
-            formant_envelope[idx] += formant_val * window[i];
-            formant_weights[idx] += window[i];
-        }
-    }
-
-    // Normalize formant envelope
-    if formant_weights.iter().any(|&w| w > 0.0) {
-        for i in 0..normalized.len() {
-            if formant_weights[i] > 0.0 {
-                formant_envelope[i] /= formant_weights[i];
-            } else {
-                formant_envelope[i] = 0.0;
-            }
-        }
-    }
-
-    // Apply pitch shift
+fn pitch_shift_with_formant_compensation(input: &[u8], semitones: f32) -> Vec<u8> {
     let shifted = pitch_shift(input, semitones);
-    let shifted_norm = to_f32(&shifted);
+    if shifted.is_empty() {
+        return shifted;
+    }
 
-    // Reconstruct with formant preservation
+    // Keep the low-band spectral envelope from the unshifted signal and
+    // combine it with the high-band detail from the pitch-shifted signal.
+    let reference = stretch_to_len(input, shifted.len());
+    let shifted_f32 = to_f32(&shifted);
+    let reference_f32 = to_f32(&reference);
+
+    let shifted_low = low_pass_clone(&shifted_f32, 0.18);
+    let reference_low = low_pass_clone(&reference_f32, 0.18);
+
+    let mut mixed = Vec::with_capacity(shifted.len());
+    for index in 0..shifted.len() {
+        let shifted_high = shifted_f32[index] - shifted_low[index];
+        let sample = reference_low[index] * 0.75 + shifted_high * 0.85;
+        mixed.push(sample.clamp(-1.0, 1.0));
+    }
+
     let mut output = vec![128_u8; shifted.len()];
-
-    // Interpolate formant envelope to shifted length
-    let mut interpolated_formants = vec![0.0_f32; shifted.len()];
-    let formant_len = formant_envelope.len();
-    if formant_len > 0 && shifted.len() > 0 {
-        let mut prev_idx = 0;
-        let mut prev_val = formant_envelope[0];
-
-        for i in 0..shifted.len() {
-            let src_idx = (i as f32 * formant_len as f32 / shifted.len() as f32) as usize;
-            let idx = src_idx.min(formant_len - 1);
-
-            if idx > prev_idx {
-                prev_idx = idx;
-                prev_val = formant_envelope[idx];
-            }
-
-            interpolated_formants[i] = prev_val;
-        }
-    }
-
-    for i in 0..shifted.len() {
-        let shifted_val = shifted_norm[i];
-        let formant_val = interpolated_formants[i];
-
-        // Blend formant envelope with pitch-shifted signal
-        let formant_weight = 0.6;
-        let signal_weight = 0.4;
-
-        let reconstructed = shifted_val * signal_weight + formant_val * formant_weight;
-        output[i] = (reconstructed * 127.5 + 127.5).clamp(0.0, 255.0) as u8;
-    }
-
+    from_f32(&mixed, &mut output);
     output
-}
-
-fn hann_window(size: usize) -> Vec<f32> {
-    let mut window = Vec::with_capacity(size);
-    for i in 0..size {
-        let val = 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / size as f32).cos());
-        window.push(val);
-    }
-    window
 }
 
 fn fit_to_duration(mut rendered: Vec<u8>, duration: Duration, sample_rate: u32) -> Vec<u8> {
@@ -415,6 +238,24 @@ fn fit_to_duration(mut rendered: Vec<u8>, duration: Duration, sample_rate: u32) 
     }
 
     rendered
+}
+
+fn stretch_to_len(input: &[u8], target_len: usize) -> Vec<u8> {
+    if input.is_empty() || target_len == 0 {
+        return Vec::new();
+    }
+
+    let normalized = to_f32(input);
+    let mut stretched = Vec::with_capacity(target_len);
+    let ratio = input.len() as f64 / target_len as f64;
+    for out_index in 0..target_len {
+        let source_position = out_index as f64 * ratio;
+        stretched.push(sample_linear(&normalized, source_position));
+    }
+
+    let mut output = vec![128_u8; target_len];
+    from_f32(&stretched, &mut output);
+    output
 }
 
 fn apply_enhancements(
@@ -430,51 +271,27 @@ fn apply_enhancements(
     let mut normalized = to_f32(samples);
     let segment_map = build_segment_map(phonemes, samples.len());
 
-    // Enhanced naturalness: subtle pitch drift/jitter and amplitude micro-variation.
+    // Naturalness: subtle pitch drift/jitter and amplitude micro-variation.
     normalized = apply_pitch_modulation(&normalized, 0.0035, 0.0009, sample_rate);
     apply_amplitude_micro_jitter(&mut normalized, 0.02);
 
-    // Enhanced intelligibility: emphasize consonants and reduce low-mid masking.
+    // Intelligibility: emphasize consonants and reduce low-mid masking.
     apply_consonant_emphasis(&mut normalized, &segment_map, 1.18, 0.9);
 
-    // Enhanced naturalness: add aspiration noise in unvoiced and transition regions.
+    // Naturalness: add aspiration noise in unvoiced and transition regions.
     apply_aspiration_noise(&mut normalized, &segment_map, 0.035);
 
-    // Enhanced naturalness + smoothness: soften hard boundaries between phonemes.
+    // Naturalness + smoothness: soften hard boundaries between phonemes.
     smooth_boundaries(&mut normalized, &segment_map, sample_rate);
 
-    // Enhanced naturalness: gentle envelope to avoid hard note on/offs.
+    // Naturalness: gentle envelope to avoid hard note on/offs.
     apply_attack_release(&mut normalized, duration);
 
-    // Enhanced timbre: gentle saturation and low-pass for less metallic timbre.
+    // Gentle saturation and low-pass for less metallic timbre.
     soft_clip(&mut normalized, 1.4);
     one_pole_low_pass(&mut normalized, 0.22);
 
-    // Additional formant-specific enhancement
-    apply_formant_enhancement(&mut normalized);
-
     from_f32(&normalized, samples);
-}
-
-fn apply_formant_enhancement(samples: &mut [f32]) {
-    if samples.is_empty() {
-        return;
-    }
-
-    // Apply formant-specific filtering to enhance vocal characteristics
-    let alpha = 0.15; // Formant preservation coefficient
-    let mut prev_low = samples[0];
-    let mut prev_high = samples[0];
-
-    for sample in samples.iter_mut() {
-        let low = alpha * *sample + (1.0 - alpha) * prev_low;
-        let high = *sample - low;
-        let enhanced = low + high * 1.2; // Slightly boost high frequencies for clarity
-
-        *sample = enhanced;
-        prev_low = low;
-        prev_high = high;
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -809,5 +626,35 @@ mod tests {
         )
         .expect("phoneme vector input should render");
         assert_eq!(rendered_text, rendered_phonemes);
+    }
+
+    #[test]
+    fn post_shifted_output_stays_centered_and_energetic() {
+        let rendered = render_vocal_note(
+            VocalNote {
+                midi_note: 72,
+                lyric: LyricInput::Text("welcome"),
+                duration: Duration::from_millis(700),
+            },
+            48_000,
+            VoiceParams::default(),
+        )
+        .expect("post-shifted vocal should render");
+
+        let normalized: Vec<f32> = rendered
+            .iter()
+            .map(|sample| *sample as f32 / 127.5 - 1.0)
+            .collect();
+        let mean = normalized.iter().sum::<f32>() / normalized.len() as f32;
+        let rms = (normalized.iter().map(|sample| sample * sample).sum::<f32>()
+            / normalized.len() as f32)
+            .sqrt();
+        let peak = normalized
+            .iter()
+            .fold(0.0_f32, |acc, sample| acc.max(sample.abs()));
+
+        assert!(mean.abs() < 0.12, "dc offset too large: {mean}");
+        assert!(rms > 0.05, "rendered vocal lost too much energy: {rms}");
+        assert!(peak > 0.2, "rendered vocal peak too small: {peak}");
     }
 }
