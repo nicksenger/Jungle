@@ -56,7 +56,10 @@ impl<J> Effect<J> for GenSample {
     type Out = String;
     type Err = String;
 
-    fn effect(_jungle: &J, output_path: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(
+        _jungle: &J,
+        output_path: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
             run_sampler(
                 MOCKINGBIRD_DURATION_SECS,
@@ -396,8 +399,8 @@ async fn run_sampler(
 
     match timeout(SAMPLER_COMMAND_TIMEOUT, child.wait()).await {
         Ok(wait_result) => {
-            let status =
-                wait_result.map_err(|err| format!("failed to wait for cargo sampler run: {err}"))?;
+            let status = wait_result
+                .map_err(|err| format!("failed to wait for cargo sampler run: {err}"))?;
             if status.success() {
                 debug!(output_path, "mockingbird sampler run finished successfully");
                 Ok(())
@@ -423,12 +426,8 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         similarity = input.current_similarity,
         "building mockingbird optimization prompt"
     );
-    let dsp_source = fs::read_to_string(&input.dsp_source_path).map_err(|err| {
-        format!(
-            "failed to read dsp source {}: {err}",
-            input.dsp_source_path
-        )
-    })?;
+    let dsp_source = fs::read_to_string(&input.dsp_source_path)
+        .map_err(|err| format!("failed to read dsp source {}: {err}", input.dsp_source_path))?;
 
     let mut user_text = format!(
         "Iteration id: {}.\nCurrent spectrogram similarity score: {:.6}.\nPrompt attempt: {}.\n\

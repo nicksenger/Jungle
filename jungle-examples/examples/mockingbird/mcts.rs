@@ -17,8 +17,11 @@ pub trait SearchTree<Tag = ()> {
 
     fn select(&self) -> impl Future<Output = Result<Self::Data, Self::Error>> + Send;
 
-    fn submit(&self, data: Self::Data, score: f32)
-        -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn submit(
+        &self,
+        data: Self::Data,
+        score: f32,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
 const ROOT_NODE_ID: u64 = 0;

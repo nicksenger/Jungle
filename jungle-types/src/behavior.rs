@@ -53,7 +53,10 @@ impl<A: EffectSchema<J>, J> EffectRequest<A, J> {
         self.input
     }
 
-    pub fn effect<'a>(self, jungle: &'a J) -> impl Future<Output = Result<<A as EffectSchema<J>>::Out, <A as EffectSchema<J>>::Err>> + 'a
+    pub fn effect<'a>(
+        self,
+        jungle: &'a J,
+    ) -> impl Future<Output = Result<<A as EffectSchema<J>>::Out, <A as EffectSchema<J>>::Err>> + 'a
     where
         A: Effect<J> + 'a,
     {

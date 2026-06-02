@@ -19,9 +19,8 @@ pub mod mcts;
 pub mod tokens;
 
 use crate::action::{
-    ApplyDspPatch, BeginIteration, BuildPrompt, MockingBirdCompilePending,
-    MockingBirdLoopForever, RenderSample, RenderSpectrogram, RequestDspPatch,
-    ScoreSpectrogram, SeedMockingBirdState,
+    ApplyDspPatch, BeginIteration, BuildPrompt, MockingBirdCompilePending, MockingBirdLoopForever,
+    RenderSample, RenderSpectrogram, RequestDspPatch, ScoreSpectrogram, SeedMockingBirdState,
 };
 use crate::tokens::Tool;
 
@@ -213,7 +212,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "starting mockingbird runtime"
     );
 
-    let backend = Server::builder().redb_path(&jungle_redb_path).build().await?;
+    let backend = Server::builder()
+        .redb_path(&jungle_redb_path)
+        .build()
+        .await?;
     let client = FusedClient::builder()
         .namespace(PulseCodeParadise::NAME)
         .backend(backend)
@@ -298,9 +300,10 @@ async fn ensure_mockingbird_running(
         .await?;
     let mockingbird_animal_id = <<MockingBird as Animal>::Id as AnimalIdValue>::U32;
 
-    if let Some(existing) = journeys.into_iter().find(|record| {
-        record.animal_id == mockingbird_animal_id && !is_terminal(record.status)
-    }) {
+    if let Some(existing) = journeys
+        .into_iter()
+        .find(|record| record.animal_id == mockingbird_animal_id && !is_terminal(record.status))
+    {
         info!(journey_id = %existing.journey_id, "reusing existing mockingbird journey");
         return Ok(existing.journey_id);
     }
@@ -366,8 +369,7 @@ fn validate_openai_api_base_url(tokens_url: &Url) -> Result<(), PulseCodeParadis
     if path_segments.ends_with(&["chat", "completions"]) {
         return Err(PulseCodeParadiseError::InvalidTokensUrl {
             url: tokens_url.to_string(),
-            reason: "received the chat completions endpoint instead of the API base URL"
-                .to_owned(),
+            reason: "received the chat completions endpoint instead of the API base URL".to_owned(),
         });
     }
 
@@ -385,8 +387,8 @@ fn parse_workers(value: &str) -> Result<usize, String> {
 }
 
 fn init_tracing() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER));
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(true)
