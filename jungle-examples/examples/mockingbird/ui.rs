@@ -13,8 +13,9 @@ use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1840.0;
 const WINDOW_HEIGHT: f32 = 860.0;
-const HEADER_HEIGHT: f32 = 118.0;
-const SNAPSHOT_ROW_HEIGHT: f32 = (WINDOW_HEIGHT - HEADER_HEIGHT) / 5.0;
+const IMAGE_HEADER_HEIGHT: f32 = 52.0;
+const DAG_HEADER_HEIGHT: f32 = 72.0;
+const SNAPSHOT_ROW_HEIGHT: f32 = (WINDOW_HEIGHT - IMAGE_HEADER_HEIGHT) / 5.0;
 const SECTION_HORIZONTAL_PADDING: u16 = 18;
 const HEADER_VERTICAL_PADDING: u16 = 14;
 const SNAPSHOT_ROW_VERTICAL_PADDING: u16 = 10;
@@ -142,16 +143,19 @@ impl MockingbirdUi {
             .width(Length::FillPortion(2))
             .height(Length::Fill)
             .style(sidebar_style);
-
-        let body = row![
-            image_section,
+        let dag_section = container(column![
+            self.dag_header(),
             container(self.viewer.view().map(Message::Viewer))
-                .width(Length::FillPortion(1))
+                .width(Length::Fill)
                 .height(Length::Fill)
-        ]
-        .spacing(0)
-        .height(Length::Fill)
-        .width(Length::Fill);
+        ])
+        .width(Length::FillPortion(1))
+        .height(Length::Fill);
+
+        let body = row![image_section, dag_section]
+            .spacing(0)
+            .height(Length::Fill)
+            .width(Length::Fill);
 
         container(body)
             .width(Length::Fill)
@@ -161,22 +165,45 @@ impl MockingbirdUi {
     }
 
     fn snapshot_header(&self) -> Element<'_, Message> {
-        let header = column![
-            self.status_line(),
-            self.audio_status_line(),
-            row![
-                column_header("Initial"),
-                column_header("Current"),
-                column_header("Best"),
-                column_header("Target"),
-            ]
-            .spacing(SNAPSHOT_GAP)
+        let header = row![
+            column_header("Target"),
+            column_header("Initial"),
+            column_header("Current"),
+            column_header("Best"),
         ]
-        .spacing(12);
+        .spacing(SNAPSHOT_GAP);
 
         container(header)
             .width(Length::Fill)
-            .height(Length::Fixed(HEADER_HEIGHT))
+            .height(Length::Fixed(IMAGE_HEADER_HEIGHT))
+            .padding([HEADER_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
+            .style(header_style)
+            .into()
+    }
+
+    fn dag_header(&self) -> Element<'_, Message> {
+        let summary = if let Some(snapshot) = self.snapshot.as_ref() {
+            format!(
+                "Iteration {}  Journey {}",
+                snapshot.iteration, self.journey_id
+            )
+        } else {
+            format!("Journey {}", self.journey_id)
+        };
+
+        let mut header = column![text(summary).size(15)].spacing(6);
+
+        if let Some(error) = self
+            .snapshot_error
+            .clone()
+            .or_else(|| self.audio.last_error.clone())
+        {
+            header = header.push(text(error).size(13));
+        }
+
+        container(header)
+            .width(Length::Fill)
+            .height(Length::Fixed(DAG_HEADER_HEIGHT))
             .padding([HEADER_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
             .style(header_style)
             .into()
@@ -214,29 +241,29 @@ impl MockingbirdUi {
     ) -> Element<'a, Message> {
         let instrument_state = snapshot.instrument_state(instrument);
         let cards = row![
-            spectrogram_card(
+            spectrogram_tile(
+                Some(&instrument_state.target_spectrogram_path),
+                Some("reference".to_owned()),
+                sibling_audio_path(&instrument_state.target_spectrogram_path)
+                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
+            ),
+            spectrogram_tile(
                 initial_spectrogram_path(instrument_state),
                 Some(snapshot_footer(&instrument_state.initial_dsp_code)),
                 initial_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Initial)),
             ),
-            spectrogram_card(
+            spectrogram_tile(
                 current_spectrogram_path(instrument_state),
                 current_footer(instrument_state),
                 current_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Current)),
             ),
-            spectrogram_card(
+            spectrogram_tile(
                 best_spectrogram_path(instrument_state),
                 best_footer(instrument_state),
                 best_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Best)),
-            ),
-            spectrogram_card(
-                Some(&instrument_state.target_spectrogram_path),
-                Some("reference".to_owned()),
-                sibling_audio_path(&instrument_state.target_spectrogram_path)
-                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
             ),
         ]
         .spacing(SNAPSHOT_GAP)
@@ -271,36 +298,6 @@ impl MockingbirdUi {
         .style(snapshot_row_style)
         .into()
     }
-
-    fn status_line(&self) -> Element<'_, Message> {
-        let label = if let Some(snapshot) = self.snapshot.as_ref() {
-            let current = snapshot.current_state();
-            format!(
-                "iteration {}  id {}  active {}  current {:.6}  best {}",
-                snapshot.iteration,
-                snapshot.iteration_id,
-                snapshot.current_instrument.slug(),
-                current.last_similarity,
-                current
-                    .best_similarity
-                    .map(|score| format!("{score:.6}"))
-                    .unwrap_or_else(|| "n/a".to_owned())
-            )
-        } else {
-            "loading mockingbird session snapshot".to_owned()
-        };
-
-        text(label).size(14).into()
-    }
-
-    fn audio_status_line(&self) -> Element<'_, Message> {
-        let label = self
-            .snapshot_error
-            .clone()
-            .or_else(|| self.audio.last_error.clone())
-            .unwrap_or_else(|| format!("journey {}", self.journey_id));
-        text(label).size(13).into()
-    }
 }
 
 fn column_header(label: &'static str) -> Element<'static, Message> {
@@ -316,9 +313,9 @@ fn sibling_audio_path(image_path: &str) -> Option<String> {
         .then(|| audio_path.display().to_string())
 }
 
-fn spectrogram_card<'a>(
+fn spectrogram_tile<'a>(
     spectrogram_path: Option<&'a str>,
-    footer: Option<String>,
+    overlay_label: Option<String>,
     activate_message: Option<Message>,
 ) -> Element<'a, Message> {
     let image_panel: Element<'a, Message> = match spectrogram_path.filter(|path| image_exists(path))
@@ -348,23 +345,31 @@ fn spectrogram_card<'a>(
             .into(),
     };
 
-    let footer = footer.unwrap_or_else(|| " ".to_owned());
-    let card = column![
-        container(image_panel)
-            .width(Length::Fill)
-            .height(Length::Fill),
-        text(footer).size(13)
-    ]
-    .spacing(8)
+    let overlay = container(
+        container(text(overlay_label.unwrap_or_else(|| " ".to_owned())).size(13))
+            .padding([4, 8])
+            .style(instrument_badge_style),
+    )
     .width(Length::Fill)
-    .height(Length::Fill);
+    .height(Length::Fill)
+    .align_left(Length::Fill)
+    .align_bottom(Length::Fill)
+    .padding(Padding::default().left(8).bottom(8));
 
-    container(card)
-        .width(Length::FillPortion(1))
-        .height(Length::Fill)
-        .padding(10)
-        .style(card_style)
-        .into()
+    container(
+        stack([
+            container(image_panel)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into(),
+            overlay.into(),
+        ])
+        .width(Length::Fill)
+        .height(Length::Fill),
+    )
+    .width(Length::FillPortion(1))
+    .height(Length::Fill)
+    .into()
 }
 
 fn current_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
@@ -618,19 +623,6 @@ fn instrument_badge_style(_theme: &iced::Theme) -> iced::widget::container::Styl
             width: 1.0,
             color: iced::Color::from_rgb8(46, 76, 60),
             radius: 8.0.into(),
-        },
-        ..Default::default()
-    }
-}
-
-fn card_style(_theme: &iced::Theme) -> iced::widget::container::Style {
-    iced::widget::container::Style {
-        background: Some(iced::Background::Color(iced::Color::from_rgb8(24, 39, 31))),
-        text_color: Some(iced::Color::from_rgb8(225, 238, 231)),
-        border: iced::border::Border {
-            width: 1.0,
-            color: iced::Color::from_rgb8(46, 76, 60),
-            radius: 10.0.into(),
         },
         ..Default::default()
     }
