@@ -185,8 +185,8 @@ impl MockingbirdUi {
         let short_journey_id = &journey_id[..8];
         let summary = if let Some(snapshot) = self.snapshot.as_ref() {
             format!(
-                "Iteration {}  Journey {}",
-                snapshot.iteration, short_journey_id
+                "Journey {}  Iteration {}",
+                short_journey_id, snapshot.iteration
             )
         } else {
             format!("Journey {}", short_journey_id)
