@@ -2760,6 +2760,10 @@ pub struct DefaultThemeState {
 
 impl DefaultThemeState {
     fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>) {
+        let (expanded, border_state) = match cx.phase {
+            Phase::Live(live) if live.has_running => (true, RuntimeState::Running),
+            _ => (false, RuntimeState::Pending),
+        };
         self.cluster_index
             .entry(cx.cluster_id)
             .or_insert_with(|| ClusterRuntimeIndex {
@@ -2771,8 +2775,8 @@ impl DefaultThemeState {
         self.cluster_visuals
             .entry(cx.cluster_id)
             .or_insert(ClusterVisual {
-                expanded: false,
-                border_state: RuntimeState::Pending,
+                expanded,
+                border_state,
                 completed_at: None,
             });
     }
@@ -4218,7 +4222,14 @@ mod tests {
             }),
         };
         state.register_cluster(&cx);
-        assert!(state.update_clusters_for_effect_input(10, started_at + Duration::from_millis(1)));
+        let initial_visual = state
+            .cluster_visuals
+            .get(&33)
+            .expect("cluster visual should exist");
+        assert!(initial_visual.expanded);
+        assert_eq!(initial_visual.border_state, RuntimeState::Running);
+
+        assert!(!state.update_clusters_for_effect_input(10, started_at + Duration::from_millis(1)));
         assert!(state.update_clusters_for_effect_input(22, started_at + Duration::from_millis(2)));
 
         assert!(
@@ -4234,5 +4245,43 @@ mod tests {
                 .expect("cluster visual should exist")
                 .expanded
         );
+    }
+
+    #[test]
+    fn running_cluster_registers_as_expanded_without_prior_effect_input() {
+        let mut state = DefaultThemeState {
+            node_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+        };
+
+        let cx = ClusterViewCtx {
+            cluster_id: 77,
+            cluster_index: 0,
+            kind: ClusterKind::While,
+            label: "while: loop",
+            metadata: None,
+            parent_cluster_id: None,
+            depth: 0,
+            member_display_ids: &[],
+            entry_runtime_ids: &[10],
+            member_runtime_ids: &[10, 11],
+            successor_runtime_ids: &[22],
+            phase: Phase::Live(ClusterLive {
+                has_running: true,
+                has_failed: false,
+                has_completed: false,
+            }),
+        };
+
+        state.register_cluster(&cx);
+
+        let visual = state
+            .cluster_visuals
+            .get(&77)
+            .expect("cluster visual should exist");
+        assert!(visual.expanded);
+        assert_eq!(visual.border_state, RuntimeState::Running);
     }
 }
