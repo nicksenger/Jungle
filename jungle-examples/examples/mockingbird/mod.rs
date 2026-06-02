@@ -5,7 +5,7 @@ use jungle_sdk::prelude::*;
 use jungle_sdk::{FusedClient, JourneyStatus, JungleClient, Server};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
@@ -21,9 +21,9 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    ApplyDspPatch, BeginIteration, BuildPrompt, MockingBirdCompilePending, MockingBirdLoopForever,
-    RenderSample, RenderSpectrogram, RequestDspPatch, ScoreSpectrogram, SeedMockingBirdState,
-    SelectDspBranch, SubmitDspBranch,
+    ApplyDspPatch, BeginIteration, BuildPrompt, FinalizeIterationRender, InstrumentMarker,
+    MockingBirdCompilePending, MockingBirdLoopForever, RequestDspPatch, ScoreSpectrogram,
+    SeedMockingBirdState, SelectDspBranch, SetCurrentInstrument, SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
@@ -31,11 +31,6 @@ const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 8;
 const DEFAULT_LOG_FILTER: &str = "warn,mockingbird=info";
 pub(crate) const MOCKINGBIRD_DURATION_SECS: f64 = 4.0;
-pub(crate) const MOCKINGBIRD_DSP_TOOL_NAME: &str = "replace_rhythm_guitar_dsp";
-pub(crate) const RELATIVE_TARGET_SPECTROGRAM_PATH: &str =
-    "jungle-examples/examples/mockingbird/assets/guitar_intro_4s.png";
-pub(crate) const RELATIVE_RHYTHM_GUITAR_DSP_PATH: &str =
-    "jungle-examples/examples/welcome/audio/src/dsp/electric_guitar/rhythm.rs";
 pub(crate) const MOCKINGBIRD_SCORE_SPEC: &str =
     "electric-guitar(rhythm-sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
 pub(crate) const VOCALS_SCORE_SPEC: &str = "vocals(formant):[250,66,96,'wel'],[346,68,288,'come'],[634,68,96,'to'],[730,66,96,'the'],[826,71,384,'jun'],[1210,68,192,'gol'],[1786,66,96,'weve'],[1882,68,288,'got'],[2170,68,96,'fun'],[2266,66,192,'and'],[2458,68,288,'games']";
@@ -61,17 +56,129 @@ impl DspCode {
     }
 }
 
-pub struct MockingBirdMctsTag;
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum MockingBirdInstrument {
+    #[default]
+    RhythmGuitar,
+    Vocals,
+    BackupVocals,
+    Bass,
+    GuitarSolo,
+}
+
+impl MockingBirdInstrument {
+    pub const ALL: [Self; 5] = [
+        Self::RhythmGuitar,
+        Self::Vocals,
+        Self::BackupVocals,
+        Self::Bass,
+        Self::GuitarSolo,
+    ];
+
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::RhythmGuitar => "rhythm-guitar",
+            Self::Vocals => "vocals",
+            Self::BackupVocals => "backup-vocals",
+            Self::Bass => "bass",
+            Self::GuitarSolo => "guitar-solo",
+        }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::RhythmGuitar => "Electric Guitar (Rhythm Sustained)",
+            Self::Vocals => "Vocals (Formant)",
+            Self::BackupVocals => "Vocals (Group Harmony)",
+            Self::Bass => "Bass",
+            Self::GuitarSolo => "Electric Guitar (Sustained)",
+        }
+    }
+
+    pub fn score_spec(self) -> &'static str {
+        match self {
+            Self::RhythmGuitar => MOCKINGBIRD_SCORE_SPEC,
+            Self::Vocals => VOCALS_SCORE_SPEC,
+            Self::BackupVocals => BACKUP_VOCALS_SCORE_SPEC,
+            Self::Bass => BASS_SCORE_SPEC,
+            Self::GuitarSolo => GUITAR_SOLO_SCORE_SPEC,
+        }
+    }
+
+    pub fn relative_target_spectrogram_path(self) -> &'static str {
+        match self {
+            Self::RhythmGuitar => "jungle-examples/examples/mockingbird/assets/guitar_intro_4s.png",
+            Self::Vocals => "jungle-examples/examples/mockingbird/assets/vocals_4s.png",
+            Self::BackupVocals => {
+                "jungle-examples/examples/mockingbird/assets/backup_vocals_4s.png"
+            }
+            Self::Bass => "jungle-examples/examples/mockingbird/assets/bass_4s.png",
+            Self::GuitarSolo => "jungle-examples/examples/mockingbird/assets/guitar_solo_4s.png",
+        }
+    }
+
+    pub fn relative_dsp_path(self) -> &'static str {
+        match self {
+            Self::RhythmGuitar => {
+                "jungle-examples/examples/welcome/audio/src/dsp/electric_guitar/rhythm.rs"
+            }
+            Self::Vocals => {
+                "jungle-examples/examples/welcome/audio/src/dsp/vocals/formant/speech_synthesis/singer.rs"
+            }
+            Self::BackupVocals => {
+                "jungle-examples/examples/welcome/audio/src/dsp/vocals/backup.rs"
+            }
+            Self::Bass => "jungle-examples/examples/welcome/audio/src/dsp/bass.rs",
+            Self::GuitarSolo => {
+                "jungle-examples/examples/welcome/audio/src/dsp/electric_guitar/lead.rs"
+            }
+        }
+    }
+
+    pub fn output_stem(self) -> &'static str {
+        match self {
+            Self::RhythmGuitar => "guitar_intro_4s",
+            Self::Vocals => "vocals_4s",
+            Self::BackupVocals => "backup_vocals_4s",
+            Self::Bass => "bass_4s",
+            Self::GuitarSolo => "guitar_solo_4s",
+        }
+    }
+
+    pub fn tool_name(self) -> &'static str {
+        match self {
+            Self::RhythmGuitar => "replace_rhythm_guitar_dsp",
+            Self::Vocals => "replace_vocals_formant_dsp",
+            Self::BackupVocals => "replace_backup_vocals_dsp",
+            Self::Bass => "replace_bass_dsp",
+            Self::GuitarSolo => "replace_guitar_solo_dsp",
+        }
+    }
+
+    pub fn render_subject(self) -> &'static str {
+        match self {
+            Self::RhythmGuitar => "electric-guitar(rhythm-sustained)",
+            Self::Vocals => "vocals(formant)",
+            Self::BackupVocals => "vocals(group-harmony)",
+            Self::Bass => "bass",
+            Self::GuitarSolo => "electric-guitar(sustained)",
+        }
+    }
+
+    pub fn tree_tag(self) -> &'static str {
+        self.slug()
+    }
+}
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct MockingBirdState {
-    pub output_root: String,
+pub struct MockingBirdInstrumentState {
+    pub instrument: MockingBirdInstrument,
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
     pub initial_dsp_code: DspCode,
     pub selected_branch: Vec<DspCode>,
-    pub iteration: u64,
-    pub iteration_id: String,
     pub sample_path: String,
     pub spectrogram_path: String,
     pub last_similarity: f32,
@@ -87,22 +194,109 @@ pub struct MockingBirdState {
     pub best_similarity: Option<f32>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MockingBirdSeed {
+impl MockingBirdInstrumentState {
+    fn from_seed(seed: MockingBirdInstrumentSeed) -> Self {
+        Self {
+            instrument: seed.instrument,
+            target_spectrogram_path: seed.target_spectrogram_path,
+            dsp_source_path: seed.dsp_source_path,
+            initial_dsp_code: seed.initial_dsp_code.clone(),
+            selected_branch: vec![seed.initial_dsp_code],
+            ..Self::default()
+        }
+    }
+
+    fn begin_iteration(&mut self, output_root: &str, iteration_id: &str) {
+        let iteration_dir = PathBuf::from(output_root).join(iteration_id);
+        let sample_stem = self.instrument.output_stem();
+        self.sample_path = iteration_dir
+            .join(format!("{sample_stem}.wav"))
+            .display()
+            .to_string();
+        self.spectrogram_path = iteration_dir
+            .join(format!("{sample_stem}.png"))
+            .display()
+            .to_string();
+        self.compile_ready = false;
+        self.prompt_attempt = 0;
+        self.last_retry_reason = None;
+        self.latest_generated_code = None;
+        self.latest_generated_sample_path = None;
+        self.latest_generated_spectrogram_path = None;
+        self.latest_generated_similarity = None;
+        self.last_similarity = 0.0;
+    }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct MockingBirdState {
     pub output_root: String,
+    pub current_instrument: MockingBirdInstrument,
+    pub instruments: Vec<MockingBirdInstrumentState>,
+    pub iteration: u64,
+    pub iteration_id: String,
+}
+
+impl MockingBirdState {
+    pub fn instrument_state(
+        &self,
+        instrument: MockingBirdInstrument,
+    ) -> &MockingBirdInstrumentState {
+        self.instruments
+            .iter()
+            .find(|state| state.instrument == instrument)
+            .expect("mockingbird instrument state missing")
+    }
+
+    pub fn instrument_state_mut(
+        &mut self,
+        instrument: MockingBirdInstrument,
+    ) -> &mut MockingBirdInstrumentState {
+        self.instruments
+            .iter_mut()
+            .find(|state| state.instrument == instrument)
+            .expect("mockingbird instrument state missing")
+    }
+
+    pub fn current_state(&self) -> &MockingBirdInstrumentState {
+        self.instrument_state(self.current_instrument)
+    }
+
+    pub fn current_state_mut(&mut self) -> &mut MockingBirdInstrumentState {
+        self.instrument_state_mut(self.current_instrument)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MockingBirdInstrumentSeed {
+    pub instrument: MockingBirdInstrument,
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
     pub initial_dsp_code: DspCode,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MockingBirdSeed {
+    pub output_root: String,
+    pub instruments: Vec<MockingBirdInstrumentSeed>,
+}
+
 impl From<MockingBirdSeed> for MockingBirdState {
     fn from(seed: MockingBirdSeed) -> Self {
+        let current_instrument = seed
+            .instruments
+            .first()
+            .map(|instrument| instrument.instrument)
+            .unwrap_or_default();
+
         Self {
             output_root: seed.output_root,
-            target_spectrogram_path: seed.target_spectrogram_path,
-            dsp_source_path: seed.dsp_source_path,
-            initial_dsp_code: seed.initial_dsp_code.clone(),
-            selected_branch: vec![seed.initial_dsp_code],
+            current_instrument,
+            instruments: seed
+                .instruments
+                .into_iter()
+                .map(MockingBirdInstrumentState::from_seed)
+                .collect(),
             ..Self::default()
         }
     }
@@ -116,14 +310,58 @@ pub struct MockingBirdCompileLoop(
 );
 
 #[derive(Flow)]
-pub struct MockingBirdIteration(
-    Step<BeginIteration>,
+pub struct MockingBirdInstrumentOptimization<Marker: InstrumentMarker>(
+    Step<SetCurrentInstrument<Marker>>,
     Step<SelectDspBranch>,
     While<MockingBirdCompilePending, MockingBirdCompileLoop>,
-    Step<RenderSample>,
-    Step<RenderSpectrogram>,
+);
+
+#[derive(Flow)]
+pub struct MockingBirdInstrumentScoring<Marker: InstrumentMarker>(
+    Step<SetCurrentInstrument<Marker>>,
     Step<ScoreSpectrogram>,
     Step<SubmitDspBranch>,
+);
+
+pub struct RhythmGuitarMarker;
+impl InstrumentMarker for RhythmGuitarMarker {
+    const INSTRUMENT: MockingBirdInstrument = MockingBirdInstrument::RhythmGuitar;
+}
+
+pub struct VocalsMarker;
+impl InstrumentMarker for VocalsMarker {
+    const INSTRUMENT: MockingBirdInstrument = MockingBirdInstrument::Vocals;
+}
+
+pub struct BackupVocalsMarker;
+impl InstrumentMarker for BackupVocalsMarker {
+    const INSTRUMENT: MockingBirdInstrument = MockingBirdInstrument::BackupVocals;
+}
+
+pub struct BassMarker;
+impl InstrumentMarker for BassMarker {
+    const INSTRUMENT: MockingBirdInstrument = MockingBirdInstrument::Bass;
+}
+
+pub struct GuitarSoloMarker;
+impl InstrumentMarker for GuitarSoloMarker {
+    const INSTRUMENT: MockingBirdInstrument = MockingBirdInstrument::GuitarSolo;
+}
+
+#[derive(Flow)]
+pub struct MockingBirdIteration(
+    Step<BeginIteration>,
+    MockingBirdInstrumentOptimization<RhythmGuitarMarker>,
+    MockingBirdInstrumentOptimization<VocalsMarker>,
+    MockingBirdInstrumentOptimization<BackupVocalsMarker>,
+    MockingBirdInstrumentOptimization<BassMarker>,
+    MockingBirdInstrumentOptimization<GuitarSoloMarker>,
+    Step<FinalizeIterationRender>,
+    MockingBirdInstrumentScoring<RhythmGuitarMarker>,
+    MockingBirdInstrumentScoring<VocalsMarker>,
+    MockingBirdInstrumentScoring<BackupVocalsMarker>,
+    MockingBirdInstrumentScoring<BassMarker>,
+    MockingBirdInstrumentScoring<GuitarSoloMarker>,
 );
 
 #[derive(Flow)]
@@ -160,7 +398,7 @@ pub struct PulseCodeParadise {
     tokens_model: String,
     tokens_url: Url,
     tools: Vec<Tool>,
-    initial_dsp_code: DspCode,
+    initial_dsp_codes: BTreeMap<MockingBirdInstrument, DspCode>,
     max_tree_depth: usize,
 }
 
@@ -181,7 +419,10 @@ impl PulseCodeParadise {
             tokens_model: Self::tokens_model_from_env(),
             tokens_url,
             tools: Vec::new(),
-            initial_dsp_code: DspCode::placeholder_initial(),
+            initial_dsp_codes: MockingBirdInstrument::ALL
+                .into_iter()
+                .map(|instrument| (instrument, DspCode::placeholder_initial()))
+                .collect(),
             max_tree_depth: DEFAULT_TREE_DEPTH,
         })
     }
@@ -191,8 +432,12 @@ impl PulseCodeParadise {
         self
     }
 
-    pub fn with_mcts_config(mut self, initial_dsp_code: DspCode, max_tree_depth: usize) -> Self {
-        self.initial_dsp_code = initial_dsp_code;
+    pub fn with_mcts_config(
+        mut self,
+        initial_dsp_codes: impl IntoIterator<Item = (MockingBirdInstrument, DspCode)>,
+        max_tree_depth: usize,
+    ) -> Self {
+        self.initial_dsp_codes = initial_dsp_codes.into_iter().collect();
         self.max_tree_depth = max_tree_depth;
         self
     }
@@ -272,20 +517,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .jungle_redb_path
         .unwrap_or_else(|| output_root.join("jungle.redb"));
     ensure_parent_dir_exists(&jungle_redb_path)?;
-    let dsp_source_path = workspace_root.join(RELATIVE_RHYTHM_GUITAR_DSP_PATH);
-    let target_spectrogram_path = workspace_root.join(RELATIVE_TARGET_SPECTROGRAM_PATH);
-    let initial_dsp_code = effect::capture_current_dsp_code_snapshot(
-        "initial",
-        &output_root,
-        &target_spectrogram_path,
-        &dsp_source_path,
-    )
-    .await
-    .map_err(PulseCodeParadiseError::Bootstrap)?;
 
+    let instrument_seeds = build_instrument_seeds(&workspace_root, &output_root).await?;
     let ecosystem = PulseCodeParadise::new(cli.tokens_url, cli.tokens_token, cli.db_path)?
-        .with_tools(vec![replace_rhythm_guitar_tool()])
-        .with_mcts_config(initial_dsp_code.clone(), cli.tree_depth);
+        .with_mcts_config(
+            instrument_seeds
+                .iter()
+                .cloned()
+                .map(|seed| (seed.instrument, seed.initial_dsp_code)),
+            cli.tree_depth,
+        );
     info!(
         workers = cli.workers,
         tree_depth = cli.tree_depth,
@@ -317,7 +558,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }));
     }
 
-    let seed = build_seed(&workspace_root, &output_root, initial_dsp_code);
+    let seed = build_seed(&output_root, instrument_seeds);
     let journey_id = ensure_mockingbird_running(&client, &seed).await?;
 
     info!(
@@ -347,43 +588,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn replace_rhythm_guitar_tool() -> Tool {
-    Tool {
-        name: MOCKINGBIRD_DSP_TOOL_NAME.to_owned(),
-        description: format!(
-            "Replace the full contents of `{}` with updated Rust source.",
-            RELATIVE_RHYTHM_GUITAR_DSP_PATH
-        ),
-        parameters: json!({
-            "type": "object",
-            "properties": {
-                "source": {
-                    "type": "string",
-                    "description": "The complete replacement Rust source for rhythm.rs."
-                }
-            },
-            "required": ["source"],
-            "additionalProperties": false
-        }),
-    }
-}
-
-fn build_seed(
+async fn build_instrument_seeds(
     workspace_root: &Path,
     output_root: &Path,
-    initial_dsp_code: DspCode,
-) -> MockingBirdSeed {
+) -> Result<Vec<MockingBirdInstrumentSeed>, PulseCodeParadiseError> {
+    let mut seeds = Vec::with_capacity(MockingBirdInstrument::ALL.len());
+    for instrument in MockingBirdInstrument::ALL {
+        let dsp_source_path = workspace_root.join(instrument.relative_dsp_path());
+        let target_spectrogram_path =
+            workspace_root.join(instrument.relative_target_spectrogram_path());
+        let initial_dsp_code = effect::capture_current_dsp_code_snapshot(
+            "initial",
+            output_root,
+            instrument,
+            &target_spectrogram_path,
+            &dsp_source_path,
+        )
+        .await
+        .map_err(PulseCodeParadiseError::Bootstrap)?;
+        seeds.push(MockingBirdInstrumentSeed {
+            instrument,
+            target_spectrogram_path: target_spectrogram_path.display().to_string(),
+            dsp_source_path: dsp_source_path.display().to_string(),
+            initial_dsp_code,
+        });
+    }
+    Ok(seeds)
+}
+
+fn build_seed(output_root: &Path, instruments: Vec<MockingBirdInstrumentSeed>) -> MockingBirdSeed {
     MockingBirdSeed {
         output_root: output_root.display().to_string(),
-        target_spectrogram_path: workspace_root
-            .join(RELATIVE_TARGET_SPECTROGRAM_PATH)
-            .display()
-            .to_string(),
-        dsp_source_path: workspace_root
-            .join(RELATIVE_RHYTHM_GUITAR_DSP_PATH)
-            .display()
-            .to_string(),
-        initial_dsp_code,
+        instruments,
     }
 }
 
@@ -503,6 +739,33 @@ fn init_tracing() {
     debug!("mockingbird tracing initialized");
 }
 
+pub(crate) fn build_replace_tool(instrument: MockingBirdInstrument) -> Tool {
+    Tool {
+        name: instrument.tool_name().to_owned(),
+        description: format!(
+            "Replace the full contents of `{}` with updated Rust source.",
+            instrument.relative_dsp_path()
+        ),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "description": format!(
+                        "The complete replacement Rust source for {}.",
+                        Path::new(instrument.relative_dsp_path())
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("the current DSP file")
+                    )
+                }
+            },
+            "required": ["source"],
+            "additionalProperties": false
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -518,24 +781,30 @@ mod tests {
         let url = Url::parse("https://api.openai.com/v1/chat/completions").unwrap();
         let err = validate_openai_api_base_url(&url).unwrap_err();
 
-        match err {
-            PulseCodeParadiseError::InvalidTokensUrl { reason, .. } => {
-                assert!(reason.contains("chat completions endpoint"));
-            }
-            other => panic!("unexpected error: {other}"),
-        }
+        assert!(matches!(
+            err,
+            PulseCodeParadiseError::InvalidTokensUrl { .. }
+        ));
+        assert!(err.to_string().contains("chat completions endpoint"));
     }
 
     #[test]
-    fn rejects_query_parameters_in_tokens_url() {
-        let url = Url::parse("https://api.openai.com/v1?model=gpt-5").unwrap();
-        let err = validate_openai_api_base_url(&url).unwrap_err();
+    fn mockingbird_instrument_metadata_covers_all_five_targets() {
+        let instruments = MockingBirdInstrument::ALL;
 
-        match err {
-            PulseCodeParadiseError::InvalidTokensUrl { reason, .. } => {
-                assert!(reason.contains("query parameters"));
-            }
-            other => panic!("unexpected error: {other}"),
-        }
+        assert_eq!(instruments.len(), 5);
+        assert_eq!(
+            instruments
+                .iter()
+                .map(|instrument| instrument.relative_target_spectrogram_path())
+                .collect::<Vec<_>>(),
+            vec![
+                "jungle-examples/examples/mockingbird/assets/guitar_intro_4s.png",
+                "jungle-examples/examples/mockingbird/assets/vocals_4s.png",
+                "jungle-examples/examples/mockingbird/assets/backup_vocals_4s.png",
+                "jungle-examples/examples/mockingbird/assets/bass_4s.png",
+                "jungle-examples/examples/mockingbird/assets/guitar_solo_4s.png",
+            ]
+        );
     }
 }

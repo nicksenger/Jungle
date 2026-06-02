@@ -1,5 +1,5 @@
-use crate::{MockingBird, MockingBirdState};
-use iced::widget::{button, column, container, image, row, text, Space};
+use crate::{MockingBird, MockingBirdInstrument, MockingBirdState};
+use iced::widget::{button, column, container, image, row, scrollable, text, Space};
 use iced::{ContentFit, Element, Font, Length, Subscription, Task};
 use jungle_sdk::JungleClient;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
@@ -38,9 +38,9 @@ where
 enum Message {
     Viewer(jungle_vision::EjectedViewerMessage),
     SnapshotLoaded(Result<Option<MockingBirdState>, String>),
-    PlayTarget,
-    PlayLatest,
-    PlayBest,
+    PlayTarget(MockingBirdInstrument),
+    PlayLatest(MockingBirdInstrument),
+    PlayBest(MockingBirdInstrument),
 }
 
 struct MockingbirdUi {
@@ -104,11 +104,14 @@ impl MockingbirdUi {
                 self.snapshot_error = Some(err);
                 Task::none()
             }
-            Message::PlayTarget => {
+            Message::PlayTarget(instrument) => {
                 if let Some(path) = self
                     .snapshot
                     .as_ref()
-                    .and_then(|snapshot| sibling_audio_path(&snapshot.target_spectrogram_path))
+                    .map(|snapshot| snapshot.instrument_state(instrument))
+                    .and_then(|instrument_state| {
+                        sibling_audio_path(&instrument_state.target_spectrogram_path)
+                    })
                 {
                     if let Err(err) = self.audio.play(&path) {
                         self.snapshot_error = Some(err);
@@ -116,24 +119,26 @@ impl MockingbirdUi {
                 }
                 Task::none()
             }
-            Message::PlayLatest => {
-                if let Some(path) = self
-                    .snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.latest_generated_sample_path.as_deref())
-                {
+            Message::PlayLatest(instrument) => {
+                if let Some(path) = self.snapshot.as_ref().and_then(|snapshot| {
+                    snapshot
+                        .instrument_state(instrument)
+                        .latest_generated_sample_path
+                        .as_deref()
+                }) {
                     if let Err(err) = self.audio.play(path) {
                         self.snapshot_error = Some(err);
                     }
                 }
                 Task::none()
             }
-            Message::PlayBest => {
-                if let Some(path) = self
-                    .snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.best_generated_sample_path.as_deref())
-                {
+            Message::PlayBest(instrument) => {
+                if let Some(path) = self.snapshot.as_ref().and_then(|snapshot| {
+                    snapshot
+                        .instrument_state(instrument)
+                        .best_generated_sample_path
+                        .as_deref()
+                }) {
                     if let Err(err) = self.audio.play(path) {
                         self.snapshot_error = Some(err);
                     }
@@ -150,7 +155,7 @@ impl MockingbirdUi {
     fn view(&self) -> Element<'_, Message> {
         let sidebar = container(
             column![
-                self.snapshot_row(),
+                self.snapshot_panel(),
                 self.status_line(),
                 self.audio_status_line(),
                 Space::new().height(Length::Fill)
@@ -179,52 +184,59 @@ impl MockingbirdUi {
             .into()
     }
 
-    fn snapshot_row(&self) -> Element<'_, Message> {
-        let target = self
-            .snapshot
-            .as_ref()
-            .map(|snapshot| {
-                spectrogram_card(
-                    "Target",
-                    Some(&snapshot.target_spectrogram_path),
-                    None,
-                    sibling_audio_path(&snapshot.target_spectrogram_path)
-                        .as_deref()
-                        .map(|_| Message::PlayTarget),
-                )
-            })
-            .unwrap_or_else(|| spectrogram_card("Target", None, None, None));
-        let latest = self.snapshot.as_ref().map_or_else(
-            || spectrogram_card("Most Recent", None, None, None),
-            |snapshot| {
-                spectrogram_card(
-                    "Most Recent",
-                    snapshot.latest_generated_spectrogram_path.as_deref(),
-                    snapshot.latest_generated_similarity,
-                    snapshot
-                        .latest_generated_sample_path
-                        .as_deref()
-                        .map(|_| Message::PlayLatest),
-                )
-            },
+    fn snapshot_panel(&self) -> Element<'_, Message> {
+        let mut rows = column![].spacing(12);
+        if let Some(snapshot) = self.snapshot.as_ref() {
+            rows = rows.push(text("Instrument Snapshots").size(16));
+            for instrument in MockingBirdInstrument::ALL {
+                rows = rows.push(self.snapshot_row(snapshot, instrument));
+            }
+        } else {
+            rows = rows.push(text("Loading instrument snapshots").size(16));
+        }
+
+        container(scrollable(rows).height(Length::Fixed(620.0)))
+            .width(Length::Fill)
+            .into()
+    }
+
+    fn snapshot_row<'a>(
+        &self,
+        snapshot: &'a MockingBirdState,
+        instrument: MockingBirdInstrument,
+    ) -> Element<'a, Message> {
+        let instrument_state = snapshot.instrument_state(instrument);
+        let target = spectrogram_card(
+            "Target",
+            Some(&instrument_state.target_spectrogram_path),
+            None,
+            sibling_audio_path(&instrument_state.target_spectrogram_path)
+                .as_deref()
+                .map(|_| Message::PlayTarget(instrument)),
         );
-        let best = self.snapshot.as_ref().map_or_else(
-            || spectrogram_card("Best In Session", None, None, None),
-            |snapshot| {
-                spectrogram_card(
-                    "Best In Session",
-                    snapshot.best_generated_spectrogram_path.as_deref(),
-                    snapshot.best_similarity,
-                    snapshot
-                        .best_generated_sample_path
-                        .as_deref()
-                        .map(|_| Message::PlayBest),
-                )
-            },
+        let latest = spectrogram_card(
+            "Most Recent",
+            instrument_state
+                .latest_generated_spectrogram_path
+                .as_deref(),
+            instrument_state.latest_generated_similarity,
+            instrument_state
+                .latest_generated_sample_path
+                .as_deref()
+                .map(|_| Message::PlayLatest(instrument)),
+        );
+        let best = spectrogram_card(
+            "Best In Session",
+            instrument_state.best_generated_spectrogram_path.as_deref(),
+            instrument_state.best_similarity,
+            instrument_state
+                .best_generated_sample_path
+                .as_deref()
+                .map(|_| Message::PlayBest(instrument)),
         );
 
         column![
-            text("Distortion Guitar").size(16),
+            text(instrument.display_name()).size(16),
             row![target, latest, best].spacing(16)
         ]
         .spacing(10)
@@ -233,11 +245,13 @@ impl MockingbirdUi {
 
     fn status_line(&self) -> Element<'_, Message> {
         let label = if let Some(snapshot) = self.snapshot.as_ref() {
+            let current = snapshot.current_state();
             format!(
-                "iteration {}  current {:.6}  best {}",
+                "iteration {}  active {}  current {:.6}  best {}",
                 snapshot.iteration,
-                snapshot.last_similarity,
-                snapshot
+                snapshot.current_instrument.slug(),
+                current.last_similarity,
+                current
                     .best_similarity
                     .map(|score| format!("{score:.6}"))
                     .unwrap_or_else(|| "n/a".to_owned())
@@ -423,18 +437,11 @@ fn image_placeholder_style(_theme: &iced::Theme) -> iced::widget::container::Sty
 
 fn image_button_style(
     _theme: &iced::Theme,
-    status: iced::widget::button::Status,
+    _status: button::Status,
 ) -> iced::widget::button::Style {
-    let border_color = match status {
-        iced::widget::button::Status::Hovered => iced::Color::from_rgb8(122, 178, 134),
-        _ => iced::Color::from_rgb8(46, 76, 60),
-    };
-
     iced::widget::button::Style {
-        background: Some(iced::Background::Color(iced::Color::from_rgba8(
-            0, 0, 0, 0.0,
-        ))),
-        border: iced::border::rounded(8).color(border_color).width(1.0),
+        background: None,
+        text_color: iced::Color::WHITE,
         ..Default::default()
     }
 }
