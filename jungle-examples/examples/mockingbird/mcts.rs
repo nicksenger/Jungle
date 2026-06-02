@@ -8,6 +8,7 @@ use std::fs;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tracing::warn;
 
 pub trait SearchTree<Tag = ()> {
     type Error;
@@ -34,6 +35,8 @@ struct StoredMctsTree {
     next_node_id: u64,
     node_ids: Vec<u64>,
     pending_selected_node_id: Option<u64>,
+    #[serde(default)]
+    pending_session_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -72,17 +75,29 @@ impl PulseCodeParadise {
             PulseCodeParadiseError::Persistence(format!("mcts select begin_write failed: {err}"))
         })?;
         let (mut tree_state, nodes) = load_mcts_tree(&write_tx, MOCKINGBIRD_MCTS_TAG)?;
-        if tree_state.pending_selected_node_id.is_some() {
-            return Err(PulseCodeParadiseError::MctsProtocol(
-                "mockingbird tree already has a pending selected node; submit must follow select"
-                    .to_owned(),
-            ));
+        if let Some(pending_selected_node_id) = tree_state.pending_selected_node_id {
+            if tree_state.pending_session_id.as_deref() == Some(self.runtime_session_id.as_str()) {
+                return Err(PulseCodeParadiseError::MctsProtocol(
+                    "mockingbird tree already has a pending selected node; submit must follow select"
+                        .to_owned(),
+                ));
+            }
+
+            warn!(
+                pending_selected_node_id,
+                pending_session_id = tree_state.pending_session_id.as_deref().unwrap_or("unknown"),
+                runtime_session_id = %self.runtime_session_id,
+                "recovering stale mockingbird mcts selection from a previous runtime"
+            );
+            tree_state.pending_selected_node_id = None;
+            tree_state.pending_session_id = None;
         }
 
         let selected_node_id = choose_expandable_node(&nodes, self.max_tree_depth)?;
         let selected_branch = branch_for_node(selected_node_id, &nodes, &self.initial_dsp_code)?;
 
         tree_state.pending_selected_node_id = Some(selected_node_id);
+        tree_state.pending_session_id = Some(self.runtime_session_id.clone());
         save_tree_state(&write_tx, MOCKINGBIRD_MCTS_TAG, &tree_state)?;
         write_tx.commit().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts select commit failed: {err}"))
@@ -112,12 +127,19 @@ impl PulseCodeParadise {
             PulseCodeParadiseError::Persistence(format!("mcts submit begin_write failed: {err}"))
         })?;
         let (mut tree_state, mut nodes) = load_mcts_tree(&write_tx, MOCKINGBIRD_MCTS_TAG)?;
+        if tree_state.pending_session_id.as_deref() != Some(self.runtime_session_id.as_str()) {
+            return Err(PulseCodeParadiseError::MctsProtocol(
+                "mockingbird tree pending selection does not belong to this runtime; select must precede submit"
+                    .to_owned(),
+            ));
+        }
         let selected_node_id = tree_state.pending_selected_node_id.take().ok_or_else(|| {
             PulseCodeParadiseError::MctsProtocol(
                 "mockingbird tree has no pending selected node; select must precede submit"
                     .to_owned(),
             )
         })?;
+        tree_state.pending_session_id = None;
 
         let new_node_id = tree_state.next_node_id;
         tree_state.next_node_id = tree_state.next_node_id.saturating_add(1);
@@ -217,6 +239,7 @@ fn initial_tree_state() -> StoredMctsTree {
         next_node_id: ROOT_NODE_ID + 1,
         node_ids: vec![ROOT_NODE_ID],
         pending_selected_node_id: None,
+        pending_session_id: None,
     }
 }
 
@@ -542,6 +565,10 @@ mod tests {
         let second = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
             .unwrap()
             .with_mcts_config(initial.clone(), 8);
+        let recovered =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&second))
+                .unwrap();
+        assert_eq!(recovered, vec![initial.clone()]);
         let candidate = dsp_code("00000001", Some(0.75));
         block_on(
             <PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::submit(
@@ -594,6 +621,31 @@ mod tests {
         assert!(selected.len() >= 2);
         assert_eq!(selected.first().unwrap().iteration_id, "initial");
         assert_eq!(selected.last().unwrap(), &child);
+    }
+
+    #[test]
+    fn recovers_stale_pending_selection_after_restart() {
+        let db_path = temp_db_path("stale-pending");
+        let tokens_url = Url::parse("https://api.openai.com/v1").unwrap();
+        let initial = dsp_code("initial", Some(0.2));
+
+        let first = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
+            .unwrap()
+            .with_mcts_config(initial.clone(), 8);
+        let selected =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&first))
+                .unwrap();
+        assert_eq!(selected, vec![initial.clone()]);
+        drop(first);
+
+        let second = PulseCodeParadise::new(tokens_url, None, Some(db_path))
+            .unwrap()
+            .with_mcts_config(initial.clone(), 8);
+        let recovered =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&second))
+                .unwrap();
+
+        assert_eq!(recovered, vec![initial]);
     }
 
     #[test]
