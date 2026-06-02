@@ -9,6 +9,8 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
+use tracing::{debug, info, warn};
+use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 mod action;
@@ -24,6 +26,7 @@ use crate::action::{
 use crate::tokens::Tool;
 
 const DEFAULT_WORKERS: usize = 3;
+const DEFAULT_LOG_FILTER: &str = "warn,mockingbird=info";
 pub(crate) const MOCKINGBIRD_DURATION_SECS: f64 = 4.0;
 pub(crate) const MOCKINGBIRD_DSP_TOOL_NAME: &str = "replace_electric_guitar_dsp";
 pub(crate) const RELATIVE_TARGET_SPECTROGRAM_PATH: &str =
@@ -184,6 +187,7 @@ struct Cli {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    init_tracing();
     let cli = Cli::parse();
     let workspace_root = std::env::current_dir()?;
     let output_root = default_mockingbird_root()?;
@@ -194,6 +198,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ecosystem = PulseCodeParadise::new(cli.tokens_url, cli.tokens_token, cli.db_path)?
         .with_tools(vec![replace_electric_guitar_tool()]);
+    info!(
+        workers = cli.workers,
+        jungle_redb_path = %jungle_redb_path.display(),
+        mcts_redb_path = %ecosystem.db_path.display(),
+        "starting mockingbird runtime"
+    );
 
     let backend = Server::builder().redb_path(&jungle_redb_path).build().await?;
     let client = FusedClient::builder()
@@ -206,10 +216,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for worker_index in 0..cli.workers {
         let ecosystem = ecosystem.clone();
         let worker_client = client.clone();
+        info!(worker_index, "spawning mockingbird worker");
         worker_handles.push(tokio::spawn(async move {
             let worker = JungleWorker::new(ecosystem, worker_client);
             if let Err(err) = worker.spawn().await {
-                eprintln!("mockingbird worker {worker_index} exited: {err}");
+                warn!(worker_index, error = %err, "mockingbird worker exited");
             }
         }));
     }
@@ -217,14 +228,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let seed = build_seed(&workspace_root, &output_root);
     let journey_id = ensure_mockingbird_running(&client, &seed).await?;
 
-    eprintln!(
-        "mockingbird active on journey {} using jungle redb {} and mcts redb {}",
-        journey_id,
-        jungle_redb_path.display(),
-        ecosystem.db_path.display()
+    info!(
+        %journey_id,
+        jungle_redb_path = %jungle_redb_path.display(),
+        mcts_redb_path = %ecosystem.db_path.display(),
+        "mockingbird active"
     );
 
     tokio::signal::ctrl_c().await?;
+    info!("received ctrl-c; shutting down mockingbird workers");
 
     for worker_handle in worker_handles.drain(..) {
         worker_handle.abort();
@@ -281,10 +293,13 @@ async fn ensure_mockingbird_running(
     if let Some(existing) = journeys.into_iter().find(|record| {
         record.animal_id == mockingbird_animal_id && !is_terminal(record.status)
     }) {
+        info!(journey_id = %existing.journey_id, "reusing existing mockingbird journey");
         return Ok(existing.journey_id);
     }
 
-    Ok(client.spawn::<MockingBird>(seed).await?.journey_id)
+    let journey_id = client.spawn::<MockingBird>(seed).await?.journey_id;
+    info!(%journey_id, "spawned new mockingbird journey");
+    Ok(journey_id)
 }
 
 fn is_terminal(status: JourneyStatus) -> bool {
@@ -314,4 +329,15 @@ fn parse_workers(value: &str) -> Result<usize, String> {
         return Err("workers must be at least 1".to_owned());
     }
     Ok(workers)
+}
+
+fn init_tracing() {
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .compact()
+        .try_init();
+    debug!("mockingbird tracing initialized");
 }

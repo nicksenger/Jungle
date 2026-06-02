@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
+use tracing::{debug, info, warn};
 
 fn stub_ok<T>(value: T) -> impl Future<Output = Result<T, String>> {
     ready(Ok(value))
@@ -153,6 +154,8 @@ impl<J> Effect<J> for BuildOptimizationPrompt {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApplyToolCallsInput {
+    pub iteration_id: String,
+    pub prompt_attempt: u32,
     pub dsp_source_path: String,
     pub tool_calls: Vec<ToolCall>,
 }
@@ -364,6 +367,12 @@ async fn run_sampler(
     }
 
     ensure_parent_dir(Path::new(output_path))?;
+    debug!(
+        output_path,
+        duration_secs,
+        score_spec_count = score_specs.len(),
+        "running mockingbird sampler"
+    );
 
     let mut command = Command::new("cargo");
     command
@@ -390,6 +399,7 @@ async fn run_sampler(
             let status =
                 wait_result.map_err(|err| format!("failed to wait for cargo sampler run: {err}"))?;
             if status.success() {
+                debug!(output_path, "mockingbird sampler run finished successfully");
                 Ok(())
             } else {
                 Err(format!("cargo sampler run exited unsuccessfully: {status}"))
@@ -407,6 +417,12 @@ async fn run_sampler(
 }
 
 fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prompt, String> {
+    info!(
+        iteration_id = %input.iteration_id,
+        prompt_attempt = input.prompt_attempt.saturating_add(1),
+        similarity = input.current_similarity,
+        "building mockingbird optimization prompt"
+    );
     let dsp_source = fs::read_to_string(&input.dsp_source_path).map_err(|err| {
         format!(
             "failed to read dsp source {}: {err}",
@@ -464,6 +480,12 @@ Respond with tool calls only. Only use `{}`.",
 }
 
 async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOutcome, String> {
+    info!(
+        iteration_id = %input.iteration_id,
+        prompt_attempt = input.prompt_attempt,
+        tool_call_count = input.tool_calls.len(),
+        "applying mockingbird dsp tool calls"
+    );
     let original = fs::read_to_string(&input.dsp_source_path).map_err(|err| {
         format!(
             "failed to read dsp source before tool application {}: {err}",
@@ -474,6 +496,11 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
     let replacement = match extract_replacement_source(&input.tool_calls) {
         Some(source) => source,
         None => {
+            warn!(
+                iteration_id = %input.iteration_id,
+                prompt_attempt = input.prompt_attempt,
+                "no valid mockingbird dsp replacement tool call returned"
+            );
             return Ok(ApplyToolCallsOutcome {
                 compile_ok: false,
                 retry_reason: Some(format!(
@@ -490,12 +517,25 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
             input.dsp_source_path
         )
     })?;
+    debug!(
+        iteration_id = %input.iteration_id,
+        prompt_attempt = input.prompt_attempt,
+        dsp_source_path = %input.dsp_source_path,
+        "wrote candidate mockingbird dsp source"
+    );
 
     match check_sampler_compilation().await {
-        Ok(()) => Ok(ApplyToolCallsOutcome {
-            compile_ok: true,
-            retry_reason: None,
-        }),
+        Ok(()) => {
+            info!(
+                iteration_id = %input.iteration_id,
+                prompt_attempt = input.prompt_attempt,
+                "mockingbird sample compilation succeeded"
+            );
+            Ok(ApplyToolCallsOutcome {
+                compile_ok: true,
+                retry_reason: None,
+            })
+        }
         Err(err) => {
             fs::write(&input.dsp_source_path, original).map_err(|restore_err| {
                 format!(
@@ -503,6 +543,12 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
                     input.dsp_source_path
                 )
             })?;
+            warn!(
+                iteration_id = %input.iteration_id,
+                prompt_attempt = input.prompt_attempt,
+                error = %err,
+                "mockingbird sample compilation failed; restored dsp source"
+            );
             Ok(ApplyToolCallsOutcome {
                 compile_ok: false,
                 retry_reason: Some(err),

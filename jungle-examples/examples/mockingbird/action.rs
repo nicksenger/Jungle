@@ -6,6 +6,7 @@ use crate::{MockingBirdSeed, MockingBirdState};
 use jungle_sdk::prelude::*;
 use std::marker::PhantomData;
 use std::path::PathBuf;
+use tracing::{debug, info, warn};
 
 pub struct SeedState<Seed, State>(PhantomData<Seed>, PhantomData<State>);
 #[jungle::action(carry = Seed)]
@@ -62,6 +63,13 @@ impl Action for BeginIteration {
         state.compile_ready = false;
         state.prompt_attempt = 0;
         state.last_retry_reason = None;
+        info!(
+            iteration = state.iteration,
+            iteration_id = %state.iteration_id,
+            sample_path = %state.sample_path,
+            spectrogram_path = %state.spectrogram_path,
+            "starting mockingbird iteration"
+        );
 
         Ok(())
     }
@@ -79,10 +87,15 @@ impl Action for RenderSample {
     }
 
     fn absorb(
-        _state: &mut MockingBirdState,
+        state: &mut MockingBirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(Failure::from)?;
+        info!(
+            iteration_id = %state.iteration_id,
+            sample_path = %state.sample_path,
+            "rendered mockingbird sample"
+        );
         Ok(())
     }
 }
@@ -99,10 +112,15 @@ impl Action for RenderSpectrogram {
     }
 
     fn absorb(
-        _state: &mut MockingBirdState,
+        state: &mut MockingBirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(Failure::from)?;
+        info!(
+            iteration_id = %state.iteration_id,
+            spectrogram_path = %state.spectrogram_path,
+            "rendered mockingbird spectrogram"
+        );
         Ok(())
     }
 }
@@ -129,6 +147,11 @@ impl Action for ScoreSpectrogram {
         state.compile_ready = false;
         state.prompt_attempt = 0;
         state.last_retry_reason = None;
+        info!(
+            iteration_id = %state.iteration_id,
+            similarity = state.last_similarity,
+            "compared mockingbird spectrograms"
+        );
         Ok(())
     }
 }
@@ -153,10 +176,17 @@ impl Action for BuildPrompt {
     }
 
     fn absorb(
-        _state: &mut MockingBirdState,
+        state: &mut MockingBirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.map_err(Failure::from)
+        let prompt = output.map_err(Failure::from)?;
+        debug!(
+            iteration_id = %state.iteration_id,
+            prompt_attempt = state.prompt_attempt.saturating_add(1),
+            similarity = state.last_similarity,
+            "built mockingbird optimization prompt"
+        );
+        Ok(prompt)
     }
 }
 
@@ -172,10 +202,17 @@ impl Action for RequestDspPatch {
     }
 
     fn absorb(
-        _state: &mut MockingBirdState,
+        state: &mut MockingBirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        output.map_err(Failure::from)
+        let tool_calls = output.map_err(Failure::from)?;
+        info!(
+            iteration_id = %state.iteration_id,
+            prompt_attempt = state.prompt_attempt.saturating_add(1),
+            tool_call_count = tool_calls.len(),
+            "received mockingbird tool calls"
+        );
+        Ok(tool_calls)
     }
 }
 
@@ -188,6 +225,8 @@ impl Action for ApplyDspPatch {
 
     fn emit(state: &MockingBirdState, input: Self::Input) -> ApplyToolCallsInput {
         ApplyToolCallsInput {
+            iteration_id: state.iteration_id.clone(),
+            prompt_attempt: state.prompt_attempt.saturating_add(1),
             dsp_source_path: state.dsp_source_path.clone(),
             tool_calls: input,
         }
@@ -205,8 +244,20 @@ impl Action for ApplyDspPatch {
         state.compile_ready = compile_ok;
         if compile_ok {
             state.last_retry_reason = None;
+            info!(
+                iteration_id = %state.iteration_id,
+                similarity = state.last_similarity,
+                prompt_attempt = state.prompt_attempt.saturating_add(1),
+                "mockingbird dsp patch compiled successfully"
+            );
         } else {
             state.prompt_attempt = state.prompt_attempt.saturating_add(1);
+            warn!(
+                iteration_id = %state.iteration_id,
+                similarity = state.last_similarity,
+                prompt_attempt = state.prompt_attempt,
+                "mockingbird dsp patch failed compilation; retrying"
+            );
             state.last_retry_reason = retry_reason;
         }
 
