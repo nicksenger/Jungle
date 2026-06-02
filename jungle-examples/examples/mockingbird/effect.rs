@@ -319,20 +319,11 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
         .decode()
         .map_err(|err| format!("failed to decode spectrogram image {}: {err}", right_path))?
         .into_luma8();
-    let left = if left.dimensions() == right.dimensions() {
-        left
-    } else if left.width() >= right.width() && left.height() >= right.height() {
-        debug!(
-            left_path,
-            right_path,
-            left_width = left.width(),
-            left_height = left.height(),
-            right_width = right.width(),
-            right_height = right.height(),
-            "cropping generated spectrogram to match reference dimensions before comparison"
-        );
-        image::imageops::crop_imm(&left, 0, 0, right.width(), right.height()).to_image()
+    let (left, right) = if left.dimensions() == right.dimensions() {
+        (left, right)
     } else {
+        let width = left.width().min(right.width());
+        let height = left.height().min(right.height());
         debug!(
             left_path,
             right_path,
@@ -340,13 +331,13 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
             left_height = left.height(),
             right_width = right.width(),
             right_height = right.height(),
-            "resizing generated spectrogram to match reference dimensions before comparison"
+            crop_width = width,
+            crop_height = height,
+            "cropping spectrograms to shared dimensions before comparison"
         );
-        image::imageops::resize(
-            &left,
-            right.width(),
-            right.height(),
-            image::imageops::FilterType::Lanczos3,
+        (
+            image::imageops::crop_imm(&left, 0, 0, width, height).to_image(),
+            image::imageops::crop_imm(&right, 0, 0, width, height).to_image(),
         )
     };
 
@@ -387,6 +378,26 @@ mod tests {
         let left = GrayImage::from_fn(4, 1, |x, _y| if x < 2 { Luma([0]) } else { Luma([255]) });
         left.save(&left_path).unwrap();
         write_gray_image(&right_path, 2, 1, 0);
+
+        let similarity = compare_spectrograms(
+            &left_path.display().to_string(),
+            &right_path.display().to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(similarity, 1.0);
+    }
+
+    #[test]
+    fn compare_spectrograms_crops_target_when_it_is_wider() {
+        let left_path = temp_png_path("left-narrow");
+        let right_path = temp_png_path("right-wide");
+        write_gray_image(&left_path, 2, 1, 0);
+        if let Some(parent) = right_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let right = GrayImage::from_fn(4, 1, |x, _y| if x < 2 { Luma([0]) } else { Luma([255]) });
+        right.save(&right_path).unwrap();
 
         let similarity = compare_spectrograms(
             &left_path.display().to_string(),
