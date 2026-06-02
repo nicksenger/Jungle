@@ -2447,6 +2447,7 @@ where
             if self.body_cursor >= self.active_body.len() {
                 self.active_body.clear();
                 self.body_cursor = 0;
+                self.active_control_input = Some(emitted.clone());
             }
         }
         Ok((state, emitted))
@@ -2541,12 +2542,17 @@ where
                 }
                 NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
+                    let mut iteration_completed = false;
                     if self.body_cursor >= self.active_body.len() {
                         self.active_body.clear();
                         self.body_cursor = 0;
+                        iteration_completed = true;
                     }
                     state = next_state;
                     if let Some(emitted) = emitted {
+                        if iteration_completed {
+                            self.active_control_input = Some(emitted.clone());
+                        }
                         self.deferred_emitted = Some(emitted.clone());
                         body_input = emitted;
                     }
@@ -2616,6 +2622,9 @@ where
             if completed {
                 self.body_cursor += 1;
                 if self.body_cursor >= self.active_body.len() {
+                    if let Some(emitted) = emitted_out.clone() {
+                        self.active_control_input = Some(emitted);
+                    }
                     self.active_body.clear();
                     self.body_cursor = 0;
                     break;
@@ -3647,6 +3656,7 @@ where
             if self.body_cursor >= self.active_body.len() {
                 self.active_body.clear();
                 self.body_cursor = 0;
+                self.active_control_input = Some(emitted.clone());
             }
         }
         Ok((state, emitted))
@@ -3741,12 +3751,17 @@ where
                 }
                 NodeAdvance::Completed(next_state, emitted) => {
                     self.body_cursor += 1;
+                    let mut iteration_completed = false;
                     if self.body_cursor >= self.active_body.len() {
                         self.active_body.clear();
                         self.body_cursor = 0;
+                        iteration_completed = true;
                     }
                     state = next_state;
                     if let Some(emitted) = emitted {
+                        if iteration_completed {
+                            self.active_control_input = Some(emitted.clone());
+                        }
                         self.deferred_emitted = Some(emitted.clone());
                         body_input = emitted;
                     }
@@ -3816,6 +3831,9 @@ where
             if completed {
                 self.body_cursor += 1;
                 if self.body_cursor >= self.active_body.len() {
+                    if let Some(emitted) = emitted_out.clone() {
+                        self.active_control_input = Some(emitted);
+                    }
                     self.active_body.clear();
                     self.body_cursor = 0;
                     break;
