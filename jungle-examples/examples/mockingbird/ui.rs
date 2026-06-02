@@ -1,6 +1,4 @@
-use crate::{
-    DspCode, MockingBird, MockingBirdInstrument, MockingBirdInstrumentState, MockingBirdState,
-};
+use crate::{MockingBird, MockingBirdInstrument, MockingBirdInstrumentState, MockingBirdState};
 use iced::widget::{button, column, container, image, row, stack, text};
 use iced::{clipboard, ContentFit, Element, Font, Length, Padding, Subscription, Task};
 use jungle_sdk::JungleClient;
@@ -13,13 +11,12 @@ use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1840.0;
 const WINDOW_HEIGHT: f32 = 860.0;
-const IMAGE_HEADER_HEIGHT: f32 = 52.0;
-const DAG_HEADER_HEIGHT: f32 = 72.0;
-const SNAPSHOT_ROW_HEIGHT: f32 = (WINDOW_HEIGHT - IMAGE_HEADER_HEIGHT) / 5.0;
-const SECTION_HORIZONTAL_PADDING: u16 = 18;
+const PANEL_HEADER_HEIGHT: f32 = 52.0;
+const SNAPSHOT_ROW_HEIGHT: f32 = (WINDOW_HEIGHT - PANEL_HEADER_HEIGHT) / 5.0;
+const SECTION_HORIZONTAL_PADDING: u16 = 0;
 const HEADER_VERTICAL_PADDING: u16 = 14;
-const SNAPSHOT_ROW_VERTICAL_PADDING: u16 = 10;
-const SNAPSHOT_GAP: f32 = 12.0;
+const SNAPSHOT_ROW_VERTICAL_PADDING: u16 = 0;
+const SNAPSHOT_GAP: f32 = 0.0;
 
 pub fn run_ui<C>(client: C, journey_id: Uuid) -> Result<(), iced::Error>
 where
@@ -175,35 +172,29 @@ impl MockingbirdUi {
 
         container(header)
             .width(Length::Fill)
-            .height(Length::Fixed(IMAGE_HEADER_HEIGHT))
+            .height(Length::Fixed(PANEL_HEADER_HEIGHT))
             .padding([HEADER_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
             .style(header_style)
             .into()
     }
 
     fn dag_header(&self) -> Element<'_, Message> {
+        let journey_id = self.journey_id.to_string();
+        let short_journey_id = &journey_id[..8];
         let summary = if let Some(snapshot) = self.snapshot.as_ref() {
             format!(
                 "Iteration {}  Journey {}",
-                snapshot.iteration, self.journey_id
+                snapshot.iteration, short_journey_id
             )
         } else {
-            format!("Journey {}", self.journey_id)
+            format!("Journey {}", short_journey_id)
         };
 
-        let mut header = column![text(summary).size(15)].spacing(6);
-
-        if let Some(error) = self
-            .snapshot_error
-            .clone()
-            .or_else(|| self.audio.last_error.clone())
-        {
-            header = header.push(text(error).size(13));
-        }
+        let header = column![text(summary).size(15)].spacing(6);
 
         container(header)
             .width(Length::Fill)
-            .height(Length::Fixed(DAG_HEADER_HEIGHT))
+            .height(Length::Fixed(PANEL_HEADER_HEIGHT))
             .padding([HEADER_VERTICAL_PADDING, SECTION_HORIZONTAL_PADDING])
             .style(header_style)
             .into()
@@ -243,25 +234,25 @@ impl MockingbirdUi {
         let cards = row![
             spectrogram_tile(
                 Some(&instrument_state.target_spectrogram_path),
-                Some("reference".to_owned()),
+                None,
                 sibling_audio_path(&instrument_state.target_spectrogram_path)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
             ),
             spectrogram_tile(
                 initial_spectrogram_path(instrument_state),
-                Some(snapshot_footer(&instrument_state.initial_dsp_code)),
+                initial_overlay_label(instrument_state),
                 initial_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Initial)),
             ),
             spectrogram_tile(
                 current_spectrogram_path(instrument_state),
-                current_footer(instrument_state),
+                current_overlay_label(instrument_state),
                 current_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Current)),
             ),
             spectrogram_tile(
                 best_spectrogram_path(instrument_state),
-                best_footer(instrument_state),
+                best_overlay_label(instrument_state),
                 best_spectrogram_path(instrument_state)
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Best)),
             ),
@@ -322,7 +313,7 @@ fn spectrogram_tile<'a>(
     {
         Some(path) => {
             let preview = image(image::Handle::from_path(path))
-                .content_fit(ContentFit::Contain)
+                .content_fit(ContentFit::Fill)
                 .width(Length::Fill)
                 .height(Length::Fill);
             match activate_message {
@@ -346,15 +337,15 @@ fn spectrogram_tile<'a>(
     };
 
     let overlay = container(
-        container(text(overlay_label.unwrap_or_else(|| " ".to_owned())).size(13))
+        container(text(overlay_label.unwrap_or_else(String::new)).size(13))
             .padding([4, 8])
             .style(instrument_badge_style),
     )
     .width(Length::Fill)
     .height(Length::Fill)
-    .align_left(Length::Fill)
-    .align_bottom(Length::Fill)
-    .padding(Padding::default().left(8).bottom(8));
+    .align_right(Length::Fill)
+    .align_top(Length::Fill)
+    .padding(Padding::default().top(8).right(8));
 
     container(
         stack([
@@ -398,14 +389,17 @@ fn current_sample_path(instrument_state: &MockingBirdInstrumentState) -> Option<
         })
 }
 
-fn current_footer(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
+fn current_overlay_label(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
     instrument_state
         .latest_rendered_code
         .as_ref()
-        .map(snapshot_footer)
+        .and_then(|code| {
+            current_spectrogram_path(instrument_state)
+                .map(|_| similarity_label("current", code.similarity))
+        })
         .or_else(|| {
             current_spectrogram_path(instrument_state)
-                .map(|_| similarity_footer("current", instrument_state.latest_generated_similarity))
+                .map(|_| similarity_label("current", instrument_state.latest_generated_similarity))
         })
 }
 
@@ -435,19 +429,27 @@ fn best_sample_path(instrument_state: &MockingBirdInstrumentState) -> Option<&st
         })
 }
 
-fn best_footer(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
+fn best_overlay_label(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
     instrument_state
         .best_generated_code
         .as_ref()
-        .map(snapshot_footer)
+        .and_then(|code| {
+            best_spectrogram_path(instrument_state)
+                .map(|_| similarity_label("best", code.similarity))
+        })
         .or_else(|| {
             best_spectrogram_path(instrument_state)
-                .map(|_| similarity_footer("best", instrument_state.best_similarity))
+                .map(|_| similarity_label("best", instrument_state.best_similarity))
         })
 }
 
 fn initial_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
     non_empty(&instrument_state.initial_dsp_code.spectrogram_path)
+}
+
+fn initial_overlay_label(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
+    initial_spectrogram_path(instrument_state)
+        .map(|_| score_only_label(instrument_state.initial_dsp_code.similarity))
 }
 
 fn spectrogram_action_payload(
@@ -480,11 +482,13 @@ fn spectrogram_action_payload(
     }
 }
 
-fn snapshot_footer(code: &DspCode) -> String {
-    similarity_footer(&code.iteration_id, code.similarity)
+fn score_only_label(similarity: Option<f32>) -> String {
+    similarity
+        .map(|similarity| format!("{similarity:.6}"))
+        .unwrap_or_default()
 }
 
-fn similarity_footer(label: &str, similarity: Option<f32>) -> String {
+fn similarity_label(label: &str, similarity: Option<f32>) -> String {
     similarity
         .map(|similarity| format!("{label}  {similarity:.6}"))
         .unwrap_or_else(|| label.to_owned())
