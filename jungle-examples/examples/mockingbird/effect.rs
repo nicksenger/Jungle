@@ -321,6 +321,17 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
         .into_luma8();
     let left = if left.dimensions() == right.dimensions() {
         left
+    } else if left.width() >= right.width() && left.height() >= right.height() {
+        debug!(
+            left_path,
+            right_path,
+            left_width = left.width(),
+            left_height = left.height(),
+            right_width = right.width(),
+            right_height = right.height(),
+            "cropping generated spectrogram to match reference dimensions before comparison"
+        );
+        image::imageops::crop_imm(&left, 0, 0, right.width(), right.height()).to_image()
     } else {
         debug!(
             left_path,
@@ -367,11 +378,15 @@ mod tests {
     }
 
     #[test]
-    fn compare_spectrograms_handles_dimension_mismatch() {
+    fn compare_spectrograms_crops_extra_width_from_the_right() {
         let left_path = temp_png_path("left");
         let right_path = temp_png_path("right");
-        write_gray_image(&left_path, 372, 256, 0);
-        write_gray_image(&right_path, 341, 256, 0);
+        if let Some(parent) = left_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let left = GrayImage::from_fn(4, 1, |x, _y| if x < 2 { Luma([0]) } else { Luma([255]) });
+        left.save(&left_path).unwrap();
+        write_gray_image(&right_path, 2, 1, 0);
 
         let similarity = compare_spectrograms(
             &left_path.display().to_string(),
