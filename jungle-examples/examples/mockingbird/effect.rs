@@ -220,6 +220,39 @@ impl Effect<PulseCodeParadise> for SearchTreeSubmit {
     }
 }
 
+pub struct SearchTreeSkip;
+#[effect(id = 14)]
+impl Effect<()> for SearchTreeSkip {
+    type In = MockingBirdInstrument;
+    type Out = ();
+    type Err = String;
+
+    fn effect(
+        _jungle: &(),
+        _input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async { Err("SearchTreeSkip requires PulseCodeParadise runtime context".to_owned()) }
+    }
+}
+
+#[effect(id = 14)]
+impl Effect<PulseCodeParadise> for SearchTreeSkip {
+    type In = MockingBirdInstrument;
+    type Out = ();
+    type Err = String;
+
+    fn effect(
+        jungle: &PulseCodeParadise,
+        input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            jungle
+                .skip_mockingbird_branch(input)
+                .map_err(|err| err.to_string())
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeIterationInstrumentInput {
     pub instrument: MockingBirdInstrument,

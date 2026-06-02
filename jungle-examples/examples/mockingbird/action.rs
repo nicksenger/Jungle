@@ -2,7 +2,7 @@ use crate::effect::{
     ApplyToolCalls, ApplyToolCallsInput, ApplyToolCallsOutcome, BuildOptimizationPrompt,
     BuildOptimizationPromptInput, CompareSpectrograms, FinalizeIterationSamples,
     FinalizeIterationSamplesInput, FinalizeIterationSamplesOutcome, PromptModel, SearchTreeSelect,
-    SearchTreeSubmit,
+    SearchTreeSkip, SearchTreeSubmit,
 };
 use crate::{
     DspCode, MockingBirdInstrument, MockingBirdSeed, MockingBirdState, MAX_COMPILE_PROMPT_ATTEMPTS,
@@ -210,16 +210,19 @@ impl Action for ScoreSpectrogram {
 pub struct SkipInstrumentIteration;
 #[jungle::action]
 impl Action for SkipInstrumentIteration {
-    type Effect = Noop;
+    type Effect = SearchTreeSkip;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &MockingBirdState, _input: Self::Input) {}
+    fn emit(state: &MockingBirdState, _input: Self::Input) -> MockingBirdInstrument {
+        state.current_instrument
+    }
 
     fn absorb(
         state: &mut MockingBirdState,
-        _output: EffectCompletion<Self::Effect>,
+        output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
+        output.map_err(Failure::from)?;
         info!(
             iteration_id = %state.iteration_id,
             instrument = state.current_instrument.slug(),

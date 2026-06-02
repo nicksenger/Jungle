@@ -179,6 +179,35 @@ impl PulseCodeParadise {
         Ok(())
     }
 
+    pub(crate) fn skip_mockingbird_branch(
+        &self,
+        instrument: MockingBirdInstrument,
+    ) -> Result<(), PulseCodeParadiseError> {
+        let write_tx = self.db.begin_write().map_err(|err| {
+            PulseCodeParadiseError::Persistence(format!("mcts skip begin_write failed: {err}"))
+        })?;
+        let tag = instrument.tree_tag();
+        let (mut tree_state, _nodes) = load_mcts_tree(&write_tx, tag)?;
+        if tree_state.pending_session_id.as_deref() != Some(self.runtime_session_id.as_str()) {
+            return Err(PulseCodeParadiseError::MctsProtocol(format!(
+                "{} tree pending selection does not belong to this runtime; select must precede skip",
+                instrument.slug()
+            )));
+        }
+        tree_state.pending_selected_node_id.take().ok_or_else(|| {
+            PulseCodeParadiseError::MctsProtocol(format!(
+                "{} tree has no pending selected node; select must precede skip",
+                instrument.slug()
+            ))
+        })?;
+        tree_state.pending_session_id = None;
+        save_tree_state(&write_tx, tag, &tree_state)?;
+        write_tx.commit().map_err(|err| {
+            PulseCodeParadiseError::Persistence(format!("mcts skip commit failed: {err}"))
+        })?;
+        Ok(())
+    }
+
     #[cfg(test)]
     fn load_tree_for_test(
         &self,
@@ -668,6 +697,30 @@ mod tests {
             .select_mockingbird_branch(MockingBirdInstrument::GuitarSolo)
             .unwrap_err();
         assert!(select_err.to_string().contains("submit must follow select"));
+    }
+
+    #[test]
+    fn skip_clears_pending_selection_for_next_select() {
+        let ecosystem = ecosystem("skip-clears-pending", 8);
+
+        let initial = ecosystem
+            .select_mockingbird_branch(MockingBirdInstrument::Vocals)
+            .unwrap();
+        assert_eq!(initial.len(), 1);
+
+        ecosystem
+            .skip_mockingbird_branch(MockingBirdInstrument::Vocals)
+            .unwrap();
+
+        let selected_again = ecosystem
+            .select_mockingbird_branch(MockingBirdInstrument::Vocals)
+            .unwrap();
+
+        assert_eq!(selected_again.len(), 1);
+        let (tree, _nodes) = ecosystem
+            .load_tree_for_test(MockingBirdInstrument::Vocals)
+            .unwrap();
+        assert!(tree.pending_selected_node_id.is_some());
     }
 
     #[test]
