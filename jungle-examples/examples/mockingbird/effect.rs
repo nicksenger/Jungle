@@ -20,7 +20,7 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
-use tokio::time::{timeout, Duration};
+use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, info, warn};
 
 fn stub_ok<T>(value: T) -> impl Future<Output = Result<T, String>> {
@@ -128,7 +128,20 @@ impl Effect<PulseCodeParadise> for PromptModel {
         jungle: &PulseCodeParadise,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { jungle.predict(input).await.map_err(|err| err.to_string()) }
+        async move {
+            let prompt_started_at = Instant::now();
+            let response = jungle.predict(input).await.map_err(|err| err.to_string());
+            let prompt_elapsed_ms = prompt_started_at.elapsed().as_millis();
+            match &response {
+                Ok(tool_calls) => info!(
+                    prompt_elapsed_ms,
+                    tool_call_count = tool_calls.len(),
+                    "received prompt model response"
+                ),
+                Err(error) => info!(prompt_elapsed_ms, error, "prompt model request failed"),
+            }
+            response
+        }
     }
 }
 
