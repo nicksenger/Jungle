@@ -2,7 +2,7 @@
 
 use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
-use crate::{DspCode, MockingBirdInstrument, PulseCodeParadise, MOCKINGBIRD_DURATION_SECS};
+use crate::{DspCode, LyrebirdInstrument, PulseCodeParadise, LYREBIRD_DURATION_SECS};
 use image::ImageReader;
 use image_compare::Algorithm;
 use jungle_sdk::effect;
@@ -29,9 +29,9 @@ const MEL_WIN_LENGTH: usize = 2048;
 const MEL_N_MELS: usize = 256;
 const MEL_F_MIN_HZ: f32 = 20.0;
 const MEL_F_MAX_HZ: f32 = 16_000.0;
-const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/mockingbird/sample/Cargo.toml";
+const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/lyrebird/sample/Cargo.toml";
 const SAMPLER_COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
-const SAMPLER_BINARY_PATH: &str = "./target/release/mockingbird-sample";
+const SAMPLER_BINARY_PATH: &str = "./target/release/lyrebird-sample";
 
 pub struct CreateSessionDB;
 #[effect(id = 1)]
@@ -105,7 +105,7 @@ impl Effect<PulseCodeParadise> for PromptModel {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BuildOptimizationPromptInput {
     pub iteration_id: String,
-    pub instrument: MockingBirdInstrument,
+    pub instrument: LyrebirdInstrument,
     pub code_branch: Vec<DspCode>,
     pub target_spectrogram_path: String,
     pub prompt_attempt: u32,
@@ -127,7 +127,7 @@ impl<J> Effect<J> for BuildOptimizationPrompt {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PrepareToolCallsInput {
     pub iteration_id: String,
-    pub instrument: MockingBirdInstrument,
+    pub instrument: LyrebirdInstrument,
     pub prompt_attempt: u32,
     pub tool_name: String,
     pub tool_calls: Vec<ToolCall>,
@@ -154,7 +154,7 @@ impl<J> Effect<J> for PrepareToolCalls {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompilePreparedPatchInput {
     pub iteration_id: String,
-    pub instrument: MockingBirdInstrument,
+    pub instrument: LyrebirdInstrument,
     pub prompt_attempt: u32,
     pub dsp_source_path: String,
     pub original_source: String,
@@ -182,7 +182,7 @@ impl<J> Effect<J> for CompilePreparedPatch {
 pub struct SearchTreeSelect;
 #[effect(id = 9)]
 impl Effect<()> for SearchTreeSelect {
-    type In = MockingBirdInstrument;
+    type In = LyrebirdInstrument;
     type Out = Vec<DspCode>;
     type Err = String;
 
@@ -201,7 +201,7 @@ where
     <J as SearchTree>::Data: Send + 'static,
     <J as SearchTree>::Error: Send + 'static,
 {
-    type In = MockingBirdInstrument;
+    type In = LyrebirdInstrument;
     type Out = <J as SearchTree>::Data;
     type Err = <J as SearchTree>::Error;
 
@@ -213,7 +213,7 @@ where
 pub struct SearchTreeSubmit;
 #[effect(id = 10)]
 impl Effect<()> for SearchTreeSubmit {
-    type In = (MockingBirdInstrument, Vec<DspCode>, f32);
+    type In = (LyrebirdInstrument, Vec<DspCode>, f32);
     type Out = ();
     type Err = String;
 
@@ -232,7 +232,7 @@ where
     <J as SearchTree>::Data: Send + 'static,
     <J as SearchTree>::Error: Send + 'static,
 {
-    type In = (MockingBirdInstrument, <J as SearchTree>::Data, f32);
+    type In = (LyrebirdInstrument, <J as SearchTree>::Data, f32);
     type Out = ();
     type Err = <J as SearchTree>::Error;
 
@@ -247,7 +247,7 @@ where
 pub struct SearchTreeSkip;
 #[effect(id = 14)]
 impl Effect<()> for SearchTreeSkip {
-    type In = MockingBirdInstrument;
+    type In = LyrebirdInstrument;
     type Out = ();
     type Err = String;
 
@@ -266,7 +266,7 @@ where
     <J as SearchTree>::Data: Send + 'static,
     <J as SearchTree>::Error: Send + 'static,
 {
-    type In = MockingBirdInstrument;
+    type In = LyrebirdInstrument;
     type Out = ();
     type Err = <J as SearchTree>::Error;
 
@@ -277,7 +277,7 @@ where
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeIterationInstrumentInput {
-    pub instrument: MockingBirdInstrument,
+    pub instrument: LyrebirdInstrument,
     pub dsp_source_path: String,
     pub original_source: String,
     pub generated_source: String,
@@ -287,7 +287,7 @@ pub struct FinalizeIterationInstrumentInput {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeIterationInstrumentOutput {
-    pub instrument: MockingBirdInstrument,
+    pub instrument: LyrebirdInstrument,
     pub sample_path: String,
     pub spectrogram_path: String,
 }
@@ -318,7 +318,7 @@ impl<J> Effect<J> for FinalizeIterationSamples {
 pub async fn capture_current_dsp_code_snapshot(
     iteration_id: &str,
     output_root: &Path,
-    instrument: MockingBirdInstrument,
+    instrument: LyrebirdInstrument,
     target_spectrogram_path: &Path,
     dsp_source_path: &Path,
 ) -> Result<DspCode, String> {
@@ -333,7 +333,7 @@ pub async fn capture_current_dsp_code_snapshot(
     let spectrogram_path = iteration_dir.join(format!("{}.png", instrument.output_stem()));
 
     run_sampler(
-        MOCKINGBIRD_DURATION_SECS,
+        LYREBIRD_DURATION_SECS,
         &sample_path.display().to_string(),
         &[instrument.score_spec().to_owned()],
     )
@@ -352,7 +352,7 @@ pub async fn capture_current_dsp_code_snapshot(
         similarity,
         sample_path = %sample_path.display(),
         spectrogram_path = %spectrogram_path.display(),
-        "captured mockingbird dsp snapshot"
+        "captured lyrebird dsp snapshot"
     );
 
     Ok(DspCode {
@@ -453,13 +453,13 @@ async fn finalize_iteration_samples(
                 iteration_id = %input.iteration_id,
                 instrument = instrument.instrument.slug(),
                 error = %err,
-                "mockingbird sample build failed; skipping instrument render"
+                "lyrebird sample build failed; skipping instrument render"
             );
             continue;
         }
 
         if let Err(err) = run_sampler_binary(
-            MOCKINGBIRD_DURATION_SECS,
+            LYREBIRD_DURATION_SECS,
             &instrument.sample_path,
             &[instrument.instrument.score_spec().to_owned()],
         )
@@ -469,7 +469,7 @@ async fn finalize_iteration_samples(
                 iteration_id = %input.iteration_id,
                 instrument = instrument.instrument.slug(),
                 error = %err,
-                "mockingbird sampler run failed; skipping instrument render"
+                "lyrebird sampler run failed; skipping instrument render"
             );
             continue;
         }
@@ -480,7 +480,7 @@ async fn finalize_iteration_samples(
                 iteration_id = %input.iteration_id,
                 instrument = instrument.instrument.slug(),
                 error = %err,
-                "mockingbird spectrogram generation failed; skipping instrument render"
+                "lyrebird spectrogram generation failed; skipping instrument render"
             );
             continue;
         }
@@ -499,9 +499,9 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         .code_branch
         .last()
         .cloned()
-        .ok_or_else(|| "mockingbird prompt requires a selected code branch".to_owned())?;
+        .ok_or_else(|| "lyrebird prompt requires a selected code branch".to_owned())?;
     if selected_code.spectrogram_path.is_empty() {
-        return Err("selected mockingbird branch is missing a spectrogram path".to_owned());
+        return Err("selected lyrebird branch is missing a spectrogram path".to_owned());
     }
 
     info!(
@@ -510,7 +510,7 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         prompt_attempt = input.prompt_attempt.saturating_add(1),
         selected_depth = input.code_branch.len().saturating_sub(1),
         selected_similarity = selected_code.similarity.unwrap_or_default(),
-        "building mockingbird optimization prompt"
+        "building lyrebird optimization prompt"
     );
 
     let mut contents = Vec::new();
@@ -518,7 +518,7 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         "Task: optimize `{}` so the generated {} mel spectrogram moves closer to the target.\n\
 Iteration id: {}.\nPrompt attempt: {}.\nSelected branch depth: {}.\n\
 Target score spec: {}.\nUse the `{}` tool to replace the full Rust source for that file.\n\
-Keep the module compiling in the existing `mockingbird-sample` crate and preserve the file's role in the welcome audio pipeline.",
+Keep the module compiling in the existing `lyrebird-sample` crate and preserve the file's role in the welcome audio pipeline.",
         input.instrument.relative_dsp_path(),
         input.instrument.render_subject(),
         input.iteration_id,
@@ -599,7 +599,7 @@ async fn prepare_tool_calls(
         instrument = input.instrument.slug(),
         prompt_attempt = input.prompt_attempt,
         tool_call_count = input.tool_calls.len(),
-        "preparing mockingbird dsp tool calls"
+        "preparing lyrebird dsp tool calls"
     );
 
     let replacement = match extract_replacement_source(&input.tool_calls, &input.tool_name) {
@@ -610,7 +610,7 @@ async fn prepare_tool_calls(
                 instrument = input.instrument.slug(),
                 prompt_attempt = input.prompt_attempt,
                 error = %err,
-                "mockingbird tool call arguments were malformed"
+                "lyrebird tool call arguments were malformed"
             );
             return Ok(PrepareToolCallsOutcome {
                 retry_reason: Some(err),
@@ -622,7 +622,7 @@ async fn prepare_tool_calls(
                 iteration_id = %input.iteration_id,
                 instrument = input.instrument.slug(),
                 prompt_attempt = input.prompt_attempt,
-                "no valid mockingbird dsp replacement tool call returned"
+                "no valid lyrebird dsp replacement tool call returned"
             );
             return Ok(PrepareToolCallsOutcome {
                 retry_reason: Some(format!(
@@ -638,7 +638,7 @@ async fn prepare_tool_calls(
         iteration_id = %input.iteration_id,
         instrument = input.instrument.slug(),
         prompt_attempt = input.prompt_attempt,
-        "prepared candidate mockingbird dsp source"
+        "prepared candidate lyrebird dsp source"
     );
 
     Ok(PrepareToolCallsOutcome {
@@ -661,7 +661,7 @@ async fn compile_prepared_patch(
         iteration_id = %input.iteration_id,
         instrument = input.instrument.slug(),
         prompt_attempt = input.prompt_attempt,
-        "checking mockingbird dsp patch compilation"
+        "checking lyrebird dsp patch compilation"
     );
 
     match with_temporary_dsp_source(
@@ -682,7 +682,7 @@ async fn compile_prepared_patch(
                 instrument = input.instrument.slug(),
                 prompt_attempt = input.prompt_attempt,
                 error = %err,
-                "mockingbird sample compilation failed; restored original dsp source"
+                "lyrebird sample compilation failed; restored original dsp source"
             );
             Ok(CompilePreparedPatchOutcome {
                 compile_ok: false,
@@ -724,7 +724,7 @@ async fn build_sampler_release() -> Result<(), String> {
     if run_sampler_cargo(["build", "--release"]).await? {
         return Ok(());
     }
-    Err("cargo build --release for mockingbird-sample exited unsuccessfully".to_owned())
+    Err("cargo build --release for lyrebird-sample exited unsuccessfully".to_owned())
 }
 
 async fn check_sampler_compilation() -> Result<(), String> {
@@ -735,7 +735,7 @@ async fn check_sampler_compilation() -> Result<(), String> {
         .stdin(Stdio::null())
         .output()
         .await
-        .map_err(|err| format!("failed to spawn cargo check for mockingbird-sample: {err}"))?;
+        .map_err(|err| format!("failed to spawn cargo check for lyrebird-sample: {err}"))?;
 
     if output.status.success() {
         return Ok(());
@@ -750,7 +750,7 @@ async fn check_sampler_compilation() -> Result<(), String> {
     };
 
     Err(format!(
-        "mockingbird-sample compilation failed:\n{}",
+        "lyrebird-sample compilation failed:\n{}",
         truncate_retry_reason(details)
     ))
 }
@@ -837,7 +837,7 @@ async fn run_sampler(
         output_path,
         duration_secs,
         score_spec_count = score_specs.len(),
-        "running mockingbird sampler"
+        "running lyrebird sampler"
     );
 
     let mut command = Command::new("cargo");
@@ -865,7 +865,7 @@ async fn run_sampler(
             let status = wait_result
                 .map_err(|err| format!("failed to wait for cargo sampler run: {err}"))?;
             if status.success() {
-                debug!(output_path, "mockingbird sampler run finished successfully");
+                debug!(output_path, "lyrebird sampler run finished successfully");
                 Ok(())
             } else {
                 Err(format!("cargo sampler run exited unsuccessfully: {status}"))
@@ -899,7 +899,7 @@ async fn run_sampler_binary(
         output_path,
         duration_secs,
         score_spec_count = score_specs.len(),
-        "running mockingbird sampler binary"
+        "running lyrebird sampler binary"
     );
 
     let mut child = Command::new(SAMPLER_BINARY_PATH)
@@ -912,26 +912,26 @@ async fn run_sampler_binary(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|err| format!("failed to spawn mockingbird-sample binary: {err}"))?;
+        .map_err(|err| format!("failed to spawn lyrebird-sample binary: {err}"))?;
 
     match timeout(SAMPLER_COMMAND_TIMEOUT, child.wait()).await {
         Ok(wait_result) => {
             let status = wait_result
-                .map_err(|err| format!("failed to wait for mockingbird-sample binary: {err}"))?;
+                .map_err(|err| format!("failed to wait for lyrebird-sample binary: {err}"))?;
             if status.success() {
                 Ok(())
             } else {
                 Err(format!(
-                    "mockingbird-sample binary exited unsuccessfully: {status}"
+                    "lyrebird-sample binary exited unsuccessfully: {status}"
                 ))
             }
         }
         Err(_) => {
             child.kill().await.map_err(|err| {
-                format!("timed out and failed to kill mockingbird-sample binary: {err}")
+                format!("timed out and failed to kill lyrebird-sample binary: {err}")
             })?;
             let _ = child.wait().await;
-            Err("mockingbird-sample binary timed out".to_string())
+            Err("lyrebird-sample binary timed out".to_string())
         }
     }
 }
@@ -960,7 +960,7 @@ mod tests {
 
     fn temp_png_path(name: &str) -> PathBuf {
         std::env::temp_dir()
-            .join("jungle-mockingbird-tests")
+            .join("jungle-lyrebird-tests")
             .join(format!("{name}-{}.png", Uuid::new_v4()))
     }
 
@@ -974,7 +974,7 @@ mod tests {
 
     fn temp_text_path(name: &str) -> PathBuf {
         std::env::temp_dir()
-            .join("jungle-mockingbird-tests")
+            .join("jungle-lyrebird-tests")
             .join(format!("{name}-{}.rs", Uuid::new_v4()))
     }
 
@@ -1061,7 +1061,7 @@ mod tests {
     fn optimization_prompt_keeps_inline_tools_empty_for_postcard_transport() {
         let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000001".to_owned(),
-            instrument: MockingBirdInstrument::Bass,
+            instrument: LyrebirdInstrument::Bass,
             code_branch: vec![DspCode {
                 iteration_id: "initial".to_owned(),
                 source: "fn bass() {}".to_owned(),

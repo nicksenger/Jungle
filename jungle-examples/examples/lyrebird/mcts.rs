@@ -1,4 +1,4 @@
-use super::{DspCode, MockingBirdInstrument, PulseCodeParadise, PulseCodeParadiseError};
+use super::{DspCode, LyrebirdInstrument, PulseCodeParadise, PulseCodeParadiseError};
 use directories_next::BaseDirs;
 use redb::{ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -12,9 +12,9 @@ use tracing::warn;
 
 const ROOT_NODE_ID: u64 = 0;
 const MCTS_TREES_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("mockingbird_mcts_trees");
+    TableDefinition::new("lyrebird_mcts_trees");
 const MCTS_NODES_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("mockingbird_mcts_nodes");
+    TableDefinition::new("lyrebird_mcts_nodes");
 
 pub trait SearchTree {
     type Error;
@@ -22,19 +22,19 @@ pub trait SearchTree {
 
     fn select(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
     ) -> impl Future<Output = Result<Self::Data, Self::Error>> + Send;
 
     fn submit(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
         data: Self::Data,
         score: f32,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 
     fn skip(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
@@ -78,9 +78,9 @@ pub(crate) fn open_mcts_db(
 }
 
 impl PulseCodeParadise {
-    pub(crate) fn select_mockingbird_branch(
+    pub(crate) fn select_lyrebird_branch(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
     ) -> Result<Vec<DspCode>, PulseCodeParadiseError> {
         let write_tx = self.db.begin_write().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts select begin_write failed: {err}"))
@@ -100,7 +100,7 @@ impl PulseCodeParadise {
                 pending_selected_node_id,
                 pending_session_id = tree_state.pending_session_id.as_deref().unwrap_or("unknown"),
                 runtime_session_id = %self.runtime_session_id,
-                "recovering stale mockingbird mcts selection from a previous runtime"
+                "recovering stale lyrebird mcts selection from a previous runtime"
             );
             tree_state.pending_selected_node_id = None;
             tree_state.pending_session_id = None;
@@ -129,9 +129,9 @@ impl PulseCodeParadise {
         Ok(selected_branch)
     }
 
-    pub(crate) fn submit_mockingbird_branch(
+    pub(crate) fn submit_lyrebird_branch(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
         data: Vec<DspCode>,
         score: f32,
     ) -> Result<(), PulseCodeParadiseError> {
@@ -202,9 +202,9 @@ impl PulseCodeParadise {
         Ok(())
     }
 
-    pub(crate) fn skip_mockingbird_branch(
+    pub(crate) fn skip_lyrebird_branch(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
     ) -> Result<(), PulseCodeParadiseError> {
         let write_tx = self.db.begin_write().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts skip begin_write failed: {err}"))
@@ -234,7 +234,7 @@ impl PulseCodeParadise {
     #[cfg(test)]
     fn load_tree_for_test(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
     ) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodeParadiseError> {
         let write_tx = self.db.begin_write().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts test begin_write failed: {err}"))
@@ -253,32 +253,32 @@ impl SearchTree for PulseCodeParadise {
 
     fn select(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
     ) -> impl Future<Output = Result<Self::Data, Self::Error>> + Send {
         async move {
-            self.select_mockingbird_branch(instrument)
+            self.select_lyrebird_branch(instrument)
                 .map_err(|err| err.to_string())
         }
     }
 
     fn submit(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
         data: Self::Data,
         score: f32,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async move {
-            self.submit_mockingbird_branch(instrument, data, score)
+            self.submit_lyrebird_branch(instrument, data, score)
                 .map_err(|err| err.to_string())
         }
     }
 
     fn skip(
         &self,
-        instrument: MockingBirdInstrument,
+        instrument: LyrebirdInstrument,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async move {
-            self.skip_mockingbird_branch(instrument)
+            self.skip_lyrebird_branch(instrument)
                 .map_err(|err| err.to_string())
         }
     }
@@ -292,7 +292,7 @@ fn resolve_mcts_db_path(db_path: Option<PathBuf>) -> Result<PathBuf, PulseCodePa
             Ok(base_dirs
                 .home_dir()
                 .join(".jungle")
-                .join("mockingbird")
+                .join("lyrebird")
                 .join("mcts.redb"))
         }
     }
@@ -449,7 +449,7 @@ fn save_tree_nodes(
 fn choose_expandable_node(
     nodes: &HashMap<u64, StoredMctsNode>,
     max_tree_depth: usize,
-    instrument: MockingBirdInstrument,
+    instrument: LyrebirdInstrument,
 ) -> Result<u64, PulseCodeParadiseError> {
     let mut best: Option<(&StoredMctsNode, usize)> = None;
 
@@ -512,7 +512,7 @@ fn mcts_selection_score(node: &StoredMctsNode, nodes: &HashMap<u64, StoredMctsNo
 fn node_depth(
     node_id: u64,
     nodes: &HashMap<u64, StoredMctsNode>,
-    instrument: MockingBirdInstrument,
+    instrument: LyrebirdInstrument,
 ) -> Result<usize, PulseCodeParadiseError> {
     let mut depth = 0usize;
     let mut current_node_id = Some(node_id);
@@ -535,7 +535,7 @@ fn branch_for_node(
     node_id: u64,
     nodes: &HashMap<u64, StoredMctsNode>,
     initial_dsp_code: &DspCode,
-    instrument: MockingBirdInstrument,
+    instrument: LyrebirdInstrument,
 ) -> Result<Vec<DspCode>, PulseCodeParadiseError> {
     let mut lineage = Vec::new();
     let mut current_node_id = Some(node_id);
@@ -575,7 +575,7 @@ fn backpropagate_mcts(
     nodes: &mut HashMap<u64, StoredMctsNode>,
     start_node_id: u64,
     score: f64,
-    instrument: MockingBirdInstrument,
+    instrument: LyrebirdInstrument,
 ) -> Result<(), PulseCodeParadiseError> {
     let mut current_node_id = Some(start_node_id);
     while let Some(node_id) = current_node_id {
@@ -601,7 +601,7 @@ mod tests {
 
     fn temp_db_path(name: &str) -> PathBuf {
         std::env::temp_dir()
-            .join("jungle-mockingbird-tests")
+            .join("jungle-lyrebird-tests")
             .join(format!("{name}-{}.redb", Uuid::new_v4()))
     }
 
@@ -616,7 +616,7 @@ mod tests {
     }
 
     fn ecosystem(name: &str, max_tree_depth: usize) -> PulseCodeParadise {
-        let initial = MockingBirdInstrument::ALL.into_iter().map(|instrument| {
+        let initial = LyrebirdInstrument::ALL.into_iter().map(|instrument| {
             (
                 instrument,
                 dsp_code(&format!("initial-{}", instrument.slug()), Some(0.1)),
@@ -634,35 +634,35 @@ mod tests {
     #[test]
     fn resolves_default_db_path_under_home_directory() {
         let db_path = resolve_mcts_db_path(None).unwrap();
-        assert!(db_path.ends_with(".jungle/mockingbird/mcts.redb"));
+        assert!(db_path.ends_with(".jungle/lyrebird/mcts.redb"));
     }
 
     #[test]
-    fn persists_mockingbird_branch_and_backpropagates() {
+    fn persists_lyrebird_branch_and_backpropagates() {
         let db_path = temp_db_path("persisted-mcts");
         let tokens_url = Url::parse("https://api.openai.com/v1").unwrap();
         let initial = dsp_code("initial", Some(0.2));
 
         let first = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
             .unwrap()
-            .with_mcts_config([(MockingBirdInstrument::RhythmGuitar, initial.clone())], 8);
+            .with_mcts_config([(LyrebirdInstrument::RhythmGuitar, initial.clone())], 8);
         let selected = first
-            .select_mockingbird_branch(MockingBirdInstrument::RhythmGuitar)
+            .select_lyrebird_branch(LyrebirdInstrument::RhythmGuitar)
             .unwrap();
         assert_eq!(selected, vec![initial.clone()]);
         drop(first);
 
         let second = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
             .unwrap()
-            .with_mcts_config([(MockingBirdInstrument::RhythmGuitar, initial.clone())], 8);
+            .with_mcts_config([(LyrebirdInstrument::RhythmGuitar, initial.clone())], 8);
         let recovered = second
-            .select_mockingbird_branch(MockingBirdInstrument::RhythmGuitar)
+            .select_lyrebird_branch(LyrebirdInstrument::RhythmGuitar)
             .unwrap();
         assert_eq!(recovered, vec![initial.clone()]);
         let candidate = dsp_code("00000001", Some(0.75));
         second
-            .submit_mockingbird_branch(
-                MockingBirdInstrument::RhythmGuitar,
+            .submit_lyrebird_branch(
+                LyrebirdInstrument::RhythmGuitar,
                 vec![candidate.clone()],
                 0.75,
             )
@@ -671,9 +671,9 @@ mod tests {
 
         let third = PulseCodeParadise::new(tokens_url, None, Some(db_path))
             .unwrap()
-            .with_mcts_config([(MockingBirdInstrument::RhythmGuitar, initial)], 8);
+            .with_mcts_config([(LyrebirdInstrument::RhythmGuitar, initial)], 8);
         let (tree, nodes) = third
-            .load_tree_for_test(MockingBirdInstrument::RhythmGuitar)
+            .load_tree_for_test(LyrebirdInstrument::RhythmGuitar)
             .unwrap();
         let root = nodes.get(&ROOT_NODE_ID).unwrap();
         let child = nodes.get(&1).unwrap();
@@ -691,18 +691,18 @@ mod tests {
     fn instrument_trees_are_disambiguated() {
         let ecosystem = ecosystem("instrument-split", 8);
         let rhythm_branch = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::RhythmGuitar)
+            .select_lyrebird_branch(LyrebirdInstrument::RhythmGuitar)
             .unwrap();
         ecosystem
-            .submit_mockingbird_branch(
-                MockingBirdInstrument::RhythmGuitar,
+            .submit_lyrebird_branch(
+                LyrebirdInstrument::RhythmGuitar,
                 vec![dsp_code("rhythm", Some(0.5))],
                 0.5,
             )
             .unwrap();
 
         let vocals_branch = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::Vocals)
+            .select_lyrebird_branch(LyrebirdInstrument::Vocals)
             .unwrap();
 
         assert_eq!(rhythm_branch.len(), 1);
@@ -718,18 +718,18 @@ mod tests {
 
         let first = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
             .unwrap()
-            .with_mcts_config([(MockingBirdInstrument::Bass, initial.clone())], 8);
+            .with_mcts_config([(LyrebirdInstrument::Bass, initial.clone())], 8);
         let selected = first
-            .select_mockingbird_branch(MockingBirdInstrument::Bass)
+            .select_lyrebird_branch(LyrebirdInstrument::Bass)
             .unwrap();
         assert_eq!(selected, vec![initial.clone()]);
         drop(first);
 
         let second = PulseCodeParadise::new(tokens_url, None, Some(db_path))
             .unwrap()
-            .with_mcts_config([(MockingBirdInstrument::Bass, initial.clone())], 8);
+            .with_mcts_config([(LyrebirdInstrument::Bass, initial.clone())], 8);
         let recovered = second
-            .select_mockingbird_branch(MockingBirdInstrument::Bass)
+            .select_lyrebird_branch(LyrebirdInstrument::Bass)
             .unwrap();
 
         assert_eq!(recovered, vec![initial]);
@@ -740,8 +740,8 @@ mod tests {
         let ecosystem = ecosystem("alternation", 8);
 
         let submit_err = ecosystem
-            .submit_mockingbird_branch(
-                MockingBirdInstrument::GuitarSolo,
+            .submit_lyrebird_branch(
+                LyrebirdInstrument::GuitarSolo,
                 vec![dsp_code("00000001", Some(0.3))],
                 0.3,
             )
@@ -751,10 +751,10 @@ mod tests {
             .contains("select must precede submit"));
 
         let _ = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::GuitarSolo)
+            .select_lyrebird_branch(LyrebirdInstrument::GuitarSolo)
             .unwrap();
         let select_err = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::GuitarSolo)
+            .select_lyrebird_branch(LyrebirdInstrument::GuitarSolo)
             .unwrap_err();
         assert!(select_err.to_string().contains("submit must follow select"));
     }
@@ -764,21 +764,21 @@ mod tests {
         let ecosystem = ecosystem("skip-clears-pending", 8);
 
         let initial = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::Vocals)
+            .select_lyrebird_branch(LyrebirdInstrument::Vocals)
             .unwrap();
         assert_eq!(initial.len(), 1);
 
         ecosystem
-            .skip_mockingbird_branch(MockingBirdInstrument::Vocals)
+            .skip_lyrebird_branch(LyrebirdInstrument::Vocals)
             .unwrap();
 
         let selected_again = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::Vocals)
+            .select_lyrebird_branch(LyrebirdInstrument::Vocals)
             .unwrap();
 
         assert_eq!(selected_again.len(), 1);
         let (tree, _nodes) = ecosystem
-            .load_tree_for_test(MockingBirdInstrument::Vocals)
+            .load_tree_for_test(LyrebirdInstrument::Vocals)
             .unwrap();
         assert!(tree.pending_selected_node_id.is_some());
     }
@@ -788,29 +788,29 @@ mod tests {
         let ecosystem = ecosystem("max-depth", 2);
 
         let _ = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::BackupVocals)
+            .select_lyrebird_branch(LyrebirdInstrument::BackupVocals)
             .unwrap();
         ecosystem
-            .submit_mockingbird_branch(
-                MockingBirdInstrument::BackupVocals,
+            .submit_lyrebird_branch(
+                LyrebirdInstrument::BackupVocals,
                 vec![dsp_code("00000001", Some(0.4))],
                 0.4,
             )
             .unwrap();
 
         let branch = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::BackupVocals)
+            .select_lyrebird_branch(LyrebirdInstrument::BackupVocals)
             .unwrap();
         ecosystem
-            .submit_mockingbird_branch(
-                MockingBirdInstrument::BackupVocals,
+            .submit_lyrebird_branch(
+                LyrebirdInstrument::BackupVocals,
                 vec![dsp_code("00000002", Some(0.8))],
                 0.8,
             )
             .unwrap();
 
         let next_selected = ecosystem
-            .select_mockingbird_branch(MockingBirdInstrument::BackupVocals)
+            .select_lyrebird_branch(LyrebirdInstrument::BackupVocals)
             .unwrap();
 
         assert!(branch.len() <= 2);
@@ -833,7 +833,7 @@ mod tests {
             },
         );
 
-        let err = choose_expandable_node(&nodes, 8, MockingBirdInstrument::Vocals).unwrap_err();
+        let err = choose_expandable_node(&nodes, 8, LyrebirdInstrument::Vocals).unwrap_err();
 
         assert!(err
             .to_string()

@@ -80,7 +80,7 @@ impl PulseCodeParadise {
     }
 
     pub(crate) fn tokens_model_from_env() -> String {
-        std::env::var("MOCKINGBIRD_TOKENS_MODEL")
+        std::env::var("LYREBIRD_TOKENS_MODEL")
             .unwrap_or_else(|_| DEFAULT_TOKENS_MODEL.to_owned())
     }
 
@@ -178,7 +178,7 @@ impl OpenAiArguments {
             Self::Json(value) => Ok(value.to_string()),
             Self::String(arguments) if arguments.trim().is_empty() => Ok("{}".to_owned()),
             // Preserve raw tool-call argument strings from the model response.
-            // If the payload is truncated or malformed, `mockingbird` should
+            // If the payload is truncated or malformed, `lyrebird` should
             // retry the instrument prompt instead of failing the whole journey
             // during response decoding.
             Self::String(arguments) => Ok(arguments),
@@ -270,7 +270,7 @@ mod tests {
 
     fn temp_db_path(name: &str) -> PathBuf {
         std::env::temp_dir()
-            .join("jungle-mockingbird-tests")
+            .join("jungle-lyrebird-tests")
             .join(format!("{name}-{}.redb", Uuid::new_v4()))
     }
 

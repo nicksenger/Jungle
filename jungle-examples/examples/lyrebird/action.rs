@@ -5,13 +5,13 @@ use crate::effect::{
     PrepareToolCalls, PrepareToolCallsInput, PrepareToolCallsOutcome, PromptModel,
     SearchTreeSelect, SearchTreeSkip, SearchTreeSubmit,
 };
-use crate::{DspCode, MockingBirdInstrument, MockingBirdSeed, MockingBirdState};
+use crate::{DspCode, LyrebirdInstrument, LyrebirdSeed, LyrebirdState};
 use jungle_sdk::prelude::*;
 use std::marker::PhantomData;
 use tracing::{debug, info, warn};
 
 pub trait InstrumentMarker {
-    const INSTRUMENT: MockingBirdInstrument;
+    const INSTRUMENT: LyrebirdInstrument;
 }
 
 pub struct SeedState<Seed, State>(PhantomData<Seed>, PhantomData<State>);
@@ -38,7 +38,7 @@ where
     }
 }
 
-pub type SeedMockingBirdState = SeedState<MockingBirdSeed, MockingBirdState>;
+pub type SeedLyrebirdState = SeedState<LyrebirdSeed, LyrebirdState>;
 
 pub struct FlattenEitherUnit<S>(PhantomData<S>);
 #[jungle::action]
@@ -84,10 +84,10 @@ where
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &MockingBirdState, _input: Self::Input) {}
+    fn emit(_state: &LyrebirdState, _input: Self::Input) {}
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         state.current_instrument = Marker::INSTRUMENT;
@@ -102,10 +102,10 @@ impl Action for BeginIteration {
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &MockingBirdState, _input: Self::Input) {}
+    fn emit(_state: &LyrebirdState, _input: Self::Input) {}
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         state.iteration = state.iteration.saturating_add(1);
@@ -119,7 +119,7 @@ impl Action for BeginIteration {
             iteration = state.iteration,
             iteration_id = %state.iteration_id,
             instrument_count = state.instruments.len(),
-            "starting mockingbird iteration"
+            "starting lyrebird iteration"
         );
 
         Ok(())
@@ -133,12 +133,12 @@ impl Action for SelectDspBranch {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &MockingBirdState, _input: Self::Input) -> MockingBirdInstrument {
+    fn emit(state: &LyrebirdState, _input: Self::Input) -> LyrebirdInstrument {
         state.current_instrument
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let instrument = state.current_instrument;
@@ -158,7 +158,7 @@ impl Action for SelectDspBranch {
             selected_depth,
             branch_len = instrument_state.selected_branch.len(),
             selected_similarity = selected_similarity.unwrap_or_default(),
-            "selected mockingbird mcts branch"
+            "selected lyrebird mcts branch"
         );
         Ok(())
     }
@@ -171,7 +171,7 @@ impl Action for ScoreSpectrogram {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &MockingBirdState, _input: Self::Input) -> (String, String) {
+    fn emit(state: &LyrebirdState, _input: Self::Input) -> (String, String) {
         let instrument_state = state.current_state();
         (
             instrument_state.spectrogram_path.clone(),
@@ -180,7 +180,7 @@ impl Action for ScoreSpectrogram {
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let instrument = state.current_instrument;
@@ -217,7 +217,7 @@ impl Action for ScoreSpectrogram {
             iteration_id = %iteration_id,
             instrument = instrument.slug(),
             similarity = instrument_state.last_similarity,
-            "compared mockingbird spectrograms"
+            "compared lyrebird spectrograms"
         );
         Ok(())
     }
@@ -230,12 +230,12 @@ impl Action for SkipInstrumentIteration {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &MockingBirdState, _input: Self::Input) -> MockingBirdInstrument {
+    fn emit(state: &LyrebirdState, _input: Self::Input) -> LyrebirdInstrument {
         state.current_instrument
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(Failure::from)?;
@@ -243,7 +243,7 @@ impl Action for SkipInstrumentIteration {
             iteration_id = %state.iteration_id,
             instrument = state.current_instrument.slug(),
             prompt_attempt = state.current_state().prompt_attempt,
-            "skipping mockingbird instrument for this iteration"
+            "skipping lyrebird instrument for this iteration"
         );
         Ok(())
     }
@@ -256,7 +256,7 @@ impl Action for BuildPrompt {
     type Input = ();
     type Output = crate::tokens::Prompt;
 
-    fn emit(state: &MockingBirdState, _input: Self::Input) -> BuildOptimizationPromptInput {
+    fn emit(state: &LyrebirdState, _input: Self::Input) -> BuildOptimizationPromptInput {
         let instrument_state = state.current_state();
         BuildOptimizationPromptInput {
             iteration_id: state.iteration_id.clone(),
@@ -269,7 +269,7 @@ impl Action for BuildPrompt {
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let prompt = output.map_err(Failure::from)?;
@@ -279,7 +279,7 @@ impl Action for BuildPrompt {
             instrument = state.current_instrument.slug(),
             prompt_attempt = instrument_state.prompt_attempt.saturating_add(1),
             selected_depth = instrument_state.selected_branch.len().saturating_sub(1),
-            "built mockingbird optimization prompt"
+            "built lyrebird optimization prompt"
         );
         Ok(prompt)
     }
@@ -292,12 +292,12 @@ impl Action for RequestDspPatch {
     type Input = crate::tokens::Prompt;
     type Output = Vec<crate::tokens::ToolCall>;
 
-    fn emit(_state: &MockingBirdState, input: Self::Input) -> crate::tokens::Prompt {
+    fn emit(_state: &LyrebirdState, input: Self::Input) -> crate::tokens::Prompt {
         input
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let tool_calls = output.map_err(Failure::from)?;
@@ -307,7 +307,7 @@ impl Action for RequestDspPatch {
             instrument = state.current_instrument.slug(),
             prompt_attempt = instrument_state.prompt_attempt.saturating_add(1),
             tool_call_count = tool_calls.len(),
-            "received mockingbird tool calls"
+            "received lyrebird tool calls"
         );
         Ok(tool_calls)
     }
@@ -320,7 +320,7 @@ impl Action for PrepareDspPatch {
     type Input = Vec<crate::tokens::ToolCall>;
     type Output = ();
 
-    fn emit(state: &MockingBirdState, input: Self::Input) -> PrepareToolCallsInput {
+    fn emit(state: &LyrebirdState, input: Self::Input) -> PrepareToolCallsInput {
         let instrument_state = state.current_state();
         PrepareToolCallsInput {
             iteration_id: state.iteration_id.clone(),
@@ -332,7 +332,7 @@ impl Action for PrepareDspPatch {
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let instrument = state.current_instrument;
@@ -360,7 +360,7 @@ impl Action for PrepareDspPatch {
                     .last()
                     .and_then(|code| code.similarity)
                     .unwrap_or_default(),
-                "staged mockingbird dsp patch for compilation"
+                "staged lyrebird dsp patch for compilation"
             );
         } else {
             instrument_state.latest_generated_code = None;
@@ -371,7 +371,7 @@ impl Action for PrepareDspPatch {
                 iteration_id = %iteration_id,
                 instrument = instrument.slug(),
                 prompt_attempt = instrument_state.prompt_attempt,
-                "mockingbird dsp patch could not be prepared; skipping instrument for this iteration"
+                "lyrebird dsp patch could not be prepared; skipping instrument for this iteration"
             );
         }
 
@@ -386,7 +386,7 @@ impl Action for CompilePreparedDspPatch {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &MockingBirdState, _input: Self::Input) -> CompilePreparedPatchInput {
+    fn emit(state: &LyrebirdState, _input: Self::Input) -> CompilePreparedPatchInput {
         let instrument_state = state.current_state();
         CompilePreparedPatchInput {
             iteration_id: state.iteration_id.clone(),
@@ -399,7 +399,7 @@ impl Action for CompilePreparedDspPatch {
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let instrument = state.current_instrument;
@@ -427,7 +427,7 @@ impl Action for CompilePreparedDspPatch {
                 iteration_id = %iteration_id,
                 instrument = instrument.slug(),
                 prompt_attempt = instrument_state.prompt_attempt,
-                "mockingbird dsp patch compiled successfully and restored the original source"
+                "lyrebird dsp patch compiled successfully and restored the original source"
             );
         } else {
             instrument_state.latest_generated_code = None;
@@ -439,7 +439,7 @@ impl Action for CompilePreparedDspPatch {
                 iteration_id = %iteration_id,
                 instrument = instrument.slug(),
                 prompt_attempt = instrument_state.prompt_attempt,
-                "mockingbird dsp patch failed compilation; skipping instrument for this iteration"
+                "lyrebird dsp patch failed compilation; skipping instrument for this iteration"
             );
         }
 
@@ -454,7 +454,7 @@ impl Action for FinalizeIterationRender {
     type Input = ();
     type Output = ();
 
-    fn emit(state: &MockingBirdState, _input: Self::Input) -> FinalizeIterationSamplesInput {
+    fn emit(state: &LyrebirdState, _input: Self::Input) -> FinalizeIterationSamplesInput {
         FinalizeIterationSamplesInput {
             iteration_id: state.iteration_id.clone(),
             instruments: state
@@ -480,7 +480,7 @@ impl Action for FinalizeIterationRender {
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         let FinalizeIterationSamplesOutcome { rendered } = output.map_err(Failure::from)?;
@@ -512,7 +512,7 @@ impl Action for FinalizeIterationRender {
         info!(
             iteration_id = %state.iteration_id,
             rendered_instrument_count = state.instruments.len(),
-            "rendered mockingbird iteration samples"
+            "rendered lyrebird iteration samples"
         );
         Ok(())
     }
@@ -526,9 +526,9 @@ impl Action for SubmitDspBranch {
     type Output = ();
 
     fn emit(
-        state: &MockingBirdState,
+        state: &LyrebirdState,
         _input: Self::Input,
-    ) -> (MockingBirdInstrument, Vec<DspCode>, f32) {
+    ) -> (LyrebirdInstrument, Vec<DspCode>, f32) {
         let instrument_state = state.current_state();
         (
             state.current_instrument,
@@ -542,7 +542,7 @@ impl Action for SubmitDspBranch {
     }
 
     fn absorb(
-        state: &mut MockingBirdState,
+        state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(Failure::from)?;
@@ -552,22 +552,22 @@ impl Action for SubmitDspBranch {
             instrument = state.current_instrument.slug(),
             similarity = instrument_state.last_similarity,
             submitted_depth = instrument_state.selected_branch.len(),
-            "submitted mockingbird mcts candidate"
+            "submitted lyrebird mcts candidate"
         );
         Ok(())
     }
 }
 
 pub struct CurrentInstrumentCompileReady;
-impl Predicate<(MockingBirdState, ())> for CurrentInstrumentCompileReady {
-    fn eval((state, _): &(MockingBirdState, ())) -> bool {
+impl Predicate<(LyrebirdState, ())> for CurrentInstrumentCompileReady {
+    fn eval((state, _): &(LyrebirdState, ())) -> bool {
         state.current_state().compile_ready
     }
 }
 
-pub struct MockingBirdLoopForever;
-impl Predicate<(&MockingBirdState, &())> for MockingBirdLoopForever {
-    fn eval((_state, _): &(&MockingBirdState, &())) -> bool {
+pub struct LyrebirdLoopForever;
+impl Predicate<(&LyrebirdState, &())> for LyrebirdLoopForever {
+    fn eval((_state, _): &(&LyrebirdState, &())) -> bool {
         true
     }
 }

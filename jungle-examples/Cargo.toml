@@ -62,8 +62,8 @@ path = "examples/cronfish/mod.rs"
 required-features = ["cron"]
 
 [[example]]
-name = "mockingbird"
-path = "examples/mockingbird/mod.rs"
+name = "lyrebird"
+path = "examples/lyrebird/mod.rs"
 required-features = ["image", "reqwest", "redb"]
 
 [lints]

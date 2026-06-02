@@ -1,4 +1,4 @@
-use crate::{MockingBird, MockingBirdInstrument, MockingBirdInstrumentState, MockingBirdState};
+use crate::{Lyrebird, LyrebirdInstrument, LyrebirdInstrumentState, LyrebirdState};
 use iced::widget::{button, column, container, image, row, stack, text};
 use iced::{alignment, clipboard, ContentFit, Element, Font, Length, Subscription, Task};
 use jungle_sdk::JungleClient;
@@ -24,14 +24,14 @@ pub fn run_ui<C>(client: C, journey_id: Uuid) -> Result<(), iced::Error>
 where
     C: JungleClient + Clone + 'static,
 {
-    let title = "Mockingbird";
+    let title = "Lyrebird";
     iced::application(
-        move || MockingbirdUi::new(client.clone(), journey_id),
-        MockingbirdUi::update,
-        MockingbirdUi::view,
+        move || LyrebirdUi::new(client.clone(), journey_id),
+        LyrebirdUi::update,
+        LyrebirdUi::view,
     )
-    .title(move |_app: &MockingbirdUi| title.to_string())
-    .subscription(MockingbirdUi::subscription)
+    .title(move |_app: &LyrebirdUi| title.to_string())
+    .subscription(LyrebirdUi::subscription)
     .window_size((WINDOW_WIDTH, WINDOW_HEIGHT))
     .default_font(Font::with_name("Iosevka"))
     .antialiasing(true)
@@ -49,27 +49,27 @@ enum SnapshotKind {
 #[derive(Debug, Clone)]
 enum Message {
     Viewer(jungle_vision::EjectedViewerMessage),
-    SnapshotLoaded(Result<Option<MockingBirdState>, String>),
-    ActivateSpectrogram(MockingBirdInstrument, SnapshotKind),
+    SnapshotLoaded(Result<Option<LyrebirdState>, String>),
+    ActivateSpectrogram(LyrebirdInstrument, SnapshotKind),
 }
 
-struct MockingbirdUi {
+struct LyrebirdUi {
     client: Arc<dyn JungleClient>,
     journey_id: Uuid,
     viewer: jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
-    snapshot: Option<MockingBirdState>,
+    snapshot: Option<LyrebirdState>,
     snapshot_error: Option<String>,
     audio: AudioPlayer,
 }
 
-impl MockingbirdUi {
+impl LyrebirdUi {
     fn new<C>(client: C, journey_id: Uuid) -> (Self, Task<Message>)
     where
         C: JungleClient + Clone + 'static,
     {
         let viewer = jungle_vision::JungleViewerBuilder::new()
-            .title("Mockingbird Journey")
-            .eject_live_animal::<MockingBird, _>(client.clone(), journey_id);
+            .title("Lyrebird Journey")
+            .eject_live_animal::<Lyrebird, _>(client.clone(), journey_id);
         let client: Arc<dyn JungleClient> = Arc::new(client);
 
         (
@@ -205,7 +205,7 @@ impl MockingbirdUi {
     fn snapshot_panel(&self) -> Element<'_, Message> {
         if let Some(snapshot) = self.snapshot.as_ref() {
             let mut rows = column![].spacing(0).width(Length::Fill);
-            for instrument in MockingBirdInstrument::ALL {
+            for instrument in LyrebirdInstrument::ALL {
                 rows = rows.push(
                     container(self.snapshot_row(snapshot, instrument))
                         .width(Length::Fill)
@@ -229,8 +229,8 @@ impl MockingbirdUi {
 
     fn snapshot_row<'a>(
         &self,
-        snapshot: &'a MockingBirdState,
-        instrument: MockingBirdInstrument,
+        snapshot: &'a LyrebirdState,
+        instrument: LyrebirdInstrument,
     ) -> Element<'a, Message> {
         let instrument_state = snapshot.instrument_state(instrument);
         let cards = row![
@@ -380,7 +380,7 @@ fn divider_vertical<'a>() -> Element<'a, Message> {
         .into()
 }
 
-fn current_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+fn current_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
     instrument_state
         .latest_rendered_code
         .as_ref()
@@ -393,7 +393,7 @@ fn current_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Op
         })
 }
 
-fn current_sample_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+fn current_sample_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
     instrument_state
         .latest_rendered_code
         .as_ref()
@@ -406,7 +406,7 @@ fn current_sample_path(instrument_state: &MockingBirdInstrumentState) -> Option<
         })
 }
 
-fn current_overlay_label(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
+fn current_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<String> {
     instrument_state
         .latest_rendered_code
         .as_ref()
@@ -420,7 +420,7 @@ fn current_overlay_label(instrument_state: &MockingBirdInstrumentState) -> Optio
         })
 }
 
-fn best_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+fn best_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
     instrument_state
         .best_generated_code
         .as_ref()
@@ -433,7 +433,7 @@ fn best_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Optio
         })
 }
 
-fn best_sample_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+fn best_sample_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
     instrument_state
         .best_generated_code
         .as_ref()
@@ -446,7 +446,7 @@ fn best_sample_path(instrument_state: &MockingBirdInstrumentState) -> Option<&st
         })
 }
 
-fn best_overlay_label(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
+fn best_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<String> {
     instrument_state
         .best_generated_code
         .as_ref()
@@ -460,17 +460,17 @@ fn best_overlay_label(instrument_state: &MockingBirdInstrumentState) -> Option<S
         })
 }
 
-fn initial_spectrogram_path(instrument_state: &MockingBirdInstrumentState) -> Option<&str> {
+fn initial_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Option<&str> {
     non_empty(&instrument_state.initial_dsp_code.spectrogram_path)
 }
 
-fn initial_overlay_label(instrument_state: &MockingBirdInstrumentState) -> Option<String> {
+fn initial_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<String> {
     initial_spectrogram_path(instrument_state)
         .map(|_| score_only_label(instrument_state.initial_dsp_code.similarity))
 }
 
 fn spectrogram_action_payload(
-    instrument_state: &MockingBirdInstrumentState,
+    instrument_state: &LyrebirdInstrumentState,
     kind: SnapshotKind,
 ) -> (Option<String>, Option<String>) {
     match kind {
@@ -527,16 +527,16 @@ fn image_exists(path: &str) -> bool {
 async fn load_snapshot(
     client: Arc<dyn JungleClient>,
     journey_id: Uuid,
-) -> Result<Option<MockingBirdState>, String> {
+) -> Result<Option<LyrebirdState>, String> {
     let bytes = client
         .animal_appearance(journey_id)
         .await
-        .map_err(|err| format!("failed to load mockingbird state: {err}"))?;
+        .map_err(|err| format!("failed to load lyrebird state: {err}"))?;
     bytes
         .map(|bytes| {
-            postcard::from_bytes::<MockingBirdState>(&bytes)
+            postcard::from_bytes::<LyrebirdState>(&bytes)
                 .map(|state| state.normalized_for_observation())
-                .map_err(|err| format!("failed to decode mockingbird state snapshot: {err}"))
+                .map_err(|err| format!("failed to decode lyrebird state snapshot: {err}"))
         })
         .transpose()
 }

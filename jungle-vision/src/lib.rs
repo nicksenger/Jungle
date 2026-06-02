@@ -4134,7 +4134,7 @@ mod tests {
             cluster_id: 14,
             cluster_index: 0,
             kind: ClusterKind::While,
-            label: "while: flow::MockingBirdLoopForever",
+            label: "while: flow::LyrebirdLoopForever",
             metadata: None,
             parent_cluster_id: None,
             depth: 0,
