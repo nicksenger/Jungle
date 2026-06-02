@@ -12,8 +12,9 @@ use uuid::Uuid;
 const WINDOW_WIDTH: f32 = 1840.0;
 const WINDOW_HEIGHT: f32 = 860.0;
 const SIDEBAR_WIDTH: f32 = 980.0;
-const SPECTROGRAM_WIDTH: f32 = 300.0;
-const SPECTROGRAM_HEIGHT: f32 = 220.0;
+const SPECTROGRAM_WIDTH: f32 = 186.0;
+const SPECTROGRAM_HEIGHT: f32 = 128.0;
+const SPECTROGRAM_CARD_WIDTH: f32 = 210.0;
 
 pub fn run_ui<C>(client: C, journey_id: Uuid) -> Result<(), iced::Error>
 where
@@ -167,8 +168,8 @@ impl MockingbirdUi {
         let target = self
             .snapshot
             .as_ref()
-            .map(|snapshot| spectrogram_card("Target Spectrogram", Some(&snapshot.target_spectrogram_path), None, None))
-            .unwrap_or_else(|| spectrogram_card("Target Spectrogram", None, None, None));
+            .map(|snapshot| spectrogram_card("Target", Some(&snapshot.target_spectrogram_path), None, None))
+            .unwrap_or_else(|| spectrogram_card("Target", None, None, None));
         let latest = self.snapshot.as_ref().map_or_else(
             || spectrogram_card("Most Recent", None, None, None),
             |snapshot| {
@@ -198,7 +199,12 @@ impl MockingbirdUi {
             },
         );
 
-        row![target, latest, best].spacing(16).into()
+        column![
+            text("Distortion Guitar").size(16),
+            row![target, latest, best].spacing(16)
+        ]
+        .spacing(10)
+        .into()
     }
 
     fn status_line(&self) -> Element<'_, Message> {
@@ -242,29 +248,33 @@ fn spectrogram_card<'a>(
     };
 
     let image_panel: Element<'a, Message> = match spectrogram_path.filter(|path| !path.is_empty()) {
-        Some(path) if Path::new(path).exists() => image(image::Handle::from_path(path))
-            .content_fit(ContentFit::Contain)
-            .width(Length::Fill)
-            .height(Length::Fixed(SPECTROGRAM_HEIGHT))
-            .into(),
+        Some(path) if Path::new(path).exists() => {
+            let image = image(image::Handle::from_path(path))
+                .content_fit(ContentFit::Contain)
+                .width(Length::Fixed(SPECTROGRAM_WIDTH))
+                .height(Length::Fixed(SPECTROGRAM_HEIGHT));
+            match play_message {
+                Some(message) => button(image)
+                    .padding(0)
+                    .style(image_button_style)
+                    .on_press(message)
+                    .into(),
+                None => image.into(),
+            }
+        }
         _ => container(text("Waiting for spectrogram").size(14))
-            .width(Length::Fill)
+            .width(Length::Fixed(SPECTROGRAM_WIDTH))
             .height(Length::Fixed(SPECTROGRAM_HEIGHT))
-            .center_x(Length::Fill)
+            .center_x(Length::Fixed(SPECTROGRAM_WIDTH))
             .center_y(Length::Fixed(SPECTROGRAM_HEIGHT))
             .style(image_placeholder_style)
             .into(),
     };
 
-    let mut card = column![text(header).size(15), image_panel].spacing(10);
-    if let Some(message) = play_message {
-        card = card.push(button("Play WAV").on_press(message));
-    } else {
-        card = card.push(Space::new().height(Length::Shrink));
-    }
+    let card = column![text(header).size(15), image_panel].spacing(10);
 
     container(card)
-        .width(Length::Fixed(SPECTROGRAM_WIDTH))
+        .width(Length::Fixed(SPECTROGRAM_CARD_WIDTH))
         .padding(14)
         .style(card_style)
         .into()
@@ -375,6 +385,22 @@ fn image_placeholder_style(_theme: &iced::Theme) -> iced::widget::container::Sty
             color: iced::Color::from_rgb8(38, 63, 50),
             radius: 8.0.into(),
         },
+        ..Default::default()
+    }
+}
+
+fn image_button_style(
+    _theme: &iced::Theme,
+    status: iced::widget::button::Status,
+) -> iced::widget::button::Style {
+    let border_color = match status {
+        iced::widget::button::Status::Hovered => iced::Color::from_rgb8(122, 178, 134),
+        _ => iced::Color::from_rgb8(46, 76, 60),
+    };
+
+    iced::widget::button::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgba8(0, 0, 0, 0.0))),
+        border: iced::border::rounded(8).color(border_color).width(1.0),
         ..Default::default()
     }
 }
