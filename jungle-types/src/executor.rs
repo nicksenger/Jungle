@@ -1075,6 +1075,7 @@ where
     complete: bool,
     deferred_state: Option<State>,
     deferred_emitted: Option<Serialized>,
+    active_control_input: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
@@ -2341,6 +2342,7 @@ where
             complete: false,
             deferred_state: None,
             deferred_emitted: None,
+            active_control_input: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -2364,12 +2366,17 @@ where
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let mut state = state;
+        let body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
+            let control_input = self
+                .active_control_input
+                .get_or_insert_with(|| body_input.clone())
+                .clone();
             let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -2378,6 +2385,7 @@ where
             if !should_continue {
                 self.complete = true;
                 self.deferred_state = Some(state);
+                self.active_control_input = None;
                 let state = self
                     .deferred_state
                     .take()
@@ -2392,7 +2400,7 @@ where
                     }
                 }
             } else {
-                input.clone()
+                body_input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -2450,12 +2458,15 @@ where
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
         let mut state = state;
-        let control_input = input.clone();
         let mut body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
+            let control_input = self
+                .active_control_input
+                .get_or_insert_with(|| body_input.clone())
+                .clone();
             let (should_continue, branch_input) =
                 match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
@@ -2466,6 +2477,7 @@ where
             if !should_continue {
                 self.complete = true;
                 self.deferred_state = Some(state);
+                self.active_control_input = None;
                 let state = self
                     .deferred_state
                     .take()
@@ -2570,10 +2582,12 @@ where
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
             let emitted = self.deferred_emitted.take();
+            self.active_control_input = None;
             return Ok((saved, emitted, true));
         }
         if self.complete {
             let emitted = self.deferred_emitted.take();
+            self.active_control_input = None;
             return Ok((state, emitted, true));
         }
         let mut emitted_out = self.deferred_emitted.take();
@@ -3507,6 +3521,7 @@ where
     complete: bool,
     deferred_state: Option<State>,
     deferred_emitted: Option<Serialized>,
+    active_control_input: Option<Serialized>,
     marker: core::marker::PhantomData<fn() -> In>,
 }
 
@@ -3527,6 +3542,7 @@ where
             complete: false,
             deferred_state: None,
             deferred_emitted: None,
+            active_control_input: None,
             marker: core::marker::PhantomData,
         }
     }
@@ -3550,12 +3566,17 @@ where
 {
     fn request(&mut self, state: State, input: Serialized) -> RequestResult<State, Serialized> {
         let mut state = state;
+        let body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
+            let control_input = self
+                .active_control_input
+                .get_or_insert_with(|| body_input.clone())
+                .clone();
             let (should_continue, branch_input) =
-                match decode_loop_input::<In, _>(&input, |carry| {
+                match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
                 }) {
                     Ok(pair) => pair,
@@ -3564,6 +3585,7 @@ where
             if !should_continue {
                 self.complete = true;
                 self.deferred_state = Some(state);
+                self.active_control_input = None;
                 let state = self
                     .deferred_state
                     .take()
@@ -3578,7 +3600,7 @@ where
                     }
                 }
             } else {
-                input.clone()
+                body_input.clone()
             };
 
             self.ensure_iteration_ready();
@@ -3636,12 +3658,15 @@ where
         input: Serialized,
     ) -> RequestResult<State, ExecutableEffectRequest> {
         let mut state = state;
-        let control_input = input.clone();
         let mut body_input = input;
         loop {
             if self.complete {
                 return Err((state, ExecutorError::Complete));
             }
+            let control_input = self
+                .active_control_input
+                .get_or_insert_with(|| body_input.clone())
+                .clone();
             let (should_continue, branch_input) =
                 match decode_loop_input::<In, _>(&control_input, |carry| {
                     (self.should_continue)(&state, carry)
@@ -3652,6 +3677,7 @@ where
             if !should_continue {
                 self.complete = true;
                 self.deferred_state = Some(state);
+                self.active_control_input = None;
                 let state = self
                     .deferred_state
                     .take()
@@ -3756,10 +3782,12 @@ where
     ) -> Result<(State, Option<Serialized>, bool), ExecutorError> {
         if let Some(saved) = self.deferred_state.take() {
             let emitted = self.deferred_emitted.take();
+            self.active_control_input = None;
             return Ok((saved, emitted, true));
         }
         if self.complete {
             let emitted = self.deferred_emitted.take();
+            self.active_control_input = None;
             return Ok((state, emitted, true));
         }
         let mut emitted_out = self.deferred_emitted.take();
