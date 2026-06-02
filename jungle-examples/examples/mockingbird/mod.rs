@@ -91,11 +91,11 @@ impl MockingBirdInstrument {
 
     pub fn display_name(self) -> &'static str {
         match self {
-            Self::RhythmGuitar => "Electric Guitar (Rhythm Sustained)",
+            Self::RhythmGuitar => "Electric Guitar (Intro)",
             Self::Vocals => "Vocals (Formant)",
             Self::BackupVocals => "Vocals (Group Harmony)",
             Self::Bass => "Bass",
-            Self::GuitarSolo => "Electric Guitar (Sustained)",
+            Self::GuitarSolo => "Electric Guitar (Solo)",
         }
     }
 
