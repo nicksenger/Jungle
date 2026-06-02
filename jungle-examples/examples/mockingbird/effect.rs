@@ -3,8 +3,8 @@
 use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
-    PulseCodeParadise, MOCKINGBIRD_DSP_TOOL_NAME, MOCKINGBIRD_DURATION_SECS,
-    MOCKINGBIRD_SCORE_SPEC, RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
+    DspCode, MockingBirdMctsTag, PulseCodeParadise, MOCKINGBIRD_DSP_TOOL_NAME,
+    MOCKINGBIRD_DURATION_SECS, MOCKINGBIRD_SCORE_SPEC, RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
 };
 use image::ImageReader;
 use image_compare::Algorithm;
@@ -79,9 +79,9 @@ impl<J> Effect<J> for GenSpectrogram {
     type Out = String;
     type Err = String;
 
-    fn effect(_jungle: &J, _input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
-            let (wav_path, output_path) = _input;
+            let (wav_path, output_path) = input;
             generate_mel_spectrogram(&wav_path, &output_path)?;
             Ok(output_path)
         }
@@ -148,12 +148,10 @@ impl Effect<PulseCodeParadise> for PromptModel {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BuildOptimizationPromptInput {
     pub iteration_id: String,
-    pub generated_spectrogram_path: String,
+    pub code_branch: Vec<DspCode>,
     pub target_spectrogram_path: String,
-    pub current_similarity: f32,
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
-    pub dsp_source_path: String,
 }
 
 pub struct BuildOptimizationPrompt;
@@ -173,6 +171,7 @@ pub struct ApplyToolCallsInput {
     pub iteration_id: String,
     pub prompt_attempt: u32,
     pub dsp_source_path: String,
+    pub base_source: String,
     pub tool_calls: Vec<ToolCall>,
 }
 
@@ -180,6 +179,7 @@ pub struct ApplyToolCallsInput {
 pub struct ApplyToolCallsOutcome {
     pub compile_ok: bool,
     pub retry_reason: Option<String>,
+    pub generated_source: Option<String>,
 }
 
 pub struct ApplyToolCalls;
@@ -232,6 +232,20 @@ impl<J> Effect<J> for CheckSampler {
 
 pub struct SearchTreeSelect<Tag>(PhantomData<fn() -> Tag>);
 #[effect(id = 9)]
+impl Effect<()> for SearchTreeSelect<MockingBirdMctsTag> {
+    type In = ();
+    type Out = Vec<DspCode>;
+    type Err = String;
+
+    fn effect(
+        _jungle: &(),
+        _input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async { Err("SearchTreeSelect requires PulseCodeParadise runtime context".to_owned()) }
+    }
+}
+
+#[effect(id = 9)]
 impl<J, Tag> Effect<J> for SearchTreeSelect<Tag>
 where
     J: SearchTree<Tag> + Sync,
@@ -248,6 +262,20 @@ where
 }
 
 pub struct SearchTreeSubmit<Tag>(PhantomData<fn() -> Tag>);
+#[effect(id = 10)]
+impl Effect<()> for SearchTreeSubmit<MockingBirdMctsTag> {
+    type In = (Vec<DspCode>, f32);
+    type Out = ();
+    type Err = String;
+
+    fn effect(
+        _jungle: &(),
+        _input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async { Err("SearchTreeSubmit requires PulseCodeParadise runtime context".to_owned()) }
+    }
+}
+
 #[effect(id = 10)]
 impl<J, Tag> Effect<J> for SearchTreeSubmit<Tag>
 where
@@ -287,6 +315,53 @@ impl<J> Effect<J> for RunSampler {
             Ok(input.output_path)
         }
     }
+}
+
+pub async fn capture_current_dsp_code_snapshot(
+    iteration_id: &str,
+    output_root: &Path,
+    target_spectrogram_path: &Path,
+    dsp_source_path: &Path,
+) -> Result<DspCode, String> {
+    let source = fs::read_to_string(dsp_source_path).map_err(|err| {
+        format!(
+            "failed to read dsp source {}: {err}",
+            dsp_source_path.display()
+        )
+    })?;
+    let iteration_dir = output_root.join(iteration_id);
+    let sample_path = iteration_dir.join("distortion_guitar.wav");
+    let spectrogram_path = iteration_dir.join("distortion_guitar.png");
+
+    run_sampler(
+        MOCKINGBIRD_DURATION_SECS,
+        &sample_path.display().to_string(),
+        &[MOCKINGBIRD_SCORE_SPEC.to_owned()],
+    )
+    .await?;
+    generate_mel_spectrogram(
+        &sample_path.display().to_string(),
+        &spectrogram_path.display().to_string(),
+    )?;
+    let similarity = compare_spectrograms(
+        &spectrogram_path.display().to_string(),
+        &target_spectrogram_path.display().to_string(),
+    )?;
+    info!(
+        iteration_id,
+        similarity,
+        sample_path = %sample_path.display(),
+        spectrogram_path = %spectrogram_path.display(),
+        "captured mockingbird dsp snapshot"
+    );
+
+    Ok(DspCode {
+        iteration_id: iteration_id.to_owned(),
+        source,
+        sample_path: sample_path.display().to_string(),
+        spectrogram_path: spectrogram_path.display().to_string(),
+        similarity: Some(similarity),
+    })
 }
 
 fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), String> {
@@ -515,37 +590,76 @@ async fn run_sampler(
 }
 
 fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prompt, String> {
+    let selected_code = input
+        .code_branch
+        .last()
+        .cloned()
+        .ok_or_else(|| "mockingbird prompt requires a selected code branch".to_owned())?;
+    if selected_code.spectrogram_path.is_empty() {
+        return Err("selected mockingbird branch is missing a spectrogram path".to_owned());
+    }
+
     info!(
         iteration_id = %input.iteration_id,
         prompt_attempt = input.prompt_attempt.saturating_add(1),
-        similarity = input.current_similarity,
+        selected_depth = input.code_branch.len().saturating_sub(1),
+        selected_similarity = selected_code.similarity.unwrap_or_default(),
         "building mockingbird optimization prompt"
     );
-    let dsp_source = fs::read_to_string(&input.dsp_source_path)
-        .map_err(|err| format!("failed to read dsp source {}: {err}", input.dsp_source_path))?;
 
-    let mut user_text = format!(
-        "Iteration id: {}.\nCurrent spectrogram similarity score: {:.6}.\nPrompt attempt: {}.\n\
-Target score spec: {}\n\n\
-Modify `{}` so the generated guitar spectrogram moves closer to the target.\n\
-Use the `{}` tool to replace the full Rust source for that file.\n\
-Keep the module compiling in the existing `mockingbird-sample` crate and preserve the file's role in the welcome audio pipeline.\n\n\
-Current `{}` contents:\n```rust\n{}\n```\n\nGenerated spectrogram:",
+    let mut contents = Vec::new();
+    let mut task_description = format!(
+        "Task: optimize `{}` so the generated guitar mel spectrogram moves closer to the target.\n\
+Iteration id: {}.\nPrompt attempt: {}.\nSelected branch depth: {}.\n\
+Target score spec: {}.\nUse the `{}` tool to replace the full Rust source for that file.\n\
+Keep the module compiling in the existing `mockingbird-sample` crate and preserve the file's role in the welcome audio pipeline.",
+        RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
         input.iteration_id,
-        input.current_similarity,
         input.prompt_attempt.saturating_add(1),
+        input.code_branch.len().saturating_sub(1),
         MOCKINGBIRD_SCORE_SPEC,
-        RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
-        MOCKINGBIRD_DSP_TOOL_NAME,
-        RELATIVE_ELECTRIC_GUITAR_DSP_PATH,
-        dsp_source
+        MOCKINGBIRD_DSP_TOOL_NAME
     );
-
     if let Some(retry_reason) = input.retry_reason {
-        user_text.push_str("\n\nPrevious attempt failed and the file was restored.\n");
-        user_text.push_str("Failure details:\n");
-        user_text.push_str(&retry_reason);
+        task_description.push_str(
+            "\n\nPrevious attempt failed compilation and the selected branch source was restored.\nFailure details:\n",
+        );
+        task_description.push_str(&retry_reason);
     }
+    contents.push(crate::tokens::Content::Text(task_description));
+
+    for (index, code) in input.code_branch.iter().enumerate() {
+        let heading = if index == 0 {
+            "Initial baseline code"
+        } else {
+            "Branch code"
+        };
+        let similarity = code
+            .similarity
+            .map(|score| format!("{score:.6}"))
+            .unwrap_or_else(|| "n/a".to_owned());
+        contents.push(crate::tokens::Content::Text(format!(
+            "{heading} {index}.\nIteration id: {}.\nSimilarity: {}.\n```rust\n{}\n```",
+            code.iteration_id, similarity, code.source
+        )));
+    }
+
+    contents.push(crate::tokens::Content::Text(
+        "Selected node spectrogram:".to_owned(),
+    ));
+    contents.push(crate::tokens::Content::Image(PathBuf::from(
+        &selected_code.spectrogram_path,
+    )));
+    contents.push(crate::tokens::Content::Text(
+        "Target spectrogram:".to_owned(),
+    ));
+    contents.push(crate::tokens::Content::Image(PathBuf::from(
+        input.target_spectrogram_path,
+    )));
+    contents.push(crate::tokens::Content::Text(format!(
+        "Return replacement code by calling `{}` exactly once with the full Rust source for `{}`.",
+        MOCKINGBIRD_DSP_TOOL_NAME, RELATIVE_ELECTRIC_GUITAR_DSP_PATH
+    )));
 
     Ok(Prompt {
         messages: vec![
@@ -559,14 +673,7 @@ Respond with tool calls only. Only use `{}`.",
             },
             crate::tokens::Message {
                 role: "user".to_owned(),
-                contents: vec![
-                    crate::tokens::Content::Text(user_text),
-                    crate::tokens::Content::Image(PathBuf::from(
-                        input.generated_spectrogram_path,
-                    )),
-                    crate::tokens::Content::Text("Target spectrogram:".to_owned()),
-                    crate::tokens::Content::Image(PathBuf::from(input.target_spectrogram_path)),
-                ],
+                contents,
             },
         ],
         tools: Vec::new(),
@@ -580,12 +687,6 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
         tool_call_count = input.tool_calls.len(),
         "applying mockingbird dsp tool calls"
     );
-    let original = fs::read_to_string(&input.dsp_source_path).map_err(|err| {
-        format!(
-            "failed to read dsp source before tool application {}: {err}",
-            input.dsp_source_path
-        )
-    })?;
 
     let replacement = match extract_replacement_source(&input.tool_calls) {
         Some(source) => source,
@@ -601,11 +702,12 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
                     "no valid `{}` tool call with a `source` string was returned",
                     MOCKINGBIRD_DSP_TOOL_NAME
                 )),
+                generated_source: None,
             });
         }
     };
 
-    fs::write(&input.dsp_source_path, replacement).map_err(|err| {
+    fs::write(&input.dsp_source_path, &replacement).map_err(|err| {
         format!(
             "failed to write replacement dsp source {}: {err}",
             input.dsp_source_path
@@ -628,10 +730,11 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
             Ok(ApplyToolCallsOutcome {
                 compile_ok: true,
                 retry_reason: None,
+                generated_source: Some(replacement),
             })
         }
         Err(err) => {
-            fs::write(&input.dsp_source_path, original).map_err(|restore_err| {
+            fs::write(&input.dsp_source_path, &input.base_source).map_err(|restore_err| {
                 format!(
                     "sampler compilation failed and restoring {} also failed: {restore_err}; original error: {err}",
                     input.dsp_source_path
@@ -646,6 +749,7 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
             Ok(ApplyToolCallsOutcome {
                 compile_ok: false,
                 retry_reason: Some(err),
+                generated_source: None,
             })
         }
     }

@@ -23,10 +23,12 @@ mod ui;
 use crate::action::{
     ApplyDspPatch, BeginIteration, BuildPrompt, MockingBirdCompilePending, MockingBirdLoopForever,
     RenderSample, RenderSpectrogram, RequestDspPatch, ScoreSpectrogram, SeedMockingBirdState,
+    SelectDspBranch, SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
 const DEFAULT_WORKERS: usize = 3;
+const DEFAULT_TREE_DEPTH: usize = 8;
 const DEFAULT_LOG_FILTER: &str = "warn,mockingbird=info";
 pub(crate) const MOCKINGBIRD_DURATION_SECS: f64 = 4.0;
 pub(crate) const MOCKINGBIRD_DSP_TOOL_NAME: &str = "replace_electric_guitar_dsp";
@@ -37,11 +39,33 @@ pub(crate) const RELATIVE_ELECTRIC_GUITAR_DSP_PATH: &str =
 pub(crate) const MOCKINGBIRD_SCORE_SPEC: &str =
     "electric-guitar(sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
 
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DspCode {
+    pub iteration_id: String,
+    pub source: String,
+    pub sample_path: String,
+    pub spectrogram_path: String,
+    pub similarity: Option<f32>,
+}
+
+impl DspCode {
+    fn placeholder_initial() -> Self {
+        Self {
+            iteration_id: "initial".to_owned(),
+            ..Self::default()
+        }
+    }
+}
+
+pub struct MockingBirdMctsTag;
+
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct MockingBirdState {
     pub output_root: String,
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
+    pub initial_dsp_code: DspCode,
+    pub selected_branch: Vec<DspCode>,
     pub iteration: u64,
     pub iteration_id: String,
     pub sample_path: String,
@@ -50,6 +74,7 @@ pub struct MockingBirdState {
     pub compile_ready: bool,
     pub prompt_attempt: u32,
     pub last_retry_reason: Option<String>,
+    pub latest_generated_code: Option<DspCode>,
     pub latest_generated_sample_path: Option<String>,
     pub latest_generated_spectrogram_path: Option<String>,
     pub latest_generated_similarity: Option<f32>,
@@ -63,6 +88,7 @@ pub struct MockingBirdSeed {
     pub output_root: String,
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
+    pub initial_dsp_code: DspCode,
 }
 
 impl From<MockingBirdSeed> for MockingBirdState {
@@ -71,6 +97,8 @@ impl From<MockingBirdSeed> for MockingBirdState {
             output_root: seed.output_root,
             target_spectrogram_path: seed.target_spectrogram_path,
             dsp_source_path: seed.dsp_source_path,
+            initial_dsp_code: seed.initial_dsp_code.clone(),
+            selected_branch: vec![seed.initial_dsp_code],
             ..Self::default()
         }
     }
@@ -86,10 +114,12 @@ pub struct MockingBirdCompileLoop(
 #[derive(Flow)]
 pub struct MockingBirdIteration(
     Step<BeginIteration>,
+    Step<SelectDspBranch>,
+    While<MockingBirdCompilePending, MockingBirdCompileLoop>,
     Step<RenderSample>,
     Step<RenderSpectrogram>,
     Step<ScoreSpectrogram>,
-    While<MockingBirdCompilePending, MockingBirdCompileLoop>,
+    Step<SubmitDspBranch>,
 );
 
 #[derive(Flow)]
@@ -125,6 +155,8 @@ pub struct PulseCodeParadise {
     tokens_model: String,
     tokens_url: Url,
     tools: Vec<Tool>,
+    initial_dsp_code: DspCode,
+    max_tree_depth: usize,
 }
 
 impl PulseCodeParadise {
@@ -143,11 +175,19 @@ impl PulseCodeParadise {
             tokens_model: Self::tokens_model_from_env(),
             tokens_url,
             tools: Vec::new(),
+            initial_dsp_code: DspCode::placeholder_initial(),
+            max_tree_depth: DEFAULT_TREE_DEPTH,
         })
     }
 
     pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = tools;
+        self
+    }
+
+    pub fn with_mcts_config(mut self, initial_dsp_code: DspCode, max_tree_depth: usize) -> Self {
+        self.initial_dsp_code = initial_dsp_code;
+        self.max_tree_depth = max_tree_depth;
         self
     }
 }
@@ -187,6 +227,8 @@ pub enum PulseCodeParadiseError {
     Persistence(String),
     #[error("failed to parse tool-call arguments: {0}")]
     ToolArguments(#[from] serde_json::Error),
+    #[error("failed to build initial mockingbird dsp baseline: {0}")]
+    Bootstrap(String),
 }
 
 #[derive(Debug, Parser)]
@@ -205,6 +247,12 @@ struct Cli {
     jungle_redb_path: Option<PathBuf>,
     #[arg(long = "workers", default_value_t = DEFAULT_WORKERS, value_parser = parse_workers)]
     workers: usize,
+    #[arg(
+        long = "tree-depth",
+        default_value_t = DEFAULT_TREE_DEPTH,
+        value_parser = parse_tree_depth
+    )]
+    tree_depth: usize,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -218,11 +266,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .jungle_redb_path
         .unwrap_or_else(|| output_root.join("jungle.redb"));
     ensure_parent_dir_exists(&jungle_redb_path)?;
+    let dsp_source_path = workspace_root.join(RELATIVE_ELECTRIC_GUITAR_DSP_PATH);
+    let target_spectrogram_path = workspace_root.join(RELATIVE_TARGET_SPECTROGRAM_PATH);
+    let initial_dsp_code = effect::capture_current_dsp_code_snapshot(
+        "initial",
+        &output_root,
+        &target_spectrogram_path,
+        &dsp_source_path,
+    )
+    .await
+    .map_err(PulseCodeParadiseError::Bootstrap)?;
 
     let ecosystem = PulseCodeParadise::new(cli.tokens_url, cli.tokens_token, cli.db_path)?
-        .with_tools(vec![replace_electric_guitar_tool()]);
+        .with_tools(vec![replace_electric_guitar_tool()])
+        .with_mcts_config(initial_dsp_code.clone(), cli.tree_depth);
     info!(
         workers = cli.workers,
+        tree_depth = cli.tree_depth,
         jungle_redb_path = %jungle_redb_path.display(),
         mcts_redb_path = %ecosystem.db_path.display(),
         "starting mockingbird runtime"
@@ -251,7 +311,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }));
     }
 
-    let seed = build_seed(&workspace_root, &output_root);
+    let seed = build_seed(&workspace_root, &output_root, initial_dsp_code);
     let journey_id = ensure_mockingbird_running(&client, &seed).await?;
 
     info!(
@@ -302,7 +362,11 @@ fn replace_electric_guitar_tool() -> Tool {
     }
 }
 
-fn build_seed(workspace_root: &Path, output_root: &Path) -> MockingBirdSeed {
+fn build_seed(
+    workspace_root: &Path,
+    output_root: &Path,
+    initial_dsp_code: DspCode,
+) -> MockingBirdSeed {
     MockingBirdSeed {
         output_root: output_root.display().to_string(),
         target_spectrogram_path: workspace_root
@@ -313,6 +377,7 @@ fn build_seed(workspace_root: &Path, output_root: &Path) -> MockingBirdSeed {
             .join(RELATIVE_ELECTRIC_GUITAR_DSP_PATH)
             .display()
             .to_string(),
+        initial_dsp_code,
     }
 }
 
@@ -409,6 +474,16 @@ fn parse_workers(value: &str) -> Result<usize, String> {
         return Err("workers must be at least 1".to_owned());
     }
     Ok(workers)
+}
+
+fn parse_tree_depth(value: &str) -> Result<usize, String> {
+    let tree_depth = value
+        .parse::<usize>()
+        .map_err(|_| format!("invalid tree depth argument: {value}"))?;
+    if tree_depth == 0 {
+        return Err("tree depth must be at least 1".to_owned());
+    }
+    Ok(tree_depth)
 }
 
 fn init_tracing() {

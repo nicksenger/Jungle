@@ -1,9 +1,7 @@
-use super::{PulseCodeParadise, PulseCodeParadiseError};
+use super::{DspCode, MockingBirdMctsTag, PulseCodeParadise, PulseCodeParadiseError};
 use directories_next::BaseDirs;
 use redb::{ReadableTable, TableDefinition};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::Value;
-use std::any::type_name;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
@@ -29,6 +27,7 @@ const MCTS_TREES_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("mockingbird_mcts_trees");
 const MCTS_NODES_TABLE: TableDefinition<&[u8], &[u8]> =
     TableDefinition::new("mockingbird_mcts_nodes");
+const MOCKINGBIRD_MCTS_TAG: &str = "mockingbird";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct StoredMctsTree {
@@ -41,7 +40,7 @@ struct StoredMctsTree {
 struct StoredMctsNode {
     id: u64,
     parent_id: Option<u64>,
-    data: Value,
+    data: Vec<DspCode>,
     visits: u64,
     total_score: f64,
     children: Vec<u64>,
@@ -68,55 +67,56 @@ pub(crate) fn open_mcts_db(
 }
 
 impl PulseCodeParadise {
-    fn select_mcts(&self, tag: &str) -> Result<Value, PulseCodeParadiseError> {
+    fn select_mockingbird_branch(&self) -> Result<Vec<DspCode>, PulseCodeParadiseError> {
         let write_tx = self.db.begin_write().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts select begin_write failed: {err}"))
         })?;
-        let (mut tree_state, nodes) = load_mcts_tree(&write_tx, tag)?;
+        let (mut tree_state, nodes) = load_mcts_tree(&write_tx, MOCKINGBIRD_MCTS_TAG)?;
         if tree_state.pending_selected_node_id.is_some() {
-            return Err(PulseCodeParadiseError::MctsProtocol(format!(
-                "tree {tag} already has a pending selected node; submit must follow select"
-            )));
+            return Err(PulseCodeParadiseError::MctsProtocol(
+                "mockingbird tree already has a pending selected node; submit must follow select"
+                    .to_owned(),
+            ));
         }
 
-        let selected_node_id = choose_mcts_node(&nodes)?;
-        let selected_data = nodes
-            .get(&selected_node_id)
-            .ok_or_else(|| {
-                PulseCodeParadiseError::Persistence(format!(
-                    "selected node {selected_node_id} missing for tree {tag}"
-                ))
-            })?
-            .data
-            .clone();
+        let selected_node_id = choose_expandable_node(&nodes, self.max_tree_depth)?;
+        let selected_branch = branch_for_node(selected_node_id, &nodes, &self.initial_dsp_code)?;
 
         tree_state.pending_selected_node_id = Some(selected_node_id);
-        save_tree_state(&write_tx, tag, &tree_state)?;
+        save_tree_state(&write_tx, MOCKINGBIRD_MCTS_TAG, &tree_state)?;
         write_tx.commit().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts select commit failed: {err}"))
         })?;
 
-        Ok(selected_data)
+        Ok(selected_branch)
     }
 
-    fn select_mcts_for_type<Tag>(&self) -> Result<Value, PulseCodeParadiseError> {
-        self.select_mcts(type_name::<Tag>())
-    }
-
-    fn submit_mcts(
+    fn submit_mockingbird_branch(
         &self,
-        tag: &str,
-        data: Value,
+        data: Vec<DspCode>,
         score: f32,
     ) -> Result<(), PulseCodeParadiseError> {
+        if !score.is_finite() {
+            return Err(PulseCodeParadiseError::MctsProtocol(
+                "mockingbird tree score must be finite".to_owned(),
+            ));
+        }
+        if data.len() != 1 {
+            return Err(PulseCodeParadiseError::MctsProtocol(format!(
+                "mockingbird tree submit expects exactly one generated dsp code, got {}",
+                data.len()
+            )));
+        }
+
         let write_tx = self.db.begin_write().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts submit begin_write failed: {err}"))
         })?;
-        let (mut tree_state, mut nodes) = load_mcts_tree(&write_tx, tag)?;
+        let (mut tree_state, mut nodes) = load_mcts_tree(&write_tx, MOCKINGBIRD_MCTS_TAG)?;
         let selected_node_id = tree_state.pending_selected_node_id.take().ok_or_else(|| {
-            PulseCodeParadiseError::MctsProtocol(format!(
-                "tree {tag} has no pending selected node; select must precede submit"
-            ))
+            PulseCodeParadiseError::MctsProtocol(
+                "mockingbird tree has no pending selected node; select must precede submit"
+                    .to_owned(),
+            )
         })?;
 
         let new_node_id = tree_state.next_node_id;
@@ -125,7 +125,7 @@ impl PulseCodeParadise {
 
         let selected_node = nodes.get_mut(&selected_node_id).ok_or_else(|| {
             PulseCodeParadiseError::Persistence(format!(
-                "selected node {selected_node_id} missing for tree {tag}"
+                "selected node {selected_node_id} missing for mockingbird tree"
             ))
         })?;
         selected_node.children.push(new_node_id);
@@ -142,9 +142,9 @@ impl PulseCodeParadise {
             },
         );
 
-        backpropagate_mcts(&mut nodes, new_node_id, score as f64, tag)?;
-        save_tree_state(&write_tx, tag, &tree_state)?;
-        save_tree_nodes(&write_tx, tag, &nodes)?;
+        backpropagate_mcts(&mut nodes, new_node_id, score as f64)?;
+        save_tree_state(&write_tx, MOCKINGBIRD_MCTS_TAG, &tree_state)?;
+        save_tree_nodes(&write_tx, MOCKINGBIRD_MCTS_TAG, &nodes)?;
         write_tx.commit().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts submit commit failed: {err}"))
         })?;
@@ -152,23 +152,14 @@ impl PulseCodeParadise {
         Ok(())
     }
 
-    fn submit_mcts_for_type<Tag>(
-        &self,
-        data: Value,
-        score: f32,
-    ) -> Result<(), PulseCodeParadiseError> {
-        self.submit_mcts(type_name::<Tag>(), data, score)
-    }
-
     #[cfg(test)]
     fn load_tree_for_test(
         &self,
-        tag: &str,
     ) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodeParadiseError> {
         let write_tx = self.db.begin_write().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts test begin_write failed: {err}"))
         })?;
-        let snapshot = load_mcts_tree(&write_tx, tag)?;
+        let snapshot = load_mcts_tree(&write_tx, MOCKINGBIRD_MCTS_TAG)?;
         write_tx.commit().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts test commit failed: {err}"))
         })?;
@@ -176,12 +167,15 @@ impl PulseCodeParadise {
     }
 }
 
-impl<Tag> SearchTree<Tag> for PulseCodeParadise {
-    type Error = PulseCodeParadiseError;
-    type Data = Value;
+impl SearchTree<MockingBirdMctsTag> for PulseCodeParadise {
+    type Error = String;
+    type Data = Vec<DspCode>;
 
     fn select(&self) -> impl Future<Output = Result<Self::Data, Self::Error>> + Send {
-        async move { self.select_mcts_for_type::<Tag>() }
+        async move {
+            self.select_mockingbird_branch()
+                .map_err(|err| err.to_string())
+        }
     }
 
     fn submit(
@@ -189,7 +183,10 @@ impl<Tag> SearchTree<Tag> for PulseCodeParadise {
         data: Self::Data,
         score: f32,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
-        async move { self.submit_mcts_for_type::<Tag>(data, score) }
+        async move {
+            self.submit_mockingbird_branch(data, score)
+                .map_err(|err| err.to_string())
+        }
     }
 }
 
@@ -227,7 +224,7 @@ fn root_node() -> StoredMctsNode {
     StoredMctsNode {
         id: ROOT_NODE_ID,
         parent_id: None,
-        data: Value::Null,
+        data: Vec::new(),
         visits: 0,
         total_score: 0.0,
         children: Vec::new(),
@@ -354,25 +351,43 @@ fn save_tree_nodes(
     Ok(())
 }
 
-fn choose_mcts_node(nodes: &HashMap<u64, StoredMctsNode>) -> Result<u64, PulseCodeParadiseError> {
+fn choose_expandable_node(
+    nodes: &HashMap<u64, StoredMctsNode>,
+    max_tree_depth: usize,
+) -> Result<u64, PulseCodeParadiseError> {
     nodes
         .values()
-        .max_by(|left, right| compare_mcts_nodes(left, right, nodes))
-        .map(|node| node.id)
-        .ok_or_else(|| PulseCodeParadiseError::Persistence("mcts tree has no nodes".to_owned()))
+        .filter_map(|node| {
+            let depth = node_depth(node.id, nodes).ok()?;
+            (depth < max_tree_depth).then_some((node.id, depth))
+        })
+        .max_by(|(left_id, left_depth), (right_id, right_depth)| {
+            compare_expandable_nodes(*left_id, *left_depth, *right_id, *right_depth, nodes)
+        })
+        .map(|(node_id, _)| node_id)
+        .ok_or_else(|| {
+            PulseCodeParadiseError::MctsProtocol(format!(
+                "mockingbird tree has no selectable branches below max depth {max_tree_depth}"
+            ))
+        })
 }
 
-fn compare_mcts_nodes(
-    left: &StoredMctsNode,
-    right: &StoredMctsNode,
+fn compare_expandable_nodes(
+    left_id: u64,
+    left_depth: usize,
+    right_id: u64,
+    right_depth: usize,
     nodes: &HashMap<u64, StoredMctsNode>,
 ) -> Ordering {
+    let left = nodes.get(&left_id).expect("left node must exist");
+    let right = nodes.get(&right_id).expect("right node must exist");
     let left_score = mcts_selection_score(left, nodes);
     let right_score = mcts_selection_score(right, nodes);
     left_score
         .partial_cmp(&right_score)
         .unwrap_or(Ordering::Equal)
-        .then_with(|| right.id.cmp(&left.id))
+        .then_with(|| left_depth.cmp(&right_depth))
+        .then_with(|| left_id.cmp(&right_id))
 }
 
 fn mcts_selection_score(node: &StoredMctsNode, nodes: &HashMap<u64, StoredMctsNode>) -> f64 {
@@ -386,24 +401,80 @@ fn mcts_selection_score(node: &StoredMctsNode, nodes: &HashMap<u64, StoredMctsNo
         .and_then(|parent_id| nodes.get(&parent_id).map(|parent| parent.visits))
         .unwrap_or(node.visits);
 
-    if parent_visits <= 1 {
+    if node.parent_id.is_none() || parent_visits <= 1 {
         return average_score;
     }
 
     average_score + ((2.0 * (parent_visits as f64).ln()) / node.visits as f64).sqrt()
 }
 
+fn node_depth(
+    node_id: u64,
+    nodes: &HashMap<u64, StoredMctsNode>,
+) -> Result<usize, PulseCodeParadiseError> {
+    let mut depth = 0usize;
+    let mut current_node_id = Some(node_id);
+    while let Some(id) = current_node_id {
+        let node = nodes.get(&id).ok_or_else(|| {
+            PulseCodeParadiseError::Persistence(format!(
+                "node {id} missing while computing mockingbird tree depth"
+            ))
+        })?;
+        current_node_id = node.parent_id;
+        if current_node_id.is_some() {
+            depth = depth.saturating_add(1);
+        }
+    }
+    Ok(depth)
+}
+
+fn branch_for_node(
+    node_id: u64,
+    nodes: &HashMap<u64, StoredMctsNode>,
+    initial_dsp_code: &DspCode,
+) -> Result<Vec<DspCode>, PulseCodeParadiseError> {
+    let mut lineage = Vec::new();
+    let mut current_node_id = Some(node_id);
+    while let Some(id) = current_node_id {
+        let node = nodes.get(&id).ok_or_else(|| {
+            PulseCodeParadiseError::Persistence(format!(
+                "node {id} missing while rebuilding mockingbird branch"
+            ))
+        })?;
+        if id != ROOT_NODE_ID {
+            lineage.push(id);
+        }
+        current_node_id = node.parent_id;
+    }
+
+    let mut branch = vec![initial_dsp_code.clone()];
+    for id in lineage.into_iter().rev() {
+        branch.extend(
+            nodes
+                .get(&id)
+                .ok_or_else(|| {
+                    PulseCodeParadiseError::Persistence(format!(
+                        "node {id} missing while extending mockingbird branch"
+                    ))
+                })?
+                .data
+                .iter()
+                .cloned(),
+        );
+    }
+    Ok(branch)
+}
+
 fn backpropagate_mcts(
     nodes: &mut HashMap<u64, StoredMctsNode>,
     start_node_id: u64,
     score: f64,
-    tag: &str,
 ) -> Result<(), PulseCodeParadiseError> {
     let mut current_node_id = Some(start_node_id);
     while let Some(node_id) = current_node_id {
         let node = nodes.get_mut(&node_id).ok_or_else(|| {
             PulseCodeParadiseError::Persistence(format!(
-                "node {node_id} missing while backpropagating tree {tag}"
+                "node {node_id} missing while backpropagating mockingbird tree"
             ))
         })?;
         node.visits = node.visits.saturating_add(1);
@@ -419,16 +490,32 @@ mod tests {
     use super::*;
     use futures::executor::block_on;
     use reqwest::Url;
-    use serde_json::json;
     use uuid::Uuid;
-
-    struct BasslineTag;
-    struct DrumsTag;
 
     fn temp_db_path(name: &str) -> PathBuf {
         std::env::temp_dir()
             .join("jungle-mockingbird-tests")
             .join(format!("{name}-{}.redb", Uuid::new_v4()))
+    }
+
+    fn dsp_code(iteration_id: &str, similarity: Option<f32>) -> DspCode {
+        DspCode {
+            iteration_id: iteration_id.to_owned(),
+            source: format!("// {iteration_id}"),
+            sample_path: format!("/tmp/{iteration_id}.wav"),
+            spectrogram_path: format!("/tmp/{iteration_id}.png"),
+            similarity,
+        }
+    }
+
+    fn ecosystem(name: &str, max_tree_depth: usize) -> PulseCodeParadise {
+        PulseCodeParadise::new(
+            Url::parse("https://api.openai.com/v1").unwrap(),
+            None,
+            Some(temp_db_path(name)),
+        )
+        .unwrap()
+        .with_mcts_config(dsp_code("initial", Some(0.1)), max_tree_depth)
     }
 
     #[test]
@@ -438,33 +525,38 @@ mod tests {
     }
 
     #[test]
-    fn persists_mcts_selection_between_processes_and_backprops() {
+    fn persists_mockingbird_branch_and_backpropagates() {
         let db_path = temp_db_path("persisted-mcts");
         let tokens_url = Url::parse("https://api.openai.com/v1").unwrap();
+        let initial = dsp_code("initial", Some(0.2));
 
-        let first =
-            PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone())).unwrap();
-        let selected = block_on(<PulseCodeParadise as SearchTree<BasslineTag>>::select(
-            &first,
-        ))
-        .unwrap();
-        assert_eq!(selected, Value::Null);
+        let first = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
+            .unwrap()
+            .with_mcts_config(initial.clone(), 8);
+        let selected =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&first))
+                .unwrap();
+        assert_eq!(selected, vec![initial.clone()]);
         drop(first);
 
-        let second =
-            PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone())).unwrap();
-        block_on(<PulseCodeParadise as SearchTree<BasslineTag>>::submit(
-            &second,
-            json!({ "prompt": "add syncopation" }),
-            0.75,
-        ))
+        let second = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
+            .unwrap()
+            .with_mcts_config(initial.clone(), 8);
+        let candidate = dsp_code("00000001", Some(0.75));
+        block_on(
+            <PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::submit(
+                &second,
+                vec![candidate.clone()],
+                0.75,
+            ),
+        )
         .unwrap();
         drop(second);
 
-        let third = PulseCodeParadise::new(tokens_url, None, Some(db_path.clone())).unwrap();
-        let (tree, nodes) = third
-            .load_tree_for_test(type_name::<BasslineTag>())
-            .unwrap();
+        let third = PulseCodeParadise::new(tokens_url, None, Some(db_path))
+            .unwrap()
+            .with_mcts_config(initial, 8);
+        let (tree, nodes) = third.load_tree_for_test().unwrap();
         let root = nodes.get(&ROOT_NODE_ID).unwrap();
         let child = nodes.get(&1).unwrap();
 
@@ -474,37 +566,92 @@ mod tests {
         assert!((root.total_score - 0.75).abs() < f64::EPSILON);
         assert_eq!(child.parent_id, Some(ROOT_NODE_ID));
         assert_eq!(child.visits, 1);
-        assert_eq!(child.data, json!({ "prompt": "add syncopation" }));
+        assert_eq!(child.data, vec![candidate]);
+    }
+
+    #[test]
+    fn rebuilds_branch_with_initial_code_prepended() {
+        let ecosystem = ecosystem("branch-select", 8);
+
+        let root_branch =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&ecosystem))
+                .unwrap();
+        let child = dsp_code("00000001", Some(0.6));
+        block_on(
+            <PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::submit(
+                &ecosystem,
+                vec![child.clone()],
+                0.6,
+            ),
+        )
+        .unwrap();
+
+        let selected =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&ecosystem))
+                .unwrap();
+
+        assert_eq!(root_branch.len(), 1);
+        assert!(selected.len() >= 2);
+        assert_eq!(selected.first().unwrap().iteration_id, "initial");
+        assert_eq!(selected.last().unwrap(), &child);
     }
 
     #[test]
     fn requires_select_and_submit_to_alternate() {
-        let db_path = temp_db_path("alternation");
-        let ecosystem = PulseCodeParadise::new(
-            Url::parse("https://api.openai.com/v1").unwrap(),
-            None,
-            Some(db_path),
-        )
-        .unwrap();
+        let ecosystem = ecosystem("alternation", 8);
 
-        let submit_err = block_on(<PulseCodeParadise as SearchTree<DrumsTag>>::submit(
-            &ecosystem,
-            json!({ "prompt": "fill" }),
-            0.3,
-        ))
+        let submit_err = block_on(
+            <PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::submit(
+                &ecosystem,
+                vec![dsp_code("00000001", Some(0.3))],
+                0.3,
+            ),
+        )
         .unwrap_err();
         assert!(submit_err
             .to_string()
             .contains("select must precede submit"));
 
-        let _ = block_on(<PulseCodeParadise as SearchTree<DrumsTag>>::select(
-            &ecosystem,
-        ))
-        .unwrap();
-        let select_err = block_on(<PulseCodeParadise as SearchTree<DrumsTag>>::select(
-            &ecosystem,
-        ))
-        .unwrap_err();
+        let _ = block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&ecosystem))
+            .unwrap();
+        let select_err =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&ecosystem))
+                .unwrap_err();
         assert!(select_err.to_string().contains("submit must follow select"));
+    }
+
+    #[test]
+    fn excludes_terminal_depth_from_selection() {
+        let ecosystem = ecosystem("max-depth", 2);
+
+        let _ = block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&ecosystem))
+            .unwrap();
+        block_on(
+            <PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::submit(
+                &ecosystem,
+                vec![dsp_code("00000001", Some(0.4))],
+                0.4,
+            ),
+        )
+        .unwrap();
+
+        let branch =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&ecosystem))
+                .unwrap();
+        block_on(
+            <PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::submit(
+                &ecosystem,
+                vec![dsp_code("00000002", Some(0.8))],
+                0.8,
+            ),
+        )
+        .unwrap();
+
+        let next_selected =
+            block_on(<PulseCodeParadise as SearchTree<MockingBirdMctsTag>>::select(&ecosystem))
+                .unwrap();
+
+        assert!(branch.len() <= 2);
+        assert!(next_selected.len() <= 2);
     }
 }

@@ -77,8 +77,10 @@ impl MockingbirdUi {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Viewer(event) => {
-                let should_refresh =
-                    matches!(event, jungle_vision::EjectedViewerMessage::ApplyLiveEvent { .. });
+                let should_refresh = matches!(
+                    event,
+                    jungle_vision::EjectedViewerMessage::ApplyLiveEvent { .. }
+                );
                 let viewer_task = self.viewer.update(event).map(Message::Viewer);
                 if should_refresh {
                     Task::batch([
@@ -168,7 +170,14 @@ impl MockingbirdUi {
         let target = self
             .snapshot
             .as_ref()
-            .map(|snapshot| spectrogram_card("Target", Some(&snapshot.target_spectrogram_path), None, None))
+            .map(|snapshot| {
+                spectrogram_card(
+                    "Target",
+                    Some(&snapshot.target_spectrogram_path),
+                    None,
+                    None,
+                )
+            })
             .unwrap_or_else(|| spectrogram_card("Target", None, None, None));
         let latest = self.snapshot.as_ref().map_or_else(
             || spectrogram_card("Most Recent", None, None, None),
@@ -326,7 +335,8 @@ impl AudioPlayer {
             .handle
             .as_ref()
             .ok_or_else(|| "audio output is unavailable".to_owned())?;
-        let file = File::open(path).map_err(|err| format!("failed to open wav file {path}: {err}"))?;
+        let file =
+            File::open(path).map_err(|err| format!("failed to open wav file {path}: {err}"))?;
         let decoder = Decoder::new(BufReader::new(file))
             .map_err(|err| format!("failed to decode wav file {path}: {err}"))?;
         if let Some(sink) = self.sink.take() {
@@ -399,7 +409,9 @@ fn image_button_style(
     };
 
     iced::widget::button::Style {
-        background: Some(iced::Background::Color(iced::Color::from_rgba8(0, 0, 0, 0.0))),
+        background: Some(iced::Background::Color(iced::Color::from_rgba8(
+            0, 0, 0, 0.0,
+        ))),
         border: iced::border::rounded(8).color(border_color).width(1.0),
         ..Default::default()
     }
