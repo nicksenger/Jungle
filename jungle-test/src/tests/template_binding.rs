@@ -539,6 +539,12 @@ trait RequiresContextBump {
     fn context_bump(&self) -> i32;
 }
 
+impl RequiresContextBump for () {
+    fn context_bump(&self) -> i32 {
+        0
+    }
+}
+
 pub struct ContextBoundEffect;
 #[jungle::effect(id = 53)]
 impl<J> Effect<J> for ContextBoundEffect
