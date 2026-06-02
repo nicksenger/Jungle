@@ -539,8 +539,22 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
     );
 
     let replacement = match extract_replacement_source(&input.tool_calls, &input.tool_name) {
-        Some(source) => source,
-        None => {
+        Ok(Some(source)) => source,
+        Err(err) => {
+            warn!(
+                iteration_id = %input.iteration_id,
+                instrument = input.instrument.slug(),
+                prompt_attempt = input.prompt_attempt,
+                error = %err,
+                "mockingbird tool call arguments were malformed; retrying prompt"
+            );
+            return Ok(ApplyToolCallsOutcome {
+                compile_ok: false,
+                retry_reason: Some(err),
+                generated_source: None,
+            });
+        }
+        Ok(None) => {
             warn!(
                 iteration_id = %input.iteration_id,
                 instrument = input.instrument.slug(),
@@ -609,20 +623,32 @@ async fn apply_tool_calls(input: ApplyToolCallsInput) -> Result<ApplyToolCallsOu
     }
 }
 
-fn extract_replacement_source(tool_calls: &[ToolCall], expected_tool_name: &str) -> Option<String> {
-    tool_calls
+fn extract_replacement_source(
+    tool_calls: &[ToolCall],
+    expected_tool_name: &str,
+) -> Result<Option<String>, String> {
+    let Some(tool_call) = tool_calls
         .iter()
         .rev()
         .find(|tool_call| tool_call.name == expected_tool_name)
-        .and_then(|tool_call| tool_call.arguments_json_value().ok())
-        .and_then(|arguments| {
-            arguments
-                .get("source")
-                .or_else(|| arguments.get("content"))
-                .or_else(|| arguments.get("contents"))
-                .and_then(|value| value.as_str())
-                .map(ToOwned::to_owned)
-        })
+    else {
+        return Ok(None);
+    };
+
+    let arguments = tool_call.arguments_json_value().map_err(|err| {
+        format!(
+            "malformed `{}` tool call arguments: {}",
+            expected_tool_name,
+            truncate_retry_reason(&err.to_string())
+        )
+    })?;
+
+    Ok(arguments
+        .get("source")
+        .or_else(|| arguments.get("content"))
+        .or_else(|| arguments.get("contents"))
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned))
 }
 
 async fn build_sampler_release() -> Result<(), String> {
@@ -898,13 +924,27 @@ mod tests {
         ];
 
         assert_eq!(
-            extract_replacement_source(&tool_calls, "replace_rhythm_guitar_dsp"),
+            extract_replacement_source(&tool_calls, "replace_rhythm_guitar_dsp").unwrap(),
             Some("rhythm".to_owned())
         );
         assert_eq!(
-            extract_replacement_source(&tool_calls, "replace_backup_vocals_dsp"),
+            extract_replacement_source(&tool_calls, "replace_backup_vocals_dsp").unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn extract_replacement_source_reports_malformed_expected_tool_arguments() {
+        let tool_calls = vec![ToolCall {
+            id: None,
+            name: "replace_rhythm_guitar_dsp".to_owned(),
+            arguments: "{\"source\":\"unterminated".to_owned(),
+        }];
+
+        let err = extract_replacement_source(&tool_calls, "replace_rhythm_guitar_dsp").unwrap_err();
+
+        assert!(err.contains("malformed `replace_rhythm_guitar_dsp` tool call arguments"));
+        assert!(err.contains("EOF while parsing a string"));
     }
 
     #[test]

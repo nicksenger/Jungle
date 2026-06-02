@@ -177,10 +177,11 @@ impl OpenAiArguments {
         match self {
             Self::Json(value) => Ok(value.to_string()),
             Self::String(arguments) if arguments.trim().is_empty() => Ok("{}".to_owned()),
-            Self::String(arguments) => {
-                let value: Value = serde_json::from_str(&arguments)?;
-                Ok(value.to_string())
-            }
+            // Preserve raw tool-call argument strings from the model response.
+            // If the payload is truncated or malformed, `mockingbird` should
+            // retry the instrument prompt instead of failing the whole journey
+            // during response decoding.
+            Self::String(arguments) => Ok(arguments),
         }
     }
 }
@@ -364,5 +365,32 @@ mod tests {
         let decoded = postcard::from_bytes::<Vec<ToolCall>>(&bytes).unwrap();
 
         assert_eq!(decoded, tool_calls);
+    }
+
+    #[test]
+    fn preserves_malformed_tool_call_argument_strings_for_retry() {
+        let response: OpenAiChatCompletionsResponse = serde_json::from_value(json!({
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "call_123",
+                                "function": {
+                                    "name": "replace_rhythm_guitar_dsp",
+                                    "arguments": "{\"source\":\"unterminated"
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        }))
+        .unwrap();
+
+        let tool_calls = extract_tool_calls(response).unwrap();
+
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].arguments, "{\"source\":\"unterminated");
     }
 }
