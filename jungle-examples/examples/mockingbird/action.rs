@@ -68,14 +68,10 @@ impl Action for BeginIteration {
             .join("distortion_guitar.png")
             .display()
             .to_string();
-        state.last_similarity = 0.0;
         state.compile_ready = false;
         state.prompt_attempt = 0;
         state.last_retry_reason = None;
         state.latest_generated_code = None;
-        state.latest_generated_sample_path = None;
-        state.latest_generated_spectrogram_path = None;
-        state.latest_generated_similarity = None;
         info!(
             iteration = state.iteration,
             iteration_id = %state.iteration_id,
