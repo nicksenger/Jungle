@@ -7,7 +7,6 @@ use super::{
 
 #[derive(Debug, Clone, Copy)]
 pub enum VocalsArticulation {
-    Clean,
     GroupHarmony,
     Formant([Option<crate::vocals::Phoneme>; 12]),
 }
@@ -22,26 +21,6 @@ pub struct PlaybackLayer {
 
 pub fn articulation_layers(articulation: VocalsArticulation) -> &'static [PlaybackLayer] {
     match articulation {
-        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => &[
-            PlaybackLayer {
-                pan: 0.02,
-                gain_scale: 1.0,
-                playback_rate_scale: 1.0,
-                delay_seconds: 0.0,
-            },
-            PlaybackLayer {
-                pan: -0.17,
-                gain_scale: 0.26,
-                playback_rate_scale: 0.998,
-                delay_seconds: 0.008,
-            },
-            PlaybackLayer {
-                pan: 0.21,
-                gain_scale: 0.21,
-                playback_rate_scale: 1.004,
-                delay_seconds: 0.015,
-            },
-        ],
         VocalsArticulation::GroupHarmony => &[
             PlaybackLayer {
                 pan: -0.42,
@@ -60,6 +39,26 @@ pub fn articulation_layers(articulation: VocalsArticulation) -> &'static [Playba
                 gain_scale: 0.68,
                 playback_rate_scale: 1.008,
                 delay_seconds: 0.019,
+            },
+        ],
+        VocalsArticulation::Formant(_) => &[
+            PlaybackLayer {
+                pan: 0.02,
+                gain_scale: 1.0,
+                playback_rate_scale: 1.0,
+                delay_seconds: 0.0,
+            },
+            PlaybackLayer {
+                pan: -0.17,
+                gain_scale: 0.26,
+                playback_rate_scale: 0.998,
+                delay_seconds: 0.008,
+            },
+            PlaybackLayer {
+                pan: 0.21,
+                gain_scale: 0.21,
+                playback_rate_scale: 1.004,
+                delay_seconds: 0.015,
             },
         ],
     }
@@ -112,17 +111,16 @@ fn synthesize_formant_vocals(
 
 fn articulation_duration(base: Duration, articulation: VocalsArticulation) -> Duration {
     let scale = match articulation {
-        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => 1.05,
         VocalsArticulation::GroupHarmony => 1.0,
+        VocalsArticulation::Formant(_) => 1.05,
     };
     Duration::from_secs_f32((base.as_secs_f32() * scale).max(0.03))
 }
 
 fn articulation_output_shape(articulation: VocalsArticulation) -> (f32, f32) {
     match articulation {
-        VocalsArticulation::Clean => (0.83, 1.0),
-        VocalsArticulation::Formant(_) => (1.66, 1.0),
         VocalsArticulation::GroupHarmony => (0.78, 1.0),
+        VocalsArticulation::Formant(_) => (1.66, 1.0),
     }
 }
 
@@ -137,14 +135,14 @@ fn articulation_sample(
     let bend = expression.bend.clamp(-1.0, 1.0) * 0.15;
 
     match articulation {
-        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => {
-            let f = base_hz * (1.0 + bend + vibrato);
-            reed_formant(f, t, phase)
-        }
         VocalsArticulation::GroupHarmony => {
             let f = base_hz.clamp(90.0, 880.0);
             let unison = sine(f * 0.995, t) * 0.42 + sine(f, t) * 0.3 + sine(f * 1.007, t) * 0.28;
             unison + sine(f * 2.0, t) * 0.15 + hash_noise(t * 4_500.0) * 0.08
+        }
+        VocalsArticulation::Formant(_) => {
+            let f = base_hz * (1.0 + bend + vibrato);
+            reed_formant(f, t, phase)
         }
     }
 }
@@ -159,7 +157,14 @@ fn reed_formant(frequency_hz: f32, t: f32, phase: f32) -> f32 {
 
 fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
     match articulation {
-        VocalsArticulation::Clean | VocalsArticulation::Formant(_) => {
+        VocalsArticulation::GroupHarmony => {
+            let attack = 0.04;
+            let decay = 0.45;
+            let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
+            let decay_env = (-phase * decay * 4.0).exp();
+            (attack_env * decay_env).clamp(0.0, 1.0)
+        }
+        VocalsArticulation::Formant(_) => {
             let attack = 0.03;
             let body = 0.9;
             let release_start = 0.8;
@@ -168,13 +173,6 @@ fn articulation_envelope(articulation: VocalsArticulation, phase: f32) -> f32 {
             let release_phase = ((phase - release_start) / release).clamp(0.0, 1.0);
             let release_env = 1.0 - smoothstep(release_phase);
             (attack_env * body * release_env).clamp(0.0, 1.0)
-        }
-        VocalsArticulation::GroupHarmony => {
-            let attack = 0.04;
-            let decay = 0.45;
-            let attack_env = smoothstep((phase / attack).clamp(0.0, 1.0));
-            let decay_env = (-phase * decay * 4.0).exp();
-            (attack_env * decay_env).clamp(0.0, 1.0)
         }
     }
 }

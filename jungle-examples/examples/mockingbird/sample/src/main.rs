@@ -177,31 +177,7 @@ async fn run() -> Result<(), CliError> {
                 }
                 "vocals" => {
                     let articulation =
-                        match articulation.as_deref().map(normalized_token).as_deref() {
-                            None | Some("clean") => VocalsArticulation::Clean,
-                            Some("group-harmony") => VocalsArticulation::GroupHarmony,
-                            Some("formant") => {
-                                let synthesis_word =
-                                    event.synthesis_word.as_deref().ok_or_else(|| {
-                                        CliError::InvalidSpec {
-                                    spec: format!(
-                                        "vocals(formant):[{},{},{}]",
-                                        event.start_ticks, event.midi, event.duration_ticks
-                                    ),
-                                    reason:
-                                        "formant vocals require a synthesis word in each note tuple"
-                                            .to_string(),
-                                }
-                                    })?;
-                                VocalsArticulation::Formant(phonemes_from_text(synthesis_word))
-                            }
-                            Some(other) => {
-                                return Err(CliError::UnsupportedArticulation {
-                                    instrument: instrument.clone(),
-                                    articulation: other.to_string(),
-                                });
-                            }
-                        };
+                        parse_vocals_articulation(&instrument, articulation.as_deref(), &event)?;
                     let note = base_note(event.midi, note_duration, articulation);
                     let (pcm, gain, playback_rate) = synth
                         .vocals(note)
@@ -606,6 +582,37 @@ fn parse_single_articulation<T: Copy>(
     Ok(output)
 }
 
+fn parse_vocals_articulation(
+    instrument: &str,
+    articulation: Option<&str>,
+    event: &NoteEvent,
+) -> Result<VocalsArticulation, CliError> {
+    match articulation.map(normalized_token).as_deref() {
+        None | Some("group-harmony") => Ok(VocalsArticulation::GroupHarmony),
+        Some("formant") => {
+            let synthesis_word =
+                event
+                    .synthesis_word
+                    .as_deref()
+                    .ok_or_else(|| CliError::InvalidSpec {
+                        spec: format!(
+                            "vocals(formant):[{},{},{}]",
+                            event.start_ticks, event.midi, event.duration_ticks
+                        ),
+                        reason: "formant vocals require a synthesis word in each note tuple"
+                            .to_string(),
+                    })?;
+            Ok(VocalsArticulation::Formant(phonemes_from_text(
+                synthesis_word,
+            )))
+        }
+        Some(other) => Err(CliError::UnsupportedArticulation {
+            instrument: instrument.to_string(),
+            articulation: other.to_string(),
+        }),
+    }
+}
+
 fn base_note<A>(midi: u8, duration: Duration, articulation: A) -> Note<A> {
     Note {
         n_midi: midi,
@@ -721,9 +728,44 @@ mod tests {
 
     #[test]
     fn parse_non_formant_vocals_spec_rejects_extra_tuple_field() {
-        let err = parse_spec("vocals(clean):[0,60,192,\"jungle\"]").unwrap_err();
+        let err = parse_spec("vocals(group-harmony):[0,60,192,\"jungle\"]").unwrap_err();
         assert!(matches!(err, CliError::InvalidTuple { .. }));
         assert!(err.to_string().contains("exactly 3 fields"));
+    }
+
+    #[test]
+    fn parse_vocals_articulation_defaults_to_group_harmony() {
+        let articulation = parse_vocals_articulation(
+            "vocals",
+            None,
+            &NoteEvent {
+                start_ticks: 0,
+                midi: 60,
+                duration_ticks: 192,
+                synthesis_word: None,
+            },
+        )
+        .unwrap();
+
+        assert!(matches!(articulation, VocalsArticulation::GroupHarmony));
+    }
+
+    #[test]
+    fn parse_vocals_articulation_rejects_clean() {
+        let err = parse_vocals_articulation(
+            "vocals",
+            Some("clean"),
+            &NoteEvent {
+                start_ticks: 0,
+                midi: 60,
+                duration_ticks: 192,
+                synthesis_word: None,
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, CliError::UnsupportedArticulation { .. }));
+        assert!(err.to_string().contains("unsupported articulation `clean`"));
     }
 
     #[test]

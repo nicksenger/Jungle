@@ -17,9 +17,7 @@ impl Vocals {
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum VocalsArticulation {
-    /// Clean, melodic singing with standard resonance (e.g., the lower register parts of the verses).
-    Clean,
-    /// Clean, unified group harmony backing up a lead line.
+    /// Unified group harmony backing up a lead line.
     GroupHarmony,
     /// Formant
     Formant([Option<Phoneme>; 12]),
@@ -27,7 +25,7 @@ pub enum VocalsArticulation {
 
 impl Default for VocalsArticulation {
     fn default() -> Self {
-        Self::Clean
+        Self::GroupHarmony
     }
 }
 
@@ -72,7 +70,6 @@ pub(crate) fn to_dsp_articulation(
     articulation: VocalsArticulation,
 ) -> crate::dsp::vocals::VocalsArticulation {
     match articulation {
-        VocalsArticulation::Clean => crate::dsp::vocals::VocalsArticulation::Clean,
         VocalsArticulation::GroupHarmony => crate::dsp::vocals::VocalsArticulation::GroupHarmony,
         VocalsArticulation::Formant(phonemes) => {
             crate::dsp::vocals::VocalsArticulation::Formant(phonemes)
