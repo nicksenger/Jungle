@@ -378,39 +378,43 @@ fn choose_expandable_node(
     nodes: &HashMap<u64, StoredMctsNode>,
     max_tree_depth: usize,
 ) -> Result<u64, PulseCodeParadiseError> {
-    nodes
-        .values()
-        .filter_map(|node| {
-            let depth = node_depth(node.id, nodes).ok()?;
-            (depth < max_tree_depth).then_some((node.id, depth))
-        })
-        .max_by(|(left_id, left_depth), (right_id, right_depth)| {
-            compare_expandable_nodes(*left_id, *left_depth, *right_id, *right_depth, nodes)
-        })
-        .map(|(node_id, _)| node_id)
-        .ok_or_else(|| {
-            PulseCodeParadiseError::MctsProtocol(format!(
-                "mockingbird tree has no selectable branches below max depth {max_tree_depth}"
-            ))
-        })
+    let mut best: Option<(&StoredMctsNode, usize)> = None;
+
+    for node in nodes.values() {
+        let depth = node_depth(node.id, nodes)?;
+        if depth >= max_tree_depth {
+            continue;
+        }
+
+        match best {
+            Some((best_node, best_depth))
+                if compare_expandable_nodes(node, depth, best_node, best_depth, nodes)
+                    != Ordering::Greater => {}
+            _ => best = Some((node, depth)),
+        }
+    }
+
+    best.map(|(node, _)| node.id).ok_or_else(|| {
+        PulseCodeParadiseError::MctsProtocol(format!(
+            "mockingbird tree has no selectable branches below max depth {max_tree_depth}"
+        ))
+    })
 }
 
 fn compare_expandable_nodes(
-    left_id: u64,
+    left: &StoredMctsNode,
     left_depth: usize,
-    right_id: u64,
+    right: &StoredMctsNode,
     right_depth: usize,
     nodes: &HashMap<u64, StoredMctsNode>,
 ) -> Ordering {
-    let left = nodes.get(&left_id).expect("left node must exist");
-    let right = nodes.get(&right_id).expect("right node must exist");
     let left_score = mcts_selection_score(left, nodes);
     let right_score = mcts_selection_score(right, nodes);
     left_score
         .partial_cmp(&right_score)
         .unwrap_or(Ordering::Equal)
         .then_with(|| left_depth.cmp(&right_depth))
-        .then_with(|| left_id.cmp(&right_id))
+        .then_with(|| left.id.cmp(&right.id))
 }
 
 fn mcts_selection_score(node: &StoredMctsNode, nodes: &HashMap<u64, StoredMctsNode>) -> f64 {
@@ -705,5 +709,28 @@ mod tests {
 
         assert!(branch.len() <= 2);
         assert!(next_selected.len() <= 2);
+    }
+
+    #[test]
+    fn choose_expandable_node_bubbles_up_corrupt_tree_depth_errors() {
+        let mut nodes = HashMap::new();
+        nodes.insert(ROOT_NODE_ID, root_node());
+        nodes.insert(
+            1,
+            StoredMctsNode {
+                id: 1,
+                parent_id: Some(999),
+                data: vec![dsp_code("00000001", Some(0.4))],
+                visits: 1,
+                total_score: 0.4,
+                children: Vec::new(),
+            },
+        );
+
+        let err = choose_expandable_node(&nodes, 8).unwrap_err();
+
+        assert!(err
+            .to_string()
+            .contains("node 999 missing while computing mockingbird tree depth"));
     }
 }
