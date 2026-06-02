@@ -1,30 +1,6 @@
 use std::{f32::consts::TAU, sync::Arc, time::Duration};
 
-use super::{Expression, Note, SAMPLE_RATE};
-
-#[derive(Debug, Clone, Copy)]
-pub enum ElectricGuitarArticulation {
-    Sustained,
-    RhythmSustained,
-}
-
-pub fn synthesize_electric_guitar(
-    note: &Note<ElectricGuitarArticulation>,
-) -> (Arc<[f32]>, f32, f32, f32) {
-    if note.articulation.is_rhythm_voice() {
-        let (pcm, gain, playback_rate) = synthesize_lead_guitar(note);
-        (pcm, gain, playback_rate, -0.25)
-    } else {
-        let (pcm, gain, playback_rate) = synthesize_rhythm_guitar(note);
-        (pcm, gain, playback_rate, 0.12)
-    }
-}
-
-impl ElectricGuitarArticulation {
-    fn is_rhythm_voice(self) -> bool {
-        matches!(self, Self::RhythmSustained)
-    }
-}
+use super::{ElectricGuitarArticulation, Expression, Note, SAMPLE_RATE};
 
 #[derive(Clone, Copy)]
 struct ElectricTone {
@@ -34,7 +10,7 @@ struct ElectricTone {
     body_mix: f32,
 }
 
-fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
+pub fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
     let duration = lead_duration(note.duration, note.articulation);
     let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
     let frequency_hz = midi_to_hz(note.n_midi).max(80.0);
@@ -189,45 +165,6 @@ struct RhythmTone {
     pre_gain: f32,
     cab_smoothing: f32,
     body_mix: f32,
-}
-
-fn synthesize_lead_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc<[f32]>, f32, f32) {
-    let duration = rhythm_duration(note.duration, note.articulation);
-    let frame_count = duration_to_frames(duration, SAMPLE_RATE).max(1);
-    let root_hz = midi_to_hz(note.n_midi).max(70.0);
-    let velocity = note.velocity.clamp(0.0, 1.0);
-    let expression = note.expression.unwrap_or(Expression {
-        bend: 0.0,
-        vibrato: 0.0,
-    });
-    let groove = groove_shape(note.duration, note.n_midi);
-    let tone = rhythm_tone(note.articulation, groove);
-
-    let mut pcm = Vec::with_capacity(frame_count);
-    let mut cab_lowpass = 0.0;
-    let mut body_highpass = 0.0;
-    let mut prev_cab_lowpass = 0.0;
-
-    for i in 0..frame_count {
-        let t = i as f32 / SAMPLE_RATE as f32;
-        let phase = t / duration.as_secs_f32().max(1e-6);
-
-        let raw = rhythm_sample(note.articulation, root_hz, phase, t, expression, groove);
-        let picked = raw + rhythm_pick_attack(root_hz, phase, t, tone.pick_amount, groove);
-        let env = rhythm_envelope(note.articulation, phase);
-
-        let driven = rhythm_amp_distortion(picked * env * tone.pre_gain, tone.drive);
-
-        cab_lowpass += tone.cab_smoothing * (driven - cab_lowpass);
-        body_highpass = tone.body_mix * (body_highpass + cab_lowpass - prev_cab_lowpass);
-        prev_cab_lowpass = cab_lowpass;
-
-        let sample = (cab_lowpass + body_highpass * 0.5).clamp(-1.0, 1.0);
-        pcm.push(sample * velocity);
-    }
-
-    let (gain, playback_rate) = rhythm_output_shape(note.articulation);
-    (Arc::from(pcm), gain, playback_rate)
 }
 
 fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) -> RhythmTone {
