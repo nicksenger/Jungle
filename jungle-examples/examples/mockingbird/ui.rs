@@ -38,6 +38,7 @@ where
 enum Message {
     Viewer(jungle_vision::EjectedViewerMessage),
     SnapshotLoaded(Result<Option<MockingBirdState>, String>),
+    PlayTarget,
     PlayLatest,
     PlayBest,
 }
@@ -101,6 +102,18 @@ impl MockingbirdUi {
             }
             Message::SnapshotLoaded(Err(err)) => {
                 self.snapshot_error = Some(err);
+                Task::none()
+            }
+            Message::PlayTarget => {
+                if let Some(path) = self
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| sibling_audio_path(&snapshot.target_spectrogram_path))
+                {
+                    if let Err(err) = self.audio.play(&path) {
+                        self.snapshot_error = Some(err);
+                    }
+                }
                 Task::none()
             }
             Message::PlayLatest => {
@@ -175,7 +188,9 @@ impl MockingbirdUi {
                     "Target",
                     Some(&snapshot.target_spectrogram_path),
                     None,
-                    None,
+                    sibling_audio_path(&snapshot.target_spectrogram_path)
+                        .as_deref()
+                        .map(|_| Message::PlayTarget),
                 )
             })
             .unwrap_or_else(|| spectrogram_card("Target", None, None, None));
@@ -242,6 +257,13 @@ impl MockingbirdUi {
             .unwrap_or_else(|| format!("journey {}", self.journey_id));
         text(label).size(13).into()
     }
+}
+
+fn sibling_audio_path(image_path: &str) -> Option<String> {
+    let audio_path = Path::new(image_path).with_extension("wav");
+    audio_path
+        .exists()
+        .then(|| audio_path.display().to_string())
 }
 
 fn spectrogram_card<'a>(
