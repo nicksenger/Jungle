@@ -1,5 +1,6 @@
 use crate::effect::{
     FinalizeIterationSamples, FinalizeIterationSamplesInput, FinalizeIterationSamplesOutcome,
+    LogIterationTimingEffect, LogIterationTimingInput, LogIterationTimingOutput,
     OptimizeInstrument, OptimizeInstrumentInput, OptimizeInstrumentOutcome, SearchTreeSelect,
     SearchTreeSubmit,
 };
@@ -107,6 +108,33 @@ where
 {
     fn eval((state, _): &(LyrebirdState, ())) -> bool {
         !state.instrument_state(Marker::INSTRUMENT).disabled
+    }
+}
+
+pub struct LogIterationTiming;
+#[jungle::action]
+impl Action for LogIterationTiming {
+    type Effect = LogIterationTimingEffect;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &LyrebirdState, _input: Self::Input) -> LogIterationTimingInput {
+        LogIterationTimingInput {
+            completed_iteration: state.iteration,
+            completed_iteration_id: state.iteration_id.clone(),
+            previous_iteration_start_time_ms: state.iteration_start_time_ms,
+        }
+    }
+
+    fn absorb(
+        state: &mut LyrebirdState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let LogIterationTimingOutput {
+            iteration_start_time_ms,
+        } = output.map_err(Failure::from)?;
+        state.iteration_start_time_ms = Some(iteration_start_time_ms);
+        Ok(())
     }
 }
 

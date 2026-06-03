@@ -22,8 +22,9 @@ mod ui;
 
 use crate::action::{
     BeginIteration, FinalizeIterationRender, FlattenEither, FlattenJoinedUnit, InstrumentEnabled,
-    LyrebirdLoopForever, OptimizeSelectedInstrument, SeedLyrebirdState, SelectDspBranch,
-    SetCurrentInstrument, SkipInstrumentPrompt, SkipInstrumentSubmit, SubmitDspBranch,
+    LogIterationTiming, LyrebirdLoopForever, OptimizeSelectedInstrument, SeedLyrebirdState,
+    SelectDspBranch, SetCurrentInstrument, SkipInstrumentPrompt, SkipInstrumentSubmit,
+    SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
@@ -442,6 +443,8 @@ pub struct LyrebirdState {
     pub instruments: Vec<LyrebirdInstrumentState>,
     #[serde(default = "default_instrument_parallelism")]
     pub instrument_parallelism: usize,
+    #[serde(default)]
+    pub iteration_start_time_ms: Option<u64>,
     pub iteration: u64,
     pub iteration_id: String,
 }
@@ -678,6 +681,7 @@ pub struct LyrebirdInstrumentSubmit<Marker: LyrebirdInstrumentTag + Send + Sync 
 
 #[derive(Flow)]
 pub struct LyrebirdIteration(
+    Step<LogIterationTiming>,
     Step<BeginIteration>,
     LyrebirdPromptPhase,
     Step<FinalizeIterationRender>,

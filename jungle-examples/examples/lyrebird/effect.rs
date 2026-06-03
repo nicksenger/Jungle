@@ -21,6 +21,7 @@ use std::fs;
 use std::future::{ready, Future};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, info, warn};
@@ -78,10 +79,43 @@ impl<J> Effect<J> for CompareSpectrograms {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LogIterationTimingInput {
+    pub completed_iteration: u64,
+    pub completed_iteration_id: String,
+    pub previous_iteration_start_time_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LogIterationTimingOutput {
+    pub iteration_start_time_ms: u64,
+}
+
+pub struct LogIterationTimingEffect;
+#[effect(id = 17)]
+impl<J> Effect<J> for LogIterationTimingEffect {
+    type In = LogIterationTimingInput;
+    type Out = LogIterationTimingOutput;
+    type Err = String;
+
+    fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { log_iteration_timing(input) }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PromptModelInput {
+    pub prompt: Prompt,
+    pub iteration_id: String,
+    pub instrument: LyrebirdInstrument,
+    pub prompt_attempt: u32,
+    pub candidate_index: usize,
+}
+
 pub struct PromptModel;
 #[effect(id = 5)]
 impl Effect<()> for PromptModel {
-    type In = Prompt;
+    type In = PromptModelInput;
     type Out = Vec<ToolCall>;
     type Err = String;
 
@@ -95,7 +129,7 @@ impl Effect<()> for PromptModel {
 
 #[effect(id = 5)]
 impl Effect<PulseCodeParadise> for PromptModel {
-    type In = Prompt;
+    type In = PromptModelInput;
     type Out = Vec<ToolCall>;
     type Err = String;
 
@@ -104,16 +138,40 @@ impl Effect<PulseCodeParadise> for PromptModel {
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
+            if input.candidate_index == 0 {
+                debug!(
+                    iteration_id = %input.iteration_id,
+                    instrument = input.instrument.slug(),
+                    prompt_attempt = input.prompt_attempt,
+                    prompt = %render_prompt_for_log(&input.prompt),
+                    "sending lyrebird prompt model request"
+                );
+            }
             let prompt_started_at = Instant::now();
-            let response = jungle.predict(input).await.map_err(|err| err.to_string());
+            let response = jungle
+                .predict(input.prompt)
+                .await
+                .map_err(|err| err.to_string());
             let prompt_elapsed_ms = prompt_started_at.elapsed().as_millis();
             match &response {
                 Ok(tool_calls) => info!(
+                    iteration_id = %input.iteration_id,
+                    instrument = input.instrument.slug(),
+                    prompt_attempt = input.prompt_attempt,
+                    candidate_index = input.candidate_index,
                     prompt_elapsed_ms,
                     tool_call_count = tool_calls.len(),
                     "received prompt model response"
                 ),
-                Err(error) => info!(prompt_elapsed_ms, error, "prompt model request failed"),
+                Err(error) => info!(
+                    iteration_id = %input.iteration_id,
+                    instrument = input.instrument.slug(),
+                    prompt_attempt = input.prompt_attempt,
+                    candidate_index = input.candidate_index,
+                    prompt_elapsed_ms,
+                    error,
+                    "prompt model request failed"
+                ),
             }
             response
         }
@@ -895,30 +953,54 @@ async fn request_prompt_candidate(
     prompt_attempt: u32,
     candidate_index: usize,
 ) -> Result<Vec<ToolCall>, String> {
-    let prompt_started_at = Instant::now();
-    let response = jungle.predict(prompt).await.map_err(|err| err.to_string());
-    let prompt_elapsed_ms = prompt_started_at.elapsed().as_millis();
-    match &response {
-        Ok(tool_calls) => info!(
-            iteration_id = %iteration_id,
-            instrument = instrument.slug(),
+    <PromptModel as jungle_sdk::Effect<PulseCodeParadise>>::effect(
+        jungle,
+        PromptModelInput {
+            prompt,
+            iteration_id,
+            instrument,
             prompt_attempt,
             candidate_index,
-            prompt_elapsed_ms,
-            tool_call_count = tool_calls.len(),
-            "received prompt model response"
-        ),
-        Err(error) => info!(
-            iteration_id = %iteration_id,
-            instrument = instrument.slug(),
-            prompt_attempt,
-            candidate_index,
-            prompt_elapsed_ms,
-            error,
-            "prompt model request failed"
-        ),
+        },
+    )
+    .await
+}
+
+fn log_iteration_timing(
+    input: LogIterationTimingInput,
+) -> Result<LogIterationTimingOutput, String> {
+    let iteration_start_time_ms = current_time_ms()?;
+    if let Some(iteration_elapsed_ms) = iteration_elapsed_ms(
+        iteration_start_time_ms,
+        input.previous_iteration_start_time_ms,
+    ) {
+        info!(
+            iteration = input.completed_iteration,
+            iteration_id = %input.completed_iteration_id,
+            iteration_elapsed_ms,
+            "completed lyrebird iteration"
+        );
     }
-    response
+    Ok(LogIterationTimingOutput {
+        iteration_start_time_ms,
+    })
+}
+
+fn current_time_ms() -> Result<u64, String> {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?;
+    let millis = elapsed.as_millis();
+    u64::try_from(millis).map_err(|_| format!("system time overflowed u64 milliseconds: {millis}"))
+}
+
+fn iteration_elapsed_ms(now_ms: u64, previous_iteration_start_time_ms: Option<u64>) -> Option<u64> {
+    previous_iteration_start_time_ms
+        .map(|previous_start_ms| now_ms.saturating_sub(previous_start_ms))
+}
+
+fn render_prompt_for_log(prompt: &Prompt) -> String {
+    serde_json::to_string_pretty(prompt).unwrap_or_else(|_| format!("{prompt:?}"))
 }
 
 async fn render_and_score_candidate(
@@ -1911,6 +1993,13 @@ mod tests {
         .unwrap();
 
         assert!(prompt.tools.is_empty());
+    }
+
+    #[test]
+    fn iteration_elapsed_ms_uses_previous_start_time_when_present() {
+        assert_eq!(iteration_elapsed_ms(1_250, Some(1_000)), Some(250));
+        assert_eq!(iteration_elapsed_ms(1_000, None), None);
+        assert_eq!(iteration_elapsed_ms(900, Some(1_000)), Some(0));
     }
 
     #[test]
