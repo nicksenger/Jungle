@@ -3,6 +3,8 @@ use jungle_sdk::typosaurus::assert_type_eq;
 use jungle_sdk::{Animals, JungleClient, Optic};
 use num::*;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 pub struct TemplateAddEffect;
@@ -32,6 +34,62 @@ impl<J> Effect<J> for TemplateCommitEffect {
         input: Self::In,
     ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
         std::future::ready(Ok(input))
+    }
+}
+
+struct JoinConcurrentRuntime {
+    barrier: tokio::sync::Barrier,
+    active: AtomicUsize,
+    max_active: AtomicUsize,
+}
+
+impl JoinConcurrentRuntime {
+    fn reset(&self) {
+        self.active.store(0, Ordering::SeqCst);
+        self.max_active.store(0, Ordering::SeqCst);
+    }
+}
+
+fn join_concurrent_runtime() -> Arc<JoinConcurrentRuntime> {
+    static RUNTIME: OnceLock<Arc<JoinConcurrentRuntime>> = OnceLock::new();
+    RUNTIME
+        .get_or_init(|| {
+            Arc::new(JoinConcurrentRuntime {
+                barrier: tokio::sync::Barrier::new(2),
+                active: AtomicUsize::new(0),
+                max_active: AtomicUsize::new(0),
+            })
+        })
+        .clone()
+}
+
+struct JoinConcurrentGuard(Arc<JoinConcurrentRuntime>);
+
+impl Drop for JoinConcurrentGuard {
+    fn drop(&mut self) {
+        self.0.active.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+pub struct TemplateConcurrentJoinEffect;
+#[jungle::effect(id = 142)]
+impl<J> Effect<J> for TemplateConcurrentJoinEffect {
+    type In = i32;
+    type Out = i32;
+    type Err = ();
+
+    fn effect(
+        _jungle: &J,
+        input: Self::In,
+    ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+        async move {
+            let runtime = join_concurrent_runtime();
+            let active = runtime.active.fetch_add(1, Ordering::SeqCst) + 1;
+            runtime.max_active.fetch_max(active, Ordering::SeqCst);
+            let _guard = JoinConcurrentGuard(runtime.clone());
+            runtime.barrier.wait().await;
+            Ok(input)
+        }
     }
 }
 
@@ -2315,6 +2373,70 @@ impl Animal for JoinFocusedAnimal {
     type Flow = JoinFocusedTemplate;
 }
 
+struct JoinFocusedConcurrentLeftSpec;
+#[jungle::action]
+impl Action for JoinFocusedConcurrentLeftSpec {
+    type Effect = TemplateConcurrentJoinEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &JoinFocusedLeftState, input: Self::Input) -> i32 {
+        state.value + input
+    }
+
+    fn absorb(
+        state: &mut JoinFocusedLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("focused concurrent left should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+struct JoinFocusedConcurrentRightSpec;
+#[jungle::action]
+impl Action for JoinFocusedConcurrentRightSpec {
+    type Effect = TemplateConcurrentJoinEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &JoinFocusedRightState, input: Self::Input) -> i32 {
+        state.value + input * 10
+    }
+
+    fn absorb(
+        state: &mut JoinFocusedRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out =
+            output.map_err(|_err| Failure::from("focused concurrent right should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = JoinFocusedLeftState)]
+struct JoinFocusedConcurrentLeftFlow(Step<JoinFocusedConcurrentLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = JoinFocusedRightState)]
+struct JoinFocusedConcurrentRightFlow(Step<JoinFocusedConcurrentRightSpec>);
+
+#[derive(Flow)]
+struct JoinFocusedConcurrentTemplate(
+    Join<JoinFocusedConcurrentLeftFlow, JoinFocusedConcurrentRightFlow>,
+);
+
+struct JoinFocusedConcurrentAnimal;
+#[jungle::animal(id = 89, generation = 0)]
+impl Animal for JoinFocusedConcurrentAnimal {
+    type State = JoinFocusedHostState;
+    type Seed = i32;
+    type Flow = JoinFocusedConcurrentTemplate;
+}
+
 #[test]
 fn template_binding_join_merges_distinct_focused_branch_states() {
     let mut executor = Executor::<JoinFocusedAnimal>::new(JoinFocusedHostState {
@@ -2329,6 +2451,42 @@ fn template_binding_join_merges_distinct_focused_branch_states() {
         postcard::from_bytes(emitted.last().expect("join should emit one final value"))
             .expect("join final emitted tuple should deserialize");
 
+    assert_eq!(final_emitted, (4, 32));
+    assert_eq!(
+        executor.state(),
+        &JoinFocusedHostState {
+            left: JoinFocusedLeftState { value: 4 },
+            right: JoinFocusedRightState { value: 32 },
+            marker: 99,
+        }
+    );
+}
+
+#[tokio::test]
+async fn template_binding_focused_join_subflows_run_concurrently() {
+    let runtime = join_concurrent_runtime();
+    runtime.reset();
+
+    let mut executor = Executor::<JoinFocusedConcurrentAnimal>::new(JoinFocusedHostState {
+        left: JoinFocusedLeftState { value: 1 },
+        right: JoinFocusedRightState { value: 2 },
+        marker: 99,
+    });
+
+    let request = executor
+        .next_executable_request(3)
+        .expect("focused join should produce an executable request");
+    let completion = tokio::time::timeout(Duration::from_millis(250), request.run())
+        .await
+        .expect("focused join branches should rendezvous without serial deadlock")
+        .expect("focused join effect runner should succeed");
+    let emitted = executor
+        .complete_serialized(completion)
+        .expect("focused join completion should apply cleanly");
+    let final_emitted: (i32, i32) =
+        postcard::from_bytes(&emitted).expect("join final emitted tuple should deserialize");
+
+    assert_eq!(runtime.max_active.load(Ordering::SeqCst), 2);
     assert_eq!(final_emitted, (4, 32));
     assert_eq!(
         executor.state(),

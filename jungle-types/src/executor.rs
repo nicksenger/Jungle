@@ -2271,16 +2271,17 @@ where
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let (left_state, left_trace) =
-                    run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
-                let right_start_state = if focused_merge {
-                    right_state
+                let (left_trace, right_trace) = if focused_merge {
+                    let left = run_subflow_to_end(left_flow, left_state, left_input);
+                    let right = run_subflow_to_end(right_flow, right_state, right_input);
+                    futures::future::try_join(left, right).await?
                 } else {
-                    left_state
+                    let (left_state, left_trace) =
+                        run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
+                    let (_right_state, right_trace) =
+                        run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                    (left_trace, right_trace)
                 };
-                let (_right_state, right_trace) =
-                    run_subflow_to_end_with_state(right_flow, right_start_state, right_input)
-                        .await?;
                 let envelope = JoinTraceEnvelope {
                     left: left_trace,
                     right: right_trace,
@@ -2420,16 +2421,17 @@ where
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let (left_state, left_trace) =
-                    run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
-                let right_start_state = if focused_merge {
-                    right_state
+                let (left_trace, right_trace) = if focused_merge {
+                    let left = run_subflow_to_end(left_flow, left_state, left_input);
+                    let right = run_subflow_to_end(right_flow, right_state, right_input);
+                    futures::future::try_join(left, right).await?
                 } else {
-                    left_state
+                    let (left_state, left_trace) =
+                        run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
+                    let (_right_state, right_trace) =
+                        run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                    (left_trace, right_trace)
                 };
-                let (_right_state, right_trace) =
-                    run_subflow_to_end_with_state(right_flow, right_start_state, right_input)
-                        .await?;
                 let envelope = JoinTraceEnvelope {
                     left: left_trace,
                     right: right_trace,
