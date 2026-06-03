@@ -228,6 +228,50 @@ impl LyrebirdUi {
         is_first_row: bool,
     ) -> Element<'a, Message> {
         let instrument_state = snapshot.instrument_state(instrument);
+        let (
+            initial_spectrogram_path,
+            initial_overlay_label,
+            initial_activate_message,
+            initial_empty_label,
+        ) = if instrument_state.disabled {
+            (None, None, None, "Disabled")
+        } else {
+            (
+                initial_spectrogram_path(instrument_state),
+                initial_overlay_label(instrument_state),
+                initial_spectrogram_path(instrument_state)
+                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Initial)),
+                "Waiting for spectrogram",
+            )
+        };
+        let (
+            current_spectrogram_path,
+            current_overlay_label,
+            current_activate_message,
+            current_empty_label,
+        ) = if instrument_state.disabled {
+            (None, None, None, "Disabled")
+        } else {
+            (
+                current_spectrogram_path(instrument_state),
+                current_overlay_label(instrument_state),
+                current_spectrogram_path(instrument_state)
+                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Current)),
+                "Waiting for spectrogram",
+            )
+        };
+        let (best_spectrogram_path, best_overlay_label, best_activate_message, best_empty_label) =
+            if instrument_state.disabled {
+                (None, None, None, "Disabled")
+            } else {
+                (
+                    best_spectrogram_path(instrument_state),
+                    best_overlay_label(instrument_state),
+                    best_spectrogram_path(instrument_state)
+                        .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Best)),
+                    "Waiting for spectrogram",
+                )
+            };
         let cards = row![
             spectrogram_tile(
                 Some(&instrument_state.target_spectrogram_path),
@@ -235,27 +279,28 @@ impl LyrebirdUi {
                 alignment::Horizontal::Left,
                 existing_path(Some(&instrument_state.target_sample_path))
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
+                "Waiting for spectrogram",
             ),
             spectrogram_tile(
-                initial_spectrogram_path(instrument_state),
-                initial_overlay_label(instrument_state),
+                initial_spectrogram_path,
+                initial_overlay_label,
                 alignment::Horizontal::Right,
-                initial_spectrogram_path(instrument_state)
-                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Initial)),
+                initial_activate_message,
+                initial_empty_label,
             ),
             spectrogram_tile(
-                current_spectrogram_path(instrument_state),
-                current_overlay_label(instrument_state),
+                current_spectrogram_path,
+                current_overlay_label,
                 alignment::Horizontal::Right,
-                current_spectrogram_path(instrument_state)
-                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Current)),
+                current_activate_message,
+                current_empty_label,
             ),
             spectrogram_tile(
-                best_spectrogram_path(instrument_state),
-                best_overlay_label(instrument_state),
+                best_spectrogram_path,
+                best_overlay_label,
                 alignment::Horizontal::Right,
-                best_spectrogram_path(instrument_state)
-                    .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Best)),
+                best_activate_message,
+                best_empty_label,
             ),
         ]
         .spacing(SNAPSHOT_GAP)
@@ -287,6 +332,7 @@ fn spectrogram_tile<'a>(
     overlay_label: Option<String>,
     overlay_alignment: alignment::Horizontal,
     activate_message: Option<Message>,
+    empty_label: &'static str,
 ) -> Element<'a, Message> {
     let image_panel: Element<'a, Message> = match spectrogram_path.filter(|path| image_exists(path))
     {
@@ -306,7 +352,7 @@ fn spectrogram_tile<'a>(
                 None => preview.into(),
             }
         }
-        None => container(text("Waiting for spectrogram").size(14))
+        None => container(text(empty_label).size(14))
             .width(Length::Fill)
             .height(Length::Fill)
             .center_x(Length::Fill)

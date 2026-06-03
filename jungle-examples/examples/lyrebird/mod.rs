@@ -21,9 +21,9 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, FinalizeIterationRender, FlattenJoinedUnit, LyrebirdLoopForever,
-    OptimizeSelectedInstrument, SeedLyrebirdState, SelectDspBranch, SetCurrentInstrument,
-    SubmitDspBranch,
+    BeginIteration, FinalizeIterationRender, FlattenEither, FlattenJoinedUnit, InstrumentEnabled,
+    LyrebirdLoopForever, OptimizeSelectedInstrument, SeedLyrebirdState, SelectDspBranch,
+    SetCurrentInstrument, SkipInstrumentPrompt, SkipInstrumentSubmit, SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
@@ -221,6 +221,29 @@ impl LyrebirdInstrument {
     pub fn tree_tag(self) -> &'static str {
         self.slug()
     }
+
+    pub fn parse_cli_selection(value: &str) -> Result<Self, String> {
+        let normalized = value
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .flat_map(|ch| ch.to_lowercase())
+            .collect::<String>();
+
+        match normalized.as_str() {
+            "rhythmguitar" | "introguitar" | "guitarintro" | "intro" => {
+                Ok(Self::RhythmGuitar)
+            }
+            "vocals" | "leadvocals" | "leadvocal" | "vocal" => Ok(Self::Vocals),
+            "backupvocals" | "backingvocals" | "harmonyvocals" | "groupharmony" => {
+                Ok(Self::BackupVocals)
+            }
+            "bass" => Ok(Self::Bass),
+            "guitarsolo" | "sologuitar" | "solo" => Ok(Self::GuitarSolo),
+            _ => Err(format!(
+                "invalid instrument argument: {value}. Expected a comma-delimited list drawn from introguitar,vocals,backupvocals,bass,sologuitar"
+            )),
+        }
+    }
 }
 
 pub trait LyrebirdInstrumentTag {
@@ -230,6 +253,8 @@ pub trait LyrebirdInstrumentTag {
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdInstrumentState {
     pub instrument: LyrebirdInstrument,
+    #[serde(default)]
+    pub disabled: bool,
     #[serde(default)]
     pub target_sample_path: String,
     pub target_spectrogram_path: String,
@@ -265,6 +290,7 @@ impl LyrebirdInstrumentState {
     fn from_seed(seed: LyrebirdInstrumentSeed) -> Self {
         Self {
             instrument: seed.instrument,
+            disabled: seed.disabled,
             target_sample_path: seed.target_sample_path,
             target_spectrogram_path: seed.target_spectrogram_path,
             dsp_source_path: seed.dsp_source_path,
@@ -380,6 +406,19 @@ impl LyrebirdState {
     pub fn current_state_mut(&mut self) -> &mut LyrebirdInstrumentState {
         self.instrument_state_mut(self.current_instrument)
     }
+
+    pub fn matches_seed_instrument_selection(&self, seed: &LyrebirdSeed) -> bool {
+        LyrebirdInstrument::ALL.into_iter().all(|instrument| {
+            let state_disabled = self.instrument_state(instrument).disabled;
+            let seed_disabled = seed
+                .instruments
+                .iter()
+                .find(|seed| seed.instrument == instrument)
+                .map(|seed| seed.disabled)
+                .unwrap_or(false);
+            state_disabled == seed_disabled
+        })
+    }
 }
 
 fn default_instrument_parallelism() -> usize {
@@ -389,6 +428,8 @@ fn default_instrument_parallelism() -> usize {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdInstrumentSeed {
     pub instrument: LyrebirdInstrument,
+    #[serde(default)]
+    pub disabled: bool,
     #[serde(default)]
     pub target_sample_path: String,
     pub target_spectrogram_path: String,
@@ -427,10 +468,26 @@ impl From<LyrebirdSeed> for LyrebirdState {
 }
 
 #[derive(Flow)]
-pub struct LyrebirdInstrumentPrompt<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
+pub struct LyrebirdInstrumentPromptEnabled<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
     Step<SetCurrentInstrument<Marker>>,
     Step<SelectDspBranch<Marker>>,
     Step<OptimizeSelectedInstrument<Marker>>,
+);
+
+#[derive(Flow)]
+pub struct LyrebirdInstrumentPromptDisabled<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
+    Step<SetCurrentInstrument<Marker>>,
+    Step<SkipInstrumentPrompt<Marker>>,
+);
+
+#[derive(Flow)]
+pub struct LyrebirdInstrumentPrompt<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
+    Conditional<
+        InstrumentEnabled<Marker>,
+        LyrebirdInstrumentPromptEnabled<Marker>,
+        LyrebirdInstrumentPromptDisabled<Marker>,
+    >,
+    Step<FlattenEither<(), LyrebirdState>>,
 );
 
 pub struct RhythmGuitarMarker;
@@ -483,9 +540,25 @@ pub struct LyrebirdPromptPhase(
 );
 
 #[derive(Flow)]
-pub struct LyrebirdInstrumentSubmit<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
+pub struct LyrebirdInstrumentSubmitEnabled<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
     Step<SetCurrentInstrument<Marker>>,
     Step<SubmitDspBranch<Marker>>,
+);
+
+#[derive(Flow)]
+pub struct LyrebirdInstrumentSubmitDisabled<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
+    Step<SetCurrentInstrument<Marker>>,
+    Step<SkipInstrumentSubmit<Marker>>,
+);
+
+#[derive(Flow)]
+pub struct LyrebirdInstrumentSubmit<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
+    Conditional<
+        InstrumentEnabled<Marker>,
+        LyrebirdInstrumentSubmitEnabled<Marker>,
+        LyrebirdInstrumentSubmitDisabled<Marker>,
+    >,
+    Step<FlattenEither<(), LyrebirdState>>,
 );
 
 #[derive(Flow)]
@@ -659,6 +732,12 @@ struct Cli {
         value_parser = parse_instrument_parallelism
     )]
     instrument_parallelism: usize,
+    #[arg(
+        long = "instruments",
+        value_delimiter = ',',
+        value_parser = LyrebirdInstrument::parse_cli_selection
+    )]
+    instruments: Option<Vec<LyrebirdInstrument>>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -672,6 +751,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .jungle_redb_path
         .unwrap_or_else(|| output_root.join("jungle.redb"));
     ensure_parent_dir_exists(&jungle_redb_path)?;
+    let selected_instruments = normalize_instrument_selection(cli.instruments.as_deref());
 
     let instrument_seeds = build_instrument_seeds(&workspace_root, &output_root).await?;
     let ecosystem = PulseCodeParadise::new(cli.tokens_url, cli.tokens_token, cli.db_path)?
@@ -693,6 +773,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         workers = cli.workers,
         tree_depth = cli.tree_depth,
         instrument_parallelism = cli.instrument_parallelism,
+        instruments = %selected_instruments
+            .iter()
+            .map(|instrument| instrument.slug())
+            .collect::<Vec<_>>()
+            .join(","),
         jungle_redb_path = %jungle_redb_path.display(),
         mcts_redb_path = %ecosystem.db_path.display(),
         "starting lyrebird runtime"
@@ -721,7 +806,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }));
     }
 
-    let seed = build_seed(&output_root, &instrument_seeds, cli.instrument_parallelism);
+    let seed = build_seed(
+        &output_root,
+        &instrument_seeds,
+        cli.instrument_parallelism,
+        &selected_instruments,
+    );
     let journey_id = ensure_lyrebird_running(&client, &seed).await?;
 
     info!(
@@ -785,6 +875,7 @@ async fn build_instrument_seeds(
         .map_err(PulseCodeParadiseError::Bootstrap)?;
         seeds.push(LyrebirdInstrumentSeed {
             instrument,
+            disabled: false,
             target_sample_path: target_sample_path.display().to_string(),
             target_spectrogram_path: target_spectrogram_path.display().to_string(),
             dsp_source_path: dsp_source_path.display().to_string(),
@@ -798,10 +889,23 @@ fn build_seed(
     output_root: &Path,
     instruments: &[LyrebirdInstrumentSeed],
     instrument_parallelism: usize,
+    selected_instruments: &[LyrebirdInstrument],
 ) -> LyrebirdSeed {
+    let selected_lookup = selected_instruments
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+
     LyrebirdSeed {
         output_root: output_root.display().to_string(),
-        instruments: instruments.to_vec(),
+        instruments: instruments
+            .iter()
+            .cloned()
+            .map(|mut instrument| {
+                instrument.disabled = !selected_lookup.contains(&instrument.instrument);
+                instrument
+            })
+            .collect(),
         instrument_parallelism,
     }
 }
@@ -864,6 +968,13 @@ async fn ensure_lyrebird_running(
             }
         };
         if state.has_all_instrument_states() {
+            if !state.matches_seed_instrument_selection(seed) {
+                warn!(
+                    journey_id = %existing.journey_id,
+                    "existing lyrebird journey instrument selection differs from requested configuration; spawning a new journey instead"
+                );
+                continue;
+            }
             info!(
                 journey_id = %existing.journey_id,
                 "reusing existing lyrebird journey"
@@ -973,6 +1084,15 @@ fn parse_instrument_parallelism(value: &str) -> Result<usize, String> {
         return Err("instrument parallelism must be at least 1".to_owned());
     }
     Ok(instrument_parallelism)
+}
+
+fn normalize_instrument_selection(
+    selected: Option<&[LyrebirdInstrument]>,
+) -> Vec<LyrebirdInstrument> {
+    LyrebirdInstrument::ALL
+        .into_iter()
+        .filter(|instrument| selected.is_none_or(|selected| selected.contains(instrument)))
+        .collect()
 }
 
 fn init_tracing() {
@@ -1144,6 +1264,60 @@ mod tests {
             appearance.current_instrument,
             LyrebirdInstrument::RhythmGuitar
         );
+        for instrument in LyrebirdInstrument::ALL {
+            assert!(!appearance.instrument_state(instrument).disabled);
+        }
+    }
+
+    #[test]
+    fn parse_instrument_selection_accepts_aliases_and_canonical_names() {
+        assert_eq!(
+            LyrebirdInstrument::parse_cli_selection("introguitar").unwrap(),
+            LyrebirdInstrument::RhythmGuitar
+        );
+        assert_eq!(
+            LyrebirdInstrument::parse_cli_selection("backup-vocals").unwrap(),
+            LyrebirdInstrument::BackupVocals
+        );
+        assert_eq!(
+            LyrebirdInstrument::parse_cli_selection("sologuitar").unwrap(),
+            LyrebirdInstrument::GuitarSolo
+        );
+    }
+
+    #[test]
+    fn parse_instrument_selection_rejects_unknown_values() {
+        let err = LyrebirdInstrument::parse_cli_selection("drums").unwrap_err();
+
+        assert!(err.contains("invalid instrument argument"));
+    }
+
+    #[test]
+    fn build_seed_disables_unselected_instruments() {
+        let seeds = LyrebirdInstrument::ALL
+            .into_iter()
+            .map(|instrument| LyrebirdInstrumentSeed {
+                instrument,
+                disabled: false,
+                target_sample_path: format!("/tmp/{}.wav", instrument.output_stem()),
+                target_spectrogram_path: format!("/tmp/{}.png", instrument.output_stem()),
+                dsp_source_path: format!("/tmp/{}.rs", instrument.output_stem()),
+                initial_dsp_code: DspCode::placeholder_initial(),
+            })
+            .collect::<Vec<_>>();
+
+        let seed = build_seed(
+            Path::new("/tmp/lyrebird"),
+            &seeds,
+            DEFAULT_INSTRUMENT_PARALLELISM,
+            &[LyrebirdInstrument::Vocals, LyrebirdInstrument::GuitarSolo],
+        );
+
+        assert!(!seed.instruments[1].disabled);
+        assert!(!seed.instruments[4].disabled);
+        assert!(seed.instruments[0].disabled);
+        assert!(seed.instruments[2].disabled);
+        assert!(seed.instruments[3].disabled);
     }
 
     #[test]

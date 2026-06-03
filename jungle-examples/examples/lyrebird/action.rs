@@ -56,6 +56,29 @@ impl<S> Action for FlattenJoinedUnit<S> {
     }
 }
 
+pub struct FlattenEither<T, S>(PhantomData<T>, PhantomData<S>);
+#[jungle::action]
+impl<T, S> Action for FlattenEither<T, S> {
+    type Effect = Noop;
+    type Input = Either<T, T>;
+    type Output = T;
+    type Carry = Either<T, T>;
+
+    fn emit(_state: &S, input: Self::Input) -> ((), Either<T, T>) {
+        ((), input)
+    }
+
+    fn absorb(
+        _state: &mut S,
+        _output: EffectCompletion<Self::Effect>,
+        carry: Either<T, T>,
+    ) -> Self::Output {
+        match carry {
+            Either::Left(value) | Either::Right(value) => value,
+        }
+    }
+}
+
 pub struct SetCurrentInstrument<Marker>(PhantomData<fn() -> Marker>);
 #[jungle::action]
 impl<Marker> Action for SetCurrentInstrument<Marker>
@@ -74,6 +97,16 @@ where
     ) -> Result<Self::Output, Failure> {
         state.current_instrument = Marker::INSTRUMENT;
         Ok(())
+    }
+}
+
+pub struct InstrumentEnabled<Marker>(PhantomData<fn() -> Marker>);
+impl<Marker> Predicate<(LyrebirdState, ())> for InstrumentEnabled<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    fn eval((state, _): &(LyrebirdState, ())) -> bool {
+        !state.instrument_state(Marker::INSTRUMENT).disabled
     }
 }
 
@@ -104,6 +137,32 @@ impl Action for BeginIteration {
             "starting lyrebird iteration"
         );
 
+        Ok(())
+    }
+}
+
+pub struct SkipInstrumentPrompt<Marker>(PhantomData<fn() -> Marker>);
+#[jungle::action]
+impl<Marker> Action for SkipInstrumentPrompt<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LyrebirdState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut LyrebirdState,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let instrument = Marker::INSTRUMENT;
+        info!(
+            iteration_id = %state.iteration_id,
+            instrument = instrument.slug(),
+            "skipping disabled lyrebird instrument prompt branch"
+        );
         Ok(())
     }
 }
@@ -374,6 +433,32 @@ where
             best_similarity = instrument_state.last_similarity,
             submitted_depth = instrument_state.selected_branch.len(),
             "submitted lyrebird mcts candidates"
+        );
+        Ok(())
+    }
+}
+
+pub struct SkipInstrumentSubmit<Marker>(PhantomData<fn() -> Marker>);
+#[jungle::action]
+impl<Marker> Action for SkipInstrumentSubmit<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    type Effect = Noop;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LyrebirdState, _input: Self::Input) {}
+
+    fn absorb(
+        state: &mut LyrebirdState,
+        _output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let instrument = Marker::INSTRUMENT;
+        info!(
+            iteration_id = %state.iteration_id,
+            instrument = instrument.slug(),
+            "skipping disabled lyrebird instrument submit branch"
         );
         Ok(())
     }
