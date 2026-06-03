@@ -109,6 +109,7 @@ impl Effect<PulseCodeParadise> for PromptModel {
 pub struct BuildOptimizationPromptInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
+    pub target_spectrogram_path: String,
     pub code_branch: Vec<LyrebirdBranchNode>,
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
@@ -598,7 +599,7 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
         selected_code.code.source
     )));
     contents.push(crate::tokens::Content::Text(
-        "Immediate predecessor mel spectrogram:".to_owned(),
+        "Current mel spectrogram:".to_owned(),
     ));
     contents.push(crate::tokens::Content::Image(PathBuf::from(
         &selected_code.mel_spectrogram_path,
@@ -616,10 +617,15 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
             },
             crate::tokens::Message {
                 role: "user".to_owned(),
-                contents: vec![crate::tokens::Content::Text(format!(
-                    "The {} still sounds way different from the target. Provide the next small compiling patch to close the gap.",
-                    input.instrument.display_name()
-                ))],
+                contents: vec![
+                    crate::tokens::Content::Text(format!(
+                        "This {} still sounds way different from the target! Produce the next patch to close the gap. Here's the mel spectrogram of the target for reference:",
+                        input.instrument.display_name()
+                    )),
+                    crate::tokens::Content::Image(PathBuf::from(
+                        &input.target_spectrogram_path,
+                    )),
+                ],
             },
         ],
         // Keep tool definitions out of the prompt payload because `Tool.parameters`
@@ -1219,6 +1225,7 @@ mod tests {
         let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000001".to_owned(),
             instrument: LyrebirdInstrument::Bass,
+            target_spectrogram_path: "/tmp/target.png".to_owned(),
             code_branch: vec![DspCode {
                 iteration_id: "initial".to_owned(),
                 source: "fn bass() {}".to_owned(),
@@ -1240,6 +1247,7 @@ mod tests {
         let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
+            target_spectrogram_path: "/tmp/target.png".to_owned(),
             code_branch: vec![
                 DspCode {
                     iteration_id: "initial".to_owned(),
@@ -1280,6 +1288,10 @@ mod tests {
             system_contents[5],
             crate::tokens::Content::Image(PathBuf::from("/tmp/00000001.png"))
         );
+        assert_eq!(
+            system_contents[4],
+            crate::tokens::Content::Text("Current mel spectrogram:".to_owned())
+        );
         if let crate::tokens::Content::Text(patch_history) = &system_contents[2] {
             assert!(patch_history.contains("Patch history:"));
             assert!(patch_history.contains("No patches have been applied yet") == false);
@@ -1291,9 +1303,12 @@ mod tests {
         }
         assert_eq!(
             prompt.messages[1].contents,
-            vec![crate::tokens::Content::Text(
-                "The Bass still sounds way different from the target. Provide the next small compiling patch to close the gap.".to_owned()
-            )]
+            vec![
+                crate::tokens::Content::Text(
+                    "This Bass still sounds way different from the target! Produce the next patch to close the gap. Here's the mel spectrogram of the target for reference:".to_owned()
+                ),
+                crate::tokens::Content::Image(PathBuf::from("/tmp/target.png"))
+            ]
         );
     }
 
@@ -1302,6 +1317,7 @@ mod tests {
         let err = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
+            target_spectrogram_path: "/tmp/target.png".to_owned(),
             code_branch: vec![
                 DspCode {
                     iteration_id: "initial".to_owned(),

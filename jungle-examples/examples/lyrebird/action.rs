@@ -261,6 +261,7 @@ impl Action for BuildPrompt {
         BuildOptimizationPromptInput {
             iteration_id: state.iteration_id.clone(),
             instrument: state.current_instrument,
+            target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
             code_branch: instrument_state.selected_branch.clone(),
             prompt_attempt: instrument_state.prompt_attempt,
             retry_reason: instrument_state.last_retry_reason.clone(),
