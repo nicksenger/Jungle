@@ -149,7 +149,7 @@ impl Effect<PulseCodeParadise> for PromptModel {
             }
             let prompt_started_at = Instant::now();
             let response = jungle
-                .predict(input.prompt)
+                .predict(input.prompt, Some(input.instrument))
                 .await
                 .map_err(|err| err.to_string());
             let prompt_elapsed_ms = prompt_started_at.elapsed().as_millis();

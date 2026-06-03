@@ -1,4 +1,4 @@
-use super::{PulseCodeParadise, PulseCodeParadiseError};
+use super::{LyrebirdInstrument, PulseCodeParadise, PulseCodeParadiseError};
 use base64::prelude::{Engine as _, BASE64_STANDARD};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -51,10 +51,12 @@ pub struct Prompt {
 
 pub trait TokenPredictor {
     type Error;
+    type Meta;
 
     fn predict(
         &self,
         prompt: Prompt,
+        meta: Option<Self::Meta>,
     ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> + Send;
 }
 
@@ -112,10 +114,12 @@ impl PulseCodeParadise {
 
 impl TokenPredictor for PulseCodeParadise {
     type Error = PulseCodeParadiseError;
+    type Meta = LyrebirdInstrument;
 
     fn predict(
         &self,
         prompt: Prompt,
+        _meta: Option<Self::Meta>,
     ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> + Send {
         async move {
             let request = self.chat_completions_request(&prompt)?;
