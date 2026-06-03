@@ -29,7 +29,7 @@ use crate::action::{
 use crate::tokens::Tool;
 
 const DEFAULT_WORKERS: usize = 3;
-const DEFAULT_TREE_DEPTH: usize = 8;
+const DEFAULT_TREE_DEPTH: usize = 64;
 const DEFAULT_INSTRUMENT_PARALLELISM: usize = 1;
 const DEFAULT_LOG_FILTER: &str = "warn,lyrebird=info";
 pub(crate) const LYREBIRD_DURATION_SECS: f64 = 4.0;
