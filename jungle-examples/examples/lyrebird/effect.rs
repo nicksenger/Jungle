@@ -441,7 +441,18 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
         )
         .map_err(|err| format!("failed to compare spectrograms: {err}"))?;
 
-    Ok((similarity.score() as f32) / 100.0)
+    Ok(normalize_zensim(similarity.score() as f32))
+}
+
+fn normalize_zensim(raw_score: f32) -> f32 {
+    if raw_score >= 100.0 {
+        return 1.0;
+    }
+
+    let k = 0.05;
+    let x0 = 30.0;
+
+    1.0 / (1.0 + (-(raw_score - x0) * k).exp())
 }
 
 async fn finalize_iteration_samples(
@@ -1036,6 +1047,25 @@ mod tests {
         .unwrap();
 
         assert!(similarity > 0.99);
+    }
+
+    #[test]
+    fn normalize_zensim_caps_perfect_scores_at_one() {
+        assert_eq!(normalize_zensim(100.0), 1.0);
+        assert_eq!(normalize_zensim(120.0), 1.0);
+    }
+
+    #[test]
+    fn normalize_zensim_soft_clamps_bad_scores_without_going_negative() {
+        let very_bad = normalize_zensim(-100.0);
+        let poor = normalize_zensim(0.0);
+        let midpoint = normalize_zensim(30.0);
+        let strong = normalize_zensim(80.0);
+
+        assert!((0.0..1.0).contains(&very_bad));
+        assert!((very_bad..1.0).contains(&poor));
+        assert!((0.49..0.51).contains(&midpoint));
+        assert!((midpoint..1.0).contains(&strong));
     }
 
     #[test]
