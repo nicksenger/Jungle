@@ -55,11 +55,13 @@ impl<Marker> LyrebirdPromptFocus for PromptInstrumentState<Marker> {
     }
 }
 
-pub struct FlattenJoinedUnit<S>(PhantomData<S>);
+pub type LyrebirdPromptPhaseJoinOutput = (((), ()), (((), ()), ()));
+
+pub struct FlattenLyrebirdPromptPhase<S>(PhantomData<S>);
 #[jungle::action]
-impl<S> Action for FlattenJoinedUnit<S> {
+impl<S> Action for FlattenLyrebirdPromptPhase<S> {
     type Effect = Noop;
-    type Input = ((), ());
+    type Input = LyrebirdPromptPhaseJoinOutput;
     type Output = ();
 
     fn emit(_state: &S, _input: Self::Input) {}

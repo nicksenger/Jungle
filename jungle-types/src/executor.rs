@@ -1179,11 +1179,26 @@ trait JoinFocusMarker<State> {
 }
 
 impl<State> JoinFocusMarker<State> for list::Empty {
-    const ENABLED: bool = false;
+    const ENABLED: bool = true;
 }
 
-impl<State, Head, Tail> JoinFocusMarker<State> for TList<(Head, Tail)> {
-    const ENABLED: bool = false;
+impl<State, Head, Tail> JoinFocusMarker<State> for TList<(Head, Tail)>
+where
+    State: Clone,
+    Head: JoinFocusMarker<State>,
+    Tail: JoinFocusMarker<State>,
+{
+    const ENABLED: bool =
+        <Head as JoinFocusMarker<State>>::ENABLED && <Tail as JoinFocusMarker<State>>::ENABLED;
+
+    fn merge_into(target: &mut State, branch_state: State) {
+        if !Self::ENABLED {
+            return;
+        }
+
+        <Head as JoinFocusMarker<State>>::merge_into(target, branch_state.clone());
+        <Tail as JoinFocusMarker<State>>::merge_into(target, branch_state);
+    }
 }
 
 impl<State, T, A> JoinFocusMarker<State> for BoundFlowStep<T, A>
@@ -1210,8 +1225,23 @@ impl<State, L, R, M> JoinFocusMarker<State> for Select<L, R, M> {
     const ENABLED: bool = false;
 }
 
-impl<State, L, R, M> JoinFocusMarker<State> for Join<L, R, M> {
-    const ENABLED: bool = false;
+impl<State, L, R, M> JoinFocusMarker<State> for Join<L, R, M>
+where
+    State: Clone,
+    L: JoinFocusMarker<State>,
+    R: JoinFocusMarker<State>,
+{
+    const ENABLED: bool =
+        <L as JoinFocusMarker<State>>::ENABLED && <R as JoinFocusMarker<State>>::ENABLED;
+
+    fn merge_into(target: &mut State, branch_state: State) {
+        if !Self::ENABLED {
+            return;
+        }
+
+        <L as JoinFocusMarker<State>>::merge_into(target, branch_state.clone());
+        <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
+    }
 }
 
 impl<State, M, F> JoinFocusMarker<State> for Attempt<F, M> {

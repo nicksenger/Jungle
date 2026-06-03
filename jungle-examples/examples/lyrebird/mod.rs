@@ -21,8 +21,8 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, FinalizeIterationRender, FlattenEither, FlattenJoinedUnit, InstrumentEnabled,
-    InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
+    BeginIteration, FinalizeIterationRender, FlattenEither, FlattenLyrebirdPromptPhase,
+    InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
     OptimizeSelectedInstrumentFocused, SeedLyrebirdState, SelectDspBranchFocused,
     SetCurrentInstrument, SkipInstrumentPromptFocused, SkipInstrumentSubmit, SubmitDspBranch,
 };
@@ -768,27 +768,18 @@ lyrebird_prompt_flow!(
 );
 
 #[derive(Flow)]
-pub struct LyrebirdPromptLeft(
-    Join<RhythmGuitarPrompt, VocalsPrompt>,
-    Step<FlattenJoinedUnit<LyrebirdState>>,
-);
+pub struct LyrebirdPromptLeft(Join<RhythmGuitarPrompt, VocalsPrompt>);
 
 #[derive(Flow)]
-pub struct LyrebirdPromptRightPair(
-    Join<BackupVocalsPrompt, BassPrompt>,
-    Step<FlattenJoinedUnit<LyrebirdState>>,
-);
+pub struct LyrebirdPromptRightPair(Join<BackupVocalsPrompt, BassPrompt>);
 
 #[derive(Flow)]
-pub struct LyrebirdPromptRight(
-    Join<LyrebirdPromptRightPair, GuitarSoloPrompt>,
-    Step<FlattenJoinedUnit<LyrebirdState>>,
-);
+pub struct LyrebirdPromptRight(Join<LyrebirdPromptRightPair, GuitarSoloPrompt>);
 
 #[derive(Flow)]
 pub struct LyrebirdPromptPhase(
     Join<LyrebirdPromptLeft, LyrebirdPromptRight>,
-    Step<FlattenJoinedUnit<LyrebirdState>>,
+    Step<FlattenLyrebirdPromptPhase<LyrebirdState>>,
 );
 
 #[derive(Flow)]
@@ -1569,19 +1560,24 @@ pub(crate) fn build_replace_tool(instrument: LyrebirdInstrument) -> Tool {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, OnceLock};
+    use std::sync::{Arc, Mutex, OnceLock};
     use std::time::Duration;
 
     struct PromptJoinConcurrentRuntime {
-        barrier: tokio::sync::Barrier,
+        barrier: Mutex<Arc<tokio::sync::Barrier>>,
         active: AtomicUsize,
         max_active: AtomicUsize,
     }
 
     impl PromptJoinConcurrentRuntime {
-        fn reset(&self) {
+        fn reset(&self, parties: usize) {
             self.active.store(0, Ordering::SeqCst);
             self.max_active.store(0, Ordering::SeqCst);
+            *self
+                .barrier
+                .lock()
+                .expect("prompt join barrier lock should not be poisoned") =
+                Arc::new(tokio::sync::Barrier::new(parties));
         }
     }
 
@@ -1590,7 +1586,7 @@ mod tests {
         RUNTIME
             .get_or_init(|| {
                 Arc::new(PromptJoinConcurrentRuntime {
-                    barrier: tokio::sync::Barrier::new(2),
+                    barrier: Mutex::new(Arc::new(tokio::sync::Barrier::new(2))),
                     active: AtomicUsize::new(0),
                     max_active: AtomicUsize::new(0),
                 })
@@ -1622,67 +1618,100 @@ mod tests {
                 let active = runtime.active.fetch_add(1, Ordering::SeqCst) + 1;
                 runtime.max_active.fetch_max(active, Ordering::SeqCst);
                 let _guard = PromptJoinConcurrentGuard(runtime.clone());
-                runtime.barrier.wait().await;
+                let barrier = runtime
+                    .barrier
+                    .lock()
+                    .expect("prompt join barrier lock should not be poisoned")
+                    .clone();
+                barrier.wait().await;
                 Ok(input)
             }
         }
     }
 
-    struct RhythmGuitarConcurrentPromptSpec;
-    #[jungle::action]
-    impl Action for RhythmGuitarConcurrentPromptSpec {
-        type Effect = PromptJoinConcurrentEffect;
-        type Input = i32;
-        type Output = i32;
+    macro_rules! concurrent_prompt_flow {
+        ($spec:ident, $flow:ident, $state:ty, $scale:expr) => {
+            struct $spec;
+            #[jungle::action]
+            impl Action for $spec {
+                type Effect = PromptJoinConcurrentEffect;
+                type Input = i32;
+                type Output = i32;
 
-        fn emit(state: &RhythmGuitarPromptState, input: Self::Input) -> i32 {
-            state.state.prompt_attempt as i32 + input
-        }
+                fn emit(state: &$state, input: Self::Input) -> i32 {
+                    state.state.prompt_attempt as i32 + input * $scale
+                }
 
-        fn absorb(
-            state: &mut RhythmGuitarPromptState,
-            output: EffectCompletion<Self::Effect>,
-        ) -> Result<Self::Output, Failure> {
-            let out = output
-                .map_err(|_err| Failure::from("rhythm guitar concurrent prompt should succeed"))?;
-            state.state.prompt_attempt = out as u32;
-            Ok(out)
-        }
+                fn absorb(
+                    state: &mut $state,
+                    output: EffectCompletion<Self::Effect>,
+                ) -> Result<Self::Output, Failure> {
+                    let out = output.map_err(|_err| {
+                        Failure::from(concat!(
+                            stringify!($spec),
+                            " concurrent prompt should succeed"
+                        ))
+                    })?;
+                    state.state.prompt_attempt = out as u32;
+                    Ok(out)
+                }
+            }
+
+            #[derive(Flow)]
+            #[jungle(focus = $state)]
+            struct $flow(Step<$spec>);
+        };
     }
 
-    struct VocalsConcurrentPromptSpec;
-    #[jungle::action]
-    impl Action for VocalsConcurrentPromptSpec {
-        type Effect = PromptJoinConcurrentEffect;
-        type Input = i32;
-        type Output = i32;
-
-        fn emit(state: &VocalsPromptState, input: Self::Input) -> i32 {
-            state.state.prompt_attempt as i32 + input * 10
-        }
-
-        fn absorb(
-            state: &mut VocalsPromptState,
-            output: EffectCompletion<Self::Effect>,
-        ) -> Result<Self::Output, Failure> {
-            let out =
-                output.map_err(|_err| Failure::from("vocals concurrent prompt should succeed"))?;
-            state.state.prompt_attempt = out as u32;
-            Ok(out)
-        }
-    }
-
-    #[derive(Flow)]
-    #[jungle(focus = RhythmGuitarPromptState)]
-    struct RhythmGuitarConcurrentPromptFlow(Step<RhythmGuitarConcurrentPromptSpec>);
-
-    #[derive(Flow)]
-    #[jungle(focus = VocalsPromptState)]
-    struct VocalsConcurrentPromptFlow(Step<VocalsConcurrentPromptSpec>);
+    concurrent_prompt_flow!(
+        RhythmGuitarConcurrentPromptSpec,
+        RhythmGuitarConcurrentPromptFlow,
+        RhythmGuitarPromptState,
+        1
+    );
+    concurrent_prompt_flow!(
+        VocalsConcurrentPromptSpec,
+        VocalsConcurrentPromptFlow,
+        VocalsPromptState,
+        10
+    );
+    concurrent_prompt_flow!(
+        BackupVocalsConcurrentPromptSpec,
+        BackupVocalsConcurrentPromptFlow,
+        BackupVocalsPromptState,
+        100
+    );
+    concurrent_prompt_flow!(
+        BassConcurrentPromptSpec,
+        BassConcurrentPromptFlow,
+        BassPromptState,
+        1_000
+    );
+    concurrent_prompt_flow!(
+        GuitarSoloConcurrentPromptSpec,
+        GuitarSoloConcurrentPromptFlow,
+        GuitarSoloPromptState,
+        10_000
+    );
 
     #[derive(Flow)]
     struct ConcurrentLyrebirdPromptJoin(
         Join<RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
+    );
+
+    #[derive(Flow)]
+    struct ConcurrentLyrebirdPromptRightPair(
+        Join<BackupVocalsConcurrentPromptFlow, BassConcurrentPromptFlow>,
+    );
+
+    #[derive(Flow)]
+    struct ConcurrentLyrebirdPromptRight(
+        Join<ConcurrentLyrebirdPromptRightPair, GuitarSoloConcurrentPromptFlow>,
+    );
+
+    #[derive(Flow)]
+    struct ConcurrentLyrebirdPromptPhase(
+        Join<ConcurrentLyrebirdPromptJoin, ConcurrentLyrebirdPromptRight>,
     );
 
     struct ConcurrentLyrebirdPromptAnimal;
@@ -1691,6 +1720,14 @@ mod tests {
         type State = LyrebirdState;
         type Seed = i32;
         type Flow = ConcurrentLyrebirdPromptJoin;
+    }
+
+    struct ConcurrentLyrebirdPromptPhaseAnimal;
+    #[jungle::animal(id = 91, generation = 0)]
+    impl Animal for ConcurrentLyrebirdPromptPhaseAnimal {
+        type State = LyrebirdState;
+        type Seed = i32;
+        type Flow = ConcurrentLyrebirdPromptPhase;
     }
 
     #[test]
@@ -1930,7 +1967,7 @@ mod tests {
     #[tokio::test]
     async fn lyrebird_prompt_focus_branches_run_concurrently() {
         let runtime = prompt_join_concurrent_runtime();
-        runtime.reset();
+        runtime.reset(2);
 
         let mut state = LyrebirdState::default();
         state.rhythm_guitar.state.prompt_attempt = 1;
@@ -1954,6 +1991,41 @@ mod tests {
         assert_eq!(final_emitted, (4, 32));
         assert_eq!(executor.state().rhythm_guitar.state.prompt_attempt, 4);
         assert_eq!(executor.state().vocals.state.prompt_attempt, 32);
+    }
+
+    #[tokio::test]
+    async fn lyrebird_nested_prompt_phase_runs_all_model_prompts_concurrently() {
+        let runtime = prompt_join_concurrent_runtime();
+        runtime.reset(5);
+
+        let mut state = LyrebirdState::default();
+        state.rhythm_guitar.state.prompt_attempt = 1;
+        state.vocals.state.prompt_attempt = 2;
+        state.backup_vocals.state.prompt_attempt = 3;
+        state.bass.state.prompt_attempt = 4;
+        state.guitar_solo.state.prompt_attempt = 5;
+
+        let mut executor = Executor::<ConcurrentLyrebirdPromptPhaseAnimal>::new(state);
+        let request = executor
+            .next_executable_request(3)
+            .expect("focused lyrebird prompt phase should produce an executable request");
+        let completion = tokio::time::timeout(Duration::from_millis(250), request.run())
+            .await
+            .expect("focused lyrebird prompt phase should rendezvous without deadlock")
+            .expect("focused lyrebird prompt phase runner should succeed");
+        let emitted = executor
+            .complete_serialized(completion)
+            .expect("focused lyrebird prompt phase completion should apply cleanly");
+        let final_emitted: ((i32, i32), ((i32, i32), i32)) =
+            postcard::from_bytes(&emitted).expect("focused prompt phase output should deserialize");
+
+        assert_eq!(runtime.max_active.load(Ordering::SeqCst), 5);
+        assert_eq!(final_emitted, ((4, 32), ((303, 3_004), 30_005)));
+        assert_eq!(executor.state().rhythm_guitar.state.prompt_attempt, 4);
+        assert_eq!(executor.state().vocals.state.prompt_attempt, 32);
+        assert_eq!(executor.state().backup_vocals.state.prompt_attempt, 303);
+        assert_eq!(executor.state().bass.state.prompt_attempt, 3_004);
+        assert_eq!(executor.state().guitar_solo.state.prompt_attempt, 30_005);
     }
 
     #[test]
