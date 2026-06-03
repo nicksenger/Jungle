@@ -67,9 +67,7 @@ pub struct LyrebirdPatch {
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LyrebirdBranchNode {
     pub code: DspCode,
-    #[serde(default)]
     pub patch: Option<LyrebirdPatch>,
-    #[serde(default)]
     pub mel_spectrogram_path: String,
 }
 

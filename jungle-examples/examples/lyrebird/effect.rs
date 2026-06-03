@@ -570,13 +570,13 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
         patch_history.push_str("No patches have been applied yet.");
     } else {
         for (index, window) in input.code_branch.windows(2).enumerate() {
-            let previous = &window[0];
             let current = &window[1];
-            let patch = current.patch.clone().unwrap_or_else(|| LyrebirdPatch {
-                search: previous.code.source.clone(),
-                replacement: current.code.source.clone(),
-                note: "legacy full-file replacement".to_owned(),
-            });
+            let patch = current.patch.as_ref().ok_or_else(|| {
+                format!(
+                    "lyrebird branch node {} is missing required patch metadata",
+                    current.code.iteration_id
+                )
+            })?;
             let score = current
                 .similarity()
                 .map(|value| format!("{value:.6}"))
@@ -587,7 +587,7 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
                 current.code.iteration_id,
                 patch.note,
                 score,
-                format_search_replace_block(&patch),
+                format_search_replace_block(patch),
             ));
         }
     }
@@ -1249,14 +1249,20 @@ mod tests {
                     similarity: Some(0.25),
                 }
                 .into(),
-                DspCode {
-                    iteration_id: "00000001".to_owned(),
-                    source: "fn bass() { mutate(); }".to_owned(),
-                    sample_path: "/tmp/00000001.wav".to_owned(),
-                    spectrogram_path: "/tmp/00000001.png".to_owned(),
-                    similarity: Some(0.75),
-                }
-                .into(),
+                LyrebirdBranchNode::from_generated(
+                    DspCode {
+                        iteration_id: "00000001".to_owned(),
+                        source: "fn bass() { mutate(); }".to_owned(),
+                        sample_path: "/tmp/00000001.wav".to_owned(),
+                        spectrogram_path: "/tmp/00000001.png".to_owned(),
+                        similarity: Some(0.75),
+                    },
+                    LyrebirdPatch {
+                        search: "baseline();".to_owned(),
+                        replacement: "mutate();".to_owned(),
+                        note: "bass resonance tweak".to_owned(),
+                    },
+                ),
             ],
             prompt_attempt: 1,
             retry_reason: None,
@@ -1277,7 +1283,7 @@ mod tests {
         if let crate::tokens::Content::Text(patch_history) = &system_contents[2] {
             assert!(patch_history.contains("Patch history:"));
             assert!(patch_history.contains("No patches have been applied yet") == false);
-            assert!(patch_history.contains("legacy full-file replacement"));
+            assert!(patch_history.contains("bass resonance tweak"));
             assert!(patch_history.contains("Score after patch: 0.750000"));
             assert!(patch_history.contains("<<<<<<< SEARCH"));
         } else {
@@ -1289,6 +1295,37 @@ mod tests {
                 "The Bass still sounds way different from the target. Provide the next small compiling patch to close the gap.".to_owned()
             )]
         );
+    }
+
+    #[test]
+    fn optimization_prompt_rejects_non_initial_nodes_without_patch_metadata() {
+        let err = build_optimization_prompt(BuildOptimizationPromptInput {
+            iteration_id: "00000002".to_owned(),
+            instrument: LyrebirdInstrument::Bass,
+            code_branch: vec![
+                DspCode {
+                    iteration_id: "initial".to_owned(),
+                    source: "fn bass() { baseline(); }".to_owned(),
+                    sample_path: "/tmp/initial.wav".to_owned(),
+                    spectrogram_path: "/tmp/initial.png".to_owned(),
+                    similarity: Some(0.25),
+                }
+                .into(),
+                DspCode {
+                    iteration_id: "00000001".to_owned(),
+                    source: "fn bass() { mutate(); }".to_owned(),
+                    sample_path: "/tmp/00000001.wav".to_owned(),
+                    spectrogram_path: "/tmp/00000001.png".to_owned(),
+                    similarity: Some(0.75),
+                }
+                .into(),
+            ],
+            prompt_attempt: 1,
+            retry_reason: None,
+        })
+        .unwrap_err();
+
+        assert!(err.contains("missing required patch metadata"));
     }
 
     #[test]
