@@ -271,6 +271,10 @@ pub struct Transparent<M, F>(PhantomData<fn() -> (M, F)>);
 /// Scope wrapper used by late-bound templates to rebind subflow state.
 pub struct Scoped<View, F>(PhantomData<fn() -> (View, F)>);
 
+/// Bound flow wrapper that preserves a focused carrier boundary at runtime.
+#[doc(hidden)]
+pub struct FocusedBoundFlow<Carrier, F>(PhantomData<fn() -> (Carrier, F)>);
+
 /// A collection of `Animals` which act together as a system.
 pub trait Ecosystem {
     const NAME: &'static str;
@@ -825,7 +829,7 @@ where
     View: 'static,
     F: BindFlow<A, ViewCarrier<View>>,
 {
-    type Out = <F as BindFlow<A, ViewCarrier<View>>>::Out;
+    type Out = FocusedBoundFlow<ViewCarrier<View>, <F as BindFlow<A, ViewCarrier<View>>>::Out>;
 }
 
 impl<A, ScopeCarrier, View, F> BindFlow<A, ScopeCarrier> for Scoped<View, F>
@@ -836,7 +840,10 @@ where
     View: 'static,
     F: BindFlow<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>,
 {
-    type Out = <F as BindFlow<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>>::Out;
+    type Out = FocusedBoundFlow<
+        behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>,
+        <F as BindFlow<A, behavior::ComposeCarrier<ScopeCarrier, ViewCarrier<View>>>>::Out,
+    >;
 }
 
 impl<F, A> BindWithFlowScope<A, RootFlowScope> for F
@@ -1777,6 +1784,14 @@ where
     type List = F::List;
 }
 
+#[primitive(property = JungleFlow)]
+impl<Carrier, F> JourneyEffects for FocusedBoundFlow<Carrier, F>
+where
+    F: JourneyEffects,
+{
+    type List = F::List;
+}
+
 #[primitive(property = JungleTraverseFlow)]
 impl<View, F> TraverseFlowShape for Scoped<View, F>
 where
@@ -1944,6 +1959,8 @@ where
 }
 
 impl<View, F> NodeMetadata for Scoped<View, F> {}
+
+impl<Carrier, F> NodeMetadata for FocusedBoundFlow<Carrier, F> {}
 
 impl<S> NodeMetadata for Step<S> where S: Action {}
 
@@ -2225,6 +2242,8 @@ impl<F, M> sealed::Sealed for Attempt<F, M> {}
 impl<M, F> sealed::Sealed for Transparent<M, F> {}
 
 impl<View, F> sealed::Sealed for Scoped<View, F> {}
+
+impl<Carrier, F> sealed::Sealed for FocusedBoundFlow<Carrier, F> {}
 
 impl sealed::Sealed for () {}
 

@@ -65,6 +65,13 @@ where
     type Carry = <F as ArgputForState<State>>::Carry;
 }
 
+impl<State, Carrier, F> ArgputForState<State> for crate::FocusedBoundFlow<Carrier, F>
+where
+    F: ArgputForState<State>,
+{
+    type Carry = <F as ArgputForState<State>>::Carry;
+}
+
 impl<State, L, R, M> ArgputForState<State> for Select<L, R, M>
 where
     L: ArgputForState<State>,
@@ -1165,6 +1172,66 @@ struct JoinTraceEnvelope {
     right: FlowCompletionTrace,
 }
 
+trait JoinFocusMarker<State> {
+    const ENABLED: bool;
+
+    fn merge_into(_target: &mut State, _branch_state: State) {}
+}
+
+impl<State> JoinFocusMarker<State> for list::Empty {
+    const ENABLED: bool = false;
+}
+
+impl<State, Head, Tail> JoinFocusMarker<State> for TList<(Head, Tail)> {
+    const ENABLED: bool = false;
+}
+
+impl<State, T, A> JoinFocusMarker<State> for BoundFlowStep<T, A>
+where
+    T: Animal,
+    A: BoundAction<T>,
+{
+    const ENABLED: bool = false;
+}
+
+impl<State, P, L, R, M> JoinFocusMarker<State> for Conditional<P, L, R, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, C, F, M> JoinFocusMarker<State> for While<C, F, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, M, F> JoinFocusMarker<State> for Transparent<M, F> {
+    const ENABLED: bool = false;
+}
+
+impl<State, L, R, M> JoinFocusMarker<State> for Select<L, R, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, L, R, M> JoinFocusMarker<State> for Join<L, R, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, M, F> JoinFocusMarker<State> for Attempt<F, M> {
+    const ENABLED: bool = false;
+}
+
+impl<State, Carrier, F> JoinFocusMarker<State> for crate::FocusedBoundFlow<Carrier, F>
+where
+    State: Clone,
+    Carrier: crate::Aspect<State>,
+    <Carrier as crate::StateCarrier<State>>::Focus: Clone,
+{
+    const ENABLED: bool = true;
+
+    fn merge_into(target: &mut State, mut branch_state: State) {
+        let focused = <Carrier as crate::StateCarrier<State>>::focus(&mut branch_state).clone();
+        *<Carrier as crate::StateCarrier<State>>::focus(target) = focused;
+    }
+}
+
 fn settle_subflow_without_progress<State>(
     flow: &mut DynFlow<State>,
     cursor: &mut usize,
@@ -2030,6 +2097,9 @@ struct JoinErasedFlow<State> {
     pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
+    focused_merge: bool,
+    merge_left: Box<dyn Fn(&mut State, State) + Send>,
+    merge_right: Box<dyn Fn(&mut State, State) + Send>,
 }
 
 impl<State> JoinErasedFlow<State> {
@@ -2038,6 +2108,9 @@ impl<State> JoinErasedFlow<State> {
         right: DynFlow<State>,
         build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
         build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+        focused_merge: bool,
+        merge_left: Box<dyn Fn(&mut State, State) + Send>,
+        merge_right: Box<dyn Fn(&mut State, State) + Send>,
     ) -> Self {
         Self {
             node_id: 0,
@@ -2048,6 +2121,9 @@ impl<State> JoinErasedFlow<State> {
             pending_input: None,
             waiting_completion: false,
             complete: false,
+            focused_merge,
+            merge_left,
+            merge_right,
         }
     }
 }
@@ -2061,6 +2137,9 @@ struct JoinContextErasedFlow<State> {
     pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
+    focused_merge: bool,
+    merge_left: Box<dyn Fn(&mut State, State) + Send>,
+    merge_right: Box<dyn Fn(&mut State, State) + Send>,
 }
 
 impl<State> JoinContextErasedFlow<State> {
@@ -2069,6 +2148,9 @@ impl<State> JoinContextErasedFlow<State> {
         right: DynFlow<State>,
         build_left: Box<dyn Fn() -> DynFlow<State> + Send>,
         build_right: Box<dyn Fn() -> DynFlow<State> + Send>,
+        focused_merge: bool,
+        merge_left: Box<dyn Fn(&mut State, State) + Send>,
+        merge_right: Box<dyn Fn(&mut State, State) + Send>,
     ) -> Self {
         Self {
             node_id: 0,
@@ -2079,6 +2161,9 @@ impl<State> JoinContextErasedFlow<State> {
             pending_input: None,
             waiting_completion: false,
             complete: false,
+            focused_merge,
+            merge_left,
+            merge_right,
         }
     }
 }
@@ -2121,17 +2206,35 @@ where
             .pending_input
             .take()
             .ok_or(ExecutorError::NoPendingRequest)?;
-        let (left_state, left_emitted) =
-            replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
-        let (right_state, right_emitted) =
-            replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
-        let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
-        emitted.extend_from_slice(&left_emitted);
-        emitted.extend_from_slice(&right_emitted);
+        let (merged_state, emitted) = if self.focused_merge {
+            let base_state = state.clone();
+            let (left_state, left_emitted) =
+                replay_subflow_trace(&mut self.left, state.clone(), input.clone(), envelope.left)?;
+            let (right_state, right_emitted) =
+                replay_subflow_trace(&mut self.right, state, input, envelope.right)?;
+            let mut merged_state = base_state;
+            (self.merge_left)(&mut merged_state, left_state);
+            (self.merge_right)(&mut merged_state, right_state);
+            (merged_state, {
+                let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+                emitted.extend_from_slice(&left_emitted);
+                emitted.extend_from_slice(&right_emitted);
+                emitted
+            })
+        } else {
+            let (left_state, left_emitted) =
+                replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
+            let (right_state, right_emitted) =
+                replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
+            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+            emitted.extend_from_slice(&left_emitted);
+            emitted.extend_from_slice(&right_emitted);
+            (right_state, emitted)
+        };
 
         self.waiting_completion = false;
         self.complete = true;
-        Ok((right_state, emitted))
+        Ok((merged_state, emitted))
     }
 
     fn request_executable(
@@ -2157,15 +2260,27 @@ where
         let left_flow = (self.build_left)();
         let right_flow = (self.build_right)();
         let left_state = state.clone();
+        let right_state = if self.focused_merge {
+            state.clone()
+        } else {
+            left_state.clone()
+        };
         let left_input = input.clone();
         let right_input = input.clone();
+        let focused_merge = self.focused_merge;
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let (left_state, left_trace) =
                     run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
+                let right_start_state = if focused_merge {
+                    right_state
+                } else {
+                    left_state
+                };
                 let (_right_state, right_trace) =
-                    run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                    run_subflow_to_end_with_state(right_flow, right_start_state, right_input)
+                        .await?;
                 let envelope = JoinTraceEnvelope {
                     left: left_trace,
                     right: right_trace,
@@ -2242,17 +2357,33 @@ where
             .pending_input
             .take()
             .ok_or(ExecutorError::NoPendingRequest)?;
-        let (left_state, left_emitted) =
-            replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
-        let (right_state, right_emitted) =
-            replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
-        let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
-        emitted.extend_from_slice(&left_emitted);
-        emitted.extend_from_slice(&right_emitted);
+        let (merged_state, emitted) = if self.focused_merge {
+            let base_state = state.clone();
+            let (left_state, left_emitted) =
+                replay_subflow_trace(&mut self.left, state.clone(), input.clone(), envelope.left)?;
+            let (right_state, right_emitted) =
+                replay_subflow_trace(&mut self.right, state, input, envelope.right)?;
+            let mut merged_state = base_state;
+            (self.merge_left)(&mut merged_state, left_state);
+            (self.merge_right)(&mut merged_state, right_state);
+            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+            emitted.extend_from_slice(&left_emitted);
+            emitted.extend_from_slice(&right_emitted);
+            (merged_state, emitted)
+        } else {
+            let (left_state, left_emitted) =
+                replay_subflow_trace(&mut self.left, state, input.clone(), envelope.left)?;
+            let (right_state, right_emitted) =
+                replay_subflow_trace(&mut self.right, left_state, input, envelope.right)?;
+            let mut emitted = Vec::with_capacity(left_emitted.len() + right_emitted.len());
+            emitted.extend_from_slice(&left_emitted);
+            emitted.extend_from_slice(&right_emitted);
+            (right_state, emitted)
+        };
 
         self.waiting_completion = false;
         self.complete = true;
-        Ok((right_state, emitted))
+        Ok((merged_state, emitted))
     }
 
     fn request_executable(
@@ -2278,15 +2409,27 @@ where
         let left_flow = (self.build_left)();
         let right_flow = (self.build_right)();
         let left_state = state.clone();
+        let right_state = if self.focused_merge {
+            state.clone()
+        } else {
+            left_state.clone()
+        };
         let left_input = input.clone();
         let right_input = input.clone();
+        let focused_merge = self.focused_merge;
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let (left_state, left_trace) =
                     run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
+                let right_start_state = if focused_merge {
+                    right_state
+                } else {
+                    left_state
+                };
                 let (_right_state, right_trace) =
-                    run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                    run_subflow_to_end_with_state(right_flow, right_start_state, right_input)
+                        .await?;
                 let envelope = JoinTraceEnvelope {
                     left: left_trace,
                     right: right_trace,
@@ -2760,6 +2903,14 @@ where
     type Out = <F as FlowCarry<State>>::Out;
 }
 
+impl<State, Carrier, F> FlowCarry<State> for crate::FocusedBoundFlow<Carrier, F>
+where
+    F: FlowCarry<State>,
+{
+    type In = <F as FlowCarry<State>>::In;
+    type Out = <F as FlowCarry<State>>::Out;
+}
+
 impl<State, In, L, R, M> FlowCarry<State> for Select<L, R, M>
 where
     L: FlowCarry<State, In = In>,
@@ -2993,9 +3144,12 @@ where
 impl<State, L, R, M> BuildFlow<DynFlow<State>> for Join<L, R, M>
 where
     State: Clone + Send + 'static,
-    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>> + ArgputForState<State>,
+    L: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
+        + ArgputForState<State>
+        + JoinFocusMarker<State>,
     R: BuildFlow<DynFlow<State>, Output = DynFlow<State>>
-        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+        + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>
+        + JoinFocusMarker<State>,
 {
     type Output = DynFlow<State>;
 
@@ -3004,11 +3158,22 @@ where
         let right = <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new());
         let build_left = Box::new(|| <L as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
         let build_right = Box::new(|| <R as BuildFlow<DynFlow<State>>>::push_steps(Vec::new()));
+        let focused_merge =
+            <L as JoinFocusMarker<State>>::ENABLED && <R as JoinFocusMarker<State>>::ENABLED;
+        let merge_left = Box::new(|target: &mut State, branch_state: State| {
+            <L as JoinFocusMarker<State>>::merge_into(target, branch_state);
+        });
+        let merge_right = Box::new(|target: &mut State, branch_state: State| {
+            <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
+        });
         steps.push(Box::new(JoinErasedFlow::<State>::new(
             left,
             right,
             build_left,
             build_right,
+            focused_merge,
+            merge_left,
+            merge_right,
         )));
         steps
     }
@@ -3030,6 +3195,18 @@ where
             <F as FlowCarry<State>>::Out,
         >::new(inner)));
         steps
+    }
+}
+
+#[inception::primitive(property = crate::JungleDynFlow)]
+impl<State, Carrier, F> BuildFlow<DynFlow<State>> for crate::FocusedBoundFlow<Carrier, F>
+where
+    F: BuildFlow<DynFlow<State>, Output = DynFlow<State>>,
+{
+    type Output = DynFlow<State>;
+
+    fn push_steps(steps: DynFlow<State>) -> Self::Output {
+        <F as BuildFlow<DynFlow<State>>>::push_steps(steps)
     }
 }
 
@@ -3937,6 +4114,22 @@ where
 }
 
 #[inception::primitive(property = JungleDynFlowContext)]
+impl<Context, State, Carrier, F> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
+    for crate::FocusedBoundFlow<Carrier, F>
+where
+    F: BuildFlowWithContext<
+        (Arc<Context>, DynFlow<State>),
+        Output = (Arc<Context>, DynFlow<State>),
+    >,
+{
+    type Output = (Arc<Context>, DynFlow<State>);
+
+    fn push_steps(input: (Arc<Context>, DynFlow<State>)) -> Self::Output {
+        <F as BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>>::push_steps(input)
+    }
+}
+
+#[inception::primitive(property = JungleDynFlowContext)]
 impl<Context, State, L, R, M> BuildFlowWithContext<(Arc<Context>, DynFlow<State>)>
     for Select<L, R, M>
 where
@@ -3994,11 +4187,13 @@ where
     L: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + ArgputForState<State>,
+        > + ArgputForState<State>
+        + JoinFocusMarker<State>,
     R: BuildFlowWithContext<
             (Arc<Context>, DynFlow<State>),
             Output = (Arc<Context>, DynFlow<State>),
-        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>,
+        > + ArgputForState<State, Carry = <L as ArgputForState<State>>::Carry>
+        + JoinFocusMarker<State>,
 {
     type Output = (Arc<Context>, DynFlow<State>);
 
@@ -4025,11 +4220,22 @@ where
             );
             flow
         });
+        let focused_merge =
+            <L as JoinFocusMarker<State>>::ENABLED && <R as JoinFocusMarker<State>>::ENABLED;
+        let merge_left = Box::new(|target: &mut State, branch_state: State| {
+            <L as JoinFocusMarker<State>>::merge_into(target, branch_state);
+        });
+        let merge_right = Box::new(|target: &mut State, branch_state: State| {
+            <R as JoinFocusMarker<State>>::merge_into(target, branch_state);
+        });
         steps.push(Box::new(JoinContextErasedFlow::<State>::new(
             left,
             right,
             build_left,
             build_right,
+            focused_merge,
+            merge_left,
+            merge_right,
         )));
         (context, steps)
     }

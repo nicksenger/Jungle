@@ -2235,6 +2235,111 @@ async fn template_binding_focus_inheritance_does_not_duplicate_conditional_branc
     let _ = worker_handle.await;
 }
 
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct JoinFocusedLeftState {
+    value: i32,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct JoinFocusedRightState {
+    value: i32,
+}
+
+#[derive(Optic, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct JoinFocusedHostState {
+    #[jungle(focus)]
+    left: JoinFocusedLeftState,
+    #[jungle(focus)]
+    right: JoinFocusedRightState,
+    marker: i32,
+}
+
+struct JoinFocusedLeftSpec;
+#[jungle::action]
+impl Action for JoinFocusedLeftSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &JoinFocusedLeftState, input: Self::Input) -> i32 {
+        state.value + input
+    }
+
+    fn absorb(
+        state: &mut JoinFocusedLeftState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("focused left join step should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+struct JoinFocusedRightSpec;
+#[jungle::action]
+impl Action for JoinFocusedRightSpec {
+    type Effect = TemplateCommitEffect;
+    type Input = i32;
+    type Output = i32;
+
+    fn emit(state: &JoinFocusedRightState, input: Self::Input) -> i32 {
+        state.value + input * 10
+    }
+
+    fn absorb(
+        state: &mut JoinFocusedRightState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let out = output.map_err(|_err| Failure::from("focused right join step should succeed"))?;
+        state.value = out;
+        Ok(out)
+    }
+}
+
+#[derive(Flow)]
+#[jungle(focus = JoinFocusedLeftState)]
+struct JoinFocusedLeftFlow(Step<JoinFocusedLeftSpec>);
+
+#[derive(Flow)]
+#[jungle(focus = JoinFocusedRightState)]
+struct JoinFocusedRightFlow(Step<JoinFocusedRightSpec>);
+
+#[derive(Flow)]
+struct JoinFocusedTemplate(Join<JoinFocusedLeftFlow, JoinFocusedRightFlow>);
+
+struct JoinFocusedAnimal;
+#[jungle::animal(id = 88, generation = 0)]
+impl Animal for JoinFocusedAnimal {
+    type State = JoinFocusedHostState;
+    type Seed = i32;
+    type Flow = JoinFocusedTemplate;
+}
+
+#[test]
+fn template_binding_join_merges_distinct_focused_branch_states() {
+    let mut executor = Executor::<JoinFocusedAnimal>::new(JoinFocusedHostState {
+        left: JoinFocusedLeftState { value: 1 },
+        right: JoinFocusedRightState { value: 2 },
+        marker: 99,
+    });
+
+    let emitted = futures::executor::block_on(executor.advance_to_end_with(3))
+        .expect("focused join flow should complete");
+    let final_emitted: (i32, i32) =
+        postcard::from_bytes(emitted.last().expect("join should emit one final value"))
+            .expect("join final emitted tuple should deserialize");
+
+    assert_eq!(final_emitted, (4, 32));
+    assert_eq!(
+        executor.state(),
+        &JoinFocusedHostState {
+            left: JoinFocusedLeftState { value: 4 },
+            right: JoinFocusedRightState { value: 32 },
+            marker: 99,
+        }
+    );
+}
+
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConditionalJoinMergeState {
     marker: i32,
