@@ -21,10 +21,9 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, BuildPrompt, CompilePreparedDspPatch, CurrentInstrumentCompileReady,
-    FinalizeIterationRender, FlattenEitherUnit, FlattenJoinedUnit, InstrumentMarker,
-    LyrebirdLoopForever, PrepareDspPatch, RequestDspPatch, ScoreSpectrogram, SeedLyrebirdState,
-    SelectDspBranch, SetCurrentInstrument, SkipInstrumentIteration, SubmitDspBranch,
+    BeginIteration, FlattenJoinedUnit, InstrumentMarker, LyrebirdLoopForever,
+    OptimizeSelectedInstrument, SeedLyrebirdState, SelectDspBranch, SetCurrentInstrument,
+    SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
@@ -93,6 +92,12 @@ impl From<DspCode> for LyrebirdBranchNode {
             patch: None,
         }
     }
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LyrebirdGeneratedCandidate {
+    pub patch: LyrebirdPatch,
+    pub code: DspCode,
 }
 
 #[derive(
@@ -230,6 +235,8 @@ pub struct LyrebirdInstrumentState {
     pub latest_generated_patch: Option<LyrebirdPatch>,
     pub latest_generated_code: Option<DspCode>,
     pub latest_rendered_code: Option<DspCode>,
+    #[serde(default)]
+    pub iteration_candidates: Vec<LyrebirdGeneratedCandidate>,
     pub latest_generated_sample_path: Option<String>,
     pub latest_generated_spectrogram_path: Option<String>,
     pub latest_generated_similarity: Option<f32>,
@@ -282,6 +289,7 @@ impl LyrebirdInstrumentState {
         self.pending_generated_patch = None;
         self.pending_generated_source = None;
         self.latest_generated_patch = None;
+        self.iteration_candidates.clear();
         self.last_similarity = 0.0;
     }
 }
@@ -397,23 +405,8 @@ impl From<LyrebirdSeed> for LyrebirdState {
 pub struct LyrebirdInstrumentPrompt<Marker: InstrumentMarker>(
     Step<SetCurrentInstrument<Marker>>,
     Step<SelectDspBranch>,
-    Step<BuildPrompt>,
-    Step<RequestDspPatch>,
-    Step<PrepareDspPatch>,
-);
-
-#[derive(Flow)]
-pub struct LyrebirdInstrumentScoringBody(Step<ScoreSpectrogram>, Step<SubmitDspBranch>);
-
-#[derive(Flow)]
-pub struct LyrebirdInstrumentScoring<Marker: InstrumentMarker>(
-    Step<SetCurrentInstrument<Marker>>,
-    Conditional<
-        CurrentInstrumentCompileReady,
-        LyrebirdInstrumentScoringBody,
-        Step<SkipInstrumentIteration>,
-    >,
-    Step<FlattenEitherUnit<LyrebirdState>>,
+    Step<OptimizeSelectedInstrument>,
+    Step<SubmitDspBranch>,
 );
 
 pub struct RhythmGuitarMarker;
@@ -466,27 +459,7 @@ pub struct LyrebirdPromptPhase(
 );
 
 #[derive(Flow)]
-pub struct LyrebirdInstrumentCompilation<Marker: InstrumentMarker>(
-    Step<SetCurrentInstrument<Marker>>,
-    Step<CompilePreparedDspPatch>,
-);
-
-#[derive(Flow)]
-pub struct LyrebirdIteration(
-    Step<BeginIteration>,
-    LyrebirdPromptPhase,
-    LyrebirdInstrumentCompilation<RhythmGuitarMarker>,
-    LyrebirdInstrumentCompilation<VocalsMarker>,
-    LyrebirdInstrumentCompilation<BackupVocalsMarker>,
-    LyrebirdInstrumentCompilation<BassMarker>,
-    LyrebirdInstrumentCompilation<GuitarSoloMarker>,
-    Step<FinalizeIterationRender>,
-    LyrebirdInstrumentScoring<RhythmGuitarMarker>,
-    LyrebirdInstrumentScoring<VocalsMarker>,
-    LyrebirdInstrumentScoring<BackupVocalsMarker>,
-    LyrebirdInstrumentScoring<BassMarker>,
-    LyrebirdInstrumentScoring<GuitarSoloMarker>,
-);
+pub struct LyrebirdIteration(Step<BeginIteration>, LyrebirdPromptPhase);
 
 #[derive(Flow)]
 pub struct LyrebirdJourney(
@@ -524,6 +497,7 @@ pub struct PulseCodeParadise {
     tools: Vec<Tool>,
     initial_dsp_codes: BTreeMap<LyrebirdInstrument, DspCode>,
     max_tree_depth: usize,
+    instrument_parallelism: usize,
 }
 
 impl PulseCodeParadise {
@@ -548,6 +522,7 @@ impl PulseCodeParadise {
                 .map(|instrument| (instrument, DspCode::placeholder_initial()))
                 .collect(),
             max_tree_depth: DEFAULT_TREE_DEPTH,
+            instrument_parallelism: 1,
         })
     }
 
@@ -563,6 +538,11 @@ impl PulseCodeParadise {
     ) -> Self {
         self.initial_dsp_codes = initial_dsp_codes.into_iter().collect();
         self.max_tree_depth = max_tree_depth;
+        self
+    }
+
+    pub fn with_instrument_parallelism(mut self, instrument_parallelism: usize) -> Self {
+        self.instrument_parallelism = instrument_parallelism;
         self
     }
 }
@@ -634,6 +614,12 @@ struct Cli {
         value_parser = parse_tree_depth
     )]
     tree_depth: usize,
+    #[arg(
+        long = "instrument-parallelism",
+        default_value_t = 1,
+        value_parser = parse_instrument_parallelism
+    )]
+    instrument_parallelism: usize,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -656,6 +642,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(build_replace_tool)
                 .collect(),
         )
+        .with_instrument_parallelism(cli.instrument_parallelism)
         .with_mcts_config(
             instrument_seeds
                 .iter()
@@ -666,6 +653,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(
         workers = cli.workers,
         tree_depth = cli.tree_depth,
+        instrument_parallelism = cli.instrument_parallelism,
         jungle_redb_path = %jungle_redb_path.display(),
         mcts_redb_path = %ecosystem.db_path.display(),
         "starting lyrebird runtime"
@@ -931,6 +919,16 @@ fn parse_tree_depth(value: &str) -> Result<usize, String> {
         return Err("tree depth must be at least 1".to_owned());
     }
     Ok(tree_depth)
+}
+
+fn parse_instrument_parallelism(value: &str) -> Result<usize, String> {
+    let instrument_parallelism = value
+        .parse::<usize>()
+        .map_err(|_| format!("invalid instrument parallelism argument: {value}"))?;
+    if instrument_parallelism == 0 {
+        return Err("instrument parallelism must be at least 1".to_owned());
+    }
+    Ok(instrument_parallelism)
 }
 
 fn init_tracing() {

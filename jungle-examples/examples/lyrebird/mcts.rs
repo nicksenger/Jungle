@@ -1,6 +1,5 @@
 use super::{
-    DspCode, LyrebirdBranchNode, LyrebirdInstrument, LyrebirdPatch, PulseCodeParadise,
-    PulseCodeParadiseError,
+    DspCode, LyrebirdBranchNode, LyrebirdInstrument, PulseCodeParadise, PulseCodeParadiseError,
 };
 use directories_next::BaseDirs;
 use redb::{ReadableTable, TableDefinition};
@@ -17,6 +16,12 @@ const ROOT_NODE_ID: u64 = 0;
 const MCTS_TREES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("lyrebird_mcts_trees");
 const MCTS_NODES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("lyrebird_mcts_nodes");
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Submission<Data> {
+    pub data: Data,
+    pub score: f32,
+}
+
 pub trait SearchTree {
     type Error;
     type Data: Clone + Serialize + for<'de> Deserialize<'de>;
@@ -29,13 +34,7 @@ pub trait SearchTree {
     fn submit(
         &self,
         instrument: LyrebirdInstrument,
-        data: Self::Data,
-        score: f32,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
-
-    fn skip(
-        &self,
-        instrument: LyrebirdInstrument,
+        submissions: Vec<Submission<Self::Data>>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
@@ -133,21 +132,22 @@ impl PulseCodeParadise {
     pub(crate) fn submit_lyrebird_branch(
         &self,
         instrument: LyrebirdInstrument,
-        data: Vec<LyrebirdBranchNode>,
-        score: f32,
+        submissions: Vec<Submission<Vec<LyrebirdBranchNode>>>,
     ) -> Result<(), PulseCodeParadiseError> {
-        if !score.is_finite() {
-            return Err(PulseCodeParadiseError::MctsProtocol(format!(
-                "{} tree score must be finite",
-                instrument.slug()
-            )));
-        }
-        if data.len() != 1 {
-            return Err(PulseCodeParadiseError::MctsProtocol(format!(
-                "{} tree submit expects exactly one generated branch node, got {}",
-                instrument.slug(),
-                data.len()
-            )));
+        for submission in &submissions {
+            if !submission.score.is_finite() {
+                return Err(PulseCodeParadiseError::MctsProtocol(format!(
+                    "{} tree score must be finite",
+                    instrument.slug()
+                )));
+            }
+            if submission.data.len() != 1 {
+                return Err(PulseCodeParadiseError::MctsProtocol(format!(
+                    "{} tree submit expects exactly one generated branch node per submission, got {}",
+                    instrument.slug(),
+                    submission.data.len()
+                )));
+            }
         }
 
         let write_tx = self.db.begin_write().map_err(|err| {
@@ -169,66 +169,46 @@ impl PulseCodeParadise {
         })?;
         tree_state.pending_session_id = None;
 
-        let new_node_id = tree_state.next_node_id;
-        tree_state.next_node_id = tree_state.next_node_id.saturating_add(1);
-        tree_state.node_ids.push(new_node_id);
+        let new_nodes = {
+            let selected_node = nodes.get_mut(&selected_node_id).ok_or_else(|| {
+                PulseCodeParadiseError::Persistence(format!(
+                    "selected node {selected_node_id} missing for {} tree",
+                    instrument.slug()
+                ))
+            })?;
+            let mut new_nodes = Vec::with_capacity(submissions.len());
+            for submission in submissions {
+                let new_node_id = tree_state.next_node_id;
+                tree_state.next_node_id = tree_state.next_node_id.saturating_add(1);
+                tree_state.node_ids.push(new_node_id);
+                selected_node.children.push(new_node_id);
+                new_nodes.push((new_node_id, submission));
+            }
+            new_nodes
+        };
 
-        let selected_node = nodes.get_mut(&selected_node_id).ok_or_else(|| {
-            PulseCodeParadiseError::Persistence(format!(
-                "selected node {selected_node_id} missing for {} tree",
-                instrument.slug()
-            ))
-        })?;
-        selected_node.children.push(new_node_id);
+        for (new_node_id, submission) in new_nodes {
+            nodes.insert(
+                new_node_id,
+                StoredMctsNode {
+                    id: new_node_id,
+                    parent_id: Some(selected_node_id),
+                    data: submission.data,
+                    visits: 0,
+                    total_score: 0.0,
+                    children: Vec::new(),
+                },
+            );
 
-        nodes.insert(
-            new_node_id,
-            StoredMctsNode {
-                id: new_node_id,
-                parent_id: Some(selected_node_id),
-                data,
-                visits: 0,
-                total_score: 0.0,
-                children: Vec::new(),
-            },
-        );
+            backpropagate_mcts(&mut nodes, new_node_id, submission.score as f64, instrument)?;
+        }
 
-        backpropagate_mcts(&mut nodes, new_node_id, score as f64, instrument)?;
         save_tree_state(&write_tx, tag, &tree_state)?;
         save_tree_nodes(&write_tx, tag, &nodes)?;
         write_tx.commit().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts submit commit failed: {err}"))
         })?;
 
-        Ok(())
-    }
-
-    pub(crate) fn skip_lyrebird_branch(
-        &self,
-        instrument: LyrebirdInstrument,
-    ) -> Result<(), PulseCodeParadiseError> {
-        let write_tx = self.db.begin_write().map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("mcts skip begin_write failed: {err}"))
-        })?;
-        let tag = instrument.tree_tag();
-        let (mut tree_state, _nodes) = load_mcts_tree(&write_tx, tag)?;
-        if tree_state.pending_session_id.as_deref() != Some(self.runtime_session_id.as_str()) {
-            return Err(PulseCodeParadiseError::MctsProtocol(format!(
-                "{} tree pending selection does not belong to this runtime; select must precede skip",
-                instrument.slug()
-            )));
-        }
-        tree_state.pending_selected_node_id.take().ok_or_else(|| {
-            PulseCodeParadiseError::MctsProtocol(format!(
-                "{} tree has no pending selected node; select must precede skip",
-                instrument.slug()
-            ))
-        })?;
-        tree_state.pending_session_id = None;
-        save_tree_state(&write_tx, tag, &tree_state)?;
-        write_tx.commit().map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("mcts skip commit failed: {err}"))
-        })?;
         Ok(())
     }
 
@@ -265,21 +245,10 @@ impl SearchTree for PulseCodeParadise {
     fn submit(
         &self,
         instrument: LyrebirdInstrument,
-        data: Self::Data,
-        score: f32,
+        submissions: Vec<Submission<Self::Data>>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async move {
-            self.submit_lyrebird_branch(instrument, data, score)
-                .map_err(|err| err.to_string())
-        }
-    }
-
-    fn skip(
-        &self,
-        instrument: LyrebirdInstrument,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
-        async move {
-            self.skip_lyrebird_branch(instrument)
+            self.submit_lyrebird_branch(instrument, submissions)
                 .map_err(|err| err.to_string())
         }
     }
@@ -597,6 +566,7 @@ fn backpropagate_mcts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LyrebirdPatch;
     use reqwest::Url;
     use uuid::Uuid;
 
@@ -625,6 +595,13 @@ mod tests {
                 note: format!("patch {iteration_id}"),
             },
         )
+    }
+
+    fn submission(iteration_id: &str, score: f32) -> Submission<Vec<LyrebirdBranchNode>> {
+        Submission {
+            data: vec![branch_node(iteration_id, Some(score))],
+            score,
+        }
     }
 
     fn ecosystem(name: &str, max_tree_depth: usize) -> PulseCodeParadise {
@@ -675,8 +652,10 @@ mod tests {
         second
             .submit_lyrebird_branch(
                 LyrebirdInstrument::RhythmGuitar,
-                vec![candidate.clone().into()],
-                0.75,
+                vec![Submission {
+                    data: vec![candidate.clone().into()],
+                    score: 0.75,
+                }],
             )
             .unwrap();
         drop(second);
@@ -700,6 +679,33 @@ mod tests {
     }
 
     #[test]
+    fn submit_can_add_multiple_children_for_one_selection() {
+        let ecosystem = ecosystem("parallel-submit", 8);
+
+        let _ = ecosystem
+            .select_lyrebird_branch(LyrebirdInstrument::Bass)
+            .unwrap();
+        ecosystem
+            .submit_lyrebird_branch(
+                LyrebirdInstrument::Bass,
+                vec![submission("00000001", 0.6), submission("00000002", 0.8)],
+            )
+            .unwrap();
+
+        let (tree, nodes) = ecosystem
+            .load_tree_for_test(LyrebirdInstrument::Bass)
+            .unwrap();
+        let root = nodes.get(&ROOT_NODE_ID).unwrap();
+
+        assert_eq!(tree.pending_selected_node_id, None);
+        assert_eq!(root.children, vec![1, 2]);
+        assert_eq!(root.visits, 2);
+        assert!((root.total_score - 1.4).abs() < 1e-6);
+        assert_eq!(nodes.get(&1).unwrap().visits, 1);
+        assert_eq!(nodes.get(&2).unwrap().visits, 1);
+    }
+
+    #[test]
     fn instrument_trees_are_disambiguated() {
         let ecosystem = ecosystem("instrument-split", 8);
         let rhythm_branch = ecosystem
@@ -708,8 +714,7 @@ mod tests {
         ecosystem
             .submit_lyrebird_branch(
                 LyrebirdInstrument::RhythmGuitar,
-                vec![branch_node("rhythm", Some(0.5))],
-                0.5,
+                vec![submission("rhythm", 0.5)],
             )
             .unwrap();
 
@@ -757,8 +762,7 @@ mod tests {
         let submit_err = ecosystem
             .submit_lyrebird_branch(
                 LyrebirdInstrument::GuitarSolo,
-                vec![branch_node("00000001", Some(0.3))],
-                0.3,
+                vec![submission("00000001", 0.3)],
             )
             .unwrap_err();
         assert!(submit_err
@@ -775,8 +779,8 @@ mod tests {
     }
 
     #[test]
-    fn skip_clears_pending_selection_for_next_select() {
-        let ecosystem = ecosystem("skip-clears-pending", 8);
+    fn empty_submission_clears_pending_selection_for_next_select() {
+        let ecosystem = ecosystem("empty-submit-clears-pending", 8);
 
         let initial = ecosystem
             .select_lyrebird_branch(LyrebirdInstrument::Vocals)
@@ -784,7 +788,7 @@ mod tests {
         assert_eq!(initial.len(), 1);
 
         ecosystem
-            .skip_lyrebird_branch(LyrebirdInstrument::Vocals)
+            .submit_lyrebird_branch(LyrebirdInstrument::Vocals, Vec::new())
             .unwrap();
 
         let selected_again = ecosystem
@@ -808,8 +812,7 @@ mod tests {
         ecosystem
             .submit_lyrebird_branch(
                 LyrebirdInstrument::BackupVocals,
-                vec![branch_node("00000001", Some(0.4))],
-                0.4,
+                vec![submission("00000001", 0.4)],
             )
             .unwrap();
 
@@ -819,8 +822,7 @@ mod tests {
         ecosystem
             .submit_lyrebird_branch(
                 LyrebirdInstrument::BackupVocals,
-                vec![branch_node("00000002", Some(0.8))],
-                0.8,
+                vec![submission("00000002", 0.8)],
             )
             .unwrap();
 
@@ -869,11 +871,7 @@ mod tests {
         );
 
         ecosystem
-            .submit_lyrebird_branch(
-                LyrebirdInstrument::Bass,
-                vec![branch_node("00000001", Some(0.6))],
-                0.6,
-            )
+            .submit_lyrebird_branch(LyrebirdInstrument::Bass, vec![submission("00000001", 0.6)])
             .unwrap();
 
         let selected_branch = ecosystem

@@ -1,11 +1,12 @@
 #![allow(dead_code)]
 
-use crate::mcts::SearchTree;
+use crate::mcts::{SearchTree, Submission};
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
-    DspCode, LyrebirdBranchNode, LyrebirdInstrument, LyrebirdPatch, PulseCodeParadise,
-    LYREBIRD_DURATION_SECS,
+    DspCode, LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdPatch,
+    PulseCodeParadise, LYREBIRD_DURATION_SECS,
 };
+use futures::future::join_all;
 use image::ImageReader;
 use jungle_sdk::effect;
 use serde::{Deserialize, Serialize};
@@ -218,7 +219,7 @@ where
 pub struct SearchTreeSubmit;
 #[effect(id = 10)]
 impl Effect<()> for SearchTreeSubmit {
-    type In = (LyrebirdInstrument, Vec<LyrebirdBranchNode>, f32);
+    type In = (LyrebirdInstrument, Vec<Submission<Vec<LyrebirdBranchNode>>>);
     type Out = ();
     type Err = String;
 
@@ -237,46 +238,64 @@ where
     <J as SearchTree>::Data: Send + 'static,
     <J as SearchTree>::Error: Send + 'static,
 {
-    type In = (LyrebirdInstrument, <J as SearchTree>::Data, f32);
+    type In = (LyrebirdInstrument, Vec<Submission<<J as SearchTree>::Data>>);
     type Out = ();
     type Err = <J as SearchTree>::Error;
 
     fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
-            let (instrument, data, score) = input;
-            <J as SearchTree>::submit(jungle, instrument, data, score).await
+            let (instrument, submissions) = input;
+            <J as SearchTree>::submit(jungle, instrument, submissions).await
         }
     }
 }
 
-pub struct SearchTreeSkip;
-#[effect(id = 14)]
-impl Effect<()> for SearchTreeSkip {
-    type In = LyrebirdInstrument;
-    type Out = ();
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimizeInstrumentInput {
+    pub iteration_id: String,
+    pub instrument: LyrebirdInstrument,
+    pub target_spectrogram_path: String,
+    pub code_branch: Vec<LyrebirdBranchNode>,
+    pub prompt_attempt: u32,
+    pub retry_reason: Option<String>,
+    pub dsp_source_path: String,
+    pub original_source: String,
+    pub sample_path: String,
+    pub spectrogram_path: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimizeInstrumentOutcome {
+    pub candidates: Vec<LyrebirdGeneratedCandidate>,
+    pub retry_reason: Option<String>,
+}
+
+pub struct OptimizeInstrument;
+#[effect(id = 16)]
+impl Effect<()> for OptimizeInstrument {
+    type In = OptimizeInstrumentInput;
+    type Out = OptimizeInstrumentOutcome;
     type Err = String;
 
     fn effect(
         _jungle: &(),
         _input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async { Err("SearchTreeSkip requires PulseCodeParadise runtime context".to_owned()) }
+        async { Err("OptimizeInstrument requires PulseCodeParadise runtime context".to_owned()) }
     }
 }
 
-#[effect(id = 14)]
-impl<J> Effect<J> for SearchTreeSkip
-where
-    J: SearchTree + Sync,
-    <J as SearchTree>::Data: Send + 'static,
-    <J as SearchTree>::Error: Send + 'static,
-{
-    type In = LyrebirdInstrument;
-    type Out = ();
-    type Err = <J as SearchTree>::Error;
+#[effect(id = 16)]
+impl Effect<PulseCodeParadise> for OptimizeInstrument {
+    type In = OptimizeInstrumentInput;
+    type Out = OptimizeInstrumentOutcome;
+    type Err = String;
 
-    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { <J as SearchTree>::skip(jungle, input).await }
+    fn effect(
+        jungle: &PulseCodeParadise,
+        input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { optimize_instrument(jungle, input).await }
     }
 }
 
@@ -516,6 +535,285 @@ async fn finalize_iteration_samples(
     }
 
     Ok(FinalizeIterationSamplesOutcome { rendered })
+}
+
+async fn optimize_instrument(
+    jungle: &PulseCodeParadise,
+    input: OptimizeInstrumentInput,
+) -> Result<OptimizeInstrumentOutcome, String> {
+    let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
+        iteration_id: input.iteration_id.clone(),
+        instrument: input.instrument,
+        target_spectrogram_path: input.target_spectrogram_path.clone(),
+        code_branch: input.code_branch.clone(),
+        prompt_attempt: input.prompt_attempt,
+        retry_reason: input.retry_reason.clone(),
+    })?;
+    let prompt_attempt = input.prompt_attempt.saturating_add(1);
+    let current_source = input
+        .code_branch
+        .last()
+        .map(|node| node.code.source.clone())
+        .unwrap_or_else(|| input.original_source.clone());
+
+    let prompt_results = join_all((0..jungle.instrument_parallelism).map(|candidate_index| {
+        request_prompt_candidate(
+            jungle,
+            prompt.clone(),
+            input.iteration_id.clone(),
+            input.instrument,
+            prompt_attempt,
+            candidate_index,
+        )
+    }))
+    .await;
+
+    let mut candidates = Vec::new();
+    let mut retry_reasons = Vec::new();
+    for (candidate_index, result) in prompt_results.into_iter().enumerate() {
+        let tool_calls = match result {
+            Ok(tool_calls) => tool_calls,
+            Err(err) => {
+                retry_reasons.push(err);
+                continue;
+            }
+        };
+
+        let prepared = prepare_tool_calls(PrepareToolCallsInput {
+            iteration_id: input.iteration_id.clone(),
+            instrument: input.instrument,
+            prompt_attempt,
+            tool_name: input.instrument.tool_name().to_owned(),
+            current_source: current_source.clone(),
+            tool_calls,
+        })
+        .await?;
+
+        let (generated_patch, generated_source) =
+            match (prepared.generated_patch, prepared.generated_source) {
+                (Some(generated_patch), Some(generated_source)) => {
+                    (generated_patch, generated_source)
+                }
+                _ => {
+                    if let Some(retry_reason) = prepared.retry_reason {
+                        retry_reasons.push(retry_reason);
+                    }
+                    continue;
+                }
+            };
+
+        let compiled = compile_prepared_patch(CompilePreparedPatchInput {
+            iteration_id: input.iteration_id.clone(),
+            instrument: input.instrument,
+            prompt_attempt,
+            dsp_source_path: input.dsp_source_path.clone(),
+            original_source: input.original_source.clone(),
+            generated_source: Some(generated_source.clone()),
+        })
+        .await?;
+        if !compiled.compile_ok {
+            if let Some(retry_reason) = compiled.retry_reason {
+                retry_reasons.push(retry_reason);
+            }
+            continue;
+        }
+
+        let (sample_path, spectrogram_path) = candidate_output_paths(
+            &input.sample_path,
+            &input.spectrogram_path,
+            jungle.instrument_parallelism,
+            candidate_index,
+        );
+        let similarity = match render_and_score_candidate(
+            &input.iteration_id,
+            input.instrument,
+            &input.dsp_source_path,
+            &input.original_source,
+            &generated_source,
+            &sample_path,
+            &spectrogram_path,
+            &input.target_spectrogram_path,
+        )
+        .await
+        {
+            Ok(similarity) => similarity,
+            Err(err) => {
+                retry_reasons.push(err);
+                continue;
+            }
+        };
+
+        candidates.push(LyrebirdGeneratedCandidate {
+            patch: generated_patch,
+            code: DspCode {
+                iteration_id: input.iteration_id.clone(),
+                source: generated_source,
+                sample_path,
+                spectrogram_path,
+                similarity: Some(similarity),
+            },
+        });
+    }
+
+    Ok(OptimizeInstrumentOutcome {
+        retry_reason: if candidates.is_empty() {
+            summarize_retry_reasons(&retry_reasons)
+        } else {
+            None
+        },
+        candidates,
+    })
+}
+
+async fn request_prompt_candidate(
+    jungle: &PulseCodeParadise,
+    prompt: Prompt,
+    iteration_id: String,
+    instrument: LyrebirdInstrument,
+    prompt_attempt: u32,
+    candidate_index: usize,
+) -> Result<Vec<ToolCall>, String> {
+    let prompt_started_at = Instant::now();
+    let response = jungle.predict(prompt).await.map_err(|err| err.to_string());
+    let prompt_elapsed_ms = prompt_started_at.elapsed().as_millis();
+    match &response {
+        Ok(tool_calls) => info!(
+            iteration_id = %iteration_id,
+            instrument = instrument.slug(),
+            prompt_attempt,
+            candidate_index,
+            prompt_elapsed_ms,
+            tool_call_count = tool_calls.len(),
+            "received prompt model response"
+        ),
+        Err(error) => info!(
+            iteration_id = %iteration_id,
+            instrument = instrument.slug(),
+            prompt_attempt,
+            candidate_index,
+            prompt_elapsed_ms,
+            error,
+            "prompt model request failed"
+        ),
+    }
+    response
+}
+
+async fn render_and_score_candidate(
+    iteration_id: &str,
+    instrument: LyrebirdInstrument,
+    dsp_source_path: &str,
+    original_source: &str,
+    generated_source: &str,
+    sample_path: &str,
+    spectrogram_path: &str,
+    target_spectrogram_path: &str,
+) -> Result<f32, String> {
+    with_temporary_dsp_source(
+        dsp_source_path,
+        generated_source,
+        original_source,
+        || async { build_sampler_release().await },
+    )
+    .await
+    .map_err(|err| {
+        warn!(
+            iteration_id = %iteration_id,
+            instrument = instrument.slug(),
+            error = %err,
+            "lyrebird sample build failed; skipping candidate render"
+        );
+        err
+    })?;
+
+    run_sampler_binary(
+        LYREBIRD_DURATION_SECS,
+        sample_path,
+        &[instrument.score_spec().to_owned()],
+    )
+    .await
+    .map_err(|err| {
+        warn!(
+            iteration_id = %iteration_id,
+            instrument = instrument.slug(),
+            error = %err,
+            "lyrebird sampler run failed; skipping candidate render"
+        );
+        err
+    })?;
+
+    generate_mel_spectrogram(sample_path, spectrogram_path).map_err(|err| {
+        warn!(
+            iteration_id = %iteration_id,
+            instrument = instrument.slug(),
+            error = %err,
+            "lyrebird spectrogram generation failed; skipping candidate render"
+        );
+        err
+    })?;
+
+    let similarity = compare_spectrograms(spectrogram_path, target_spectrogram_path)?;
+    info!(
+        iteration_id = %iteration_id,
+        instrument = instrument.slug(),
+        similarity,
+        sample_path,
+        spectrogram_path,
+        "rendered and scored lyrebird candidate"
+    );
+    Ok(similarity)
+}
+
+fn candidate_output_paths(
+    base_sample_path: &str,
+    base_spectrogram_path: &str,
+    instrument_parallelism: usize,
+    candidate_index: usize,
+) -> (String, String) {
+    if instrument_parallelism <= 1 {
+        return (
+            base_sample_path.to_owned(),
+            base_spectrogram_path.to_owned(),
+        );
+    }
+
+    (
+        append_candidate_suffix(base_sample_path, candidate_index),
+        append_candidate_suffix(base_spectrogram_path, candidate_index),
+    )
+}
+
+fn append_candidate_suffix(path: &str, candidate_index: usize) -> String {
+    let candidate_number = candidate_index.saturating_add(1);
+    let path = Path::new(path);
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("candidate");
+    let suffix = format!("{stem}-p{candidate_number}");
+    let file_name = match path.extension().and_then(|extension| extension.to_str()) {
+        Some(extension) => format!("{suffix}.{extension}"),
+        None => suffix,
+    };
+    path.with_file_name(file_name).display().to_string()
+}
+
+fn summarize_retry_reasons(retry_reasons: &[String]) -> Option<String> {
+    if retry_reasons.is_empty() {
+        return None;
+    }
+
+    let mut unique_reasons = Vec::new();
+    for retry_reason in retry_reasons {
+        if !unique_reasons
+            .iter()
+            .any(|existing| existing == retry_reason)
+        {
+            unique_reasons.push(retry_reason.clone());
+        }
+    }
+
+    Some(truncate_retry_reason(&unique_reasons.join("\n\n")))
 }
 
 fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prompt, String> {
