@@ -452,12 +452,11 @@ fn current_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<S
         .latest_rendered_code
         .as_ref()
         .and_then(|code| {
-            current_spectrogram_path(instrument_state)
-                .map(|_| similarity_label("current", code.similarity))
+            current_spectrogram_path(instrument_state).map(|_| score_label("current", code.score()))
         })
         .or_else(|| {
             current_spectrogram_path(instrument_state)
-                .map(|_| similarity_label("current", instrument_state.latest_generated_similarity))
+                .map(|_| score_label("current", instrument_state.latest_generated_similarity))
         })
 }
 
@@ -492,12 +491,11 @@ fn best_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<Stri
         .best_generated_code
         .as_ref()
         .and_then(|code| {
-            best_spectrogram_path(instrument_state)
-                .map(|_| similarity_label("best", code.similarity))
+            best_spectrogram_path(instrument_state).map(|_| score_label("best", code.score()))
         })
         .or_else(|| {
             best_spectrogram_path(instrument_state)
-                .map(|_| similarity_label("best", instrument_state.best_similarity))
+                .map(|_| score_label("best", instrument_state.best_similarity))
         })
 }
 
@@ -507,12 +505,12 @@ fn initial_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Optio
 
 fn initial_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<String> {
     initial_spectrogram_path(instrument_state)
-        .map(|_| similarity_label("initial", instrument_state.initial_dsp_code.similarity))
+        .map(|_| score_label("initial", instrument_state.initial_dsp_code.score()))
 }
 
-fn similarity_label(label: &str, similarity: Option<f32>) -> String {
-    similarity
-        .map(|similarity| format!("{label}  {similarity:.6}"))
+fn score_label(label: &str, score: Option<f32>) -> String {
+    score
+        .map(|score| format!("{label}  {score:.6}"))
         .unwrap_or_else(|| label.to_owned())
 }
 

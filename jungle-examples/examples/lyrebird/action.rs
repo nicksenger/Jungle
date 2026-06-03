@@ -192,14 +192,14 @@ where
         }
 
         let selected_depth = branch.len().saturating_sub(1);
-        let selected_similarity = branch.last().and_then(|node| node.similarity());
+        let selected_score = branch.last().and_then(|node| node.score());
         instrument_state.selected_branch = branch;
         info!(
             iteration_id = %iteration_id,
             instrument = instrument.slug(),
             selected_depth,
             branch_len = instrument_state.selected_branch.len(),
-            selected_similarity = selected_similarity.unwrap_or_default(),
+            selected_score = selected_score.unwrap_or_default(),
             "selected lyrebird mcts branch"
         );
         Ok(())
@@ -223,6 +223,7 @@ where
             iteration_id: state.iteration_id.clone(),
             instrument,
             target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
+            target_audio_metrics: instrument_state.target_audio_metrics,
             code_branch: instrument_state.selected_branch.clone(),
             prompt_attempt: instrument_state.prompt_attempt,
             retry_reason: instrument_state.last_retry_reason.clone(),
@@ -300,6 +301,7 @@ impl Action for FinalizeIterationRender {
                         dsp_source_path: instrument_state.dsp_source_path.clone(),
                         original_source: instrument_state.initial_dsp_code.source.clone(),
                         target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
+                        target_audio_metrics: instrument_state.target_audio_metrics,
                         candidates: instrument_state
                             .pending_candidates
                             .iter()
@@ -352,8 +354,7 @@ impl Action for FinalizeIterationRender {
                 instrument_state.compile_ready = true;
                 instrument_state.skipped_this_iteration = false;
                 instrument_state.last_retry_reason = None;
-                instrument_state.last_similarity =
-                    best_candidate.code.similarity.unwrap_or_default();
+                instrument_state.last_similarity = best_candidate.code.score().unwrap_or_default();
                 instrument_state.latest_generated_patch = Some(best_candidate.patch.clone());
                 instrument_state.latest_generated_code = Some(best_candidate.code.clone());
                 instrument_state.latest_rendered_code = Some(best_candidate.code.clone());
@@ -361,7 +362,7 @@ impl Action for FinalizeIterationRender {
                     Some(best_candidate.code.sample_path.clone());
                 instrument_state.latest_generated_spectrogram_path =
                     Some(best_candidate.code.spectrogram_path.clone());
-                instrument_state.latest_generated_similarity = best_candidate.code.similarity;
+                instrument_state.latest_generated_similarity = best_candidate.code.score();
                 let replace_best = instrument_state
                     .best_similarity
                     .map(|best| instrument_state.last_similarity >= best)
@@ -372,7 +373,7 @@ impl Action for FinalizeIterationRender {
                         Some(best_candidate.code.sample_path.clone());
                     instrument_state.best_generated_spectrogram_path =
                         Some(best_candidate.code.spectrogram_path.clone());
-                    instrument_state.best_similarity = best_candidate.code.similarity;
+                    instrument_state.best_similarity = best_candidate.code.score();
                 }
             } else {
                 instrument_state.skipped_this_iteration = true;
@@ -410,7 +411,7 @@ where
             .iter()
             .cloned()
             .map(|candidate| Submission {
-                score: candidate.code.similarity.unwrap_or_default(),
+                score: candidate.code.score().unwrap_or_default(),
                 data: vec![crate::LyrebirdBranchNode::from_generated(
                     candidate.code,
                     candidate.patch,
@@ -430,7 +431,7 @@ where
             iteration_id = %state.iteration_id,
             instrument = instrument.slug(),
             submitted_candidate_count = instrument_state.iteration_candidates.len(),
-            best_similarity = instrument_state.last_similarity,
+            best_score = instrument_state.last_similarity,
             submitted_depth = instrument_state.selected_branch.len(),
             "submitted lyrebird mcts candidates"
         );
@@ -466,9 +467,9 @@ where
 
 fn best_candidate(candidates: &[LyrebirdGeneratedCandidate]) -> Option<LyrebirdGeneratedCandidate> {
     candidates.iter().cloned().max_by(|left, right| {
-        let left_similarity = left.code.similarity.unwrap_or_default();
-        let right_similarity = right.code.similarity.unwrap_or_default();
-        left_similarity.total_cmp(&right_similarity)
+        let left_score = left.code.score().unwrap_or_default();
+        let right_score = right.code.score().unwrap_or_default();
+        left_score.total_cmp(&right_score)
     })
 }
 

@@ -3,18 +3,20 @@
 use crate::mcts::{SearchTree, Submission};
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
-    DspCode, LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument,
-    LyrebirdInstrumentTag, LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodeParadise,
-    LYREBIRD_DURATION_SECS,
+    aggregate_sample_score, DspCode, LyrebirdAudioMetricErrors, LyrebirdAudioMetrics,
+    LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentTag,
+    LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodeParadise, LYREBIRD_DURATION_SECS,
 };
 use futures::future::join_all;
 use image::ImageReader;
 use jungle_sdk::effect;
+use rustfft::{num_complex::Complex, FftPlanner};
 use serde::{Deserialize, Serialize};
 use spectrs::io::audio::read_audio_file_mono;
 use spectrs::io::image::{save_spectrogram_image, Colormap};
 use spectrs::spectrogram::mel::{par_convert_to_mel, MelScale};
 use spectrs::spectrogram::stft::{par_compute_spectrogram, SpectrogramType};
+use std::f32::consts::PI;
 use std::fs;
 use std::future::{ready, Future};
 use std::path::{Path, PathBuf};
@@ -34,9 +36,20 @@ const MEL_WIN_LENGTH: usize = 2048;
 const MEL_N_MELS: usize = 256;
 const MEL_F_MIN_HZ: f32 = 20.0;
 const MEL_F_MAX_HZ: f32 = 16_000.0;
+const ANALYSIS_FRAME_SIZE: usize = 2048;
+const ANALYSIS_HOP_SIZE: usize = 512;
+const SPECTRAL_ROLLOFF_FRACTION: f32 = 0.85;
 const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/lyrebird/sample/Cargo.toml";
 const SAMPLER_COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
 const SAMPLER_BINARY_PATH: &str = "./target/release/lyrebird-sample";
+
+#[derive(Clone, Copy, Debug)]
+struct ScoredAudioSample {
+    mel_similarity: f32,
+    score: f32,
+    audio_metrics: LyrebirdAudioMetrics,
+    audio_metric_errors: LyrebirdAudioMetricErrors,
+}
 
 pub struct CreateSessionDB;
 #[effect(id = 1)]
@@ -112,6 +125,7 @@ pub struct BuildOptimizationPromptInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
     pub target_spectrogram_path: String,
+    pub target_audio_metrics: LyrebirdAudioMetrics,
     pub code_branch: Vec<LyrebirdBranchNode>,
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
@@ -265,6 +279,7 @@ pub struct OptimizeInstrumentInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
     pub target_spectrogram_path: String,
+    pub target_audio_metrics: LyrebirdAudioMetrics,
     pub code_branch: Vec<LyrebirdBranchNode>,
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
@@ -314,6 +329,7 @@ pub struct FinalizeIterationInstrumentInput {
     pub dsp_source_path: String,
     pub original_source: String,
     pub target_spectrogram_path: String,
+    pub target_audio_metrics: LyrebirdAudioMetrics,
     pub candidates: Vec<FinalizeIterationCandidateInput>,
 }
 
@@ -360,6 +376,7 @@ pub async fn capture_current_dsp_code_snapshot(
     output_root: &Path,
     instrument: LyrebirdInstrument,
     target_spectrogram_path: &Path,
+    target_audio_metrics: &LyrebirdAudioMetrics,
     dsp_source_path: &Path,
 ) -> Result<DspCode, String> {
     let source = fs::read_to_string(dsp_source_path).map_err(|err| {
@@ -382,14 +399,17 @@ pub async fn capture_current_dsp_code_snapshot(
         &sample_path.display().to_string(),
         &spectrogram_path.display().to_string(),
     )?;
-    let similarity = compare_spectrograms(
+    let scored_sample = score_rendered_sample(
+        &sample_path.display().to_string(),
         &spectrogram_path.display().to_string(),
         &target_spectrogram_path.display().to_string(),
+        *target_audio_metrics,
     )?;
     info!(
         iteration_id,
         instrument = instrument.slug(),
-        similarity,
+        score = scored_sample.score,
+        mel_similarity = scored_sample.mel_similarity,
         sample_path = %sample_path.display(),
         spectrogram_path = %spectrogram_path.display(),
         "captured lyrebird dsp snapshot"
@@ -400,7 +420,10 @@ pub async fn capture_current_dsp_code_snapshot(
         source,
         sample_path: sample_path.display().to_string(),
         spectrogram_path: spectrogram_path.display().to_string(),
-        similarity: Some(similarity),
+        mel_similarity: Some(scored_sample.mel_similarity),
+        score: Some(scored_sample.score),
+        audio_metrics: Some(scored_sample.audio_metrics),
+        audio_metric_errors: Some(scored_sample.audio_metric_errors),
     })
 }
 
@@ -434,6 +457,212 @@ pub(crate) fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Res
         .map_err(|err| format!("failed to write mel spectrogram: {err}"))?;
 
     Ok(())
+}
+
+pub(crate) fn analyze_audio_file(path: &str) -> Result<LyrebirdAudioMetrics, String> {
+    let (audio, sample_rate) = read_audio_file_mono(Path::new(path))
+        .map_err(|err| format!("failed to read wav file: {err}"))?;
+    Ok(analyze_audio_signal(&audio, sample_rate))
+}
+
+fn analyze_audio_signal(audio: &[f32], sample_rate: u32) -> LyrebirdAudioMetrics {
+    if audio.is_empty() {
+        return LyrebirdAudioMetrics::default();
+    }
+
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(ANALYSIS_FRAME_SIZE);
+    let window = hann_window(ANALYSIS_FRAME_SIZE);
+    let nyquist_hz = sample_rate as f32 / 2.0;
+    let bin_hz = sample_rate as f32 / ANALYSIS_FRAME_SIZE as f32;
+
+    let mut zero_crossing_rate_sum = 0.0;
+    let mut crest_factor_sum = 0.0;
+    let mut spectral_centroid_sum = 0.0;
+    let mut spectral_flatness_sum = 0.0;
+    let mut spectral_rolloff_sum = 0.0;
+    let mut frame_count = 0usize;
+
+    for frame_start in analysis_frame_starts(audio.len()) {
+        let mut samples = vec![0.0f32; ANALYSIS_FRAME_SIZE];
+        for (offset, value) in samples.iter_mut().enumerate() {
+            if let Some(sample) = audio.get(frame_start + offset) {
+                *value = *sample;
+            }
+        }
+
+        zero_crossing_rate_sum += zero_crossing_rate(&samples);
+        crest_factor_sum += crest_factor(&samples);
+
+        let mut spectrum = samples
+            .iter()
+            .zip(window.iter())
+            .map(|(sample, weight)| Complex::new(sample * weight, 0.0))
+            .collect::<Vec<_>>();
+        fft.process(&mut spectrum);
+
+        let (magnitudes, powers) = spectral_bins(&spectrum);
+        spectral_centroid_sum += spectral_centroid_hz(&magnitudes, bin_hz);
+        spectral_flatness_sum += spectral_flatness(&powers);
+        spectral_rolloff_sum += spectral_rolloff_hz(&powers, bin_hz, nyquist_hz);
+        frame_count = frame_count.saturating_add(1);
+    }
+
+    let frame_count = frame_count.max(1) as f32;
+    LyrebirdAudioMetrics {
+        zero_crossing_rate: zero_crossing_rate_sum / frame_count,
+        crest_factor: crest_factor_sum / frame_count,
+        spectral_centroid: spectral_centroid_sum / frame_count,
+        spectral_flatness: spectral_flatness_sum / frame_count,
+        spectral_rolloff: spectral_rolloff_sum / frame_count,
+    }
+}
+
+fn analysis_frame_starts(sample_len: usize) -> Vec<usize> {
+    if sample_len <= ANALYSIS_FRAME_SIZE {
+        return vec![0];
+    }
+
+    let mut starts = Vec::new();
+    let mut start = 0usize;
+    while start < sample_len {
+        starts.push(start);
+        start = start.saturating_add(ANALYSIS_HOP_SIZE);
+    }
+    starts
+}
+
+fn hann_window(frame_size: usize) -> Vec<f32> {
+    if frame_size <= 1 {
+        return vec![1.0; frame_size.max(1)];
+    }
+
+    (0..frame_size)
+        .map(|index| 0.5 - 0.5 * ((2.0 * PI * index as f32) / frame_size as f32).cos())
+        .collect()
+}
+
+fn zero_crossing_rate(frame: &[f32]) -> f32 {
+    if frame.len() <= 1 {
+        return 0.0;
+    }
+
+    let mut previous_sign = sample_sign(frame[0]);
+    let mut crossings = 0usize;
+    for &sample in &frame[1..] {
+        let sign = sample_sign(sample);
+        if sign == 0 {
+            continue;
+        }
+        if previous_sign != 0 && previous_sign != sign {
+            crossings = crossings.saturating_add(1);
+        }
+        previous_sign = sign;
+    }
+
+    crossings as f32 / (frame.len().saturating_sub(1).max(1) as f32)
+}
+
+fn sample_sign(sample: f32) -> i8 {
+    if sample > 0.0 {
+        1
+    } else if sample < 0.0 {
+        -1
+    } else {
+        0
+    }
+}
+
+fn crest_factor(frame: &[f32]) -> f32 {
+    if frame.is_empty() {
+        return 0.0;
+    }
+
+    let peak = frame.iter().map(|sample| sample.abs()).fold(0.0, f32::max);
+    let rms = (frame.iter().map(|sample| sample * sample).sum::<f32>() / frame.len() as f32).sqrt();
+    if rms <= f32::EPSILON {
+        0.0
+    } else {
+        peak / rms
+    }
+}
+
+fn spectral_bins(spectrum: &[Complex<f32>]) -> (Vec<f32>, Vec<f32>) {
+    let usable_len = (spectrum.len() / 2).saturating_add(1);
+    let mut magnitudes = Vec::with_capacity(usable_len);
+    let mut powers = Vec::with_capacity(usable_len);
+    for bin in spectrum.iter().take(usable_len) {
+        let magnitude = bin.norm();
+        magnitudes.push(magnitude);
+        powers.push((magnitude * magnitude).max(1e-12));
+    }
+    (magnitudes, powers)
+}
+
+fn spectral_centroid_hz(magnitudes: &[f32], bin_hz: f32) -> f32 {
+    let total_magnitude = magnitudes.iter().sum::<f32>();
+    if total_magnitude <= f32::EPSILON {
+        return 0.0;
+    }
+
+    magnitudes
+        .iter()
+        .enumerate()
+        .map(|(index, magnitude)| index as f32 * bin_hz * magnitude)
+        .sum::<f32>()
+        / total_magnitude
+}
+
+fn spectral_flatness(powers: &[f32]) -> f32 {
+    if powers.is_empty() {
+        return 0.0;
+    }
+
+    let geometric_mean =
+        (powers.iter().map(|power| power.ln()).sum::<f32>() / powers.len() as f32).exp();
+    let arithmetic_mean = powers.iter().sum::<f32>() / powers.len() as f32;
+    if arithmetic_mean <= f32::EPSILON {
+        0.0
+    } else {
+        (geometric_mean / arithmetic_mean).clamp(0.0, 1.0)
+    }
+}
+
+fn spectral_rolloff_hz(powers: &[f32], bin_hz: f32, nyquist_hz: f32) -> f32 {
+    let total_power = powers.iter().sum::<f32>();
+    if total_power <= f32::EPSILON {
+        return 0.0;
+    }
+
+    let threshold = total_power * SPECTRAL_ROLLOFF_FRACTION;
+    let mut cumulative_power = 0.0;
+    for (index, power) in powers.iter().enumerate() {
+        cumulative_power += power;
+        if cumulative_power >= threshold {
+            return (index as f32 * bin_hz).min(nyquist_hz);
+        }
+    }
+
+    nyquist_hz
+}
+
+fn score_rendered_sample(
+    sample_path: &str,
+    spectrogram_path: &str,
+    target_spectrogram_path: &str,
+    target_audio_metrics: LyrebirdAudioMetrics,
+) -> Result<ScoredAudioSample, String> {
+    let mel_similarity = compare_spectrograms(spectrogram_path, target_spectrogram_path)?;
+    let audio_metrics = analyze_audio_file(sample_path)?;
+    let audio_metric_errors = audio_metrics.relative_errors(target_audio_metrics);
+    let score = aggregate_sample_score(mel_similarity, audio_metric_errors);
+
+    Ok(ScoredAudioSample {
+        mel_similarity,
+        score,
+        audio_metrics,
+        audio_metric_errors,
+    })
 }
 
 fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String> {
@@ -528,6 +757,7 @@ async fn finalize_iteration_samples(
                 &candidate.sample_path,
                 &candidate.spectrogram_path,
                 &instrument.target_spectrogram_path,
+                instrument.target_audio_metrics,
             )
             .await
             {
@@ -545,7 +775,10 @@ async fn finalize_iteration_samples(
                     source: candidate.generated_source,
                     sample_path: candidate.sample_path,
                     spectrogram_path: candidate.spectrogram_path,
-                    similarity: Some(similarity),
+                    mel_similarity: Some(similarity.mel_similarity),
+                    score: Some(similarity.score),
+                    audio_metrics: Some(similarity.audio_metrics),
+                    audio_metric_errors: Some(similarity.audio_metric_errors),
                 },
             });
         }
@@ -572,6 +805,7 @@ async fn optimize_instrument(
         iteration_id: input.iteration_id.clone(),
         instrument: input.instrument,
         target_spectrogram_path: input.target_spectrogram_path.clone(),
+        target_audio_metrics: input.target_audio_metrics,
         code_branch: input.code_branch.clone(),
         prompt_attempt: input.prompt_attempt,
         retry_reason: input.retry_reason.clone(),
@@ -696,7 +930,8 @@ async fn render_and_score_candidate(
     sample_path: &str,
     spectrogram_path: &str,
     target_spectrogram_path: &str,
-) -> Result<f32, String> {
+    target_audio_metrics: LyrebirdAudioMetrics,
+) -> Result<ScoredAudioSample, String> {
     with_temporary_dsp_source(
         dsp_source_path,
         generated_source,
@@ -740,16 +975,22 @@ async fn render_and_score_candidate(
         err
     })?;
 
-    let similarity = compare_spectrograms(spectrogram_path, target_spectrogram_path)?;
+    let scored_sample = score_rendered_sample(
+        sample_path,
+        spectrogram_path,
+        target_spectrogram_path,
+        target_audio_metrics,
+    )?;
     info!(
         iteration_id = %iteration_id,
         instrument = instrument.slug(),
-        similarity,
+        score = scored_sample.score,
+        mel_similarity = scored_sample.mel_similarity,
         sample_path,
         spectrogram_path,
         "rendered and scored lyrebird candidate"
     );
-    Ok(similarity)
+    Ok(scored_sample)
 }
 
 fn candidate_output_paths(
@@ -819,7 +1060,8 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         instrument = input.instrument.slug(),
         prompt_attempt = input.prompt_attempt.saturating_add(1),
         selected_depth = input.code_branch.len().saturating_sub(1),
-        selected_similarity = selected_code.similarity().unwrap_or_default(),
+        selected_score = selected_code.score().unwrap_or_default(),
+        selected_mel_similarity = selected_code.mel_similarity().unwrap_or_default(),
         "building lyrebird optimization prompt"
     );
 
@@ -851,6 +1093,10 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
         "Initial code:\n```rust\n{}\n```",
         initial_code.source
     )));
+    contents.push(crate::tokens::Content::Text(format!(
+        "Target sample metrics:\n{}",
+        format_target_audio_metrics(input.target_audio_metrics)
+    )));
 
     let mut patch_history = String::from("Patch history:\n");
     if input.code_branch.len() == 1 {
@@ -864,21 +1110,21 @@ The `note` must briefly explain the purpose of the change and stay within 100 ch
                     current.code.iteration_id
                 )
             })?;
-            let score = current
-                .similarity()
-                .map(|value| format!("{value:.6}"))
-                .unwrap_or_else(|| "n/a".to_owned());
             patch_history.push_str(&format!(
-                "\nPatch {}.\nIteration id: {}.\nNote: {}\nScore after patch: {}\n{}\n",
+                "\nPatch {}.\nIteration id: {}.\nNote: {}\n{}\n{}\n",
                 index + 1,
                 current.code.iteration_id,
                 patch.note,
-                score,
+                format_code_analysis("After patch", &current.code),
                 format_search_replace_block(patch),
             ));
         }
     }
     contents.push(crate::tokens::Content::Text(patch_history));
+    contents.push(crate::tokens::Content::Text(format!(
+        "Current sample analysis:\n{}",
+        format_code_analysis("Current sample", &selected_code.code)
+    )));
 
     contents.push(crate::tokens::Content::Text(format!(
         "Current code:\n```rust\n{}\n```",
@@ -1128,6 +1374,101 @@ fn format_search_replace_block(patch: &LyrebirdPatch) -> String {
         "```text\n<<<<<<< SEARCH\n{}\n=======\n{}\n>>>>>>> REPLACE\n```",
         patch.search, patch.replacement
     )
+}
+
+fn format_target_audio_metrics(metrics: LyrebirdAudioMetrics) -> String {
+    [
+        format_metric_line("zero-crossing rate", metrics.zero_crossing_rate, None),
+        format_metric_line("crest factor", metrics.crest_factor, None),
+        format_metric_line("spectral centroid", metrics.spectral_centroid, Some("Hz")),
+        format_metric_line("spectral flatness", metrics.spectral_flatness, None),
+        format_metric_line("spectral roll-off", metrics.spectral_rolloff, Some("Hz")),
+    ]
+    .join("\n")
+}
+
+fn format_code_analysis(label: &str, code: &DspCode) -> String {
+    let mut lines = vec![
+        format!("{label} score: {}", format_optional_scalar(code.score())),
+        format!(
+            "{label} mel similarity: {}",
+            format_optional_scalar(code.mel_similarity())
+        ),
+    ];
+
+    if let Some(metrics) = code.audio_metrics {
+        let errors = code.audio_metric_errors;
+        lines.push(format_metric_with_error(
+            "zero-crossing rate",
+            metrics.zero_crossing_rate,
+            errors.map(|value| value.zero_crossing_rate),
+            None,
+        ));
+        lines.push(format_metric_with_error(
+            "crest factor",
+            metrics.crest_factor,
+            errors.map(|value| value.crest_factor),
+            None,
+        ));
+        lines.push(format_metric_with_error(
+            "spectral centroid",
+            metrics.spectral_centroid,
+            errors.map(|value| value.spectral_centroid),
+            Some("Hz"),
+        ));
+        lines.push(format_metric_with_error(
+            "spectral flatness",
+            metrics.spectral_flatness,
+            errors.map(|value| value.spectral_flatness),
+            None,
+        ));
+        lines.push(format_metric_with_error(
+            "spectral roll-off",
+            metrics.spectral_rolloff,
+            errors.map(|value| value.spectral_rolloff),
+            Some("Hz"),
+        ));
+    }
+
+    lines.join("\n")
+}
+
+fn format_metric_with_error(
+    name: &str,
+    value: f32,
+    relative_error: Option<f32>,
+    unit: Option<&str>,
+) -> String {
+    match relative_error {
+        Some(relative_error) => match unit {
+            Some(unit) => format!(
+                "{name}: {} {unit} (relative error {})",
+                format_scalar(value),
+                format_scalar(relative_error),
+            ),
+            None => format!(
+                "{name}: {} (relative error {})",
+                format_scalar(value),
+                format_scalar(relative_error),
+            ),
+        },
+        None => format_metric_line(name, value, unit),
+    }
+}
+
+fn format_metric_line(name: &str, value: f32, unit: Option<&str>) -> String {
+    match unit {
+        Some(unit) => format!("{name}: {} {unit}", format_scalar(value)),
+        None => format!("{name}: {}", format_scalar(value)),
+    }
+}
+
+fn format_optional_scalar(value: Option<f32>) -> String {
+    value.map(format_scalar).unwrap_or_else(|| "n/a".to_owned())
+}
+
+fn format_scalar(value: f32) -> String {
+    format!("{value:.6}")
 }
 
 async fn build_sampler_release() -> Result<(), String> {
@@ -1388,6 +1729,48 @@ mod tests {
             .join(format!("{name}-{}.rs", Uuid::new_v4()))
     }
 
+    fn target_metrics() -> LyrebirdAudioMetrics {
+        LyrebirdAudioMetrics {
+            zero_crossing_rate: 0.125,
+            crest_factor: 2.5,
+            spectral_centroid: 1_250.0,
+            spectral_flatness: 0.2,
+            spectral_rolloff: 3_200.0,
+        }
+    }
+
+    fn score_code(
+        iteration_id: &str,
+        source: &str,
+        sample_path: &str,
+        spectrogram_path: &str,
+        mel_similarity: f32,
+        score: f32,
+    ) -> DspCode {
+        DspCode {
+            iteration_id: iteration_id.to_owned(),
+            source: source.to_owned(),
+            sample_path: sample_path.to_owned(),
+            spectrogram_path: spectrogram_path.to_owned(),
+            mel_similarity: Some(mel_similarity),
+            score: Some(score),
+            audio_metrics: Some(LyrebirdAudioMetrics {
+                zero_crossing_rate: 0.15,
+                crest_factor: 2.2,
+                spectral_centroid: 1_100.0,
+                spectral_flatness: 0.18,
+                spectral_rolloff: 3_050.0,
+            }),
+            audio_metric_errors: Some(LyrebirdAudioMetricErrors {
+                zero_crossing_rate: 0.10,
+                crest_factor: 0.12,
+                spectral_centroid: 0.08,
+                spectral_flatness: 0.10,
+                spectral_rolloff: 0.05,
+            }),
+        }
+    }
+
     #[test]
     fn compare_spectrograms_crops_extra_width_from_the_right() {
         let left_path = temp_png_path("left");
@@ -1512,13 +1895,15 @@ mod tests {
             iteration_id: "00000001".to_owned(),
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".to_owned(),
-            code_branch: vec![DspCode {
-                iteration_id: "initial".to_owned(),
-                source: "fn bass() {}".to_owned(),
-                sample_path: "/tmp/bass.wav".to_owned(),
-                spectrogram_path: "/tmp/bass.png".to_owned(),
-                similarity: Some(0.5),
-            }
+            target_audio_metrics: target_metrics(),
+            code_branch: vec![score_code(
+                "initial",
+                "fn bass() {}",
+                "/tmp/bass.wav",
+                "/tmp/bass.png",
+                0.5,
+                0.55,
+            )
             .into()],
             prompt_attempt: 0,
             retry_reason: None,
@@ -1534,23 +1919,26 @@ mod tests {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".to_owned(),
+            target_audio_metrics: target_metrics(),
             code_branch: vec![
-                DspCode {
-                    iteration_id: "initial".to_owned(),
-                    source: "fn bass() { baseline(); }".to_owned(),
-                    sample_path: "/tmp/initial.wav".to_owned(),
-                    spectrogram_path: "/tmp/initial.png".to_owned(),
-                    similarity: Some(0.25),
-                }
+                score_code(
+                    "initial",
+                    "fn bass() { baseline(); }",
+                    "/tmp/initial.wav",
+                    "/tmp/initial.png",
+                    0.25,
+                    0.30,
+                )
                 .into(),
                 LyrebirdBranchNode::from_generated(
-                    DspCode {
-                        iteration_id: "00000001".to_owned(),
-                        source: "fn bass() { mutate(); }".to_owned(),
-                        sample_path: "/tmp/00000001.wav".to_owned(),
-                        spectrogram_path: "/tmp/00000001.png".to_owned(),
-                        similarity: Some(0.75),
-                    },
+                    score_code(
+                        "00000001",
+                        "fn bass() { mutate(); }",
+                        "/tmp/00000001.wav",
+                        "/tmp/00000001.png",
+                        0.75,
+                        0.82,
+                    ),
                     LyrebirdPatch {
                         search: "baseline();".to_owned(),
                         replacement: "mutate();".to_owned(),
@@ -1570,22 +1958,40 @@ mod tests {
                 "Initial code:\n```rust\nfn bass() { baseline(); }\n```".to_owned()
             )
         );
-        assert_eq!(
-            system_contents[5],
-            crate::tokens::Content::Image(PathBuf::from("/tmp/00000001.png"))
+        if let crate::tokens::Content::Text(target_metrics_text) = &system_contents[2] {
+            assert!(target_metrics_text.contains("Target sample metrics:"));
+            assert!(target_metrics_text.contains("zero-crossing rate: 0.125000"));
+            assert!(target_metrics_text.contains("spectral roll-off: 3200.000000 Hz"));
+        } else {
+            panic!("expected target metrics text");
+        }
+        assert!(system_contents.contains(&crate::tokens::Content::Text(
+            "Current mel spectrogram:".to_owned()
+        )));
+        assert!(
+            system_contents.contains(&crate::tokens::Content::Image(PathBuf::from(
+                "/tmp/00000001.png"
+            )))
         );
-        assert_eq!(
-            system_contents[4],
-            crate::tokens::Content::Text("Current mel spectrogram:".to_owned())
-        );
-        if let crate::tokens::Content::Text(patch_history) = &system_contents[2] {
+        if let crate::tokens::Content::Text(patch_history) = &system_contents[3] {
             assert!(patch_history.contains("Patch history:"));
             assert!(patch_history.contains("No patches have been applied yet") == false);
             assert!(patch_history.contains("bass resonance tweak"));
-            assert!(patch_history.contains("Score after patch: 0.750000"));
+            assert!(patch_history.contains("After patch score: 0.820000"));
+            assert!(patch_history.contains("After patch mel similarity: 0.750000"));
+            assert!(
+                patch_history.contains("zero-crossing rate: 0.150000 (relative error 0.100000)")
+            );
             assert!(patch_history.contains("<<<<<<< SEARCH"));
         } else {
             panic!("expected patch history text");
+        }
+        if let crate::tokens::Content::Text(current_analysis) = &system_contents[4] {
+            assert!(current_analysis.contains("Current sample analysis:"));
+            assert!(current_analysis.contains("Current sample score: 0.820000"));
+            assert!(current_analysis.contains("Current sample mel similarity: 0.750000"));
+        } else {
+            panic!("expected current analysis text");
         }
         assert_eq!(
             prompt.messages[1].contents,
@@ -1604,22 +2010,25 @@ mod tests {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
             target_spectrogram_path: "/tmp/target.png".to_owned(),
+            target_audio_metrics: target_metrics(),
             code_branch: vec![
-                DspCode {
-                    iteration_id: "initial".to_owned(),
-                    source: "fn bass() { baseline(); }".to_owned(),
-                    sample_path: "/tmp/initial.wav".to_owned(),
-                    spectrogram_path: "/tmp/initial.png".to_owned(),
-                    similarity: Some(0.25),
-                }
+                score_code(
+                    "initial",
+                    "fn bass() { baseline(); }",
+                    "/tmp/initial.wav",
+                    "/tmp/initial.png",
+                    0.25,
+                    0.30,
+                )
                 .into(),
-                DspCode {
-                    iteration_id: "00000001".to_owned(),
-                    source: "fn bass() { mutate(); }".to_owned(),
-                    sample_path: "/tmp/00000001.wav".to_owned(),
-                    spectrogram_path: "/tmp/00000001.png".to_owned(),
-                    similarity: Some(0.75),
-                }
+                score_code(
+                    "00000001",
+                    "fn bass() { mutate(); }",
+                    "/tmp/00000001.wav",
+                    "/tmp/00000001.png",
+                    0.75,
+                    0.82,
+                )
                 .into(),
             ],
             prompt_attempt: 1,

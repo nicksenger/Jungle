@@ -15,6 +15,7 @@ use std::sync::Arc;
 use tracing::warn;
 
 const ROOT_NODE_ID: u64 = 0;
+const MCTS_SCHEMA_VERSION: &str = "v2-score-metrics";
 const MCTS_TREES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("lyrebird_mcts_trees");
 const MCTS_NODES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("lyrebird_mcts_nodes");
 
@@ -274,11 +275,11 @@ fn resolve_mcts_db_path(db_path: Option<PathBuf>) -> Result<PathBuf, PulseCodePa
 }
 
 fn tree_key(tag: &str) -> Vec<u8> {
-    format!("tree:{tag}").into_bytes()
+    format!("tree:{MCTS_SCHEMA_VERSION}:{tag}").into_bytes()
 }
 
 fn node_key(tag: &str, node_id: u64) -> Vec<u8> {
-    format!("node:{tag}:{node_id:020}").into_bytes()
+    format!("node:{MCTS_SCHEMA_VERSION}:{tag}:{node_id:020}").into_bytes()
 }
 
 fn initial_tree_state() -> StoredMctsTree {
@@ -590,7 +591,10 @@ mod tests {
             source: format!("// {iteration_id}"),
             sample_path: format!("/tmp/{iteration_id}.wav"),
             spectrogram_path: format!("/tmp/{iteration_id}.png"),
-            similarity,
+            mel_similarity: similarity,
+            score: similarity,
+            audio_metrics: None,
+            audio_metric_errors: None,
         }
     }
 

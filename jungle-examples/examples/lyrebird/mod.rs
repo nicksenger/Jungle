@@ -45,7 +45,14 @@ pub struct DspCode {
     pub source: String,
     pub sample_path: String,
     pub spectrogram_path: String,
-    pub similarity: Option<f32>,
+    #[serde(default, alias = "similarity")]
+    pub mel_similarity: Option<f32>,
+    #[serde(default)]
+    pub score: Option<f32>,
+    #[serde(default)]
+    pub audio_metrics: Option<LyrebirdAudioMetrics>,
+    #[serde(default)]
+    pub audio_metric_errors: Option<LyrebirdAudioMetricErrors>,
 }
 
 impl DspCode {
@@ -54,6 +61,14 @@ impl DspCode {
             iteration_id: "initial".to_owned(),
             ..Self::default()
         }
+    }
+
+    pub fn mel_similarity(&self) -> Option<f32> {
+        self.mel_similarity.or(self.score)
+    }
+
+    pub fn score(&self) -> Option<f32> {
+        self.score.or(self.mel_similarity)
     }
 }
 
@@ -64,6 +79,78 @@ pub struct LyrebirdPatch {
     pub note: String,
 }
 
+#[derive(Default, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LyrebirdAudioMetrics {
+    pub zero_crossing_rate: f32,
+    pub crest_factor: f32,
+    pub spectral_centroid: f32,
+    pub spectral_flatness: f32,
+    pub spectral_rolloff: f32,
+}
+
+impl LyrebirdAudioMetrics {
+    pub fn relative_errors(self, target: Self) -> LyrebirdAudioMetricErrors {
+        LyrebirdAudioMetricErrors {
+            zero_crossing_rate: normalized_relative_error(
+                target.zero_crossing_rate,
+                self.zero_crossing_rate,
+            ),
+            crest_factor: normalized_relative_error(target.crest_factor, self.crest_factor),
+            spectral_centroid: normalized_relative_error(
+                target.spectral_centroid,
+                self.spectral_centroid,
+            ),
+            spectral_flatness: normalized_relative_error(
+                target.spectral_flatness,
+                self.spectral_flatness,
+            ),
+            spectral_rolloff: normalized_relative_error(
+                target.spectral_rolloff,
+                self.spectral_rolloff,
+            ),
+        }
+    }
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LyrebirdAudioMetricErrors {
+    pub zero_crossing_rate: f32,
+    pub crest_factor: f32,
+    pub spectral_centroid: f32,
+    pub spectral_flatness: f32,
+    pub spectral_rolloff: f32,
+}
+
+impl LyrebirdAudioMetricErrors {
+    pub fn average_match_score(self) -> f32 {
+        let metric_matches = [
+            1.0 - self.zero_crossing_rate,
+            1.0 - self.crest_factor,
+            1.0 - self.spectral_centroid,
+            1.0 - self.spectral_flatness,
+            1.0 - self.spectral_rolloff,
+        ];
+
+        metric_matches
+            .into_iter()
+            .map(|value| value.clamp(0.0, 1.0))
+            .sum::<f32>()
+            / metric_matches.len() as f32
+    }
+}
+
+pub(crate) fn aggregate_sample_score(
+    mel_similarity: f32,
+    metric_errors: LyrebirdAudioMetricErrors,
+) -> f32 {
+    (mel_similarity.clamp(0.0, 1.0) + metric_errors.average_match_score() * 5.0) / 6.0
+}
+
+fn normalized_relative_error(target: f32, generated: f32) -> f32 {
+    let scale = target.abs().max(generated.abs()).max(1e-6);
+    ((generated - target).abs() / scale).clamp(0.0, 1.0)
+}
+
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LyrebirdBranchNode {
     pub code: DspCode,
@@ -72,8 +159,16 @@ pub struct LyrebirdBranchNode {
 }
 
 impl LyrebirdBranchNode {
+    pub fn score(&self) -> Option<f32> {
+        self.code.score()
+    }
+
+    pub fn mel_similarity(&self) -> Option<f32> {
+        self.code.mel_similarity()
+    }
+
     pub fn similarity(&self) -> Option<f32> {
-        self.code.similarity
+        self.score()
     }
 
     pub fn from_generated(code: DspCode, patch: LyrebirdPatch) -> Self {
@@ -257,6 +352,8 @@ pub struct LyrebirdInstrumentState {
     pub disabled: bool,
     #[serde(default)]
     pub target_sample_path: String,
+    #[serde(default)]
+    pub target_audio_metrics: LyrebirdAudioMetrics,
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
     pub initial_dsp_code: DspCode,
@@ -292,6 +389,7 @@ impl LyrebirdInstrumentState {
             instrument: seed.instrument,
             disabled: seed.disabled,
             target_sample_path: seed.target_sample_path,
+            target_audio_metrics: seed.target_audio_metrics,
             target_spectrogram_path: seed.target_spectrogram_path,
             dsp_source_path: seed.dsp_source_path,
             initial_dsp_code: seed.initial_dsp_code.clone(),
@@ -304,6 +402,7 @@ impl LyrebirdInstrumentState {
         Self {
             instrument,
             target_sample_path: instrument.relative_target_sample_path().to_owned(),
+            target_audio_metrics: LyrebirdAudioMetrics::default(),
             target_spectrogram_path: String::new(),
             dsp_source_path: instrument.relative_dsp_path().to_owned(),
             initial_dsp_code: DspCode::placeholder_initial(),
@@ -422,14 +521,15 @@ impl LyrebirdState {
 
     pub fn matches_seed_instrument_selection(&self, seed: &LyrebirdSeed) -> bool {
         LyrebirdInstrument::ALL.into_iter().all(|instrument| {
-            let state_disabled = self.instrument_state(instrument).disabled;
-            let seed_disabled = seed
-                .instruments
+            let state = self.instrument_state(instrument);
+            seed.instruments
                 .iter()
                 .find(|seed| seed.instrument == instrument)
-                .map(|seed| seed.disabled)
-                .unwrap_or(false);
-            state_disabled == seed_disabled
+                .map(|seed_state| {
+                    state.disabled == seed_state.disabled
+                        && state.target_audio_metrics == seed_state.target_audio_metrics
+                })
+                .unwrap_or(false)
         })
     }
 }
@@ -445,6 +545,8 @@ pub struct LyrebirdInstrumentSeed {
     pub disabled: bool,
     #[serde(default)]
     pub target_sample_path: String,
+    #[serde(default)]
+    pub target_audio_metrics: LyrebirdAudioMetrics,
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
     pub initial_dsp_code: DspCode,
@@ -867,6 +969,15 @@ async fn build_instrument_seeds(
         let target_spectrogram_path = output_root
             .join("target-mels")
             .join(format!("{}.png", instrument.output_stem()));
+        let target_audio_metrics = effect::analyze_audio_file(
+            &target_sample_path.display().to_string(),
+        )
+        .map_err(|err| {
+            PulseCodeParadiseError::Bootstrap(format!(
+                "failed to analyze target sample for {}: {err}",
+                instrument.slug()
+            ))
+        })?;
         effect::generate_mel_spectrogram(
             &target_sample_path.display().to_string(),
             &target_spectrogram_path.display().to_string(),
@@ -882,6 +993,7 @@ async fn build_instrument_seeds(
             output_root,
             instrument,
             &target_spectrogram_path,
+            &target_audio_metrics,
             &dsp_source_path,
         )
         .await
@@ -890,6 +1002,7 @@ async fn build_instrument_seeds(
             instrument,
             disabled: false,
             target_sample_path: target_sample_path.display().to_string(),
+            target_audio_metrics,
             target_spectrogram_path: target_spectrogram_path.display().to_string(),
             dsp_source_path: dsp_source_path.display().to_string(),
             initial_dsp_code,
@@ -1206,14 +1319,20 @@ mod tests {
                 source: "fn bass() {}".to_owned(),
                 sample_path: "/tmp/old.wav".to_owned(),
                 spectrogram_path: "/tmp/old.png".to_owned(),
-                similarity: Some(0.8),
+                mel_similarity: Some(0.75),
+                score: Some(0.8),
+                audio_metrics: None,
+                audio_metric_errors: None,
             }),
             latest_rendered_code: Some(DspCode {
                 iteration_id: "00000007".to_owned(),
                 source: "fn bass() {}".to_owned(),
                 sample_path: "/tmp/old.wav".to_owned(),
                 spectrogram_path: "/tmp/old.png".to_owned(),
-                similarity: Some(0.8),
+                mel_similarity: Some(0.75),
+                score: Some(0.8),
+                audio_metrics: None,
+                audio_metric_errors: None,
             }),
             latest_generated_sample_path: Some("/tmp/old.wav".to_owned()),
             latest_generated_spectrogram_path: Some("/tmp/old.png".to_owned()),
@@ -1313,6 +1432,7 @@ mod tests {
                 instrument,
                 disabled: false,
                 target_sample_path: format!("/tmp/{}.wav", instrument.output_stem()),
+                target_audio_metrics: LyrebirdAudioMetrics::default(),
                 target_spectrogram_path: format!("/tmp/{}.png", instrument.output_stem()),
                 dsp_source_path: format!("/tmp/{}.rs", instrument.output_stem()),
                 initial_dsp_code: DspCode::placeholder_initial(),
@@ -1385,6 +1505,8 @@ mod tests {
             node.patch.as_ref().map(|patch| patch.note.as_str()),
             Some("narrow resonance")
         );
+        assert_eq!(node.mel_similarity(), Some(0.8));
+        assert_eq!(node.score(), Some(0.8));
         assert_eq!(node.similarity(), Some(0.8));
     }
 
@@ -1396,7 +1518,22 @@ mod tests {
                 source: "fn bass() { postcard(); }".to_owned(),
                 sample_path: "/tmp/postcard.wav".to_owned(),
                 spectrogram_path: "/tmp/postcard.png".to_owned(),
-                similarity: Some(0.9),
+                mel_similarity: Some(0.85),
+                score: Some(0.9),
+                audio_metrics: Some(LyrebirdAudioMetrics {
+                    zero_crossing_rate: 0.1,
+                    crest_factor: 2.0,
+                    spectral_centroid: 500.0,
+                    spectral_flatness: 0.2,
+                    spectral_rolloff: 1_000.0,
+                }),
+                audio_metric_errors: Some(LyrebirdAudioMetricErrors {
+                    zero_crossing_rate: 0.05,
+                    crest_factor: 0.1,
+                    spectral_centroid: 0.2,
+                    spectral_flatness: 0.15,
+                    spectral_rolloff: 0.25,
+                }),
             },
             LyrebirdPatch {
                 search: "postcard();".to_owned(),
