@@ -21,7 +21,7 @@ pub mod tokens;
 mod ui;
 
 use crate::action::{
-    BeginIteration, FlattenJoinedUnit, InstrumentMarker, LyrebirdLoopForever,
+    BeginIteration, FinalizeIterationRender, FlattenJoinedUnit, LyrebirdLoopForever,
     OptimizeSelectedInstrument, SeedLyrebirdState, SelectDspBranch, SetCurrentInstrument,
     SubmitDspBranch,
 };
@@ -99,6 +99,14 @@ impl From<DspCode> for LyrebirdBranchNode {
 pub struct LyrebirdGeneratedCandidate {
     pub patch: LyrebirdPatch,
     pub code: DspCode,
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LyrebirdPreparedCandidate {
+    pub patch: LyrebirdPatch,
+    pub source: String,
+    pub sample_path: String,
+    pub spectrogram_path: String,
 }
 
 #[derive(
@@ -215,6 +223,10 @@ impl LyrebirdInstrument {
     }
 }
 
+pub trait LyrebirdInstrumentTag {
+    const INSTRUMENT: LyrebirdInstrument;
+}
+
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdInstrumentState {
     pub instrument: LyrebirdInstrument,
@@ -236,6 +248,8 @@ pub struct LyrebirdInstrumentState {
     pub latest_generated_patch: Option<LyrebirdPatch>,
     pub latest_generated_code: Option<DspCode>,
     pub latest_rendered_code: Option<DspCode>,
+    #[serde(default)]
+    pub pending_candidates: Vec<LyrebirdPreparedCandidate>,
     #[serde(default)]
     pub iteration_candidates: Vec<LyrebirdGeneratedCandidate>,
     pub latest_generated_sample_path: Option<String>,
@@ -290,6 +304,7 @@ impl LyrebirdInstrumentState {
         self.pending_generated_patch = None;
         self.pending_generated_source = None;
         self.latest_generated_patch = None;
+        self.pending_candidates.clear();
         self.iteration_candidates.clear();
         self.last_similarity = 0.0;
     }
@@ -412,35 +427,34 @@ impl From<LyrebirdSeed> for LyrebirdState {
 }
 
 #[derive(Flow)]
-pub struct LyrebirdInstrumentPrompt<Marker: InstrumentMarker>(
+pub struct LyrebirdInstrumentPrompt<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
     Step<SetCurrentInstrument<Marker>>,
-    Step<SelectDspBranch>,
-    Step<OptimizeSelectedInstrument>,
-    Step<SubmitDspBranch>,
+    Step<SelectDspBranch<Marker>>,
+    Step<OptimizeSelectedInstrument<Marker>>,
 );
 
 pub struct RhythmGuitarMarker;
-impl InstrumentMarker for RhythmGuitarMarker {
+impl LyrebirdInstrumentTag for RhythmGuitarMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::RhythmGuitar;
 }
 
 pub struct VocalsMarker;
-impl InstrumentMarker for VocalsMarker {
+impl LyrebirdInstrumentTag for VocalsMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::Vocals;
 }
 
 pub struct BackupVocalsMarker;
-impl InstrumentMarker for BackupVocalsMarker {
+impl LyrebirdInstrumentTag for BackupVocalsMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::BackupVocals;
 }
 
 pub struct BassMarker;
-impl InstrumentMarker for BassMarker {
+impl LyrebirdInstrumentTag for BassMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::Bass;
 }
 
 pub struct GuitarSoloMarker;
-impl InstrumentMarker for GuitarSoloMarker {
+impl LyrebirdInstrumentTag for GuitarSoloMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::GuitarSolo;
 }
 
@@ -469,7 +483,22 @@ pub struct LyrebirdPromptPhase(
 );
 
 #[derive(Flow)]
-pub struct LyrebirdIteration(Step<BeginIteration>, LyrebirdPromptPhase);
+pub struct LyrebirdInstrumentSubmit<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
+    Step<SetCurrentInstrument<Marker>>,
+    Step<SubmitDspBranch<Marker>>,
+);
+
+#[derive(Flow)]
+pub struct LyrebirdIteration(
+    Step<BeginIteration>,
+    LyrebirdPromptPhase,
+    Step<FinalizeIterationRender>,
+    LyrebirdInstrumentSubmit<RhythmGuitarMarker>,
+    LyrebirdInstrumentSubmit<VocalsMarker>,
+    LyrebirdInstrumentSubmit<BackupVocalsMarker>,
+    LyrebirdInstrumentSubmit<BassMarker>,
+    LyrebirdInstrumentSubmit<GuitarSoloMarker>,
+);
 
 #[derive(Flow)]
 pub struct LyrebirdJourney(

@@ -3,8 +3,9 @@
 use crate::mcts::{SearchTree, Submission};
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
-    DspCode, LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdPatch,
-    PulseCodeParadise, LYREBIRD_DURATION_SECS,
+    DspCode, LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument,
+    LyrebirdInstrumentTag, LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodeParadise,
+    LYREBIRD_DURATION_SECS,
 };
 use futures::future::join_all;
 use image::ImageReader;
@@ -185,10 +186,13 @@ impl<J> Effect<J> for CompilePreparedPatch {
     }
 }
 
-pub struct SearchTreeSelect;
+pub struct SearchTreeSelect<Marker>(std::marker::PhantomData<fn() -> Marker>);
 #[effect(id = 9)]
-impl Effect<()> for SearchTreeSelect {
-    type In = LyrebirdInstrument;
+impl<Marker> Effect<()> for SearchTreeSelect<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    type In = ();
     type Out = Vec<LyrebirdBranchNode>;
     type Err = String;
 
@@ -201,25 +205,31 @@ impl Effect<()> for SearchTreeSelect {
 }
 
 #[effect(id = 9)]
-impl<J> Effect<J> for SearchTreeSelect
+impl<Marker> Effect<PulseCodeParadise> for SearchTreeSelect<Marker>
 where
-    J: SearchTree + Sync,
-    <J as SearchTree>::Data: Send + 'static,
-    <J as SearchTree>::Error: Send + 'static,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    <PulseCodeParadise as SearchTree<Marker>>::Data: Send + 'static,
+    <PulseCodeParadise as SearchTree<Marker>>::Error: Send + 'static,
 {
-    type In = LyrebirdInstrument;
-    type Out = <J as SearchTree>::Data;
-    type Err = <J as SearchTree>::Error;
+    type In = ();
+    type Out = <PulseCodeParadise as SearchTree<Marker>>::Data;
+    type Err = <PulseCodeParadise as SearchTree<Marker>>::Error;
 
-    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { <J as SearchTree>::select(jungle, input).await }
+    fn effect(
+        jungle: &PulseCodeParadise,
+        _input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { <PulseCodeParadise as SearchTree<Marker>>::select(jungle).await }
     }
 }
 
-pub struct SearchTreeSubmit;
+pub struct SearchTreeSubmit<Marker>(std::marker::PhantomData<fn() -> Marker>);
 #[effect(id = 10)]
-impl Effect<()> for SearchTreeSubmit {
-    type In = (LyrebirdInstrument, Vec<Submission<Vec<LyrebirdBranchNode>>>);
+impl<Marker> Effect<()> for SearchTreeSubmit<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    type In = Vec<Submission<Vec<LyrebirdBranchNode>>>;
     type Out = ();
     type Err = String;
 
@@ -232,21 +242,21 @@ impl Effect<()> for SearchTreeSubmit {
 }
 
 #[effect(id = 10)]
-impl<J> Effect<J> for SearchTreeSubmit
+impl<Marker> Effect<PulseCodeParadise> for SearchTreeSubmit<Marker>
 where
-    J: SearchTree + Sync,
-    <J as SearchTree>::Data: Send + 'static,
-    <J as SearchTree>::Error: Send + 'static,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    <PulseCodeParadise as SearchTree<Marker>>::Data: Send + 'static,
+    <PulseCodeParadise as SearchTree<Marker>>::Error: Send + 'static,
 {
-    type In = (LyrebirdInstrument, Vec<Submission<<J as SearchTree>::Data>>);
+    type In = Vec<Submission<<PulseCodeParadise as SearchTree<Marker>>::Data>>;
     type Out = ();
-    type Err = <J as SearchTree>::Error;
+    type Err = <PulseCodeParadise as SearchTree<Marker>>::Error;
 
-    fn effect(jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move {
-            let (instrument, submissions) = input;
-            <J as SearchTree>::submit(jungle, instrument, submissions).await
-        }
+    fn effect(
+        jungle: &PulseCodeParadise,
+        input: Self::In,
+    ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
+        async move { <PulseCodeParadise as SearchTree<Marker>>::submit(jungle, input).await }
     }
 }
 
@@ -258,15 +268,14 @@ pub struct OptimizeInstrumentInput {
     pub code_branch: Vec<LyrebirdBranchNode>,
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
-    pub dsp_source_path: String,
-    pub original_source: String,
     pub sample_path: String,
     pub spectrogram_path: String,
+    pub instrument_parallelism: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OptimizeInstrumentOutcome {
-    pub candidates: Vec<LyrebirdGeneratedCandidate>,
+    pub candidates: Vec<LyrebirdPreparedCandidate>,
     pub retry_reason: Option<String>,
 }
 
@@ -304,6 +313,13 @@ pub struct FinalizeIterationInstrumentInput {
     pub instrument: LyrebirdInstrument,
     pub dsp_source_path: String,
     pub original_source: String,
+    pub target_spectrogram_path: String,
+    pub candidates: Vec<FinalizeIterationCandidateInput>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FinalizeIterationCandidateInput {
+    pub patch: LyrebirdPatch,
     pub generated_source: String,
     pub sample_path: String,
     pub spectrogram_path: String,
@@ -312,8 +328,8 @@ pub struct FinalizeIterationInstrumentInput {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeIterationInstrumentOutput {
     pub instrument: LyrebirdInstrument,
-    pub sample_path: String,
-    pub spectrogram_path: String,
+    pub candidates: Vec<LyrebirdGeneratedCandidate>,
+    pub retry_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -484,53 +500,64 @@ async fn finalize_iteration_samples(
 ) -> Result<FinalizeIterationSamplesOutcome, String> {
     let mut rendered = Vec::with_capacity(input.instruments.len());
     for instrument in input.instruments {
-        let build_result = with_temporary_dsp_source(
-            &instrument.dsp_source_path,
-            &instrument.generated_source,
-            &instrument.original_source,
-            || async { build_sampler_release().await },
-        )
-        .await;
-        if let Err(err) = build_result {
-            warn!(
-                iteration_id = %input.iteration_id,
-                instrument = instrument.instrument.slug(),
-                error = %err,
-                "lyrebird sample build failed; skipping instrument render"
-            );
-            continue;
+        let mut candidates = Vec::new();
+        let mut retry_reasons = Vec::new();
+        for candidate in instrument.candidates {
+            let compiled = compile_prepared_patch(CompilePreparedPatchInput {
+                iteration_id: input.iteration_id.clone(),
+                instrument: instrument.instrument,
+                prompt_attempt: 0,
+                dsp_source_path: instrument.dsp_source_path.clone(),
+                original_source: instrument.original_source.clone(),
+                generated_source: Some(candidate.generated_source.clone()),
+            })
+            .await?;
+            if !compiled.compile_ok {
+                if let Some(retry_reason) = compiled.retry_reason {
+                    retry_reasons.push(retry_reason);
+                }
+                continue;
+            }
+
+            let similarity = match render_and_score_candidate(
+                &input.iteration_id,
+                instrument.instrument,
+                &instrument.dsp_source_path,
+                &instrument.original_source,
+                &candidate.generated_source,
+                &candidate.sample_path,
+                &candidate.spectrogram_path,
+                &instrument.target_spectrogram_path,
+            )
+            .await
+            {
+                Ok(similarity) => similarity,
+                Err(err) => {
+                    retry_reasons.push(err);
+                    continue;
+                }
+            };
+
+            candidates.push(LyrebirdGeneratedCandidate {
+                patch: candidate.patch,
+                code: DspCode {
+                    iteration_id: input.iteration_id.clone(),
+                    source: candidate.generated_source,
+                    sample_path: candidate.sample_path,
+                    spectrogram_path: candidate.spectrogram_path,
+                    similarity: Some(similarity),
+                },
+            });
         }
 
-        if let Err(err) = run_sampler_binary(
-            LYREBIRD_DURATION_SECS,
-            &instrument.sample_path,
-            &[instrument.instrument.score_spec().to_owned()],
-        )
-        .await
-        {
-            warn!(
-                iteration_id = %input.iteration_id,
-                instrument = instrument.instrument.slug(),
-                error = %err,
-                "lyrebird sampler run failed; skipping instrument render"
-            );
-            continue;
-        }
-        if let Err(err) =
-            generate_mel_spectrogram(&instrument.sample_path, &instrument.spectrogram_path)
-        {
-            warn!(
-                iteration_id = %input.iteration_id,
-                instrument = instrument.instrument.slug(),
-                error = %err,
-                "lyrebird spectrogram generation failed; skipping instrument render"
-            );
-            continue;
-        }
         rendered.push(FinalizeIterationInstrumentOutput {
             instrument: instrument.instrument,
-            sample_path: instrument.sample_path,
-            spectrogram_path: instrument.spectrogram_path,
+            retry_reason: if candidates.is_empty() {
+                summarize_retry_reasons(&retry_reasons)
+            } else {
+                None
+            },
+            candidates,
         });
     }
 
@@ -554,9 +581,9 @@ async fn optimize_instrument(
         .code_branch
         .last()
         .map(|node| node.code.source.clone())
-        .unwrap_or_else(|| input.original_source.clone());
+        .unwrap_or_default();
 
-    let prompt_results = join_all((0..jungle.instrument_parallelism).map(|candidate_index| {
+    let prompt_results = join_all((0..input.instrument_parallelism).map(|candidate_index| {
         request_prompt_candidate(
             jungle,
             prompt.clone(),
@@ -602,56 +629,17 @@ async fn optimize_instrument(
                 }
             };
 
-        let compiled = compile_prepared_patch(CompilePreparedPatchInput {
-            iteration_id: input.iteration_id.clone(),
-            instrument: input.instrument,
-            prompt_attempt,
-            dsp_source_path: input.dsp_source_path.clone(),
-            original_source: input.original_source.clone(),
-            generated_source: Some(generated_source.clone()),
-        })
-        .await?;
-        if !compiled.compile_ok {
-            if let Some(retry_reason) = compiled.retry_reason {
-                retry_reasons.push(retry_reason);
-            }
-            continue;
-        }
-
         let (sample_path, spectrogram_path) = candidate_output_paths(
             &input.sample_path,
             &input.spectrogram_path,
-            jungle.instrument_parallelism,
+            input.instrument_parallelism,
             candidate_index,
         );
-        let similarity = match render_and_score_candidate(
-            &input.iteration_id,
-            input.instrument,
-            &input.dsp_source_path,
-            &input.original_source,
-            &generated_source,
-            &sample_path,
-            &spectrogram_path,
-            &input.target_spectrogram_path,
-        )
-        .await
-        {
-            Ok(similarity) => similarity,
-            Err(err) => {
-                retry_reasons.push(err);
-                continue;
-            }
-        };
-
-        candidates.push(LyrebirdGeneratedCandidate {
+        candidates.push(LyrebirdPreparedCandidate {
             patch: generated_patch,
-            code: DspCode {
-                iteration_id: input.iteration_id.clone(),
-                source: generated_source,
-                sample_path,
-                spectrogram_path,
-                similarity: Some(similarity),
-            },
+            source: generated_source,
+            sample_path,
+            spectrogram_path,
         });
     }
 

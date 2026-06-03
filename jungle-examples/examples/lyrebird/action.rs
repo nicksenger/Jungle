@@ -1,15 +1,17 @@
 use crate::effect::{
-    OptimizeInstrument, OptimizeInstrumentInput, SearchTreeSelect, SearchTreeSubmit,
+    FinalizeIterationSamples, FinalizeIterationSamplesInput, FinalizeIterationSamplesOutcome,
+    OptimizeInstrument, OptimizeInstrumentInput, OptimizeInstrumentOutcome, SearchTreeSelect,
+    SearchTreeSubmit,
 };
 use crate::mcts::Submission;
-use crate::{LyrebirdInstrument, LyrebirdSeed, LyrebirdState};
+use crate::{
+    LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentTag, LyrebirdSeed,
+    LyrebirdState,
+};
 use jungle_sdk::prelude::*;
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use tracing::info;
-
-pub trait InstrumentMarker {
-    const INSTRUMENT: LyrebirdInstrument;
-}
 
 pub struct SeedState<Seed, State>(PhantomData<Seed>, PhantomData<State>);
 #[jungle::action(carry = Seed)]
@@ -58,7 +60,7 @@ pub struct SetCurrentInstrument<Marker>(PhantomData<fn() -> Marker>);
 #[jungle::action]
 impl<Marker> Action for SetCurrentInstrument<Marker>
 where
-    Marker: InstrumentMarker,
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
 {
     type Effect = Noop;
     type Input = ();
@@ -106,24 +108,25 @@ impl Action for BeginIteration {
     }
 }
 
-pub struct SelectDspBranch;
+pub struct SelectDspBranch<Marker>(PhantomData<fn() -> Marker>);
 #[jungle::action]
-impl Action for SelectDspBranch {
-    type Effect = SearchTreeSelect;
+impl<Marker> Action for SelectDspBranch<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    type Effect = SearchTreeSelect<Marker>;
     type Input = ();
     type Output = ();
 
-    fn emit(state: &LyrebirdState, _input: Self::Input) -> LyrebirdInstrument {
-        state.current_instrument
-    }
+    fn emit(_state: &LyrebirdState, _input: Self::Input) {}
 
     fn absorb(
         state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let instrument = state.current_instrument;
+        let instrument = Marker::INSTRUMENT;
         let iteration_id = state.iteration_id.clone();
-        let instrument_state = state.current_state_mut();
+        let instrument_state = state.instrument_state_mut(instrument);
         let mut branch = output.map_err(Failure::from)?;
         if branch.is_empty() {
             branch.push(instrument_state.initial_dsp_code.clone().into());
@@ -144,26 +147,29 @@ impl Action for SelectDspBranch {
     }
 }
 
-pub struct OptimizeSelectedInstrument;
+pub struct OptimizeSelectedInstrument<Marker>(PhantomData<fn() -> Marker>);
 #[jungle::action]
-impl Action for OptimizeSelectedInstrument {
+impl<Marker> Action for OptimizeSelectedInstrument<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
     type Effect = OptimizeInstrument;
     type Input = ();
     type Output = ();
 
     fn emit(state: &LyrebirdState, _input: Self::Input) -> OptimizeInstrumentInput {
-        let instrument_state = state.current_state();
+        let instrument = Marker::INSTRUMENT;
+        let instrument_state = state.instrument_state(instrument);
         OptimizeInstrumentInput {
             iteration_id: state.iteration_id.clone(),
-            instrument: state.current_instrument,
+            instrument,
             target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
             code_branch: instrument_state.selected_branch.clone(),
             prompt_attempt: instrument_state.prompt_attempt,
             retry_reason: instrument_state.last_retry_reason.clone(),
-            dsp_source_path: instrument_state.dsp_source_path.clone(),
-            original_source: instrument_state.initial_dsp_code.source.clone(),
             sample_path: instrument_state.sample_path.clone(),
             spectrogram_path: instrument_state.spectrogram_path.clone(),
+            instrument_parallelism: state.instrument_parallelism,
         }
     }
 
@@ -171,69 +177,43 @@ impl Action for OptimizeSelectedInstrument {
         state: &mut LyrebirdState,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let instrument = state.current_instrument;
+        let instrument = Marker::INSTRUMENT;
         let iteration_id = state.iteration_id.clone();
-        let outcome = output.map_err(Failure::from)?;
-        let instrument_state = state.current_state_mut();
+        let OptimizeInstrumentOutcome {
+            candidates,
+            retry_reason,
+        } = output.map_err(Failure::from)?;
+        let instrument_state = state.instrument_state_mut(instrument);
         instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
         instrument_state.compile_ready = false;
         instrument_state.pending_generated_patch = None;
         instrument_state.pending_generated_source = None;
-        instrument_state.iteration_candidates = outcome.candidates;
+        instrument_state.pending_candidates = candidates;
+        instrument_state.iteration_candidates.clear();
+        instrument_state.latest_generated_patch = None;
+        instrument_state.latest_generated_code = None;
+        instrument_state.latest_rendered_code = None;
+        instrument_state.latest_generated_similarity = None;
+        instrument_state.last_similarity = 0.0;
 
-        let best_candidate = instrument_state
-            .iteration_candidates
-            .iter()
-            .cloned()
-            .max_by(|left, right| {
-                let left_similarity = left.code.similarity.unwrap_or_default();
-                let right_similarity = right.code.similarity.unwrap_or_default();
-                left_similarity.total_cmp(&right_similarity)
-            });
-
-        if let Some(best_candidate) = best_candidate {
-            instrument_state.skipped_this_iteration = false;
-            instrument_state.last_retry_reason = None;
-            instrument_state.last_similarity = best_candidate.code.similarity.unwrap_or_default();
-            instrument_state.latest_generated_patch = Some(best_candidate.patch.clone());
-            instrument_state.latest_generated_code = Some(best_candidate.code.clone());
-            instrument_state.latest_rendered_code = Some(best_candidate.code.clone());
-            instrument_state.latest_generated_sample_path =
-                Some(best_candidate.code.sample_path.clone());
-            instrument_state.latest_generated_spectrogram_path =
-                Some(best_candidate.code.spectrogram_path.clone());
-            instrument_state.latest_generated_similarity = best_candidate.code.similarity;
-            let replace_best = instrument_state
-                .best_similarity
-                .map(|best| instrument_state.last_similarity >= best)
-                .unwrap_or(true);
-            if replace_best {
-                instrument_state.best_generated_code = Some(best_candidate.code.clone());
-                instrument_state.best_generated_sample_path =
-                    Some(best_candidate.code.sample_path.clone());
-                instrument_state.best_generated_spectrogram_path =
-                    Some(best_candidate.code.spectrogram_path.clone());
-                instrument_state.best_similarity = best_candidate.code.similarity;
-            }
+        if instrument_state.pending_candidates.is_empty() {
+            instrument_state.skipped_this_iteration = true;
+            instrument_state.last_retry_reason = retry_reason;
             info!(
                 iteration_id = %iteration_id,
                 instrument = instrument.slug(),
                 prompt_attempt = instrument_state.prompt_attempt,
-                candidate_count = instrument_state.iteration_candidates.len(),
-                best_similarity = instrument_state.last_similarity,
-                "optimized lyrebird instrument candidates"
+                "lyrebird instrument produced no valid prompt candidates"
             );
         } else {
-            instrument_state.skipped_this_iteration = true;
-            instrument_state.last_retry_reason = outcome.retry_reason;
-            instrument_state.latest_generated_patch = None;
-            instrument_state.latest_generated_code = None;
-            instrument_state.last_similarity = 0.0;
+            instrument_state.skipped_this_iteration = false;
+            instrument_state.last_retry_reason = None;
             info!(
                 iteration_id = %iteration_id,
                 instrument = instrument.slug(),
                 prompt_attempt = instrument_state.prompt_attempt,
-                "lyrebird instrument produced no valid candidates this iteration"
+                candidate_count = instrument_state.pending_candidates.len(),
+                "prepared lyrebird instrument candidates"
             );
         }
 
@@ -241,22 +221,132 @@ impl Action for OptimizeSelectedInstrument {
     }
 }
 
-pub struct SubmitDspBranch;
+pub struct FinalizeIterationRender;
 #[jungle::action]
-impl Action for SubmitDspBranch {
-    type Effect = SearchTreeSubmit;
+impl Action for FinalizeIterationRender {
+    type Effect = FinalizeIterationSamples;
+    type Input = ();
+    type Output = ();
+
+    fn emit(state: &LyrebirdState, _input: Self::Input) -> FinalizeIterationSamplesInput {
+        FinalizeIterationSamplesInput {
+            iteration_id: state.iteration_id.clone(),
+            instruments: state
+                .instruments
+                .iter()
+                .filter(|instrument_state| !instrument_state.pending_candidates.is_empty())
+                .map(
+                    |instrument_state| crate::effect::FinalizeIterationInstrumentInput {
+                        instrument: instrument_state.instrument,
+                        dsp_source_path: instrument_state.dsp_source_path.clone(),
+                        original_source: instrument_state.initial_dsp_code.source.clone(),
+                        target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
+                        candidates: instrument_state
+                            .pending_candidates
+                            .iter()
+                            .cloned()
+                            .map(|candidate| crate::effect::FinalizeIterationCandidateInput {
+                                patch: candidate.patch,
+                                generated_source: candidate.source,
+                                sample_path: candidate.sample_path,
+                                spectrogram_path: candidate.spectrogram_path,
+                            })
+                            .collect(),
+                    },
+                )
+                .collect(),
+        }
+    }
+
+    fn absorb(
+        state: &mut LyrebirdState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        let FinalizeIterationSamplesOutcome { rendered } = output.map_err(Failure::from)?;
+        let rendered_by_instrument = rendered
+            .into_iter()
+            .map(|instrument_output| (instrument_output.instrument, instrument_output))
+            .collect::<BTreeMap<_, _>>();
+
+        let mut rendered_candidate_count = 0usize;
+        for instrument in LyrebirdInstrument::ALL {
+            let instrument_state = state.instrument_state_mut(instrument);
+            let previous_retry_reason = instrument_state.last_retry_reason.clone();
+            instrument_state.pending_candidates.clear();
+            instrument_state.iteration_candidates.clear();
+            instrument_state.compile_ready = false;
+            instrument_state.latest_generated_patch = None;
+            instrument_state.latest_generated_code = None;
+            instrument_state.latest_rendered_code = None;
+            instrument_state.latest_generated_similarity = None;
+
+            let Some(instrument_output) = rendered_by_instrument.get(&instrument) else {
+                instrument_state.last_retry_reason = previous_retry_reason;
+                continue;
+            };
+
+            rendered_candidate_count += instrument_output.candidates.len();
+            instrument_state.iteration_candidates = instrument_output.candidates.clone();
+
+            let best_candidate = best_candidate(&instrument_state.iteration_candidates);
+            if let Some(best_candidate) = best_candidate {
+                instrument_state.compile_ready = true;
+                instrument_state.skipped_this_iteration = false;
+                instrument_state.last_retry_reason = None;
+                instrument_state.last_similarity =
+                    best_candidate.code.similarity.unwrap_or_default();
+                instrument_state.latest_generated_patch = Some(best_candidate.patch.clone());
+                instrument_state.latest_generated_code = Some(best_candidate.code.clone());
+                instrument_state.latest_rendered_code = Some(best_candidate.code.clone());
+                instrument_state.latest_generated_sample_path =
+                    Some(best_candidate.code.sample_path.clone());
+                instrument_state.latest_generated_spectrogram_path =
+                    Some(best_candidate.code.spectrogram_path.clone());
+                instrument_state.latest_generated_similarity = best_candidate.code.similarity;
+                let replace_best = instrument_state
+                    .best_similarity
+                    .map(|best| instrument_state.last_similarity >= best)
+                    .unwrap_or(true);
+                if replace_best {
+                    instrument_state.best_generated_code = Some(best_candidate.code.clone());
+                    instrument_state.best_generated_sample_path =
+                        Some(best_candidate.code.sample_path.clone());
+                    instrument_state.best_generated_spectrogram_path =
+                        Some(best_candidate.code.spectrogram_path.clone());
+                    instrument_state.best_similarity = best_candidate.code.similarity;
+                }
+            } else {
+                instrument_state.skipped_this_iteration = true;
+                instrument_state.last_similarity = 0.0;
+                instrument_state.last_retry_reason = instrument_output.retry_reason.clone();
+            }
+        }
+
+        info!(
+            iteration_id = %state.iteration_id,
+            rendered_candidate_count,
+            "finalized lyrebird iteration candidates"
+        );
+        Ok(())
+    }
+}
+
+pub struct SubmitDspBranch<Marker>(PhantomData<fn() -> Marker>);
+#[jungle::action]
+impl<Marker> Action for SubmitDspBranch<Marker>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+{
+    type Effect = SearchTreeSubmit<Marker>;
     type Input = ();
     type Output = ();
 
     fn emit(
         state: &LyrebirdState,
         _input: Self::Input,
-    ) -> (
-        LyrebirdInstrument,
-        Vec<Submission<Vec<crate::LyrebirdBranchNode>>>,
-    ) {
-        let instrument_state = state.current_state();
-        let submissions = instrument_state
+    ) -> Vec<Submission<Vec<crate::LyrebirdBranchNode>>> {
+        state
+            .instrument_state(Marker::INSTRUMENT)
             .iteration_candidates
             .iter()
             .cloned()
@@ -267,8 +357,7 @@ impl Action for SubmitDspBranch {
                     candidate.patch,
                 )],
             })
-            .collect();
-        (state.current_instrument, submissions)
+            .collect()
     }
 
     fn absorb(
@@ -276,10 +365,11 @@ impl Action for SubmitDspBranch {
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
         output.map_err(Failure::from)?;
-        let instrument_state = state.current_state();
+        let instrument = Marker::INSTRUMENT;
+        let instrument_state = state.instrument_state(instrument);
         info!(
             iteration_id = %state.iteration_id,
-            instrument = state.current_instrument.slug(),
+            instrument = instrument.slug(),
             submitted_candidate_count = instrument_state.iteration_candidates.len(),
             best_similarity = instrument_state.last_similarity,
             submitted_depth = instrument_state.selected_branch.len(),
@@ -287,6 +377,14 @@ impl Action for SubmitDspBranch {
         );
         Ok(())
     }
+}
+
+fn best_candidate(candidates: &[LyrebirdGeneratedCandidate]) -> Option<LyrebirdGeneratedCandidate> {
+    candidates.iter().cloned().max_by(|left, right| {
+        let left_similarity = left.code.similarity.unwrap_or_default();
+        let right_similarity = right.code.similarity.unwrap_or_default();
+        left_similarity.total_cmp(&right_similarity)
+    })
 }
 
 pub struct LyrebirdLoopForever;
