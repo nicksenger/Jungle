@@ -1205,8 +1205,12 @@ impl LiveData {
     }
 }
 
-fn runtime_state_for_live_data(live: &LiveData, runtime_id: u32) -> RuntimeState {
-    if live.failed_runtime_ids.contains(&runtime_id) {
+fn runtime_state_for_live_data(
+    live: &LiveData,
+    runtime_id: u32,
+    runtime_sequence_floors: &HashMap<u32, usize>,
+) -> RuntimeState {
+    let state = if live.failed_runtime_ids.contains(&runtime_id) {
         RuntimeState::Failed
     } else if live.active_runtime_ids.contains(&runtime_id) {
         RuntimeState::Running
@@ -1214,10 +1218,35 @@ fn runtime_state_for_live_data(live: &LiveData, runtime_id: u32) -> RuntimeState
         RuntimeState::Completed
     } else {
         RuntimeState::Pending
+    };
+
+    if matches!(state, RuntimeState::Running) {
+        return state;
+    }
+
+    let Some(floor) = runtime_sequence_floors.get(&runtime_id).copied() else {
+        return state;
+    };
+    let Some(sequence) = live.runtime_update_sequence.get(&runtime_id).copied() else {
+        return RuntimeState::Pending;
+    };
+    if sequence < floor {
+        RuntimeState::Pending
+    } else {
+        state
     }
 }
 
+#[cfg(test)]
 fn infer_condition_runtime_state(live: &LiveData, successor_runtime_ids: &[u32]) -> RuntimeState {
+    infer_condition_runtime_state_with_runtime_floors(live, successor_runtime_ids, &HashMap::new())
+}
+
+fn infer_condition_runtime_state_with_runtime_floors(
+    live: &LiveData,
+    successor_runtime_ids: &[u32],
+    runtime_sequence_floors: &HashMap<u32, usize>,
+) -> RuntimeState {
     let mut newest: Option<(usize, RuntimeState)> = None;
 
     for runtime_id in successor_runtime_ids {
@@ -1228,7 +1257,10 @@ fn infer_condition_runtime_state(live: &LiveData, successor_runtime_ids: &[u32])
             .map(|(best_sequence, _)| sequence > best_sequence)
             .unwrap_or(true)
         {
-            newest = Some((sequence, runtime_state_for_live_data(live, *runtime_id)));
+            newest = Some((
+                sequence,
+                runtime_state_for_live_data(live, *runtime_id, runtime_sequence_floors),
+            ));
         }
     }
 
@@ -1266,15 +1298,39 @@ fn node_phase_for_display(
     proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> Phase<RuntimeState> {
+    node_phase_for_display_with_runtime_floors(
+        live_data,
+        display_id,
+        runtime_id,
+        proxy_runtime_ids,
+        condition_successor_runtime_ids,
+        &HashMap::new(),
+    )
+}
+
+fn node_phase_for_display_with_runtime_floors(
+    live_data: Option<&LiveData>,
+    display_id: u32,
+    runtime_id: Option<u32>,
+    proxy_runtime_ids: &[u32],
+    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
+    runtime_sequence_floors: &HashMap<u32, usize>,
+) -> Phase<RuntimeState> {
     let Some(live) = live_data else {
         return Phase::Static;
     };
 
     let state = match runtime_id {
-        Some(id) => runtime_state_for_live_data(live, id),
+        Some(id) => runtime_state_for_live_data(live, id, runtime_sequence_floors),
         None => condition_successor_runtime_ids
             .get(&display_id)
-            .map(|successors| infer_condition_runtime_state(live, successors))
+            .map(|successors| {
+                infer_condition_runtime_state_with_runtime_floors(
+                    live,
+                    successors,
+                    runtime_sequence_floors,
+                )
+            })
             .unwrap_or(RuntimeState::Pending),
     };
 
@@ -1288,7 +1344,8 @@ fn node_phase_for_display(
         let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
             continue;
         };
-        let proxy_state = runtime_state_for_live_data(live, *proxy_runtime_id);
+        let proxy_state =
+            runtime_state_for_live_data(live, *proxy_runtime_id, runtime_sequence_floors);
         if newest
             .map(|(best_sequence, _)| sequence > best_sequence)
             .unwrap_or(true)
@@ -1308,6 +1365,7 @@ fn repaired_live_states_for_display(
     let Some(live) = live_data else {
         return HashMap::new();
     };
+    let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
 
     let mut states = HashMap::<u32, RuntimeState>::new();
     let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
@@ -1330,12 +1388,13 @@ fn repaired_live_states_for_display(
             latest_sequence_by_display_id.insert(node.id, sequence);
         }
 
-        let phase = node_phase_for_display(
+        let phase = node_phase_for_display_with_runtime_floors(
             Some(live),
             node.id,
             node.runtime_node_id,
             &node.proxy_runtime_ids,
             condition_successor_runtime_ids,
+            &runtime_sequence_floors,
         );
         let state = match phase {
             Phase::Live(state) => state,
@@ -1344,8 +1403,25 @@ fn repaired_live_states_for_display(
         states.insert(node.id, state);
     }
 
+    let mut loop_back_edges = HashSet::<(u32, u32)>::new();
+    for cluster in &model.cluster_info {
+        if !matches!(cluster.kind, ClusterKind::While) {
+            continue;
+        }
+        let root_nodes = cluster.root_nodes.iter().copied().collect::<HashSet<_>>();
+        let member_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
+        for (from, to) in &model.edges {
+            if member_nodes.contains(from) && root_nodes.contains(to) {
+                loop_back_edges.insert((*from, *to));
+            }
+        }
+    }
+
     let mut incoming = HashMap::<u32, Vec<u32>>::new();
     for (from, to) in &model.edges {
+        if loop_back_edges.contains(&(*from, *to)) {
+            continue;
+        }
         incoming.entry(*to).or_default().push(*from);
     }
 
@@ -1399,15 +1475,8 @@ fn repaired_live_states_for_display(
     states
 }
 
-fn forced_pending_runtime_ids_for_display(
-    model: &GraphModel,
-    live_data: Option<&LiveData>,
-) -> HashSet<u32> {
-    let Some(live) = live_data else {
-        return HashSet::new();
-    };
-
-    let mut forced_pending = HashSet::new();
+fn runtime_sequence_floors_for_display(model: &GraphModel, live: &LiveData) -> HashMap<u32, usize> {
+    let mut floors = HashMap::<u32, usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
         if !matches!(cluster.kind, ClusterKind::While) {
             continue;
@@ -1422,17 +1491,14 @@ fn forced_pending_runtime_ids_for_display(
         };
 
         for runtime_id in &model.derived.cluster_member_runtime_ids[index] {
-            let Some(sequence) = live.runtime_update_sequence.get(runtime_id).copied() else {
-                continue;
-            };
-            if sequence < iteration_start_sequence && !live.active_runtime_ids.contains(runtime_id)
-            {
-                forced_pending.insert(*runtime_id);
-            }
+            floors
+                .entry(*runtime_id)
+                .and_modify(|current| *current = (*current).max(iteration_start_sequence))
+                .or_insert(iteration_start_sequence);
         }
     }
 
-    forced_pending
+    floors
 }
 
 fn live_states_for_display(
@@ -1440,27 +1506,7 @@ fn live_states_for_display(
     live_data: Option<&LiveData>,
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> HashMap<u32, RuntimeState> {
-    let mut states =
-        repaired_live_states_for_display(model, live_data, condition_successor_runtime_ids);
-    let forced_pending_runtime_ids = forced_pending_runtime_ids_for_display(model, live_data);
-    if forced_pending_runtime_ids.is_empty() {
-        return states;
-    }
-
-    for node in &model.nodes {
-        let Some(runtime_id) = node.runtime_node_id else {
-            continue;
-        };
-        if !forced_pending_runtime_ids.contains(&runtime_id) {
-            continue;
-        }
-        if matches!(states.get(&node.id), Some(RuntimeState::Running)) {
-            continue;
-        }
-        states.insert(node.id, RuntimeState::Pending);
-    }
-
-    states
+    repaired_live_states_for_display(model, live_data, condition_successor_runtime_ids)
 }
 
 fn node_phase_for_display_with_repairs(
