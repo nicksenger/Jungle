@@ -13,7 +13,6 @@ const WINDOW_WIDTH: f32 = 1840.0;
 const WINDOW_HEIGHT: f32 = 860.0;
 const PANEL_HEADER_HEIGHT: f32 = 52.0;
 const WINDOW_HEADER_HORIZONTAL_PADDING: u16 = 12;
-const WINDOW_HEADER_CELL_HORIZONTAL_PADDING: u16 = 10;
 const SECTION_HORIZONTAL_PADDING: u16 = 0;
 const HEADER_VERTICAL_PADDING: u16 = 14;
 const SNAPSHOT_ROW_VERTICAL_PADDING: u16 = 0;
@@ -69,7 +68,16 @@ impl LyrebirdUi {
     {
         let viewer = jungle_vision::JungleViewerBuilder::new()
             .title("Lyrebird Journey")
-            .eject_live_animal::<Lyrebird, _>(client.clone(), journey_id);
+            .eject_live_animal_with_theme::<Lyrebird, _, _, jungle_vision::AnyAnimal>(
+                client.clone(),
+                journey_id,
+                jungle_vision::DefaultTheme::default().with_cluster_expansion_config(
+                    jungle_vision::ClusterExpansionConfig {
+                        while_clusters: jungle_vision::ClusterExpansionMode::AlwaysExpanded,
+                        transparent_clusters: jungle_vision::ClusterExpansionMode::AlwaysExpanded,
+                    },
+                ),
+            );
         let client: Arc<dyn JungleClient> = Arc::new(client);
 
         (
@@ -138,7 +146,7 @@ impl LyrebirdUi {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let image_section = container(column![self.snapshot_header(), self.snapshot_panel()])
+        let image_section = container(self.snapshot_panel())
             .width(Length::FillPortion(2))
             .height(Length::Fill)
             .style(sidebar_style);
@@ -163,30 +171,16 @@ impl LyrebirdUi {
             .into()
     }
 
-    fn snapshot_header(&self) -> Element<'_, Message> {
-        let header = row![
-            column_header("Target"),
-            column_header("Initial"),
-            column_header("Current"),
-            column_header("Best"),
-        ]
-        .spacing(SNAPSHOT_GAP);
-
-        container(header)
-            .width(Length::Fill)
-            .height(Length::Fixed(PANEL_HEADER_HEIGHT))
-            .padding([HEADER_VERTICAL_PADDING, WINDOW_HEADER_HORIZONTAL_PADDING])
-            .style(header_style)
-            .into()
-    }
-
     fn dag_header(&self) -> Element<'_, Message> {
         let journey_id = self.journey_id.to_string();
         let short_journey_id = &journey_id[..8];
         let summary = if let Some(snapshot) = self.snapshot.as_ref() {
             format!(
-                "Journey {}  Iteration {}",
-                short_journey_id, snapshot.iteration
+                "Journey {} ({} generations)",
+                short_journey_id,
+                snapshot
+                    .iteration
+                    .saturating_mul(snapshot.instrument_parallelism as u64)
             )
         } else {
             format!("Journey {}", short_journey_id)
@@ -205,9 +199,9 @@ impl LyrebirdUi {
     fn snapshot_panel(&self) -> Element<'_, Message> {
         if let Some(snapshot) = self.snapshot.as_ref() {
             let mut rows = column![].spacing(0).width(Length::Fill);
-            for instrument in LyrebirdInstrument::ALL {
+            for (index, instrument) in LyrebirdInstrument::ALL.into_iter().enumerate() {
                 rows = rows.push(
-                    container(self.snapshot_row(snapshot, instrument))
+                    container(self.snapshot_row(snapshot, instrument, index == 0))
                         .width(Length::Fill)
                         .height(Length::FillPortion(1)),
                 );
@@ -231,6 +225,7 @@ impl LyrebirdUi {
         &self,
         snapshot: &'a LyrebirdState,
         instrument: LyrebirdInstrument,
+        is_first_row: bool,
     ) -> Element<'a, Message> {
         let instrument_state = snapshot.instrument_state(instrument);
         let cards = row![
@@ -267,8 +262,11 @@ impl LyrebirdUi {
         .width(Length::Fill)
         .height(Length::Fill);
 
-        column![
-            divider_horizontal(),
+        let mut content = column![].width(Length::Fill).height(Length::Fill);
+        if !is_first_row {
+            content = content.push(divider_horizontal());
+        }
+        content = content.push(
             container(
                 container(cards)
                     .width(Length::Fill)
@@ -277,19 +275,11 @@ impl LyrebirdUi {
             )
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(snapshot_row_style)
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
-    }
-}
+            .style(snapshot_row_style),
+        );
 
-fn column_header(label: &'static str) -> Element<'static, Message> {
-    container(text(label).size(15))
-        .width(Length::FillPortion(1))
-        .padding([0, WINDOW_HEADER_CELL_HORIZONTAL_PADDING])
-        .into()
+        content.width(Length::Fill).height(Length::Fill).into()
+    }
 }
 
 fn spectrogram_tile<'a>(
@@ -459,7 +449,13 @@ fn initial_spectrogram_path(instrument_state: &LyrebirdInstrumentState) -> Optio
 
 fn initial_overlay_label(instrument_state: &LyrebirdInstrumentState) -> Option<String> {
     initial_spectrogram_path(instrument_state)
-        .map(|_| score_only_label(instrument_state.initial_dsp_code.similarity))
+        .map(|_| similarity_label("initial", instrument_state.initial_dsp_code.similarity))
+}
+
+fn similarity_label(label: &str, similarity: Option<f32>) -> String {
+    similarity
+        .map(|similarity| format!("{label}  {similarity:.6}"))
+        .unwrap_or_else(|| label.to_owned())
 }
 
 fn spectrogram_action_payload(
@@ -490,18 +486,6 @@ fn spectrogram_action_payload(
             None,
         ),
     }
-}
-
-fn score_only_label(similarity: Option<f32>) -> String {
-    similarity
-        .map(|similarity| format!("{similarity:.6}"))
-        .unwrap_or_default()
-}
-
-fn similarity_label(label: &str, similarity: Option<f32>) -> String {
-    similarity
-        .map(|similarity| format!("{label}  {similarity:.6}"))
-        .unwrap_or_else(|| label.to_owned())
 }
 
 fn non_empty(value: &str) -> Option<&str> {

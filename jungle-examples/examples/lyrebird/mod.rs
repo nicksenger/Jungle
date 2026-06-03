@@ -29,6 +29,7 @@ use crate::tokens::Tool;
 
 const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 8;
+const DEFAULT_INSTRUMENT_PARALLELISM: usize = 1;
 const DEFAULT_LOG_FILTER: &str = "warn,lyrebird=info";
 pub(crate) const LYREBIRD_DURATION_SECS: f64 = 4.0;
 pub(crate) const GUITAR_INTRO_SCORE_SPEC: &str =
@@ -299,6 +300,8 @@ pub struct LyrebirdState {
     pub output_root: String,
     pub current_instrument: LyrebirdInstrument,
     pub instruments: Vec<LyrebirdInstrumentState>,
+    #[serde(default = "default_instrument_parallelism")]
+    pub instrument_parallelism: usize,
     pub iteration: u64,
     pub iteration_id: String,
 }
@@ -364,6 +367,10 @@ impl LyrebirdState {
     }
 }
 
+fn default_instrument_parallelism() -> usize {
+    DEFAULT_INSTRUMENT_PARALLELISM
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdInstrumentSeed {
     pub instrument: LyrebirdInstrument,
@@ -378,6 +385,8 @@ pub struct LyrebirdInstrumentSeed {
 pub struct LyrebirdSeed {
     pub output_root: String,
     pub instruments: Vec<LyrebirdInstrumentSeed>,
+    #[serde(default = "default_instrument_parallelism")]
+    pub instrument_parallelism: usize,
 }
 
 impl From<LyrebirdSeed> for LyrebirdState {
@@ -391,6 +400,7 @@ impl From<LyrebirdSeed> for LyrebirdState {
         Self {
             output_root: seed.output_root,
             current_instrument,
+            instrument_parallelism: seed.instrument_parallelism,
             instruments: seed
                 .instruments
                 .into_iter()
@@ -522,7 +532,7 @@ impl PulseCodeParadise {
                 .map(|instrument| (instrument, DspCode::placeholder_initial()))
                 .collect(),
             max_tree_depth: DEFAULT_TREE_DEPTH,
-            instrument_parallelism: 1,
+            instrument_parallelism: DEFAULT_INSTRUMENT_PARALLELISM,
         })
     }
 
@@ -616,7 +626,7 @@ struct Cli {
     tree_depth: usize,
     #[arg(
         long = "instrument-parallelism",
-        default_value_t = 1,
+        default_value_t = DEFAULT_INSTRUMENT_PARALLELISM,
         value_parser = parse_instrument_parallelism
     )]
     instrument_parallelism: usize,
@@ -682,7 +692,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }));
     }
 
-    let seed = build_seed(&output_root, &instrument_seeds);
+    let seed = build_seed(&output_root, &instrument_seeds, cli.instrument_parallelism);
     let journey_id = ensure_lyrebird_running(&client, &seed).await?;
 
     info!(
@@ -755,10 +765,15 @@ async fn build_instrument_seeds(
     Ok(seeds)
 }
 
-fn build_seed(output_root: &Path, instruments: &[LyrebirdInstrumentSeed]) -> LyrebirdSeed {
+fn build_seed(
+    output_root: &Path,
+    instruments: &[LyrebirdInstrumentSeed],
+    instrument_parallelism: usize,
+) -> LyrebirdSeed {
     LyrebirdSeed {
         output_root: output_root.display().to_string(),
         instruments: instruments.to_vec(),
+        instrument_parallelism,
     }
 }
 

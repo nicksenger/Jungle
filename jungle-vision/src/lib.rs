@@ -76,6 +76,36 @@ pub enum ClusterKind {
     Transparent,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClusterExpansionMode {
+    Automatic,
+    AlwaysExpanded,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClusterExpansionConfig {
+    pub while_clusters: ClusterExpansionMode,
+    pub transparent_clusters: ClusterExpansionMode,
+}
+
+impl ClusterExpansionConfig {
+    fn mode_for(self, kind: ClusterKind) -> ClusterExpansionMode {
+        match kind {
+            ClusterKind::While => self.while_clusters,
+            ClusterKind::Transparent => self.transparent_clusters,
+        }
+    }
+}
+
+impl Default for ClusterExpansionConfig {
+    fn default() -> Self {
+        Self {
+            while_clusters: ClusterExpansionMode::Automatic,
+            transparent_clusters: ClusterExpansionMode::Automatic,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct StepViewCtx<'a> {
     pub display_id: u32,
@@ -249,7 +279,7 @@ impl JungleViewerBuilder {
         A: Animal + 'static,
         A::Flow: JourneyAstSource,
     {
-        self.view_animal_with_theme::<A, _, AnyAnimal>(DefaultTheme)
+        self.view_animal_with_theme::<A, _, AnyAnimal>(DefaultTheme::default())
     }
 
     pub fn view_animal_with_theme<A, T, Scope>(self, theme: T) -> iced::Result
@@ -299,7 +329,7 @@ impl JungleViewerBuilder {
         A: Animal + 'static,
         A::Flow: JourneyAstSource,
     {
-        self.eject_animal_with_theme::<A, _, AnyAnimal>(DefaultTheme)
+        self.eject_animal_with_theme::<A, _, AnyAnimal>(DefaultTheme::default())
     }
 
     pub fn view_live_animal<A, C>(self, client: C, journey_id: Uuid) -> iced::Result
@@ -308,7 +338,11 @@ impl JungleViewerBuilder {
         A::Flow: JourneyAstSource,
         C: JungleClient + 'static,
     {
-        self.view_live_animal_with_theme::<A, C, _, AnyAnimal>(client, journey_id, DefaultTheme)
+        self.view_live_animal_with_theme::<A, C, _, AnyAnimal>(
+            client,
+            journey_id,
+            DefaultTheme::default(),
+        )
     }
 
     pub fn view_live_animal_with_theme<A, C, T, Scope>(
@@ -382,7 +416,11 @@ impl JungleViewerBuilder {
         A::Flow: JourneyAstSource,
         C: JungleClient + 'static,
     {
-        self.eject_live_animal_with_theme::<A, C, _, AnyAnimal>(client, journey_id, DefaultTheme)
+        self.eject_live_animal_with_theme::<A, C, _, AnyAnimal>(
+            client,
+            journey_id,
+            DefaultTheme::default(),
+        )
     }
 
     fn run<T, Scope>(self, mode: ViewMode, theme: T) -> iced::Result
@@ -2727,8 +2765,28 @@ fn compute_cluster_successor_runtime_ids(
     cluster_successors
 }
 
-#[derive(Clone, Copy)]
-pub struct DefaultTheme;
+#[derive(Clone, Copy, Debug)]
+pub struct DefaultTheme {
+    cluster_expansion: ClusterExpansionConfig,
+}
+
+impl DefaultTheme {
+    pub fn with_cluster_expansion_config(
+        mut self,
+        cluster_expansion: ClusterExpansionConfig,
+    ) -> Self {
+        self.cluster_expansion = cluster_expansion;
+        self
+    }
+}
+
+impl Default for DefaultTheme {
+    fn default() -> Self {
+        Self {
+            cluster_expansion: ClusterExpansionConfig::default(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct NodeVisual {
@@ -2756,13 +2814,27 @@ pub struct DefaultThemeState {
     cluster_index: HashMap<u32, ClusterRuntimeIndex>,
     cluster_visuals: HashMap<u32, ClusterVisual>,
     force_pending_runtime_ids: HashSet<u32>,
+    cluster_expansion: ClusterExpansionConfig,
 }
 
 impl DefaultThemeState {
+    fn new(cluster_expansion: ClusterExpansionConfig) -> Self {
+        Self {
+            node_visuals: HashMap::new(),
+            cluster_index: HashMap::new(),
+            cluster_visuals: HashMap::new(),
+            force_pending_runtime_ids: HashSet::new(),
+            cluster_expansion,
+        }
+    }
+
     fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>) {
-        let (expanded, border_state) = match cx.phase {
-            Phase::Live(live) if live.has_running => (true, RuntimeState::Running),
-            _ => (false, RuntimeState::Pending),
+        let expansion_mode = self.cluster_expansion.mode_for(cx.kind);
+        let expanded = matches!(expansion_mode, ClusterExpansionMode::AlwaysExpanded)
+            || matches!(cx.phase, Phase::Live(live) if live.has_running);
+        let border_state = match cx.phase {
+            Phase::Live(live) if live.has_running => RuntimeState::Running,
+            _ => RuntimeState::Pending,
         };
         self.cluster_index
             .entry(cx.cluster_id)
@@ -2835,16 +2907,30 @@ impl DefaultThemeState {
             let contains_entry = index.entry_runtime_ids.contains(&runtime_id);
             let contains_successor = index.successor_runtime_ids.contains(&runtime_id);
             let is_while_cluster = matches!(index.kind, ClusterKind::While);
+            let expansion_mode = self.cluster_expansion.mode_for(index.kind);
 
             let mut activated_iteration = false;
             if let Some(visual) = self.cluster_visuals.get_mut(&cluster_id) {
+                if matches!(expansion_mode, ClusterExpansionMode::AlwaysExpanded)
+                    && !visual.expanded
+                {
+                    visual.expanded = true;
+                    changed = true;
+                }
                 let while_reentered_via_non_entry_member = is_while_cluster
                     && contains_member
                     && !contains_entry
                     && !contains_successor
                     && !matches!(visual.border_state, RuntimeState::Running);
+                let member_activation = contains_member
+                    && match expansion_mode {
+                        ClusterExpansionMode::Automatic => !visual.expanded,
+                        ClusterExpansionMode::AlwaysExpanded => {
+                            !matches!(visual.border_state, RuntimeState::Running)
+                        }
+                    };
                 if (is_while_cluster && contains_entry)
-                    || (!visual.expanded && contains_member)
+                    || member_activation
                     || while_reentered_via_non_entry_member
                 {
                     let expansion_changed = !visual.expanded;
@@ -2875,6 +2961,12 @@ impl DefaultThemeState {
         now: Instant,
     ) -> bool {
         if !matches!(cx.kind, ClusterKind::While | ClusterKind::Transparent) {
+            return false;
+        }
+        if matches!(
+            self.cluster_expansion.mode_for(cx.kind),
+            ClusterExpansionMode::AlwaysExpanded
+        ) {
             return false;
         }
 
@@ -2926,12 +3018,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     type Message = ();
 
     fn init(&self) -> Self::State {
-        Mutex::new(DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::new(),
-        })
+        Mutex::new(DefaultThemeState::new(self.cluster_expansion))
     }
 
     fn update(
@@ -3593,13 +3680,10 @@ mod tests {
 
     #[test]
     fn view_step_does_not_mutate_theme_state() {
-        let theme = DefaultTheme;
-        let state = Mutex::new(DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::from([42]),
-        });
+        let theme = DefaultTheme::default();
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
+        state.force_pending_runtime_ids = HashSet::from([42]);
+        let state = Mutex::new(state);
         let cx = StepViewCtx {
             display_id: 1,
             runtime_id: Some(42),
@@ -4015,12 +4099,7 @@ mod tests {
 
     #[test]
     fn completed_cluster_border_allows_downstream_successor_trigger() {
-        let mut state = DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::new(),
-        };
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
 
         let started_at = Instant::now();
         let cx = ClusterViewCtx {
@@ -4064,12 +4143,7 @@ mod tests {
 
     #[test]
     fn while_cluster_border_resets_on_reentry() {
-        let mut state = DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::new(),
-        };
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
 
         let started_at = Instant::now();
         let cx = ClusterViewCtx {
@@ -4122,12 +4196,7 @@ mod tests {
 
     #[test]
     fn while_cluster_reentry_via_non_entry_member_resets_previous_children_to_pending() {
-        let mut state = DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::new(),
-        };
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
 
         let started_at = Instant::now();
         let cx = ClusterViewCtx {
@@ -4207,12 +4276,7 @@ mod tests {
 
     #[test]
     fn completed_cluster_recollapses_when_successor_returns_to_pending() {
-        let mut state = DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::new(),
-        };
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
 
         let started_at = Instant::now();
         let cx = ClusterViewCtx {
@@ -4289,12 +4353,7 @@ mod tests {
 
     #[test]
     fn completed_cluster_does_not_recollapse_while_still_running() {
-        let mut state = DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::new(),
-        };
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
 
         let started_at = Instant::now();
         let cx = ClusterViewCtx {
@@ -4343,12 +4402,7 @@ mod tests {
 
     #[test]
     fn running_cluster_registers_as_expanded_without_prior_effect_input() {
-        let mut state = DefaultThemeState {
-            node_visuals: HashMap::new(),
-            cluster_index: HashMap::new(),
-            cluster_visuals: HashMap::new(),
-            force_pending_runtime_ids: HashSet::new(),
-        };
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
 
         let cx = ClusterViewCtx {
             cluster_id: 77,
@@ -4377,5 +4431,68 @@ mod tests {
             .expect("cluster visual should exist");
         assert!(visual.expanded);
         assert_eq!(visual.border_state, RuntimeState::Running);
+    }
+
+    #[test]
+    fn always_expanded_cluster_config_keeps_cluster_open() {
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig {
+            while_clusters: ClusterExpansionMode::AlwaysExpanded,
+            transparent_clusters: ClusterExpansionMode::AlwaysExpanded,
+        });
+
+        let started_at = Instant::now();
+        let cx = ClusterViewCtx {
+            cluster_id: 55,
+            cluster_index: 0,
+            kind: ClusterKind::Transparent,
+            label: "transparent: section",
+            metadata: None,
+            parent_cluster_id: None,
+            depth: 0,
+            member_display_ids: &[],
+            entry_runtime_ids: &[70],
+            member_runtime_ids: &[70, 71],
+            successor_runtime_ids: &[95],
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: false,
+            }),
+        };
+
+        state.register_cluster(&cx);
+        assert!(
+            state
+                .cluster_visuals
+                .get(&55)
+                .expect("cluster visual should exist")
+                .expanded
+        );
+
+        let entry = started_at + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(70, entry));
+        let exit = entry + Duration::from_millis(1);
+        assert!(state.update_clusters_for_effect_input(95, exit));
+
+        let collapse_cx = ClusterViewCtx {
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: true,
+            }),
+            ..cx.clone()
+        };
+        assert!(
+            !state.maybe_collapse_completed_cluster_for_pending_successor(
+                &collapse_cx,
+                exit + CLUSTER_RECOLLAPSE_DELAY + Duration::from_millis(1)
+            )
+        );
+        let visual = state
+            .cluster_visuals
+            .get(&55)
+            .expect("cluster visual should exist");
+        assert!(visual.expanded);
+        assert_eq!(visual.border_state, RuntimeState::Completed);
     }
 }
