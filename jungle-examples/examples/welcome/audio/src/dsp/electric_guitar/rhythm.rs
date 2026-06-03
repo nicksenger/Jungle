@@ -53,7 +53,7 @@ pub fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc
         prev_cab_lowpass = cab_lowpass;
 
         // Add top-end resonance to match target spectral shape
-        let top_end = sine(frequency_hz * 5.0, t) * tone.top_end;
+        let top_end = sine(frequency_hz * 7.0, t) * tone.top_end;
 
         let sample = (cab_lowpass + body_highpass * 0.5 + top_end * 0.4).clamp(-1.0, 1.0);
         pcm.push(sample * velocity_gain);
@@ -66,11 +66,11 @@ pub fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc
 fn rhythm_tone(articulation: ElectricGuitarArticulation, groove: GrooveShape) -> RhythmTone {
     match articulation {
         ElectricGuitarArticulation::RhythmSustained => RhythmTone {
-            drive: 2.55 + groove.amp_jitter,
-            pick_amount: 0.35 * groove.downstroke,
-            cab_smoothing: 0.14,
-            body_mix: 0.06,
-            top_end: 0.12,
+            drive: 5.0 + groove.amp_jitter,
+            pick_amount: 0.75 * groove.downstroke,
+            cab_smoothing: 0.08,
+            body_mix: 0.20,
+            top_end: 0.95,
         },
         ElectricGuitarArticulation::Sustained => RhythmTone {
             drive: 2.4,
