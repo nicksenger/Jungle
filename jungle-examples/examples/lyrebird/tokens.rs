@@ -80,8 +80,7 @@ impl PulseCodeParadise {
     }
 
     pub(crate) fn tokens_model_from_env() -> String {
-        std::env::var("LYREBIRD_TOKENS_MODEL")
-            .unwrap_or_else(|_| DEFAULT_TOKENS_MODEL.to_owned())
+        std::env::var("LYREBIRD_TOKENS_MODEL").unwrap_or_else(|_| DEFAULT_TOKENS_MODEL.to_owned())
     }
 
     pub(crate) fn chat_completions_endpoint(&self) -> String {

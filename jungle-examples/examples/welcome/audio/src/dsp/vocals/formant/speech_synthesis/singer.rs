@@ -1,10 +1,21 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use super::parser;
 use super::reciter;
 use super::renderer;
+use tracing::warn;
 
 const SAM_SAMPLE_RATE: u32 = 22_050;
+const FORMANT_TARGET_RMS: f32 = 0.22;
+const FORMANT_TARGET_PEAK: f32 = 0.92;
+const FORMANT_MAX_MAKEUP_GAIN: f32 = 4.0;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Phoneme {
+    pub length: u8,
+    pub index: usize,
+    pub stress: u8,
+}
 
 pub enum LyricInput<'a> {
     Text(&'a str),
@@ -82,6 +93,120 @@ impl std::fmt::Display for VocalError {
 }
 
 impl std::error::Error for VocalError {}
+
+pub fn phonemes_from_text(text: &str) -> [Option<Phoneme>; 12] {
+    let mut output = [None; 12];
+
+    let parsed_text = match reciter::text_to_phonemes(text) {
+        Ok(parsed_text) => parsed_text,
+        Err(err) => {
+            warn!(word = text, error = %err, "failed to recite text into rustsam phonemes");
+            return output;
+        }
+    };
+
+    let parsed_phonemes = match parser::parse_phonemes(&parsed_text) {
+        Ok(parsed_phonemes) => parsed_phonemes,
+        Err(err) => {
+            warn!(word = text, error = %err, "failed to parse rustsam phoneme string");
+            return output;
+        }
+    };
+
+    if parsed_phonemes.len() > output.len() {
+        warn!(
+            word = text,
+            parsed_count = parsed_phonemes.len(),
+            max_count = output.len(),
+            "truncating parsed rustsam phonemes to fit vocals articulation capacity"
+        );
+    }
+
+    for (slot, phoneme) in output.iter_mut().zip(parsed_phonemes.into_iter()) {
+        *slot = Some(Phoneme {
+            length: phoneme.length,
+            index: phoneme.index,
+            stress: phoneme.stress,
+        });
+    }
+
+    output
+}
+
+pub fn synthesize_formant_vocals(
+    midi_note: u8,
+    duration: Duration,
+    phonemes: [Option<Phoneme>; 12],
+    velocity: f32,
+    sample_rate: u32,
+) -> Option<Arc<[f32]>> {
+    let phonemes: Vec<parser::Phoneme> = phonemes
+        .into_iter()
+        .flatten()
+        .map(|phoneme| parser::Phoneme {
+            length: phoneme.length,
+            index: phoneme.index,
+            stress: phoneme.stress,
+        })
+        .collect();
+
+    if phonemes.is_empty() {
+        return None;
+    }
+
+    let rendered = match render_vocal_note(
+        VocalNote {
+            midi_note,
+            lyric: LyricInput::Phonemes(phonemes),
+            duration,
+        },
+        sample_rate,
+        VoiceParams::default(),
+    ) {
+        Ok(rendered) => rendered,
+        Err(err) => {
+            warn!(error = %err, "failed to render rustsam formant vocals; using procedural fallback");
+            return None;
+        }
+    };
+
+    let mut normalized: Vec<f32> = rendered
+        .into_iter()
+        .map(|sample| sample as f32 / 127.5 - 1.0)
+        .collect();
+
+    let peak_abs = normalized.iter().fold(0.0_f32, |acc, sample| {
+        if sample.abs() > acc {
+            sample.abs()
+        } else {
+            acc
+        }
+    });
+    let rms = if normalized.is_empty() {
+        0.0
+    } else {
+        (normalized.iter().map(|sample| sample * sample).sum::<f32>() / normalized.len() as f32)
+            .sqrt()
+    };
+
+    if peak_abs > 1.0e-4 && rms > 1.0e-4 {
+        let rms_gain = FORMANT_TARGET_RMS / rms;
+        let peak_gain = FORMANT_TARGET_PEAK / peak_abs;
+        let makeup_gain = rms_gain.min(peak_gain).clamp(1.0, FORMANT_MAX_MAKEUP_GAIN);
+        if makeup_gain > 1.0 {
+            for sample in &mut normalized {
+                *sample = (*sample * makeup_gain).clamp(-1.0, 1.0);
+            }
+        }
+    }
+
+    let velocity = velocity.clamp(0.0, 1.0);
+    let pcm: Vec<f32> = normalized
+        .into_iter()
+        .map(|sample| sample * velocity)
+        .collect();
+    Some(Arc::from(pcm))
+}
 
 pub fn render_vocal_note(
     note: VocalNote<'_>,
@@ -570,7 +695,8 @@ mod tests {
 
     use super::{parser, reciter};
     use super::{
-        render_vocal_note, EnhancementProfile, LyricInput, PitchMode, VocalNote, VoiceParams,
+        phonemes_from_text, render_vocal_note, synthesize_formant_vocals, EnhancementProfile,
+        LyricInput, Phoneme, PitchMode, VocalNote, VoiceParams,
     };
 
     #[test]
@@ -656,5 +782,30 @@ mod tests {
         assert!(mean.abs() < 0.12, "dc offset too large: {mean}");
         assert!(rms > 0.05, "rendered vocal lost too much energy: {rms}");
         assert!(peak > 0.2, "rendered vocal peak too small: {peak}");
+    }
+
+    #[test]
+    fn phonemes_from_text_matches_reciter_parser_pipeline() {
+        let text = "welcome";
+        let recited = reciter::text_to_phonemes(text).expect("reciter should generate phonemes");
+        let parsed = parser::parse_phonemes(&recited).expect("parser should parse phonemes");
+
+        let expected: [Option<Phoneme>; 12] = std::array::from_fn(|index| {
+            parsed.get(index).map(|phoneme| Phoneme {
+                length: phoneme.length,
+                index: phoneme.index,
+                stress: phoneme.stress,
+            })
+        });
+
+        assert_eq!(phonemes_from_text(text), expected);
+    }
+
+    #[test]
+    fn synthesize_formant_vocals_returns_none_for_empty_phonemes() {
+        let rendered =
+            synthesize_formant_vocals(60, Duration::from_millis(250), [None; 12], 1.0, 48_000);
+
+        assert!(rendered.is_none());
     }
 }
