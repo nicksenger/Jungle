@@ -4,8 +4,11 @@ use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
 use jungle_sdk::{FusedClient, JourneyStatus, JungleClient, Server};
 use reqwest::Url;
-use serde::{Deserialize, Serialize};
+use serde::de::{self, IgnoredAny, MapAccess, SeqAccess, Visitor};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
@@ -57,8 +60,7 @@ impl DspCode {
     }
 }
 
-#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(from = "LyrebirdBranchNodeSerde", into = "LyrebirdBranchNodeSerde")]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct LyrebirdBranchNode {
     pub code: DspCode,
     pub mel_spectrogram_path: String,
@@ -79,37 +81,211 @@ impl From<DspCode> for LyrebirdBranchNode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-enum LyrebirdBranchNodeSerde {
-    Structured {
-        code: DspCode,
-        mel_spectrogram_path: String,
-    },
-    Legacy(DspCode),
-}
-
-impl From<LyrebirdBranchNodeSerde> for LyrebirdBranchNode {
-    fn from(value: LyrebirdBranchNodeSerde) -> Self {
-        match value {
-            LyrebirdBranchNodeSerde::Structured {
-                code,
-                mel_spectrogram_path,
-            } => Self {
-                code,
-                mel_spectrogram_path,
-            },
-            LyrebirdBranchNodeSerde::Legacy(code) => Self::from(code),
-        }
+impl Serialize for LyrebirdBranchNode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("LyrebirdBranchNode", 6)?;
+        state.serialize_field("iteration_id", &self.code.iteration_id)?;
+        state.serialize_field("source", &self.code.source)?;
+        state.serialize_field("sample_path", &self.code.sample_path)?;
+        state.serialize_field("spectrogram_path", &self.code.spectrogram_path)?;
+        state.serialize_field("similarity", &self.code.similarity)?;
+        state.serialize_field("mel_spectrogram_path", &self.mel_spectrogram_path)?;
+        state.end()
     }
 }
 
-impl From<LyrebirdBranchNode> for LyrebirdBranchNodeSerde {
-    fn from(value: LyrebirdBranchNode) -> Self {
-        Self::Structured {
-            code: value.code,
-            mel_spectrogram_path: value.mel_spectrogram_path,
+impl<'de> Deserialize<'de> for LyrebirdBranchNode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "code",
+            "mel_spectrogram_path",
+            "iteration_id",
+            "source",
+            "sample_path",
+            "spectrogram_path",
+            "similarity",
+        ];
+
+        enum Field {
+            Code,
+            MelSpectrogramPath,
+            IterationId,
+            Source,
+            SamplePath,
+            SpectrogramPath,
+            Similarity,
+            Ignore,
         }
+
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl<'de> Visitor<'de> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        formatter.write_str("a lyrebird branch node field")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                    where
+                        E: de::Error,
+                    {
+                        Ok(match value {
+                            "code" => Field::Code,
+                            "mel_spectrogram_path" => Field::MelSpectrogramPath,
+                            "iteration_id" => Field::IterationId,
+                            "source" => Field::Source,
+                            "sample_path" => Field::SamplePath,
+                            "spectrogram_path" => Field::SpectrogramPath,
+                            "similarity" => Field::Similarity,
+                            _ => Field::Ignore,
+                        })
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
+        }
+
+        struct BranchNodeVisitor;
+
+        impl<'de> Visitor<'de> for BranchNodeVisitor {
+            type Value = LyrebirdBranchNode;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a lyrebird branch node")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let iteration_id: String = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let source: String = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                let sample_path: String = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                let spectrogram_path: String = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(3, &self))?;
+                let similarity: Option<f32> = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(4, &self))?;
+                let mel_spectrogram_path: String = seq
+                    .next_element()?
+                    .unwrap_or_else(|| spectrogram_path.clone());
+                Ok(LyrebirdBranchNode {
+                    code: DspCode {
+                        iteration_id,
+                        source,
+                        sample_path,
+                        spectrogram_path,
+                        similarity,
+                    },
+                    mel_spectrogram_path,
+                })
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut code: Option<DspCode> = None;
+                let mut iteration_id = None;
+                let mut source = None;
+                let mut sample_path = None;
+                let mut spectrogram_path = None;
+                let mut similarity = None;
+                let mut mel_spectrogram_path = None;
+
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::Code => {
+                            if code.is_some() {
+                                return Err(de::Error::duplicate_field("code"));
+                            }
+                            code = Some(map.next_value()?);
+                        }
+                        Field::MelSpectrogramPath => {
+                            if mel_spectrogram_path.is_some() {
+                                return Err(de::Error::duplicate_field("mel_spectrogram_path"));
+                            }
+                            mel_spectrogram_path = Some(map.next_value()?);
+                        }
+                        Field::IterationId => {
+                            if iteration_id.is_some() {
+                                return Err(de::Error::duplicate_field("iteration_id"));
+                            }
+                            iteration_id = Some(map.next_value()?);
+                        }
+                        Field::Source => {
+                            if source.is_some() {
+                                return Err(de::Error::duplicate_field("source"));
+                            }
+                            source = Some(map.next_value()?);
+                        }
+                        Field::SamplePath => {
+                            if sample_path.is_some() {
+                                return Err(de::Error::duplicate_field("sample_path"));
+                            }
+                            sample_path = Some(map.next_value()?);
+                        }
+                        Field::SpectrogramPath => {
+                            if spectrogram_path.is_some() {
+                                return Err(de::Error::duplicate_field("spectrogram_path"));
+                            }
+                            spectrogram_path = Some(map.next_value()?);
+                        }
+                        Field::Similarity => {
+                            if similarity.is_some() {
+                                return Err(de::Error::duplicate_field("similarity"));
+                            }
+                            similarity = Some(map.next_value()?);
+                        }
+                        Field::Ignore => {
+                            let _ = map.next_value::<IgnoredAny>()?;
+                        }
+                    }
+                }
+
+                let code = match code {
+                    Some(code) => code,
+                    None => DspCode {
+                        iteration_id: iteration_id
+                            .ok_or_else(|| de::Error::missing_field("iteration_id"))?,
+                        source: source.ok_or_else(|| de::Error::missing_field("source"))?,
+                        sample_path: sample_path
+                            .ok_or_else(|| de::Error::missing_field("sample_path"))?,
+                        spectrogram_path: spectrogram_path
+                            .ok_or_else(|| de::Error::missing_field("spectrogram_path"))?,
+                        similarity,
+                    },
+                };
+
+                Ok(LyrebirdBranchNode {
+                    mel_spectrogram_path: mel_spectrogram_path
+                        .unwrap_or_else(|| code.spectrogram_path.clone()),
+                    code,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct("LyrebirdBranchNode", FIELDS, BranchNodeVisitor)
     }
 }
 
@@ -1104,5 +1280,43 @@ mod tests {
         assert_eq!(node.code.iteration_id, "00000001");
         assert_eq!(node.mel_spectrogram_path, "/tmp/bass.png");
         assert_eq!(node.similarity(), Some(0.5));
+    }
+
+    #[test]
+    fn branch_node_deserializes_structured_json_shape() {
+        let node = serde_json::from_value::<LyrebirdBranchNode>(serde_json::json!({
+            "code": {
+                "iteration_id": "00000002",
+                "source": "fn bass() { updated(); }",
+                "sample_path": "/tmp/updated.wav",
+                "spectrogram_path": "/tmp/updated.png",
+                "similarity": 0.8
+            },
+            "mel_spectrogram_path": "/tmp/updated-mel.png"
+        }))
+        .unwrap();
+
+        assert_eq!(node.code.iteration_id, "00000002");
+        assert_eq!(node.mel_spectrogram_path, "/tmp/updated-mel.png");
+        assert_eq!(node.similarity(), Some(0.8));
+    }
+
+    #[test]
+    fn branch_node_round_trips_through_postcard() {
+        let node = LyrebirdBranchNode {
+            code: DspCode {
+                iteration_id: "00000004".to_owned(),
+                source: "fn bass() { postcard(); }".to_owned(),
+                sample_path: "/tmp/postcard.wav".to_owned(),
+                spectrogram_path: "/tmp/postcard.png".to_owned(),
+                similarity: Some(0.9),
+            },
+            mel_spectrogram_path: "/tmp/postcard-mel.png".to_owned(),
+        };
+
+        let bytes = postcard::to_allocvec(&node).unwrap();
+        let decoded = postcard::from_bytes::<LyrebirdBranchNode>(&bytes).unwrap();
+
+        assert_eq!(decoded, node);
     }
 }
