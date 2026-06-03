@@ -2,7 +2,9 @@
 
 use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
-use crate::{DspCode, LyrebirdInstrument, PulseCodeParadise, LYREBIRD_DURATION_SECS};
+use crate::{
+    DspCode, LyrebirdBranchNode, LyrebirdInstrument, PulseCodeParadise, LYREBIRD_DURATION_SECS,
+};
 use image::ImageReader;
 use jungle_sdk::effect;
 use serde::{Deserialize, Serialize};
@@ -106,7 +108,7 @@ impl Effect<PulseCodeParadise> for PromptModel {
 pub struct BuildOptimizationPromptInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
-    pub code_branch: Vec<DspCode>,
+    pub code_branch: Vec<LyrebirdBranchNode>,
     pub target_spectrogram_path: String,
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
@@ -183,7 +185,7 @@ pub struct SearchTreeSelect;
 #[effect(id = 9)]
 impl Effect<()> for SearchTreeSelect {
     type In = LyrebirdInstrument;
-    type Out = Vec<DspCode>;
+    type Out = Vec<LyrebirdBranchNode>;
     type Err = String;
 
     fn effect(
@@ -213,7 +215,7 @@ where
 pub struct SearchTreeSubmit;
 #[effect(id = 10)]
 impl Effect<()> for SearchTreeSubmit {
-    type In = (LyrebirdInstrument, Vec<DspCode>, f32);
+    type In = (LyrebirdInstrument, Vec<LyrebirdBranchNode>, f32);
     type Out = ();
     type Err = String;
 
@@ -519,7 +521,7 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         .last()
         .cloned()
         .ok_or_else(|| "lyrebird prompt requires a selected code branch".to_owned())?;
-    if selected_code.spectrogram_path.is_empty() {
+    if selected_code.mel_spectrogram_path.is_empty() {
         return Err("selected lyrebird branch is missing a spectrogram path".to_owned());
     }
 
@@ -528,7 +530,7 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
         instrument = input.instrument.slug(),
         prompt_attempt = input.prompt_attempt.saturating_add(1),
         selected_depth = input.code_branch.len().saturating_sub(1),
-        selected_similarity = selected_code.similarity.unwrap_or_default(),
+        selected_similarity = selected_code.similarity().unwrap_or_default(),
         "building lyrebird optimization prompt"
     );
 
@@ -554,28 +556,36 @@ Keep the module compiling in the existing `lyrebird-sample` crate and preserve t
     }
     contents.push(crate::tokens::Content::Text(task_description));
 
-    for (index, code) in input.code_branch.iter().enumerate() {
+    for (index, branch_node) in input.code_branch.iter().enumerate() {
         let heading = if index == 0 {
             "Initial baseline code"
         } else {
             "Branch code"
         };
-        let similarity = code
-            .similarity
+        if branch_node.mel_spectrogram_path.is_empty() {
+            return Err(format!(
+                "lyrebird branch node {index} is missing a spectrogram path"
+            ));
+        }
+        let similarity = branch_node
+            .similarity()
             .map(|score| format!("{score:.6}"))
             .unwrap_or_else(|| "n/a".to_owned());
         contents.push(crate::tokens::Content::Text(format!(
-            "{heading} {index}.\nIteration id: {}.\nSimilarity: {}.\n```rust\n{}\n```",
-            code.iteration_id, similarity, code.source
+            "{heading} {index}.\nIteration id: {}.\n```rust\n{}\n```",
+            branch_node.code.iteration_id, branch_node.code.source
+        )));
+        contents.push(crate::tokens::Content::Text(format!(
+            "{heading} {index} mel spectrogram:"
+        )));
+        contents.push(crate::tokens::Content::Image(PathBuf::from(
+            &branch_node.mel_spectrogram_path,
+        )));
+        contents.push(crate::tokens::Content::Text(format!(
+            "{heading} {index} score: {similarity}"
         )));
     }
 
-    contents.push(crate::tokens::Content::Text(
-        "Selected node spectrogram:".to_owned(),
-    ));
-    contents.push(crate::tokens::Content::Image(PathBuf::from(
-        &selected_code.spectrogram_path,
-    )));
     contents.push(crate::tokens::Content::Text(
         "Target spectrogram:".to_owned(),
     ));
@@ -1118,7 +1128,8 @@ mod tests {
                 sample_path: "/tmp/bass.wav".to_owned(),
                 spectrogram_path: "/tmp/bass.png".to_owned(),
                 similarity: Some(0.5),
-            }],
+            }
+            .into()],
             target_spectrogram_path: "/tmp/target.png".to_owned(),
             prompt_attempt: 0,
             retry_reason: None,
@@ -1126,6 +1137,76 @@ mod tests {
         .unwrap();
 
         assert!(prompt.tools.is_empty());
+    }
+
+    #[test]
+    fn optimization_prompt_includes_mel_for_each_branch_node_before_score() {
+        let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
+            iteration_id: "00000002".to_owned(),
+            instrument: LyrebirdInstrument::Bass,
+            code_branch: vec![
+                DspCode {
+                    iteration_id: "initial".to_owned(),
+                    source: "fn bass() { baseline(); }".to_owned(),
+                    sample_path: "/tmp/initial.wav".to_owned(),
+                    spectrogram_path: "/tmp/initial.png".to_owned(),
+                    similarity: Some(0.25),
+                }
+                .into(),
+                DspCode {
+                    iteration_id: "00000001".to_owned(),
+                    source: "fn bass() { mutate(); }".to_owned(),
+                    sample_path: "/tmp/00000001.wav".to_owned(),
+                    spectrogram_path: "/tmp/00000001.png".to_owned(),
+                    similarity: Some(0.75),
+                }
+                .into(),
+            ],
+            target_spectrogram_path: "/tmp/target.png".to_owned(),
+            prompt_attempt: 1,
+            retry_reason: None,
+        })
+        .unwrap();
+
+        let user_contents = &prompt.messages[1].contents;
+        assert_eq!(
+            user_contents[1],
+            crate::tokens::Content::Text(
+                "Initial baseline code 0.\nIteration id: initial.\n```rust\nfn bass() { baseline(); }\n```"
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            user_contents[2],
+            crate::tokens::Content::Text("Initial baseline code 0 mel spectrogram:".to_owned())
+        );
+        assert_eq!(
+            user_contents[3],
+            crate::tokens::Content::Image(PathBuf::from("/tmp/initial.png"))
+        );
+        assert_eq!(
+            user_contents[4],
+            crate::tokens::Content::Text("Initial baseline code 0 score: 0.250000".to_owned())
+        );
+        assert_eq!(
+            user_contents[5],
+            crate::tokens::Content::Text(
+                "Branch code 1.\nIteration id: 00000001.\n```rust\nfn bass() { mutate(); }\n```"
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            user_contents[6],
+            crate::tokens::Content::Text("Branch code 1 mel spectrogram:".to_owned())
+        );
+        assert_eq!(
+            user_contents[7],
+            crate::tokens::Content::Image(PathBuf::from("/tmp/00000001.png"))
+        );
+        assert_eq!(
+            user_contents[8],
+            crate::tokens::Content::Text("Branch code 1 score: 0.750000".to_owned())
+        );
     }
 
     #[tokio::test]

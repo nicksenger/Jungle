@@ -146,11 +146,11 @@ impl Action for SelectDspBranch {
         let instrument_state = state.current_state_mut();
         let mut branch = output.map_err(Failure::from)?;
         if branch.is_empty() {
-            branch.push(instrument_state.initial_dsp_code.clone());
+            branch.push(instrument_state.initial_dsp_code.clone().into());
         }
 
         let selected_depth = branch.len().saturating_sub(1);
-        let selected_similarity = branch.last().and_then(|code| code.similarity);
+        let selected_similarity = branch.last().and_then(|node| node.similarity());
         instrument_state.selected_branch = branch;
         info!(
             iteration_id = %iteration_id,
@@ -358,7 +358,7 @@ impl Action for PrepareDspPatch {
                 selected_similarity = instrument_state
                     .selected_branch
                     .last()
-                    .and_then(|code| code.similarity)
+                    .and_then(|node| node.similarity())
                     .unwrap_or_default(),
                 "staged lyrebird dsp patch for compilation"
             );
@@ -528,14 +528,14 @@ impl Action for SubmitDspBranch {
     fn emit(
         state: &LyrebirdState,
         _input: Self::Input,
-    ) -> (LyrebirdInstrument, Vec<DspCode>, f32) {
+    ) -> (LyrebirdInstrument, Vec<crate::LyrebirdBranchNode>, f32) {
         let instrument_state = state.current_state();
         (
             state.current_instrument,
             instrument_state
                 .latest_generated_code
                 .clone()
-                .map(|code| vec![code])
+                .map(|code| vec![code.into()])
                 .unwrap_or_default(),
             instrument_state.last_similarity,
         )

@@ -23,9 +23,8 @@ mod ui;
 use crate::action::{
     BeginIteration, BuildPrompt, CompilePreparedDspPatch, CurrentInstrumentCompileReady,
     FinalizeIterationRender, FlattenEitherUnit, FlattenJoinedUnit, InstrumentMarker,
-    LyrebirdLoopForever, PrepareDspPatch, RequestDspPatch, ScoreSpectrogram,
-    SeedLyrebirdState, SelectDspBranch, SetCurrentInstrument, SkipInstrumentIteration,
-    SubmitDspBranch,
+    LyrebirdLoopForever, PrepareDspPatch, RequestDspPatch, ScoreSpectrogram, SeedLyrebirdState,
+    SelectDspBranch, SetCurrentInstrument, SkipInstrumentIteration, SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
@@ -54,6 +53,62 @@ impl DspCode {
         Self {
             iteration_id: "initial".to_owned(),
             ..Self::default()
+        }
+    }
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(from = "LyrebirdBranchNodeSerde", into = "LyrebirdBranchNodeSerde")]
+pub struct LyrebirdBranchNode {
+    pub code: DspCode,
+    pub mel_spectrogram_path: String,
+}
+
+impl LyrebirdBranchNode {
+    pub fn similarity(&self) -> Option<f32> {
+        self.code.similarity
+    }
+}
+
+impl From<DspCode> for LyrebirdBranchNode {
+    fn from(code: DspCode) -> Self {
+        Self {
+            mel_spectrogram_path: code.spectrogram_path.clone(),
+            code,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum LyrebirdBranchNodeSerde {
+    Structured {
+        code: DspCode,
+        mel_spectrogram_path: String,
+    },
+    Legacy(DspCode),
+}
+
+impl From<LyrebirdBranchNodeSerde> for LyrebirdBranchNode {
+    fn from(value: LyrebirdBranchNodeSerde) -> Self {
+        match value {
+            LyrebirdBranchNodeSerde::Structured {
+                code,
+                mel_spectrogram_path,
+            } => Self {
+                code,
+                mel_spectrogram_path,
+            },
+            LyrebirdBranchNodeSerde::Legacy(code) => Self::from(code),
+        }
+    }
+}
+
+impl From<LyrebirdBranchNode> for LyrebirdBranchNodeSerde {
+    fn from(value: LyrebirdBranchNode) -> Self {
+        Self::Structured {
+            code: value.code,
+            mel_spectrogram_path: value.mel_spectrogram_path,
         }
     }
 }
@@ -113,9 +168,7 @@ impl LyrebirdInstrument {
         match self {
             Self::RhythmGuitar => "jungle-examples/examples/lyrebird/assets/guitar_intro_4s.png",
             Self::Vocals => "jungle-examples/examples/lyrebird/assets/vocals_4s.png",
-            Self::BackupVocals => {
-                "jungle-examples/examples/lyrebird/assets/backup_vocals_4s.png"
-            }
+            Self::BackupVocals => "jungle-examples/examples/lyrebird/assets/backup_vocals_4s.png",
             Self::Bass => "jungle-examples/examples/lyrebird/assets/bass_4s.png",
             Self::GuitarSolo => "jungle-examples/examples/lyrebird/assets/guitar_solo_4s.png",
         }
@@ -180,7 +233,7 @@ pub struct LyrebirdInstrumentState {
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
     pub initial_dsp_code: DspCode,
-    pub selected_branch: Vec<DspCode>,
+    pub selected_branch: Vec<LyrebirdBranchNode>,
     pub sample_path: String,
     pub spectrogram_path: String,
     pub last_similarity: f32,
@@ -207,7 +260,7 @@ impl LyrebirdInstrumentState {
             target_spectrogram_path: seed.target_spectrogram_path,
             dsp_source_path: seed.dsp_source_path,
             initial_dsp_code: seed.initial_dsp_code.clone(),
-            selected_branch: vec![seed.initial_dsp_code],
+            selected_branch: vec![seed.initial_dsp_code.into()],
             ..Self::default()
         }
     }
@@ -218,7 +271,7 @@ impl LyrebirdInstrumentState {
             target_spectrogram_path: instrument.relative_target_spectrogram_path().to_owned(),
             dsp_source_path: instrument.relative_dsp_path().to_owned(),
             initial_dsp_code: DspCode::placeholder_initial(),
-            selected_branch: vec![DspCode::placeholder_initial()],
+            selected_branch: vec![DspCode::placeholder_initial().into()],
             ..Self::default()
         }
     }
@@ -287,10 +340,7 @@ impl LyrebirdState {
         normalized
     }
 
-    pub fn instrument_state(
-        &self,
-        instrument: LyrebirdInstrument,
-    ) -> &LyrebirdInstrumentState {
+    pub fn instrument_state(&self, instrument: LyrebirdInstrument) -> &LyrebirdInstrumentState {
         self.instruments
             .iter()
             .find(|state| state.instrument == instrument)
@@ -401,10 +451,7 @@ impl InstrumentMarker for GuitarSoloMarker {
 
 #[derive(Flow)]
 pub struct LyrebirdPromptLeft(
-    Join<
-        LyrebirdInstrumentPrompt<RhythmGuitarMarker>,
-        LyrebirdInstrumentPrompt<VocalsMarker>,
-    >,
+    Join<LyrebirdInstrumentPrompt<RhythmGuitarMarker>, LyrebirdInstrumentPrompt<VocalsMarker>>,
     Step<FlattenJoinedUnit<LyrebirdState>>,
 );
 
@@ -1030,10 +1077,7 @@ mod tests {
 
         let appearance = <Lyrebird as Observe>::observe(&state);
 
-        assert_eq!(
-            appearance.instruments.len(),
-            LyrebirdInstrument::ALL.len()
-        );
+        assert_eq!(appearance.instruments.len(), LyrebirdInstrument::ALL.len());
         for instrument in LyrebirdInstrument::ALL {
             assert_eq!(
                 appearance.instrument_state(instrument).instrument,
@@ -1044,5 +1088,21 @@ mod tests {
             appearance.current_instrument,
             LyrebirdInstrument::RhythmGuitar
         );
+    }
+
+    #[test]
+    fn branch_node_deserializes_legacy_dsp_code_shape() {
+        let node = serde_json::from_value::<LyrebirdBranchNode>(serde_json::json!({
+            "iteration_id": "00000001",
+            "source": "fn bass() {}",
+            "sample_path": "/tmp/bass.wav",
+            "spectrogram_path": "/tmp/bass.png",
+            "similarity": 0.5
+        }))
+        .unwrap();
+
+        assert_eq!(node.code.iteration_id, "00000001");
+        assert_eq!(node.mel_spectrogram_path, "/tmp/bass.png");
+        assert_eq!(node.similarity(), Some(0.5));
     }
 }

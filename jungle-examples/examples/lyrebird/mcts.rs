@@ -1,4 +1,6 @@
-use super::{DspCode, LyrebirdInstrument, PulseCodeParadise, PulseCodeParadiseError};
+use super::{
+    DspCode, LyrebirdBranchNode, LyrebirdInstrument, PulseCodeParadise, PulseCodeParadiseError,
+};
 use directories_next::BaseDirs;
 use redb::{ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
@@ -11,10 +13,8 @@ use std::sync::Arc;
 use tracing::warn;
 
 const ROOT_NODE_ID: u64 = 0;
-const MCTS_TREES_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("lyrebird_mcts_trees");
-const MCTS_NODES_TABLE: TableDefinition<&[u8], &[u8]> =
-    TableDefinition::new("lyrebird_mcts_nodes");
+const MCTS_TREES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("lyrebird_mcts_trees");
+const MCTS_NODES_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("lyrebird_mcts_nodes");
 
 pub trait SearchTree {
     type Error;
@@ -51,7 +51,7 @@ struct StoredMctsTree {
 struct StoredMctsNode {
     id: u64,
     parent_id: Option<u64>,
-    data: Vec<DspCode>,
+    data: Vec<LyrebirdBranchNode>,
     visits: u64,
     total_score: f64,
     children: Vec<u64>,
@@ -81,7 +81,7 @@ impl PulseCodeParadise {
     pub(crate) fn select_lyrebird_branch(
         &self,
         instrument: LyrebirdInstrument,
-    ) -> Result<Vec<DspCode>, PulseCodeParadiseError> {
+    ) -> Result<Vec<LyrebirdBranchNode>, PulseCodeParadiseError> {
         let write_tx = self.db.begin_write().map_err(|err| {
             PulseCodeParadiseError::Persistence(format!("mcts select begin_write failed: {err}"))
         })?;
@@ -132,7 +132,7 @@ impl PulseCodeParadise {
     pub(crate) fn submit_lyrebird_branch(
         &self,
         instrument: LyrebirdInstrument,
-        data: Vec<DspCode>,
+        data: Vec<LyrebirdBranchNode>,
         score: f32,
     ) -> Result<(), PulseCodeParadiseError> {
         if !score.is_finite() {
@@ -143,7 +143,7 @@ impl PulseCodeParadise {
         }
         if data.len() != 1 {
             return Err(PulseCodeParadiseError::MctsProtocol(format!(
-                "{} tree submit expects exactly one generated dsp code, got {}",
+                "{} tree submit expects exactly one generated branch node, got {}",
                 instrument.slug(),
                 data.len()
             )));
@@ -249,7 +249,7 @@ impl PulseCodeParadise {
 
 impl SearchTree for PulseCodeParadise {
     type Error = String;
-    type Data = Vec<DspCode>;
+    type Data = Vec<LyrebirdBranchNode>;
 
     fn select(
         &self,
@@ -536,7 +536,7 @@ fn branch_for_node(
     nodes: &HashMap<u64, StoredMctsNode>,
     initial_dsp_code: &DspCode,
     instrument: LyrebirdInstrument,
-) -> Result<Vec<DspCode>, PulseCodeParadiseError> {
+) -> Result<Vec<LyrebirdBranchNode>, PulseCodeParadiseError> {
     let mut lineage = Vec::new();
     let mut current_node_id = Some(node_id);
     while let Some(id) = current_node_id {
@@ -552,7 +552,7 @@ fn branch_for_node(
         current_node_id = node.parent_id;
     }
 
-    let mut branch = vec![initial_dsp_code.clone()];
+    let mut branch = vec![initial_dsp_code.clone().into()];
     for id in lineage.into_iter().rev() {
         branch.extend(
             nodes
@@ -615,6 +615,10 @@ mod tests {
         }
     }
 
+    fn branch_node(iteration_id: &str, similarity: Option<f32>) -> LyrebirdBranchNode {
+        dsp_code(iteration_id, similarity).into()
+    }
+
     fn ecosystem(name: &str, max_tree_depth: usize) -> PulseCodeParadise {
         let initial = LyrebirdInstrument::ALL.into_iter().map(|instrument| {
             (
@@ -649,7 +653,7 @@ mod tests {
         let selected = first
             .select_lyrebird_branch(LyrebirdInstrument::RhythmGuitar)
             .unwrap();
-        assert_eq!(selected, vec![initial.clone()]);
+        assert_eq!(selected, vec![initial.clone().into()]);
         drop(first);
 
         let second = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
@@ -658,12 +662,12 @@ mod tests {
         let recovered = second
             .select_lyrebird_branch(LyrebirdInstrument::RhythmGuitar)
             .unwrap();
-        assert_eq!(recovered, vec![initial.clone()]);
+        assert_eq!(recovered, vec![initial.clone().into()]);
         let candidate = dsp_code("00000001", Some(0.75));
         second
             .submit_lyrebird_branch(
                 LyrebirdInstrument::RhythmGuitar,
-                vec![candidate.clone()],
+                vec![candidate.clone().into()],
                 0.75,
             )
             .unwrap();
@@ -684,7 +688,7 @@ mod tests {
         assert!((root.total_score - 0.75).abs() < f64::EPSILON);
         assert_eq!(child.parent_id, Some(ROOT_NODE_ID));
         assert_eq!(child.visits, 1);
-        assert_eq!(child.data, vec![candidate]);
+        assert_eq!(child.data, vec![candidate.into()]);
     }
 
     #[test]
@@ -696,7 +700,7 @@ mod tests {
         ecosystem
             .submit_lyrebird_branch(
                 LyrebirdInstrument::RhythmGuitar,
-                vec![dsp_code("rhythm", Some(0.5))],
+                vec![branch_node("rhythm", Some(0.5))],
                 0.5,
             )
             .unwrap();
@@ -707,7 +711,10 @@ mod tests {
 
         assert_eq!(rhythm_branch.len(), 1);
         assert_eq!(vocals_branch.len(), 1);
-        assert_ne!(rhythm_branch[0].iteration_id, vocals_branch[0].iteration_id);
+        assert_ne!(
+            rhythm_branch[0].code.iteration_id,
+            vocals_branch[0].code.iteration_id
+        );
     }
 
     #[test]
@@ -722,7 +729,7 @@ mod tests {
         let selected = first
             .select_lyrebird_branch(LyrebirdInstrument::Bass)
             .unwrap();
-        assert_eq!(selected, vec![initial.clone()]);
+        assert_eq!(selected, vec![initial.clone().into()]);
         drop(first);
 
         let second = PulseCodeParadise::new(tokens_url, None, Some(db_path))
@@ -732,7 +739,7 @@ mod tests {
             .select_lyrebird_branch(LyrebirdInstrument::Bass)
             .unwrap();
 
-        assert_eq!(recovered, vec![initial]);
+        assert_eq!(recovered, vec![initial.into()]);
     }
 
     #[test]
@@ -742,7 +749,7 @@ mod tests {
         let submit_err = ecosystem
             .submit_lyrebird_branch(
                 LyrebirdInstrument::GuitarSolo,
-                vec![dsp_code("00000001", Some(0.3))],
+                vec![branch_node("00000001", Some(0.3))],
                 0.3,
             )
             .unwrap_err();
@@ -793,7 +800,7 @@ mod tests {
         ecosystem
             .submit_lyrebird_branch(
                 LyrebirdInstrument::BackupVocals,
-                vec![dsp_code("00000001", Some(0.4))],
+                vec![branch_node("00000001", Some(0.4))],
                 0.4,
             )
             .unwrap();
@@ -804,7 +811,7 @@ mod tests {
         ecosystem
             .submit_lyrebird_branch(
                 LyrebirdInstrument::BackupVocals,
-                vec![dsp_code("00000002", Some(0.8))],
+                vec![branch_node("00000002", Some(0.8))],
                 0.8,
             )
             .unwrap();
@@ -826,7 +833,7 @@ mod tests {
             StoredMctsNode {
                 id: 1,
                 parent_id: Some(999),
-                data: vec![dsp_code("00000001", Some(0.4))],
+                data: vec![branch_node("00000001", Some(0.4))],
                 visits: 1,
                 total_score: 0.4,
                 children: Vec::new(),
@@ -838,5 +845,41 @@ mod tests {
         assert!(err
             .to_string()
             .contains("node 999 missing while computing vocals tree depth"));
+    }
+
+    #[test]
+    fn selected_branch_retains_node_mel_paths() {
+        let ecosystem = ecosystem("branch-mel-paths", 8);
+
+        let initial_branch = ecosystem
+            .select_lyrebird_branch(LyrebirdInstrument::Bass)
+            .unwrap();
+        assert_eq!(initial_branch.len(), 1);
+        assert_eq!(
+            initial_branch[0].mel_spectrogram_path,
+            "/tmp/initial-bass.png".to_owned()
+        );
+
+        ecosystem
+            .submit_lyrebird_branch(
+                LyrebirdInstrument::Bass,
+                vec![branch_node("00000001", Some(0.6))],
+                0.6,
+            )
+            .unwrap();
+
+        let selected_branch = ecosystem
+            .select_lyrebird_branch(LyrebirdInstrument::Bass)
+            .unwrap();
+
+        assert_eq!(selected_branch.len(), 2);
+        assert_eq!(
+            selected_branch[0].mel_spectrogram_path,
+            "/tmp/initial-bass.png".to_owned()
+        );
+        assert_eq!(
+            selected_branch[1].mel_spectrogram_path,
+            "/tmp/00000001.png".to_owned()
+        );
     }
 }
