@@ -144,7 +144,7 @@ pub(crate) fn aggregate_sample_score(
     mel_similarity: f32,
     metric_errors: LyrebirdAudioMetricErrors,
 ) -> f32 {
-    (mel_similarity.clamp(0.0, 1.0) * 5.0 + metric_errors.average_match_score() * 5.0) / 10.0
+    (mel_similarity.clamp(0.0, 1.0) * 3.0 + metric_errors.average_match_score() * 5.0) / 8.0
 }
 
 fn normalized_relative_error(target: f32, generated: f32) -> f32 {
@@ -1683,7 +1683,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_sample_score_weights_mel_similarity_five_times() {
+    fn aggregate_sample_score_weights_mel_similarity_three_times() {
         let score = aggregate_sample_score(
             0.8,
             LyrebirdAudioMetricErrors {
@@ -1695,7 +1695,7 @@ mod tests {
             },
         );
 
-        let expected = ((0.8 * 5.0) + 0.9 + 0.8 + 0.7 + 0.6 + 0.5) / 10.0;
+        let expected = ((0.8 * 3.0) + 0.9 + 0.8 + 0.7 + 0.6 + 0.5) / 8.0;
         assert!((score - expected).abs() < f32::EPSILON);
     }
 
