@@ -1500,7 +1500,7 @@ fn node_phase_for_display_with_runtime_floors(
     live_data: Option<&LiveData>,
     display_id: u32,
     runtime_id: Option<u32>,
-    proxy_runtime_ids: &[u32],
+    _proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
     runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> Phase<RuntimeState> {
@@ -1522,27 +1522,7 @@ fn node_phase_for_display_with_runtime_floors(
             .unwrap_or(RuntimeState::Pending),
     };
 
-    let mut newest = runtime_id.and_then(|id| {
-        live.runtime_update_sequence
-            .get(&id)
-            .copied()
-            .map(|sequence| (sequence, state))
-    });
-    for proxy_runtime_id in proxy_runtime_ids {
-        let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
-            continue;
-        };
-        let proxy_state =
-            runtime_state_for_live_data(live, *proxy_runtime_id, runtime_sequence_floors);
-        if newest
-            .map(|(best_sequence, _)| sequence > best_sequence)
-            .unwrap_or(true)
-        {
-            newest = Some((sequence, proxy_state));
-        }
-    }
-
-    Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
+    Phase::Live(state)
 }
 
 fn repaired_live_states_for_display(
@@ -1558,20 +1538,9 @@ fn repaired_live_states_for_display(
     let mut states = HashMap::<u32, RuntimeState>::new();
     let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
     for node in &model.nodes {
-        let mut latest_sequence = node
+        let latest_sequence = node
             .runtime_node_id
             .and_then(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied());
-        for proxy_runtime_id in &node.proxy_runtime_ids {
-            let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
-                continue;
-            };
-            if latest_sequence
-                .map(|current| sequence > current)
-                .unwrap_or(true)
-            {
-                latest_sequence = Some(sequence);
-            }
-        }
         if let Some(sequence) = latest_sequence {
             latest_sequence_by_display_id.insert(node.id, sequence);
         }
@@ -3695,7 +3664,7 @@ mod tests {
     }
 
     #[test]
-    fn join_children_follow_join_runtime_state_for_live_coloring() {
+    fn join_proxy_runtime_does_not_color_child_nodes() {
         let ast = JourneyAst::Join {
             label: "Join",
             metadata: "",
@@ -3730,7 +3699,7 @@ mod tests {
                 &join_l.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Running)
+            Phase::Live(RuntimeState::Pending)
         );
         assert_eq!(
             node_phase_for_display(
@@ -3740,7 +3709,7 @@ mod tests {
                 &join_r.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Running)
+            Phase::Live(RuntimeState::Pending)
         );
 
         assert!(live.apply_update(JourneyUpdateEvent {
@@ -3759,7 +3728,7 @@ mod tests {
                 &join_l.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Completed)
+            Phase::Live(RuntimeState::Pending)
         );
         assert_eq!(
             node_phase_for_display(
@@ -3769,12 +3738,12 @@ mod tests {
                 &join_r.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Completed)
+            Phase::Live(RuntimeState::Pending)
         );
     }
 
     #[test]
-    fn join_proxy_runtime_only_recolors_branch_exit_nodes() {
+    fn join_proxy_runtime_does_not_recolor_branch_exit_nodes() {
         let ast = JourneyAst::Join {
             label: "Join",
             metadata: "",
@@ -3838,7 +3807,7 @@ mod tests {
                 &left_b.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Running)
+            Phase::Live(RuntimeState::Completed)
         );
         assert_eq!(
             node_phase_for_display(
@@ -3858,7 +3827,7 @@ mod tests {
                 &right_b.proxy_runtime_ids,
                 &HashMap::new(),
             ),
-            Phase::Live(RuntimeState::Running)
+            Phase::Live(RuntimeState::Completed)
         );
     }
 
@@ -4109,6 +4078,120 @@ mod tests {
         );
         assert_eq!(
             advanced_states.get(&c_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+    }
+
+    #[test]
+    fn while_loop_prompt_branch_promotes_current_iteration_ancestors() {
+        let ast = JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "Begin" },
+                JourneyAst::Conditional {
+                    label: "Branch",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step { label: "Select" },
+                        JourneyAst::Step { label: "Optimize" },
+                    ])),
+                    right: Box::new(JourneyAst::Step { label: "Skip" }),
+                },
+                JourneyAst::Step { label: "Flatten" },
+            ])),
+        };
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let begin_id = id_for("Begin");
+        let select_id = id_for("Select");
+        let optimize_id = id_for("Optimize");
+        let skip_id = id_for("Skip");
+        let flatten_id = id_for("Flatten");
+
+        let mut live = LiveData::default();
+        for (sequence_id, node_id) in [(1, 0), (2, 1), (3, 2), (4, 4)] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::EffectSuccessOutput {
+                    node_id,
+                    uuid: Uuid::nil(),
+                },
+            }));
+        }
+
+        for (sequence_id, event) in [
+            (
+                5,
+                RunnerUpdateOut::EffectInput {
+                    node_id: 0,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                6,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: 0,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                7,
+                RunnerUpdateOut::EffectInput {
+                    node_id: 1,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                8,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: 1,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                9,
+                RunnerUpdateOut::EffectInput {
+                    node_id: 2,
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            states.get(&begin_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            states.get(&select_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            states.get(&optimize_id).copied(),
+            Some(RuntimeState::Running)
+        );
+        assert_eq!(states.get(&skip_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(
+            states.get(&flatten_id).copied(),
             Some(RuntimeState::Pending)
         );
     }
