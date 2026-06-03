@@ -2567,7 +2567,7 @@ impl GraphBuilder {
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
                 members = dedup(members);
-                for member_id in &members {
+                for member_id in &exits {
                     self.mark(*member_id, |node| {
                         if !node.proxy_runtime_ids.contains(&runtime_id) {
                             node.proxy_runtime_ids.push(runtime_id);
@@ -2603,7 +2603,7 @@ impl GraphBuilder {
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
                 members = dedup(members);
-                for member_id in &members {
+                for member_id in &exits {
                     self.mark(*member_id, |node| {
                         if !node.proxy_runtime_ids.contains(&runtime_id) {
                             node.proxy_runtime_ids.push(runtime_id);
@@ -3067,8 +3067,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
                 Phase::Static => RuntimeState::Pending,
             };
             if let Ok(guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
-                    && cx.proxy_runtime_ids.is_empty();
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
                 if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                     phase_target = RuntimeState::Pending;
                 }
@@ -3149,8 +3148,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
         if let Some(runtime_id) = cx.source_runtime_id {
             if let Ok(guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id)
-                    && !cx.source_has_proxy_runtime;
+                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
                 if forced_pending && !matches!(phase_target, RuntimeState::Running) {
                     phase_target = RuntimeState::Pending;
                 }
@@ -3478,6 +3476,95 @@ mod tests {
     }
 
     #[test]
+    fn join_proxy_runtime_only_recolors_branch_exit_nodes() {
+        let ast = JourneyAst::Join {
+            label: "Join",
+            metadata: "",
+            left: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "LeftA" },
+                JourneyAst::Step { label: "LeftB" },
+            ])),
+            right: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "RightA" },
+                JourneyAst::Step { label: "RightB" },
+            ])),
+        };
+        let model = GraphModel::from_ast(ast);
+        let node_for = |label: &str| -> &NodeDisplay {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let left_a = node_for("LeftA");
+        let left_b = node_for("LeftB");
+        let right_a = node_for("RightA");
+        let right_b = node_for("RightB");
+        let mut live = LiveData::default();
+
+        for (sequence_id, runtime_id) in [(1, 1), (2, 2), (3, 3), (4, 4)] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            }));
+        }
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 5,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                left_a.id,
+                left_a.runtime_node_id,
+                &left_a.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Completed)
+        );
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                left_b.id,
+                left_b.runtime_node_id,
+                &left_b.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Running)
+        );
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                right_a.id,
+                right_a.runtime_node_id,
+                &right_a.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Completed)
+        );
+        assert_eq!(
+            node_phase_for_display(
+                Some(&live),
+                right_b.id,
+                right_b.runtime_node_id,
+                &right_b.proxy_runtime_ids,
+                &HashMap::new(),
+            ),
+            Phase::Live(RuntimeState::Running)
+        );
+    }
+
+    #[test]
     fn repaired_live_states_delay_running_predecessor_promotion() {
         let ast = JourneyAst::Sequence(vec![
             JourneyAst::Step { label: "A" },
@@ -3701,6 +3788,35 @@ mod tests {
             .try_lock()
             .expect("theme state lock should be available");
         assert!(guard.node_visuals.is_empty());
+    }
+
+    #[test]
+    fn edge_style_forced_pending_overrides_stale_proxy_completion() {
+        let theme = DefaultTheme::default();
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
+        state.force_pending_runtime_ids = HashSet::from([42]);
+        let state = Mutex::new(state);
+
+        let style = theme
+            .edge_style(
+                &state,
+                EdgeStyleCtx {
+                    edge_index: 0,
+                    source_display_id: 1,
+                    target_display_id: 2,
+                    source_runtime_id: Some(42),
+                    target_runtime_id: Some(99),
+                    source_has_proxy_runtime: true,
+                    target_has_proxy_runtime: false,
+                    source_phase: Phase::Live(RuntimeState::Completed),
+                    target_phase: Phase::Live(RuntimeState::Pending),
+                    extent: 1.0,
+                },
+            )
+            .expect("default theme should always provide an edge style");
+
+        assert_eq!(style.start, runtime_color(RuntimeState::Pending));
+        assert_eq!(style.end, runtime_color(RuntimeState::Pending));
     }
 
     #[test]
