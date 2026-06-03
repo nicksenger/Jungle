@@ -1,12 +1,14 @@
 use crate::{Lyrebird, LyrebirdInstrument, LyrebirdInstrumentState, LyrebirdState};
-use iced::widget::{button, column, container, image, row, stack, text};
+use iced::widget::{button, column, container, image as iced_image, row, stack, text};
 use iced::{alignment, clipboard, ContentFit, Element, Font, Length, Subscription, Task};
 use jungle_sdk::JungleClient;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
+use tracing::warn;
 use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1840.0;
@@ -18,6 +20,7 @@ const HEADER_VERTICAL_PADDING: u16 = 14;
 const SNAPSHOT_ROW_VERTICAL_PADDING: u16 = 0;
 const SNAPSHOT_GAP: f32 = 0.0;
 const SPECTROGRAM_OVERLAY_HEIGHT: f32 = 30.0;
+const SPECTROGRAM_HUE_ROTATION_DEGREES: i32 = -100;
 
 pub fn run_ui<C>(client: C, journey_id: Uuid) -> Result<(), iced::Error>
 where
@@ -57,6 +60,7 @@ struct LyrebirdUi {
     journey_id: Uuid,
     viewer: jungle_vision::EjectedViewer<jungle_vision::DefaultTheme, jungle_vision::AnyAnimal>,
     snapshot: Option<LyrebirdState>,
+    spectrogram_handles: BTreeMap<String, iced_image::Handle>,
     snapshot_error: Option<String>,
     audio: AudioPlayer,
 }
@@ -86,6 +90,7 @@ impl LyrebirdUi {
                 journey_id,
                 viewer,
                 snapshot: None,
+                spectrogram_handles: BTreeMap::new(),
                 snapshot_error: None,
                 audio: AudioPlayer::new(),
             },
@@ -114,6 +119,10 @@ impl LyrebirdUi {
                 }
             }
             Message::SnapshotLoaded(Ok(snapshot)) => {
+                self.spectrogram_handles = snapshot
+                    .as_ref()
+                    .map(build_spectrogram_handles)
+                    .unwrap_or_default();
                 self.snapshot = snapshot;
                 self.snapshot_error = None;
                 Task::none()
@@ -274,7 +283,7 @@ impl LyrebirdUi {
             };
         let cards = row![
             spectrogram_tile(
-                Some(&instrument_state.target_spectrogram_path),
+                self.spectrogram_handle(Some(&instrument_state.target_spectrogram_path)),
                 Some(instrument.display_name().to_owned()),
                 alignment::Horizontal::Left,
                 existing_path(Some(&instrument_state.target_sample_path))
@@ -282,21 +291,21 @@ impl LyrebirdUi {
                 "Waiting for spectrogram",
             ),
             spectrogram_tile(
-                initial_spectrogram_path,
+                self.spectrogram_handle(initial_spectrogram_path),
                 initial_overlay_label,
                 alignment::Horizontal::Right,
                 initial_activate_message,
                 initial_empty_label,
             ),
             spectrogram_tile(
-                current_spectrogram_path,
+                self.spectrogram_handle(current_spectrogram_path),
                 current_overlay_label,
                 alignment::Horizontal::Right,
                 current_activate_message,
                 current_empty_label,
             ),
             spectrogram_tile(
-                best_spectrogram_path,
+                self.spectrogram_handle(best_spectrogram_path),
                 best_overlay_label,
                 alignment::Horizontal::Right,
                 best_activate_message,
@@ -325,19 +334,24 @@ impl LyrebirdUi {
 
         content.width(Length::Fill).height(Length::Fill).into()
     }
+
+    fn spectrogram_handle(&self, path: Option<&str>) -> Option<iced_image::Handle> {
+        path.and_then(non_empty)
+            .and_then(|path| self.spectrogram_handles.get(path))
+            .cloned()
+    }
 }
 
 fn spectrogram_tile<'a>(
-    spectrogram_path: Option<&'a str>,
+    spectrogram_handle: Option<iced_image::Handle>,
     overlay_label: Option<String>,
     overlay_alignment: alignment::Horizontal,
     activate_message: Option<Message>,
     empty_label: &'static str,
 ) -> Element<'a, Message> {
-    let image_panel: Element<'a, Message> = match spectrogram_path.filter(|path| image_exists(path))
-    {
-        Some(path) => {
-            let preview = image(image::Handle::from_path(path))
+    let image_panel: Element<'a, Message> = match spectrogram_handle {
+        Some(handle) => {
+            let preview = iced_image(handle)
                 .content_fit(ContentFit::Fill)
                 .width(Length::Fill)
                 .height(Length::Fill);
@@ -543,10 +557,6 @@ fn existing_path(path: Option<&str>) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn image_exists(path: &str) -> bool {
-    Path::new(path).exists()
-}
-
 async fn load_snapshot(
     client: Arc<dyn JungleClient>,
     journey_id: Uuid,
@@ -562,6 +572,60 @@ async fn load_snapshot(
                 .map_err(|err| format!("failed to decode lyrebird state snapshot: {err}"))
         })
         .transpose()
+}
+
+fn build_spectrogram_handles(snapshot: &LyrebirdState) -> BTreeMap<String, iced_image::Handle> {
+    let mut handles = BTreeMap::new();
+
+    for instrument in LyrebirdInstrument::ALL {
+        let instrument_state = snapshot.instrument_state(instrument);
+        for path in [
+            existing_path(non_empty(&instrument_state.target_spectrogram_path)),
+            existing_path(initial_spectrogram_path(instrument_state)),
+            existing_path(current_spectrogram_path(instrument_state)),
+            existing_path(best_spectrogram_path(instrument_state)),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if handles.contains_key(&path) {
+                continue;
+            }
+
+            if let Some(handle) = load_spectrogram_handle(&path) {
+                handles.insert(path, handle);
+            }
+        }
+    }
+
+    handles
+}
+
+fn load_spectrogram_handle(path: &str) -> Option<iced_image::Handle> {
+    let decoded = match ::image::ImageReader::open(path) {
+        Ok(reader) => match reader.decode() {
+            Ok(image) => image,
+            Err(err) => {
+                warn!(path, error = %err, "failed to decode spectrogram preview");
+                return None;
+            }
+        },
+        Err(err) => {
+            warn!(path, error = %err, "failed to open spectrogram preview");
+            return None;
+        }
+    };
+
+    let rgba = decoded
+        .huerotate(SPECTROGRAM_HUE_ROTATION_DEGREES)
+        .to_rgba8();
+    let (width, height) = rgba.dimensions();
+
+    Some(iced_image::Handle::from_rgba(
+        width,
+        height,
+        rgba.into_raw(),
+    ))
 }
 
 struct AudioPlayer {
