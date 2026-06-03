@@ -238,7 +238,7 @@ impl LyrebirdUi {
                 Some(&instrument_state.target_spectrogram_path),
                 Some(instrument.display_name().to_owned()),
                 alignment::Horizontal::Left,
-                sibling_audio_path(&instrument_state.target_spectrogram_path)
+                existing_path(Some(&instrument_state.target_sample_path))
                     .map(|_| Message::ActivateSpectrogram(instrument, SnapshotKind::Target)),
             ),
             spectrogram_tile(
@@ -290,13 +290,6 @@ fn column_header(label: &'static str) -> Element<'static, Message> {
         .width(Length::FillPortion(1))
         .padding([0, WINDOW_HEADER_CELL_HORIZONTAL_PADDING])
         .into()
-}
-
-fn sibling_audio_path(image_path: &str) -> Option<String> {
-    let audio_path = Path::new(image_path).with_extension("wav");
-    audio_path
-        .exists()
-        .then(|| audio_path.display().to_string())
 }
 
 fn spectrogram_tile<'a>(
@@ -493,7 +486,7 @@ fn spectrogram_action_payload(
                 .map(|code| code.source.clone()),
         ),
         SnapshotKind::Target => (
-            sibling_audio_path(&instrument_state.target_spectrogram_path),
+            existing_path(Some(&instrument_state.target_sample_path)),
             None,
         ),
     }

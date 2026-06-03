@@ -146,13 +146,13 @@ impl LyrebirdInstrument {
         }
     }
 
-    pub fn relative_target_spectrogram_path(self) -> &'static str {
+    pub fn relative_target_sample_path(self) -> &'static str {
         match self {
-            Self::RhythmGuitar => "jungle-examples/examples/lyrebird/assets/guitar_intro_4s.png",
-            Self::Vocals => "jungle-examples/examples/lyrebird/assets/vocals_4s.png",
-            Self::BackupVocals => "jungle-examples/examples/lyrebird/assets/backup_vocals_4s.png",
-            Self::Bass => "jungle-examples/examples/lyrebird/assets/bass_4s.png",
-            Self::GuitarSolo => "jungle-examples/examples/lyrebird/assets/guitar_solo_4s.png",
+            Self::RhythmGuitar => "jungle-examples/examples/lyrebird/assets/guitar_intro_4s.wav",
+            Self::Vocals => "jungle-examples/examples/lyrebird/assets/vocals_4s.wav",
+            Self::BackupVocals => "jungle-examples/examples/lyrebird/assets/backup_vocals_4s.wav",
+            Self::Bass => "jungle-examples/examples/lyrebird/assets/bass_4s.wav",
+            Self::GuitarSolo => "jungle-examples/examples/lyrebird/assets/guitar_solo_4s.wav",
         }
     }
 
@@ -212,6 +212,8 @@ impl LyrebirdInstrument {
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdInstrumentState {
     pub instrument: LyrebirdInstrument,
+    #[serde(default)]
+    pub target_sample_path: String,
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
     pub initial_dsp_code: DspCode,
@@ -241,6 +243,7 @@ impl LyrebirdInstrumentState {
     fn from_seed(seed: LyrebirdInstrumentSeed) -> Self {
         Self {
             instrument: seed.instrument,
+            target_sample_path: seed.target_sample_path,
             target_spectrogram_path: seed.target_spectrogram_path,
             dsp_source_path: seed.dsp_source_path,
             initial_dsp_code: seed.initial_dsp_code.clone(),
@@ -252,7 +255,8 @@ impl LyrebirdInstrumentState {
     fn observation_placeholder(instrument: LyrebirdInstrument) -> Self {
         Self {
             instrument,
-            target_spectrogram_path: instrument.relative_target_spectrogram_path().to_owned(),
+            target_sample_path: instrument.relative_target_sample_path().to_owned(),
+            target_spectrogram_path: String::new(),
             dsp_source_path: instrument.relative_dsp_path().to_owned(),
             initial_dsp_code: DspCode::placeholder_initial(),
             selected_branch: vec![DspCode::placeholder_initial().into()],
@@ -355,6 +359,8 @@ impl LyrebirdState {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdInstrumentSeed {
     pub instrument: LyrebirdInstrument,
+    #[serde(default)]
+    pub target_sample_path: String,
     pub target_spectrogram_path: String,
     pub dsp_source_path: String,
     pub initial_dsp_code: DspCode,
@@ -727,8 +733,20 @@ async fn build_instrument_seeds(
     let mut seeds = Vec::with_capacity(LyrebirdInstrument::ALL.len());
     for instrument in LyrebirdInstrument::ALL {
         let dsp_source_path = workspace_root.join(instrument.relative_dsp_path());
-        let target_spectrogram_path =
-            workspace_root.join(instrument.relative_target_spectrogram_path());
+        let target_sample_path = workspace_root.join(instrument.relative_target_sample_path());
+        let target_spectrogram_path = output_root
+            .join("target-mels")
+            .join(format!("{}.png", instrument.output_stem()));
+        effect::generate_mel_spectrogram(
+            &target_sample_path.display().to_string(),
+            &target_spectrogram_path.display().to_string(),
+        )
+        .map_err(|err| {
+            PulseCodeParadiseError::Bootstrap(format!(
+                "failed to generate target mel spectrogram for {}: {err}",
+                instrument.slug()
+            ))
+        })?;
         let initial_dsp_code = effect::capture_current_dsp_code_snapshot(
             "initial",
             output_root,
@@ -740,6 +758,7 @@ async fn build_instrument_seeds(
         .map_err(PulseCodeParadiseError::Bootstrap)?;
         seeds.push(LyrebirdInstrumentSeed {
             instrument,
+            target_sample_path: target_sample_path.display().to_string(),
             target_spectrogram_path: target_spectrogram_path.display().to_string(),
             dsp_source_path: dsp_source_path.display().to_string(),
             initial_dsp_code,
@@ -984,21 +1003,21 @@ mod tests {
     }
 
     #[test]
-    fn lyrebird_instrument_metadata_covers_all_five_targets() {
+    fn lyrebird_instrument_metadata_covers_all_five_target_samples() {
         let instruments = LyrebirdInstrument::ALL;
 
         assert_eq!(instruments.len(), 5);
         assert_eq!(
             instruments
                 .iter()
-                .map(|instrument| instrument.relative_target_spectrogram_path())
+                .map(|instrument| instrument.relative_target_sample_path())
                 .collect::<Vec<_>>(),
             vec![
-                "jungle-examples/examples/lyrebird/assets/guitar_intro_4s.png",
-                "jungle-examples/examples/lyrebird/assets/vocals_4s.png",
-                "jungle-examples/examples/lyrebird/assets/backup_vocals_4s.png",
-                "jungle-examples/examples/lyrebird/assets/bass_4s.png",
-                "jungle-examples/examples/lyrebird/assets/guitar_solo_4s.png",
+                "jungle-examples/examples/lyrebird/assets/guitar_intro_4s.wav",
+                "jungle-examples/examples/lyrebird/assets/vocals_4s.wav",
+                "jungle-examples/examples/lyrebird/assets/backup_vocals_4s.wav",
+                "jungle-examples/examples/lyrebird/assets/bass_4s.wav",
+                "jungle-examples/examples/lyrebird/assets/guitar_solo_4s.wav",
             ]
         );
     }

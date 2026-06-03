@@ -369,7 +369,7 @@ pub async fn capture_current_dsp_code_snapshot(
     })
 }
 
-fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), String> {
+pub(crate) fn generate_mel_spectrogram(wav_path: &str, output_path: &str) -> Result<(), String> {
     let input = Path::new(wav_path);
     let output = Path::new(output_path);
     ensure_parent_dir(output)?;
