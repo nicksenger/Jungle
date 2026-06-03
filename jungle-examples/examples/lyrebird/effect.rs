@@ -3,7 +3,8 @@
 use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
-    DspCode, LyrebirdBranchNode, LyrebirdInstrument, PulseCodeParadise, LYREBIRD_DURATION_SECS,
+    DspCode, LyrebirdBranchNode, LyrebirdInstrument, LyrebirdPatch, PulseCodeParadise,
+    LYREBIRD_DURATION_SECS,
 };
 use image::ImageReader;
 use jungle_sdk::effect;
@@ -109,7 +110,6 @@ pub struct BuildOptimizationPromptInput {
     pub iteration_id: String,
     pub instrument: LyrebirdInstrument,
     pub code_branch: Vec<LyrebirdBranchNode>,
-    pub target_spectrogram_path: String,
     pub prompt_attempt: u32,
     pub retry_reason: Option<String>,
 }
@@ -132,12 +132,14 @@ pub struct PrepareToolCallsInput {
     pub instrument: LyrebirdInstrument,
     pub prompt_attempt: u32,
     pub tool_name: String,
+    pub current_source: String,
     pub tool_calls: Vec<ToolCall>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PrepareToolCallsOutcome {
     pub retry_reason: Option<String>,
+    pub generated_patch: Option<LyrebirdPatch>,
     pub generated_source: Option<String>,
 }
 
@@ -535,11 +537,12 @@ fn build_optimization_prompt(input: BuildOptimizationPromptInput) -> Result<Prom
     );
 
     let mut contents = Vec::new();
-    let mut task_description = format!(
-        "Task: optimize `{}` so the generated {} mel spectrogram moves closer to the target.\n\
+    let mut system_text = format!(
+        "Produce the next small iterative patch for `{}` so the generated {} audio moves closer to the target.\n\
+The patch must be valid Rust, must still compile inside `lyrebird-sample`, and must be a localized search/replace edit rather than a full-module rewrite.\n\
 Iteration id: {}.\nPrompt attempt: {}.\nSelected branch depth: {}.\n\
-Target score spec: {}.\nUse the `{}` tool to replace the full Rust source for that file.\n\
-Keep the module compiling in the existing `lyrebird-sample` crate and preserve the file's role in the welcome audio pipeline.",
+Target score spec: {}.\nUse `{}` exactly once with `search`, `replacement`, and `note`.\n\
+The `note` must briefly explain the purpose of the change and stay within 100 characters.",
         input.instrument.relative_dsp_path(),
         input.instrument.render_subject(),
         input.iteration_id,
@@ -549,68 +552,74 @@ Keep the module compiling in the existing `lyrebird-sample` crate and preserve t
         input.instrument.tool_name()
     );
     if let Some(retry_reason) = input.retry_reason {
-        task_description.push_str(
+        system_text.push_str(
             "\n\nPrevious attempt failed compilation and the original DSP source was restored.\nFailure details:\n",
         );
-        task_description.push_str(&retry_reason);
+        system_text.push_str(&retry_reason);
     }
-    contents.push(crate::tokens::Content::Text(task_description));
+    contents.push(crate::tokens::Content::Text(system_text));
 
-    for (index, branch_node) in input.code_branch.iter().enumerate() {
-        let heading = if index == 0 {
-            "Initial baseline code"
-        } else {
-            "Branch code"
-        };
-        if branch_node.mel_spectrogram_path.is_empty() {
-            return Err(format!(
-                "lyrebird branch node {index} is missing a spectrogram path"
+    let initial_code = &input.code_branch[0].code;
+    contents.push(crate::tokens::Content::Text(format!(
+        "Initial code:\n```rust\n{}\n```",
+        initial_code.source
+    )));
+
+    let mut patch_history = String::from("Patch history:\n");
+    if input.code_branch.len() == 1 {
+        patch_history.push_str("No patches have been applied yet.");
+    } else {
+        for (index, window) in input.code_branch.windows(2).enumerate() {
+            let previous = &window[0];
+            let current = &window[1];
+            let patch = current.patch.clone().unwrap_or_else(|| LyrebirdPatch {
+                search: previous.code.source.clone(),
+                replacement: current.code.source.clone(),
+                note: "legacy full-file replacement".to_owned(),
+            });
+            let score = current
+                .similarity()
+                .map(|value| format!("{value:.6}"))
+                .unwrap_or_else(|| "n/a".to_owned());
+            patch_history.push_str(&format!(
+                "\nPatch {}.\nIteration id: {}.\nNote: {}\nScore after patch: {}\n{}\n",
+                index + 1,
+                current.code.iteration_id,
+                patch.note,
+                score,
+                format_search_replace_block(&patch),
             ));
         }
-        let similarity = branch_node
-            .similarity()
-            .map(|score| format!("{score:.6}"))
-            .unwrap_or_else(|| "n/a".to_owned());
-        contents.push(crate::tokens::Content::Text(format!(
-            "{heading} {index}.\nIteration id: {}.\n```rust\n{}\n```",
-            branch_node.code.iteration_id, branch_node.code.source
-        )));
-        contents.push(crate::tokens::Content::Text(format!(
-            "{heading} {index} mel spectrogram:"
-        )));
-        contents.push(crate::tokens::Content::Image(PathBuf::from(
-            &branch_node.mel_spectrogram_path,
-        )));
-        contents.push(crate::tokens::Content::Text(format!(
-            "{heading} {index} score: {similarity}"
-        )));
     }
+    contents.push(crate::tokens::Content::Text(patch_history));
 
+    contents.push(crate::tokens::Content::Text(format!(
+        "Current code:\n```rust\n{}\n```",
+        selected_code.code.source
+    )));
     contents.push(crate::tokens::Content::Text(
-        "Target spectrogram:".to_owned(),
+        "Immediate predecessor mel spectrogram:".to_owned(),
     ));
     contents.push(crate::tokens::Content::Image(PathBuf::from(
-        input.target_spectrogram_path,
+        &selected_code.mel_spectrogram_path,
     )));
     contents.push(crate::tokens::Content::Text(format!(
-        "Return replacement code by calling `{}` exactly once with the full Rust source for `{}`.",
+        "Return exactly one `{}` tool call.",
         input.instrument.tool_name(),
-        input.instrument.relative_dsp_path()
     )));
 
     Ok(Prompt {
         messages: vec![
             crate::tokens::Message {
                 role: "system".to_owned(),
-                contents: vec![crate::tokens::Content::Text(format!(
-                    "You are tuning a Rust DSP implementation against a target mel spectrogram. \
-Respond with tool calls only. Only use `{}`.",
-                    input.instrument.tool_name()
-                ))],
+                contents,
             },
             crate::tokens::Message {
                 role: "user".to_owned(),
-                contents,
+                contents: vec![crate::tokens::Content::Text(format!(
+                    "The {} still sounds way different from the target. Provide the next small compiling patch to close the gap.",
+                    input.instrument.display_name()
+                ))],
             },
         ],
         // Keep tool definitions out of the prompt payload because `Tool.parameters`
@@ -632,7 +641,7 @@ async fn prepare_tool_calls(
     );
 
     let replacement = match extract_replacement_source(&input.tool_calls, &input.tool_name) {
-        Ok(Some(source)) => source,
+        Ok(Some(patch)) => patch,
         Err(err) => {
             warn!(
                 iteration_id = %input.iteration_id,
@@ -643,6 +652,7 @@ async fn prepare_tool_calls(
             );
             return Ok(PrepareToolCallsOutcome {
                 retry_reason: Some(err),
+                generated_patch: None,
                 generated_source: None,
             });
         }
@@ -655,9 +665,21 @@ async fn prepare_tool_calls(
             );
             return Ok(PrepareToolCallsOutcome {
                 retry_reason: Some(format!(
-                    "no valid `{}` tool call with a `source` string was returned",
+                    "no valid `{}` tool call with `search`, `replacement`, and `note` strings was returned",
                     input.tool_name
                 )),
+                generated_patch: None,
+                generated_source: None,
+            });
+        }
+    };
+
+    let generated_source = match apply_search_replace_patch(&input.current_source, &replacement) {
+        Ok(source) => source,
+        Err(err) => {
+            return Ok(PrepareToolCallsOutcome {
+                retry_reason: Some(err),
+                generated_patch: None,
                 generated_source: None,
             });
         }
@@ -672,7 +694,8 @@ async fn prepare_tool_calls(
 
     Ok(PrepareToolCallsOutcome {
         retry_reason: None,
-        generated_source: Some(replacement),
+        generated_patch: Some(replacement),
+        generated_source: Some(generated_source),
     })
 }
 
@@ -724,7 +747,7 @@ async fn compile_prepared_patch(
 fn extract_replacement_source(
     tool_calls: &[ToolCall],
     expected_tool_name: &str,
-) -> Result<Option<String>, String> {
+) -> Result<Option<LyrebirdPatch>, String> {
     let Some(tool_call) = tool_calls
         .iter()
         .rev()
@@ -741,12 +764,78 @@ fn extract_replacement_source(
         )
     })?;
 
-    Ok(arguments
-        .get("source")
-        .or_else(|| arguments.get("content"))
-        .or_else(|| arguments.get("contents"))
+    let search = arguments
+        .get("search")
         .and_then(|value| value.as_str())
-        .map(ToOwned::to_owned))
+        .map(ToOwned::to_owned);
+    let replacement = arguments
+        .get("replacement")
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned);
+    let note = arguments
+        .get("note")
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned);
+
+    match (search, replacement, note) {
+        (Some(search), Some(replacement), Some(note)) => {
+            validate_patch_note(&note)?;
+            if search.is_empty() {
+                return Err(format!(
+                    "`{expected_tool_name}` tool call `search` must not be empty"
+                ));
+            }
+            Ok(Some(LyrebirdPatch {
+                search,
+                replacement,
+                note,
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn validate_patch_note(note: &str) -> Result<(), String> {
+    let trimmed = note.trim();
+    if trimmed.is_empty() {
+        return Err("tool call `note` must not be empty".to_owned());
+    }
+    if trimmed.chars().count() > 100 {
+        return Err("tool call `note` must be at most 100 characters".to_owned());
+    }
+    Ok(())
+}
+
+fn apply_search_replace_patch(
+    current_source: &str,
+    patch: &LyrebirdPatch,
+) -> Result<String, String> {
+    let matches = current_source
+        .match_indices(&patch.search)
+        .collect::<Vec<_>>();
+    match matches.len() {
+        0 => Err("tool call `search` did not match the current code".to_owned()),
+        1 => {
+            let (start, matched) = matches[0];
+            let end = start + matched.len();
+            let mut updated =
+                String::with_capacity(current_source.len() - matched.len() + patch.replacement.len());
+            updated.push_str(&current_source[..start]);
+            updated.push_str(&patch.replacement);
+            updated.push_str(&current_source[end..]);
+            Ok(updated)
+        }
+        count => Err(format!(
+            "tool call `search` matched {count} locations in the current code; make it more specific"
+        )),
+    }
+}
+
+fn format_search_replace_block(patch: &LyrebirdPatch) -> String {
+    format!(
+        "```text\n<<<<<<< SEARCH\n{}\n=======\n{}\n>>>>>>> REPLACE\n```",
+        patch.search, patch.replacement
+    )
 }
 
 async fn build_sampler_release() -> Result<(), String> {
@@ -1084,18 +1173,26 @@ mod tests {
             ToolCall {
                 id: None,
                 name: "replace_vocals_formant_dsp".to_owned(),
-                arguments: "{\"source\":\"vocals\"}".to_owned(),
+                arguments:
+                    "{\"search\":\"vocals\",\"replacement\":\"vox\",\"note\":\"voice tweak\"}"
+                        .to_owned(),
             },
             ToolCall {
                 id: None,
                 name: "replace_rhythm_guitar_dsp".to_owned(),
-                arguments: "{\"source\":\"rhythm\"}".to_owned(),
+                arguments:
+                    "{\"search\":\"rhythm\",\"replacement\":\"chug\",\"note\":\"tighten attack\"}"
+                        .to_owned(),
             },
         ];
 
         assert_eq!(
             extract_replacement_source(&tool_calls, "replace_rhythm_guitar_dsp").unwrap(),
-            Some("rhythm".to_owned())
+            Some(LyrebirdPatch {
+                search: "rhythm".to_owned(),
+                replacement: "chug".to_owned(),
+                note: "tighten attack".to_owned(),
+            })
         );
         assert_eq!(
             extract_replacement_source(&tool_calls, "replace_backup_vocals_dsp").unwrap(),
@@ -1108,7 +1205,7 @@ mod tests {
         let tool_calls = vec![ToolCall {
             id: None,
             name: "replace_rhythm_guitar_dsp".to_owned(),
-            arguments: "{\"source\":\"unterminated".to_owned(),
+            arguments: "{\"search\":\"unterminated".to_owned(),
         }];
 
         let err = extract_replacement_source(&tool_calls, "replace_rhythm_guitar_dsp").unwrap_err();
@@ -1130,7 +1227,6 @@ mod tests {
                 similarity: Some(0.5),
             }
             .into()],
-            target_spectrogram_path: "/tmp/target.png".to_owned(),
             prompt_attempt: 0,
             retry_reason: None,
         })
@@ -1140,7 +1236,7 @@ mod tests {
     }
 
     #[test]
-    fn optimization_prompt_includes_mel_for_each_branch_node_before_score() {
+    fn optimization_prompt_uses_patch_history_and_leaf_mel_only() {
         let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
             iteration_id: "00000002".to_owned(),
             instrument: LyrebirdInstrument::Bass,
@@ -1162,51 +1258,57 @@ mod tests {
                 }
                 .into(),
             ],
-            target_spectrogram_path: "/tmp/target.png".to_owned(),
             prompt_attempt: 1,
             retry_reason: None,
         })
         .unwrap();
 
-        let user_contents = &prompt.messages[1].contents;
+        let system_contents = &prompt.messages[0].contents;
         assert_eq!(
-            user_contents[1],
+            system_contents[1],
             crate::tokens::Content::Text(
-                "Initial baseline code 0.\nIteration id: initial.\n```rust\nfn bass() { baseline(); }\n```"
-                    .to_owned()
+                "Initial code:\n```rust\nfn bass() { baseline(); }\n```".to_owned()
             )
         );
         assert_eq!(
-            user_contents[2],
-            crate::tokens::Content::Text("Initial baseline code 0 mel spectrogram:".to_owned())
-        );
-        assert_eq!(
-            user_contents[3],
-            crate::tokens::Content::Image(PathBuf::from("/tmp/initial.png"))
-        );
-        assert_eq!(
-            user_contents[4],
-            crate::tokens::Content::Text("Initial baseline code 0 score: 0.250000".to_owned())
-        );
-        assert_eq!(
-            user_contents[5],
-            crate::tokens::Content::Text(
-                "Branch code 1.\nIteration id: 00000001.\n```rust\nfn bass() { mutate(); }\n```"
-                    .to_owned()
-            )
-        );
-        assert_eq!(
-            user_contents[6],
-            crate::tokens::Content::Text("Branch code 1 mel spectrogram:".to_owned())
-        );
-        assert_eq!(
-            user_contents[7],
+            system_contents[5],
             crate::tokens::Content::Image(PathBuf::from("/tmp/00000001.png"))
         );
+        if let crate::tokens::Content::Text(patch_history) = &system_contents[2] {
+            assert!(patch_history.contains("Patch history:"));
+            assert!(patch_history.contains("No patches have been applied yet") == false);
+            assert!(patch_history.contains("legacy full-file replacement"));
+            assert!(patch_history.contains("Score after patch: 0.750000"));
+            assert!(patch_history.contains("<<<<<<< SEARCH"));
+        } else {
+            panic!("expected patch history text");
+        }
         assert_eq!(
-            user_contents[8],
-            crate::tokens::Content::Text("Branch code 1 score: 0.750000".to_owned())
+            prompt.messages[1].contents,
+            vec![crate::tokens::Content::Text(
+                "The Bass still sounds way different from the target. Provide the next small compiling patch to close the gap.".to_owned()
+            )]
         );
+    }
+
+    #[test]
+    fn apply_search_replace_patch_requires_exactly_one_match() {
+        let patch = LyrebirdPatch {
+            search: "foo".to_owned(),
+            replacement: "bar".to_owned(),
+            note: "swap token".to_owned(),
+        };
+
+        assert_eq!(
+            apply_search_replace_patch("fn foo() {}", &patch).unwrap(),
+            "fn bar() {}"
+        );
+        assert!(apply_search_replace_patch("fn baz() {}", &patch)
+            .unwrap_err()
+            .contains("did not match"));
+        assert!(apply_search_replace_patch("foo foo", &patch)
+            .unwrap_err()
+            .contains("matched 2 locations"));
     }
 
     #[tokio::test]

@@ -1,5 +1,6 @@
 use super::{
-    DspCode, LyrebirdBranchNode, LyrebirdInstrument, PulseCodeParadise, PulseCodeParadiseError,
+    DspCode, LyrebirdBranchNode, LyrebirdInstrument, LyrebirdPatch, PulseCodeParadise,
+    PulseCodeParadiseError,
 };
 use directories_next::BaseDirs;
 use redb::{ReadableTable, TableDefinition};
@@ -616,7 +617,14 @@ mod tests {
     }
 
     fn branch_node(iteration_id: &str, similarity: Option<f32>) -> LyrebirdBranchNode {
-        dsp_code(iteration_id, similarity).into()
+        LyrebirdBranchNode::from_generated(
+            dsp_code(iteration_id, similarity),
+            LyrebirdPatch {
+                search: format!("old-{iteration_id}"),
+                replacement: format!("new-{iteration_id}"),
+                note: format!("patch {iteration_id}"),
+            },
+        )
     }
 
     fn ecosystem(name: &str, max_tree_depth: usize) -> PulseCodeParadise {
@@ -880,6 +888,13 @@ mod tests {
         assert_eq!(
             selected_branch[1].mel_spectrogram_path,
             "/tmp/00000001.png".to_owned()
+        );
+        assert_eq!(
+            selected_branch[1]
+                .patch
+                .as_ref()
+                .map(|patch| patch.note.as_str()),
+            Some("patch 00000001")
         );
     }
 }

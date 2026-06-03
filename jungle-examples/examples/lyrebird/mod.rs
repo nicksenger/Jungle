@@ -57,15 +57,33 @@ impl DspCode {
     }
 }
 
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LyrebirdPatch {
+    pub search: String,
+    pub replacement: String,
+    pub note: String,
+}
+
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LyrebirdBranchNode {
     pub code: DspCode,
+    #[serde(default)]
+    pub patch: Option<LyrebirdPatch>,
+    #[serde(default)]
     pub mel_spectrogram_path: String,
 }
 
 impl LyrebirdBranchNode {
     pub fn similarity(&self) -> Option<f32> {
         self.code.similarity
+    }
+
+    pub fn from_generated(code: DspCode, patch: LyrebirdPatch) -> Self {
+        Self {
+            mel_spectrogram_path: code.spectrogram_path.clone(),
+            code,
+            patch: Some(patch),
+        }
     }
 }
 
@@ -74,6 +92,7 @@ impl From<DspCode> for LyrebirdBranchNode {
         Self {
             mel_spectrogram_path: code.spectrogram_path.clone(),
             code,
+            patch: None,
         }
     }
 }
@@ -206,7 +225,9 @@ pub struct LyrebirdInstrumentState {
     pub prompt_attempt: u32,
     pub skipped_this_iteration: bool,
     pub last_retry_reason: Option<String>,
+    pub pending_generated_patch: Option<LyrebirdPatch>,
     pub pending_generated_source: Option<String>,
+    pub latest_generated_patch: Option<LyrebirdPatch>,
     pub latest_generated_code: Option<DspCode>,
     pub latest_rendered_code: Option<DspCode>,
     pub latest_generated_sample_path: Option<String>,
@@ -256,7 +277,9 @@ impl LyrebirdInstrumentState {
         self.prompt_attempt = 0;
         self.skipped_this_iteration = false;
         self.last_retry_reason = None;
+        self.pending_generated_patch = None;
         self.pending_generated_source = None;
+        self.latest_generated_patch = None;
         self.last_similarity = 0.0;
     }
 }
@@ -908,24 +931,33 @@ pub(crate) fn build_replace_tool(instrument: LyrebirdInstrument) -> Tool {
     Tool {
         name: instrument.tool_name().to_owned(),
         description: format!(
-            "Replace the full contents of `{}` with updated Rust source.",
+            "Apply one small search/replace patch to `{}` and keep the file compiling.",
             instrument.relative_dsp_path()
         ),
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
-                "source": {
+                "search": {
                     "type": "string",
                     "description": format!(
-                        "The complete replacement Rust source for {}.",
+                        "Exact text to replace in {}. It must match the current file content exactly once.",
                         Path::new(instrument.relative_dsp_path())
                             .file_name()
                             .and_then(|name| name.to_str())
                             .unwrap_or("the current DSP file")
                     )
+                },
+                "replacement": {
+                    "type": "string",
+                    "description": "Replacement text for the matched search block."
+                },
+                "note": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Brief purpose of the change, 100 characters maximum."
                 }
             },
-            "required": ["source"],
+            "required": ["search", "replacement", "note"],
             "additionalProperties": false
         }),
     }
@@ -1065,27 +1097,40 @@ mod tests {
                 "spectrogram_path": "/tmp/updated.png",
                 "similarity": 0.8
             },
+            "patch": {
+                "search": "old();",
+                "replacement": "new();",
+                "note": "narrow resonance"
+            },
             "mel_spectrogram_path": "/tmp/updated-mel.png"
         }))
         .unwrap();
 
         assert_eq!(node.code.iteration_id, "00000002");
         assert_eq!(node.mel_spectrogram_path, "/tmp/updated-mel.png");
+        assert_eq!(
+            node.patch.as_ref().map(|patch| patch.note.as_str()),
+            Some("narrow resonance")
+        );
         assert_eq!(node.similarity(), Some(0.8));
     }
 
     #[test]
     fn branch_node_round_trips_through_postcard() {
-        let node = LyrebirdBranchNode {
-            code: DspCode {
+        let node = LyrebirdBranchNode::from_generated(
+            DspCode {
                 iteration_id: "00000004".to_owned(),
                 source: "fn bass() { postcard(); }".to_owned(),
                 sample_path: "/tmp/postcard.wav".to_owned(),
                 spectrogram_path: "/tmp/postcard.png".to_owned(),
                 similarity: Some(0.9),
             },
-            mel_spectrogram_path: "/tmp/postcard-mel.png".to_owned(),
-        };
+            LyrebirdPatch {
+                search: "postcard();".to_owned(),
+                replacement: "postcard_v2();".to_owned(),
+                note: "shift postcard path".to_owned(),
+            },
+        );
 
         let bytes = postcard::to_allocvec(&node).unwrap();
         let decoded = postcard::from_bytes::<LyrebirdBranchNode>(&bytes).unwrap();

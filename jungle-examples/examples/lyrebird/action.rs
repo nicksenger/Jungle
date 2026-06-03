@@ -262,7 +262,6 @@ impl Action for BuildPrompt {
             iteration_id: state.iteration_id.clone(),
             instrument: state.current_instrument,
             code_branch: instrument_state.selected_branch.clone(),
-            target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
             prompt_attempt: instrument_state.prompt_attempt,
             retry_reason: instrument_state.last_retry_reason.clone(),
         }
@@ -327,6 +326,11 @@ impl Action for PrepareDspPatch {
             instrument: state.current_instrument,
             prompt_attempt: instrument_state.prompt_attempt.saturating_add(1),
             tool_name: state.current_instrument.tool_name().to_owned(),
+            current_source: instrument_state
+                .selected_branch
+                .last()
+                .map(|node| node.code.source.clone())
+                .unwrap_or_else(|| instrument_state.initial_dsp_code.source.clone()),
             tool_calls: input,
         }
     }
@@ -339,13 +343,17 @@ impl Action for PrepareDspPatch {
         let iteration_id = state.iteration_id.clone();
         let PrepareToolCallsOutcome {
             retry_reason,
+            generated_patch,
             generated_source,
         } = output.map_err(Failure::from)?;
 
         let instrument_state = state.current_state_mut();
         instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
+        instrument_state.pending_generated_patch = generated_patch;
         instrument_state.pending_generated_source = generated_source;
-        if instrument_state.pending_generated_source.is_some() {
+        if instrument_state.pending_generated_patch.is_some()
+            && instrument_state.pending_generated_source.is_some()
+        {
             instrument_state.compile_ready = false;
             instrument_state.skipped_this_iteration = false;
             instrument_state.last_retry_reason = None;
@@ -363,7 +371,9 @@ impl Action for PrepareDspPatch {
                 "staged lyrebird dsp patch for compilation"
             );
         } else {
+            instrument_state.pending_generated_patch = None;
             instrument_state.latest_generated_code = None;
+            instrument_state.latest_generated_patch = None;
             instrument_state.compile_ready = false;
             instrument_state.skipped_this_iteration = true;
             instrument_state.last_retry_reason = retry_reason;
@@ -412,10 +422,12 @@ impl Action for CompilePreparedDspPatch {
 
         let instrument_state = state.current_state_mut();
         let pending_source = instrument_state.pending_generated_source.take();
+        let pending_patch = instrument_state.pending_generated_patch.take();
         instrument_state.compile_ready = compile_ok;
         if compile_ok {
             instrument_state.skipped_this_iteration = false;
             instrument_state.last_retry_reason = None;
+            instrument_state.latest_generated_patch = pending_patch;
             instrument_state.latest_generated_code = pending_source.map(|source| DspCode {
                 iteration_id: generated_iteration_id.clone(),
                 source,
@@ -430,6 +442,7 @@ impl Action for CompilePreparedDspPatch {
                 "lyrebird dsp patch compiled successfully and restored the original source"
             );
         } else {
+            instrument_state.latest_generated_patch = None;
             instrument_state.latest_generated_code = None;
             instrument_state.skipped_this_iteration = true;
             if let Some(retry_reason) = retry_reason {
@@ -530,13 +543,18 @@ impl Action for SubmitDspBranch {
         _input: Self::Input,
     ) -> (LyrebirdInstrument, Vec<crate::LyrebirdBranchNode>, f32) {
         let instrument_state = state.current_state();
+        let generated_node = match (
+            instrument_state.latest_generated_code.clone(),
+            instrument_state.latest_generated_patch.clone(),
+        ) {
+            (Some(code), Some(patch)) => {
+                vec![crate::LyrebirdBranchNode::from_generated(code, patch)]
+            }
+            _ => Vec::new(),
+        };
         (
             state.current_instrument,
-            instrument_state
-                .latest_generated_code
-                .clone()
-                .map(|code| vec![code.into()])
-                .unwrap_or_default(),
+            generated_node,
             instrument_state.last_similarity,
         )
     }
