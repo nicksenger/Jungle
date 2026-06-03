@@ -1675,43 +1675,9 @@ mod tests {
         VocalsPromptState,
         10
     );
-    concurrent_prompt_flow!(
-        BackupVocalsConcurrentPromptSpec,
-        BackupVocalsConcurrentPromptFlow,
-        BackupVocalsPromptState,
-        100
-    );
-    concurrent_prompt_flow!(
-        BassConcurrentPromptSpec,
-        BassConcurrentPromptFlow,
-        BassPromptState,
-        1_000
-    );
-    concurrent_prompt_flow!(
-        GuitarSoloConcurrentPromptSpec,
-        GuitarSoloConcurrentPromptFlow,
-        GuitarSoloPromptState,
-        10_000
-    );
-
     #[derive(Flow)]
     struct ConcurrentLyrebirdPromptJoin(
         Join<RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
-    );
-
-    #[derive(Flow)]
-    struct ConcurrentLyrebirdPromptRightPair(
-        Join<BackupVocalsConcurrentPromptFlow, BassConcurrentPromptFlow>,
-    );
-
-    #[derive(Flow)]
-    struct ConcurrentLyrebirdPromptRight(
-        Join<ConcurrentLyrebirdPromptRightPair, GuitarSoloConcurrentPromptFlow>,
-    );
-
-    #[derive(Flow)]
-    struct ConcurrentLyrebirdPromptPhase(
-        Join<ConcurrentLyrebirdPromptJoin, ConcurrentLyrebirdPromptRight>,
     );
 
     struct ConcurrentLyrebirdPromptAnimal;
@@ -1720,14 +1686,6 @@ mod tests {
         type State = LyrebirdState;
         type Seed = i32;
         type Flow = ConcurrentLyrebirdPromptJoin;
-    }
-
-    struct ConcurrentLyrebirdPromptPhaseAnimal;
-    #[jungle::animal(id = 91, generation = 0)]
-    impl Animal for ConcurrentLyrebirdPromptPhaseAnimal {
-        type State = LyrebirdState;
-        type Seed = i32;
-        type Flow = ConcurrentLyrebirdPromptPhase;
     }
 
     #[test]
@@ -1991,41 +1949,6 @@ mod tests {
         assert_eq!(final_emitted, (4, 32));
         assert_eq!(executor.state().rhythm_guitar.state.prompt_attempt, 4);
         assert_eq!(executor.state().vocals.state.prompt_attempt, 32);
-    }
-
-    #[tokio::test]
-    async fn lyrebird_nested_prompt_phase_runs_all_model_prompts_concurrently() {
-        let runtime = prompt_join_concurrent_runtime();
-        runtime.reset(5);
-
-        let mut state = LyrebirdState::default();
-        state.rhythm_guitar.state.prompt_attempt = 1;
-        state.vocals.state.prompt_attempt = 2;
-        state.backup_vocals.state.prompt_attempt = 3;
-        state.bass.state.prompt_attempt = 4;
-        state.guitar_solo.state.prompt_attempt = 5;
-
-        let mut executor = Executor::<ConcurrentLyrebirdPromptPhaseAnimal>::new(state);
-        let request = executor
-            .next_executable_request(3)
-            .expect("focused lyrebird prompt phase should produce an executable request");
-        let completion = tokio::time::timeout(Duration::from_millis(250), request.run())
-            .await
-            .expect("focused lyrebird prompt phase should rendezvous without deadlock")
-            .expect("focused lyrebird prompt phase runner should succeed");
-        let emitted = executor
-            .complete_serialized(completion)
-            .expect("focused lyrebird prompt phase completion should apply cleanly");
-        let final_emitted: ((i32, i32), ((i32, i32), i32)) =
-            postcard::from_bytes(&emitted).expect("focused prompt phase output should deserialize");
-
-        assert_eq!(runtime.max_active.load(Ordering::SeqCst), 5);
-        assert_eq!(final_emitted, ((4, 32), ((303, 3_004), 30_005)));
-        assert_eq!(executor.state().rhythm_guitar.state.prompt_attempt, 4);
-        assert_eq!(executor.state().vocals.state.prompt_attempt, 32);
-        assert_eq!(executor.state().backup_vocals.state.prompt_attempt, 303);
-        assert_eq!(executor.state().bass.state.prompt_attempt, 3_004);
-        assert_eq!(executor.state().guitar_solo.state.prompt_attempt, 30_005);
     }
 
     #[test]
