@@ -187,9 +187,7 @@ impl LyrebirdUi {
             format!(
                 "Journey {} ({} generations)",
                 short_journey_id,
-                snapshot
-                    .iteration
-                    .saturating_mul(snapshot.instrument_parallelism as u64)
+                snapshot.generation_count()
             )
         } else {
             format!("Journey {}", short_journey_id)

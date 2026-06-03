@@ -348,6 +348,19 @@ pub struct LyrebirdState {
 }
 
 impl LyrebirdState {
+    pub fn enabled_instrument_count(&self) -> u64 {
+        self.instruments
+            .iter()
+            .filter(|state| !state.disabled)
+            .count() as u64
+    }
+
+    pub fn generation_count(&self) -> u64 {
+        self.iteration
+            .saturating_mul(self.instrument_parallelism as u64)
+            .saturating_mul(self.enabled_instrument_count())
+    }
+
     pub fn has_all_instrument_states(&self) -> bool {
         LyrebirdInstrument::ALL.into_iter().all(|instrument| {
             self.instruments
@@ -1318,6 +1331,33 @@ mod tests {
         assert!(seed.instruments[0].disabled);
         assert!(seed.instruments[2].disabled);
         assert!(seed.instruments[3].disabled);
+    }
+
+    #[test]
+    fn generation_count_uses_iteration_parallelism_and_enabled_instruments() {
+        let state = LyrebirdState {
+            instruments: vec![
+                LyrebirdInstrumentState {
+                    instrument: LyrebirdInstrument::Vocals,
+                    ..LyrebirdInstrumentState::default()
+                },
+                LyrebirdInstrumentState {
+                    instrument: LyrebirdInstrument::Bass,
+                    ..LyrebirdInstrumentState::default()
+                },
+                LyrebirdInstrumentState {
+                    instrument: LyrebirdInstrument::GuitarSolo,
+                    disabled: true,
+                    ..LyrebirdInstrumentState::default()
+                },
+            ],
+            instrument_parallelism: 5,
+            iteration: 2,
+            ..LyrebirdState::default()
+        };
+
+        assert_eq!(state.enabled_instrument_count(), 2);
+        assert_eq!(state.generation_count(), 20);
     }
 
     #[test]
