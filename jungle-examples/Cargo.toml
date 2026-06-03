@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = []
-image = ["dep:spectrs", "dep:image", "dep:image-compare"]
+image = ["dep:spectrs", "dep:image", "dep:zensim"]
 reqwest = ["dep:reqwest", "dep:base64"]
 viewer = ["dep:jungle-vision", "dep:iced", "dep:rodio"]
 video = ["dep:welcome-video"]
@@ -46,7 +46,7 @@ cron = { version = "0.16", optional = true }
 chrono = { version = "0.4", optional = true }
 spectrs = { version = "0.2.1", default-features = false, features = ["image"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
-image-compare = { version = "0.5.0", optional = true }
+zensim = { version = "0.2.7", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 base64 = { version = "0.22", optional = true }
 redb = { version = "4.1", optional = true }

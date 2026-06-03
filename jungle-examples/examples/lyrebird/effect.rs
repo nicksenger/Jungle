@@ -4,7 +4,6 @@ use crate::mcts::SearchTree;
 use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{DspCode, LyrebirdInstrument, PulseCodeParadise, LYREBIRD_DURATION_SECS};
 use image::ImageReader;
-use image_compare::Algorithm;
 use jungle_sdk::effect;
 use serde::{Deserialize, Serialize};
 use spectrs::io::audio::read_audio_file_mono;
@@ -18,6 +17,7 @@ use std::process::Stdio;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, info, warn};
+use zensim::{RgbSlice, Zensim, ZensimProfile};
 
 fn stub_ok<T>(value: T) -> impl Future<Output = Result<T, String>> {
     ready(Ok(value))
@@ -401,12 +401,12 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
         .map_err(|err| format!("failed to open spectrogram image {}: {err}", left_path))?
         .decode()
         .map_err(|err| format!("failed to decode spectrogram image {}: {err}", left_path))?
-        .into_luma8();
+        .into_rgb8();
     let right = ImageReader::open(right_path)
         .map_err(|err| format!("failed to open spectrogram image {}: {err}", right_path))?
         .decode()
         .map_err(|err| format!("failed to decode spectrogram image {}: {err}", right_path))?
-        .into_luma8();
+        .into_rgb8();
     let (left, right) = if left.dimensions() == right.dimensions() {
         (left, right)
     } else {
@@ -429,11 +429,19 @@ fn compare_spectrograms(left_path: &str, right_path: &str) -> Result<f32, String
         )
     };
 
-    let similarity =
-        image_compare::gray_similarity_structure(&Algorithm::MSSIMSimple, &left, &right)
-            .map_err(|err| format!("failed to compare spectrograms: {err}"))?;
+    let width = left.width() as usize;
+    let height = left.height() as usize;
+    let left_pixels: Vec<[u8; 3]> = left.pixels().map(|pixel| pixel.0).collect();
+    let right_pixels: Vec<[u8; 3]> = right.pixels().map(|pixel| pixel.0).collect();
+    let zensim = Zensim::new(ZensimProfile::latest());
+    let similarity = zensim
+        .compute(
+            &RgbSlice::new(&left_pixels, width, height),
+            &RgbSlice::new(&right_pixels, width, height),
+        )
+        .map_err(|err| format!("failed to compare spectrograms: {err}"))?;
 
-    Ok(similarity.score as f32)
+    Ok((similarity.score() as f32) / 100.0)
 }
 
 async fn finalize_iteration_samples(
@@ -955,7 +963,7 @@ fn truncate_retry_reason(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::{GrayImage, Luma};
+    use image::{Rgb, RgbImage};
     use uuid::Uuid;
 
     fn temp_png_path(name: &str) -> PathBuf {
@@ -964,11 +972,11 @@ mod tests {
             .join(format!("{name}-{}.png", Uuid::new_v4()))
     }
 
-    fn write_gray_image(path: &Path, width: u32, height: u32, value: u8) {
+    fn write_rgb_image(path: &Path, width: u32, height: u32, value: [u8; 3]) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        let image = GrayImage::from_fn(width, height, |_x, _y| Luma([value]));
+        let image = RgbImage::from_fn(width, height, |_x, _y| Rgb(value));
         image.save(path).unwrap();
     }
 
@@ -985,9 +993,15 @@ mod tests {
         if let Some(parent) = left_path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        let left = GrayImage::from_fn(4, 1, |x, _y| if x < 2 { Luma([0]) } else { Luma([255]) });
+        let left = RgbImage::from_fn(16, 8, |x, _y| {
+            if x < 8 {
+                Rgb([0, 0, 0])
+            } else {
+                Rgb([255, 255, 255])
+            }
+        });
         left.save(&left_path).unwrap();
-        write_gray_image(&right_path, 2, 1, 0);
+        write_rgb_image(&right_path, 8, 8, [0, 0, 0]);
 
         let similarity = compare_spectrograms(
             &left_path.display().to_string(),
@@ -995,18 +1009,24 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(similarity, 1.0);
+        assert!(similarity > 0.99);
     }
 
     #[test]
     fn compare_spectrograms_crops_target_when_it_is_wider() {
         let left_path = temp_png_path("left-narrow");
         let right_path = temp_png_path("right-wide");
-        write_gray_image(&left_path, 2, 1, 0);
+        write_rgb_image(&left_path, 8, 8, [0, 0, 0]);
         if let Some(parent) = right_path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        let right = GrayImage::from_fn(4, 1, |x, _y| if x < 2 { Luma([0]) } else { Luma([255]) });
+        let right = RgbImage::from_fn(16, 8, |x, _y| {
+            if x < 8 {
+                Rgb([0, 0, 0])
+            } else {
+                Rgb([255, 255, 255])
+            }
+        });
         right.save(&right_path).unwrap();
 
         let similarity = compare_spectrograms(
@@ -1015,7 +1035,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(similarity, 1.0);
+        assert!(similarity > 0.99);
     }
 
     #[test]
