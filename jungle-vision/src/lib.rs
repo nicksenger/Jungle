@@ -1399,6 +1399,70 @@ fn repaired_live_states_for_display(
     states
 }
 
+fn forced_pending_runtime_ids_for_display(
+    model: &GraphModel,
+    live_data: Option<&LiveData>,
+) -> HashSet<u32> {
+    let Some(live) = live_data else {
+        return HashSet::new();
+    };
+
+    let mut forced_pending = HashSet::new();
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        if !matches!(cluster.kind, ClusterKind::While) {
+            continue;
+        }
+
+        let iteration_start_sequence = model.derived.cluster_entry_runtime_ids[index]
+            .iter()
+            .filter_map(|runtime_id| live.runtime_update_sequence.get(runtime_id).copied())
+            .max();
+        let Some(iteration_start_sequence) = iteration_start_sequence else {
+            continue;
+        };
+
+        for runtime_id in &model.derived.cluster_member_runtime_ids[index] {
+            let Some(sequence) = live.runtime_update_sequence.get(runtime_id).copied() else {
+                continue;
+            };
+            if sequence < iteration_start_sequence && !live.active_runtime_ids.contains(runtime_id)
+            {
+                forced_pending.insert(*runtime_id);
+            }
+        }
+    }
+
+    forced_pending
+}
+
+fn live_states_for_display(
+    model: &GraphModel,
+    live_data: Option<&LiveData>,
+    condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
+) -> HashMap<u32, RuntimeState> {
+    let mut states =
+        repaired_live_states_for_display(model, live_data, condition_successor_runtime_ids);
+    let forced_pending_runtime_ids = forced_pending_runtime_ids_for_display(model, live_data);
+    if forced_pending_runtime_ids.is_empty() {
+        return states;
+    }
+
+    for node in &model.nodes {
+        let Some(runtime_id) = node.runtime_node_id else {
+            continue;
+        };
+        if !forced_pending_runtime_ids.contains(&runtime_id) {
+            continue;
+        }
+        if matches!(states.get(&node.id), Some(RuntimeState::Running)) {
+            continue;
+        }
+        states.insert(node.id, RuntimeState::Pending);
+    }
+
+    states
+}
+
 fn node_phase_for_display_with_repairs(
     live_data: Option<&LiveData>,
     display_id: u32,
@@ -1578,7 +1642,7 @@ where
     let memberships = &model.derived.memberships;
     let runtime_by_display_id = &model.derived.runtime_by_display_id;
     let proxy_runtime_ids_by_display_id = &model.derived.proxy_runtime_ids_by_display_id;
-    let repaired_live_states = Arc::new(repaired_live_states_for_display(
+    let display_live_states = Arc::new(live_states_for_display(
         model,
         live_data,
         condition_successor_runtime_ids,
@@ -1600,7 +1664,7 @@ where
             entry_runtime_ids: &cluster_entry_runtime_ids[index],
             member_runtime_ids: &cluster_member_runtime_ids[index],
             successor_runtime_ids: &cluster_successor_runtime_ids[index],
-            phase: cluster_phase_for_display(live_data, cluster, repaired_live_states.as_ref()),
+            phase: cluster_phase_for_display(live_data, cluster, display_live_states.as_ref()),
         };
         if matches!(
             theme.view_cluster(theme_state, &cx),
@@ -1655,7 +1719,7 @@ where
             node.runtime_node_id,
             &node.proxy_runtime_ids,
             &condition_successor_runtime_ids,
-            repaired_live_states.as_ref(),
+            display_live_states.as_ref(),
         );
         let step_ctx = StepViewCtx {
             display_id: node.id,
@@ -1701,7 +1765,7 @@ where
             entry_runtime_ids: &cluster_entry_runtime_ids[index],
             member_runtime_ids: &cluster_member_runtime_ids[index],
             successor_runtime_ids: &cluster_successor_runtime_ids[index],
-            phase: cluster_phase_for_display(live_data, cluster, repaired_live_states.as_ref()),
+            phase: cluster_phase_for_display(live_data, cluster, display_live_states.as_ref()),
         };
         if let ClusterView::Collapsed { element, size } = theme.view_cluster(theme_state, &cx) {
             let _ = element;
@@ -1749,7 +1813,7 @@ where
             entry_runtime_ids: &cluster_entry_runtime_ids[source_index],
             member_runtime_ids: &cluster_member_runtime_ids[source_index],
             successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
-            phase: cluster_phase_for_display(live_data, cluster, repaired_live_states.as_ref()),
+            phase: cluster_phase_for_display(live_data, cluster, display_live_states.as_ref()),
         };
         let ClusterView::Expanded { overlay, fill } = theme.view_cluster(theme_state, &cx) else {
             continue;
@@ -1805,11 +1869,11 @@ where
         let condition_successors_for_nodes = condition_successor_runtime_ids;
         let condition_successors_for_edge_colors = condition_successor_runtime_ids;
         let condition_successors_for_edge_strokes = condition_successor_runtime_ids;
-        let repaired_live_states_for_nodes = repaired_live_states.clone();
-        let repaired_live_states_for_edge_colors = repaired_live_states.clone();
-        let repaired_live_states_for_edge_strokes = repaired_live_states.clone();
-        let repaired_live_states_for_cluster_chips = repaired_live_states.clone();
-        let repaired_live_states_for_cluster_overlays = repaired_live_states.clone();
+        let display_live_states_for_nodes = display_live_states.clone();
+        let display_live_states_for_edge_colors = display_live_states.clone();
+        let display_live_states_for_edge_strokes = display_live_states.clone();
+        let display_live_states_for_cluster_chips = display_live_states.clone();
+        let display_live_states_for_cluster_overlays = display_live_states.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -1821,7 +1885,7 @@ where
                             node.runtime_node_id,
                             &node.proxy_runtime_ids,
                             &condition_successors_for_nodes,
-                            repaired_live_states_for_nodes.as_ref(),
+                            display_live_states_for_nodes.as_ref(),
                         );
                         let step_ctx = StepViewCtx {
                             display_id: node.id,
@@ -1861,7 +1925,7 @@ where
                             phase: cluster_phase_for_display(
                                 live_data,
                                 cluster,
-                                repaired_live_states_for_cluster_chips.as_ref(),
+                                display_live_states_for_cluster_chips.as_ref(),
                             ),
                         };
                         if let ClusterView::Collapsed { element, .. } =
@@ -1912,7 +1976,7 @@ where
                                 .map(Vec::as_slice)
                                 .unwrap_or(&[]),
                             &condition_successors_for_edge_colors,
-                            repaired_live_states_for_edge_colors.as_ref(),
+                            display_live_states_for_edge_colors.as_ref(),
                         ),
                         target_phase: node_phase_for_display_with_repairs(
                             live_data,
@@ -1923,7 +1987,7 @@ where
                                 .map(Vec::as_slice)
                                 .unwrap_or(&[]),
                             &condition_successors_for_edge_colors,
-                            repaired_live_states_for_edge_colors.as_ref(),
+                            display_live_states_for_edge_colors.as_ref(),
                         ),
                         extent: ctx.transition_progress,
                     },
@@ -1968,7 +2032,7 @@ where
                                 .map(Vec::as_slice)
                                 .unwrap_or(&[]),
                             &condition_successors_for_edge_strokes,
-                            repaired_live_states_for_edge_strokes.as_ref(),
+                            display_live_states_for_edge_strokes.as_ref(),
                         ),
                         target_phase: node_phase_for_display_with_repairs(
                             live_data,
@@ -1979,7 +2043,7 @@ where
                                 .map(Vec::as_slice)
                                 .unwrap_or(&[]),
                             &condition_successors_for_edge_strokes,
-                            repaired_live_states_for_edge_strokes.as_ref(),
+                            display_live_states_for_edge_strokes.as_ref(),
                         ),
                         extent: ctx.transition_progress,
                     },
@@ -2021,7 +2085,7 @@ where
                 phase: cluster_phase_for_display(
                     live_data,
                     cluster,
-                    repaired_live_states_for_cluster_overlays.as_ref(),
+                    display_live_states_for_cluster_overlays.as_ref(),
                 ),
             };
             let base_overlay = match theme.view_cluster(theme_state, &cx) {
@@ -3698,6 +3762,121 @@ mod tests {
         assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
         assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Completed));
         assert_eq!(repaired.get(&c_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn while_loop_new_iteration_forces_stale_completed_members_pending() {
+        let ast = JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "A" },
+                JourneyAst::Step { label: "B" },
+                JourneyAst::Step { label: "C" },
+            ])),
+        };
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let a_id = id_for("A");
+        let b_id = id_for("B");
+        let c_id = id_for("C");
+
+        let mut live = LiveData::default();
+        for (sequence_id, node_id) in [(1, 0), (2, 1), (3, 2)] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::EffectSuccessOutput {
+                    node_id,
+                    uuid: Uuid::nil(),
+                },
+            }));
+        }
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 4,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        let restarted_states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            restarted_states.get(&a_id).copied(),
+            Some(RuntimeState::Running)
+        );
+        assert_eq!(
+            restarted_states.get(&b_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            restarted_states.get(&c_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 5,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectSuccessOutput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+        let between_steps_states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            between_steps_states.get(&a_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            between_steps_states.get(&b_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            between_steps_states.get(&c_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 6,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 1,
+                uuid: Uuid::nil(),
+            },
+        }));
+        let advanced_states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            advanced_states.get(&a_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            advanced_states.get(&b_id).copied(),
+            Some(RuntimeState::Running)
+        );
+        assert_eq!(
+            advanced_states.get(&c_id).copied(),
+            Some(RuntimeState::Pending)
+        );
     }
 
     #[test]
