@@ -32,7 +32,7 @@ const DEFAULT_WORKERS: usize = 3;
 const DEFAULT_TREE_DEPTH: usize = 8;
 const DEFAULT_LOG_FILTER: &str = "warn,lyrebird=info";
 pub(crate) const LYREBIRD_DURATION_SECS: f64 = 4.0;
-pub(crate) const LYREBIRD_SCORE_SPEC: &str =
+pub(crate) const GUITAR_INTRO_SCORE_SPEC: &str =
     "electric-guitar(rhythm-sustained):[350,58,96],[350,58,96],[446,58,96],[542,58,96],[542,58,96],[638,56,96],[638,56,96],[734,56,96],[830,56,96],[830,56,96],[926,53,96],[926,53,96],[1022,53,96],[1118,53,96],[1118,53,96],[1214,51,96],[1214,51,96],[1310,51,96],[1406,51,96],[1406,51,96],[1502,49,96],[1502,49,96],[1598,49,96],[1694,46,96],[1694,49,96],[1694,46,96],[1790,49,96],[1790,46,96],[1886,58,96],[1886,58,96],[1982,58,96],[2078,58,96],[2078,58,96],[2174,56,96],[2174,56,96],[2270,56,96],[2366,56,96],[2366,56,96],[2462,53,96],[2462,53,96],[2558,53,96],[2654,53,96],[2654,53,96],[2750,51,96],[2750,51,96],[2846,51,96]";
 pub(crate) const VOCALS_SCORE_SPEC: &str = "vocals(formant):[250,66,96,'wel'],[346,68,288,'come'],[634,68,96,'to'],[730,66,96,'the'],[826,71,384,'jun'],[1210,68,192,'gol'],[1786,66,96,'weve'],[1882,68,288,'got'],[2170,68,96,'fun'],[2266,66,192,'and'],[2458,68,288,'games']";
 pub(crate) const BACKUP_VOCALS_SCORE_SPEC: &str = "vocals(group-harmony):[150,71,384],[534,70,384],[918,68,384],[1302,66,384],[1686,73,384],[2070,72,384],[2454,70,384],[2838,68,384]";
@@ -138,7 +138,7 @@ impl LyrebirdInstrument {
 
     pub fn score_spec(self) -> &'static str {
         match self {
-            Self::RhythmGuitar => LYREBIRD_SCORE_SPEC,
+            Self::RhythmGuitar => GUITAR_INTRO_SCORE_SPEC,
             Self::Vocals => VOCALS_SCORE_SPEC,
             Self::BackupVocals => BACKUP_VOCALS_SCORE_SPEC,
             Self::Bass => BASS_SCORE_SPEC,
