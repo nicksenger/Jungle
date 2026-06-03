@@ -7,16 +7,19 @@ use iced::window;
 use iced::window::Screenshot;
 use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{AutoFit, Cluster, Graph, OutgoingEdgeStyle, Sugiyama, ViewportInteraction};
+use jungle_client::client::JourneyUpdateSubscription;
 use jungle_client::JungleClient;
 use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
+use tokio::time::timeout;
 use tracing::{debug, warn};
 use uuid::Uuid;
 use widgets::animated_cluster::AnimatedClusterView;
@@ -38,6 +41,7 @@ const VISION_END_TO_END_AGE_WARN_MS: i64 = 2_000;
 const VISION_SLOW_APPLY_WARN_MS: u128 = 20;
 const VISION_SLOW_THEME_UPDATE_WARN_MS: u128 = 20;
 const RUNNING_REPAIR_PROMOTION_SEQUENCE_GAP: usize = 2;
+const INITIAL_LIVE_BATCH_WINDOW: Duration = Duration::from_millis(20);
 
 static CLUSTER_FILL_COLORS: OnceLock<RwLock<Vec<Color>>> = OnceLock::new();
 static VISION_LIVE_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -480,6 +484,7 @@ where
 #[derive(Debug, Clone)]
 pub enum EjectedViewerMessage {
     LiveEvent(Result<JourneyUpdateEvent, String>),
+    HydrateLiveEvents(Vec<JourneyUpdateEvent>),
     ApplyLiveEvent {
         update: JourneyUpdateEvent,
         received_unix_ms: i64,
@@ -598,6 +603,38 @@ where
                     }
                 }
                 Task::none()
+            }
+            EjectedViewerMessage::HydrateLiveEvents(updates) => {
+                let mut theme_tasks = Vec::with_capacity(updates.len());
+                let data = match &mut self.state {
+                    LiveState::Loaded(data) => data,
+                    _ => {
+                        self.state = LiveState::Loaded(LiveData::default());
+                        match &mut self.state {
+                            LiveState::Loaded(data) => data,
+                            _ => unreachable!("state was set to loaded"),
+                        }
+                    }
+                };
+                let mut highlight_changed = false;
+                for update in updates {
+                    theme_tasks.push(
+                        self.theme
+                            .update(
+                                &mut self.theme_state,
+                                ViewerEvent::JourneyUpdate(update.clone()),
+                            )
+                            .map(EjectedViewerMessage::Theme),
+                    );
+                    highlight_changed |= data.apply_update(update);
+                }
+                let theme_task = Task::batch(theme_tasks);
+                if highlight_changed {
+                    iced_sugiyama::invalidate::<EjectedViewerMessage>(self.graph_widget_id.clone())
+                        .chain(theme_task)
+                } else {
+                    theme_task
+                }
             }
             EjectedViewerMessage::ApplyLiveEvent {
                 update,
@@ -780,6 +817,7 @@ where
         .map(|message| match message {
             Message::Theme(event) => EjectedViewerMessage::Theme(event),
             Message::LiveEvent(result) => EjectedViewerMessage::LiveEvent(result),
+            Message::HydrateLiveEvents(updates) => EjectedViewerMessage::HydrateLiveEvents(updates),
             Message::ApplyLiveEvent(update) => EjectedViewerMessage::ApplyLiveEvent {
                 update,
                 received_unix_ms: current_unix_ms(),
@@ -893,6 +931,7 @@ struct LiveData {
 enum Message {
     AppStarted,
     LiveEvent(Result<JourneyUpdateEvent, String>),
+    HydrateLiveEvents(Vec<JourneyUpdateEvent>),
     ApplyLiveEvent(JourneyUpdateEvent),
     Theme(ViewerEvent<()>),
     ViewportInteraction(ViewportInteraction),
@@ -957,6 +996,38 @@ where
                     }
                 }
                 Task::none()
+            }
+            Message::HydrateLiveEvents(updates) => {
+                let mut theme_tasks = Vec::with_capacity(updates.len());
+                let data = match &mut self.state {
+                    LiveState::Loaded(data) => data,
+                    _ => {
+                        self.state = LiveState::Loaded(LiveData::default());
+                        match &mut self.state {
+                            LiveState::Loaded(data) => data,
+                            _ => unreachable!("state was set to loaded"),
+                        }
+                    }
+                };
+                let mut highlight_changed = false;
+                for update in updates {
+                    theme_tasks.push(
+                        self.theme
+                            .update(
+                                &mut self.theme_state,
+                                ViewerEvent::JourneyUpdate(update.clone()),
+                            )
+                            .map(Message::Theme),
+                    );
+                    highlight_changed |= data.apply_update(update);
+                }
+                let theme_task = Task::batch(theme_tasks);
+                if highlight_changed {
+                    iced_sugiyama::invalidate::<Message>(self.graph_widget_id.clone())
+                        .chain(theme_task)
+                } else {
+                    theme_task
+                }
             }
             Message::ApplyLiveEvent(update) => {
                 let theme_task = self
@@ -1111,6 +1182,13 @@ struct LiveSubscription {
     generation: u64,
 }
 
+struct PreparedInitialLiveUpdates {
+    initial_updates: Vec<JourneyUpdateEvent>,
+    hydrate_initial: bool,
+    subscription: Option<JourneyUpdateSubscription>,
+    terminal_error: Option<String>,
+}
+
 impl Hash for LiveSubscription {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.journey_id.hash(state);
@@ -1122,15 +1200,36 @@ fn live_updates_stream(config: &LiveSubscription) -> impl Stream<Item = Message>
     let client = config.client.clone();
     let journey_id = config.journey_id;
     futures::stream::once(async move {
-        match client.subscribe_step_updates(journey_id, None).await {
-            Ok(subscription) => subscription
-                .map(|event| Message::LiveEvent(event.map_err(|err| err.to_string())))
-                .left_stream(),
-            Err(err) => futures::stream::once(async move {
-                Message::LiveEvent(Err(format!("live update stream setup failed: {err}")))
-            })
-            .right_stream(),
+        let prepared = prepare_initial_live_updates(client, journey_id).await;
+        let mut stream: Pin<Box<dyn Stream<Item = Message> + Send>> =
+            Box::pin(futures::stream::empty());
+        if !prepared.initial_updates.is_empty() {
+            if prepared.hydrate_initial {
+                let updates = prepared.initial_updates;
+                stream = Box::pin(stream.chain(futures::stream::once(async move {
+                    Message::HydrateLiveEvents(updates)
+                })));
+            } else {
+                let update = prepared
+                    .initial_updates
+                    .into_iter()
+                    .next()
+                    .expect("non-empty initial updates should contain a first update");
+                stream = Box::pin(stream.chain(futures::stream::once(async move {
+                    Message::LiveEvent(Ok(update))
+                })));
+            }
         }
+        if let Some(error) = prepared.terminal_error {
+            stream = Box::pin(stream.chain(futures::stream::once(async move {
+                Message::LiveEvent(Err(error))
+            })));
+        } else if let Some(subscription) = prepared.subscription {
+            stream = Box::pin(stream.chain(
+                subscription.map(|event| Message::LiveEvent(event.map_err(|err| err.to_string()))),
+            ));
+        }
+        stream
     })
     .flatten()
 }
@@ -1141,19 +1240,108 @@ fn live_updates_stream_for_panel(
     let client = config.client.clone();
     let journey_id = config.journey_id;
     futures::stream::once(async move {
-        match client.subscribe_step_updates(journey_id, None).await {
-            Ok(subscription) => subscription
-                .map(|event| EjectedViewerMessage::LiveEvent(event.map_err(|err| err.to_string())))
-                .left_stream(),
-            Err(err) => futures::stream::once(async move {
-                EjectedViewerMessage::LiveEvent(Err(format!(
-                    "live update stream setup failed: {err}"
-                )))
-            })
-            .right_stream(),
+        let prepared = prepare_initial_live_updates(client, journey_id).await;
+        let mut stream: Pin<Box<dyn Stream<Item = EjectedViewerMessage> + Send>> =
+            Box::pin(futures::stream::empty());
+        if !prepared.initial_updates.is_empty() {
+            if prepared.hydrate_initial {
+                let updates = prepared.initial_updates;
+                stream = Box::pin(stream.chain(futures::stream::once(async move {
+                    EjectedViewerMessage::HydrateLiveEvents(updates)
+                })));
+            } else {
+                let update = prepared
+                    .initial_updates
+                    .into_iter()
+                    .next()
+                    .expect("non-empty initial updates should contain a first update");
+                stream = Box::pin(stream.chain(futures::stream::once(async move {
+                    EjectedViewerMessage::LiveEvent(Ok(update))
+                })));
+            }
         }
+        if let Some(error) = prepared.terminal_error {
+            stream = Box::pin(stream.chain(futures::stream::once(async move {
+                EjectedViewerMessage::LiveEvent(Err(error))
+            })));
+        } else if let Some(subscription) = prepared.subscription {
+            stream = Box::pin(stream.chain(subscription.map(|event| {
+                EjectedViewerMessage::LiveEvent(event.map_err(|err| err.to_string()))
+            })));
+        }
+        stream
     })
     .flatten()
+}
+
+async fn prepare_initial_live_updates(
+    client: Arc<dyn JungleClient>,
+    journey_id: Uuid,
+) -> PreparedInitialLiveUpdates {
+    let mut subscription = match client.subscribe_step_updates(journey_id, None).await {
+        Ok(subscription) => subscription,
+        Err(err) => {
+            return PreparedInitialLiveUpdates {
+                initial_updates: Vec::new(),
+                hydrate_initial: false,
+                subscription: None,
+                terminal_error: Some(format!("live update stream setup failed: {err}")),
+            };
+        }
+    };
+
+    let Some(first_result) = subscription.next().await else {
+        return PreparedInitialLiveUpdates {
+            initial_updates: Vec::new(),
+            hydrate_initial: false,
+            subscription: None,
+            terminal_error: None,
+        };
+    };
+    let first_update = match first_result {
+        Ok(update) => update,
+        Err(err) => {
+            return PreparedInitialLiveUpdates {
+                initial_updates: Vec::new(),
+                hydrate_initial: false,
+                subscription: None,
+                terminal_error: Some(err.to_string()),
+            };
+        }
+    };
+
+    let first_event_age_ms = current_unix_ms().saturating_sub(first_update.event_unix_ms);
+    if first_event_age_ms <= VISION_STALE_EVENT_WARN_MS {
+        return PreparedInitialLiveUpdates {
+            initial_updates: vec![first_update],
+            hydrate_initial: false,
+            subscription: Some(subscription),
+            terminal_error: None,
+        };
+    }
+
+    let mut initial_updates = vec![first_update];
+    loop {
+        match timeout(INITIAL_LIVE_BATCH_WINDOW, subscription.next()).await {
+            Ok(Some(Ok(update))) => initial_updates.push(update),
+            Ok(Some(Err(err))) => {
+                return PreparedInitialLiveUpdates {
+                    initial_updates,
+                    hydrate_initial: true,
+                    subscription: None,
+                    terminal_error: Some(err.to_string()),
+                };
+            }
+            Ok(None) | Err(_) => {
+                return PreparedInitialLiveUpdates {
+                    initial_updates,
+                    hydrate_initial: true,
+                    subscription: Some(subscription),
+                    terminal_error: None,
+                };
+            }
+        }
+    }
 }
 
 fn close_latest_window() -> Task<Message> {
