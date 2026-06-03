@@ -718,13 +718,123 @@ impl Observe for Lyrebird {
 pub struct PulseCodeParadiseAnimals(Lyrebird);
 
 #[derive(Clone)]
-pub struct PulseCodeParadise {
+struct TokensApiTarget {
+    base_url: Url,
     client: reqwest::Client,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TokensApiConfig {
+    routes: BTreeMap<LyrebirdInstrument, Url>,
+    fallback: Option<Url>,
+}
+
+impl From<Url> for TokensApiConfig {
+    fn from(value: Url) -> Self {
+        Self {
+            routes: BTreeMap::new(),
+            fallback: Some(value),
+        }
+    }
+}
+
+impl TokensApiConfig {
+    fn parse(value: &str) -> Result<Self, PulseCodeParadiseError> {
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(PulseCodeParadiseError::InvalidTokensApi {
+                value: value.to_owned(),
+                reason: "expected at least one endpoint".to_owned(),
+            });
+        }
+
+        let mut routes = BTreeMap::new();
+        let mut fallback = None;
+        for entry in value.split(',').map(str::trim) {
+            if entry.is_empty() {
+                return Err(PulseCodeParadiseError::InvalidTokensApi {
+                    value: value.to_owned(),
+                    reason: "empty entries are not allowed".to_owned(),
+                });
+            }
+
+            let (instrument, raw_url) = match entry.split_once(':') {
+                Some((candidate, remainder)) => {
+                    match LyrebirdInstrument::parse_cli_selection(candidate) {
+                        Ok(instrument) => (Some(instrument), remainder.trim()),
+                        Err(_) => (None, entry),
+                    }
+                }
+                None => (None, entry),
+            };
+
+            if raw_url.is_empty() {
+                return Err(PulseCodeParadiseError::InvalidTokensApi {
+                    value: value.to_owned(),
+                    reason: format!("missing endpoint for `{entry}`"),
+                });
+            }
+
+            let tokens_url = parse_tokens_api_base_url(raw_url)?;
+            match instrument {
+                Some(instrument) => {
+                    if routes.insert(instrument, tokens_url).is_some() {
+                        return Err(PulseCodeParadiseError::InvalidTokensApi {
+                            value: value.to_owned(),
+                            reason: format!(
+                                "duplicate endpoint mapping for instrument `{}`",
+                                instrument.slug()
+                            ),
+                        });
+                    }
+                }
+                None => {
+                    if fallback.replace(tokens_url).is_some() {
+                        return Err(PulseCodeParadiseError::InvalidTokensApi {
+                            value: value.to_owned(),
+                            reason: "multiple fallback endpoints are not allowed".to_owned(),
+                        });
+                    }
+                }
+            }
+        }
+
+        if fallback.is_none() && routes.len() != LyrebirdInstrument::ALL.len() {
+            let missing = LyrebirdInstrument::ALL
+                .into_iter()
+                .filter(|instrument| !routes.contains_key(instrument))
+                .map(|instrument| instrument.slug())
+                .collect::<Vec<_>>()
+                .join(",");
+            return Err(PulseCodeParadiseError::InvalidTokensApi {
+                value: value.to_owned(),
+                reason: format!(
+                    "routing must either cover all instruments or include a fallback endpoint; missing `{missing}`"
+                ),
+            });
+        }
+
+        Ok(Self { routes, fallback })
+    }
+
+    fn unique_urls(&self) -> BTreeMap<String, Url> {
+        self.routes
+            .values()
+            .chain(self.fallback.iter())
+            .map(|url| (url.to_string(), url.clone()))
+            .collect()
+    }
+}
+
+#[derive(Clone)]
+pub struct PulseCodeParadise {
     db: Arc<redb::Database>,
     db_path: PathBuf,
     runtime_session_id: String,
     tokens_model: String,
-    tokens_url: Url,
+    tokens_clients: BTreeMap<String, TokensApiTarget>,
+    tokens_routes: BTreeMap<LyrebirdInstrument, String>,
+    tokens_fallback_server: Option<String>,
     tools: Vec<Tool>,
     initial_dsp_codes: BTreeMap<LyrebirdInstrument, DspCode>,
     max_tree_depth: usize,
@@ -733,20 +843,38 @@ pub struct PulseCodeParadise {
 
 impl PulseCodeParadise {
     pub fn new(
-        tokens_url: Url,
+        tokens_api: impl Into<TokensApiConfig>,
         tokens_token: Option<String>,
         db_path: Option<PathBuf>,
     ) -> Result<Self, PulseCodeParadiseError> {
-        let client = Self::build_tokens_client(tokens_token.as_deref())?;
+        let tokens_api = tokens_api.into();
+        let tokens_clients = tokens_api
+            .unique_urls()
+            .into_iter()
+            .map(|(server, base_url)| {
+                Ok((
+                    server,
+                    TokensApiTarget {
+                        base_url,
+                        client: Self::build_tokens_client(tokens_token.as_deref())?,
+                    },
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>, PulseCodeParadiseError>>()?;
         let (db, db_path) = mcts::open_mcts_db(db_path)?;
 
         Ok(Self {
-            client,
             db,
             db_path,
             runtime_session_id: Uuid::new_v4().to_string(),
             tokens_model: Self::tokens_model_from_env(),
-            tokens_url,
+            tokens_clients,
+            tokens_routes: tokens_api
+                .routes
+                .iter()
+                .map(|(instrument, url)| (*instrument, url.to_string()))
+                .collect(),
+            tokens_fallback_server: tokens_api.fallback.map(|url| url.to_string()),
             tools: Vec::new(),
             initial_dsp_codes: LyrebirdInstrument::ALL
                 .into_iter()
@@ -787,6 +915,8 @@ impl Ecosystem for PulseCodeParadise {
 pub enum PulseCodeParadiseError {
     #[error("failed to construct tokens client: {0}")]
     Client(#[from] reqwest::Error),
+    #[error("invalid tokens API mapping `{value}`: {reason}")]
+    InvalidTokensApi { value: String, reason: String },
     #[error(
         "invalid OpenAI API base URL `{url}`: {reason}. Expected an HTTP(S) base URL like `https://api.openai.com/v1` or `http://localhost:11434/v1`, not a full endpoint such as `.../chat/completions`"
     )]
@@ -819,6 +949,14 @@ pub enum PulseCodeParadiseError {
     Persistence(String),
     #[error("failed to parse tool-call arguments: {0}")]
     ToolArguments(#[from] serde_json::Error),
+    #[error("tokens API routing requires a fallback endpoint when prompt metadata is absent")]
+    MissingTokensMeta,
+    #[error(
+        "no tokens API endpoint configured for instrument `{instrument}` and no fallback endpoint is available"
+    )]
+    MissingTokensRoute { instrument: String },
+    #[error("internal tokens client missing for server `{server}`")]
+    MissingTokensClient { server: String },
     #[error("failed to build initial lyrebird dsp baseline: {0}")]
     Bootstrap(String),
 }
@@ -828,9 +966,11 @@ pub enum PulseCodeParadiseError {
 struct Cli {
     #[arg(
         long = "tokens-url",
-        help = "OpenAI-compatible API base URL, for example https://api.openai.com/v1 or http://localhost:11434/v1"
+        visible_aliases = ["tokens-api", "tokens-endpoint", "tokens-server"],
+        value_parser = parse_tokens_api_config,
+        help = "OpenAI-compatible API base URL or per-instrument mapping, for example https://api.openai.com/v1 or sologuitar:http://localhost:4567,bass:http://localhost:6789,http://localhost:9876"
     )]
-    tokens_url: Url,
+    tokens_api: TokensApiConfig,
     #[arg(long = "tokens-token")]
     tokens_token: Option<String>,
     #[arg(long = "db-path")]
@@ -863,7 +1003,6 @@ struct Cli {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
     let cli = Cli::parse();
-    validate_openai_api_base_url(&cli.tokens_url)?;
     let workspace_root = std::env::current_dir()?;
     let output_root = default_lyrebird_root()?;
     let jungle_redb_path = cli
@@ -873,7 +1012,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let selected_instruments = normalize_instrument_selection(cli.instruments.as_deref());
 
     let instrument_seeds = build_instrument_seeds(&workspace_root, &output_root).await?;
-    let ecosystem = PulseCodeParadise::new(cli.tokens_url, cli.tokens_token, cli.db_path)?
+    let ecosystem = PulseCodeParadise::new(cli.tokens_api, cli.tokens_token, cli.db_path)?
         .with_tools(
             LyrebirdInstrument::ALL
                 .into_iter()
@@ -1186,6 +1325,26 @@ fn validate_openai_api_base_url(tokens_url: &Url) -> Result<(), PulseCodeParadis
     Ok(())
 }
 
+fn parse_tokens_api_base_url(value: &str) -> Result<Url, PulseCodeParadiseError> {
+    let value = value.trim();
+    let candidate = if value.contains("://") {
+        value.to_owned()
+    } else {
+        format!("http://{value}")
+    };
+    let tokens_url =
+        Url::parse(&candidate).map_err(|_| PulseCodeParadiseError::InvalidTokensUrl {
+            url: value.to_owned(),
+            reason: "failed to parse as an HTTP(S) URL or host[:port] address".to_owned(),
+        })?;
+    validate_openai_api_base_url(&tokens_url)?;
+    Ok(tokens_url)
+}
+
+fn parse_tokens_api_config(value: &str) -> Result<TokensApiConfig, String> {
+    TokensApiConfig::parse(value).map_err(|err| err.to_string())
+}
+
 fn parse_workers(value: &str) -> Result<usize, String> {
     let workers = value
         .parse::<usize>()
@@ -1292,6 +1451,45 @@ mod tests {
             PulseCodeParadiseError::InvalidTokensUrl { .. }
         ));
         assert!(err.to_string().contains("chat completions endpoint"));
+    }
+
+    #[test]
+    fn parses_tokens_api_mapping_with_fallback() {
+        let config =
+            TokensApiConfig::parse("sologuitar:localhost:4567,bass:localhost:6789,localhost:9876")
+                .unwrap();
+
+        assert_eq!(
+            config.routes.get(&LyrebirdInstrument::GuitarSolo),
+            Some(&Url::parse("http://localhost:4567").unwrap())
+        );
+        assert_eq!(
+            config.routes.get(&LyrebirdInstrument::Bass),
+            Some(&Url::parse("http://localhost:6789").unwrap())
+        );
+        assert_eq!(
+            config.fallback,
+            Some(Url::parse("http://localhost:9876").unwrap())
+        );
+    }
+
+    #[test]
+    fn tokens_api_mapping_requires_full_coverage_without_fallback() {
+        let err = TokensApiConfig::parse("bass:localhost:6789").unwrap_err();
+
+        assert!(matches!(
+            err,
+            PulseCodeParadiseError::InvalidTokensApi { .. }
+        ));
+        assert!(err.to_string().contains("cover all instruments"));
+    }
+
+    #[test]
+    fn tokens_api_mapping_accepts_full_per_instrument_coverage_without_fallback() {
+        TokensApiConfig::parse(
+            "introguitar:localhost:4561,vocals:localhost:4562,backupvocals:localhost:4563,bass:localhost:4564,sologuitar:localhost:4565",
+        )
+        .unwrap();
     }
 
     #[test]

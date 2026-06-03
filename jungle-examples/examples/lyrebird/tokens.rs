@@ -85,10 +85,35 @@ impl PulseCodeParadise {
         std::env::var("LYREBIRD_TOKENS_MODEL").unwrap_or_else(|_| DEFAULT_TOKENS_MODEL.to_owned())
     }
 
-    pub(crate) fn chat_completions_endpoint(&self) -> String {
+    fn tokens_target_for(
+        &self,
+        meta: Option<LyrebirdInstrument>,
+    ) -> Result<&super::TokensApiTarget, PulseCodeParadiseError> {
+        let server = match meta {
+            Some(instrument) => self
+                .tokens_routes
+                .get(&instrument)
+                .or(self.tokens_fallback_server.as_ref())
+                .ok_or_else(|| PulseCodeParadiseError::MissingTokensRoute {
+                    instrument: instrument.slug().to_owned(),
+                })?,
+            None => self
+                .tokens_fallback_server
+                .as_ref()
+                .ok_or(PulseCodeParadiseError::MissingTokensMeta)?,
+        };
+
+        self.tokens_clients
+            .get(server)
+            .ok_or_else(|| PulseCodeParadiseError::MissingTokensClient {
+                server: server.clone(),
+            })
+    }
+
+    pub(crate) fn chat_completions_endpoint(tokens_url: &reqwest::Url) -> String {
         format!(
             "{}/chat/completions",
-            self.tokens_url.as_str().trim_end_matches('/')
+            tokens_url.as_str().trim_end_matches('/')
         )
     }
 
@@ -119,13 +144,14 @@ impl TokenPredictor for PulseCodeParadise {
     fn predict(
         &self,
         prompt: Prompt,
-        _meta: Option<Self::Meta>,
+        meta: Option<Self::Meta>,
     ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> + Send {
         async move {
+            let target = self.tokens_target_for(meta)?;
             let request = self.chat_completions_request(&prompt)?;
-            let response = self
+            let response = target
                 .client
-                .post(self.chat_completions_endpoint())
+                .post(Self::chat_completions_endpoint(&target.base_url))
                 .json(&request)
                 .send()
                 .await?
@@ -268,6 +294,7 @@ fn extract_tool_calls(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TokensApiConfig;
     use reqwest::Url;
     use uuid::Uuid;
 
@@ -287,9 +314,67 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            ecosystem.chat_completions_endpoint(),
+            PulseCodeParadise::chat_completions_endpoint(
+                &ecosystem
+                    .tokens_target_for(Some(LyrebirdInstrument::Bass))
+                    .unwrap()
+                    .base_url
+            ),
             "https://api.openai.com/v1/chat/completions"
         );
+    }
+
+    #[test]
+    fn routes_instruments_to_specific_and_fallback_tokens_apis() {
+        let ecosystem = PulseCodeParadise::new(
+            TokensApiConfig::parse("sologuitar:localhost:4567,bass:localhost:6789,localhost:9876")
+                .unwrap(),
+            None,
+            Some(temp_db_path("routing")),
+        )
+        .unwrap();
+
+        assert_eq!(ecosystem.tokens_clients.len(), 3);
+        assert_eq!(
+            PulseCodeParadise::chat_completions_endpoint(
+                &ecosystem
+                    .tokens_target_for(Some(LyrebirdInstrument::GuitarSolo))
+                    .unwrap()
+                    .base_url
+            ),
+            "http://localhost:4567/chat/completions"
+        );
+        assert_eq!(
+            PulseCodeParadise::chat_completions_endpoint(
+                &ecosystem
+                    .tokens_target_for(Some(LyrebirdInstrument::Bass))
+                    .unwrap()
+                    .base_url
+            ),
+            "http://localhost:6789/chat/completions"
+        );
+        assert_eq!(
+            PulseCodeParadise::chat_completions_endpoint(
+                &ecosystem
+                    .tokens_target_for(Some(LyrebirdInstrument::Vocals))
+                    .unwrap()
+                    .base_url
+            ),
+            "http://localhost:9876/chat/completions"
+        );
+    }
+
+    #[test]
+    fn deduplicates_clients_for_shared_server_addresses() {
+        let ecosystem = PulseCodeParadise::new(
+            TokensApiConfig::parse("sologuitar:localhost:4567,bass:localhost:4567,localhost:9876")
+                .unwrap(),
+            None,
+            Some(temp_db_path("dedupe")),
+        )
+        .unwrap();
+
+        assert_eq!(ecosystem.tokens_clients.len(), 2);
     }
 
     #[test]
