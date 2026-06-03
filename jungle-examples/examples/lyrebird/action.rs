@@ -6,8 +6,8 @@ use crate::effect::{
 };
 use crate::mcts::Submission;
 use crate::{
-    LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentTag, LyrebirdSeed,
-    LyrebirdState,
+    LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentState, LyrebirdInstrumentTag,
+    LyrebirdSeed, LyrebirdState, PromptInstrumentState,
 };
 use jungle_sdk::prelude::*;
 use std::collections::BTreeMap;
@@ -39,6 +39,21 @@ where
 }
 
 pub type SeedLyrebirdState = SeedState<LyrebirdSeed, LyrebirdState>;
+
+pub trait LyrebirdPromptFocus {
+    fn instrument_state(&self) -> &LyrebirdInstrumentState;
+    fn instrument_state_mut(&mut self) -> &mut LyrebirdInstrumentState;
+}
+
+impl<Marker> LyrebirdPromptFocus for PromptInstrumentState<Marker> {
+    fn instrument_state(&self) -> &LyrebirdInstrumentState {
+        &self.state
+    }
+
+    fn instrument_state_mut(&mut self) -> &mut LyrebirdInstrumentState {
+        &mut self.state
+    }
+}
 
 pub struct FlattenJoinedUnit<S>(PhantomData<S>);
 #[jungle::action]
@@ -111,6 +126,17 @@ where
     }
 }
 
+pub struct InstrumentEnabledFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
+impl<Marker, Focus> Predicate<(Focus, ())> for InstrumentEnabledFocused<Marker, Focus>
+where
+    Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
+{
+    fn eval((state, _): &(Focus, ())) -> bool {
+        !state.instrument_state().disabled
+    }
+}
+
 pub struct LogIterationTiming;
 #[jungle::action]
 impl Action for LogIterationTiming {
@@ -153,15 +179,22 @@ impl Action for BeginIteration {
     ) -> Result<Self::Output, Failure> {
         state.iteration = state.iteration.saturating_add(1);
         state.iteration_id = format!("{:08}", state.iteration);
+        let output_root = state.output_root.clone();
+        let iteration_id = state.iteration_id.clone();
+        let instrument_parallelism = state.instrument_parallelism;
 
-        for instrument_state in &mut state.instruments {
-            instrument_state.begin_iteration(&state.output_root, &state.iteration_id);
+        for instrument in LyrebirdInstrument::ALL {
+            state.instrument_state_mut(instrument).begin_iteration(
+                &output_root,
+                &iteration_id,
+                instrument_parallelism,
+            );
         }
 
         info!(
             iteration = state.iteration,
             iteration_id = %state.iteration_id,
-            instrument_count = state.instruments.len(),
+            instrument_count = LyrebirdInstrument::ALL.len(),
             "starting lyrebird iteration"
         );
 
@@ -169,51 +202,51 @@ impl Action for BeginIteration {
     }
 }
 
-pub struct SkipInstrumentPrompt<Marker>(PhantomData<fn() -> Marker>);
+pub struct SkipInstrumentPromptFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
 #[jungle::action]
-impl<Marker> Action for SkipInstrumentPrompt<Marker>
+impl<Marker, Focus> Action for SkipInstrumentPromptFocused<Marker, Focus>
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
 {
     type Effect = Noop;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &LyrebirdState, _input: Self::Input) {}
+    fn emit(_state: &Focus, _input: Self::Input) {}
 
     fn absorb(
-        state: &mut LyrebirdState,
+        state: &mut Focus,
         _output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let instrument = Marker::INSTRUMENT;
+        let instrument_state = state.instrument_state();
         info!(
-            iteration_id = %state.iteration_id,
-            instrument = instrument.slug(),
+            iteration_id = %instrument_state.iteration_id,
+            instrument = Marker::INSTRUMENT.slug(),
             "skipping disabled lyrebird instrument prompt branch"
         );
         Ok(())
     }
 }
 
-pub struct SelectDspBranch<Marker>(PhantomData<fn() -> Marker>);
+pub struct SelectDspBranchFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
 #[jungle::action]
-impl<Marker> Action for SelectDspBranch<Marker>
+impl<Marker, Focus> Action for SelectDspBranchFocused<Marker, Focus>
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
 {
     type Effect = SearchTreeSelect<Marker>;
     type Input = ();
     type Output = ();
 
-    fn emit(_state: &LyrebirdState, _input: Self::Input) {}
+    fn emit(_state: &Focus, _input: Self::Input) {}
 
     fn absorb(
-        state: &mut LyrebirdState,
+        state: &mut Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let instrument = Marker::INSTRUMENT;
-        let iteration_id = state.iteration_id.clone();
-        let instrument_state = state.instrument_state_mut(instrument);
+        let instrument_state = state.instrument_state_mut();
         let mut branch = output.map_err(Failure::from)?;
         if branch.is_empty() {
             branch.push(instrument_state.initial_dsp_code.clone().into());
@@ -223,8 +256,8 @@ where
         let selected_score = branch.last().and_then(|node| node.score());
         instrument_state.selected_branch = branch;
         info!(
-            iteration_id = %iteration_id,
-            instrument = instrument.slug(),
+            iteration_id = %instrument_state.iteration_id,
+            instrument = Marker::INSTRUMENT.slug(),
             selected_depth,
             branch_len = instrument_state.selected_branch.len(),
             selected_score = selected_score.unwrap_or_default(),
@@ -234,22 +267,22 @@ where
     }
 }
 
-pub struct OptimizeSelectedInstrument<Marker>(PhantomData<fn() -> Marker>);
+pub struct OptimizeSelectedInstrumentFocused<Marker, Focus>(PhantomData<fn() -> (Marker, Focus)>);
 #[jungle::action]
-impl<Marker> Action for OptimizeSelectedInstrument<Marker>
+impl<Marker, Focus> Action for OptimizeSelectedInstrumentFocused<Marker, Focus>
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
+    Focus: LyrebirdPromptFocus + Clone + Send + Sync + 'static,
 {
     type Effect = OptimizeInstrument;
     type Input = ();
     type Output = ();
 
-    fn emit(state: &LyrebirdState, _input: Self::Input) -> OptimizeInstrumentInput {
-        let instrument = Marker::INSTRUMENT;
-        let instrument_state = state.instrument_state(instrument);
+    fn emit(state: &Focus, _input: Self::Input) -> OptimizeInstrumentInput {
+        let instrument_state = state.instrument_state();
         OptimizeInstrumentInput {
-            iteration_id: state.iteration_id.clone(),
-            instrument,
+            iteration_id: instrument_state.iteration_id.clone(),
+            instrument: Marker::INSTRUMENT,
             target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
             target_audio_metrics: instrument_state.target_audio_metrics,
             code_branch: instrument_state.selected_branch.clone(),
@@ -257,21 +290,19 @@ where
             retry_reason: instrument_state.last_retry_reason.clone(),
             sample_path: instrument_state.sample_path.clone(),
             spectrogram_path: instrument_state.spectrogram_path.clone(),
-            instrument_parallelism: state.instrument_parallelism,
+            instrument_parallelism: instrument_state.instrument_parallelism,
         }
     }
 
     fn absorb(
-        state: &mut LyrebirdState,
+        state: &mut Focus,
         output: EffectCompletion<Self::Effect>,
     ) -> Result<Self::Output, Failure> {
-        let instrument = Marker::INSTRUMENT;
-        let iteration_id = state.iteration_id.clone();
         let OptimizeInstrumentOutcome {
             candidates,
             retry_reason,
         } = output.map_err(Failure::from)?;
-        let instrument_state = state.instrument_state_mut(instrument);
+        let instrument_state = state.instrument_state_mut();
         instrument_state.prompt_attempt = instrument_state.prompt_attempt.saturating_add(1);
         instrument_state.compile_ready = false;
         instrument_state.pending_generated_patch = None;
@@ -288,8 +319,8 @@ where
             instrument_state.skipped_this_iteration = true;
             instrument_state.last_retry_reason = retry_reason;
             info!(
-                iteration_id = %iteration_id,
-                instrument = instrument.slug(),
+                iteration_id = %instrument_state.iteration_id,
+                instrument = Marker::INSTRUMENT.slug(),
                 prompt_attempt = instrument_state.prompt_attempt,
                 "lyrebird instrument produced no valid prompt candidates"
             );
@@ -297,8 +328,8 @@ where
             instrument_state.skipped_this_iteration = false;
             instrument_state.last_retry_reason = None;
             info!(
-                iteration_id = %iteration_id,
-                instrument = instrument.slug(),
+                iteration_id = %instrument_state.iteration_id,
+                instrument = Marker::INSTRUMENT.slug(),
                 prompt_attempt = instrument_state.prompt_attempt,
                 candidate_count = instrument_state.pending_candidates.len(),
                 "prepared lyrebird instrument candidates"
@@ -319,30 +350,33 @@ impl Action for FinalizeIterationRender {
     fn emit(state: &LyrebirdState, _input: Self::Input) -> FinalizeIterationSamplesInput {
         FinalizeIterationSamplesInput {
             iteration_id: state.iteration_id.clone(),
-            instruments: state
-                .instruments
-                .iter()
-                .filter(|instrument_state| !instrument_state.pending_candidates.is_empty())
-                .map(
-                    |instrument_state| crate::effect::FinalizeIterationInstrumentInput {
-                        instrument: instrument_state.instrument,
-                        dsp_source_path: instrument_state.dsp_source_path.clone(),
-                        original_source: instrument_state.initial_dsp_code.source.clone(),
-                        target_spectrogram_path: instrument_state.target_spectrogram_path.clone(),
-                        target_audio_metrics: instrument_state.target_audio_metrics,
-                        candidates: instrument_state
-                            .pending_candidates
-                            .iter()
-                            .cloned()
-                            .map(|candidate| crate::effect::FinalizeIterationCandidateInput {
-                                patch: candidate.patch,
-                                generated_source: candidate.source,
-                                sample_path: candidate.sample_path,
-                                spectrogram_path: candidate.spectrogram_path,
-                            })
-                            .collect(),
-                    },
-                )
+            instruments: LyrebirdInstrument::ALL
+                .into_iter()
+                .filter_map(|instrument| {
+                    let instrument_state = state.instrument_state(instrument);
+                    (!instrument_state.pending_candidates.is_empty()).then(|| {
+                        crate::effect::FinalizeIterationInstrumentInput {
+                            instrument: instrument_state.instrument,
+                            dsp_source_path: instrument_state.dsp_source_path.clone(),
+                            original_source: instrument_state.initial_dsp_code.source.clone(),
+                            target_spectrogram_path: instrument_state
+                                .target_spectrogram_path
+                                .clone(),
+                            target_audio_metrics: instrument_state.target_audio_metrics,
+                            candidates: instrument_state
+                                .pending_candidates
+                                .iter()
+                                .cloned()
+                                .map(|candidate| crate::effect::FinalizeIterationCandidateInput {
+                                    patch: candidate.patch,
+                                    generated_source: candidate.source,
+                                    sample_path: candidate.sample_path,
+                                    spectrogram_path: candidate.spectrogram_path,
+                                })
+                                .collect(),
+                        }
+                    })
+                })
                 .collect(),
         }
     }

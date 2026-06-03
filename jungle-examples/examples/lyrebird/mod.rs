@@ -22,9 +22,9 @@ mod ui;
 
 use crate::action::{
     BeginIteration, FinalizeIterationRender, FlattenEither, FlattenJoinedUnit, InstrumentEnabled,
-    LogIterationTiming, LyrebirdLoopForever, OptimizeSelectedInstrument, SeedLyrebirdState,
-    SelectDspBranch, SetCurrentInstrument, SkipInstrumentPrompt, SkipInstrumentSubmit,
-    SubmitDspBranch,
+    InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
+    OptimizeSelectedInstrumentFocused, SeedLyrebirdState, SelectDspBranchFocused,
+    SetCurrentInstrument, SkipInstrumentPromptFocused, SkipInstrumentSubmit, SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
@@ -346,7 +346,7 @@ pub trait LyrebirdInstrumentTag {
     const INSTRUMENT: LyrebirdInstrument;
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Optic, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdInstrumentState {
     pub instrument: LyrebirdInstrument,
     #[serde(default)]
@@ -363,7 +363,11 @@ pub struct LyrebirdInstrumentState {
     pub spectrogram_path: String,
     pub last_similarity: f32,
     pub compile_ready: bool,
+    #[serde(default)]
+    pub instrument_parallelism: usize,
     pub prompt_attempt: u32,
+    #[serde(default)]
+    pub iteration_id: String,
     pub skipped_this_iteration: bool,
     pub last_retry_reason: Option<String>,
     pub pending_generated_patch: Option<LyrebirdPatch>,
@@ -412,7 +416,12 @@ impl LyrebirdInstrumentState {
         }
     }
 
-    fn begin_iteration(&mut self, output_root: &str, iteration_id: &str) {
+    fn begin_iteration(
+        &mut self,
+        output_root: &str,
+        iteration_id: &str,
+        instrument_parallelism: usize,
+    ) {
         let iteration_dir = PathBuf::from(output_root).join(iteration_id);
         let sample_stem = self.instrument.output_stem();
         self.sample_path = iteration_dir
@@ -424,7 +433,9 @@ impl LyrebirdInstrumentState {
             .display()
             .to_string();
         self.compile_ready = false;
+        self.instrument_parallelism = instrument_parallelism;
         self.prompt_attempt = 0;
+        self.iteration_id = iteration_id.to_owned();
         self.skipped_this_iteration = false;
         self.last_retry_reason = None;
         self.pending_generated_patch = None;
@@ -436,11 +447,53 @@ impl LyrebirdInstrumentState {
     }
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Optic, Clone, Debug, Serialize, Deserialize)]
+pub struct PromptInstrumentState<Marker> {
+    pub state: LyrebirdInstrumentState,
+    #[serde(skip)]
+    marker: std::marker::PhantomData<fn() -> Marker>,
+}
+
+impl<Marker> PromptInstrumentState<Marker> {
+    fn new(state: LyrebirdInstrumentState) -> Self {
+        Self {
+            state,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<Marker> Default for PromptInstrumentState<Marker>
+where
+    Marker: LyrebirdInstrumentTag,
+{
+    fn default() -> Self {
+        Self::new(LyrebirdInstrumentState::observation_placeholder(
+            Marker::INSTRUMENT,
+        ))
+    }
+}
+
+pub type RhythmGuitarPromptState = PromptInstrumentState<RhythmGuitarMarker>;
+pub type VocalsPromptState = PromptInstrumentState<VocalsMarker>;
+pub type BackupVocalsPromptState = PromptInstrumentState<BackupVocalsMarker>;
+pub type BassPromptState = PromptInstrumentState<BassMarker>;
+pub type GuitarSoloPromptState = PromptInstrumentState<GuitarSoloMarker>;
+
+#[derive(Optic, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct LyrebirdState {
     pub output_root: String,
     pub current_instrument: LyrebirdInstrument,
-    pub instruments: Vec<LyrebirdInstrumentState>,
+    #[jungle(focus)]
+    pub rhythm_guitar: RhythmGuitarPromptState,
+    #[jungle(focus)]
+    pub vocals: VocalsPromptState,
+    #[jungle(focus)]
+    pub backup_vocals: BackupVocalsPromptState,
+    #[jungle(focus)]
+    pub bass: BassPromptState,
+    #[jungle(focus)]
+    pub guitar_solo: GuitarSoloPromptState,
     #[serde(default = "default_instrument_parallelism")]
     pub instrument_parallelism: usize,
     #[serde(default)]
@@ -451,9 +504,9 @@ pub struct LyrebirdState {
 
 impl LyrebirdState {
     pub fn enabled_instrument_count(&self) -> u64 {
-        self.instruments
-            .iter()
-            .filter(|state| !state.disabled)
+        LyrebirdInstrument::ALL
+            .into_iter()
+            .filter(|instrument| !self.instrument_state(*instrument).disabled)
             .count() as u64
     }
 
@@ -464,54 +517,38 @@ impl LyrebirdState {
     }
 
     pub fn has_all_instrument_states(&self) -> bool {
-        LyrebirdInstrument::ALL.into_iter().all(|instrument| {
-            self.instruments
-                .iter()
-                .any(|state| state.instrument == instrument)
-        })
+        self.rhythm_guitar.state.instrument == LyrebirdInstrument::RhythmGuitar
+            && self.vocals.state.instrument == LyrebirdInstrument::Vocals
+            && self.backup_vocals.state.instrument == LyrebirdInstrument::BackupVocals
+            && self.bass.state.instrument == LyrebirdInstrument::Bass
+            && self.guitar_solo.state.instrument == LyrebirdInstrument::GuitarSolo
     }
 
     pub fn normalized_for_observation(&self) -> Self {
-        let mut normalized = self.clone();
-        let mut instruments = Vec::with_capacity(LyrebirdInstrument::ALL.len());
-        for instrument in LyrebirdInstrument::ALL {
-            instruments.push(
-                normalized
-                    .instruments
-                    .iter()
-                    .find(|state| state.instrument == instrument)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        LyrebirdInstrumentState::observation_placeholder(instrument)
-                    }),
-            );
-        }
-        normalized.instruments = instruments;
-        if !normalized
-            .instruments
-            .iter()
-            .any(|state| state.instrument == normalized.current_instrument)
-        {
-            normalized.current_instrument = LyrebirdInstrument::ALL[0];
-        }
-        normalized
+        self.clone()
     }
 
     pub fn instrument_state(&self, instrument: LyrebirdInstrument) -> &LyrebirdInstrumentState {
-        self.instruments
-            .iter()
-            .find(|state| state.instrument == instrument)
-            .expect("lyrebird instrument state missing")
+        match instrument {
+            LyrebirdInstrument::RhythmGuitar => &self.rhythm_guitar.state,
+            LyrebirdInstrument::Vocals => &self.vocals.state,
+            LyrebirdInstrument::BackupVocals => &self.backup_vocals.state,
+            LyrebirdInstrument::Bass => &self.bass.state,
+            LyrebirdInstrument::GuitarSolo => &self.guitar_solo.state,
+        }
     }
 
     pub fn instrument_state_mut(
         &mut self,
         instrument: LyrebirdInstrument,
     ) -> &mut LyrebirdInstrumentState {
-        self.instruments
-            .iter_mut()
-            .find(|state| state.instrument == instrument)
-            .expect("lyrebird instrument state missing")
+        match instrument {
+            LyrebirdInstrument::RhythmGuitar => &mut self.rhythm_guitar.state,
+            LyrebirdInstrument::Vocals => &mut self.vocals.state,
+            LyrebirdInstrument::BackupVocals => &mut self.backup_vocals.state,
+            LyrebirdInstrument::Bass => &mut self.bass.state,
+            LyrebirdInstrument::GuitarSolo => &mut self.guitar_solo.state,
+        }
     }
 
     pub fn current_state(&self) -> &LyrebirdInstrumentState {
@@ -565,89 +602,186 @@ pub struct LyrebirdSeed {
 
 impl From<LyrebirdSeed> for LyrebirdState {
     fn from(seed: LyrebirdSeed) -> Self {
-        let current_instrument = seed
-            .instruments
+        let LyrebirdSeed {
+            output_root,
+            instruments,
+            instrument_parallelism,
+        } = seed;
+        let current_instrument = instruments
             .first()
             .map(|instrument| instrument.instrument)
             .unwrap_or_default();
 
+        let instrument_states = instruments
+            .into_iter()
+            .map(|seed| {
+                let instrument = seed.instrument;
+                let mut state = LyrebirdInstrumentState::from_seed(seed);
+                state.instrument_parallelism = instrument_parallelism;
+                (instrument, state)
+            })
+            .collect::<BTreeMap<_, _>>();
+
         Self {
-            output_root: seed.output_root,
+            output_root,
             current_instrument,
-            instrument_parallelism: seed.instrument_parallelism,
-            instruments: seed
-                .instruments
-                .into_iter()
-                .map(LyrebirdInstrumentState::from_seed)
-                .collect(),
+            rhythm_guitar: RhythmGuitarPromptState::new(
+                instrument_states
+                    .get(&LyrebirdInstrument::RhythmGuitar)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        LyrebirdInstrumentState::observation_placeholder(
+                            LyrebirdInstrument::RhythmGuitar,
+                        )
+                    }),
+            ),
+            vocals: VocalsPromptState::new(
+                instrument_states
+                    .get(&LyrebirdInstrument::Vocals)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        LyrebirdInstrumentState::observation_placeholder(LyrebirdInstrument::Vocals)
+                    }),
+            ),
+            backup_vocals: BackupVocalsPromptState::new(
+                instrument_states
+                    .get(&LyrebirdInstrument::BackupVocals)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        LyrebirdInstrumentState::observation_placeholder(
+                            LyrebirdInstrument::BackupVocals,
+                        )
+                    }),
+            ),
+            bass: BassPromptState::new(
+                instrument_states
+                    .get(&LyrebirdInstrument::Bass)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        LyrebirdInstrumentState::observation_placeholder(LyrebirdInstrument::Bass)
+                    }),
+            ),
+            guitar_solo: GuitarSoloPromptState::new(
+                instrument_states
+                    .get(&LyrebirdInstrument::GuitarSolo)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        LyrebirdInstrumentState::observation_placeholder(
+                            LyrebirdInstrument::GuitarSolo,
+                        )
+                    }),
+            ),
+            instrument_parallelism,
             ..Self::default()
         }
     }
 }
 
-#[derive(Flow)]
-pub struct LyrebirdInstrumentPromptEnabled<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
-    Step<SetCurrentInstrument<Marker>>,
-    Step<SelectDspBranch<Marker>>,
-    Step<OptimizeSelectedInstrument<Marker>>,
-);
-
-#[derive(Flow)]
-pub struct LyrebirdInstrumentPromptDisabled<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
-    Step<SetCurrentInstrument<Marker>>,
-    Step<SkipInstrumentPrompt<Marker>>,
-);
-
-#[derive(Flow)]
-pub struct LyrebirdInstrumentPrompt<Marker: LyrebirdInstrumentTag + Send + Sync + 'static>(
-    Conditional<
-        InstrumentEnabled<Marker>,
-        LyrebirdInstrumentPromptEnabled<Marker>,
-        LyrebirdInstrumentPromptDisabled<Marker>,
-    >,
-    Step<FlattenEither<(), LyrebirdState>>,
-);
-
+#[derive(Clone, Copy, Debug)]
 pub struct RhythmGuitarMarker;
 impl LyrebirdInstrumentTag for RhythmGuitarMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::RhythmGuitar;
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct VocalsMarker;
 impl LyrebirdInstrumentTag for VocalsMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::Vocals;
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct BackupVocalsMarker;
 impl LyrebirdInstrumentTag for BackupVocalsMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::BackupVocals;
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct BassMarker;
 impl LyrebirdInstrumentTag for BassMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::Bass;
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct GuitarSoloMarker;
 impl LyrebirdInstrumentTag for GuitarSoloMarker {
     const INSTRUMENT: LyrebirdInstrument = LyrebirdInstrument::GuitarSolo;
 }
 
+macro_rules! lyrebird_prompt_flow {
+    ($enabled:ident, $disabled:ident, $prompt:ident, $marker:ty, $focus:ty) => {
+        #[derive(Flow)]
+        pub struct $enabled(
+            Step<SelectDspBranchFocused<$marker, $focus>>,
+            Step<OptimizeSelectedInstrumentFocused<$marker, $focus>>,
+        );
+
+        #[derive(Flow)]
+        pub struct $disabled(Step<SkipInstrumentPromptFocused<$marker, $focus>>);
+
+        #[derive(Flow)]
+        #[jungle(focus = $focus)]
+        pub struct $prompt(
+            Conditional<
+                FocusedCondition<InstrumentEnabledFocused<$marker, $focus>, $focus>,
+                $enabled,
+                $disabled,
+            >,
+            Step<FlattenEither<(), $focus>>,
+        );
+    };
+}
+
+lyrebird_prompt_flow!(
+    RhythmGuitarPromptEnabled,
+    RhythmGuitarPromptDisabled,
+    RhythmGuitarPrompt,
+    RhythmGuitarMarker,
+    RhythmGuitarPromptState
+);
+lyrebird_prompt_flow!(
+    VocalsPromptEnabled,
+    VocalsPromptDisabled,
+    VocalsPrompt,
+    VocalsMarker,
+    VocalsPromptState
+);
+lyrebird_prompt_flow!(
+    BackupVocalsPromptEnabled,
+    BackupVocalsPromptDisabled,
+    BackupVocalsPrompt,
+    BackupVocalsMarker,
+    BackupVocalsPromptState
+);
+lyrebird_prompt_flow!(
+    BassPromptEnabled,
+    BassPromptDisabled,
+    BassPrompt,
+    BassMarker,
+    BassPromptState
+);
+lyrebird_prompt_flow!(
+    GuitarSoloPromptEnabled,
+    GuitarSoloPromptDisabled,
+    GuitarSoloPrompt,
+    GuitarSoloMarker,
+    GuitarSoloPromptState
+);
+
 #[derive(Flow)]
 pub struct LyrebirdPromptLeft(
-    Join<LyrebirdInstrumentPrompt<RhythmGuitarMarker>, LyrebirdInstrumentPrompt<VocalsMarker>>,
+    Join<RhythmGuitarPrompt, VocalsPrompt>,
     Step<FlattenJoinedUnit<LyrebirdState>>,
 );
 
 #[derive(Flow)]
 pub struct LyrebirdPromptRightPair(
-    Join<LyrebirdInstrumentPrompt<BackupVocalsMarker>, LyrebirdInstrumentPrompt<BassMarker>>,
+    Join<BackupVocalsPrompt, BassPrompt>,
     Step<FlattenJoinedUnit<LyrebirdState>>,
 );
 
 #[derive(Flow)]
 pub struct LyrebirdPromptRight(
-    Join<LyrebirdPromptRightPair, LyrebirdInstrumentPrompt<GuitarSoloMarker>>,
+    Join<LyrebirdPromptRightPair, GuitarSoloPrompt>,
     Step<FlattenJoinedUnit<LyrebirdState>>,
 );
 
@@ -1252,7 +1386,7 @@ async fn ensure_lyrebird_running(
         }
         warn!(
             journey_id = %existing.journey_id,
-            instrument_count = state.instruments.len(),
+            instrument_count = LyrebirdInstrument::ALL.len(),
             "existing lyrebird journey is missing instrument state; spawning a new journey instead"
         );
     }
@@ -1434,6 +1568,130 @@ pub(crate) fn build_replace_tool(instrument: LyrebirdInstrument) -> Tool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, OnceLock};
+    use std::time::Duration;
+
+    struct PromptJoinConcurrentRuntime {
+        barrier: tokio::sync::Barrier,
+        active: AtomicUsize,
+        max_active: AtomicUsize,
+    }
+
+    impl PromptJoinConcurrentRuntime {
+        fn reset(&self) {
+            self.active.store(0, Ordering::SeqCst);
+            self.max_active.store(0, Ordering::SeqCst);
+        }
+    }
+
+    fn prompt_join_concurrent_runtime() -> Arc<PromptJoinConcurrentRuntime> {
+        static RUNTIME: OnceLock<Arc<PromptJoinConcurrentRuntime>> = OnceLock::new();
+        RUNTIME
+            .get_or_init(|| {
+                Arc::new(PromptJoinConcurrentRuntime {
+                    barrier: tokio::sync::Barrier::new(2),
+                    active: AtomicUsize::new(0),
+                    max_active: AtomicUsize::new(0),
+                })
+            })
+            .clone()
+    }
+
+    struct PromptJoinConcurrentGuard(Arc<PromptJoinConcurrentRuntime>);
+
+    impl Drop for PromptJoinConcurrentGuard {
+        fn drop(&mut self) {
+            self.0.active.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    pub struct PromptJoinConcurrentEffect;
+    #[jungle::effect(id = 142)]
+    impl<J> Effect<J> for PromptJoinConcurrentEffect {
+        type In = i32;
+        type Out = i32;
+        type Err = ();
+
+        fn effect(
+            _jungle: &J,
+            input: Self::In,
+        ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+            async move {
+                let runtime = prompt_join_concurrent_runtime();
+                let active = runtime.active.fetch_add(1, Ordering::SeqCst) + 1;
+                runtime.max_active.fetch_max(active, Ordering::SeqCst);
+                let _guard = PromptJoinConcurrentGuard(runtime.clone());
+                runtime.barrier.wait().await;
+                Ok(input)
+            }
+        }
+    }
+
+    struct RhythmGuitarConcurrentPromptSpec;
+    #[jungle::action]
+    impl Action for RhythmGuitarConcurrentPromptSpec {
+        type Effect = PromptJoinConcurrentEffect;
+        type Input = i32;
+        type Output = i32;
+
+        fn emit(state: &RhythmGuitarPromptState, input: Self::Input) -> i32 {
+            state.state.prompt_attempt as i32 + input
+        }
+
+        fn absorb(
+            state: &mut RhythmGuitarPromptState,
+            output: EffectCompletion<Self::Effect>,
+        ) -> Result<Self::Output, Failure> {
+            let out = output
+                .map_err(|_err| Failure::from("rhythm guitar concurrent prompt should succeed"))?;
+            state.state.prompt_attempt = out as u32;
+            Ok(out)
+        }
+    }
+
+    struct VocalsConcurrentPromptSpec;
+    #[jungle::action]
+    impl Action for VocalsConcurrentPromptSpec {
+        type Effect = PromptJoinConcurrentEffect;
+        type Input = i32;
+        type Output = i32;
+
+        fn emit(state: &VocalsPromptState, input: Self::Input) -> i32 {
+            state.state.prompt_attempt as i32 + input * 10
+        }
+
+        fn absorb(
+            state: &mut VocalsPromptState,
+            output: EffectCompletion<Self::Effect>,
+        ) -> Result<Self::Output, Failure> {
+            let out =
+                output.map_err(|_err| Failure::from("vocals concurrent prompt should succeed"))?;
+            state.state.prompt_attempt = out as u32;
+            Ok(out)
+        }
+    }
+
+    #[derive(Flow)]
+    #[jungle(focus = RhythmGuitarPromptState)]
+    struct RhythmGuitarConcurrentPromptFlow(Step<RhythmGuitarConcurrentPromptSpec>);
+
+    #[derive(Flow)]
+    #[jungle(focus = VocalsPromptState)]
+    struct VocalsConcurrentPromptFlow(Step<VocalsConcurrentPromptSpec>);
+
+    #[derive(Flow)]
+    struct ConcurrentLyrebirdPromptJoin(
+        Join<RhythmGuitarConcurrentPromptFlow, VocalsConcurrentPromptFlow>,
+    );
+
+    struct ConcurrentLyrebirdPromptAnimal;
+    #[jungle::animal(id = 90, generation = 0)]
+    impl Animal for ConcurrentLyrebirdPromptAnimal {
+        type State = LyrebirdState;
+        type Seed = i32;
+        type Flow = ConcurrentLyrebirdPromptJoin;
+    }
 
     #[test]
     fn accepts_openai_compatible_api_base_url() {
@@ -1547,7 +1805,7 @@ mod tests {
             ..LyrebirdInstrumentState::default()
         };
 
-        state.begin_iteration("/tmp/lyrebird", "00000008");
+        state.begin_iteration("/tmp/lyrebird", "00000008", 3);
 
         assert_eq!(
             state.latest_generated_sample_path.as_deref(),
@@ -1587,7 +1845,6 @@ mod tests {
 
         let appearance = <Lyrebird as Observe>::observe(&state);
 
-        assert_eq!(appearance.instruments.len(), LyrebirdInstrument::ALL.len());
         for instrument in LyrebirdInstrument::ALL {
             assert_eq!(
                 appearance.instrument_state(instrument).instrument,
@@ -1657,29 +1914,46 @@ mod tests {
 
     #[test]
     fn generation_count_uses_iteration_parallelism_and_enabled_instruments() {
-        let state = LyrebirdState {
-            instruments: vec![
-                LyrebirdInstrumentState {
-                    instrument: LyrebirdInstrument::Vocals,
-                    ..LyrebirdInstrumentState::default()
-                },
-                LyrebirdInstrumentState {
-                    instrument: LyrebirdInstrument::Bass,
-                    ..LyrebirdInstrumentState::default()
-                },
-                LyrebirdInstrumentState {
-                    instrument: LyrebirdInstrument::GuitarSolo,
-                    disabled: true,
-                    ..LyrebirdInstrumentState::default()
-                },
-            ],
+        let mut state = LyrebirdState {
             instrument_parallelism: 5,
             iteration: 2,
             ..LyrebirdState::default()
         };
+        state.rhythm_guitar.state.disabled = true;
+        state.backup_vocals.state.disabled = true;
+        state.guitar_solo.state.disabled = true;
 
         assert_eq!(state.enabled_instrument_count(), 2);
         assert_eq!(state.generation_count(), 20);
+    }
+
+    #[tokio::test]
+    async fn lyrebird_prompt_focus_branches_run_concurrently() {
+        let runtime = prompt_join_concurrent_runtime();
+        runtime.reset();
+
+        let mut state = LyrebirdState::default();
+        state.rhythm_guitar.state.prompt_attempt = 1;
+        state.vocals.state.prompt_attempt = 2;
+
+        let mut executor = Executor::<ConcurrentLyrebirdPromptAnimal>::new(state);
+        let request = executor
+            .next_executable_request(3)
+            .expect("focused lyrebird prompt join should produce an executable request");
+        let completion = tokio::time::timeout(Duration::from_millis(250), request.run())
+            .await
+            .expect("focused lyrebird prompt branches should rendezvous without deadlock")
+            .expect("focused lyrebird prompt runner should succeed");
+        let emitted = executor
+            .complete_serialized(completion)
+            .expect("focused lyrebird prompt completion should apply cleanly");
+        let final_emitted: (i32, i32) =
+            postcard::from_bytes(&emitted).expect("focused prompt join output should deserialize");
+
+        assert_eq!(runtime.max_active.load(Ordering::SeqCst), 2);
+        assert_eq!(final_emitted, (4, 32));
+        assert_eq!(executor.state().rhythm_guitar.state.prompt_attempt, 4);
+        assert_eq!(executor.state().vocals.state.prompt_attempt, 32);
     }
 
     #[test]
