@@ -858,6 +858,14 @@ pub struct DebugGraphNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct DebugRenderStateNode {
+    pub id: u32,
+    pub label: String,
+    pub runtime_id: Option<u32>,
+    pub state: RuntimeState,
+}
+
+#[derive(Debug, Clone)]
 pub struct DebugGraph {
     pub nodes: Vec<DebugGraphNode>,
     pub edges: Vec<(u32, u32)>,
@@ -887,6 +895,40 @@ where
             .map(|cluster| cluster.nodes.clone())
             .collect(),
     }
+}
+
+pub fn debug_render_states_for_animal<A>(
+    updates: impl IntoIterator<Item = JourneyUpdateEvent>,
+) -> Vec<DebugRenderStateNode>
+where
+    A: Animal + 'static,
+    A::Flow: JourneyAstSource,
+{
+    let ast = <A::Flow as JourneyAstSource>::journey_ast();
+    let model = GraphModel::from_ast(ast);
+    let mut live = LiveData::default();
+    live.bind_model(&model);
+    for update in updates {
+        let _ = live.apply_update(update);
+    }
+    let live_states = live_states_for_display(
+        &model,
+        Some(&live),
+        &model.derived.condition_successor_runtime_ids,
+    );
+    model
+        .nodes
+        .iter()
+        .map(|node| DebugRenderStateNode {
+            id: node.id,
+            label: node.label.clone(),
+            runtime_id: node.runtime_node_id,
+            state: live_states
+                .get(&node.id)
+                .copied()
+                .unwrap_or(RuntimeState::Pending),
+        })
+        .collect()
 }
 
 #[derive(Clone)]
@@ -1481,10 +1523,25 @@ impl LiveData {
     }
 }
 
+#[cfg(test)]
 fn runtime_state_for_live_data(
     live: &LiveData,
     runtime_id: u32,
     runtime_sequence_floors: &HashMap<u32, usize>,
+) -> RuntimeState {
+    runtime_state_for_live_data_with_activation_prefixes(
+        live,
+        runtime_id,
+        runtime_sequence_floors,
+        &HashMap::new(),
+    )
+}
+
+fn runtime_state_for_live_data_with_activation_prefixes(
+    live: &LiveData,
+    runtime_id: u32,
+    runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> RuntimeState {
     if live
         .runtime_update_sequence
@@ -1492,6 +1549,17 @@ fn runtime_state_for_live_data(
         .copied()
         .zip(runtime_sequence_floors.get(&runtime_id).copied())
         .map(|(sequence, floor)| sequence < floor)
+        .unwrap_or(false)
+    {
+        return RuntimeState::Pending;
+    }
+    if runtime_activation_prefixes
+        .get(&runtime_id)
+        .and_then(|required_prefix| {
+            live.runtime_activation_paths
+                .get(&runtime_id)
+                .map(|path| !path.starts_with(required_prefix))
+        })
         .unwrap_or(false)
     {
         return RuntimeState::Pending;
@@ -1509,13 +1577,19 @@ fn runtime_state_for_live_data(
 
 #[cfg(test)]
 fn infer_condition_runtime_state(live: &LiveData, successor_runtime_ids: &[u32]) -> RuntimeState {
-    infer_condition_runtime_state_with_runtime_floors(live, successor_runtime_ids, &HashMap::new())
+    infer_condition_runtime_state_with_runtime_floors(
+        live,
+        successor_runtime_ids,
+        &HashMap::new(),
+        &HashMap::new(),
+    )
 }
 
 fn infer_condition_runtime_state_with_runtime_floors(
     live: &LiveData,
     successor_runtime_ids: &[u32],
     runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> RuntimeState {
     let mut newest: Option<(usize, RuntimeState)> = None;
 
@@ -1529,7 +1603,12 @@ fn infer_condition_runtime_state_with_runtime_floors(
         {
             newest = Some((
                 sequence,
-                runtime_state_for_live_data(live, *runtime_id, runtime_sequence_floors),
+                runtime_state_for_live_data_with_activation_prefixes(
+                    live,
+                    *runtime_id,
+                    runtime_sequence_floors,
+                    runtime_activation_prefixes,
+                ),
             ));
         }
     }
@@ -1575,6 +1654,7 @@ fn node_phase_for_display(
         proxy_runtime_ids,
         condition_successor_runtime_ids,
         &HashMap::new(),
+        &HashMap::new(),
     )
 }
 
@@ -1585,13 +1665,19 @@ fn node_phase_for_display_with_runtime_floors(
     _proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
     runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> Phase<RuntimeState> {
     let Some(live) = live_data else {
         return Phase::Static;
     };
 
     let state = match runtime_id {
-        Some(id) => runtime_state_for_live_data(live, id, runtime_sequence_floors),
+        Some(id) => runtime_state_for_live_data_with_activation_prefixes(
+            live,
+            id,
+            runtime_sequence_floors,
+            runtime_activation_prefixes,
+        ),
         None => condition_successor_runtime_ids
             .get(&display_id)
             .map(|successors| {
@@ -1599,6 +1685,7 @@ fn node_phase_for_display_with_runtime_floors(
                     live,
                     successors,
                     runtime_sequence_floors,
+                    runtime_activation_prefixes,
                 )
             })
             .unwrap_or(RuntimeState::Pending),
@@ -1618,6 +1705,7 @@ fn runtime_observed_in_current_iteration(
     live: &LiveData,
     runtime_id: u32,
     runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> bool {
     live.runtime_update_sequence
         .get(&runtime_id)
@@ -1628,6 +1716,14 @@ fn runtime_observed_in_current_iteration(
                     .get(&runtime_id)
                     .copied()
                     .unwrap_or_default()
+                && runtime_activation_prefixes
+                    .get(&runtime_id)
+                    .and_then(|required_prefix| {
+                        live.runtime_activation_paths
+                            .get(&runtime_id)
+                            .map(|path| path.starts_with(required_prefix))
+                    })
+                    .unwrap_or(true)
         })
         .unwrap_or(false)
 }
@@ -1636,9 +1732,15 @@ fn node_has_current_iteration_activity(
     live: &LiveData,
     node: &NodeDisplay,
     runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> bool {
     node.runtime_node_id.into_iter().any(|runtime_id| {
-        runtime_observed_in_current_iteration(live, runtime_id, runtime_sequence_floors)
+        runtime_observed_in_current_iteration(
+            live,
+            runtime_id,
+            runtime_sequence_floors,
+            runtime_activation_prefixes,
+        )
     })
 }
 
@@ -1665,6 +1767,7 @@ fn active_conditional_branch_sides(
     model: &GraphModel,
     live: &LiveData,
     runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> HashMap<u32, ConditionalSide> {
     let mut active = HashMap::new();
 
@@ -1679,14 +1782,16 @@ fn active_conditional_branch_sides(
                         live,
                         runtime_id,
                         runtime_sequence_floors,
+                        runtime_activation_prefixes,
                     ) {
                         return None;
                     }
                     let sequence = live.runtime_update_sequence.get(&runtime_id).copied()?;
-                    let priority = match runtime_state_for_live_data(
+                    let priority = match runtime_state_for_live_data_with_activation_prefixes(
                         live,
                         runtime_id,
                         runtime_sequence_floors,
+                        runtime_activation_prefixes,
                     ) {
                         RuntimeState::Failed => 3_u8,
                         RuntimeState::Running => 2_u8,
@@ -1743,6 +1848,55 @@ fn skipped_conditional_branch_nodes(
     skipped
 }
 
+fn runtime_activation_prefixes_for_display(
+    model: &GraphModel,
+    live: &LiveData,
+) -> HashMap<u32, Vec<u64>> {
+    let mut prefixes = HashMap::<u32, Vec<u64>>::new();
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        if !matches!(cluster.kind, ClusterKind::While) {
+            continue;
+        }
+        let cluster_path_len = live
+            .runtime_activation_paths
+            .get(&cluster.runtime_node_id)
+            .map(Vec::len);
+        let current_iteration = std::iter::once(cluster.runtime_node_id)
+            .chain(
+                model.derived.cluster_entry_runtime_ids[index]
+                    .iter()
+                    .copied(),
+            )
+            .filter_map(|runtime_id| {
+                Some((
+                    live.runtime_update_sequence.get(&runtime_id).copied()?,
+                    live.runtime_activation_paths.get(&runtime_id)?.clone(),
+                ))
+            })
+            .max_by_key(|(sequence, _)| *sequence)
+            .map(|(_, path)| {
+                let prefix_len = cluster_path_len
+                    .unwrap_or_else(|| path.len().saturating_sub(1))
+                    .min(path.len());
+                path[..prefix_len].to_vec()
+            });
+        let Some(current_iteration) = current_iteration else {
+            continue;
+        };
+        for runtime_id in &cluster.member_runtime_ids {
+            prefixes
+                .entry(*runtime_id)
+                .and_modify(|current| {
+                    if current_iteration.len() > current.len() {
+                        *current = current_iteration.clone();
+                    }
+                })
+                .or_insert_with(|| current_iteration.clone());
+        }
+    }
+    prefixes
+}
+
 fn repaired_live_states_for_display(
     model: &GraphModel,
     live_data: Option<&LiveData>,
@@ -1752,9 +1906,15 @@ fn repaired_live_states_for_display(
         return HashMap::new();
     };
     let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
+    let runtime_activation_prefixes = runtime_activation_prefixes_for_display(model, live);
     let conditional_branch_membership = conditional_branch_membership(model);
     let active_conditional_sides =
-        active_conditional_branch_sides(model, live, &runtime_sequence_floors);
+        active_conditional_branch_sides(
+            model,
+            live,
+            &runtime_sequence_floors,
+            &runtime_activation_prefixes,
+        );
     let skipped_conditional_branch_nodes =
         skipped_conditional_branch_nodes(model, &active_conditional_sides);
 
@@ -1767,6 +1927,7 @@ fn repaired_live_states_for_display(
             &node.proxy_runtime_ids,
             condition_successor_runtime_ids,
             &runtime_sequence_floors,
+            &runtime_activation_prefixes,
         );
         let state = match phase {
             Phase::Live(state) => state,
@@ -1825,7 +1986,12 @@ fn repaired_live_states_for_display(
                     .node_map
                     .get(predecessor)
                     .map(|node| {
-                        node_has_current_iteration_activity(live, node, &runtime_sequence_floors)
+                        node_has_current_iteration_activity(
+                            live,
+                            node,
+                            &runtime_sequence_floors,
+                            &runtime_activation_prefixes,
+                        )
                     })
                     .unwrap_or(false);
                 if !predecessor_has_activity
@@ -1955,9 +2121,14 @@ fn cluster_live_from_repaired_states(
     cluster: &ClusterInfo,
     repaired_live_states: &HashMap<u32, RuntimeState>,
     runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> ClusterLive {
-    let cluster_state =
-        runtime_state_for_live_data(live, cluster.runtime_node_id, runtime_sequence_floors);
+    let cluster_state = runtime_state_for_live_data_with_activation_prefixes(
+        live,
+        cluster.runtime_node_id,
+        runtime_sequence_floors,
+        runtime_activation_prefixes,
+    );
     let mut has_running = matches!(cluster_state, RuntimeState::Running);
     let mut has_failed = matches!(cluster_state, RuntimeState::Failed);
     let mut has_completed = matches!(cluster_state, RuntimeState::Completed);
@@ -1993,6 +2164,7 @@ fn cluster_phase_for_display(
     cluster: &ClusterInfo,
     repaired_live_states: &HashMap<u32, RuntimeState>,
     runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> Phase<ClusterLive> {
     let Some(live) = live_data else {
         return Phase::Static;
@@ -2002,6 +2174,7 @@ fn cluster_phase_for_display(
         cluster,
         repaired_live_states,
         runtime_sequence_floors,
+        runtime_activation_prefixes,
     ))
 }
 
@@ -2123,6 +2296,9 @@ where
     let runtime_sequence_floors = live_data
         .map(|live| runtime_sequence_floors_for_display(model, live))
         .unwrap_or_default();
+    let runtime_activation_prefixes = live_data
+        .map(|live| runtime_activation_prefixes_for_display(model, live))
+        .unwrap_or_default();
 
     let mut collapsed_clusters = HashSet::<usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
@@ -2145,6 +2321,7 @@ where
                 cluster,
                 display_live_states.as_ref(),
                 &runtime_sequence_floors,
+                &runtime_activation_prefixes,
             ),
         };
         if matches!(
@@ -2251,6 +2428,7 @@ where
                 cluster,
                 display_live_states.as_ref(),
                 &runtime_sequence_floors,
+                &runtime_activation_prefixes,
             ),
         };
         if let ClusterView::Collapsed { element, size } = theme.view_cluster(theme_state, &cx) {
@@ -2304,6 +2482,7 @@ where
                 cluster,
                 display_live_states.as_ref(),
                 &runtime_sequence_floors,
+                &runtime_activation_prefixes,
             ),
         };
         let ClusterView::Expanded { overlay, fill } = theme.view_cluster(theme_state, &cx) else {
@@ -2367,6 +2546,10 @@ where
         let display_live_states_for_cluster_overlays = display_live_states.clone();
         let runtime_sequence_floors_for_cluster_chips = runtime_sequence_floors.clone();
         let runtime_sequence_floors_for_cluster_overlays = runtime_sequence_floors.clone();
+        let runtime_activation_prefixes_for_cluster_chips =
+            runtime_activation_prefixes.clone();
+        let runtime_activation_prefixes_for_cluster_overlays =
+            runtime_activation_prefixes.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -2420,6 +2603,7 @@ where
                                 cluster,
                                 display_live_states_for_cluster_chips.as_ref(),
                                 &runtime_sequence_floors_for_cluster_chips,
+                                &runtime_activation_prefixes_for_cluster_chips,
                             ),
                         };
                         if let ClusterView::Collapsed { element, .. } =
@@ -2581,6 +2765,7 @@ where
                     cluster,
                     display_live_states_for_cluster_overlays.as_ref(),
                     &runtime_sequence_floors_for_cluster_overlays,
+                    &runtime_activation_prefixes_for_cluster_overlays,
                 ),
             };
             let base_overlay = match theme.view_cluster(theme_state, &cx) {
@@ -4349,6 +4534,7 @@ mod tests {
             &model.cluster_info[0],
             &repaired,
             &runtime_sequence_floors_for_display(&model, &live),
+            &runtime_activation_prefixes_for_display(&model, &live),
         );
 
         assert_eq!(
@@ -5360,6 +5546,459 @@ mod tests {
             repaired.get(&flatten_id).copied(),
             Some(RuntimeState::Pending)
         );
+    }
+
+    #[test]
+    fn repaired_live_states_handle_five_way_prompt_join_selection() {
+        fn prompt_branch(
+            branch_label: &'static str,
+            select_label: &'static str,
+            optimize_label: &'static str,
+            skip_label: &'static str,
+            flatten_label: &'static str,
+        ) -> JourneyAst {
+            JourneyAst::Sequence(vec![
+                JourneyAst::Conditional {
+                    label: branch_label,
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step { label: select_label },
+                        JourneyAst::Step {
+                            label: optimize_label,
+                        },
+                    ])),
+                    right: Box::new(JourneyAst::Step { label: skip_label }),
+                },
+                JourneyAst::Step {
+                    label: flatten_label,
+                },
+            ])
+        }
+
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Join {
+                label: "PromptJoin",
+                metadata: "",
+                left: Box::new(JourneyAst::Join {
+                    label: "PromptLeft",
+                    metadata: "",
+                    left: Box::new(prompt_branch("Branch1", "Select1", "Optimize1", "Skip1", "Flatten1")),
+                    right: Box::new(prompt_branch("Branch2", "Select2", "Optimize2", "Skip2", "Flatten2")),
+                }),
+                right: Box::new(JourneyAst::Join {
+                    label: "PromptRight",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Join {
+                        label: "PromptRightPair",
+                        metadata: "",
+                        left: Box::new(prompt_branch("Branch3", "Select3", "Optimize3", "Skip3", "Flatten3")),
+                        right: Box::new(prompt_branch("Branch4", "Select4", "Optimize4", "Skip4", "Flatten4")),
+                    }),
+                    right: Box::new(prompt_branch("Branch5", "Select5", "Optimize5", "Skip5", "Flatten5")),
+                }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        let mut sequence_id = 0_u64;
+        let mut push_success = |label: &str| {
+            sequence_id += 1;
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: runtime_id_for(&model, label),
+                    activation_path: vec![0, sequence_id],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            }));
+        };
+
+        for label in [
+            "Branch1",
+            "Skip1",
+            "Flatten1",
+            "Branch2",
+            "Select2",
+            "Optimize2",
+            "Flatten2",
+            "Branch3",
+            "Skip3",
+            "Flatten3",
+            "Branch4",
+            "Select4",
+            "Optimize4",
+            "Flatten4",
+            "Branch5",
+            "Skip5",
+            "Flatten5",
+        ] {
+            push_success(label);
+        }
+
+        sequence_id += 1;
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: runtime_id_for(&model, "Tail"),
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        let state_for = |label: &str| {
+            let id = node_by_label(&model, label).id;
+            states.get(&id).copied().unwrap_or(RuntimeState::Pending)
+        };
+
+        assert_eq!(state_for("Skip1"), RuntimeState::Completed);
+        assert_eq!(state_for("Select2"), RuntimeState::Completed);
+        assert_eq!(state_for("Optimize2"), RuntimeState::Completed);
+        assert_eq!(state_for("Skip3"), RuntimeState::Completed);
+        assert_eq!(state_for("Select4"), RuntimeState::Completed);
+        assert_eq!(state_for("Optimize4"), RuntimeState::Completed);
+        assert_eq!(state_for("Skip5"), RuntimeState::Completed);
+
+        assert_eq!(state_for("Select1"), RuntimeState::Pending);
+        assert_eq!(state_for("Optimize1"), RuntimeState::Pending);
+        assert_eq!(state_for("Skip2"), RuntimeState::Pending);
+        assert_eq!(state_for("Select3"), RuntimeState::Pending);
+        assert_eq!(state_for("Optimize3"), RuntimeState::Pending);
+        assert_eq!(state_for("Skip4"), RuntimeState::Pending);
+        assert_eq!(state_for("Select5"), RuntimeState::Pending);
+        assert_eq!(state_for("Optimize5"), RuntimeState::Pending);
+        assert_eq!(state_for("Tail"), RuntimeState::Running);
+    }
+
+    #[test]
+    fn while_reentry_hides_stale_skip_activity_in_five_way_prompt_join() {
+        fn prompt_branch(
+            branch_label: &'static str,
+            select_label: &'static str,
+            optimize_label: &'static str,
+            skip_label: &'static str,
+            flatten_label: &'static str,
+        ) -> JourneyAst {
+            JourneyAst::Sequence(vec![
+                JourneyAst::Conditional {
+                    label: branch_label,
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step { label: select_label },
+                        JourneyAst::Step {
+                            label: optimize_label,
+                        },
+                    ])),
+                    right: Box::new(JourneyAst::Step { label: skip_label }),
+                },
+                JourneyAst::Step {
+                    label: flatten_label,
+                },
+            ])
+        }
+
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "Begin" },
+                JourneyAst::Join {
+                    label: "PromptJoin",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Join {
+                        label: "PromptLeft",
+                        metadata: "",
+                        left: Box::new(prompt_branch("Branch1", "Select1", "Optimize1", "Skip1", "Flatten1")),
+                        right: Box::new(prompt_branch("Branch2", "Select2", "Optimize2", "Skip2", "Flatten2")),
+                    }),
+                    right: Box::new(JourneyAst::Join {
+                        label: "PromptRight",
+                        metadata: "",
+                        left: Box::new(JourneyAst::Join {
+                            label: "PromptRightPair",
+                            metadata: "",
+                            left: Box::new(prompt_branch("Branch3", "Select3", "Optimize3", "Skip3", "Flatten3")),
+                            right: Box::new(prompt_branch("Branch4", "Select4", "Optimize4", "Skip4", "Flatten4")),
+                        }),
+                        right: Box::new(prompt_branch("Branch5", "Select5", "Optimize5", "Skip5", "Flatten5")),
+                    }),
+                },
+                JourneyAst::Step { label: "Tail" },
+            ])),
+        });
+
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let tail_runtime_id = runtime_id_for(&model, "Tail");
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        let mut sequence_id = 0_u64;
+        let push_success =
+            |live: &mut LiveData, sequence_id: &mut u64, label: &str, activation_path: Vec<u64>| {
+                *sequence_id += 1;
+                assert!(live.apply_update(JourneyUpdateEvent {
+                    sequence_id: *sequence_id,
+                    event_unix_ms: 0,
+                    event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                        node_id: runtime_id_for(&model, label),
+                        activation_path,
+                        phase: NodeLifecyclePhase::Succeeded,
+                        uuid: Uuid::nil(),
+                    }),
+                }));
+            };
+
+        sequence_id += 1;
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: loop_runtime_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+
+        push_success(&mut live, &mut sequence_id, "Begin", vec![0, 0]);
+        for (offset, label) in [
+            "Branch1",
+            "Skip1",
+            "Flatten1",
+            "Branch2",
+            "Skip2",
+            "Flatten2",
+            "Branch3",
+            "Skip3",
+            "Flatten3",
+            "Branch4",
+            "Skip4",
+            "Flatten4",
+            "Branch5",
+            "Skip5",
+            "Flatten5",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            push_success(&mut live, &mut sequence_id, label, vec![0, 1 + offset as u64]);
+        }
+
+        push_success(&mut live, &mut sequence_id, "Begin", vec![1, 0]);
+        for (offset, label) in [
+            "Branch1",
+            "Skip1",
+            "Flatten1",
+            "Branch2",
+            "Select2",
+            "Optimize2",
+            "Flatten2",
+            "Branch3",
+            "Skip3",
+            "Flatten3",
+            "Branch4",
+            "Select4",
+            "Optimize4",
+            "Flatten4",
+            "Branch5",
+            "Skip5",
+            "Flatten5",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            push_success(&mut live, &mut sequence_id, label, vec![1, 1 + offset as u64]);
+        }
+
+        sequence_id += 1;
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: tail_runtime_id,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        let state_for = |label: &str| {
+            let id = node_by_label(&model, label).id;
+            states.get(&id).copied().unwrap_or(RuntimeState::Pending)
+        };
+
+        assert_eq!(state_for("Skip1"), RuntimeState::Completed);
+        assert_eq!(state_for("Select2"), RuntimeState::Completed);
+        assert_eq!(state_for("Optimize2"), RuntimeState::Completed);
+        assert_eq!(state_for("Skip3"), RuntimeState::Completed);
+        assert_eq!(state_for("Select4"), RuntimeState::Completed);
+        assert_eq!(state_for("Optimize4"), RuntimeState::Completed);
+        assert_eq!(state_for("Skip5"), RuntimeState::Completed);
+
+        assert_eq!(state_for("Select1"), RuntimeState::Pending);
+        assert_eq!(state_for("Optimize1"), RuntimeState::Pending);
+        assert_eq!(state_for("Skip2"), RuntimeState::Pending);
+        assert_eq!(state_for("Select3"), RuntimeState::Pending);
+        assert_eq!(state_for("Optimize3"), RuntimeState::Pending);
+        assert_eq!(state_for("Skip4"), RuntimeState::Pending);
+        assert_eq!(state_for("Select5"), RuntimeState::Pending);
+        assert_eq!(state_for("Optimize5"), RuntimeState::Pending);
+        assert_eq!(state_for("Tail"), RuntimeState::Running);
+    }
+
+    #[test]
+    fn while_reentry_hides_late_stale_skip_activity_in_five_way_prompt_join() {
+        fn prompt_branch(
+            branch_label: &'static str,
+            select_label: &'static str,
+            optimize_label: &'static str,
+            skip_label: &'static str,
+            flatten_label: &'static str,
+        ) -> JourneyAst {
+            JourneyAst::Sequence(vec![
+                JourneyAst::Conditional {
+                    label: branch_label,
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step { label: select_label },
+                        JourneyAst::Step {
+                            label: optimize_label,
+                        },
+                    ])),
+                    right: Box::new(JourneyAst::Step { label: skip_label }),
+                },
+                JourneyAst::Step {
+                    label: flatten_label,
+                },
+            ])
+        }
+
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "Begin" },
+                JourneyAst::Join {
+                    label: "PromptJoin",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Join {
+                        label: "PromptLeft",
+                        metadata: "",
+                        left: Box::new(prompt_branch(
+                            "Branch1",
+                            "Select1",
+                            "Optimize1",
+                            "Skip1",
+                            "Flatten1",
+                        )),
+                        right: Box::new(prompt_branch(
+                            "Branch2",
+                            "Select2",
+                            "Optimize2",
+                            "Skip2",
+                            "Flatten2",
+                        )),
+                    }),
+                    right: Box::new(JourneyAst::Join {
+                        label: "PromptRight",
+                        metadata: "",
+                        left: Box::new(JourneyAst::Join {
+                            label: "PromptRightPair",
+                            metadata: "",
+                            left: Box::new(prompt_branch(
+                                "Branch3",
+                                "Select3",
+                                "Optimize3",
+                                "Skip3",
+                                "Flatten3",
+                            )),
+                            right: Box::new(prompt_branch(
+                                "Branch4",
+                                "Select4",
+                                "Optimize4",
+                                "Skip4",
+                                "Flatten4",
+                            )),
+                        }),
+                        right: Box::new(prompt_branch(
+                            "Branch5",
+                            "Select5",
+                            "Optimize5",
+                            "Skip5",
+                            "Flatten5",
+                        )),
+                    }),
+                },
+                JourneyAst::Step { label: "Tail" },
+            ])),
+        });
+
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let begin_runtime_id = runtime_id_for(&model, "Begin");
+        let branch2_runtime_id = runtime_id_for(&model, "Branch2");
+        let select2_runtime_id = runtime_id_for(&model, "Select2");
+        let optimize2_runtime_id = runtime_id_for(&model, "Optimize2");
+        let skip2_runtime_id = runtime_id_for(&model, "Skip2");
+        let branch4_runtime_id = runtime_id_for(&model, "Branch4");
+        let select4_runtime_id = runtime_id_for(&model, "Select4");
+        let optimize4_runtime_id = runtime_id_for(&model, "Optimize4");
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, node_id, activation_path, phase) in [
+            (1, loop_runtime_id, vec![0], NodeLifecyclePhase::Entered),
+            (2, begin_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
+            (3, branch2_runtime_id, vec![0, 1], NodeLifecyclePhase::Succeeded),
+            (4, skip2_runtime_id, vec![0, 2], NodeLifecyclePhase::Succeeded),
+            (5, loop_runtime_id, vec![1], NodeLifecyclePhase::Entered),
+            (6, begin_runtime_id, vec![1, 0], NodeLifecyclePhase::Succeeded),
+            (7, branch2_runtime_id, vec![1, 1], NodeLifecyclePhase::Succeeded),
+            (8, select2_runtime_id, vec![1, 2], NodeLifecyclePhase::Succeeded),
+            (9, optimize2_runtime_id, vec![1, 3], NodeLifecyclePhase::Entered),
+            (10, branch4_runtime_id, vec![1, 4], NodeLifecyclePhase::Succeeded),
+            (11, select4_runtime_id, vec![1, 5], NodeLifecyclePhase::Succeeded),
+            (12, optimize4_runtime_id, vec![1, 6], NodeLifecyclePhase::Entered),
+            (13, skip2_runtime_id, vec![0, 2], NodeLifecyclePhase::Succeeded),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id,
+                    activation_path,
+                    phase,
+                    uuid: Uuid::nil(),
+                }),
+            }));
+        }
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        let state_for = |label: &str| {
+            let id = node_by_label(&model, label).id;
+            states.get(&id).copied().unwrap_or(RuntimeState::Pending)
+        };
+
+        assert_eq!(state_for("Skip2"), RuntimeState::Pending);
+        assert_eq!(state_for("Select2"), RuntimeState::Completed);
+        assert_eq!(state_for("Optimize2"), RuntimeState::Running);
+        assert_eq!(state_for("Skip4"), RuntimeState::Pending);
+        assert_eq!(state_for("Select4"), RuntimeState::Completed);
+        assert_eq!(state_for("Optimize4"), RuntimeState::Running);
+        assert_eq!(state_for("Tail"), RuntimeState::Pending);
     }
 
     #[test]
