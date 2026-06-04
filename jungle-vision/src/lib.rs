@@ -3670,17 +3670,37 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         state: &mut Self::State,
         event: ViewerEvent<Self::Message>,
     ) -> Task<ViewerEvent<Self::Message>> {
-        let _guard = state.get_mut();
-
         match event {
-            ViewerEvent::JourneyUpdate(update) => match update.event {
-                RunnerUpdateOut::EffectInput { .. }
-                | RunnerUpdateOut::EffectSuccessOutput { .. }
-                | RunnerUpdateOut::EffectFailureOutput { .. }
-                | RunnerUpdateOut::NodeLifecycle(..)
-                | RunnerUpdateOut::SleepScheduled { .. }
-                | RunnerUpdateOut::SleepFired { .. } => {}
-            },
+            ViewerEvent::JourneyUpdate(update) => {
+                let guard = state.get_mut();
+                let now = Instant::now();
+                match update.event {
+                    RunnerUpdateOut::EffectInput { node_id, .. } => {
+                        let _ = guard.update_node_state(node_id, RuntimeState::Running);
+                        let _ = guard.update_clusters_for_effect_input(node_id, now);
+                    }
+                    RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
+                        let _ = guard.update_node_state(node_id, RuntimeState::Completed);
+                    }
+                    RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
+                        let _ = guard.update_node_state(node_id, RuntimeState::Failed);
+                    }
+                    RunnerUpdateOut::NodeLifecycle(node) => match node.phase {
+                        NodeLifecyclePhase::Entered => {
+                            let _ = guard.update_node_state(node.node_id, RuntimeState::Running);
+                            let _ = guard.update_clusters_for_effect_input(node.node_id, now);
+                        }
+                        NodeLifecyclePhase::Succeeded => {
+                            let _ = guard.update_node_state(node.node_id, RuntimeState::Completed);
+                        }
+                        NodeLifecyclePhase::Failed => {
+                            let _ = guard.update_node_state(node.node_id, RuntimeState::Failed);
+                        }
+                    },
+                    RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
+                    }
+                }
+            }
             ViewerEvent::Message(()) => {}
         }
 
@@ -4507,6 +4527,57 @@ mod tests {
             repaired.get(&flatten2_id).copied(),
             Some(RuntimeState::Pending)
         );
+    }
+
+    #[test]
+    fn theme_state_forces_while_members_back_to_pending_on_reentry() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "A" },
+                JourneyAst::Step { label: "B" },
+            ])),
+        });
+        let cluster = &model.cluster_info[0];
+        let cx = ClusterViewCtx {
+            cluster_id: cluster.id,
+            cluster_index: 0,
+            kind: cluster.kind,
+            label: &cluster.label,
+            metadata: cluster.metadata.as_deref(),
+            parent_cluster_id: None,
+            depth: cluster.depth,
+            member_display_ids: &cluster.nodes,
+            entry_runtime_ids: &model.derived.cluster_entry_runtime_ids[0],
+            member_runtime_ids: &model.derived.cluster_member_runtime_ids[0],
+            successor_runtime_ids: &model.derived.cluster_successor_runtime_ids[0],
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: true,
+            }),
+        };
+
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig {
+            while_clusters: ClusterExpansionMode::AlwaysExpanded,
+            transparent_clusters: ClusterExpansionMode::AlwaysExpanded,
+        });
+        state.register_cluster(&cx);
+
+        let loop_runtime_id = cluster.runtime_node_id;
+        let a_runtime_id = runtime_id_for(&model, "A");
+        let b_runtime_id = runtime_id_for(&model, "B");
+        let _ = state.update_node_state(a_runtime_id, RuntimeState::Completed);
+        let _ = state.update_node_state(b_runtime_id, RuntimeState::Completed);
+
+        assert!(state.update_clusters_for_effect_input(loop_runtime_id, Instant::now()));
+        assert!(state.force_pending_runtime_ids.contains(&a_runtime_id));
+        assert!(state.force_pending_runtime_ids.contains(&b_runtime_id));
+
+        let _ = state.update_node_state(a_runtime_id, RuntimeState::Completed);
+        assert!(!state.force_pending_runtime_ids.contains(&a_runtime_id));
+        assert!(state.force_pending_runtime_ids.contains(&b_runtime_id));
     }
 
     #[test]
