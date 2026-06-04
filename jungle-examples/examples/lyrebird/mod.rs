@@ -1763,6 +1763,129 @@ mod tests {
         type Flow = ConcurrentLyrebirdPromptJoin;
     }
 
+    pub struct PromptJoinLiveHistoryDelayEffect;
+    #[jungle::effect(id = 143)]
+    impl<J> Effect<J> for PromptJoinLiveHistoryDelayEffect {
+        type In = i32;
+        type Out = i32;
+        type Err = ();
+
+        fn effect(
+            _jungle: &J,
+            input: Self::In,
+        ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+            async move {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                Ok(input)
+            }
+        }
+    }
+
+    struct HiddenJoinUntakenNoop1;
+    #[jungle::action]
+    impl Action for HiddenJoinUntakenNoop1 {
+        type Effect = Noop;
+        type Input = ();
+        type Output = ();
+
+        fn emit(_state: &i32, _input: Self::Input) {}
+
+        fn absorb(
+            _state: &mut i32,
+            _output: EffectCompletion<Self::Effect>,
+        ) -> Result<Self::Output, Failure> {
+            Ok(())
+        }
+    }
+
+    struct HiddenJoinUntakenNoop2;
+    #[jungle::action]
+    impl Action for HiddenJoinUntakenNoop2 {
+        type Effect = Noop;
+        type Input = ();
+        type Output = ();
+
+        fn emit(_state: &i32, _input: Self::Input) {}
+
+        fn absorb(
+            _state: &mut i32,
+            _output: EffectCompletion<Self::Effect>,
+        ) -> Result<Self::Output, Failure> {
+            Ok(())
+        }
+    }
+
+    struct HiddenJoinTakenNoop;
+    #[jungle::action]
+    impl Action for HiddenJoinTakenNoop {
+        type Effect = Noop;
+        type Input = ();
+        type Output = ();
+
+        fn emit(_state: &i32, _input: Self::Input) {}
+
+        fn absorb(
+            _state: &mut i32,
+            _output: EffectCompletion<Self::Effect>,
+        ) -> Result<Self::Output, Failure> {
+            Ok(())
+        }
+    }
+
+    struct HiddenJoinDelayedPrompt;
+    #[jungle::action]
+    impl Action for HiddenJoinDelayedPrompt {
+        type Effect = PromptJoinLiveHistoryDelayEffect;
+        type Input = ();
+        type Output = i32;
+
+        fn emit(state: &i32, _input: Self::Input) -> i32 {
+            *state
+        }
+
+        fn absorb(
+            state: &mut i32,
+            output: EffectCompletion<Self::Effect>,
+        ) -> Result<Self::Output, Failure> {
+            let out = output
+                .map_err(|_err| Failure::from("hidden join delayed prompt should succeed"))?;
+            *state = out;
+            Ok(out)
+        }
+    }
+
+    struct HiddenJoinAlwaysFalse;
+    impl Predicate<(i32, ())> for HiddenJoinAlwaysFalse {
+        fn eval((_state, _): &(i32, ())) -> bool {
+            false
+        }
+    }
+
+    #[derive(Flow)]
+    struct HiddenJoinUntakenNoopFlow(Step<HiddenJoinUntakenNoop1>, Step<HiddenJoinUntakenNoop2>);
+
+    #[derive(Flow)]
+    struct HiddenJoinTakenNoopFlow(Step<HiddenJoinTakenNoop>);
+
+    #[derive(Flow)]
+    struct HiddenJoinConditionalNoopFlow(
+        Conditional<HiddenJoinAlwaysFalse, HiddenJoinUntakenNoopFlow, HiddenJoinTakenNoopFlow>,
+        Step<FlattenEither<(), i32>>,
+    );
+
+    #[derive(Flow)]
+    struct HiddenJoinConditionalNoopJoin(
+        Join<HiddenJoinConditionalNoopFlow, Step<HiddenJoinDelayedPrompt>>,
+    );
+
+    struct HiddenJoinConditionalNoopAnimal;
+    #[jungle::animal(id = 91, generation = 0)]
+    impl Animal for HiddenJoinConditionalNoopAnimal {
+        type State = i32;
+        type Seed = ();
+        type Flow = HiddenJoinConditionalNoopJoin;
+    }
+
     #[test]
     fn accepts_openai_compatible_api_base_url() {
         let url = Url::parse("http://localhost:11434/v1").unwrap();
@@ -2088,6 +2211,54 @@ mod tests {
                 .iter()
                 .all(|update| update.node_id == join_node_id),
             "child lifecycle updates should not be replayed after live emission: {replayed_updates:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn hidden_join_streams_taken_noop_conditional_branch_lifecycle_live() {
+        let mut executor = Executor::<HiddenJoinConditionalNoopAnimal>::new(7);
+        executor.set_journey_id(Uuid::new_v4());
+        let mut request = executor
+            .next_executable_request(())
+            .expect("journey-bound hidden join should produce an executable request");
+        let join_node_id = request.node_id();
+        let mut live_history = request
+            .take_live_history()
+            .expect("journey-bound hidden join should expose live child history");
+        let run = tokio::spawn(async move { request.run().await });
+
+        let deadline = tokio::time::sleep(Duration::from_millis(250));
+        tokio::pin!(deadline);
+        let mut seen_lifecycle_ids = std::collections::BTreeSet::new();
+        loop {
+            tokio::select! {
+                maybe_event = live_history.next() => {
+                    match maybe_event {
+                        Some(jungle_sdk::RunnerOut::NodeLifecycle(node)) => {
+                            if node.node_id != join_node_id {
+                                seen_lifecycle_ids.insert(node.node_id);
+                            }
+                        }
+                        Some(_) => {}
+                        None => break,
+                    }
+                }
+                _ = &mut deadline => {
+                    panic!("timed out waiting for hidden join live history; saw lifecycle ids {seen_lifecycle_ids:?}");
+                }
+            }
+        }
+
+        let completion = run
+            .await
+            .expect("hidden join runner task should join")
+            .expect("hidden join runner should succeed");
+        let _ = executor
+            .complete_serialized(completion)
+            .expect("hidden join completion should still apply cleanly");
+        assert!(
+            seen_lifecycle_ids.len() >= 3,
+            "expected hidden join live history to include conditional/noop child lifecycles before completion, saw {seen_lifecycle_ids:?}"
         );
     }
 
