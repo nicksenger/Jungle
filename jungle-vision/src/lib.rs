@@ -1624,6 +1624,7 @@ impl LiveData {
             changed |= self.active_runtime_ids.remove(&runtime_id);
             changed |= self.finished_runtime_ids.remove(&runtime_id);
             changed |= self.failed_runtime_ids.remove(&runtime_id);
+            self.lifecycle_runtime_ids.remove(&runtime_id);
             changed |= self.runtime_update_sequence.remove(&runtime_id).is_some();
             changed |= self.runtime_activation_paths.remove(&runtime_id).is_some();
         }
@@ -4668,6 +4669,94 @@ mod tests {
     }
 
     #[test]
+    fn while_reentry_allows_effect_updates_after_stale_lifecycle_state_is_cleared() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "A" },
+                JourneyAst::Step { label: "B" },
+            ])),
+        });
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let a_runtime_id = runtime_id_for(&model, "A");
+        let b_runtime_id = runtime_id_for(&model, "B");
+        let a_id = node_by_label(&model, "A").id;
+        let b_id = node_by_label(&model, "B").id;
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: loop_runtime_id,
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: a_runtime_id,
+                    activation_path: vec![0, 0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                3,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: b_runtime_id,
+                    activation_path: vec![0, 1],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                4,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: loop_runtime_id,
+                    activation_path: vec![1],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                5,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: a_runtime_id,
+                    activation_path: vec![1, 0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                6,
+                RunnerUpdateOut::EffectInput {
+                    node_id: b_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(states.get(&a_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(states.get(&b_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
     fn node_lifecycle_reentry_clears_stale_descendants() {
         let model = GraphModel::from_ast(JourneyAst::While {
             label: "Loop",
@@ -6368,6 +6457,349 @@ mod tests {
         assert_eq!(state_for("Select4"), RuntimeState::Completed);
         assert_eq!(state_for("Optimize4"), RuntimeState::Running);
         assert_eq!(state_for("Tail"), RuntimeState::Pending);
+    }
+
+    #[test]
+    fn while_reentry_keeps_post_join_chain_highlighted_through_sleep() {
+        fn prompt_branch(
+            branch_label: &'static str,
+            select_label: &'static str,
+            optimize_label: &'static str,
+            skip_label: &'static str,
+            flatten_label: &'static str,
+        ) -> JourneyAst {
+            JourneyAst::Sequence(vec![
+                JourneyAst::Conditional {
+                    label: branch_label,
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step { label: select_label },
+                        JourneyAst::Step {
+                            label: optimize_label,
+                        },
+                    ])),
+                    right: Box::new(JourneyAst::Step { label: skip_label }),
+                },
+                JourneyAst::Step {
+                    label: flatten_label,
+                },
+            ])
+        }
+
+        fn submit_branch(
+            branch_label: &'static str,
+            set_taken_label: &'static str,
+            submit_label: &'static str,
+            set_skipped_label: &'static str,
+            skip_label: &'static str,
+            flatten_label: &'static str,
+        ) -> JourneyAst {
+            JourneyAst::Sequence(vec![
+                JourneyAst::Conditional {
+                    label: branch_label,
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step {
+                            label: set_taken_label,
+                        },
+                        JourneyAst::Step { label: submit_label },
+                    ])),
+                    right: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step {
+                            label: set_skipped_label,
+                        },
+                        JourneyAst::Step { label: skip_label },
+                    ])),
+                },
+                JourneyAst::Step {
+                    label: flatten_label,
+                },
+            ])
+        }
+
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "Begin" },
+                JourneyAst::Join {
+                    label: "PromptJoin",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Join {
+                        label: "PromptLeft",
+                        metadata: "",
+                        left: Box::new(prompt_branch(
+                            "PromptBranch1",
+                            "PromptSelect1",
+                            "PromptOptimize1",
+                            "PromptSkip1",
+                            "PromptFlatten1",
+                        )),
+                        right: Box::new(prompt_branch(
+                            "PromptBranch2",
+                            "PromptSelect2",
+                            "PromptOptimize2",
+                            "PromptSkip2",
+                            "PromptFlatten2",
+                        )),
+                    }),
+                    right: Box::new(JourneyAst::Join {
+                        label: "PromptRight",
+                        metadata: "",
+                        left: Box::new(JourneyAst::Join {
+                            label: "PromptRightPair",
+                            metadata: "",
+                            left: Box::new(prompt_branch(
+                                "PromptBranch3",
+                                "PromptSelect3",
+                                "PromptOptimize3",
+                                "PromptSkip3",
+                                "PromptFlatten3",
+                            )),
+                            right: Box::new(prompt_branch(
+                                "PromptBranch4",
+                                "PromptSelect4",
+                                "PromptOptimize4",
+                                "PromptSkip4",
+                                "PromptFlatten4",
+                            )),
+                        }),
+                        right: Box::new(prompt_branch(
+                            "PromptBranch5",
+                            "PromptSelect5",
+                            "PromptOptimize5",
+                            "PromptSkip5",
+                            "PromptFlatten5",
+                        )),
+                    }),
+                },
+                JourneyAst::Step {
+                    label: "FlattenPromptPhase",
+                },
+                JourneyAst::Step { label: "Finalize" },
+                submit_branch(
+                    "SubmitBranch1",
+                    "SetSubmit1",
+                    "Submit1",
+                    "SetSkip1",
+                    "SkipSubmit1",
+                    "SubmitFlatten1",
+                ),
+                submit_branch(
+                    "SubmitBranch2",
+                    "SetSubmit2",
+                    "Submit2",
+                    "SetSkip2",
+                    "SkipSubmit2",
+                    "SubmitFlatten2",
+                ),
+                submit_branch(
+                    "SubmitBranch3",
+                    "SetSubmit3",
+                    "Submit3",
+                    "SetSkip3",
+                    "SkipSubmit3",
+                    "SubmitFlatten3",
+                ),
+                submit_branch(
+                    "SubmitBranch4",
+                    "SetSubmit4",
+                    "Submit4",
+                    "SetSkip4",
+                    "SkipSubmit4",
+                    "SubmitFlatten4",
+                ),
+                submit_branch(
+                    "SubmitBranch5",
+                    "SetSubmit5",
+                    "Submit5",
+                    "SetSkip5",
+                    "SkipSubmit5",
+                    "SubmitFlatten5",
+                ),
+                JourneyAst::Step { label: "Sleep" },
+            ])),
+        });
+
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let sleep_runtime_id = runtime_id_for(&model, "Sleep");
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        let mut sequence_id = 0_u64;
+        let push_success =
+            |live: &mut LiveData, sequence_id: &mut u64, label: &str, activation_path: Vec<u64>| {
+                *sequence_id += 1;
+                assert!(live.apply_update(JourneyUpdateEvent {
+                    sequence_id: *sequence_id,
+                    event_unix_ms: 0,
+                    event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                        node_id: runtime_id_for(&model, label),
+                        activation_path,
+                        phase: NodeLifecyclePhase::Succeeded,
+                        uuid: Uuid::nil(),
+                    }),
+                }));
+            };
+
+        sequence_id += 1;
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: loop_runtime_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+
+        push_success(&mut live, &mut sequence_id, "Begin", vec![0, 0]);
+        for (offset, label) in [
+            "PromptBranch1",
+            "PromptSkip1",
+            "PromptFlatten1",
+            "PromptBranch2",
+            "PromptSkip2",
+            "PromptFlatten2",
+            "PromptBranch3",
+            "PromptSkip3",
+            "PromptFlatten3",
+            "PromptBranch4",
+            "PromptSkip4",
+            "PromptFlatten4",
+            "PromptBranch5",
+            "PromptSkip5",
+            "PromptFlatten5",
+            "FlattenPromptPhase",
+            "Finalize",
+            "SubmitBranch1",
+            "SetSkip1",
+            "SkipSubmit1",
+            "SubmitFlatten1",
+            "SubmitBranch2",
+            "SetSkip2",
+            "SkipSubmit2",
+            "SubmitFlatten2",
+            "SubmitBranch3",
+            "SetSkip3",
+            "SkipSubmit3",
+            "SubmitFlatten3",
+            "SubmitBranch4",
+            "SetSkip4",
+            "SkipSubmit4",
+            "SubmitFlatten4",
+            "SubmitBranch5",
+            "SetSkip5",
+            "SkipSubmit5",
+            "SubmitFlatten5",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            push_success(&mut live, &mut sequence_id, label, vec![0, 1 + offset as u64]);
+        }
+
+        sequence_id += 1;
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: loop_runtime_id,
+                activation_path: vec![1],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+
+        push_success(&mut live, &mut sequence_id, "Begin", vec![1, 0]);
+        for (offset, label) in [
+            "PromptBranch1",
+            "PromptSkip1",
+            "PromptFlatten1",
+            "PromptBranch2",
+            "PromptSelect2",
+            "PromptOptimize2",
+            "PromptFlatten2",
+            "PromptBranch3",
+            "PromptSkip3",
+            "PromptFlatten3",
+            "PromptBranch4",
+            "PromptSelect4",
+            "PromptOptimize4",
+            "PromptFlatten4",
+            "PromptBranch5",
+            "PromptSkip5",
+            "PromptFlatten5",
+            "FlattenPromptPhase",
+            "Finalize",
+            "SubmitBranch1",
+            "SetSkip1",
+            "SkipSubmit1",
+            "SubmitFlatten1",
+            "SubmitBranch2",
+            "SetSubmit2",
+            "Submit2",
+            "SubmitFlatten2",
+            "SubmitBranch3",
+            "SetSkip3",
+            "SkipSubmit3",
+            "SubmitFlatten3",
+            "SubmitBranch4",
+            "SetSubmit4",
+            "Submit4",
+            "SubmitFlatten4",
+            "SubmitBranch5",
+            "SetSkip5",
+            "SkipSubmit5",
+            "SubmitFlatten5",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            push_success(&mut live, &mut sequence_id, label, vec![1, 1 + offset as u64]);
+        }
+
+        sequence_id += 1;
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: sleep_runtime_id,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        let state_for = |label: &str| {
+            let id = node_by_label(&model, label).id;
+            states.get(&id).copied().unwrap_or(RuntimeState::Pending)
+        };
+
+        assert_eq!(state_for("FlattenPromptPhase"), RuntimeState::Completed);
+        assert_eq!(state_for("Finalize"), RuntimeState::Completed);
+        assert_eq!(state_for("SubmitBranch1"), RuntimeState::Pending);
+        assert_eq!(state_for("SetSkip1"), RuntimeState::Completed);
+        assert_eq!(state_for("SkipSubmit1"), RuntimeState::Completed);
+        assert_eq!(state_for("SubmitFlatten1"), RuntimeState::Completed);
+        assert_eq!(state_for("SubmitBranch2"), RuntimeState::Completed);
+        assert_eq!(state_for("SetSubmit2"), RuntimeState::Completed);
+        assert_eq!(state_for("Submit2"), RuntimeState::Completed);
+        assert_eq!(state_for("SetSkip2"), RuntimeState::Pending);
+        assert_eq!(state_for("SkipSubmit2"), RuntimeState::Pending);
+        assert_eq!(state_for("SubmitFlatten2"), RuntimeState::Completed);
+        assert_eq!(state_for("SubmitBranch3"), RuntimeState::Pending);
+        assert_eq!(state_for("SkipSubmit3"), RuntimeState::Completed);
+        assert_eq!(state_for("SubmitBranch4"), RuntimeState::Completed);
+        assert_eq!(state_for("SetSubmit4"), RuntimeState::Completed);
+        assert_eq!(state_for("Submit4"), RuntimeState::Completed);
+        assert_eq!(state_for("SubmitFlatten4"), RuntimeState::Completed);
+        assert_eq!(state_for("SubmitBranch5"), RuntimeState::Pending);
+        assert_eq!(state_for("SkipSubmit5"), RuntimeState::Completed);
+        assert_eq!(state_for("Sleep"), RuntimeState::Running);
     }
 
     #[test]

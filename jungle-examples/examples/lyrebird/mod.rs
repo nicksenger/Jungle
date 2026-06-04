@@ -3219,7 +3219,7 @@ mod tests {
         println!("transitions:\n{}", vocals_transitions.join("\n"));
         println!("first-iteration-rendered:\n{}", first_iteration_rendered.join("\n"));
         println!("rendered:\n{}", rendered.join("\n"));
-        }
+    }
 
     #[test]
     fn aggregate_sample_score_weights_mel_similarity_three_times() {
