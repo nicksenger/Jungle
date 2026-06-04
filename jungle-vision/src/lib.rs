@@ -3132,10 +3132,6 @@ impl GraphBuilder {
                         }
                     });
                 }
-                let mut descendant_runtime_ids = left_flow.member_runtime_ids.clone();
-                descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
-                self.descendant_runtime_ids_by_runtime_id
-                    .insert(runtime_id, dedup(descendant_runtime_ids));
 
                 Flattened {
                     roots,
@@ -3180,10 +3176,6 @@ impl GraphBuilder {
                         }
                     });
                 }
-                let mut descendant_runtime_ids = left_flow.member_runtime_ids.clone();
-                descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
-                self.descendant_runtime_ids_by_runtime_id
-                    .insert(runtime_id, dedup(descendant_runtime_ids));
 
                 Flattened {
                     roots,
@@ -4760,6 +4752,43 @@ mod tests {
         assert_eq!(repaired.get(&skipped_id).copied(), Some(RuntimeState::Pending));
         assert_eq!(repaired.get(&other_id).copied(), Some(RuntimeState::Completed));
         assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn graph_model_does_not_register_join_or_select_for_descendant_clearing() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Join {
+                label: "Join",
+                metadata: "",
+                left: Box::new(JourneyAst::Step { label: "JoinL" }),
+                right: Box::new(JourneyAst::Step { label: "JoinR" }),
+            },
+            JourneyAst::Select {
+                label: "Select",
+                metadata: "",
+                left: Box::new(JourneyAst::Step { label: "SelectL" }),
+                right: Box::new(JourneyAst::Step { label: "SelectR" }),
+            },
+        ]));
+        let join_runtime_id = node_by_label(&model, "JoinL")
+            .proxy_runtime_ids
+            .first()
+            .copied()
+            .unwrap_or_else(|| panic!("JoinL should carry hidden join runtime"));
+        let select_runtime_id = node_by_label(&model, "SelectL")
+            .proxy_runtime_ids
+            .first()
+            .copied()
+            .unwrap_or_else(|| panic!("SelectL should carry hidden select runtime"));
+
+        assert!(!model
+            .derived
+            .descendant_runtime_ids_by_runtime_id
+            .contains_key(&join_runtime_id));
+        assert!(!model
+            .derived
+            .descendant_runtime_ids_by_runtime_id
+            .contains_key(&select_runtime_id));
     }
 
     #[test]
