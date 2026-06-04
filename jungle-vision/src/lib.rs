@@ -10,8 +10,7 @@ use iced_sugiyama::{AutoFit, Cluster, Graph, OutgoingEdgeStyle, Sugiyama, Viewpo
 use jungle_client::client::JourneyUpdateSubscription;
 use jungle_client::JungleClient;
 use jungle_types::{
-    Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, NodeLifecyclePhase,
-    RunnerUpdateOut,
+    Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, NodeLifecyclePhase, RunnerUpdateOut,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
@@ -1731,13 +1730,42 @@ fn repaired_live_states_for_display(
         }
     }
 
+    if !states
+        .values()
+        .any(|state| matches!(state, RuntimeState::Running | RuntimeState::Failed))
+    {
+        let ready_pending_nodes = model
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                if !matches!(states.get(&node.id), Some(RuntimeState::Pending)) {
+                    return None;
+                }
+                let predecessors = incoming.get(&node.id)?;
+                if predecessors.is_empty() {
+                    return None;
+                }
+                predecessors
+                    .iter()
+                    .all(|predecessor| {
+                        matches!(
+                            states.get(predecessor),
+                            Some(RuntimeState::Completed | RuntimeState::Failed)
+                        )
+                    })
+                    .then_some(node.id)
+            })
+            .collect::<Vec<_>>();
+
+        if ready_pending_nodes.len() == 1 {
+            states.insert(ready_pending_nodes[0], RuntimeState::Running);
+        }
+    }
+
     states
 }
 
-fn runtime_sequence_floors_for_display(
-    model: &GraphModel,
-    live: &LiveData,
-) -> HashMap<u32, usize> {
+fn runtime_sequence_floors_for_display(model: &GraphModel, live: &LiveData) -> HashMap<u32, usize> {
     let mut floors = HashMap::<u32, usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
         if !matches!(cluster.kind, ClusterKind::While) {
@@ -2820,10 +2848,8 @@ impl GraphBuilder {
                 self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
                 self.cluster_info[cluster_index].root_runtime_ids =
                     dedup(body_flow.root_runtime_ids.clone());
-                self.descendant_runtime_ids_by_runtime_id.insert(
-                    runtime_id,
-                    dedup(body_flow.member_runtime_ids.clone()),
-                );
+                self.descendant_runtime_ids_by_runtime_id
+                    .insert(runtime_id, dedup(body_flow.member_runtime_ids.clone()));
 
                 Flattened {
                     roots: body_flow.roots.clone(),
@@ -2897,10 +2923,8 @@ impl GraphBuilder {
                 self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
                 self.cluster_info[cluster_index].root_runtime_ids =
                     dedup(body_flow.root_runtime_ids.clone());
-                self.descendant_runtime_ids_by_runtime_id.insert(
-                    runtime_id,
-                    dedup(body_flow.member_runtime_ids.clone()),
-                );
+                self.descendant_runtime_ids_by_runtime_id
+                    .insert(runtime_id, dedup(body_flow.member_runtime_ids.clone()));
 
                 Flattened {
                     roots: body_flow.roots.clone(),
@@ -2970,10 +2994,8 @@ impl GraphBuilder {
                 self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
                 self.cluster_info[cluster_index].root_runtime_ids =
                     dedup(body_flow.root_runtime_ids.clone());
-                self.descendant_runtime_ids_by_runtime_id.insert(
-                    runtime_id,
-                    dedup(body_flow.member_runtime_ids.clone()),
-                );
+                self.descendant_runtime_ids_by_runtime_id
+                    .insert(runtime_id, dedup(body_flow.member_runtime_ids.clone()));
 
                 Flattened {
                     roots: body_flow.roots.clone(),
@@ -3310,11 +3332,14 @@ impl DefaultThemeState {
                 member_runtime_ids: cx.member_runtime_ids.iter().copied().collect(),
                 successor_runtime_ids: cx.successor_runtime_ids.iter().copied().collect(),
             });
-        let visual = self.cluster_visuals.entry(cx.cluster_id).or_insert(ClusterVisual {
-            expanded,
-            border_state,
-            completed_at: None,
-        });
+        let visual = self
+            .cluster_visuals
+            .entry(cx.cluster_id)
+            .or_insert(ClusterVisual {
+                expanded,
+                border_state,
+                completed_at: None,
+            });
         if matches!(expansion_mode, ClusterExpansionMode::AlwaysExpanded) {
             visual.expanded = true;
         } else if matches!(border_state, RuntimeState::Running | RuntimeState::Failed) {
@@ -3866,8 +3891,14 @@ mod tests {
             Some(&live),
             &model.derived.condition_successor_runtime_ids,
         );
-        assert_eq!(states.get(&a_display_id).copied(), Some(RuntimeState::Pending));
-        assert_eq!(states.get(&b_display_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(
+            states.get(&a_display_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            states.get(&b_display_id).copied(),
+            Some(RuntimeState::Pending)
+        );
         assert!(live.active_runtime_ids.contains(&loop_runtime_id));
     }
 
@@ -3905,7 +3936,10 @@ mod tests {
         let ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
         let unique = ids.iter().copied().collect::<HashSet<_>>();
         assert_eq!(ids.len(), unique.len());
-        assert_eq!(ids.iter().copied().max().unwrap_or(0) as usize + 1, ids.len());
+        assert_eq!(
+            ids.iter().copied().max().unwrap_or(0) as usize + 1,
+            ids.len()
+        );
     }
 
     #[test]
@@ -3980,6 +4014,82 @@ mod tests {
         assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
         assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Completed));
         assert_eq!(repaired.get(&c_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn repaired_live_states_promote_single_ready_successor_when_no_node_is_active() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "A" },
+            JourneyAst::Step { label: "B" },
+            JourneyAst::Step { label: "C" },
+        ]));
+        let a_id = node_by_label(&model, "A").id;
+        let b_id = node_by_label(&model, "B").id;
+        let c_id = node_by_label(&model, "C").id;
+
+        let mut live = LiveData::default();
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectSuccessOutput {
+                node_id: runtime_id_for(&model, "A"),
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Running));
+        assert_eq!(repaired.get(&c_id).copied(), Some(RuntimeState::Pending));
+    }
+
+    #[test]
+    fn repaired_live_states_leave_ambiguous_branch_successors_pending() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Conditional {
+                label: "Branch",
+                metadata: "",
+                left: Box::new(JourneyAst::Step { label: "Left" }),
+                right: Box::new(JourneyAst::Step { label: "Right" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+        let branch_id = node_by_label(&model, "Branch").id;
+        let left_id = node_by_label(&model, "Left").id;
+        let right_id = node_by_label(&model, "Right").id;
+        let tail_id = node_by_label(&model, "Tail").id;
+
+        let mut live = LiveData::default();
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: runtime_id_for(&model, "Branch"),
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Succeeded,
+                uuid: Uuid::nil(),
+            }),
+        }));
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&branch_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(repaired.get(&left_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(
+            repaired.get(&right_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Pending));
     }
 
     #[test]
@@ -4127,11 +4237,23 @@ mod tests {
             Some(&live),
             &model.derived.condition_successor_runtime_ids,
         );
-        assert_eq!(states.get(&begin_id).copied(), Some(RuntimeState::Completed));
-        assert_eq!(states.get(&select_id).copied(), Some(RuntimeState::Completed));
-        assert_eq!(states.get(&optimize_id).copied(), Some(RuntimeState::Running));
+        assert_eq!(
+            states.get(&begin_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            states.get(&select_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            states.get(&optimize_id).copied(),
+            Some(RuntimeState::Running)
+        );
         assert_eq!(states.get(&skip_id).copied(), Some(RuntimeState::Pending));
-        assert_eq!(states.get(&flatten_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(
+            states.get(&flatten_id).copied(),
+            Some(RuntimeState::Pending)
+        );
     }
 
     #[test]
