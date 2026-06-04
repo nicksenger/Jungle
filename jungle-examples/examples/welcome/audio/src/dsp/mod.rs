@@ -1,11 +1,8 @@
 use std::{f32::consts::TAU, time::Duration};
 
 pub mod bass;
-pub mod cymbal;
+pub mod drums;
 pub mod electric_guitar;
-pub mod hihat;
-pub mod kick_drum;
-pub mod snare_drum;
 pub mod toms;
 pub mod vocals;
 

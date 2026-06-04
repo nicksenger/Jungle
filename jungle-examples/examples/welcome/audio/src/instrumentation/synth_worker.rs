@@ -88,7 +88,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "cymbal",
             move |response| SynthRequest::Cymbal { note, response },
-            move || crate::dsp::cymbal::synthesize_cymbal(&to_dsp_note(note, ())),
+            move || crate::dsp::drums::cymbal::synthesize_cymbal(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -117,7 +117,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "hihat",
             move |response| SynthRequest::HiHat { note, response },
-            move || crate::dsp::hihat::synthesize_hihat(&to_dsp_note(note, ())),
+            move || crate::dsp::drums::hihat::synthesize_hihat(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -129,7 +129,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "kick_drum",
             move |response| SynthRequest::KickDrum { note, response },
-            move || crate::dsp::kick_drum::synthesize_kick_drum(&to_dsp_note(note, ())),
+            move || crate::dsp::drums::kick_drum::synthesize_kick_drum(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -141,7 +141,7 @@ impl SynthHandle {
         self.dispatch_with_fallback(
             "snare_drum",
             move |response| SynthRequest::SnareDrum { note, response },
-            move || crate::dsp::snare_drum::synthesize_snare_drum(&to_dsp_note(note, ())),
+            move || crate::dsp::drums::snare_drum::synthesize_snare_drum(&to_dsp_note(note, ())),
         )
         .await
     }
@@ -351,7 +351,7 @@ fn run_synth_request(worker_index: usize, request: SynthRequest) {
             let _ = response.send(crate::dsp::bass::synthesize_bass(&to_dsp_note(note, ())));
         }
         SynthRequest::Cymbal { note, response } => {
-            let _ = response.send(crate::dsp::cymbal::synthesize_cymbal(&to_dsp_note(
+            let _ = response.send(crate::dsp::drums::cymbal::synthesize_cymbal(&to_dsp_note(
                 note,
                 (),
             )));
@@ -362,19 +362,20 @@ fn run_synth_request(worker_index: usize, request: SynthRequest) {
             ));
         }
         SynthRequest::HiHat { note, response } => {
-            let _ = response.send(crate::dsp::hihat::synthesize_hihat(&to_dsp_note(note, ())));
+            let _ = response.send(crate::dsp::drums::hihat::synthesize_hihat(&to_dsp_note(
+                note,
+                (),
+            )));
         }
         SynthRequest::KickDrum { note, response } => {
-            let _ = response.send(crate::dsp::kick_drum::synthesize_kick_drum(&to_dsp_note(
-                note,
-                (),
-            )));
+            let _ = response.send(crate::dsp::drums::kick_drum::synthesize_kick_drum(
+                &to_dsp_note(note, ()),
+            ));
         }
         SynthRequest::SnareDrum { note, response } => {
-            let _ = response.send(crate::dsp::snare_drum::synthesize_snare_drum(&to_dsp_note(
-                note,
-                (),
-            )));
+            let _ = response.send(crate::dsp::drums::snare_drum::synthesize_snare_drum(
+                &to_dsp_note(note, ()),
+            ));
         }
         SynthRequest::Toms { note, response } => {
             let _ = response.send(crate::dsp::toms::synthesize_toms(&to_dsp_note(note, ())));
