@@ -1408,15 +1408,11 @@ fn runtime_state_for_live_data(
         RuntimeState::Pending
     };
 
-    if matches!(state, RuntimeState::Running) {
-        return state;
-    }
-
-    let Some(floor) = runtime_sequence_floors.get(&runtime_id).copied() else {
+    let Some(sequence) = live.runtime_update_sequence.get(&runtime_id).copied() else {
         return state;
     };
-    let Some(sequence) = live.runtime_update_sequence.get(&runtime_id).copied() else {
-        return RuntimeState::Pending;
+    let Some(floor) = runtime_sequence_floors.get(&runtime_id).copied() else {
+        return state;
     };
     if sequence < floor {
         RuntimeState::Pending
@@ -4117,6 +4113,67 @@ mod tests {
         );
         assert_eq!(
             advanced_states.get(&c_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+    }
+
+    #[test]
+    fn while_loop_new_iteration_forces_stale_running_members_pending() {
+        let ast = JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "A" },
+                JourneyAst::Step { label: "B" },
+                JourneyAst::Step { label: "C" },
+            ])),
+        };
+        let model = GraphModel::from_ast(ast);
+        let id_for = |label: &str| -> u32 {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.label == label)
+                .map(|node| node.id)
+                .unwrap_or_else(|| panic!("missing node with label {label}"))
+        };
+        let a_id = id_for("A");
+        let b_id = id_for("B");
+        let c_id = id_for("C");
+
+        let mut live = LiveData::default();
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 2,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: 0,
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let restarted_states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            restarted_states.get(&a_id).copied(),
+            Some(RuntimeState::Running)
+        );
+        assert_eq!(
+            restarted_states.get(&b_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            restarted_states.get(&c_id).copied(),
             Some(RuntimeState::Pending)
         );
     }
