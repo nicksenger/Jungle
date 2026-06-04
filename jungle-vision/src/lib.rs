@@ -4167,9 +4167,6 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
             runtime_color(phase_target)
         };
         (
-            // Live while-loop tails can advance several nodes in rapid succession. Snapping live
-            // colors keeps that progress visible instead of letting overlapping tweens smear into
-            // a single late flash before the next iteration clears the cluster.
             AnimatedStepNode::<ViewerEvent<Self::Message>>::new(
                 state as *const Self::State as usize as u64,
                 cx.display_id,
@@ -4178,10 +4175,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
                 cx.label.to_string(),
                 cx.metadata.map(str::to_string),
                 fill,
-                match cx.phase {
-                    Phase::Live(_) => Duration::ZERO,
-                    Phase::Static => NODE_ANIMATION_DURATION,
-                },
+                NODE_ANIMATION_DURATION,
             )
             .into(),
             (240.0, 80.0),
@@ -4210,10 +4204,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
             cx.label.to_string(),
             border_color,
             fill,
-            match cx.phase {
-                Phase::Live(_) => Duration::ZERO,
-                Phase::Static => CLUSTER_BORDER_ANIMATION_DURATION,
-            },
+            CLUSTER_BORDER_ANIMATION_DURATION,
         )
         .into();
 
@@ -4228,10 +4219,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
                     cx.cluster_id,
                     cx.label.to_string(),
                     border_color,
-                    match cx.phase {
-                        Phase::Live(_) => Duration::ZERO,
-                        Phase::Static => CLUSTER_BORDER_ANIMATION_DURATION,
-                    },
+                    CLUSTER_BORDER_ANIMATION_DURATION,
                 )
                 .into(),
                 size: (240.0, 46.0),
