@@ -3539,6 +3539,25 @@ impl DefaultThemeState {
         changed
     }
 
+    fn apply_force_pending_override(
+        &mut self,
+        runtime_id: u32,
+        phase_target: RuntimeState,
+    ) -> RuntimeState {
+        if !self.force_pending_runtime_ids.contains(&runtime_id) {
+            return phase_target;
+        }
+
+        match phase_target {
+            RuntimeState::Pending => RuntimeState::Pending,
+            RuntimeState::Running => RuntimeState::Running,
+            RuntimeState::Completed | RuntimeState::Failed => {
+                self.force_pending_runtime_ids.remove(&runtime_id);
+                phase_target
+            }
+        }
+    }
+
     fn maybe_collapse_completed_cluster_for_pending_successor(
         &mut self,
         cx: &ClusterViewCtx<'_>,
@@ -3660,16 +3679,15 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         };
 
         let fill = if let Some(runtime_id) = cx.runtime_id {
-            let mut phase_target = match cx.phase {
+            let phase_target = match cx.phase {
                 Phase::Live(target) => target,
                 Phase::Static => RuntimeState::Pending,
             };
-            if let Ok(guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
-                if forced_pending && !matches!(phase_target, RuntimeState::Running) {
-                    phase_target = RuntimeState::Pending;
-                }
-            }
+            let phase_target = if let Ok(mut guard) = state.try_lock() {
+                guard.apply_force_pending_override(runtime_id, phase_target)
+            } else {
+                phase_target
+            };
             runtime_color(phase_target)
         } else {
             let phase_target = match cx.phase {
@@ -3740,18 +3758,19 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
     }
 
     fn edge_style(&self, state: &Self::State, cx: EdgeStyleCtx) -> Option<EdgeStyle> {
-        let mut phase_target = match cx.source_phase {
+        let phase_target = match cx.source_phase {
             Phase::Live(target) => target,
             Phase::Static => RuntimeState::Pending,
         };
-        if let Some(runtime_id) = cx.source_runtime_id {
-            if let Ok(guard) = state.try_lock() {
-                let forced_pending = guard.force_pending_runtime_ids.contains(&runtime_id);
-                if forced_pending && !matches!(phase_target, RuntimeState::Running) {
-                    phase_target = RuntimeState::Pending;
-                }
+        let phase_target = if let Some(runtime_id) = cx.source_runtime_id {
+            if let Ok(mut guard) = state.try_lock() {
+                guard.apply_force_pending_override(runtime_id, phase_target)
+            } else {
+                phase_target
             }
-        }
+        } else {
+            phase_target
+        };
         let (from_color, to_color) = {
             let color = runtime_color(phase_target);
             (color, color)
@@ -4846,6 +4865,65 @@ mod tests {
 
         let _ = state.update_node_state(a_runtime_id, RuntimeState::Completed);
         assert!(!state.force_pending_runtime_ids.contains(&a_runtime_id));
+        assert!(state.force_pending_runtime_ids.contains(&b_runtime_id));
+    }
+
+    #[test]
+    fn theme_state_releases_force_pending_for_repaired_completed_state() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "A" },
+                JourneyAst::Step { label: "B" },
+            ])),
+        });
+        let cluster = &model.cluster_info[0];
+        let cx = ClusterViewCtx {
+            cluster_id: cluster.id,
+            cluster_index: 0,
+            kind: cluster.kind,
+            label: &cluster.label,
+            metadata: cluster.metadata.as_deref(),
+            parent_cluster_id: None,
+            depth: cluster.depth,
+            member_display_ids: &cluster.nodes,
+            entry_runtime_ids: &model.derived.cluster_entry_runtime_ids[0],
+            member_runtime_ids: &model.derived.cluster_member_runtime_ids[0],
+            successor_runtime_ids: &model.derived.cluster_successor_runtime_ids[0],
+            phase: Phase::Live(ClusterLive {
+                has_running: false,
+                has_failed: false,
+                has_completed: true,
+            }),
+        };
+
+        let mut state = DefaultThemeState::new(ClusterExpansionConfig {
+            while_clusters: ClusterExpansionMode::AlwaysExpanded,
+            transparent_clusters: ClusterExpansionMode::AlwaysExpanded,
+        });
+        state.register_cluster(&cx);
+
+        let loop_runtime_id = cluster.runtime_node_id;
+        let a_runtime_id = runtime_id_for(&model, "A");
+        let b_runtime_id = runtime_id_for(&model, "B");
+        let _ = state.update_node_state(a_runtime_id, RuntimeState::Completed);
+        let _ = state.update_node_state(b_runtime_id, RuntimeState::Completed);
+
+        assert!(state.update_clusters_for_effect_input(loop_runtime_id, Instant::now()));
+        assert!(state.force_pending_runtime_ids.contains(&a_runtime_id));
+        assert!(state.force_pending_runtime_ids.contains(&b_runtime_id));
+
+        assert_eq!(
+            state.apply_force_pending_override(a_runtime_id, RuntimeState::Completed),
+            RuntimeState::Completed
+        );
+        assert!(!state.force_pending_runtime_ids.contains(&a_runtime_id));
+        assert!(state.force_pending_runtime_ids.contains(&b_runtime_id));
+        assert_eq!(
+            state.apply_force_pending_override(b_runtime_id, RuntimeState::Pending),
+            RuntimeState::Pending
+        );
         assert!(state.force_pending_runtime_ids.contains(&b_runtime_id));
     }
 
