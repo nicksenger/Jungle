@@ -1669,33 +1669,37 @@ fn active_conditional_branch_sides(
     let mut active = HashMap::new();
 
     for branch in &model.derived.conditional_branches {
-        let left_active = branch.left_member_display_ids.iter().any(|display_id| {
-            model
-                .node_map
-                .get(display_id)
-                .map(|node| {
-                    node_has_current_iteration_activity(live, node, runtime_sequence_floors)
+        let newest_sequence_for_side = |display_ids: &[u32]| {
+            display_ids
+                .iter()
+                .filter_map(|display_id| {
+                    let node = model.node_map.get(display_id)?;
+                    let runtime_id = node.runtime_node_id?;
+                    runtime_observed_in_current_iteration(live, runtime_id, runtime_sequence_floors)
+                        .then(|| live.runtime_update_sequence.get(&runtime_id).copied())
+                        .flatten()
                 })
-                .unwrap_or(false)
-        });
-        let right_active = branch.right_member_display_ids.iter().any(|display_id| {
-            model
-                .node_map
-                .get(display_id)
-                .map(|node| {
-                    node_has_current_iteration_activity(live, node, runtime_sequence_floors)
-                })
-                .unwrap_or(false)
-        });
+                .max()
+        };
 
-        match (left_active, right_active) {
-            (true, false) => {
+        let left_newest = newest_sequence_for_side(&branch.left_member_display_ids);
+        let right_newest = newest_sequence_for_side(&branch.right_member_display_ids);
+
+        match (left_newest, right_newest) {
+            (Some(_), None) => {
                 active.insert(branch.condition_display_id, ConditionalSide::Left);
             }
-            (false, true) => {
+            (None, Some(_)) => {
                 active.insert(branch.condition_display_id, ConditionalSide::Right);
             }
-            (false, false) | (true, true) => {}
+            (Some(left_sequence), Some(right_sequence)) => {
+                if left_sequence > right_sequence {
+                    active.insert(branch.condition_display_id, ConditionalSide::Left);
+                } else if right_sequence > left_sequence {
+                    active.insert(branch.condition_display_id, ConditionalSide::Right);
+                }
+            }
+            (None, None) => {}
         }
     }
 
@@ -5099,6 +5103,91 @@ mod tests {
             Some(RuntimeState::Completed)
         );
         assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn repaired_live_states_prefer_newest_conditional_branch_activity() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Conditional {
+                label: "Branch",
+                metadata: "",
+                left: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step { label: "Select" },
+                    JourneyAst::Step { label: "Optimize" },
+                ])),
+                right: Box::new(JourneyAst::Step { label: "Skip" }),
+            },
+            JourneyAst::Step { label: "Flatten" },
+        ]));
+        let branch_id = node_by_label(&model, "Branch").id;
+        let select_id = node_by_label(&model, "Select").id;
+        let optimize_id = node_by_label(&model, "Optimize").id;
+        let skip_id = node_by_label(&model, "Skip").id;
+        let flatten_id = node_by_label(&model, "Flatten").id;
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: runtime_id_for(&model, "Branch"),
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Skip"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                3,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Select"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                4,
+                RunnerUpdateOut::EffectInput {
+                    node_id: runtime_id_for(&model, "Optimize"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&branch_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&select_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&optimize_id).copied(),
+            Some(RuntimeState::Running)
+        );
+        assert_eq!(repaired.get(&skip_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(
+            repaired.get(&flatten_id).copied(),
+            Some(RuntimeState::Pending)
+        );
     }
 
     #[test]
