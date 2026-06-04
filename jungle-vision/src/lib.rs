@@ -1669,33 +1669,49 @@ fn active_conditional_branch_sides(
     let mut active = HashMap::new();
 
     for branch in &model.derived.conditional_branches {
-        let newest_sequence_for_side = |display_ids: &[u32]| {
+        let branch_signal_for_side = |display_ids: &[u32]| {
             display_ids
                 .iter()
                 .filter_map(|display_id| {
                     let node = model.node_map.get(display_id)?;
                     let runtime_id = node.runtime_node_id?;
-                    runtime_observed_in_current_iteration(live, runtime_id, runtime_sequence_floors)
-                        .then(|| live.runtime_update_sequence.get(&runtime_id).copied())
-                        .flatten()
+                    if !runtime_observed_in_current_iteration(
+                        live,
+                        runtime_id,
+                        runtime_sequence_floors,
+                    ) {
+                        return None;
+                    }
+                    let sequence = live.runtime_update_sequence.get(&runtime_id).copied()?;
+                    let priority = match runtime_state_for_live_data(
+                        live,
+                        runtime_id,
+                        runtime_sequence_floors,
+                    ) {
+                        RuntimeState::Failed => 3_u8,
+                        RuntimeState::Running => 2_u8,
+                        RuntimeState::Completed => 1_u8,
+                        RuntimeState::Pending => 0_u8,
+                    };
+                    Some((priority, sequence))
                 })
                 .max()
         };
 
-        let left_newest = newest_sequence_for_side(&branch.left_member_display_ids);
-        let right_newest = newest_sequence_for_side(&branch.right_member_display_ids);
+        let left_signal = branch_signal_for_side(&branch.left_member_display_ids);
+        let right_signal = branch_signal_for_side(&branch.right_member_display_ids);
 
-        match (left_newest, right_newest) {
+        match (left_signal, right_signal) {
             (Some(_), None) => {
                 active.insert(branch.condition_display_id, ConditionalSide::Left);
             }
             (None, Some(_)) => {
                 active.insert(branch.condition_display_id, ConditionalSide::Right);
             }
-            (Some(left_sequence), Some(right_sequence)) => {
-                if left_sequence > right_sequence {
+            (Some(left_signal), Some(right_signal)) => {
+                if left_signal > right_signal {
                     active.insert(branch.condition_display_id, ConditionalSide::Left);
-                } else if right_sequence > left_sequence {
+                } else if right_signal > left_signal {
                     active.insert(branch.condition_display_id, ConditionalSide::Right);
                 }
             }
@@ -5155,6 +5171,91 @@ mod tests {
                 4,
                 RunnerUpdateOut::EffectInput {
                     node_id: runtime_id_for(&model, "Optimize"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&branch_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&select_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&optimize_id).copied(),
+            Some(RuntimeState::Running)
+        );
+        assert_eq!(repaired.get(&skip_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(
+            repaired.get(&flatten_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+    }
+
+    #[test]
+    fn repaired_live_states_prefer_running_branch_over_newer_completed_skip_branch() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Conditional {
+                label: "Branch",
+                metadata: "",
+                left: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step { label: "Select" },
+                    JourneyAst::Step { label: "Optimize" },
+                ])),
+                right: Box::new(JourneyAst::Step { label: "Skip" }),
+            },
+            JourneyAst::Step { label: "Flatten" },
+        ]));
+        let branch_id = node_by_label(&model, "Branch").id;
+        let select_id = node_by_label(&model, "Select").id;
+        let optimize_id = node_by_label(&model, "Optimize").id;
+        let skip_id = node_by_label(&model, "Skip").id;
+        let flatten_id = node_by_label(&model, "Flatten").id;
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: runtime_id_for(&model, "Branch"),
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Select"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                3,
+                RunnerUpdateOut::EffectInput {
+                    node_id: runtime_id_for(&model, "Optimize"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                4,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Skip"),
                     uuid: Uuid::nil(),
                 },
             ),
