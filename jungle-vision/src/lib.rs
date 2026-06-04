@@ -1883,6 +1883,7 @@ fn active_conditional_branch_sides(
         let branch_signal_for_side = |display_ids: &[u32]| {
             let mut latest_sequence = None::<usize>;
             let mut best_priority = 0_u8;
+            let mut observed_count = 0_usize;
             for display_id in display_ids {
                 let Some(node) = model.node_map.get(display_id) else {
                     continue;
@@ -1913,13 +1914,14 @@ fn active_conditional_branch_sides(
                     RuntimeState::Pending => 0_u8,
                 };
                 best_priority = best_priority.max(priority);
+                observed_count = observed_count.saturating_add(1);
                 latest_sequence = Some(
                     latest_sequence
                         .map(|current| current.max(sequence))
                         .unwrap_or(sequence),
                 );
             }
-            latest_sequence.map(|sequence| (best_priority, sequence))
+            latest_sequence.map(|sequence| (best_priority, observed_count, sequence))
         };
 
         let left_signal = branch_signal_for_side(&branch.left_member_display_ids);
@@ -1935,10 +1937,16 @@ fn active_conditional_branch_sides(
             (Some(left_signal), Some(right_signal)) => {
                 if left_signal.0 > right_signal.0
                     || (left_signal.0 == right_signal.0 && left_signal.1 > right_signal.1)
+                    || (left_signal.0 == right_signal.0
+                        && left_signal.1 == right_signal.1
+                        && left_signal.2 > right_signal.2)
                 {
                     active.insert(branch.condition_display_id, ConditionalSide::Left);
                 } else if right_signal.0 > left_signal.0
                     || (right_signal.0 == left_signal.0 && right_signal.1 > left_signal.1)
+                    || (right_signal.0 == left_signal.0
+                        && right_signal.1 == left_signal.1
+                        && right_signal.2 > left_signal.2)
                 {
                     active.insert(branch.condition_display_id, ConditionalSide::Right);
                 }
@@ -2220,7 +2228,40 @@ fn live_states_for_display(
     live_data: Option<&LiveData>,
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> HashMap<u32, RuntimeState> {
-    repaired_live_states_for_display(model, live_data, condition_successor_runtime_ids)
+    let mut states =
+        repaired_live_states_for_display(model, live_data, condition_successor_runtime_ids);
+
+    let Some(live) = live_data else {
+        return states;
+    };
+    let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
+    let runtime_activation_prefixes = runtime_activation_prefixes_for_display(model, live);
+    let branch_root_has_activity = |display_ids: &[u32]| {
+        display_ids.iter().any(|display_id| {
+            model.node_map
+                .get(display_id)
+                .and_then(|node| node.runtime_node_id)
+                .map(|runtime_id| {
+                    runtime_observed_in_current_iteration(
+                        live,
+                        runtime_id,
+                        &runtime_sequence_floors,
+                        &runtime_activation_prefixes,
+                    )
+                })
+                .unwrap_or(false)
+        })
+    };
+
+    for branch in &model.derived.conditional_branches {
+        if !branch_root_has_activity(&branch.left_root_display_ids)
+            && branch_root_has_activity(&branch.right_root_display_ids)
+        {
+            states.insert(branch.condition_display_id, RuntimeState::Pending);
+        }
+    }
+
+    states
 }
 
 fn node_phase_for_display_with_repairs(
@@ -3139,6 +3180,8 @@ struct ClusterInfo {
 #[derive(Clone)]
 struct ConditionalBranchInfo {
     condition_display_id: u32,
+    left_root_display_ids: Vec<u32>,
+    right_root_display_ids: Vec<u32>,
     left_member_display_ids: Vec<u32>,
     right_member_display_ids: Vec<u32>,
 }
@@ -3260,6 +3303,8 @@ impl GraphBuilder {
                     .insert(runtime_id, dedup(descendant_runtime_ids));
                 self.conditional_branches.push(ConditionalBranchInfo {
                     condition_display_id: branch,
+                    left_root_display_ids: dedup(left_flow.roots.clone()),
+                    right_root_display_ids: dedup(right_flow.roots.clone()),
                     left_member_display_ids: dedup(left_flow.members.clone()),
                     right_member_display_ids: dedup(right_flow.members.clone()),
                 });
@@ -5696,6 +5741,73 @@ mod tests {
     }
 
     #[test]
+    fn live_states_prefer_branch_with_more_activity_over_later_skip_signal() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Conditional {
+                label: "Branch",
+                metadata: "",
+                left: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step { label: "Select" },
+                    JourneyAst::Step { label: "Optimize" },
+                ])),
+                right: Box::new(JourneyAst::Step { label: "Skip" }),
+            },
+            JourneyAst::Step { label: "Flatten" },
+        ]));
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: runtime_id_for(&model, "Branch"),
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Select"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                3,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Optimize"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                4,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Skip"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            states.get(&node_by_label(&model, "Branch").id).copied(),
+            Some(RuntimeState::Completed)
+        );
+    }
+
+    #[test]
     fn repaired_live_states_handle_five_way_prompt_join_selection() {
         fn prompt_branch(
             branch_label: &'static str,
@@ -5806,6 +5918,11 @@ mod tests {
             states.get(&id).copied().unwrap_or(RuntimeState::Pending)
         };
 
+        assert_eq!(state_for("Branch1"), RuntimeState::Pending);
+        assert_eq!(state_for("Branch2"), RuntimeState::Completed);
+        assert_eq!(state_for("Branch3"), RuntimeState::Pending);
+        assert_eq!(state_for("Branch4"), RuntimeState::Completed);
+        assert_eq!(state_for("Branch5"), RuntimeState::Pending);
         assert_eq!(state_for("Skip1"), RuntimeState::Completed);
         assert_eq!(state_for("Select2"), RuntimeState::Completed);
         assert_eq!(state_for("Optimize2"), RuntimeState::Completed);
@@ -5984,6 +6101,11 @@ mod tests {
             states.get(&id).copied().unwrap_or(RuntimeState::Pending)
         };
 
+        assert_eq!(state_for("Branch1"), RuntimeState::Pending);
+        assert_eq!(state_for("Branch2"), RuntimeState::Completed);
+        assert_eq!(state_for("Branch3"), RuntimeState::Pending);
+        assert_eq!(state_for("Branch4"), RuntimeState::Completed);
+        assert_eq!(state_for("Branch5"), RuntimeState::Pending);
         assert_eq!(state_for("Skip1"), RuntimeState::Completed);
         assert_eq!(state_for("Select2"), RuntimeState::Completed);
         assert_eq!(state_for("Optimize2"), RuntimeState::Completed);
