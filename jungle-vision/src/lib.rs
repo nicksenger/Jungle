@@ -1912,9 +1912,6 @@ fn runtime_sequence_floors_for_display(model: &GraphModel, live: &LiveData) -> H
         };
 
         for runtime_id in &model.derived.cluster_member_runtime_ids[index] {
-            if live.runtime_activation_paths.contains_key(runtime_id) {
-                continue;
-            }
             floors
                 .entry(*runtime_id)
                 .and_modify(|current| *current = (*current).max(iteration_start_sequence))
@@ -4155,7 +4152,7 @@ mod tests {
     }
 
     #[test]
-    fn while_runtime_floors_skip_members_with_activation_paths() {
+    fn while_runtime_floors_hide_stale_members_with_activation_paths_after_reentry() {
         let model = GraphModel::from_ast(JourneyAst::While {
             label: "Loop",
             metadata: "",
@@ -4167,13 +4164,16 @@ mod tests {
         let loop_runtime_id = model.cluster_info[0].runtime_node_id;
         let a_runtime_id = runtime_id_for(&model, "A");
         let b_runtime_id = runtime_id_for(&model, "B");
+        let a_id = node_by_label(&model, "A").id;
+        let b_id = node_by_label(&model, "B").id;
 
         let mut live = LiveData::default();
         live.bind_model(&model);
         for (sequence_id, node_id, activation_path, phase) in [
             (1, loop_runtime_id, vec![0], NodeLifecyclePhase::Entered),
-            (2, a_runtime_id, vec![0, 0], NodeLifecyclePhase::Entered),
-            (3, a_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
+            (2, a_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
+            (3, b_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
+            (4, a_runtime_id, vec![0, 1], NodeLifecyclePhase::Entered),
         ] {
             assert!(live.apply_update(JourneyUpdateEvent {
                 sequence_id,
@@ -4186,13 +4186,84 @@ mod tests {
                 }),
             }));
         }
-        live.finished_runtime_ids.insert(b_runtime_id);
-        live.runtime_update_sequence.insert(b_runtime_id, 0);
-
         let floors = runtime_sequence_floors_for_display(&model, &live);
-        assert_eq!(floors.get(&a_runtime_id), None);
-        assert_eq!(floors.get(&b_runtime_id).copied(), Some(3));
-        assert_eq!(floors.get(&loop_runtime_id), None);
+        assert_eq!(floors.get(&a_runtime_id).copied(), Some(4));
+        assert_eq!(floors.get(&b_runtime_id).copied(), Some(4));
+        assert_eq!(floors.get(&loop_runtime_id).copied(), Some(4));
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(states.get(&a_id).copied(), Some(RuntimeState::Running));
+        assert_eq!(states.get(&b_id).copied(), Some(RuntimeState::Pending));
+    }
+
+    #[test]
+    fn while_reentry_hides_stale_skip_branch_activity() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "Begin" },
+                JourneyAst::Conditional {
+                    label: "Branch",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step { label: "Select" },
+                        JourneyAst::Step { label: "Optimize" },
+                    ])),
+                    right: Box::new(JourneyAst::Step { label: "Skip" }),
+                },
+                JourneyAst::Step { label: "Flatten" },
+            ])),
+        });
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let begin_runtime_id = runtime_id_for(&model, "Begin");
+        let branch_runtime_id = runtime_id_for(&model, "Branch");
+        let select_runtime_id = runtime_id_for(&model, "Select");
+        let optimize_runtime_id = runtime_id_for(&model, "Optimize");
+        let skip_runtime_id = runtime_id_for(&model, "Skip");
+
+        let select_id = node_by_label(&model, "Select").id;
+        let optimize_id = node_by_label(&model, "Optimize").id;
+        let skip_id = node_by_label(&model, "Skip").id;
+        let flatten_id = node_by_label(&model, "Flatten").id;
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, node_id, activation_path, phase) in [
+            (1, loop_runtime_id, vec![0], NodeLifecyclePhase::Entered),
+            (2, begin_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
+            (3, branch_runtime_id, vec![0, 1], NodeLifecyclePhase::Succeeded),
+            (4, skip_runtime_id, vec![0, 2], NodeLifecyclePhase::Succeeded),
+            (5, begin_runtime_id, vec![1, 0], NodeLifecyclePhase::Succeeded),
+            (6, branch_runtime_id, vec![1, 1], NodeLifecyclePhase::Succeeded),
+            (7, select_runtime_id, vec![1, 2], NodeLifecyclePhase::Succeeded),
+            (8, optimize_runtime_id, vec![1, 3], NodeLifecyclePhase::Entered),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id,
+                    activation_path,
+                    phase,
+                    uuid: Uuid::nil(),
+                }),
+            }));
+        }
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(states.get(&select_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(states.get(&optimize_id).copied(), Some(RuntimeState::Running));
+        assert_eq!(states.get(&skip_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(states.get(&flatten_id).copied(), Some(RuntimeState::Pending));
     }
 
     #[test]
