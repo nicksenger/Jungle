@@ -1869,9 +1869,13 @@ fn runtime_sequence_floors_for_display(model: &GraphModel, live: &LiveData) -> H
             continue;
         }
 
-        let iteration_start_sequence = model.derived.cluster_entry_runtime_ids[index]
-            .iter()
-            .filter_map(|runtime_id| live.runtime_update_sequence.get(runtime_id).copied())
+        let iteration_start_sequence = std::iter::once(cluster.runtime_node_id)
+            .chain(
+                model.derived.cluster_entry_runtime_ids[index]
+                    .iter()
+                    .copied(),
+            )
+            .filter_map(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied())
             .max();
         let Some(iteration_start_sequence) = iteration_start_sequence else {
             continue;
@@ -4071,6 +4075,39 @@ mod tests {
             runtime_state_for_live_data(&live, 7, &HashMap::from([(7, 1)])),
             RuntimeState::Completed
         );
+    }
+
+    #[test]
+    fn while_runtime_entry_advances_runtime_floors_for_effect_only_members() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "A" },
+                JourneyAst::Step { label: "B" },
+            ])),
+        });
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let a_runtime_id = runtime_id_for(&model, "A");
+        let b_runtime_id = runtime_id_for(&model, "B");
+        let a_id = node_by_label(&model, "A").id;
+        let b_id = node_by_label(&model, "B").id;
+
+        let mut live = LiveData::default();
+        live.finished_runtime_ids.insert(a_runtime_id);
+        live.finished_runtime_ids.insert(b_runtime_id);
+        live.runtime_update_sequence.insert(a_runtime_id, 1);
+        live.runtime_update_sequence.insert(b_runtime_id, 2);
+        live.active_runtime_ids.insert(loop_runtime_id);
+        live.runtime_update_sequence.insert(loop_runtime_id, 3);
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(states.get(&a_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(states.get(&b_id).copied(), Some(RuntimeState::Pending));
     }
 
     #[test]
