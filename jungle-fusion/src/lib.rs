@@ -166,6 +166,26 @@ impl FusedClient {
         response.map_err(ExecutorError::Backend)
     }
 
+    async fn send_history_event(
+        &self,
+        event: RunnerOut,
+        action_name: &'static str,
+    ) -> Result<(), ExecutorError> {
+        let event_unix_ms = Utc::now().timestamp_millis();
+        let response = self
+            .send_wire_message(WireIn::HistoryEvent {
+                event,
+                event_unix_ms,
+            })
+            .await?;
+        match response {
+            WireOut::Ack => Ok(()),
+            _ => Err(ExecutorError::ClientTransport(format!(
+                "unexpected non-ack response for {action_name}"
+            ))),
+        }
+    }
+
     async fn send_wire_subscription(
         &self,
         input: WireIn,
@@ -630,23 +650,15 @@ impl JungleClient for FusedClient {
         node_id: u32,
         input: Vec<u8>,
     ) -> Result<(), ExecutorError> {
-        let event_unix_ms = Utc::now().timestamp_millis();
-        let response = self
-            .send_wire_message(WireIn::HistoryEvent {
-                event: RunnerOut::EffectInput {
-                    node_id,
-                    data: input,
-                    uuid: id,
-                },
-                event_unix_ms,
-            })
-            .await?;
-        match response {
-            WireOut::Ack => Ok(()),
-            _ => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for effect_input".to_string(),
-            )),
-        }
+        self.send_history_event(
+            RunnerOut::EffectInput {
+                node_id,
+                data: input,
+                uuid: id,
+            },
+            "effect_input",
+        )
+        .await
     }
 
     async fn effect_success_output(
@@ -655,23 +667,15 @@ impl JungleClient for FusedClient {
         node_id: u32,
         output: Vec<u8>,
     ) -> Result<(), ExecutorError> {
-        let event_unix_ms = Utc::now().timestamp_millis();
-        let response = self
-            .send_wire_message(WireIn::HistoryEvent {
-                event: RunnerOut::EffectSuccessOutput {
-                    node_id,
-                    data: output,
-                    uuid: id,
-                },
-                event_unix_ms,
-            })
-            .await?;
-        match response {
-            WireOut::Ack => Ok(()),
-            _ => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for effect_success_output".to_string(),
-            )),
-        }
+        self.send_history_event(
+            RunnerOut::EffectSuccessOutput {
+                node_id,
+                data: output,
+                uuid: id,
+            },
+            "effect_success_output",
+        )
+        .await
     }
 
     async fn effect_failure_output(
@@ -680,23 +684,19 @@ impl JungleClient for FusedClient {
         node_id: u32,
         err: Vec<u8>,
     ) -> Result<(), ExecutorError> {
-        let event_unix_ms = Utc::now().timestamp_millis();
-        let response = self
-            .send_wire_message(WireIn::HistoryEvent {
-                event: RunnerOut::EffectFailureOutput {
-                    node_id,
-                    data: err,
-                    uuid: id,
-                },
-                event_unix_ms,
-            })
-            .await?;
-        match response {
-            WireOut::Ack => Ok(()),
-            _ => Err(ExecutorError::ClientTransport(
-                "unexpected non-ack response for effect_failure_output".to_string(),
-            )),
-        }
+        self.send_history_event(
+            RunnerOut::EffectFailureOutput {
+                node_id,
+                data: err,
+                uuid: id,
+            },
+            "effect_failure_output",
+        )
+        .await
+    }
+
+    async fn submit_history_event(&self, event: RunnerOut) -> Result<(), ExecutorError> {
+        self.send_history_event(event, "submit_history_event").await
     }
 }
 

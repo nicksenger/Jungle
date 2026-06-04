@@ -100,40 +100,7 @@ where
                     RunnerChannelMessage::History(history) => {
                         let history_kind = runner_out_kind(&history);
                         let submit_started_at = Instant::now();
-                        let out = match history {
-                            RunnerOut::NodeLifecycle(..) => Ok(()),
-                            RunnerOut::EffectInput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => client_for_transport.effect_input(uuid, node_id, data).await,
-                            RunnerOut::EffectSuccessOutput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => {
-                                client_for_transport
-                                    .effect_success_output(uuid, node_id, data)
-                                    .await
-                            }
-                            RunnerOut::EffectFailureOutput {
-                                node_id,
-                                data,
-                                uuid,
-                            } => {
-                                client_for_transport
-                                    .effect_failure_output(uuid, node_id, data)
-                                    .await
-                            }
-                            RunnerOut::Appearance { data, uuid } => {
-                                client_for_transport
-                                    .animal_appearance_update(uuid, data)
-                                    .await
-                            }
-                            RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => {
-                                Ok(())
-                            }
-                        };
+                        let out = client_for_transport.submit_history_event(history).await;
                         history_submissions = history_submissions.saturating_add(1);
                         let submit_elapsed = submit_started_at.elapsed();
                         if submit_elapsed > WORKER_SLOW_HISTORY_SUBMIT_WARN_THRESHOLD {

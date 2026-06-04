@@ -153,6 +153,7 @@ pub trait JungleClient: DynClone + Send + Sync {
         node_id: u32,
         err: Vec<u8>,
     ) -> Result<(), ExecutorError>;
+    async fn submit_history_event(&self, event: RunnerOut) -> Result<(), ExecutorError>;
 }
 
 dyn_clone::clone_trait_object!(JungleClient);

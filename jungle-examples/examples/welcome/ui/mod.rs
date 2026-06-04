@@ -370,6 +370,10 @@ where
     ) -> Result<(), ExecutorError> {
         self.inner.effect_failure_output(id, node_id, err).await
     }
+
+    async fn submit_history_event(&self, event: RunnerOut) -> Result<(), ExecutorError> {
+        self.inner.submit_history_event(event).await
+    }
 }
 
 #[derive(Clone)]

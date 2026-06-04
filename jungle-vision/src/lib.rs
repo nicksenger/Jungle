@@ -1631,11 +1631,9 @@ fn node_has_current_iteration_activity(
     node: &NodeDisplay,
     runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> bool {
-    node.runtime_node_id
-        .into_iter()
-        .any(|runtime_id| {
-            runtime_observed_in_current_iteration(live, runtime_id, runtime_sequence_floors)
-        })
+    node.runtime_node_id.into_iter().any(|runtime_id| {
+        runtime_observed_in_current_iteration(live, runtime_id, runtime_sequence_floors)
+    })
 }
 
 fn skipped_conditional_branch_nodes(
@@ -4748,9 +4746,18 @@ mod tests {
             repaired.get(&branch_id).copied(),
             Some(RuntimeState::Completed)
         );
-        assert_eq!(repaired.get(&taken_id).copied(), Some(RuntimeState::Completed));
-        assert_eq!(repaired.get(&skipped_id).copied(), Some(RuntimeState::Pending));
-        assert_eq!(repaired.get(&other_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(
+            repaired.get(&taken_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&skipped_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            repaired.get(&other_id).copied(),
+            Some(RuntimeState::Completed)
+        );
         assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
     }
 

@@ -17,6 +17,10 @@ use uuid::Uuid;
 
 type HandlerFuture = Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
 type Handler = Arc<dyn Fn(Uuid, Vec<u8>) -> HandlerFuture + Send + Sync + 'static>;
+type HistoryEventHandlerFuture =
+    Pin<Box<dyn Future<Output = Result<(), ExecutorError>> + Send + 'static>>;
+type HistoryEventHandler =
+    Arc<dyn Fn(RunnerOut) -> HistoryEventHandlerFuture + Send + Sync + 'static>;
 type PollStepHandlerFuture =
     Pin<Box<dyn Future<Output = Result<Option<Work>, ExecutorError>> + Send + 'static>>;
 type PollStepHandler =
@@ -75,6 +79,7 @@ type WaitForWorkerWakeHandler = Arc<
 #[derive(Clone)]
 pub struct MockClient {
     namespace: String,
+    on_history_event: Option<HistoryEventHandler>,
     on_create_flow: CreateFlowHandler,
     on_journey_history: JourneyHistoryHandler,
     on_list_journeys: ListJourneysHandler,
@@ -119,31 +124,10 @@ impl MockClient {
     pub async fn serve_runner_channel(&self, mut rx: RunnerChannelRx) {
         while let Some((message, done)) = rx.next().await {
             let result = match message {
-                RunnerChannelMessage::History(history) => {
-                    let out = match history {
-                        RunnerOut::NodeLifecycle(..) => Ok(()),
-                        RunnerOut::EffectInput {
-                            node_id,
-                            data,
-                            uuid,
-                        } => self.effect_input(uuid, node_id, data).await,
-                        RunnerOut::EffectSuccessOutput {
-                            node_id,
-                            data,
-                            uuid,
-                        } => self.effect_success_output(uuid, node_id, data).await,
-                        RunnerOut::EffectFailureOutput {
-                            node_id,
-                            data,
-                            uuid,
-                        } => self.effect_failure_output(uuid, node_id, data).await,
-                        RunnerOut::Appearance { data, uuid } => {
-                            self.animal_appearance_update(uuid, data).await
-                        }
-                        RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => Ok(()),
-                    };
-                    out.map(|_| RunnerChannelResponse::Ack)
-                }
+                RunnerChannelMessage::History(history) => self
+                    .submit_history_event(history)
+                    .await
+                    .map(|_| RunnerChannelResponse::Ack),
                 RunnerChannelMessage::ClaimPerturbable { journey_id } => self
                     .claim_animal_perturbation(journey_id)
                     .await
@@ -312,10 +296,38 @@ impl JungleClient for MockClient {
     ) -> Result<(), ExecutorError> {
         (self.on_effect_failure_output)(id, err).await
     }
+
+    async fn submit_history_event(&self, event: RunnerOut) -> Result<(), ExecutorError> {
+        if let Some(handler) = &self.on_history_event {
+            return handler(event).await;
+        }
+
+        match event {
+            RunnerOut::NodeLifecycle(..) => Ok(()),
+            RunnerOut::EffectInput {
+                node_id,
+                data,
+                uuid,
+            } => self.effect_input(uuid, node_id, data).await,
+            RunnerOut::EffectSuccessOutput {
+                node_id,
+                data,
+                uuid,
+            } => self.effect_success_output(uuid, node_id, data).await,
+            RunnerOut::EffectFailureOutput {
+                node_id,
+                data,
+                uuid,
+            } => self.effect_failure_output(uuid, node_id, data).await,
+            RunnerOut::Appearance { data, uuid } => self.animal_appearance_update(uuid, data).await,
+            RunnerOut::SleepScheduled { .. } | RunnerOut::SleepFired { .. } => Ok(()),
+        }
+    }
 }
 
 pub struct MockClientBuilder {
     namespace: String,
+    on_history_event: Option<HistoryEventHandler>,
     on_create_flow: Option<CreateFlowHandler>,
     on_journey_history: Option<JourneyHistoryHandler>,
     on_list_journeys: Option<ListJourneysHandler>,
@@ -342,6 +354,7 @@ impl Default for MockClientBuilder {
     fn default() -> Self {
         Self {
             namespace: "default".to_string(),
+            on_history_event: None,
             on_create_flow: None,
             on_journey_history: None,
             on_list_journeys: None,
@@ -384,6 +397,15 @@ impl MockClientBuilder {
         self.on_create_flow = Some(Arc::new(move |animal_id, seed| {
             Box::pin(f(animal_id, seed))
         }));
+        self
+    }
+
+    pub fn on_history_event<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(RunnerOut) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), ExecutorError>> + Send + 'static,
+    {
+        self.on_history_event = Some(Arc::new(move |event| Box::pin(f(event))));
         self
     }
 
@@ -609,6 +631,7 @@ impl MockClientBuilder {
         let default_poll_work_handler: PollStepHandler = Arc::new(|_| Box::pin(async { Ok(None) }));
         MockClient {
             namespace: self.namespace,
+            on_history_event: self.on_history_event,
             on_create_flow: self
                 .on_create_flow
                 .unwrap_or_else(|| default_create_flow_handler.clone()),
@@ -668,5 +691,66 @@ impl MockClientBuilder {
                 .unwrap_or_else(|| default_handler.clone()),
             on_effect_failure_output: self.on_effect_failure_output.unwrap_or(default_handler),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::channel::{mpsc, oneshot};
+    use futures::SinkExt;
+    use jungle_types::{NodeLifecycle, NodeLifecyclePhase};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn serve_runner_channel_forwards_node_lifecycle_history() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let observed = Arc::new(Mutex::new(Vec::new()));
+                let observed_for_handler = Arc::clone(&observed);
+                let client = MockClient::builder()
+                    .on_history_event(move |event| {
+                        let observed = Arc::clone(&observed_for_handler);
+                        async move {
+                            if let RunnerOut::NodeLifecycle(node) = event {
+                                observed.lock().unwrap().push(node);
+                            }
+                            Ok(())
+                        }
+                    })
+                    .build();
+                let (mut tx, rx) = mpsc::channel(1);
+                let serve = tokio::spawn({
+                    let client = client.clone();
+                    async move { client.serve_runner_channel(rx).await }
+                });
+                let expected = NodeLifecycle {
+                    node_id: 17,
+                    activation_path: vec![2, 5],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::new_v4(),
+                };
+                let (done_tx, done_rx) = oneshot::channel();
+                tx.send((
+                    RunnerChannelMessage::History(RunnerOut::NodeLifecycle(expected.clone())),
+                    done_tx,
+                ))
+                .await
+                .unwrap();
+                match done_rx.await.unwrap().unwrap() {
+                    RunnerChannelResponse::Ack => {}
+                    RunnerChannelResponse::ClaimedPerturbation(_) => {
+                        panic!("expected history submission ack")
+                    }
+                }
+                drop(tx);
+                serve.await.unwrap();
+
+                let observed = observed.lock().unwrap();
+                assert_eq!(observed.as_slice(), &[expected]);
+            });
     }
 }
