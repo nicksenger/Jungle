@@ -1704,6 +1704,9 @@ fn repaired_live_states_for_display(
         };
         states.insert(node.id, state);
     }
+    for node_id in &skipped_conditional_branch_nodes {
+        states.insert(*node_id, RuntimeState::Pending);
+    }
 
     let mut loop_back_edges = HashSet::<(u32, u32)>::new();
     for cluster in &model.cluster_info {
@@ -4772,6 +4775,130 @@ mod tests {
         assert_eq!(
             repaired.get(&skipped_id).copied(),
             Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            repaired.get(&other_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn repaired_live_states_keep_untaken_conditional_path_pending_after_branch_flatten_and_join() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Join {
+                label: "Join",
+                metadata: "",
+                left: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Conditional {
+                        label: "Branch",
+                        metadata: "",
+                        left: Box::new(JourneyAst::Sequence(vec![
+                            JourneyAst::Step { label: "WouldRun1" },
+                            JourneyAst::Step { label: "WouldRun2" },
+                        ])),
+                        right: Box::new(JourneyAst::Step { label: "Pass" }),
+                    },
+                    JourneyAst::Step { label: "Flatten" },
+                ])),
+                right: Box::new(JourneyAst::Step { label: "Other" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+        let branch_id = node_by_label(&model, "Branch").id;
+        let would_run_1_id = node_by_label(&model, "WouldRun1").id;
+        let would_run_2_id = node_by_label(&model, "WouldRun2").id;
+        let pass_id = node_by_label(&model, "Pass").id;
+        let flatten_id = node_by_label(&model, "Flatten").id;
+        let other_id = node_by_label(&model, "Other").id;
+        let tail_id = node_by_label(&model, "Tail").id;
+        let join_runtime_id = node_by_label(&model, "Flatten")
+            .proxy_runtime_ids
+            .first()
+            .copied()
+            .unwrap_or_else(|| panic!("Flatten should carry hidden join runtime"));
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: runtime_id_for(&model, "Branch"),
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Pass"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                3,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Flatten"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                4,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Other"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                5,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: join_runtime_id,
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                6,
+                RunnerUpdateOut::EffectInput {
+                    node_id: runtime_id_for(&model, "Tail"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&branch_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&would_run_1_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            repaired.get(&would_run_2_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            repaired.get(&pass_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&flatten_id).copied(),
+            Some(RuntimeState::Completed)
         );
         assert_eq!(
             repaired.get(&other_id).copied(),
