@@ -53,12 +53,15 @@ static VISION_MAX_APPLY_ELAPSED_MS: AtomicUsize = AtomicUsize::new(0);
 
 fn graph_refresh_task<Message: Clone + Send + 'static>(
     graph_widget_id: iced_sugiyama::Id,
-    _invalidate_layout: bool,
+    invalidate_layout: bool,
 ) -> Task<Message> {
-    // Live repaired-state changes can advance the visible frontier without changing graph shape.
-    // Rebuilding the animated view on every event is more expensive, but it avoids stale node
-    // elements lingering in long-running live DAG sessions like lyrebird.
-    iced_sugiyama::invalidate::<Message>(graph_widget_id)
+    if invalidate_layout {
+        iced_sugiyama::invalidate::<Message>(graph_widget_id)
+    } else {
+        // Some live events only advance sequence/activation-path state. Those still affect
+        // repaired node phases, so the widget must review its cached node rendering.
+        iced_sugiyama::force_review::<Message>(graph_widget_id)
+    }
 }
 
 pub struct AnyAnimal;
