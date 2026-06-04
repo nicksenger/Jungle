@@ -229,8 +229,8 @@ impl LyrebirdUi {
             .as_ref()
             .and_then(|image_dump| image_dump.panel)
         {
-            Some(ImageDumpPanel::Spectrograms) => (1, 0),
-            Some(ImageDumpPanel::Graph) => (0, 1),
+            Some(ImageDumpPanel::Spectrograms) => (0, 1),
+            Some(ImageDumpPanel::Graph) => (1, 0),
             None => (2, 1),
         };
         let image_section = container(self.snapshot_panel())
