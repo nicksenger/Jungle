@@ -1895,6 +1895,238 @@ mod tests {
         type Animals = HiddenJoinConditionalNoopZoo;
     }
 
+    macro_rules! nested_prompt_branch {
+        (
+            $pred:ident,
+            $selected:expr,
+            $select_effect:ident,
+            $select_effect_id:literal,
+            $optimize_effect:ident,
+            $optimize_effect_id:literal,
+            $skip_effect:ident,
+            $skip_effect_id:literal,
+            $select:ident,
+            $optimize:ident,
+            $skip:ident,
+            $enabled:ident,
+            $disabled:ident,
+            $flow:ident
+        ) => {
+            struct $pred;
+            impl Predicate<(i32, ())> for $pred {
+                fn eval((_state, _): &(i32, ())) -> bool {
+                    $selected
+                }
+            }
+
+            pub struct $select_effect;
+            #[jungle::effect(id = $select_effect_id)]
+            impl<J> Effect<J> for $select_effect {
+                type In = ();
+                type Out = ();
+                type Err = ();
+
+                fn effect(
+                    _jungle: &J,
+                    _input: Self::In,
+                ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                    async { Ok(()) }
+                }
+            }
+
+            pub struct $optimize_effect;
+            #[jungle::effect(id = $optimize_effect_id)]
+            impl<J> Effect<J> for $optimize_effect {
+                type In = ();
+                type Out = ();
+                type Err = ();
+
+                fn effect(
+                    _jungle: &J,
+                    _input: Self::In,
+                ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                    async { Ok(()) }
+                }
+            }
+
+            pub struct $skip_effect;
+            #[jungle::effect(id = $skip_effect_id)]
+            impl<J> Effect<J> for $skip_effect {
+                type In = ();
+                type Out = ();
+                type Err = ();
+
+                fn effect(
+                    _jungle: &J,
+                    _input: Self::In,
+                ) -> impl std::future::Future<Output = Result<Self::Out, Self::Err>> {
+                    async { Ok(()) }
+                }
+            }
+
+            struct $select;
+            #[jungle::action]
+            impl Action for $select {
+                type Effect = $select_effect;
+                type Input = ();
+                type Output = ();
+
+                fn emit(_state: &i32, _input: Self::Input) {}
+
+                fn absorb(
+                    _state: &mut i32,
+                    _output: EffectCompletion<Self::Effect>,
+                ) -> Result<Self::Output, Failure> {
+                    Ok(())
+                }
+            }
+
+            struct $optimize;
+            #[jungle::action]
+            impl Action for $optimize {
+                type Effect = $optimize_effect;
+                type Input = ();
+                type Output = ();
+
+                fn emit(_state: &i32, _input: Self::Input) {}
+
+                fn absorb(
+                    _state: &mut i32,
+                    _output: EffectCompletion<Self::Effect>,
+                ) -> Result<Self::Output, Failure> {
+                    Ok(())
+                }
+            }
+
+            struct $skip;
+            #[jungle::action]
+            impl Action for $skip {
+                type Effect = $skip_effect;
+                type Input = ();
+                type Output = ();
+
+                fn emit(_state: &i32, _input: Self::Input) {}
+
+                fn absorb(
+                    _state: &mut i32,
+                    _output: EffectCompletion<Self::Effect>,
+                ) -> Result<Self::Output, Failure> {
+                    Ok(())
+                }
+            }
+
+            #[derive(Flow)]
+            struct $enabled(Step<$select>, Step<$optimize>);
+
+            #[derive(Flow)]
+            struct $disabled(Step<$skip>);
+
+            #[derive(Flow)]
+            struct $flow(Conditional<$pred, $enabled, $disabled>, Step<FlattenEither<(), i32>>);
+        };
+    }
+
+    nested_prompt_branch!(
+        NestedBranch1Pred,
+        false,
+        Branch1SelectEffect,
+        200,
+        Branch1OptimizeEffect,
+        201,
+        Branch1SkipEffect,
+        202,
+        Branch1Select,
+        Branch1Optimize,
+        Branch1Skip,
+        NestedBranch1Enabled,
+        NestedBranch1Disabled,
+        NestedBranch1Flow
+    );
+    nested_prompt_branch!(
+        NestedBranch2Pred,
+        true,
+        Branch2SelectEffect,
+        203,
+        Branch2OptimizeEffect,
+        204,
+        Branch2SkipEffect,
+        205,
+        Branch2Select,
+        Branch2Optimize,
+        Branch2Skip,
+        NestedBranch2Enabled,
+        NestedBranch2Disabled,
+        NestedBranch2Flow
+    );
+    nested_prompt_branch!(
+        NestedBranch3Pred,
+        false,
+        Branch3SelectEffect,
+        206,
+        Branch3OptimizeEffect,
+        207,
+        Branch3SkipEffect,
+        208,
+        Branch3Select,
+        Branch3Optimize,
+        Branch3Skip,
+        NestedBranch3Enabled,
+        NestedBranch3Disabled,
+        NestedBranch3Flow
+    );
+    nested_prompt_branch!(
+        NestedBranch4Pred,
+        true,
+        Branch4SelectEffect,
+        209,
+        Branch4OptimizeEffect,
+        210,
+        Branch4SkipEffect,
+        211,
+        Branch4Select,
+        Branch4Optimize,
+        Branch4Skip,
+        NestedBranch4Enabled,
+        NestedBranch4Disabled,
+        NestedBranch4Flow
+    );
+    nested_prompt_branch!(
+        NestedBranch5Pred,
+        false,
+        Branch5SelectEffect,
+        212,
+        Branch5OptimizeEffect,
+        213,
+        Branch5SkipEffect,
+        214,
+        Branch5Select,
+        Branch5Optimize,
+        Branch5Skip,
+        NestedBranch5Enabled,
+        NestedBranch5Disabled,
+        NestedBranch5Flow
+    );
+
+    #[derive(Flow)]
+    struct NestedPromptLeft(Join<NestedBranch1Flow, NestedBranch2Flow>);
+
+    #[derive(Flow)]
+    struct NestedPromptRightPair(Join<NestedBranch3Flow, NestedBranch4Flow>);
+
+    #[derive(Flow)]
+    struct NestedPromptRight(Join<NestedPromptRightPair, NestedBranch5Flow>);
+
+    #[derive(Flow)]
+    struct NestedFiveWayPromptFlow(Join<NestedPromptLeft, NestedPromptRight>);
+
+    struct NestedFiveWayPromptAnimal;
+    #[jungle::animal(id = 92, generation = 0)]
+    impl Animal for NestedFiveWayPromptAnimal {
+        type State = i32;
+        type Seed = ();
+        type Flow = NestedFiveWayPromptFlow;
+    }
+
     #[test]
     fn accepts_openai_compatible_api_base_url() {
         let url = Url::parse("http://localhost:11434/v1").unwrap();
@@ -2317,6 +2549,675 @@ mod tests {
 
         worker_handle.abort();
     }
+
+    #[ignore = "diagnostic layout dump"]
+    #[test]
+    fn debug_print_lyrebird_prompt_layout_order() {
+        let plain = jungle_vision::debug_plain_layout_for_animal::<Lyrebird>();
+        println!("{plain}");
+    }
+
+    #[tokio::test]
+    async fn nested_five_way_prompt_join_live_history_keeps_branch_two_and_four_runtime_ids() {
+        let mut executor = Executor::<NestedFiveWayPromptAnimal>::new(0);
+        executor.set_journey_id(Uuid::new_v4());
+        let mut request = executor
+            .next_executable_request(())
+            .expect("nested five-way prompt join should produce an executable request");
+        let mut live_history = request
+            .take_live_history()
+            .expect("journey-bound nested prompt join should expose live child history");
+        let label_by_runtime = jungle_vision::debug_render_states_for_animal::<
+            NestedFiveWayPromptAnimal,
+        >(std::iter::empty())
+        .into_iter()
+        .filter_map(|node| node.runtime_id.map(|runtime_id| (runtime_id, node.label)))
+        .collect::<std::collections::HashMap<_, _>>();
+
+        let run = tokio::spawn(async move { request.run().await });
+        let mut seen_labels = std::collections::BTreeSet::new();
+        while let Some(event) = live_history.next().await {
+            match event {
+                RunnerOut::NodeLifecycle(node) => {
+                    if let Some(label) = label_by_runtime.get(&node.node_id) {
+                        seen_labels.insert(label.clone());
+                    }
+                }
+                RunnerOut::EffectInput { node_id, .. }
+                | RunnerOut::EffectSuccessOutput { node_id, .. }
+                | RunnerOut::EffectFailureOutput { node_id, .. } => {
+                    if let Some(label) = label_by_runtime.get(&node_id) {
+                        seen_labels.insert(label.clone());
+                    }
+                }
+                RunnerOut::SleepScheduled { .. }
+                | RunnerOut::SleepFired { .. }
+                | RunnerOut::Appearance { .. } => {}
+            }
+        }
+
+        let completion = run
+            .await
+            .expect("nested five-way prompt runner task should join")
+            .expect("nested five-way prompt runner should succeed");
+        let _ = executor
+            .complete_serialized(completion)
+            .expect("nested five-way prompt completion should still apply cleanly");
+
+        assert!(seen_labels.contains("Branch2SelectEffect"), "{seen_labels:?}");
+        assert!(seen_labels.contains("Branch2OptimizeEffect"), "{seen_labels:?}");
+        assert!(seen_labels.contains("Branch4SelectEffect"), "{seen_labels:?}");
+        assert!(seen_labels.contains("Branch4OptimizeEffect"), "{seen_labels:?}");
+        assert!(seen_labels.contains("Branch1SkipEffect"), "{seen_labels:?}");
+        assert!(seen_labels.contains("Branch3SkipEffect"), "{seen_labels:?}");
+        assert!(seen_labels.contains("Branch5SkipEffect"), "{seen_labels:?}");
+        assert!(!seen_labels.contains("Branch3SelectEffect"), "{seen_labels:?}");
+        assert!(!seen_labels.contains("Branch3OptimizeEffect"), "{seen_labels:?}");
+    }
+
+    #[ignore = "diagnostic prompt-join trace"]
+    #[tokio::test]
+    async fn lyrebird_prompt_join_live_history_uses_bass_and_vocals_selected_branch_labels() {
+        let root = std::env::temp_dir().join(format!("lyrebird-test-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("lyrebird test root should be created");
+        let seed = LyrebirdSeed {
+            output_root: root.display().to_string(),
+            instruments: LyrebirdInstrument::ALL
+                .into_iter()
+                .map(|instrument| {
+                    let sample_path = root.join(format!("{}.wav", instrument.output_stem()));
+                    let spectrogram_path = root.join(format!("{}.png", instrument.output_stem()));
+                    let dsp_source_path = root.join(format!("{}.rs", instrument.output_stem()));
+                    LyrebirdInstrumentSeed {
+                        instrument,
+                        disabled: !matches!(
+                            instrument,
+                            LyrebirdInstrument::Vocals | LyrebirdInstrument::Bass
+                        ),
+                        target_sample_path: sample_path.display().to_string(),
+                        target_audio_metrics: LyrebirdAudioMetrics::default(),
+                        target_spectrogram_path: spectrogram_path.display().to_string(),
+                        dsp_source_path: dsp_source_path.display().to_string(),
+                        initial_dsp_code: DspCode {
+                            iteration_id: "initial".to_owned(),
+                            source: format!("// {}\nfn main() {{}}\n", instrument.slug()),
+                            sample_path: sample_path.display().to_string(),
+                            spectrogram_path: spectrogram_path.display().to_string(),
+                            mel_similarity: Some(0.0),
+                            score: Some(0.0),
+                            audio_metrics: None,
+                            audio_metric_errors: None,
+                        },
+                    }
+                })
+                .collect(),
+            instrument_parallelism: 0,
+        };
+
+        let ecosystem = Arc::new(
+            PulseCodeParadise::new(
+                Url::parse("http://localhost:1/v1")
+                    .expect("lyrebird test tokens URL should parse"),
+                None,
+                Some(root.join("mcts.redb")),
+            )
+            .expect("lyrebird test ecosystem should build")
+            .with_mcts_config(
+                seed.instruments
+                    .iter()
+                    .cloned()
+                    .map(|instrument| (instrument.instrument, instrument.initial_dsp_code)),
+                DEFAULT_TREE_DEPTH,
+            )
+            .with_instrument_parallelism(0),
+        );
+        let mut executor =
+            ContextExecutor::<PulseCodeParadise, Lyrebird>::new(ecosystem, LyrebirdState::default());
+        executor.set_journey_id(Uuid::new_v4());
+        let label_by_runtime = jungle_vision::debug_render_states_for_animal::<Lyrebird>(
+            std::iter::empty(),
+        )
+        .into_iter()
+        .filter_map(|node| node.runtime_id.map(|runtime_id| (runtime_id, node.label)))
+        .collect::<std::collections::HashMap<_, _>>();
+
+        let mut prompt_labels = std::collections::BTreeSet::new();
+        let mut inspected_prompt_join = false;
+
+        for _ in 0..16 {
+            if executor.is_complete() {
+                break;
+            }
+            let mut request = executor
+                .next_executable_request(seed.clone())
+                .expect("lyrebird executor should keep producing executable requests");
+            let maybe_live_history = request.take_live_history();
+            let completion = if let Some(mut live_history) = maybe_live_history {
+                inspected_prompt_join = true;
+                let run = tokio::spawn(async move { request.run().await });
+                while let Some(event) = live_history.next().await {
+                    match event {
+                        RunnerOut::NodeLifecycle(node) => {
+                            if let Some(label) = label_by_runtime.get(&node.node_id) {
+                                prompt_labels.insert(label.clone());
+                            }
+                        }
+                        RunnerOut::EffectInput { node_id, .. }
+                        | RunnerOut::EffectSuccessOutput { node_id, .. }
+                        | RunnerOut::EffectFailureOutput { node_id, .. } => {
+                            if let Some(label) = label_by_runtime.get(&node_id) {
+                                prompt_labels.insert(label.clone());
+                            }
+                        }
+                        RunnerOut::SleepScheduled { .. }
+                        | RunnerOut::SleepFired { .. }
+                        | RunnerOut::Appearance { .. } => {}
+                    }
+                }
+                match run.await.expect("lyrebird prompt join runner task should join") {
+                    Ok(completion) => Some(completion),
+                    Err(_err) => None,
+                }
+            } else {
+                Some(
+                    request
+                    .run()
+                    .await
+                    .expect("lyrebird setup request should serialize completion"),
+                )
+            };
+
+            if let Some(completion) = completion {
+                let _ = executor.complete_serialized(completion);
+            }
+            if inspected_prompt_join {
+                break;
+            }
+        }
+
+        assert!(inspected_prompt_join, "did not reach lyrebird prompt join");
+        assert!(prompt_labels.contains("VocalsMarker>>"), "{prompt_labels:?}");
+        assert!(prompt_labels.contains("VocalsMarker>"), "{prompt_labels:?}");
+        assert!(prompt_labels.contains("BassMarker>>"), "{prompt_labels:?}");
+        assert!(prompt_labels.contains("BassMarker>"), "{prompt_labels:?}");
+        assert!(!prompt_labels.contains("BackupVocalsMarker>"), "{prompt_labels:?}");
+        assert!(!prompt_labels.contains("BackupVocalsMarker>>"), "{prompt_labels:?}");
+        assert!(!prompt_labels.contains("RhythmGuitarMarker>"), "{prompt_labels:?}");
+        assert!(!prompt_labels.contains("GuitarSoloMarker>"), "{prompt_labels:?}");
+    }
+
+    #[ignore = "diagnostic renderer trace"]
+    #[tokio::test]
+    async fn debug_trace_lyrebird_bass_vocals_step_updates_across_iterations() {
+        let root = std::env::temp_dir().join(format!("lyrebird-debug-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("debug root should be created");
+        let seed = LyrebirdSeed {
+            output_root: root.display().to_string(),
+            instruments: LyrebirdInstrument::ALL
+                .into_iter()
+                .map(|instrument| {
+                    let sample_path = root.join(format!("{}.wav", instrument.output_stem()));
+                    let spectrogram_path = root.join(format!("{}.png", instrument.output_stem()));
+                    let dsp_source_path = root.join(format!("{}.rs", instrument.output_stem()));
+                    LyrebirdInstrumentSeed {
+                        instrument,
+                        disabled: !matches!(
+                            instrument,
+                            LyrebirdInstrument::Vocals | LyrebirdInstrument::Bass
+                        ),
+                        target_sample_path: sample_path.display().to_string(),
+                        target_audio_metrics: LyrebirdAudioMetrics::default(),
+                        target_spectrogram_path: spectrogram_path.display().to_string(),
+                        dsp_source_path: dsp_source_path.display().to_string(),
+                        initial_dsp_code: DspCode {
+                            iteration_id: "initial".to_owned(),
+                            source: format!("// {}\nfn main() {{}}\n", instrument.slug()),
+                            sample_path: sample_path.display().to_string(),
+                            spectrogram_path: spectrogram_path.display().to_string(),
+                            mel_similarity: Some(0.0),
+                            score: Some(0.0),
+                            audio_metrics: None,
+                            audio_metric_errors: None,
+                        },
+                    }
+                })
+                .collect(),
+            instrument_parallelism: 0,
+        };
+
+        let ecosystem = Arc::new(
+            PulseCodeParadise::new(
+                Url::parse("http://localhost:1/v1").expect("debug tokens URL should parse"),
+                None,
+                Some(root.join("mcts.redb")),
+            )
+            .expect("debug lyrebird ecosystem should build")
+            .with_mcts_config(
+                seed.instruments
+                    .iter()
+                    .cloned()
+                    .map(|instrument| (instrument.instrument, instrument.initial_dsp_code)),
+                DEFAULT_TREE_DEPTH,
+            )
+            .with_instrument_parallelism(0),
+        );
+        let mut executor =
+            ContextExecutor::<PulseCodeParadise, Lyrebird>::new(ecosystem, LyrebirdState::default());
+        let journey_id = Uuid::new_v4();
+        executor.set_journey_id(journey_id);
+        let label_by_runtime = jungle_vision::debug_render_states_for_animal::<Lyrebird>(
+            std::iter::empty(),
+        )
+        .into_iter()
+        .filter_map(|node| node.runtime_id.map(|runtime_id| (runtime_id, node.label)))
+        .collect::<std::collections::HashMap<_, _>>();
+
+        let mut seen_begin_iteration_enters = 0_usize;
+        let mut updates = Vec::new();
+        let mut log_lines = Vec::new();
+        let mut sequence_id = 1_u64;
+        for _ in 0..32 {
+            if executor.is_complete() {
+                break;
+            }
+            let mut request = executor
+                .next_executable_request(seed.clone())
+                .expect("debug lyrebird executor should produce a request");
+            let request_node_id = request.node_id();
+            for lifecycle in executor.take_node_lifecycle_updates() {
+                if let Some(label) = label_by_runtime.get(&lifecycle.node_id) {
+                    if label == "BeginIteration"
+                        && matches!(lifecycle.phase, NodeLifecyclePhase::Entered)
+                    {
+                        seen_begin_iteration_enters =
+                            seen_begin_iteration_enters.saturating_add(1);
+                    }
+                    let line = format!(
+                        "seq={} node={} label={} lifecycle={:?} path={:?}",
+                        sequence_id,
+                        lifecycle.node_id,
+                        label,
+                        lifecycle.phase,
+                        lifecycle.activation_path
+                    );
+                    if line.contains("BeginIteration")
+                        || line.contains("FlattenLyrebirdPromptPhase")
+                        || line.contains("RhythmGuitarMarker")
+                        || line.contains("VocalsMarker")
+                        || line.contains("BackupVocalsMarker")
+                        || line.contains("BassMarker")
+                        || line.contains("GuitarSoloMarker")
+                    {
+                        log_lines.push(line);
+                    }
+                }
+                updates.push(JourneyUpdateEvent {
+                    sequence_id,
+                    event_unix_ms: sequence_id as i64,
+                    event: RunnerUpdateOut::NodeLifecycle(lifecycle),
+                });
+                sequence_id = sequence_id.saturating_add(1);
+            }
+            updates.push(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: sequence_id as i64,
+                event: RunnerUpdateOut::EffectInput {
+                    node_id: request_node_id,
+                    uuid: journey_id,
+                },
+            });
+            sequence_id = sequence_id.saturating_add(1);
+            if let Some(mut live_history) = request.take_live_history() {
+                let run = tokio::spawn(async move { request.run().await });
+                while let Some(event) = live_history.next().await {
+                    let update = match event {
+                        RunnerOut::NodeLifecycle(node) => JourneyUpdateEvent {
+                            sequence_id,
+                            event_unix_ms: sequence_id as i64,
+                            event: RunnerUpdateOut::NodeLifecycle(node),
+                        },
+                        RunnerOut::EffectInput { node_id, uuid, .. } => JourneyUpdateEvent {
+                            sequence_id,
+                            event_unix_ms: sequence_id as i64,
+                            event: RunnerUpdateOut::EffectInput { node_id, uuid },
+                        },
+                        RunnerOut::EffectSuccessOutput { node_id, uuid, .. } => {
+                            JourneyUpdateEvent {
+                                sequence_id,
+                                event_unix_ms: sequence_id as i64,
+                                event: RunnerUpdateOut::EffectSuccessOutput { node_id, uuid },
+                            }
+                        }
+                        RunnerOut::EffectFailureOutput { node_id, uuid, .. } => {
+                            JourneyUpdateEvent {
+                                sequence_id,
+                                event_unix_ms: sequence_id as i64,
+                                event: RunnerUpdateOut::EffectFailureOutput { node_id, uuid },
+                            }
+                        }
+                        RunnerOut::SleepScheduled {
+                            uuid,
+                            timer_id,
+                            wake_at_unix_ms,
+                        } => JourneyUpdateEvent {
+                            sequence_id,
+                            event_unix_ms: sequence_id as i64,
+                            event: RunnerUpdateOut::SleepScheduled {
+                                uuid,
+                                timer_id,
+                                wake_at_unix_ms,
+                            },
+                        },
+                        RunnerOut::SleepFired {
+                            uuid,
+                            timer_id,
+                            fired_at_unix_ms,
+                        } => JourneyUpdateEvent {
+                            sequence_id,
+                            event_unix_ms: sequence_id as i64,
+                            event: RunnerUpdateOut::SleepFired {
+                                uuid,
+                                timer_id,
+                                fired_at_unix_ms,
+                            },
+                        },
+                        RunnerOut::Appearance { .. } => {
+                            sequence_id = sequence_id.saturating_add(1);
+                            continue;
+                        }
+                    };
+                    sequence_id = sequence_id.saturating_add(1);
+                    if let Some(line) = match &update.event {
+                        RunnerUpdateOut::NodeLifecycle(node) => {
+                            label_by_runtime.get(&node.node_id).cloned().map(|label| {
+                                if label == "BeginIteration"
+                                    && matches!(node.phase, NodeLifecyclePhase::Entered)
+                                {
+                                    seen_begin_iteration_enters =
+                                        seen_begin_iteration_enters.saturating_add(1);
+                                }
+                                format!(
+                                    "seq={} node={} label={} lifecycle={:?} path={:?}",
+                                    update.sequence_id,
+                                    node.node_id,
+                                    label,
+                                    node.phase,
+                                    node.activation_path
+                                )
+                            })
+                        }
+                        RunnerUpdateOut::EffectInput { node_id, .. } => label_by_runtime
+                            .get(node_id)
+                            .cloned()
+                            .map(|label| {
+                                format!(
+                                    "seq={} node={} label={} effect=input",
+                                    update.sequence_id, node_id, label
+                                )
+                            }),
+                        RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => label_by_runtime
+                            .get(node_id)
+                            .cloned()
+                            .map(|label| {
+                                format!(
+                                    "seq={} node={} label={} effect=success",
+                                    update.sequence_id, node_id, label
+                                )
+                            }),
+                        RunnerUpdateOut::EffectFailureOutput { node_id, .. } => label_by_runtime
+                            .get(node_id)
+                            .cloned()
+                            .map(|label| {
+                                format!(
+                                    "seq={} node={} label={} effect=failure",
+                                    update.sequence_id, node_id, label
+                                )
+                            }),
+                        RunnerUpdateOut::SleepScheduled { .. }
+                        | RunnerUpdateOut::SleepFired { .. } => None,
+                    }
+                    .filter(|line| {
+                        line.contains("BeginIteration")
+                            || line.contains("FlattenLyrebirdPromptPhase")
+                            || line.contains("RhythmGuitarMarker")
+                            || line.contains("VocalsMarker")
+                            || line.contains("BackupVocalsMarker")
+                            || line.contains("BassMarker")
+                            || line.contains("GuitarSoloMarker")
+                    }) {
+                        log_lines.push(line);
+                    }
+                    updates.push(update);
+                }
+                let completion = run
+                    .await
+                    .expect("debug lyrebird runner should join")
+                    .expect("debug lyrebird request should complete");
+                updates.push(JourneyUpdateEvent {
+                    sequence_id,
+                    event_unix_ms: sequence_id as i64,
+                    event: RunnerUpdateOut::EffectSuccessOutput {
+                        node_id: request_node_id,
+                        uuid: journey_id,
+                    },
+                });
+                sequence_id = sequence_id.saturating_add(1);
+                let _ = executor
+                    .complete_serialized(completion)
+                    .expect("debug lyrebird completion should apply");
+            } else {
+                let completion = request
+                    .run()
+                    .await
+                    .expect("debug lyrebird request should complete");
+                updates.push(JourneyUpdateEvent {
+                    sequence_id,
+                    event_unix_ms: sequence_id as i64,
+                    event: RunnerUpdateOut::EffectSuccessOutput {
+                        node_id: request_node_id,
+                        uuid: journey_id,
+                    },
+                });
+                sequence_id = sequence_id.saturating_add(1);
+                let _ = executor
+                    .complete_serialized(completion)
+                    .expect("debug lyrebird completion should apply");
+            }
+            for lifecycle in executor.take_node_lifecycle_updates() {
+                if let Some(label) = label_by_runtime.get(&lifecycle.node_id) {
+                    if label == "BeginIteration"
+                        && matches!(lifecycle.phase, NodeLifecyclePhase::Entered)
+                    {
+                        seen_begin_iteration_enters =
+                            seen_begin_iteration_enters.saturating_add(1);
+                    }
+                    let line = format!(
+                        "seq={} node={} label={} lifecycle={:?} path={:?}",
+                        sequence_id,
+                        lifecycle.node_id,
+                        label,
+                        lifecycle.phase,
+                        lifecycle.activation_path
+                    );
+                    if line.contains("BeginIteration")
+                        || line.contains("FlattenLyrebirdPromptPhase")
+                        || line.contains("RhythmGuitarMarker")
+                        || line.contains("VocalsMarker")
+                        || line.contains("BackupVocalsMarker")
+                        || line.contains("BassMarker")
+                        || line.contains("GuitarSoloMarker")
+                    {
+                        log_lines.push(line);
+                    }
+                }
+                updates.push(JourneyUpdateEvent {
+                    sequence_id,
+                    event_unix_ms: sequence_id as i64,
+                    event: RunnerUpdateOut::NodeLifecycle(lifecycle),
+                });
+                sequence_id = sequence_id.saturating_add(1);
+            }
+
+            if seen_begin_iteration_enters >= 3 && log_lines.len() >= 40 {
+                break;
+            }
+        }
+
+        let rendered = jungle_vision::debug_render_states_for_animal::<Lyrebird>(updates.clone())
+            .into_iter()
+            .filter(|node| {
+                node.label.contains("RhythmGuitarMarker")
+                    || node.label.contains("VocalsMarker")
+                    || node.label.contains("BackupVocalsMarker")
+                    || node.label.contains("BassMarker")
+                    || node.label.contains("GuitarSoloMarker")
+            })
+            .map(|node| format!("{} => {:?}", node.label, node.state))
+            .collect::<Vec<_>>();
+        let first_iteration_rendered = jungle_vision::debug_render_states_for_animal::<Lyrebird>(
+            updates
+                .iter()
+                .filter(|update| update.sequence_id < 122)
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .filter(|node| {
+            node.label.contains("RhythmGuitarMarker")
+                || node.label.contains("VocalsMarker")
+                || node.label.contains("BackupVocalsMarker")
+                || node.label.contains("BassMarker")
+                || node.label.contains("GuitarSoloMarker")
+        })
+        .map(|node| format!("{} => {:?}", node.label, node.state))
+        .collect::<Vec<_>>();
+        let mut vocals_transitions = Vec::new();
+        for cutoff in 1..122_u64 {
+            let states = jungle_vision::debug_render_states_for_animal::<Lyrebird>(
+                updates
+                    .iter()
+                    .filter(|update| update.sequence_id <= cutoff)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            );
+            let mut interesting = states
+                .into_iter()
+                .filter(|node| {
+                    matches!(
+                        node.label.as_str(),
+                        "VocalsMarker>>" | "VocalsMarker>" | "BassMarker>>" | "BassMarker>"
+                    )
+                })
+                .map(|node| format!("{}={:?}", node.label, node.state))
+                .collect::<Vec<_>>();
+            interesting.sort();
+            if interesting.iter().any(|entry| !entry.ends_with("Pending")) {
+                vocals_transitions.push(format!("cutoff={cutoff} {}", interesting.join(" ")));
+            }
+        }
+        let debug_events = updates
+            .iter()
+            .filter(|update| (28..=32).contains(&update.sequence_id) || (52..=56).contains(&update.sequence_id))
+            .map(|update| match &update.event {
+                RunnerUpdateOut::NodeLifecycle(node) => format!(
+                    "seq={} lifecycle node={} label={} phase={:?} path={:?}",
+                    update.sequence_id,
+                    node.node_id,
+                    label_by_runtime
+                        .get(&node.node_id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("<{}>", node.node_id)),
+                    node.phase,
+                    node.activation_path
+                ),
+                RunnerUpdateOut::EffectInput { node_id, .. } => format!(
+                    "seq={} effect_input node={} label={}",
+                    update.sequence_id,
+                    node_id,
+                    label_by_runtime
+                        .get(node_id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("<{}>", node_id))
+                ),
+                RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => format!(
+                    "seq={} effect_success node={} label={}",
+                    update.sequence_id,
+                    node_id,
+                    label_by_runtime
+                        .get(node_id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("<{}>", node_id))
+                ),
+                RunnerUpdateOut::EffectFailureOutput { node_id, .. } => format!(
+                    "seq={} effect_failure node={} label={}",
+                    update.sequence_id,
+                    node_id,
+                    label_by_runtime
+                        .get(node_id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("<{}>", node_id))
+                ),
+                RunnerUpdateOut::SleepScheduled { timer_id, .. } => {
+                    format!("seq={} sleep_scheduled timer={timer_id}", update.sequence_id)
+                }
+                RunnerUpdateOut::SleepFired { timer_id, .. } => {
+                    format!("seq={} sleep_fired timer={timer_id}", update.sequence_id)
+                }
+            })
+            .collect::<Vec<_>>();
+        let cutoff_29_decisions = jungle_vision::debug_runtime_decisions_for_animal::<Lyrebird>(
+            updates
+                .iter()
+                .filter(|update| update.sequence_id <= 29)
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .filter(|node| matches!(node.label.as_str(), "VocalsMarker>" | "VocalsMarker>>"))
+        .map(|node| {
+            format!(
+                "cutoff=29 label={} runtime={:?} state={:?} seq={:?} floor={:?} path={:?} prefix={:?}",
+                node.label,
+                node.runtime_id,
+                node.state,
+                node.sequence,
+                node.floor,
+                node.activation_path,
+                node.required_prefix
+            )
+        })
+        .collect::<Vec<_>>();
+        let cutoff_30_decisions = jungle_vision::debug_runtime_decisions_for_animal::<Lyrebird>(
+            updates
+                .iter()
+                .filter(|update| update.sequence_id <= 30)
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .filter(|node| matches!(node.label.as_str(), "VocalsMarker>" | "VocalsMarker>>"))
+        .map(|node| {
+            format!(
+                "cutoff=30 label={} runtime={:?} state={:?} seq={:?} floor={:?} path={:?} prefix={:?}",
+                node.label,
+                node.runtime_id,
+                node.state,
+                node.sequence,
+                node.floor,
+                node.activation_path,
+                node.required_prefix
+            )
+        })
+        .collect::<Vec<_>>();
+
+        println!("trace:\n{}", log_lines.join("\n"));
+        println!("debug-events:\n{}", debug_events.join("\n"));
+        println!("cutoff-29-decisions:\n{}", cutoff_29_decisions.join("\n"));
+        println!("cutoff-30-decisions:\n{}", cutoff_30_decisions.join("\n"));
+        println!("transitions:\n{}", vocals_transitions.join("\n"));
+        println!("first-iteration-rendered:\n{}", first_iteration_rendered.join("\n"));
+        println!("rendered:\n{}", rendered.join("\n"));
+        }
 
     #[test]
     fn aggregate_sample_score_weights_mel_similarity_three_times() {

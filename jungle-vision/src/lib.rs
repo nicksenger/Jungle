@@ -866,6 +866,18 @@ pub struct DebugRenderStateNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct DebugRuntimeDecisionNode {
+    pub id: u32,
+    pub label: String,
+    pub runtime_id: Option<u32>,
+    pub state: RuntimeState,
+    pub sequence: Option<usize>,
+    pub floor: Option<usize>,
+    pub activation_path: Option<Vec<u64>>,
+    pub required_prefix: Option<Vec<u64>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct DebugGraph {
     pub nodes: Vec<DebugGraphNode>,
     pub edges: Vec<(u32, u32)>,
@@ -895,6 +907,53 @@ where
             .map(|cluster| cluster.nodes.clone())
             .collect(),
     }
+}
+
+pub fn debug_plain_layout_for_animal<A>() -> String
+where
+    A: Animal + 'static,
+    A::Flow: JourneyAstSource,
+{
+    let ast = <A::Flow as JourneyAstSource>::journey_ast();
+    let model = GraphModel::from_ast(ast);
+    let nodes = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+    let clusters = model
+        .clusters
+        .iter()
+        .map(|cluster| {
+            let mut converted = iced_sugiyama::Cluster::new(cluster.nodes.clone());
+            if let Some(padding) = cluster.padding {
+                converted = converted.padding(padding);
+            }
+            if let Some(parent) = cluster.parent {
+                converted = converted.parent(parent);
+            }
+            converted
+        })
+        .collect::<Vec<_>>();
+    iced_sugiyama::graphviz_plain_layout(
+        &nodes,
+        &model.edges,
+        &rust_sugiyama::Config::default(),
+        |_id| (NODE_WIDTH, NODE_HEIGHT),
+        |id| {
+            model
+                .node_map
+                .get(&id)
+                .map(|node| node.label.clone())
+                .unwrap_or_else(|| format!("node-{id}"))
+        },
+        |_edge_index, _edge| None,
+        &clusters,
+        &rust_sugiyama::RenderConfig::default(),
+        |index, _cluster| {
+            model
+                .cluster_info
+                .get(index)
+                .map(|cluster| cluster.label.clone())
+                .unwrap_or_else(|| format!("cluster-{index}"))
+        },
+    )
 }
 
 pub fn debug_render_states_for_animal<A>(
@@ -927,6 +986,55 @@ where
                 .get(&node.id)
                 .copied()
                 .unwrap_or(RuntimeState::Pending),
+        })
+        .collect()
+}
+
+pub fn debug_runtime_decisions_for_animal<A>(
+    updates: impl IntoIterator<Item = JourneyUpdateEvent>,
+) -> Vec<DebugRuntimeDecisionNode>
+where
+    A: Animal + 'static,
+    A::Flow: JourneyAstSource,
+{
+    let ast = <A::Flow as JourneyAstSource>::journey_ast();
+    let model = GraphModel::from_ast(ast);
+    let mut live = LiveData::default();
+    live.bind_model(&model);
+    for update in updates {
+        let _ = live.apply_update(update);
+    }
+    let runtime_sequence_floors = runtime_sequence_floors_for_display(&model, &live);
+    let runtime_activation_prefixes = runtime_activation_prefixes_for_display(&model, &live);
+    let live_states = live_states_for_display(
+        &model,
+        Some(&live),
+        &model.derived.condition_successor_runtime_ids,
+    );
+
+    model
+        .nodes
+        .iter()
+        .map(|node| DebugRuntimeDecisionNode {
+            id: node.id,
+            label: node.label.clone(),
+            runtime_id: node.runtime_node_id,
+            state: live_states
+                .get(&node.id)
+                .copied()
+                .unwrap_or(RuntimeState::Pending),
+            sequence: node
+                .runtime_node_id
+                .and_then(|id| live.runtime_update_sequence.get(&id).copied()),
+            floor: node
+                .runtime_node_id
+                .and_then(|id| runtime_sequence_floors.get(&id).copied()),
+            activation_path: node
+                .runtime_node_id
+                .and_then(|id| live.runtime_activation_paths.get(&id).cloned()),
+            required_prefix: node
+                .runtime_node_id
+                .and_then(|id| runtime_activation_prefixes.get(&id).cloned()),
         })
         .collect()
 }
@@ -1773,34 +1881,45 @@ fn active_conditional_branch_sides(
 
     for branch in &model.derived.conditional_branches {
         let branch_signal_for_side = |display_ids: &[u32]| {
-            display_ids
-                .iter()
-                .filter_map(|display_id| {
-                    let node = model.node_map.get(display_id)?;
-                    let runtime_id = node.runtime_node_id?;
-                    if !runtime_observed_in_current_iteration(
-                        live,
-                        runtime_id,
-                        runtime_sequence_floors,
-                        runtime_activation_prefixes,
-                    ) {
-                        return None;
-                    }
-                    let sequence = live.runtime_update_sequence.get(&runtime_id).copied()?;
-                    let priority = match runtime_state_for_live_data_with_activation_prefixes(
-                        live,
-                        runtime_id,
-                        runtime_sequence_floors,
-                        runtime_activation_prefixes,
-                    ) {
-                        RuntimeState::Failed => 3_u8,
-                        RuntimeState::Running => 2_u8,
-                        RuntimeState::Completed => 1_u8,
-                        RuntimeState::Pending => 0_u8,
-                    };
-                    Some((priority, sequence))
-                })
-                .max()
+            let mut earliest_sequence = None::<usize>;
+            let mut best_priority = 0_u8;
+            for display_id in display_ids {
+                let Some(node) = model.node_map.get(display_id) else {
+                    continue;
+                };
+                let Some(runtime_id) = node.runtime_node_id else {
+                    continue;
+                };
+                if !runtime_observed_in_current_iteration(
+                    live,
+                    runtime_id,
+                    runtime_sequence_floors,
+                    runtime_activation_prefixes,
+                ) {
+                    continue;
+                }
+                let Some(sequence) = live.runtime_update_sequence.get(&runtime_id).copied() else {
+                    continue;
+                };
+                let priority = match runtime_state_for_live_data_with_activation_prefixes(
+                    live,
+                    runtime_id,
+                    runtime_sequence_floors,
+                    runtime_activation_prefixes,
+                ) {
+                    RuntimeState::Failed => 3_u8,
+                    RuntimeState::Running => 2_u8,
+                    RuntimeState::Completed => 1_u8,
+                    RuntimeState::Pending => 0_u8,
+                };
+                best_priority = best_priority.max(priority);
+                earliest_sequence = Some(
+                    earliest_sequence
+                        .map(|current| current.min(sequence))
+                        .unwrap_or(sequence),
+                );
+            }
+            earliest_sequence.map(|sequence| (best_priority, sequence))
         };
 
         let left_signal = branch_signal_for_side(&branch.left_member_display_ids);
@@ -1814,9 +1933,13 @@ fn active_conditional_branch_sides(
                 active.insert(branch.condition_display_id, ConditionalSide::Right);
             }
             (Some(left_signal), Some(right_signal)) => {
-                if left_signal > right_signal {
+                if left_signal.0 > right_signal.0
+                    || (left_signal.0 == right_signal.0 && left_signal.1 < right_signal.1)
+                {
                     active.insert(branch.condition_display_id, ConditionalSide::Left);
-                } else if right_signal > left_signal {
+                } else if right_signal.0 > left_signal.0
+                    || (right_signal.0 == left_signal.0 && right_signal.1 < left_signal.1)
+                {
                     active.insert(branch.condition_display_id, ConditionalSide::Right);
                 }
             }
