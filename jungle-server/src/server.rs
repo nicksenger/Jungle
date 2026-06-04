@@ -612,6 +612,7 @@ impl JungleServer for Server {
                 {
                     let history_event_age_ms = now_unix_ms().saturating_sub(event_unix_ms);
                     let journey_id = match &history {
+                        jungle_types::RunnerOut::NodeLifecycle(node) => node.uuid,
                         jungle_types::RunnerOut::EffectInput { uuid, .. }
                         | jungle_types::RunnerOut::EffectSuccessOutput { uuid, .. }
                         | jungle_types::RunnerOut::EffectFailureOutput { uuid, .. }
@@ -626,6 +627,7 @@ impl JungleServer for Server {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
                         })?;
                     match history {
+                        jungle_types::RunnerOut::NodeLifecycle(..) => {}
                         jungle_types::RunnerOut::Appearance { data, uuid } => {
                             let appearance_started_at = TokioInstant::now();
                             self.store

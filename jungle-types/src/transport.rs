@@ -7,9 +7,25 @@ pub enum BackendError {
     Message(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NodeLifecyclePhase {
+    Entered,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeLifecycle {
+    pub node_id: u32,
+    pub activation_path: Vec<u64>,
+    pub phase: NodeLifecyclePhase,
+    pub uuid: Uuid,
+}
+
 /// Transport messages sent from runners to external clients.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RunnerOut {
+    NodeLifecycle(NodeLifecycle),
     EffectInput {
         node_id: u32,
         data: Vec<u8>,
@@ -53,6 +69,7 @@ pub struct JourneyEvent {
 /// streams inexpensive for long-running journeys.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RunnerUpdateOut {
+    NodeLifecycle(NodeLifecycle),
     EffectInput {
         node_id: u32,
         uuid: Uuid,

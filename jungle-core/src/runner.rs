@@ -47,6 +47,7 @@ where
             BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
     {
         let mut executor = self.new_executor::<A>(state);
+        executor.set_journey_id(journey_id);
         let appearance = self.initial_appearance::<A>(&executor)?;
         self.emit_appearance(journey_id, appearance, &mut tx)
             .await?;
@@ -120,9 +121,13 @@ where
             process_perturbations(executor, journey_id, tx).await?;
             let request = match executor.next_executable_request(initial_input.clone()) {
                 Ok(request) => request,
-                Err(ExecutorError::Complete) => break,
+                Err(ExecutorError::Complete) => {
+                    send_lifecycle_updates(executor, tx).await?;
+                    break;
+                }
                 Err(err) => return Err(err),
             };
+            send_lifecycle_updates(executor, tx).await?;
             let node_id = request.node_id();
             send_history(
                 tx,
@@ -198,8 +203,8 @@ async fn apply_completion_and_emit_appearance<T, A>(
 ) -> Result<(), ExecutorError>
 where
     T: 'static,
-    A: BoundAnimal + Observable,
-    BoundAnimalJourney<A>:
+        A: BoundAnimal + Observable,
+        BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     match &completion {
@@ -227,6 +232,7 @@ where
         }
     }
     let _emitted = executor.complete_serialized(completion)?;
+    send_lifecycle_updates(executor, tx).await?;
     if let Some(appearance) =
         <<A as Observable>::Observation as ObservationBridge<A>>::snapshot(executor.state())?
     {
@@ -238,6 +244,22 @@ where
             },
         )
         .await?;
+    }
+    Ok(())
+}
+
+async fn send_lifecycle_updates<T, A>(
+    executor: &mut ContextExecutor<T, A>,
+    tx: &mut RunnerChannelTx,
+) -> Result<(), ExecutorError>
+where
+    T: 'static,
+    A: BoundAnimal,
+    BoundAnimalJourney<A>:
+        BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
+{
+    for update in executor.take_node_lifecycle_updates() {
+        send_history(tx, RunnerOut::NodeLifecycle(update)).await?;
     }
     Ok(())
 }

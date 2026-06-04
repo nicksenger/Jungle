@@ -9,7 +9,10 @@ use iced::{Color, Element, Font, Length, Subscription, Task};
 use iced_sugiyama::{AutoFit, Cluster, Graph, OutgoingEdgeStyle, Sugiyama, ViewportInteraction};
 use jungle_client::client::JourneyUpdateSubscription;
 use jungle_client::JungleClient;
-use jungle_types::{Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, RunnerUpdateOut};
+use jungle_types::{
+    Animal, JourneyAst, JourneyAstSource, JourneyUpdateEvent, NodeLifecyclePhase,
+    RunnerUpdateOut,
+};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -605,6 +608,9 @@ where
                 Task::none()
             }
             EjectedViewerMessage::HydrateLiveEvents(updates) => {
+                let model = match &self.mode {
+                    ViewMode::Static { model, .. } | ViewMode::Live { model, .. } => model,
+                };
                 let mut theme_tasks = Vec::with_capacity(updates.len());
                 let data = match &mut self.state {
                     LiveState::Loaded(data) => data,
@@ -617,6 +623,7 @@ where
                     }
                 };
                 let mut highlight_changed = false;
+                data.bind_model(model);
                 for update in updates {
                     theme_tasks.push(
                         self.theme
@@ -640,6 +647,9 @@ where
                 update,
                 received_unix_ms,
             } => {
+                let model = match &self.mode {
+                    ViewMode::Static { model, .. } | ViewMode::Live { model, .. } => model,
+                };
                 let apply_started_at = Instant::now();
                 let now_unix_ms = current_unix_ms();
                 let apply_queue_delay_ms = now_unix_ms.saturating_sub(received_unix_ms);
@@ -669,6 +679,7 @@ where
                         }
                     }
                 };
+                data.bind_model(model);
                 let highlight_changed = data.apply_update(update);
                 let apply_elapsed_ms = apply_started_at.elapsed().as_millis();
                 let apply_count = VISION_APPLY_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
@@ -923,6 +934,8 @@ struct LiveData {
     active_runtime_ids: BTreeSet<u32>,
     finished_runtime_ids: BTreeSet<u32>,
     failed_runtime_ids: BTreeSet<u32>,
+    descendant_runtime_ids_by_runtime_id: HashMap<u32, Vec<u32>>,
+    runtime_activation_paths: HashMap<u32, Vec<u64>>,
     runtime_update_sequence: HashMap<u32, usize>,
     latest_event_count: usize,
 }
@@ -998,6 +1011,9 @@ where
                 Task::none()
             }
             Message::HydrateLiveEvents(updates) => {
+                let model = match &self.mode {
+                    ViewMode::Static { model, .. } | ViewMode::Live { model, .. } => model,
+                };
                 let mut theme_tasks = Vec::with_capacity(updates.len());
                 let data = match &mut self.state {
                     LiveState::Loaded(data) => data,
@@ -1010,6 +1026,7 @@ where
                     }
                 };
                 let mut highlight_changed = false;
+                data.bind_model(model);
                 for update in updates {
                     theme_tasks.push(
                         self.theme
@@ -1030,6 +1047,9 @@ where
                 }
             }
             Message::ApplyLiveEvent(update) => {
+                let model = match &self.mode {
+                    ViewMode::Static { model, .. } | ViewMode::Live { model, .. } => model,
+                };
                 let theme_task = self
                     .theme
                     .update(
@@ -1047,6 +1067,7 @@ where
                         }
                     }
                 };
+                data.bind_model(model);
                 let highlight_changed = data.apply_update(update);
                 if highlight_changed {
                     iced_sugiyama::invalidate::<Message>(self.graph_widget_id.clone())
@@ -1366,6 +1387,11 @@ async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<Pa
 }
 
 impl LiveData {
+    fn bind_model(&mut self, model: &GraphModel) {
+        self.descendant_runtime_ids_by_runtime_id =
+            model.derived.descendant_runtime_ids_by_runtime_id.clone();
+    }
+
     fn apply_update(&mut self, update: JourneyUpdateEvent) -> bool {
         let mut highlight_changed = false;
         let sequence = update.sequence_id as usize;
@@ -1387,18 +1413,71 @@ impl LiveData {
                 highlight_changed |= self.failed_runtime_ids.insert(node_id);
                 self.runtime_update_sequence.insert(node_id, sequence);
             }
+            RunnerUpdateOut::NodeLifecycle(node) => {
+                if matches!(node.phase, NodeLifecyclePhase::Entered) {
+                    highlight_changed |=
+                        self.clear_stale_descendants(node.node_id, &node.activation_path);
+                }
+                highlight_changed |= self.active_runtime_ids.remove(&node.node_id);
+                highlight_changed |= self.finished_runtime_ids.remove(&node.node_id);
+                highlight_changed |= self.failed_runtime_ids.remove(&node.node_id);
+                match node.phase {
+                    NodeLifecyclePhase::Entered => {
+                        highlight_changed |= self.active_runtime_ids.insert(node.node_id);
+                    }
+                    NodeLifecyclePhase::Succeeded => {
+                        highlight_changed |= self.finished_runtime_ids.insert(node.node_id);
+                    }
+                    NodeLifecyclePhase::Failed => {
+                        highlight_changed |= self.failed_runtime_ids.insert(node.node_id);
+                    }
+                }
+                self.runtime_update_sequence.insert(node.node_id, sequence);
+                self.runtime_activation_paths
+                    .insert(node.node_id, node.activation_path);
+            }
             RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
         }
         highlight_changed
+    }
+
+    fn clear_stale_descendants(
+        &mut self,
+        ancestor_runtime_id: u32,
+        activation_path: &[u64],
+    ) -> bool {
+        let Some(descendants) = self
+            .descendant_runtime_ids_by_runtime_id
+            .get(&ancestor_runtime_id)
+            .cloned()
+        else {
+            return false;
+        };
+
+        let mut changed = false;
+        for runtime_id in descendants {
+            let Some(path) = self.runtime_activation_paths.get(&runtime_id) else {
+                continue;
+            };
+            if path.len() <= activation_path.len() || path.starts_with(activation_path) {
+                continue;
+            }
+            changed |= self.active_runtime_ids.remove(&runtime_id);
+            changed |= self.finished_runtime_ids.remove(&runtime_id);
+            changed |= self.failed_runtime_ids.remove(&runtime_id);
+            changed |= self.runtime_update_sequence.remove(&runtime_id).is_some();
+            changed |= self.runtime_activation_paths.remove(&runtime_id).is_some();
+        }
+        changed
     }
 }
 
 fn runtime_state_for_live_data(
     live: &LiveData,
     runtime_id: u32,
-    runtime_sequence_floors: &HashMap<u32, usize>,
+    _runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> RuntimeState {
-    let state = if live.failed_runtime_ids.contains(&runtime_id) {
+    if live.failed_runtime_ids.contains(&runtime_id) {
         RuntimeState::Failed
     } else if live.active_runtime_ids.contains(&runtime_id) {
         RuntimeState::Running
@@ -1406,18 +1485,6 @@ fn runtime_state_for_live_data(
         RuntimeState::Completed
     } else {
         RuntimeState::Pending
-    };
-
-    let Some(sequence) = live.runtime_update_sequence.get(&runtime_id).copied() else {
-        return state;
-    };
-    let Some(floor) = runtime_sequence_floors.get(&runtime_id).copied() else {
-        return state;
-    };
-    if sequence < floor {
-        RuntimeState::Pending
-    } else {
-        state
     }
 }
 
@@ -1496,7 +1563,7 @@ fn node_phase_for_display_with_runtime_floors(
     live_data: Option<&LiveData>,
     display_id: u32,
     runtime_id: Option<u32>,
-    proxy_runtime_ids: &[u32],
+    _proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
     runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> Phase<RuntimeState> {
@@ -1517,31 +1584,7 @@ fn node_phase_for_display_with_runtime_floors(
             })
             .unwrap_or(RuntimeState::Pending),
     };
-
-    let mut newest = runtime_id.and_then(|id| {
-        live.runtime_update_sequence
-            .get(&id)
-            .copied()
-            .map(|sequence| (sequence, state))
-    });
-    for proxy_runtime_id in proxy_runtime_ids {
-        let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
-            continue;
-        };
-        let proxy_state =
-            runtime_state_for_live_data(live, *proxy_runtime_id, runtime_sequence_floors);
-        if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
-            continue;
-        }
-        if newest
-            .map(|(best_sequence, _)| sequence > best_sequence)
-            .unwrap_or(true)
-        {
-            newest = Some((sequence, proxy_state));
-        }
-    }
-
-    Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
+    Phase::Live(state)
 }
 
 fn repaired_live_states_for_display(
@@ -1549,148 +1592,35 @@ fn repaired_live_states_for_display(
     live_data: Option<&LiveData>,
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> HashMap<u32, RuntimeState> {
-    let Some(live) = live_data else {
+    let Some(_live) = live_data else {
         return HashMap::new();
     };
-    let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
 
-    let mut states = HashMap::<u32, RuntimeState>::new();
-    let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
-    for node in &model.nodes {
-        let mut latest_sequence = node
-            .runtime_node_id
-            .and_then(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied());
-        for proxy_runtime_id in &node.proxy_runtime_ids {
-            let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
-                continue;
+    model
+        .nodes
+        .iter()
+        .map(|node| {
+            let phase = node_phase_for_display(
+                live_data,
+                node.id,
+                node.runtime_node_id,
+                &node.proxy_runtime_ids,
+                condition_successor_runtime_ids,
+            );
+            let state = match phase {
+                Phase::Live(state) => state,
+                Phase::Static => RuntimeState::Pending,
             };
-            let proxy_state =
-                runtime_state_for_live_data(live, *proxy_runtime_id, &runtime_sequence_floors);
-            if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
-                continue;
-            }
-            if latest_sequence
-                .map(|current| sequence > current)
-                .unwrap_or(true)
-            {
-                latest_sequence = Some(sequence);
-            }
-        }
-        if let Some(sequence) = latest_sequence {
-            latest_sequence_by_display_id.insert(node.id, sequence);
-        }
-
-        let phase = node_phase_for_display_with_runtime_floors(
-            Some(live),
-            node.id,
-            node.runtime_node_id,
-            &node.proxy_runtime_ids,
-            condition_successor_runtime_ids,
-            &runtime_sequence_floors,
-        );
-        let state = match phase {
-            Phase::Live(state) => state,
-            Phase::Static => RuntimeState::Pending,
-        };
-        states.insert(node.id, state);
-    }
-
-    let mut loop_back_edges = HashSet::<(u32, u32)>::new();
-    for cluster in &model.cluster_info {
-        if !matches!(cluster.kind, ClusterKind::While) {
-            continue;
-        }
-        let root_nodes = cluster.root_nodes.iter().copied().collect::<HashSet<_>>();
-        let member_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
-        for (from, to) in &model.edges {
-            if member_nodes.contains(from) && root_nodes.contains(to) {
-                loop_back_edges.insert((*from, *to));
-            }
-        }
-    }
-
-    let mut incoming = HashMap::<u32, Vec<u32>>::new();
-    for (from, to) in &model.edges {
-        if loop_back_edges.contains(&(*from, *to)) {
-            continue;
-        }
-        incoming.entry(*to).or_default().push(*from);
-    }
-
-    let mut queue = std::collections::VecDeque::<u32>::new();
-    let mut queued = HashSet::<u32>::new();
-    for (node_id, state) in &states {
-        if matches!(state, RuntimeState::Running | RuntimeState::Completed) {
-            queue.push_back(*node_id);
-            queued.insert(*node_id);
-        }
-    }
-
-    while let Some(node_id) = queue.pop_front() {
-        queued.remove(&node_id);
-        let Some(predecessors) = incoming.get(&node_id) else {
-            continue;
-        };
-        for predecessor in predecessors {
-            let predecessor_state = states
-                .get(predecessor)
-                .copied()
-                .unwrap_or(RuntimeState::Pending);
-            if !matches!(
-                predecessor_state,
-                RuntimeState::Pending | RuntimeState::Running
-            ) {
-                continue;
-            }
-            if matches!(predecessor_state, RuntimeState::Running) {
-                let can_promote_running = match (
-                    latest_sequence_by_display_id.get(&node_id).copied(),
-                    latest_sequence_by_display_id.get(predecessor).copied(),
-                ) {
-                    (Some(trigger_sequence), Some(predecessor_sequence)) => {
-                        trigger_sequence.saturating_sub(predecessor_sequence)
-                            >= RUNNING_REPAIR_PROMOTION_SEQUENCE_GAP
-                    }
-                    _ => true,
-                };
-                if !can_promote_running {
-                    continue;
-                }
-            }
-            states.insert(*predecessor, RuntimeState::Completed);
-            if queued.insert(*predecessor) {
-                queue.push_back(*predecessor);
-            }
-        }
-    }
-
-    states
+            (node.id, state)
+        })
+        .collect()
 }
 
-fn runtime_sequence_floors_for_display(model: &GraphModel, live: &LiveData) -> HashMap<u32, usize> {
-    let mut floors = HashMap::<u32, usize>::new();
-    for (index, cluster) in model.cluster_info.iter().enumerate() {
-        if !matches!(cluster.kind, ClusterKind::While) {
-            continue;
-        }
-
-        let iteration_start_sequence = model.derived.cluster_entry_runtime_ids[index]
-            .iter()
-            .filter_map(|runtime_id| live.runtime_update_sequence.get(runtime_id).copied())
-            .max();
-        let Some(iteration_start_sequence) = iteration_start_sequence else {
-            continue;
-        };
-
-        for runtime_id in &model.derived.cluster_member_runtime_ids[index] {
-            floors
-                .entry(*runtime_id)
-                .and_modify(|current| *current = (*current).max(iteration_start_sequence))
-                .or_insert(iteration_start_sequence);
-        }
-    }
-
-    floors
+fn runtime_sequence_floors_for_display(
+    _model: &GraphModel,
+    _live: &LiveData,
+) -> HashMap<u32, usize> {
+    HashMap::new()
 }
 
 fn live_states_for_display(
@@ -1760,14 +1690,33 @@ fn cluster_phase_for_display(
     cluster: &ClusterInfo,
     repaired_live_states: &HashMap<u32, RuntimeState>,
 ) -> Phase<ClusterLive> {
-    if live_data.is_some() {
-        Phase::Live(cluster_live_from_repaired_states(
+    let Some(live) = live_data else {
+        return Phase::Static;
+    };
+
+    let mut has_running = false;
+    let mut has_failed = false;
+    let mut has_completed = false;
+    for runtime_id in &cluster.member_runtime_ids {
+        match runtime_state_for_live_data(live, *runtime_id, &HashMap::new()) {
+            RuntimeState::Pending => {}
+            RuntimeState::Running => has_running = true,
+            RuntimeState::Completed => has_completed = true,
+            RuntimeState::Failed => has_failed = true,
+        }
+    }
+    if !has_running && !has_failed && !has_completed {
+        return Phase::Live(cluster_live_from_repaired_states(
             cluster,
             repaired_live_states,
-        ))
-    } else {
-        Phase::Static
+        ));
     }
+
+    Phase::Live(ClusterLive {
+        has_running,
+        has_failed,
+        has_completed,
+    })
 }
 
 fn sidebar<'a>(
@@ -2383,14 +2332,22 @@ impl GraphModel {
         let mut builder = GraphBuilder::default();
         builder.flatten(&ast);
 
-        let nodes = builder.nodes;
-        let edges = builder.edges;
-        let cluster_info = builder.cluster_info;
+        let descendant_runtime_ids_by_runtime_id =
+            builder.descendant_runtime_ids_by_runtime_id.clone();
+        let nodes = std::mem::take(&mut builder.nodes);
+        let edges = std::mem::take(&mut builder.edges);
+        let cluster_info = std::mem::take(&mut builder.cluster_info);
         let node_map = nodes
             .iter()
             .map(|node| (node.id, node.clone()))
             .collect::<HashMap<_, _>>();
-        let derived = GraphDerived::build(&nodes, &node_map, &edges, &cluster_info);
+        let derived = GraphDerived::build(
+            &nodes,
+            &node_map,
+            &edges,
+            &cluster_info,
+            &descendant_runtime_ids_by_runtime_id,
+        );
 
         Self {
             nodes,
@@ -2427,6 +2384,7 @@ struct GraphDerived {
     max_node_id: u32,
     runtime_by_display_id: HashMap<u32, Option<u32>>,
     proxy_runtime_ids_by_display_id: HashMap<u32, Vec<u32>>,
+    descendant_runtime_ids_by_runtime_id: HashMap<u32, Vec<u32>>,
 }
 
 impl GraphDerived {
@@ -2435,6 +2393,7 @@ impl GraphDerived {
         node_map: &HashMap<u32, NodeDisplay>,
         edges: &[(u32, u32)],
         cluster_info: &[ClusterInfo],
+        descendant_runtime_ids_by_runtime_id: &HashMap<u32, Vec<u32>>,
     ) -> Self {
         let mut condition_successor_runtime_ids = HashMap::<u32, Vec<u32>>::new();
         let mut condition_successor_seen = HashMap::<u32, BTreeSet<u32>>::new();
@@ -2462,38 +2421,12 @@ impl GraphDerived {
 
         let mut cluster_member_runtime_ids = vec![Vec::<u32>::new(); cluster_info.len()];
         for (index, cluster) in cluster_info.iter().enumerate() {
-            let mut seen = BTreeSet::new();
-            for node_id in &cluster.nodes {
-                let Some(node) = node_map.get(node_id) else {
-                    continue;
-                };
-                if let Some(runtime_id) = node.runtime_node_id {
-                    if seen.insert(runtime_id) {
-                        cluster_member_runtime_ids[index].push(runtime_id);
-                    }
-                }
-                for proxy_runtime_id in &node.proxy_runtime_ids {
-                    if seen.insert(*proxy_runtime_id) {
-                        cluster_member_runtime_ids[index].push(*proxy_runtime_id);
-                    }
-                }
-            }
+            cluster_member_runtime_ids[index] = cluster.member_runtime_ids.clone();
         }
 
         let mut cluster_entry_runtime_ids = vec![Vec::<u32>::new(); cluster_info.len()];
         for (index, cluster) in cluster_info.iter().enumerate() {
-            let mut seen = BTreeSet::new();
-            for node_id in &cluster.root_nodes {
-                let Some(node) = node_map.get(node_id) else {
-                    continue;
-                };
-                let Some(runtime_id) = node.runtime_node_id else {
-                    continue;
-                };
-                if seen.insert(runtime_id) {
-                    cluster_entry_runtime_ids[index].push(runtime_id);
-                }
-            }
+            cluster_entry_runtime_ids[index] = cluster.root_runtime_ids.clone();
         }
 
         let mut memberships = HashMap::<u32, Vec<(usize, usize)>>::new();
@@ -2531,6 +2464,7 @@ impl GraphDerived {
             max_node_id: nodes.iter().map(|node| node.id).max().unwrap_or(0),
             runtime_by_display_id,
             proxy_runtime_ids_by_display_id,
+            descendant_runtime_ids_by_runtime_id: descendant_runtime_ids_by_runtime_id.clone(),
         }
     }
 }
@@ -2547,6 +2481,7 @@ struct GraphBuilder {
     runtime_next_id: u32,
     display_next_id: u32,
     label_occurrences: HashMap<String, u32>,
+    descendant_runtime_ids_by_runtime_id: HashMap<u32, Vec<u32>>,
 }
 
 #[derive(Clone)]
@@ -2565,11 +2500,14 @@ struct NodeDisplay {
 struct ClusterInfo {
     id: u32,
     kind: ClusterKind,
+    runtime_node_id: u32,
     label: String,
     metadata: Option<String>,
     parent: Option<usize>,
     nodes: Vec<u32>,
     root_nodes: Vec<u32>,
+    member_runtime_ids: Vec<u32>,
+    root_runtime_ids: Vec<u32>,
     depth: usize,
 }
 
@@ -2592,6 +2530,8 @@ struct Flattened {
     roots: Vec<u32>,
     exits: Vec<u32>,
     members: Vec<u32>,
+    root_runtime_ids: Vec<u32>,
+    member_runtime_ids: Vec<u32>,
 }
 
 impl GraphBuilder {
@@ -2620,7 +2560,13 @@ impl GraphBuilder {
                     previous_exits = current.exits.clone();
                     acc.exits = current.exits.clone();
                     acc.members.extend(current.members);
+                    if acc.root_runtime_ids.is_empty() {
+                        acc.root_runtime_ids = current.root_runtime_ids.clone();
+                    }
+                    acc.member_runtime_ids
+                        .extend(current.member_runtime_ids.iter().copied());
                 }
+                acc.member_runtime_ids = dedup(acc.member_runtime_ids);
                 acc
             }
             JourneyAst::Step { label } => {
@@ -2632,6 +2578,8 @@ impl GraphBuilder {
                     roots: vec![node],
                     exits: vec![node],
                     members: vec![node],
+                    root_runtime_ids: vec![runtime_id],
+                    member_runtime_ids: vec![runtime_id],
                 }
             }
             JourneyAst::Conditional {
@@ -2640,12 +2588,14 @@ impl GraphBuilder {
                 left,
                 right,
             } => {
+                let runtime_id = self.runtime_next_id;
+                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
                 let branch_label = if metadata.trim().is_empty() {
                     short_type_name_str(label).to_string()
                 } else {
                     format!("{} :: {}", short_type_name_str(label), metadata)
                 };
-                let branch = self.push_layout_node(branch_label, |node| {
+                let branch = self.push_layout_node(branch_label, Some(runtime_id), |node| {
                     node.is_conditional_branch = true;
                 });
                 if !metadata.trim().is_empty() {
@@ -2664,15 +2614,25 @@ impl GraphBuilder {
                 let mut members = vec![branch];
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
+                let mut member_runtime_ids = vec![runtime_id];
+                member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
+                member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
+                let member_runtime_ids = dedup(member_runtime_ids);
 
                 let mut exits = left_flow.exits;
                 exits.extend(right_flow.exits);
                 exits = dedup(exits);
+                let mut descendant_runtime_ids = left_flow.member_runtime_ids.clone();
+                descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
+                self.descendant_runtime_ids_by_runtime_id
+                    .insert(runtime_id, dedup(descendant_runtime_ids));
 
                 Flattened {
                     roots: vec![branch],
                     exits,
                     members,
+                    root_runtime_ids: vec![runtime_id],
+                    member_runtime_ids,
                 }
             }
             JourneyAst::While {
@@ -2680,6 +2640,8 @@ impl GraphBuilder {
                 metadata,
                 body,
             } => {
+                let runtime_id = self.runtime_next_id;
+                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
                 let parent_cluster = self.cluster_stack.last().copied();
                 let cluster_index = self.clusters.len();
                 let cluster_id = self.cluster_next_id;
@@ -2701,6 +2663,7 @@ impl GraphBuilder {
                 self.cluster_info.push(ClusterInfo {
                     id: cluster_id,
                     kind: ClusterKind::While,
+                    runtime_node_id: runtime_id,
                     label: cluster_label,
                     metadata: if metadata.trim().is_empty() {
                         None
@@ -2710,6 +2673,8 @@ impl GraphBuilder {
                     parent: parent_cluster,
                     nodes: Vec::new(),
                     root_nodes: Vec::new(),
+                    member_runtime_ids: Vec::new(),
+                    root_runtime_ids: Vec::new(),
                     depth,
                 });
                 self.cluster_stack.push(cluster_index);
@@ -2728,11 +2693,23 @@ impl GraphBuilder {
                     self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
                 self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
+                let mut member_runtime_ids = vec![runtime_id];
+                member_runtime_ids.extend(body_flow.member_runtime_ids.iter().copied());
+                member_runtime_ids = dedup(member_runtime_ids);
+                self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
+                self.cluster_info[cluster_index].root_runtime_ids =
+                    dedup(body_flow.root_runtime_ids.clone());
+                self.descendant_runtime_ids_by_runtime_id.insert(
+                    runtime_id,
+                    dedup(body_flow.member_runtime_ids.clone()),
+                );
 
                 Flattened {
                     roots: body_flow.roots.clone(),
                     exits: body_flow.exits,
                     members: body_flow.members,
+                    root_runtime_ids: body_flow.root_runtime_ids,
+                    member_runtime_ids,
                 }
             }
             JourneyAst::Transparent {
@@ -2740,6 +2717,8 @@ impl GraphBuilder {
                 metadata,
                 body,
             } => {
+                let runtime_id = self.runtime_next_id;
+                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
                 let parent_cluster = self.cluster_stack.last().copied();
                 let cluster_index = self.clusters.len();
                 let cluster_id = self.cluster_next_id;
@@ -2766,6 +2745,7 @@ impl GraphBuilder {
                 self.cluster_info.push(ClusterInfo {
                     id: cluster_id,
                     kind: ClusterKind::Transparent,
+                    runtime_node_id: runtime_id,
                     label: cluster_label,
                     metadata: if metadata.trim().is_empty() {
                         None
@@ -2775,6 +2755,8 @@ impl GraphBuilder {
                     parent: parent_cluster,
                     nodes: Vec::new(),
                     root_nodes: Vec::new(),
+                    member_runtime_ids: Vec::new(),
+                    root_runtime_ids: Vec::new(),
                     depth,
                 });
 
@@ -2788,11 +2770,23 @@ impl GraphBuilder {
                     self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
                 self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
+                let mut member_runtime_ids = vec![runtime_id];
+                member_runtime_ids.extend(body_flow.member_runtime_ids.iter().copied());
+                member_runtime_ids = dedup(member_runtime_ids);
+                self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
+                self.cluster_info[cluster_index].root_runtime_ids =
+                    dedup(body_flow.root_runtime_ids.clone());
+                self.descendant_runtime_ids_by_runtime_id.insert(
+                    runtime_id,
+                    dedup(body_flow.member_runtime_ids.clone()),
+                );
 
                 Flattened {
                     roots: body_flow.roots.clone(),
                     exits: body_flow.exits,
                     members: body_flow.members,
+                    root_runtime_ids: body_flow.root_runtime_ids,
+                    member_runtime_ids,
                 }
             }
             JourneyAst::Attempt {
@@ -2800,6 +2794,8 @@ impl GraphBuilder {
                 metadata,
                 body,
             } => {
+                let runtime_id = self.runtime_next_id;
+                self.runtime_next_id = self.runtime_next_id.saturating_add(1);
                 let parent_cluster = self.cluster_stack.last().copied();
                 let cluster_index = self.clusters.len();
                 let cluster_id = self.cluster_next_id;
@@ -2822,6 +2818,7 @@ impl GraphBuilder {
                 self.cluster_info.push(ClusterInfo {
                     id: cluster_id,
                     kind: ClusterKind::Transparent,
+                    runtime_node_id: runtime_id,
                     label: cluster_label,
                     metadata: if metadata.trim().is_empty() {
                         None
@@ -2831,6 +2828,8 @@ impl GraphBuilder {
                     parent: parent_cluster,
                     nodes: Vec::new(),
                     root_nodes: Vec::new(),
+                    member_runtime_ids: Vec::new(),
+                    root_runtime_ids: Vec::new(),
                     depth,
                 });
 
@@ -2844,11 +2843,23 @@ impl GraphBuilder {
                     self.cluster_info[cluster_index].nodes = cluster_nodes;
                 }
                 self.cluster_info[cluster_index].root_nodes = dedup(body_flow.roots.clone());
+                let mut member_runtime_ids = vec![runtime_id];
+                member_runtime_ids.extend(body_flow.member_runtime_ids.iter().copied());
+                member_runtime_ids = dedup(member_runtime_ids);
+                self.cluster_info[cluster_index].member_runtime_ids = member_runtime_ids.clone();
+                self.cluster_info[cluster_index].root_runtime_ids =
+                    dedup(body_flow.root_runtime_ids.clone());
+                self.descendant_runtime_ids_by_runtime_id.insert(
+                    runtime_id,
+                    dedup(body_flow.member_runtime_ids.clone()),
+                );
 
                 Flattened {
                     roots: body_flow.roots.clone(),
                     exits: body_flow.exits,
                     members: body_flow.members,
+                    root_runtime_ids: body_flow.root_runtime_ids,
+                    member_runtime_ids,
                 }
             }
             JourneyAst::Select {
@@ -2859,32 +2870,47 @@ impl GraphBuilder {
             } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let _ = (label, metadata);
-
+                let node_label = if metadata.trim().is_empty() {
+                    short_type_name_str(label).to_string()
+                } else {
+                    format!("{} :: {}", short_type_name_str(label), metadata)
+                };
+                let select = self.push_layout_node(node_label, Some(runtime_id), |node| {
+                    node.is_select = true;
+                });
+                if !metadata.trim().is_empty() {
+                    self.mark(select, |node| node.metadata = Some((*metadata).to_string()));
+                }
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                let mut roots = left_flow.roots;
-                roots.extend(right_flow.roots.iter().copied());
-                roots = dedup(roots);
+                for target in &left_flow.roots {
+                    self.edges.push((select, *target));
+                }
+                for target in &right_flow.roots {
+                    self.edges.push((select, *target));
+                }
                 let mut exits = left_flow.exits;
                 exits.extend(right_flow.exits.iter().copied());
                 exits = dedup(exits);
-                let mut members = Vec::new();
+                let mut members = vec![select];
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
                 members = dedup(members);
-                for member_id in &exits {
-                    self.mark(*member_id, |node| {
-                        if !node.proxy_runtime_ids.contains(&runtime_id) {
-                            node.proxy_runtime_ids.push(runtime_id);
-                        }
-                    });
-                }
+                let mut member_runtime_ids = vec![runtime_id];
+                member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
+                member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
+                member_runtime_ids = dedup(member_runtime_ids);
+                let mut descendant_runtime_ids = left_flow.member_runtime_ids.clone();
+                descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
+                self.descendant_runtime_ids_by_runtime_id
+                    .insert(runtime_id, dedup(descendant_runtime_ids));
 
                 Flattened {
-                    roots,
+                    roots: vec![select],
                     exits,
                     members,
+                    root_runtime_ids: vec![runtime_id],
+                    member_runtime_ids,
                 }
             }
             JourneyAst::Join {
@@ -2895,32 +2921,47 @@ impl GraphBuilder {
             } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let _ = (label, metadata);
-
+                let node_label = if metadata.trim().is_empty() {
+                    short_type_name_str(label).to_string()
+                } else {
+                    format!("{} :: {}", short_type_name_str(label), metadata)
+                };
+                let join = self.push_layout_node(node_label, Some(runtime_id), |node| {
+                    node.is_join = true;
+                });
+                if !metadata.trim().is_empty() {
+                    self.mark(join, |node| node.metadata = Some((*metadata).to_string()));
+                }
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                let mut roots = left_flow.roots;
-                roots.extend(right_flow.roots.iter().copied());
-                roots = dedup(roots);
+                for target in &left_flow.roots {
+                    self.edges.push((join, *target));
+                }
+                for target in &right_flow.roots {
+                    self.edges.push((join, *target));
+                }
                 let mut exits = left_flow.exits;
                 exits.extend(right_flow.exits.iter().copied());
                 exits = dedup(exits);
-                let mut members = Vec::new();
+                let mut members = vec![join];
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
                 members = dedup(members);
-                for member_id in &exits {
-                    self.mark(*member_id, |node| {
-                        if !node.proxy_runtime_ids.contains(&runtime_id) {
-                            node.proxy_runtime_ids.push(runtime_id);
-                        }
-                    });
-                }
+                let mut member_runtime_ids = vec![runtime_id];
+                member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
+                member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
+                member_runtime_ids = dedup(member_runtime_ids);
+                let mut descendant_runtime_ids = left_flow.member_runtime_ids.clone();
+                descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
+                self.descendant_runtime_ids_by_runtime_id
+                    .insert(runtime_id, dedup(descendant_runtime_ids));
 
                 Flattened {
-                    roots,
+                    roots: vec![join],
                     exits,
                     members,
+                    root_runtime_ids: vec![runtime_id],
+                    member_runtime_ids,
                 }
             }
         }
@@ -2945,6 +2986,7 @@ impl GraphBuilder {
     fn push_layout_node(
         &mut self,
         label: impl Into<String>,
+        runtime_node_id: Option<u32>,
         apply: impl FnOnce(&mut NodeDisplay),
     ) -> u32 {
         let node_id = self.next_display_id();
@@ -2952,7 +2994,7 @@ impl GraphBuilder {
             id: node_id,
             label: label.into(),
             metadata: None,
-            runtime_node_id: None,
+            runtime_node_id,
             proxy_runtime_ids: Vec::new(),
             is_conditional_branch: false,
             is_select: false,
@@ -3135,11 +3177,14 @@ impl DefaultThemeState {
     }
 
     fn register_cluster(&mut self, cx: &ClusterViewCtx<'_>) {
+        let now = Instant::now();
         let expansion_mode = self.cluster_expansion.mode_for(cx.kind);
         let expanded = matches!(expansion_mode, ClusterExpansionMode::AlwaysExpanded)
-            || matches!(cx.phase, Phase::Live(live) if live.has_running);
+            || matches!(cx.phase, Phase::Live(live) if live.has_running || live.has_failed);
         let border_state = match cx.phase {
+            Phase::Live(live) if live.has_failed => RuntimeState::Failed,
             Phase::Live(live) if live.has_running => RuntimeState::Running,
+            Phase::Live(live) if live.has_completed => RuntimeState::Completed,
             _ => RuntimeState::Pending,
         };
         self.cluster_index
@@ -3150,13 +3195,24 @@ impl DefaultThemeState {
                 member_runtime_ids: cx.member_runtime_ids.iter().copied().collect(),
                 successor_runtime_ids: cx.successor_runtime_ids.iter().copied().collect(),
             });
-        self.cluster_visuals
-            .entry(cx.cluster_id)
-            .or_insert(ClusterVisual {
-                expanded,
-                border_state,
-                completed_at: None,
-            });
+        let visual = self.cluster_visuals.entry(cx.cluster_id).or_insert(ClusterVisual {
+            expanded,
+            border_state,
+            completed_at: None,
+        });
+        if matches!(expansion_mode, ClusterExpansionMode::AlwaysExpanded) {
+            visual.expanded = true;
+        } else if matches!(border_state, RuntimeState::Running | RuntimeState::Failed) {
+            visual.expanded = true;
+        }
+        if visual.border_state != border_state {
+            visual.completed_at = if matches!(border_state, RuntimeState::Completed) {
+                Some(now)
+            } else {
+                None
+            };
+            visual.border_state = border_state;
+        }
     }
 
     fn cluster_is_expanded(&self, cluster_id: u32) -> bool {
@@ -3332,22 +3388,16 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         state: &mut Self::State,
         event: ViewerEvent<Self::Message>,
     ) -> Task<ViewerEvent<Self::Message>> {
-        let now = Instant::now();
         let guard = state.get_mut();
 
         match event {
             ViewerEvent::JourneyUpdate(update) => match update.event {
-                RunnerUpdateOut::EffectInput { node_id, .. } => {
-                    let _ = guard.update_node_state(node_id, RuntimeState::Running);
-                    let _ = guard.update_clusters_for_effect_input(node_id, now);
-                }
-                RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
-                    let _ = guard.update_node_state(node_id, RuntimeState::Completed);
-                }
-                RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
-                    let _ = guard.update_node_state(node_id, RuntimeState::Failed);
-                }
-                RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
+                RunnerUpdateOut::EffectInput { .. }
+                | RunnerUpdateOut::EffectSuccessOutput { .. }
+                | RunnerUpdateOut::EffectFailureOutput { .. }
+                | RunnerUpdateOut::NodeLifecycle(..)
+                | RunnerUpdateOut::SleepScheduled { .. }
+                | RunnerUpdateOut::SleepFired { .. } => {}
             },
             ViewerEvent::Message(()) => {}
         }
@@ -3602,12 +3652,30 @@ impl fmt::Debug for ViewMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{HashMap, HashSet};
-    use std::time::{Duration, Instant};
+    use std::collections::HashSet;
     use uuid::Uuid;
+
+    fn empty_model() -> GraphModel {
+        GraphModel::from_ast(JourneyAst::Empty)
+    }
+
+    fn node_by_label<'a>(model: &'a GraphModel, label: &str) -> &'a NodeDisplay {
+        model
+            .nodes
+            .iter()
+            .find(|node| node.label == label)
+            .unwrap_or_else(|| panic!("missing node with label {label}"))
+    }
+
+    fn runtime_id_for(model: &GraphModel, label: &str) -> u32 {
+        node_by_label(model, label)
+            .runtime_node_id
+            .unwrap_or_else(|| panic!("missing runtime id for {label}"))
+    }
 
     #[test]
     fn live_data_apply_update_reports_runtime_highlight_changes() {
+        let model = empty_model();
         let mut live = LiveData::default();
 
         assert!(live.apply_update(JourneyUpdateEvent {
@@ -3629,6 +3697,7 @@ mod tests {
             },
         }));
 
+        live.bind_model(&model);
         assert!(live.apply_update(JourneyUpdateEvent {
             sequence_id: 3,
             event_unix_ms: 0,
@@ -3637,748 +3706,43 @@ mod tests {
                 uuid: Uuid::nil(),
             },
         }));
-        assert!(!live.active_runtime_ids.contains(&9));
         assert!(live.finished_runtime_ids.contains(&9));
-
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 4,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 9,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.active_runtime_ids.contains(&9));
-        assert!(!live.finished_runtime_ids.contains(&9));
-
-        assert!(!live.apply_update(JourneyUpdateEvent {
-            sequence_id: 5,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::SleepScheduled {
-                uuid: Uuid::nil(),
-                timer_id: Uuid::nil(),
-                wake_at_unix_ms: 1,
-            },
-        }));
-        assert_eq!(live.latest_event_count, 5);
+        assert_eq!(live.latest_event_count, 3);
     }
 
     #[test]
-    fn condition_runtime_state_tracks_latest_branch_event() {
-        let mut live = LiveData::default();
-
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 1,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 11,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 2,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectSuccessOutput {
-                node_id: 11,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert_eq!(
-            infer_condition_runtime_state(&live, &[11, 12]),
-            RuntimeState::Completed
-        );
-
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 3,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 12,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert_eq!(
-            infer_condition_runtime_state(&live, &[11, 12]),
-            RuntimeState::Running
-        );
-    }
-
-    #[test]
-    fn join_proxy_runtime_colors_child_nodes_only_while_running() {
-        let ast = JourneyAst::Join {
-            label: "Join",
-            metadata: "",
-            left: Box::new(JourneyAst::Step { label: "JoinL" }),
-            right: Box::new(JourneyAst::Step { label: "JoinR" }),
-        };
-        let model = GraphModel::from_ast(ast);
-        let node_for = |label: &str| -> &NodeDisplay {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let join_l = node_for("JoinL");
-        let join_r = node_for("JoinR");
-        let mut live = LiveData::default();
-
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 1,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert_eq!(
-            node_phase_for_display(
-                Some(&live),
-                join_l.id,
-                join_l.runtime_node_id,
-                &join_l.proxy_runtime_ids,
-                &HashMap::new(),
-            ),
-            Phase::Live(RuntimeState::Running)
-        );
-        assert_eq!(
-            node_phase_for_display(
-                Some(&live),
-                join_r.id,
-                join_r.runtime_node_id,
-                &join_r.proxy_runtime_ids,
-                &HashMap::new(),
-            ),
-            Phase::Live(RuntimeState::Running)
-        );
-
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 2,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectSuccessOutput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert_eq!(
-            node_phase_for_display(
-                Some(&live),
-                join_l.id,
-                join_l.runtime_node_id,
-                &join_l.proxy_runtime_ids,
-                &HashMap::new(),
-            ),
-            Phase::Live(RuntimeState::Pending)
-        );
-        assert_eq!(
-            node_phase_for_display(
-                Some(&live),
-                join_r.id,
-                join_r.runtime_node_id,
-                &join_r.proxy_runtime_ids,
-                &HashMap::new(),
-            ),
-            Phase::Live(RuntimeState::Pending)
-        );
-    }
-
-    #[test]
-    fn join_proxy_runtime_colors_branch_exit_nodes_while_running() {
-        let ast = JourneyAst::Join {
-            label: "Join",
-            metadata: "",
-            left: Box::new(JourneyAst::Sequence(vec![
-                JourneyAst::Step { label: "LeftA" },
-                JourneyAst::Step { label: "LeftB" },
-            ])),
-            right: Box::new(JourneyAst::Sequence(vec![
-                JourneyAst::Step { label: "RightA" },
-                JourneyAst::Step { label: "RightB" },
-            ])),
-        };
-        let model = GraphModel::from_ast(ast);
-        let node_for = |label: &str| -> &NodeDisplay {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let left_a = node_for("LeftA");
-        let left_b = node_for("LeftB");
-        let right_a = node_for("RightA");
-        let right_b = node_for("RightB");
-        let mut live = LiveData::default();
-
-        for (sequence_id, runtime_id) in [(1, 1), (2, 2), (3, 3), (4, 4)] {
-            assert!(live.apply_update(JourneyUpdateEvent {
-                sequence_id,
-                event_unix_ms: 0,
-                event: RunnerUpdateOut::EffectSuccessOutput {
-                    node_id: runtime_id,
-                    uuid: Uuid::nil(),
-                },
-            }));
-        }
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 5,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-
-        assert_eq!(
-            node_phase_for_display(
-                Some(&live),
-                left_a.id,
-                left_a.runtime_node_id,
-                &left_a.proxy_runtime_ids,
-                &HashMap::new(),
-            ),
-            Phase::Live(RuntimeState::Completed)
-        );
-        assert_eq!(
-            node_phase_for_display(
-                Some(&live),
-                left_b.id,
-                left_b.runtime_node_id,
-                &left_b.proxy_runtime_ids,
-                &HashMap::new(),
-            ),
-            Phase::Live(RuntimeState::Running)
-        );
-        assert_eq!(
-            node_phase_for_display(
-                Some(&live),
-                right_a.id,
-                right_a.runtime_node_id,
-                &right_a.proxy_runtime_ids,
-                &HashMap::new(),
-            ),
-            Phase::Live(RuntimeState::Completed)
-        );
-        assert_eq!(
-            node_phase_for_display(
-                Some(&live),
-                right_b.id,
-                right_b.runtime_node_id,
-                &right_b.proxy_runtime_ids,
-                &HashMap::new(),
-            ),
-            Phase::Live(RuntimeState::Running)
-        );
-    }
-
-    #[test]
-    fn repaired_live_states_delay_running_predecessor_promotion() {
-        let ast = JourneyAst::Sequence(vec![
-            JourneyAst::Step { label: "A" },
-            JourneyAst::Step { label: "B" },
-        ]);
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let a_id = id_for("A");
-        let b_id = id_for("B");
-
-        let mut live = LiveData::default();
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 1,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 2,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 1,
-                uuid: Uuid::nil(),
-            },
-        }));
-
-        let repaired = repaired_live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Running));
-        assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Running));
-    }
-
-    #[test]
-    fn repaired_live_states_eventually_promote_running_predecessor() {
-        let ast = JourneyAst::Sequence(vec![
-            JourneyAst::Step { label: "A" },
-            JourneyAst::Step { label: "B" },
-        ]);
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let a_id = id_for("A");
-
-        let mut live = LiveData::default();
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 1,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 2,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 1,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 3,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectSuccessOutput {
-                node_id: 1,
-                uuid: Uuid::nil(),
-            },
-        }));
-
-        let repaired = repaired_live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
-    }
-
-    #[test]
-    fn repaired_live_states_backfill_pending_chain_when_downstream_runs() {
-        let ast = JourneyAst::Sequence(vec![
-            JourneyAst::Step { label: "A" },
-            JourneyAst::Step { label: "B" },
-            JourneyAst::Step { label: "C" },
-        ]);
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let a_id = id_for("A");
-        let b_id = id_for("B");
-        let c_id = id_for("C");
-
-        let mut live = LiveData::default();
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 1,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 2,
-                uuid: Uuid::nil(),
-            },
-        }));
-
-        let repaired = repaired_live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
-        assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Completed));
-        assert_eq!(repaired.get(&c_id).copied(), Some(RuntimeState::Running));
-    }
-
-    #[test]
-    fn while_loop_new_iteration_forces_stale_completed_members_pending() {
-        let ast = JourneyAst::While {
+    fn node_lifecycle_reentry_clears_stale_descendants() {
+        let model = GraphModel::from_ast(JourneyAst::While {
             label: "Loop",
             metadata: "",
             body: Box::new(JourneyAst::Sequence(vec![
                 JourneyAst::Step { label: "A" },
                 JourneyAst::Step { label: "B" },
-                JourneyAst::Step { label: "C" },
             ])),
-        };
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let a_id = id_for("A");
-        let b_id = id_for("B");
-        let c_id = id_for("C");
-
+        });
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let a_runtime_id = runtime_id_for(&model, "A");
+        let b_runtime_id = runtime_id_for(&model, "B");
+        let a_display_id = node_by_label(&model, "A").id;
+        let b_display_id = node_by_label(&model, "B").id;
         let mut live = LiveData::default();
-        for (sequence_id, node_id) in [(1, 0), (2, 1), (3, 2)] {
-            assert!(live.apply_update(JourneyUpdateEvent {
-                sequence_id,
-                event_unix_ms: 0,
-                event: RunnerUpdateOut::EffectSuccessOutput {
-                    node_id,
-                    uuid: Uuid::nil(),
-                },
-            }));
-        }
+        live.bind_model(&model);
 
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 4,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-        let restarted_states = live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        assert_eq!(
-            restarted_states.get(&a_id).copied(),
-            Some(RuntimeState::Running)
-        );
-        assert_eq!(
-            restarted_states.get(&b_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-        assert_eq!(
-            restarted_states.get(&c_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 5,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectSuccessOutput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-        let between_steps_states = live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        assert_eq!(
-            between_steps_states.get(&a_id).copied(),
-            Some(RuntimeState::Completed)
-        );
-        assert_eq!(
-            between_steps_states.get(&b_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-        assert_eq!(
-            between_steps_states.get(&c_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 6,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 1,
-                uuid: Uuid::nil(),
-            },
-        }));
-        let advanced_states = live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        assert_eq!(
-            advanced_states.get(&a_id).copied(),
-            Some(RuntimeState::Completed)
-        );
-        assert_eq!(
-            advanced_states.get(&b_id).copied(),
-            Some(RuntimeState::Running)
-        );
-        assert_eq!(
-            advanced_states.get(&c_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-    }
-
-    #[test]
-    fn while_loop_new_iteration_forces_stale_running_members_pending() {
-        let ast = JourneyAst::While {
-            label: "Loop",
-            metadata: "",
-            body: Box::new(JourneyAst::Sequence(vec![
-                JourneyAst::Step { label: "A" },
-                JourneyAst::Step { label: "B" },
-                JourneyAst::Step { label: "C" },
-            ])),
-        };
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let a_id = id_for("A");
-        let b_id = id_for("B");
-        let c_id = id_for("C");
-
-        let mut live = LiveData::default();
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 1,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 2,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 2,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-
-        let restarted_states = live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        assert_eq!(
-            restarted_states.get(&a_id).copied(),
-            Some(RuntimeState::Running)
-        );
-        assert_eq!(
-            restarted_states.get(&b_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-        assert_eq!(
-            restarted_states.get(&c_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-    }
-
-    #[test]
-    fn while_loop_new_iteration_forces_stale_join_proxy_running_pending() {
-        let ast = JourneyAst::While {
-            label: "Loop",
-            metadata: "",
-            body: Box::new(JourneyAst::Sequence(vec![
-                JourneyAst::Step { label: "Begin" },
-                JourneyAst::Join {
-                    label: "Join",
-                    metadata: "",
-                    left: Box::new(JourneyAst::Step { label: "Left" }),
-                    right: Box::new(JourneyAst::Step { label: "Right" }),
-                },
-            ])),
-        };
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let begin = model
-            .nodes
-            .iter()
-            .find(|node| node.label == "Begin")
-            .unwrap_or_else(|| panic!("missing node with label Begin"));
-        let left = model
-            .nodes
-            .iter()
-            .find(|node| node.label == "Left")
-            .unwrap_or_else(|| panic!("missing node with label Left"));
-        let right = model
-            .nodes
-            .iter()
-            .find(|node| node.label == "Right")
-            .unwrap_or_else(|| panic!("missing node with label Right"));
-        let begin_id = id_for("Begin");
-        let left_id = id_for("Left");
-        let right_id = id_for("Right");
-        let join_runtime_id = left
-            .proxy_runtime_ids
-            .first()
-            .copied()
-            .unwrap_or_else(|| panic!("left branch exit should carry hidden join runtime"));
-        assert_eq!(right.proxy_runtime_ids, vec![join_runtime_id]);
-
-        let begin_runtime_id = begin
-            .runtime_node_id
-            .unwrap_or_else(|| panic!("Begin should have a runtime node id"));
-        let left_runtime_id = left
-            .runtime_node_id
-            .unwrap_or_else(|| panic!("Left should have a runtime node id"));
-        let right_runtime_id = right
-            .runtime_node_id
-            .unwrap_or_else(|| panic!("Right should have a runtime node id"));
-
-        let mut live = LiveData::default();
-        for (sequence_id, node_id) in [
-            (1, begin_runtime_id),
-            (2, left_runtime_id),
-            (3, right_runtime_id),
+        for (sequence_id, node_id, activation_path, phase) in [
+            (1, loop_runtime_id, vec![0], NodeLifecyclePhase::Entered),
+            (2, a_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
+            (3, b_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
+            (4, loop_runtime_id, vec![1], NodeLifecyclePhase::Entered),
         ] {
             assert!(live.apply_update(JourneyUpdateEvent {
                 sequence_id,
                 event_unix_ms: 0,
-                event: RunnerUpdateOut::EffectSuccessOutput {
+                event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
                     node_id,
+                    activation_path,
+                    phase,
                     uuid: Uuid::nil(),
-                },
-            }));
-        }
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 4,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: join_runtime_id,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 5,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: begin_runtime_id,
-                uuid: Uuid::nil(),
-            },
-        }));
-
-        let restarted_states = live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        assert_eq!(
-            restarted_states.get(&begin_id).copied(),
-            Some(RuntimeState::Running)
-        );
-        assert_eq!(
-            restarted_states.get(&left_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-        assert_eq!(
-            restarted_states.get(&right_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-    }
-
-    #[test]
-    fn while_loop_prompt_branch_promotes_current_iteration_ancestors() {
-        let ast = JourneyAst::While {
-            label: "Loop",
-            metadata: "",
-            body: Box::new(JourneyAst::Sequence(vec![
-                JourneyAst::Step { label: "Begin" },
-                JourneyAst::Conditional {
-                    label: "Branch",
-                    metadata: "",
-                    left: Box::new(JourneyAst::Sequence(vec![
-                        JourneyAst::Step { label: "Select" },
-                        JourneyAst::Step { label: "Optimize" },
-                    ])),
-                    right: Box::new(JourneyAst::Step { label: "Skip" }),
-                },
-                JourneyAst::Step { label: "Flatten" },
-            ])),
-        };
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let begin_id = id_for("Begin");
-        let select_id = id_for("Select");
-        let optimize_id = id_for("Optimize");
-        let skip_id = id_for("Skip");
-        let flatten_id = id_for("Flatten");
-
-        let mut live = LiveData::default();
-        for (sequence_id, node_id) in [(1, 0), (2, 1), (3, 2), (4, 4)] {
-            assert!(live.apply_update(JourneyUpdateEvent {
-                sequence_id,
-                event_unix_ms: 0,
-                event: RunnerUpdateOut::EffectSuccessOutput {
-                    node_id,
-                    uuid: Uuid::nil(),
-                },
-            }));
-        }
-
-        for (sequence_id, event) in [
-            (
-                5,
-                RunnerUpdateOut::EffectInput {
-                    node_id: 0,
-                    uuid: Uuid::nil(),
-                },
-            ),
-            (
-                6,
-                RunnerUpdateOut::EffectSuccessOutput {
-                    node_id: 0,
-                    uuid: Uuid::nil(),
-                },
-            ),
-            (
-                7,
-                RunnerUpdateOut::EffectInput {
-                    node_id: 1,
-                    uuid: Uuid::nil(),
-                },
-            ),
-            (
-                8,
-                RunnerUpdateOut::EffectSuccessOutput {
-                    node_id: 1,
-                    uuid: Uuid::nil(),
-                },
-            ),
-            (
-                9,
-                RunnerUpdateOut::EffectInput {
-                    node_id: 2,
-                    uuid: Uuid::nil(),
-                },
-            ),
-        ] {
-            assert!(live.apply_update(JourneyUpdateEvent {
-                sequence_id,
-                event_unix_ms: 0,
-                event,
+                }),
             }));
         }
 
@@ -4387,238 +3751,9 @@ mod tests {
             Some(&live),
             &model.derived.condition_successor_runtime_ids,
         );
-        assert_eq!(
-            states.get(&begin_id).copied(),
-            Some(RuntimeState::Completed)
-        );
-        assert_eq!(
-            states.get(&select_id).copied(),
-            Some(RuntimeState::Completed)
-        );
-        assert_eq!(
-            states.get(&optimize_id).copied(),
-            Some(RuntimeState::Running)
-        );
-        assert_eq!(states.get(&skip_id).copied(), Some(RuntimeState::Pending));
-        assert_eq!(
-            states.get(&flatten_id).copied(),
-            Some(RuntimeState::Pending)
-        );
-    }
-
-    #[test]
-    fn while_loop_join_proxy_running_colors_exit_and_keeps_ancestors_completed() {
-        let prompt_branch = || {
-            JourneyAst::Sequence(vec![
-                JourneyAst::Conditional {
-                    label: "Branch",
-                    metadata: "",
-                    left: Box::new(JourneyAst::Sequence(vec![
-                        JourneyAst::Step { label: "Select" },
-                        JourneyAst::Step { label: "Optimize" },
-                    ])),
-                    right: Box::new(JourneyAst::Step { label: "Skip" }),
-                },
-                JourneyAst::Step { label: "Flatten" },
-            ])
-        };
-        let ast = JourneyAst::While {
-            label: "Loop",
-            metadata: "",
-            body: Box::new(JourneyAst::Join {
-                label: "Join",
-                metadata: "",
-                left: Box::new(prompt_branch()),
-                right: Box::new(prompt_branch()),
-            }),
-        };
-        let model = GraphModel::from_ast(ast);
-        let all_ids_for = |label: &str| -> Vec<u32> {
-            model
-                .nodes
-                .iter()
-                .filter(|node| node.label == label || node.label.starts_with(&format!("{label} #")))
-                .map(|node| node.id)
-                .collect()
-        };
-        let select_ids = all_ids_for("Select");
-        let optimize_ids = all_ids_for("Optimize");
-        let flatten_ids = all_ids_for("Flatten");
-        let skip_ids = all_ids_for("Skip");
-        assert_eq!(select_ids.len(), 2);
-        assert_eq!(optimize_ids.len(), 2);
-        assert_eq!(flatten_ids.len(), 2);
-        assert_eq!(skip_ids.len(), 2);
-
-        let mut live = LiveData::default();
-        for (sequence_id, node_id) in [(1, 1_u32), (2, 2), (3, 4), (4, 5), (5, 6), (6, 8), (7, 0)] {
-            assert!(live.apply_update(JourneyUpdateEvent {
-                sequence_id,
-                event_unix_ms: 0,
-                event: RunnerUpdateOut::EffectSuccessOutput {
-                    node_id,
-                    uuid: Uuid::nil(),
-                },
-            }));
-        }
-
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 8,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-        let states = live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-
-        for select_id in select_ids {
-            assert_eq!(
-                states.get(&select_id).copied(),
-                Some(RuntimeState::Completed)
-            );
-        }
-        for optimize_id in optimize_ids {
-            assert_eq!(
-                states.get(&optimize_id).copied(),
-                Some(RuntimeState::Completed)
-            );
-        }
-        for flatten_id in flatten_ids {
-            assert_eq!(
-                states.get(&flatten_id).copied(),
-                Some(RuntimeState::Running)
-            );
-        }
-        for skip_id in skip_ids {
-            assert!(
-                !matches!(states.get(&skip_id).copied(), Some(RuntimeState::Running)),
-                "inactive sibling branch should not appear running"
-            );
-        }
-    }
-
-    #[test]
-    fn cluster_live_from_repairs_clears_stale_running_flag_after_downstream_progress() {
-        let ast = JourneyAst::Sequence(vec![
-            JourneyAst::Step { label: "A" },
-            JourneyAst::Step { label: "B" },
-        ]);
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-        let a_id = id_for("A");
-        let b_id = id_for("B");
-
-        let mut live = LiveData::default();
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 1,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 0,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 2,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectInput {
-                node_id: 1,
-                uuid: Uuid::nil(),
-            },
-        }));
-        assert!(live.apply_update(JourneyUpdateEvent {
-            sequence_id: 3,
-            event_unix_ms: 0,
-            event: RunnerUpdateOut::EffectSuccessOutput {
-                node_id: 1,
-                uuid: Uuid::nil(),
-            },
-        }));
-
-        let repaired = repaired_live_states_for_display(
-            &model,
-            Some(&live),
-            &model.derived.condition_successor_runtime_ids,
-        );
-        let cluster = ClusterInfo {
-            id: 1,
-            kind: ClusterKind::Transparent,
-            label: "cluster".to_string(),
-            metadata: None,
-            parent: None,
-            nodes: vec![a_id, b_id],
-            root_nodes: vec![a_id],
-            depth: 0,
-        };
-        let cluster_live = cluster_live_from_repaired_states(&cluster, &repaired);
-        assert!(!cluster_live.has_running);
-        assert!(!cluster_live.has_failed);
-        assert!(cluster_live.has_completed);
-    }
-
-    #[test]
-    fn view_step_does_not_mutate_theme_state() {
-        let theme = DefaultTheme::default();
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
-        state.force_pending_runtime_ids = HashSet::from([42]);
-        let state = Mutex::new(state);
-        let cx = StepViewCtx {
-            display_id: 1,
-            runtime_id: Some(42),
-            proxy_runtime_ids: &[7],
-            successor_runtime_ids: &[],
-            kind: StepKind::Step,
-            label: "JoinL",
-            metadata: None,
-            phase: Phase::Live(RuntimeState::Completed),
-        };
-
-        let _ = theme.view_step(&state, &cx);
-
-        let guard = state
-            .try_lock()
-            .expect("theme state lock should be available");
-        assert!(guard.node_visuals.is_empty());
-    }
-
-    #[test]
-    fn edge_style_forced_pending_overrides_stale_proxy_completion() {
-        let theme = DefaultTheme::default();
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
-        state.force_pending_runtime_ids = HashSet::from([42]);
-        let state = Mutex::new(state);
-
-        let style = theme
-            .edge_style(
-                &state,
-                EdgeStyleCtx {
-                    edge_index: 0,
-                    source_display_id: 1,
-                    target_display_id: 2,
-                    source_runtime_id: Some(42),
-                    target_runtime_id: Some(99),
-                    source_has_proxy_runtime: true,
-                    target_has_proxy_runtime: false,
-                    source_phase: Phase::Live(RuntimeState::Completed),
-                    target_phase: Phase::Live(RuntimeState::Pending),
-                    extent: 1.0,
-                },
-            )
-            .expect("default theme should always provide an edge style");
-
-        assert_eq!(style.start, runtime_color(RuntimeState::Pending));
-        assert_eq!(style.end, runtime_color(RuntimeState::Pending));
+        assert_eq!(states.get(&a_display_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(states.get(&b_display_id).copied(), Some(RuntimeState::Pending));
+        assert!(live.active_runtime_ids.contains(&loop_runtime_id));
     }
 
     #[test]
@@ -4654,54 +3789,14 @@ mod tests {
         let model = GraphModel::from_ast(ast);
         let ids = model.nodes.iter().map(|node| node.id).collect::<Vec<_>>();
         let unique = ids.iter().copied().collect::<HashSet<_>>();
-
-        assert_eq!(
-            ids.len(),
-            unique.len(),
-            "display node IDs must be unique for iced-sugiyama indexing"
-        );
-
-        let max_id = ids.iter().copied().max().unwrap_or(0);
-        assert_eq!(
-            max_id as usize + 1,
-            ids.len(),
-            "display node IDs should be dense for stable layout indexing"
-        );
-
-        for (from, to) in &model.edges {
-            assert!(
-                unique.contains(from),
-                "edge source must reference a known node"
-            );
-            assert!(
-                unique.contains(to),
-                "edge destination must reference a known node"
-            );
-        }
-
-        for cluster in &model.while_clusters {
-            for node in &cluster.nodes {
-                assert!(
-                    unique.contains(node),
-                    "cluster node must reference a known node"
-                );
-            }
-        }
+        assert_eq!(ids.len(), unique.len());
+        assert_eq!(ids.iter().copied().max().unwrap_or(0) as usize + 1, ids.len());
     }
 
     #[test]
-    fn graph_model_control_flow_edges_match_runtime_shape() {
-        let ast = JourneyAst::Sequence(vec![
-            JourneyAst::While {
-                label: "flow::LoopCondition",
-                metadata: "",
-                body: Box::new(JourneyAst::Conditional {
-                    label: "flow::Branch",
-                    metadata: "",
-                    left: Box::new(JourneyAst::Step { label: "LoopL" }),
-                    right: Box::new(JourneyAst::Step { label: "LoopR" }),
-                }),
-            },
+    fn graph_model_renders_select_and_join_as_nodes() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "Start" },
             JourneyAst::Join {
                 label: "Join",
                 metadata: "",
@@ -4715,288 +3810,32 @@ mod tests {
                 right: Box::new(JourneyAst::Step { label: "SelR" }),
             },
             JourneyAst::Step { label: "Tail" },
-        ]);
+        ]));
 
-        let model = GraphModel::from_ast(ast);
-
-        let id_for = |label: &str| -> u32 {
-            let mut matches = model
-                .nodes
-                .iter()
-                .filter(|node| node.label == label)
-                .map(|node| node.id);
-            let id = matches
-                .next()
-                .unwrap_or_else(|| panic!("missing node with label {label}"));
-            assert!(
-                matches.next().is_none(),
-                "expected unique node label in test: {label}"
-            );
-            id
-        };
-
-        let branch_id = id_for("Branch");
-        let loop_l_id = id_for("LoopL");
-        let loop_r_id = id_for("LoopR");
-        let join_l_id = id_for("JoinL");
-        let join_r_id = id_for("JoinR");
-        let sel_l_id = id_for("SelL");
-        let sel_r_id = id_for("SelR");
-        let tail_id = id_for("Tail");
-
-        assert!(
-            model.nodes.iter().all(|node| node.label != "LoopCondition"),
-            "while loops should not render as standalone nodes"
-        );
-        assert!(
-            model.nodes.iter().all(|node| node.label != "Select"),
-            "select steps should not render as standalone nodes"
-        );
-        assert!(
-            model.nodes.iter().all(|node| node.label != "Join"),
-            "join steps should not render as standalone nodes"
-        );
-
+        let start = node_by_label(&model, "Start").id;
+        let join = node_by_label(&model, "Join").id;
+        let join_l = node_by_label(&model, "JoinL").id;
+        let join_r = node_by_label(&model, "JoinR").id;
+        let select = node_by_label(&model, "Select").id;
+        let sel_l = node_by_label(&model, "SelL").id;
+        let sel_r = node_by_label(&model, "SelR").id;
+        let tail = node_by_label(&model, "Tail").id;
         let edges = model.edges.iter().copied().collect::<HashSet<_>>();
 
-        assert!(edges.contains(&(branch_id, loop_l_id)));
-        assert!(edges.contains(&(branch_id, loop_r_id)));
-        assert!(edges.contains(&(loop_l_id, branch_id)));
-        assert!(edges.contains(&(loop_r_id, branch_id)));
-        assert!(edges.contains(&(loop_l_id, join_l_id)));
-        assert!(edges.contains(&(loop_l_id, join_r_id)));
-        assert!(edges.contains(&(loop_r_id, join_l_id)));
-        assert!(edges.contains(&(loop_r_id, join_r_id)));
-        assert!(!edges.contains(&(branch_id, join_l_id)));
-        assert!(!edges.contains(&(branch_id, join_r_id)));
-
-        assert!(edges.contains(&(join_l_id, sel_l_id)));
-        assert!(edges.contains(&(join_l_id, sel_r_id)));
-        assert!(edges.contains(&(join_r_id, sel_l_id)));
-        assert!(edges.contains(&(join_r_id, sel_r_id)));
-
-        assert!(edges.contains(&(sel_l_id, tail_id)));
-        assert!(edges.contains(&(sel_r_id, tail_id)));
-        assert!(!edges.contains(&(join_l_id, tail_id)));
-        assert!(!edges.contains(&(join_r_id, tail_id)));
-    }
-
-    #[test]
-    fn while_cluster_stays_scoped_to_loop_body() {
-        let ast = JourneyAst::Sequence(vec![
-            JourneyAst::While {
-                label: "flow::LoopCondition",
-                metadata: "",
-                body: Box::new(JourneyAst::Conditional {
-                    label: "flow::StaticCondition",
-                    metadata: "",
-                    left: Box::new(JourneyAst::Step { label: "InLoopL" }),
-                    right: Box::new(JourneyAst::Step { label: "InLoopR" }),
-                }),
-            },
-            JourneyAst::Join {
-                label: "Join",
-                metadata: "",
-                left: Box::new(JourneyAst::Step { label: "OutJoinL" }),
-                right: Box::new(JourneyAst::Step { label: "OutJoinR" }),
-            },
-            JourneyAst::Select {
-                label: "Select",
-                metadata: "",
-                left: Box::new(JourneyAst::Step { label: "OutSelL" }),
-                right: Box::new(JourneyAst::Step { label: "OutSelR" }),
-            },
-        ]);
-
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-
-        let cond_id = id_for("StaticCondition");
-        let in_l_id = id_for("InLoopL");
-        let in_r_id = id_for("InLoopR");
-        let out_join_l_id = id_for("OutJoinL");
-        let out_join_r_id = id_for("OutJoinR");
-        assert!(
-            model.nodes.iter().all(|node| node.label != "Select"),
-            "select steps should not render as standalone nodes"
-        );
-        assert!(
-            model.nodes.iter().all(|node| node.label != "Join"),
-            "join steps should not render as standalone nodes"
-        );
-
-        assert_eq!(model.while_clusters.len(), 1);
-        let cluster = &model.while_clusters[0];
-        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
-        assert!(cluster_nodes.contains(&cond_id));
-        assert!(cluster_nodes.contains(&in_l_id));
-        assert!(cluster_nodes.contains(&in_r_id));
-        assert!(!cluster_nodes.contains(&out_join_l_id));
-        assert!(!cluster_nodes.contains(&out_join_r_id));
-        assert_eq!(model.while_cluster_labels, vec!["while: LoopCondition"]);
-
-        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
-        assert!(edges.contains(&(cond_id, in_l_id)));
-        assert!(edges.contains(&(cond_id, in_r_id)));
-        assert!(edges.contains(&(in_l_id, cond_id)));
-        assert!(edges.contains(&(in_r_id, cond_id)));
-        assert!(edges.contains(&(in_l_id, out_join_l_id)));
-        assert!(edges.contains(&(in_l_id, out_join_r_id)));
-        assert!(edges.contains(&(in_r_id, out_join_l_id)));
-        assert!(edges.contains(&(in_r_id, out_join_r_id)));
-        assert!(!edges.contains(&(cond_id, out_join_l_id)));
-        assert!(!edges.contains(&(cond_id, out_join_r_id)));
-    }
-
-    #[test]
-    fn while_loop_exit_edges_do_not_attach_to_loop_entry_step() {
-        let ast = JourneyAst::Sequence(vec![
-            JourneyAst::Step {
-                label: "GorillaBirthday",
-            },
-            JourneyAst::While {
-                label: "flow::GorillaDaylightRemaining",
-                metadata: "",
-                body: Box::new(JourneyAst::Sequence(vec![
-                    JourneyAst::Step {
-                        label: "EvaluateActivityWindow",
-                    },
-                    JourneyAst::Conditional {
-                        label: "flow::GorillaIsActiveNow",
-                        metadata: "",
-                        left: Box::new(JourneyAst::Step { label: "DoDay" }),
-                        right: Box::new(JourneyAst::Step { label: "RestDay" }),
-                    },
-                    JourneyAst::Step {
-                        label: "TickPerceivedTime",
-                    },
-                ])),
-            },
-            JourneyAst::Step {
-                label: "AdvanceAge",
-            },
-        ]);
-
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-
-        let birthday_id = id_for("GorillaBirthday");
-        let evaluate_id = id_for("EvaluateActivityWindow");
-        let active_now_id = id_for("GorillaIsActiveNow");
-        let tick_id = id_for("TickPerceivedTime");
-        let advance_age_id = id_for("AdvanceAge");
-
-        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
-        assert!(edges.contains(&(birthday_id, evaluate_id)));
-        assert!(edges.contains(&(evaluate_id, active_now_id)));
-        assert!(edges.contains(&(tick_id, advance_age_id)));
-        assert!(!edges.contains(&(evaluate_id, advance_age_id)));
-    }
-
-    #[test]
-    fn nested_while_clusters_use_parent_relationship() {
-        let ast = JourneyAst::While {
-            label: "flow::OuterLoop",
-            metadata: "",
-            body: Box::new(JourneyAst::While {
-                label: "flow::InnerLoop",
-                metadata: "",
-                body: Box::new(JourneyAst::Step { label: "LoopStep" }),
-            }),
-        };
-
-        let model = GraphModel::from_ast(ast);
-
-        assert_eq!(model.while_clusters.len(), 2);
-        assert_eq!(
-            model.while_cluster_labels,
-            vec!["while: OuterLoop", "while: InnerLoop"]
-        );
-        assert_eq!(model.while_clusters[0].parent, None);
-        assert_eq!(model.while_clusters[1].parent, Some(0));
-        assert!(!model.while_clusters[0].nodes.is_empty());
-        assert!(!model.while_clusters[1].nodes.is_empty());
-    }
-
-    #[test]
-    fn transparent_cluster_scopes_body_and_preserves_direct_sequence_edges() {
-        let ast = JourneyAst::Sequence(vec![
-            JourneyAst::Step { label: "Start" },
-            JourneyAst::Transparent {
-                label: "flow::Boundary",
-                metadata: "section:gorilla/lifecycle",
-                body: Box::new(JourneyAst::Conditional {
-                    label: "flow::Gate",
-                    metadata: "",
-                    left: Box::new(JourneyAst::Step { label: "InL" }),
-                    right: Box::new(JourneyAst::Step { label: "InR" }),
-                }),
-            },
-            JourneyAst::Step { label: "Tail" },
-        ]);
-
-        let model = GraphModel::from_ast(ast);
-        let id_for = |label: &str| -> u32 {
-            model
-                .nodes
-                .iter()
-                .find(|node| node.label == label)
-                .map(|node| node.id)
-                .unwrap_or_else(|| panic!("missing node with label {label}"))
-        };
-
-        let start_id = id_for("Start");
-        let gate_id = id_for("Gate");
-        let in_l_id = id_for("InL");
-        let in_r_id = id_for("InR");
-        let tail_id = id_for("Tail");
-
-        assert!(
-            model
-                .nodes
-                .iter()
-                .all(|node| !node.label.contains("Boundary")),
-            "transparent boundaries should not render as standalone nodes"
-        );
-
-        assert_eq!(model.while_clusters.len(), 1);
-        assert_eq!(
-            model.while_cluster_labels,
-            vec!["transparent: Boundary :: section:gorilla/lifecycle"]
-        );
-        let cluster = &model.while_clusters[0];
-        let cluster_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
-        assert!(cluster_nodes.contains(&gate_id));
-        assert!(cluster_nodes.contains(&in_l_id));
-        assert!(cluster_nodes.contains(&in_r_id));
-        assert!(!cluster_nodes.contains(&start_id));
-        assert!(!cluster_nodes.contains(&tail_id));
-
-        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
-        assert!(edges.contains(&(start_id, gate_id)));
-        assert!(edges.contains(&(gate_id, in_l_id)));
-        assert!(edges.contains(&(gate_id, in_r_id)));
-        assert!(edges.contains(&(in_l_id, tail_id)));
-        assert!(edges.contains(&(in_r_id, tail_id)));
+        assert!(edges.contains(&(start, join)));
+        assert!(edges.contains(&(join, join_l)));
+        assert!(edges.contains(&(join, join_r)));
+        assert!(edges.contains(&(join_l, select)));
+        assert!(edges.contains(&(join_r, select)));
+        assert!(edges.contains(&(select, sel_l)));
+        assert!(edges.contains(&(select, sel_r)));
+        assert!(edges.contains(&(sel_l, tail)));
+        assert!(edges.contains(&(sel_r, tail)));
     }
 
     #[test]
     fn cluster_successors_include_downstream_runtime_after_direct_exit() {
-        let ast = JourneyAst::Sequence(vec![
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
             JourneyAst::Transparent {
                 label: "flow::Boundary",
                 metadata: "",
@@ -5008,409 +3847,16 @@ mod tests {
             JourneyAst::Step {
                 label: "DownstreamSuccessor",
             },
-        ]);
-        let model = GraphModel::from_ast(ast);
+        ]));
+
         let successor_runtime_ids = cluster_successor_runtime_ids(&model);
         assert_eq!(successor_runtime_ids.len(), 1);
-        assert_eq!(successor_runtime_ids[0], vec![1, 2]);
-    }
-
-    #[test]
-    fn completed_cluster_border_allows_downstream_successor_trigger() {
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
-
-        let started_at = Instant::now();
-        let cx = ClusterViewCtx {
-            cluster_id: 9,
-            cluster_index: 0,
-            kind: ClusterKind::Transparent,
-            label: "transparent: section",
-            metadata: None,
-            parent_cluster_id: None,
-            depth: 0,
-            member_display_ids: &[],
-            entry_runtime_ids: &[18],
-            member_runtime_ids: &[18, 19],
-            successor_runtime_ids: &[32, 33],
-            phase: Phase::Live(ClusterLive {
-                has_running: false,
-                has_failed: false,
-                has_completed: false,
-            }),
-        };
-        state.register_cluster(&cx);
-
-        let entry = started_at + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(18, entry));
-        let border_state = state
-            .cluster_visuals
-            .get(&9)
-            .expect("cluster visual should exist")
-            .border_state;
-        assert_eq!(border_state, RuntimeState::Running);
-
-        let downstream_successor = entry + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(33, downstream_successor));
-        let border_state = state
-            .cluster_visuals
-            .get(&9)
-            .expect("cluster visual should exist")
-            .border_state;
-        assert_eq!(border_state, RuntimeState::Completed);
-    }
-
-    #[test]
-    fn while_cluster_border_resets_on_reentry() {
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
-
-        let started_at = Instant::now();
-        let cx = ClusterViewCtx {
-            cluster_id: 9,
-            cluster_index: 0,
-            kind: ClusterKind::While,
-            label: "while: flow::GorillaDaylightRemaining",
-            metadata: None,
-            parent_cluster_id: Some(1),
-            depth: 1,
-            member_display_ids: &[],
-            entry_runtime_ids: &[18],
-            member_runtime_ids: &[18, 19],
-            successor_runtime_ids: &[32],
-            phase: Phase::Live(ClusterLive {
-                has_running: false,
-                has_failed: false,
-                has_completed: false,
-            }),
-        };
-        state.register_cluster(&cx);
-
-        let first_entry = started_at + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(18, first_entry));
-        let border_state = state
-            .cluster_visuals
-            .get(&9)
-            .expect("cluster visual should exist")
-            .border_state;
-        assert_eq!(border_state, RuntimeState::Running);
-
-        let first_exit = first_entry + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(32, first_exit));
-        let border_state = state
-            .cluster_visuals
-            .get(&9)
-            .expect("cluster visual should exist")
-            .border_state;
-        assert_eq!(border_state, RuntimeState::Completed);
-
-        let second_entry = first_exit + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(18, second_entry));
-        let border_state = state
-            .cluster_visuals
-            .get(&9)
-            .expect("cluster visual should exist")
-            .border_state;
-        assert_eq!(border_state, RuntimeState::Running);
-    }
-
-    #[test]
-    fn while_cluster_reentry_via_non_entry_member_resets_previous_children_to_pending() {
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
-
-        let started_at = Instant::now();
-        let cx = ClusterViewCtx {
-            cluster_id: 14,
-            cluster_index: 0,
-            kind: ClusterKind::While,
-            label: "while: flow::LyrebirdLoopForever",
-            metadata: None,
-            parent_cluster_id: None,
-            depth: 0,
-            member_display_ids: &[],
-            entry_runtime_ids: &[10],
-            member_runtime_ids: &[10, 11, 12],
-            successor_runtime_ids: &[20],
-            phase: Phase::Live(ClusterLive {
-                has_running: false,
-                has_failed: false,
-                has_completed: false,
-            }),
-        };
-        state.register_cluster(&cx);
-
-        let first_entry = started_at + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(10, first_entry));
-        assert!(state.update_node_state(10, RuntimeState::Completed));
-        assert!(state.update_node_state(11, RuntimeState::Completed));
-        assert!(state.update_node_state(12, RuntimeState::Completed));
-
-        let first_exit = first_entry + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(20, first_exit));
         assert_eq!(
-            state
-                .cluster_visuals
-                .get(&14)
-                .expect("cluster visual should exist")
-                .border_state,
-            RuntimeState::Completed
+            successor_runtime_ids[0],
+            vec![
+                runtime_id_for(&model, "DirectSuccessor"),
+                runtime_id_for(&model, "DownstreamSuccessor"),
+            ]
         );
-
-        let second_member = first_exit + Duration::from_millis(1);
-        assert!(state.update_node_state(11, RuntimeState::Running));
-        assert!(state.update_clusters_for_effect_input(11, second_member));
-
-        assert_eq!(
-            state
-                .node_visuals
-                .get(&10)
-                .expect("entry node should exist")
-                .state,
-            RuntimeState::Pending
-        );
-        assert_eq!(
-            state
-                .node_visuals
-                .get(&11)
-                .expect("running node should exist")
-                .state,
-            RuntimeState::Running
-        );
-        assert_eq!(
-            state
-                .node_visuals
-                .get(&12)
-                .expect("other child node should exist")
-                .state,
-            RuntimeState::Pending
-        );
-        assert_eq!(
-            state
-                .cluster_visuals
-                .get(&14)
-                .expect("cluster visual should exist")
-                .border_state,
-            RuntimeState::Running
-        );
-    }
-
-    #[test]
-    fn completed_cluster_recollapses_when_successor_returns_to_pending() {
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
-
-        let started_at = Instant::now();
-        let cx = ClusterViewCtx {
-            cluster_id: 12,
-            cluster_index: 0,
-            kind: ClusterKind::Transparent,
-            label: "transparent: section",
-            metadata: None,
-            parent_cluster_id: None,
-            depth: 0,
-            member_display_ids: &[],
-            entry_runtime_ids: &[70],
-            member_runtime_ids: &[70, 71],
-            successor_runtime_ids: &[95],
-            phase: Phase::Live(ClusterLive {
-                has_running: false,
-                has_failed: false,
-                has_completed: false,
-            }),
-        };
-        state.register_cluster(&cx);
-
-        let entry = started_at + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(70, entry));
-        assert!(
-            state
-                .cluster_visuals
-                .get(&12)
-                .expect("cluster visual should exist")
-                .expanded
-        );
-
-        let exit = entry + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(95, exit));
-        let border_state = state
-            .cluster_visuals
-            .get(&12)
-            .expect("cluster visual should exist")
-            .border_state;
-        assert_eq!(border_state, RuntimeState::Completed);
-
-        let successor_completed = exit + Duration::from_millis(1);
-        assert!(state.update_node_state(95, RuntimeState::Completed));
-        let successor_pending = successor_completed + Duration::from_millis(1);
-        assert!(state.update_node_state(95, RuntimeState::Pending));
-
-        let collapse_cx = ClusterViewCtx {
-            phase: Phase::Live(ClusterLive {
-                has_running: false,
-                has_failed: false,
-                has_completed: true,
-            }),
-            ..cx.clone()
-        };
-        assert!(
-            !state.maybe_collapse_completed_cluster_for_pending_successor(
-                &collapse_cx,
-                successor_pending + Duration::from_millis(1)
-            )
-        );
-        assert!(
-            state.maybe_collapse_completed_cluster_for_pending_successor(
-                &collapse_cx,
-                successor_pending + CLUSTER_RECOLLAPSE_DELAY + Duration::from_millis(1)
-            )
-        );
-        let visual = state
-            .cluster_visuals
-            .get(&12)
-            .expect("cluster visual should exist");
-        assert!(!visual.expanded);
-        assert_eq!(visual.border_state, RuntimeState::Pending);
-    }
-
-    #[test]
-    fn completed_cluster_does_not_recollapse_while_still_running() {
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
-
-        let started_at = Instant::now();
-        let cx = ClusterViewCtx {
-            cluster_id: 33,
-            cluster_index: 0,
-            kind: ClusterKind::While,
-            label: "while: loop",
-            metadata: None,
-            parent_cluster_id: None,
-            depth: 0,
-            member_display_ids: &[],
-            entry_runtime_ids: &[10],
-            member_runtime_ids: &[10, 11],
-            successor_runtime_ids: &[22],
-            phase: Phase::Live(ClusterLive {
-                has_running: true,
-                has_failed: false,
-                has_completed: true,
-            }),
-        };
-        state.register_cluster(&cx);
-        let initial_visual = state
-            .cluster_visuals
-            .get(&33)
-            .expect("cluster visual should exist");
-        assert!(initial_visual.expanded);
-        assert_eq!(initial_visual.border_state, RuntimeState::Running);
-
-        assert!(!state.update_clusters_for_effect_input(10, started_at + Duration::from_millis(1)));
-        assert!(state.update_clusters_for_effect_input(22, started_at + Duration::from_millis(2)));
-
-        assert!(
-            !state.maybe_collapse_completed_cluster_for_pending_successor(
-                &cx,
-                started_at + Duration::from_millis(3)
-            )
-        );
-        assert!(
-            state
-                .cluster_visuals
-                .get(&33)
-                .expect("cluster visual should exist")
-                .expanded
-        );
-    }
-
-    #[test]
-    fn running_cluster_registers_as_expanded_without_prior_effect_input() {
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig::default());
-
-        let cx = ClusterViewCtx {
-            cluster_id: 77,
-            cluster_index: 0,
-            kind: ClusterKind::While,
-            label: "while: loop",
-            metadata: None,
-            parent_cluster_id: None,
-            depth: 0,
-            member_display_ids: &[],
-            entry_runtime_ids: &[10],
-            member_runtime_ids: &[10, 11],
-            successor_runtime_ids: &[22],
-            phase: Phase::Live(ClusterLive {
-                has_running: true,
-                has_failed: false,
-                has_completed: false,
-            }),
-        };
-
-        state.register_cluster(&cx);
-
-        let visual = state
-            .cluster_visuals
-            .get(&77)
-            .expect("cluster visual should exist");
-        assert!(visual.expanded);
-        assert_eq!(visual.border_state, RuntimeState::Running);
-    }
-
-    #[test]
-    fn always_expanded_cluster_config_keeps_cluster_open() {
-        let mut state = DefaultThemeState::new(ClusterExpansionConfig {
-            while_clusters: ClusterExpansionMode::AlwaysExpanded,
-            transparent_clusters: ClusterExpansionMode::AlwaysExpanded,
-        });
-
-        let started_at = Instant::now();
-        let cx = ClusterViewCtx {
-            cluster_id: 55,
-            cluster_index: 0,
-            kind: ClusterKind::Transparent,
-            label: "transparent: section",
-            metadata: None,
-            parent_cluster_id: None,
-            depth: 0,
-            member_display_ids: &[],
-            entry_runtime_ids: &[70],
-            member_runtime_ids: &[70, 71],
-            successor_runtime_ids: &[95],
-            phase: Phase::Live(ClusterLive {
-                has_running: false,
-                has_failed: false,
-                has_completed: false,
-            }),
-        };
-
-        state.register_cluster(&cx);
-        assert!(
-            state
-                .cluster_visuals
-                .get(&55)
-                .expect("cluster visual should exist")
-                .expanded
-        );
-
-        let entry = started_at + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(70, entry));
-        let exit = entry + Duration::from_millis(1);
-        assert!(state.update_clusters_for_effect_input(95, exit));
-
-        let collapse_cx = ClusterViewCtx {
-            phase: Phase::Live(ClusterLive {
-                has_running: false,
-                has_failed: false,
-                has_completed: true,
-            }),
-            ..cx.clone()
-        };
-        assert!(
-            !state.maybe_collapse_completed_cluster_for_pending_successor(
-                &collapse_cx,
-                exit + CLUSTER_RECOLLAPSE_DELAY + Duration::from_millis(1)
-            )
-        );
-        let visual = state
-            .cluster_visuals
-            .get(&55)
-            .expect("cluster visual should exist");
-        assert!(visual.expanded);
-        assert_eq!(visual.border_state, RuntimeState::Completed);
     }
 }

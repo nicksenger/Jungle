@@ -121,6 +121,7 @@ impl MockClient {
             let result = match message {
                 RunnerChannelMessage::History(history) => {
                     let out = match history {
+                        RunnerOut::NodeLifecycle(..) => Ok(()),
                         RunnerOut::EffectInput {
                             node_id,
                             data,

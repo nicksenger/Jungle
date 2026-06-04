@@ -39,6 +39,7 @@ pub struct Step {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventKind {
+    NodeLifecycle,
     EffectInput,
     EffectSuccessOutput,
     EffectFailureOutput,
