@@ -1576,7 +1576,7 @@ fn node_phase_for_display_with_runtime_floors(
     live_data: Option<&LiveData>,
     display_id: u32,
     runtime_id: Option<u32>,
-    proxy_runtime_ids: &[u32],
+    _proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
     runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> Phase<RuntimeState> {
@@ -1584,9 +1584,6 @@ fn node_phase_for_display_with_runtime_floors(
         return Phase::Static;
     };
 
-    let direct_runtime_observed = runtime_id
-        .map(|id| runtime_observed_in_current_iteration(live, id, runtime_sequence_floors))
-        .unwrap_or(false);
     let state = match runtime_id {
         Some(id) => runtime_state_for_live_data(live, id, runtime_sequence_floors),
         None => condition_successor_runtime_ids
@@ -1601,30 +1598,12 @@ fn node_phase_for_display_with_runtime_floors(
             .unwrap_or(RuntimeState::Pending),
     };
 
-    let mut newest = runtime_id.and_then(|id| {
+    let newest = runtime_id.and_then(|id| {
         live.runtime_update_sequence
             .get(&id)
             .copied()
             .map(|sequence| (sequence, state))
     });
-    if !direct_runtime_observed {
-        for proxy_runtime_id in proxy_runtime_ids {
-            let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
-                continue;
-            };
-            let proxy_state =
-                runtime_state_for_live_data(live, *proxy_runtime_id, runtime_sequence_floors);
-            if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
-                continue;
-            }
-            if newest
-                .map(|(best_sequence, _)| sequence > best_sequence)
-                .unwrap_or(true)
-            {
-                newest = Some((sequence, proxy_state));
-            }
-        }
-    }
 
     Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
 }
@@ -1654,7 +1633,6 @@ fn node_has_current_iteration_activity(
 ) -> bool {
     node.runtime_node_id
         .into_iter()
-        .chain(node.proxy_runtime_ids.iter().copied())
         .any(|runtime_id| {
             runtime_observed_in_current_iteration(live, runtime_id, runtime_sequence_floors)
         })
@@ -1713,40 +1691,7 @@ fn repaired_live_states_for_display(
         skipped_conditional_branch_nodes(model, live, &runtime_sequence_floors);
 
     let mut states = HashMap::<u32, RuntimeState>::new();
-    let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
     for node in &model.nodes {
-        let direct_runtime_observed = node
-            .runtime_node_id
-            .map(|runtime_id| {
-                runtime_observed_in_current_iteration(live, runtime_id, &runtime_sequence_floors)
-            })
-            .unwrap_or(false);
-        let mut latest_sequence = node
-            .runtime_node_id
-            .and_then(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied());
-        if !direct_runtime_observed {
-            for proxy_runtime_id in &node.proxy_runtime_ids {
-                let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied()
-                else {
-                    continue;
-                };
-                let proxy_state =
-                    runtime_state_for_live_data(live, *proxy_runtime_id, &runtime_sequence_floors);
-                if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
-                    continue;
-                }
-                if latest_sequence
-                    .map(|current| sequence > current)
-                    .unwrap_or(true)
-                {
-                    latest_sequence = Some(sequence);
-                }
-            }
-        }
-        if let Some(sequence) = latest_sequence {
-            latest_sequence_by_display_id.insert(node.id, sequence);
-        }
-
         let phase = node_phase_for_display_with_runtime_floors(
             Some(live),
             node.id,
@@ -4722,6 +4667,98 @@ mod tests {
             repaired.get(&right.id).copied(),
             Some(RuntimeState::Completed)
         );
+        assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn repaired_live_states_ignore_join_proxy_for_untaken_conditional_branch() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Join {
+                label: "Join",
+                metadata: "",
+                left: Box::new(JourneyAst::Conditional {
+                    label: "Branch",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Step { label: "Taken" }),
+                    right: Box::new(JourneyAst::Step { label: "Skipped" }),
+                }),
+                right: Box::new(JourneyAst::Step { label: "Other" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+        let branch_id = node_by_label(&model, "Branch").id;
+        let taken_id = node_by_label(&model, "Taken").id;
+        let skipped_id = node_by_label(&model, "Skipped").id;
+        let other_id = node_by_label(&model, "Other").id;
+        let tail_id = node_by_label(&model, "Tail").id;
+        let join_runtime_id = node_by_label(&model, "Taken")
+            .proxy_runtime_ids
+            .first()
+            .copied()
+            .unwrap_or_else(|| panic!("Taken should carry hidden join runtime"));
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: runtime_id_for(&model, "Branch"),
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Taken"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                3,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Other"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                4,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: join_runtime_id,
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                5,
+                RunnerUpdateOut::EffectInput {
+                    node_id: runtime_id_for(&model, "Tail"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&branch_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(repaired.get(&taken_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&skipped_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(repaired.get(&other_id).copied(), Some(RuntimeState::Completed));
         assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
     }
 
