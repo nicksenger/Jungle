@@ -124,7 +124,7 @@ pub struct StepViewCtx<'a> {
     pub phase: Phase<RuntimeState>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClusterLive {
     pub has_running: bool,
     pub has_failed: bool,
@@ -933,6 +933,7 @@ struct LiveData {
     active_runtime_ids: BTreeSet<u32>,
     finished_runtime_ids: BTreeSet<u32>,
     failed_runtime_ids: BTreeSet<u32>,
+    lifecycle_runtime_ids: BTreeSet<u32>,
     descendant_runtime_ids_by_runtime_id: HashMap<u32, Vec<u32>>,
     runtime_activation_paths: HashMap<u32, Vec<u64>>,
     runtime_update_sequence: HashMap<u32, usize>,
@@ -1397,17 +1398,26 @@ impl LiveData {
         self.latest_event_count = sequence;
         match update.event {
             RunnerUpdateOut::EffectInput { node_id, .. } => {
+                if self.lifecycle_runtime_ids.contains(&node_id) {
+                    return highlight_changed;
+                }
                 highlight_changed |= self.finished_runtime_ids.remove(&node_id);
                 highlight_changed |= self.failed_runtime_ids.remove(&node_id);
                 highlight_changed |= self.active_runtime_ids.insert(node_id);
                 self.runtime_update_sequence.insert(node_id, sequence);
             }
             RunnerUpdateOut::EffectSuccessOutput { node_id, .. } => {
+                if self.lifecycle_runtime_ids.contains(&node_id) {
+                    return highlight_changed;
+                }
                 highlight_changed |= self.active_runtime_ids.remove(&node_id);
                 highlight_changed |= self.finished_runtime_ids.insert(node_id);
                 self.runtime_update_sequence.insert(node_id, sequence);
             }
             RunnerUpdateOut::EffectFailureOutput { node_id, .. } => {
+                if self.lifecycle_runtime_ids.contains(&node_id) {
+                    return highlight_changed;
+                }
                 highlight_changed |= self.active_runtime_ids.remove(&node_id);
                 highlight_changed |= self.failed_runtime_ids.insert(node_id);
                 self.runtime_update_sequence.insert(node_id, sequence);
@@ -1417,6 +1427,7 @@ impl LiveData {
                     highlight_changed |=
                         self.clear_stale_descendants(node.node_id, &node.activation_path);
                 }
+                self.lifecycle_runtime_ids.insert(node.node_id);
                 highlight_changed |= self.active_runtime_ids.remove(&node.node_id);
                 highlight_changed |= self.finished_runtime_ids.remove(&node.node_id);
                 highlight_changed |= self.failed_runtime_ids.remove(&node.node_id);
@@ -1474,8 +1485,18 @@ impl LiveData {
 fn runtime_state_for_live_data(
     live: &LiveData,
     runtime_id: u32,
-    _runtime_sequence_floors: &HashMap<u32, usize>,
+    runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> RuntimeState {
+    if live
+        .runtime_update_sequence
+        .get(&runtime_id)
+        .copied()
+        .zip(runtime_sequence_floors.get(&runtime_id).copied())
+        .map(|(sequence, floor)| sequence < floor)
+        .unwrap_or(false)
+    {
+        return RuntimeState::Pending;
+    }
     if live.failed_runtime_ids.contains(&runtime_id) {
         RuntimeState::Failed
     } else if live.active_runtime_ids.contains(&runtime_id) {
@@ -1820,12 +1841,16 @@ fn node_phase_for_display_with_repairs(
 }
 
 fn cluster_live_from_repaired_states(
+    live: &LiveData,
     cluster: &ClusterInfo,
     repaired_live_states: &HashMap<u32, RuntimeState>,
+    runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> ClusterLive {
-    let mut has_running = false;
-    let mut has_failed = false;
-    let mut has_completed = false;
+    let cluster_state =
+        runtime_state_for_live_data(live, cluster.runtime_node_id, runtime_sequence_floors);
+    let mut has_running = matches!(cluster_state, RuntimeState::Running);
+    let mut has_failed = matches!(cluster_state, RuntimeState::Failed);
+    let mut has_completed = matches!(cluster_state, RuntimeState::Completed);
 
     for node_id in &cluster.nodes {
         let state = repaired_live_states
@@ -1857,15 +1882,17 @@ fn cluster_phase_for_display(
     live_data: Option<&LiveData>,
     cluster: &ClusterInfo,
     repaired_live_states: &HashMap<u32, RuntimeState>,
+    runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> Phase<ClusterLive> {
-    if live_data.is_some() {
-        Phase::Live(cluster_live_from_repaired_states(
-            cluster,
-            repaired_live_states,
-        ))
-    } else {
-        Phase::Static
-    }
+    let Some(live) = live_data else {
+        return Phase::Static;
+    };
+    Phase::Live(cluster_live_from_repaired_states(
+        live,
+        cluster,
+        repaired_live_states,
+        runtime_sequence_floors,
+    ))
 }
 
 fn sidebar<'a>(
@@ -1983,6 +2010,9 @@ where
         live_data,
         condition_successor_runtime_ids,
     ));
+    let runtime_sequence_floors = live_data
+        .map(|live| runtime_sequence_floors_for_display(model, live))
+        .unwrap_or_default();
 
     let mut collapsed_clusters = HashSet::<usize>::new();
     for (index, cluster) in model.cluster_info.iter().enumerate() {
@@ -2000,7 +2030,12 @@ where
             entry_runtime_ids: &cluster_entry_runtime_ids[index],
             member_runtime_ids: &cluster_member_runtime_ids[index],
             successor_runtime_ids: &cluster_successor_runtime_ids[index],
-            phase: cluster_phase_for_display(live_data, cluster, display_live_states.as_ref()),
+            phase: cluster_phase_for_display(
+                live_data,
+                cluster,
+                display_live_states.as_ref(),
+                &runtime_sequence_floors,
+            ),
         };
         if matches!(
             theme.view_cluster(theme_state, &cx),
@@ -2101,7 +2136,12 @@ where
             entry_runtime_ids: &cluster_entry_runtime_ids[index],
             member_runtime_ids: &cluster_member_runtime_ids[index],
             successor_runtime_ids: &cluster_successor_runtime_ids[index],
-            phase: cluster_phase_for_display(live_data, cluster, display_live_states.as_ref()),
+            phase: cluster_phase_for_display(
+                live_data,
+                cluster,
+                display_live_states.as_ref(),
+                &runtime_sequence_floors,
+            ),
         };
         if let ClusterView::Collapsed { element, size } = theme.view_cluster(theme_state, &cx) {
             let _ = element;
@@ -2149,7 +2189,12 @@ where
             entry_runtime_ids: &cluster_entry_runtime_ids[source_index],
             member_runtime_ids: &cluster_member_runtime_ids[source_index],
             successor_runtime_ids: &cluster_successor_runtime_ids[source_index],
-            phase: cluster_phase_for_display(live_data, cluster, display_live_states.as_ref()),
+            phase: cluster_phase_for_display(
+                live_data,
+                cluster,
+                display_live_states.as_ref(),
+                &runtime_sequence_floors,
+            ),
         };
         let ClusterView::Expanded { overlay, fill } = theme.view_cluster(theme_state, &cx) else {
             continue;
@@ -2210,6 +2255,8 @@ where
         let display_live_states_for_edge_strokes = display_live_states.clone();
         let display_live_states_for_cluster_chips = display_live_states.clone();
         let display_live_states_for_cluster_overlays = display_live_states.clone();
+        let runtime_sequence_floors_for_cluster_chips = runtime_sequence_floors.clone();
+        let runtime_sequence_floors_for_cluster_overlays = runtime_sequence_floors.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -2262,6 +2309,7 @@ where
                                 live_data,
                                 cluster,
                                 display_live_states_for_cluster_chips.as_ref(),
+                                &runtime_sequence_floors_for_cluster_chips,
                             ),
                         };
                         if let ClusterView::Collapsed { element, .. } =
@@ -2422,6 +2470,7 @@ where
                     live_data,
                     cluster,
                     display_live_states_for_cluster_overlays.as_ref(),
+                    &runtime_sequence_floors_for_cluster_overlays,
                 ),
             };
             let base_overlay = match theme.view_cluster(theme_state, &cx) {
@@ -3528,7 +3577,7 @@ impl JunglePanelTheme<AnyAnimal> for DefaultTheme {
         state: &mut Self::State,
         event: ViewerEvent<Self::Message>,
     ) -> Task<ViewerEvent<Self::Message>> {
-        let guard = state.get_mut();
+        let _guard = state.get_mut();
 
         match event {
             ViewerEvent::JourneyUpdate(update) => match update.event {
@@ -3792,7 +3841,7 @@ impl fmt::Debug for ViewMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use uuid::Uuid;
 
     fn empty_model() -> GraphModel {
@@ -3851,6 +3900,67 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_state_stays_authoritative_over_effect_outputs() {
+        let model = GraphModel::from_ast(JourneyAst::Step { label: "A" });
+        let runtime_id = runtime_id_for(&model, "A");
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: runtime_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(live.active_runtime_ids.contains(&runtime_id));
+        assert!(!live.finished_runtime_ids.contains(&runtime_id));
+
+        assert!(!live.apply_update(JourneyUpdateEvent {
+            sequence_id: 2,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectSuccessOutput {
+                node_id: runtime_id,
+                uuid: Uuid::nil(),
+            },
+        }));
+        assert!(live.active_runtime_ids.contains(&runtime_id));
+        assert!(!live.finished_runtime_ids.contains(&runtime_id));
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 3,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: runtime_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Succeeded,
+                uuid: Uuid::nil(),
+            }),
+        }));
+        assert!(!live.active_runtime_ids.contains(&runtime_id));
+        assert!(live.finished_runtime_ids.contains(&runtime_id));
+    }
+
+    #[test]
+    fn runtime_sequence_floors_hide_stale_runtime_state() {
+        let mut live = LiveData::default();
+        live.finished_runtime_ids.insert(7);
+        live.runtime_update_sequence.insert(7, 1);
+
+        assert_eq!(
+            runtime_state_for_live_data(&live, 7, &HashMap::from([(7, 2)])),
+            RuntimeState::Pending
+        );
+        assert_eq!(
+            runtime_state_for_live_data(&live, 7, &HashMap::from([(7, 1)])),
+            RuntimeState::Completed
+        );
+    }
+
+    #[test]
     fn node_lifecycle_reentry_clears_stale_descendants() {
         let model = GraphModel::from_ast(JourneyAst::While {
             label: "Loop",
@@ -3900,6 +4010,49 @@ mod tests {
             Some(RuntimeState::Pending)
         );
         assert!(live.active_runtime_ids.contains(&loop_runtime_id));
+    }
+
+    #[test]
+    fn cluster_phase_uses_hidden_cluster_lifecycle_state() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Step { label: "A" }),
+        });
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: model.cluster_info[0].runtime_node_id,
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+
+        let repaired = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        let phase = cluster_phase_for_display(
+            Some(&live),
+            &model.cluster_info[0],
+            &repaired,
+            &runtime_sequence_floors_for_display(&model, &live),
+        );
+
+        assert_eq!(
+            phase,
+            Phase::Live(ClusterLive {
+                has_running: true,
+                has_failed: false,
+                has_completed: false,
+            })
+        );
     }
 
     #[test]
