@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use directories_next::BaseDirs;
 use jungle_sdk::core::JungleWorker;
 use jungle_sdk::prelude::*;
@@ -1088,6 +1088,22 @@ pub enum PulseCodeParadiseError {
     Bootstrap(String),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum ImageDumpPanel {
+    Spectrograms,
+    Graph,
+}
+
+#[cfg(feature = "viewer")]
+impl From<ImageDumpPanel> for ui::ImageDumpPanel {
+    fn from(value: ImageDumpPanel) -> Self {
+        match value {
+            ImageDumpPanel::Spectrograms => Self::Spectrograms,
+            ImageDumpPanel::Graph => Self::Graph,
+        }
+    }
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "lyrebird")]
 struct Cli {
@@ -1136,6 +1152,13 @@ struct Cli {
         help = "Seconds to wait after the UI starts before capturing --img-dump"
     )]
     img_dump_time_secs: Option<f64>,
+    #[arg(
+        long = "img-dump-panel",
+        requires = "img_dump",
+        value_enum,
+        help = "Restrict --img-dump to either the spectrogram panel or the graph panel"
+    )]
+    img_dump_panel: Option<ImageDumpPanel>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -1224,6 +1247,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui::ImageDumpConfig::new(
                 output_path,
                 Duration::from_secs_f64(cli.img_dump_time_secs.unwrap_or(0.0)),
+                cli.img_dump_panel.map(ui::ImageDumpPanel::from),
             )
         });
         tokio::task::block_in_place(|| ui::run_ui(client.clone(), journey_id, img_dump))?;

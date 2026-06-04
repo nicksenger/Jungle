@@ -30,11 +30,22 @@ const SPECTROGRAM_HUE_ROTATION_DEGREES: i32 = -100;
 pub struct ImageDumpConfig {
     output_path: PathBuf,
     delay: Duration,
+    panel: Option<ImageDumpPanel>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ImageDumpPanel {
+    Spectrograms,
+    Graph,
 }
 
 impl ImageDumpConfig {
-    pub fn new(output_path: PathBuf, delay: Duration) -> Self {
-        Self { output_path, delay }
+    pub fn new(output_path: PathBuf, delay: Duration, panel: Option<ImageDumpPanel>) -> Self {
+        Self {
+            output_path,
+            delay,
+            panel,
+        }
     }
 }
 
@@ -213,8 +224,17 @@ impl LyrebirdUi {
     }
 
     fn view(&self) -> Element<'_, Message> {
+        let (image_section_fill_portion, dag_section_fill_portion) = match self
+            .image_dump
+            .as_ref()
+            .and_then(|image_dump| image_dump.panel)
+        {
+            Some(ImageDumpPanel::Spectrograms) => (1, 0),
+            Some(ImageDumpPanel::Graph) => (0, 1),
+            None => (2, 1),
+        };
         let image_section = container(self.snapshot_panel())
-            .width(Length::FillPortion(2))
+            .width(Length::FillPortion(image_section_fill_portion))
             .height(Length::Fill)
             .style(sidebar_style);
         let dag_section = container(column![
@@ -223,13 +243,17 @@ impl LyrebirdUi {
                 .width(Length::Fill)
                 .height(Length::Fill)
         ])
-        .width(Length::FillPortion(1))
+        .width(Length::FillPortion(dag_section_fill_portion))
         .height(Length::Fill);
 
-        let body = row![image_section, divider_vertical(), dag_section]
-            .spacing(0)
-            .height(Length::Fill)
-            .width(Length::Fill);
+        let body = row![
+            image_section,
+            divider_vertical(image_section_fill_portion > 0 && dag_section_fill_portion > 0),
+            dag_section
+        ]
+        .spacing(0)
+        .height(Length::Fill)
+        .width(Length::Fill);
 
         container(body)
             .width(Length::Fill)
@@ -491,9 +515,9 @@ fn divider_horizontal<'a>() -> Element<'a, Message> {
         .into()
 }
 
-fn divider_vertical<'a>() -> Element<'a, Message> {
+fn divider_vertical<'a>(visible: bool) -> Element<'a, Message> {
     container(text(""))
-        .width(1)
+        .width(if visible { 1 } else { 0 })
         .height(Length::Fill)
         .style(divider_style)
         .into()
