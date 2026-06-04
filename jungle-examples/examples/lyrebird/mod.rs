@@ -26,7 +26,8 @@ use crate::action::{
     BeginIteration, FinalizeIterationRender, FlattenEither, FlattenLyrebirdPromptPhase,
     InstrumentEnabled, InstrumentEnabledFocused, LogIterationTiming, LyrebirdLoopForever,
     OptimizeSelectedInstrumentFocused, SeedLyrebirdState, SelectDspBranchFocused,
-    SetCurrentInstrument, SkipInstrumentPromptFocused, SkipInstrumentSubmit, SubmitDspBranch,
+    SetCurrentInstrument, SkipInstrumentPromptFocused, SkipInstrumentSubmit,
+    SleepBeforeNextIteration, SubmitDspBranch,
 };
 use crate::tokens::Tool;
 
@@ -817,6 +818,7 @@ pub struct LyrebirdIteration(
     LyrebirdInstrumentSubmit<BackupVocalsMarker>,
     LyrebirdInstrumentSubmit<BassMarker>,
     LyrebirdInstrumentSubmit<GuitarSoloMarker>,
+    Step<SleepBeforeNextIteration>,
 );
 
 #[derive(Flow)]

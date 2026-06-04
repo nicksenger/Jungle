@@ -12,6 +12,7 @@ use crate::{
 use jungle_sdk::prelude::*;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
+use std::time::Duration;
 use tracing::info;
 
 pub struct SeedState<Seed, State>(PhantomData<Seed>, PhantomData<State>);
@@ -227,6 +228,27 @@ where
             instrument = Marker::INSTRUMENT.slug(),
             "skipping disabled lyrebird instrument prompt branch"
         );
+        Ok(())
+    }
+}
+
+pub struct SleepBeforeNextIteration;
+#[jungle::action]
+impl Action for SleepBeforeNextIteration {
+    type Effect = Sleep;
+    type Input = ();
+    type Output = ();
+
+    fn emit(_state: &LyrebirdState, _input: Self::Input) -> Duration {
+        Duration::from_secs(60)
+    }
+
+    fn absorb(
+        _state: &mut LyrebirdState,
+        output: EffectCompletion<Self::Effect>,
+    ) -> Result<Self::Output, Failure> {
+        output
+            .map_err(|_err| Failure::from("lyrebird iteration sleep should resume successfully"))?;
         Ok(())
     }
 }
