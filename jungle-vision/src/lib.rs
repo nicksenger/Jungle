@@ -52,6 +52,19 @@ static VISION_MAX_APPLY_QUEUE_DELAY_MS: AtomicUsize = AtomicUsize::new(0);
 static VISION_MAX_END_TO_END_EVENT_AGE_MS: AtomicUsize = AtomicUsize::new(0);
 static VISION_MAX_APPLY_ELAPSED_MS: AtomicUsize = AtomicUsize::new(0);
 
+fn graph_refresh_task<Message: Clone + Send + 'static>(
+    graph_widget_id: iced_sugiyama::Id,
+    invalidate_layout: bool,
+) -> Task<Message> {
+    if invalidate_layout {
+        iced_sugiyama::invalidate::<Message>(graph_widget_id)
+    } else {
+        // Some live events only advance sequence/activation-path state. Those still affect
+        // repaired node phases, so the widget must review its cached node rendering.
+        iced_sugiyama::force_review::<Message>(graph_widget_id)
+    }
+}
+
 pub struct AnyAnimal;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -635,12 +648,8 @@ where
                     highlight_changed |= data.apply_update(update);
                 }
                 let theme_task = Task::batch(theme_tasks);
-                if highlight_changed {
-                    iced_sugiyama::invalidate::<EjectedViewerMessage>(self.graph_widget_id.clone())
-                        .chain(theme_task)
-                } else {
-                    theme_task
-                }
+                graph_refresh_task(self.graph_widget_id.clone(), highlight_changed)
+                    .chain(theme_task)
             }
             EjectedViewerMessage::ApplyLiveEvent {
                 update,
@@ -743,12 +752,8 @@ where
                         "jungle-vision apply heartbeat"
                     );
                 }
-                if highlight_changed {
-                    iced_sugiyama::invalidate::<EjectedViewerMessage>(self.graph_widget_id.clone())
-                        .chain(theme_task)
-                } else {
-                    theme_task
-                }
+                graph_refresh_task(self.graph_widget_id.clone(), highlight_changed)
+                    .chain(theme_task)
             }
             EjectedViewerMessage::Theme(event) => {
                 let theme_started_at = Instant::now();
@@ -1039,12 +1044,8 @@ where
                     highlight_changed |= data.apply_update(update);
                 }
                 let theme_task = Task::batch(theme_tasks);
-                if highlight_changed {
-                    iced_sugiyama::invalidate::<Message>(self.graph_widget_id.clone())
-                        .chain(theme_task)
-                } else {
-                    theme_task
-                }
+                graph_refresh_task(self.graph_widget_id.clone(), highlight_changed)
+                    .chain(theme_task)
             }
             Message::ApplyLiveEvent(update) => {
                 let model = match &self.mode {
@@ -1069,12 +1070,8 @@ where
                 };
                 data.bind_model(model);
                 let highlight_changed = data.apply_update(update);
-                if highlight_changed {
-                    iced_sugiyama::invalidate::<Message>(self.graph_widget_id.clone())
-                        .chain(theme_task)
-                } else {
-                    theme_task
-                }
+                graph_refresh_task(self.graph_widget_id.clone(), highlight_changed)
+                    .chain(theme_task)
             }
             Message::Theme(event) => {
                 let theme_task = self
