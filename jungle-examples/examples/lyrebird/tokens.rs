@@ -60,7 +60,7 @@ pub trait TokenPredictor {
     ) -> impl Future<Output = Result<Vec<ToolCall>, Self::Error>> + Send;
 }
 
-const DEFAULT_TOKENS_MODEL: &str = "qwen/qwen3.6-35b-a3b";
+const DEFAULT_TOKENS_MODEL: &str = "codemonkey-d-luffy";
 
 impl PulseCodeParadise {
     pub(crate) fn build_tokens_client(
