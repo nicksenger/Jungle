@@ -1621,7 +1621,9 @@ impl LiveData {
             if self
                 .runtime_activation_paths
                 .get(&runtime_id)
-                .map(|path| path.len() <= activation_path.len() || path.starts_with(activation_path))
+                .map(|path| {
+                    path.len() <= activation_path.len() || path.starts_with(activation_path)
+                })
                 .unwrap_or(false)
             {
                 continue;
@@ -1928,8 +1930,11 @@ fn active_conditional_branch_sides(
                 };
                 best_priority = best_priority.max(priority);
                 observed_count = observed_count.saturating_add(1);
-                latest_sequence =
-                    Some(latest_sequence.map(|current| current.max(sequence)).unwrap_or(sequence));
+                latest_sequence = Some(
+                    latest_sequence
+                        .map(|current| current.max(sequence))
+                        .unwrap_or(sequence),
+                );
             }
             latest_sequence.map(|latest_sequence| BranchSignal {
                 best_priority,
@@ -1950,12 +1955,8 @@ fn active_conditional_branch_sides(
             (None, None) => None,
         }
         .or_else(|| match (left_signal, right_signal) {
-            (Some(_), None) => {
-                Some(ConditionalSide::Left)
-            }
-            (None, Some(_)) => {
-                Some(ConditionalSide::Right)
-            }
+            (Some(_), None) => Some(ConditionalSide::Left),
+            (None, Some(_)) => Some(ConditionalSide::Right),
             (Some(left_signal), Some(right_signal)) => {
                 if left_signal.best_priority > right_signal.best_priority
                     || (left_signal.best_priority == right_signal.best_priority
@@ -2069,13 +2070,12 @@ fn repaired_live_states_for_display(
     let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
     let runtime_activation_prefixes = runtime_activation_prefixes_for_display(model, live);
     let conditional_branch_membership = conditional_branch_membership(model);
-    let active_conditional_sides =
-        active_conditional_branch_sides(
-            model,
-            live,
-            &runtime_sequence_floors,
-            &runtime_activation_prefixes,
-        );
+    let active_conditional_sides = active_conditional_branch_sides(
+        model,
+        live,
+        &runtime_sequence_floors,
+        &runtime_activation_prefixes,
+    );
     let skipped_conditional_branch_nodes =
         skipped_conditional_branch_nodes(model, &active_conditional_sides);
 
@@ -2268,7 +2268,8 @@ fn live_states_for_display(
     let runtime_activation_prefixes = runtime_activation_prefixes_for_display(model, live);
     let branch_root_has_activity = |display_ids: &[u32]| {
         display_ids.iter().any(|display_id| {
-            model.node_map
+            model
+                .node_map
                 .get(display_id)
                 .and_then(|node| node.runtime_node_id)
                 .map(|runtime_id| {
@@ -2744,10 +2745,8 @@ where
         let display_live_states_for_cluster_overlays = display_live_states.clone();
         let runtime_sequence_floors_for_cluster_chips = runtime_sequence_floors.clone();
         let runtime_sequence_floors_for_cluster_overlays = runtime_sequence_floors.clone();
-        let runtime_activation_prefixes_for_cluster_chips =
-            runtime_activation_prefixes.clone();
-        let runtime_activation_prefixes_for_cluster_overlays =
-            runtime_activation_prefixes.clone();
+        let runtime_activation_prefixes_for_cluster_chips = runtime_activation_prefixes.clone();
+        let runtime_activation_prefixes_for_cluster_overlays = runtime_activation_prefixes.clone();
         let mut widget = Sugiyama::<Message, iced::Theme, iced::Renderer>::new(
             std::borrow::Cow::Owned(graph.clone()),
             move |node_id| {
@@ -4642,13 +4641,48 @@ mod tests {
         live.bind_model(&model);
         for (sequence_id, node_id, activation_path, phase) in [
             (1, loop_runtime_id, vec![0], NodeLifecyclePhase::Entered),
-            (2, begin_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
-            (3, branch_runtime_id, vec![0, 1], NodeLifecyclePhase::Succeeded),
-            (4, skip_runtime_id, vec![0, 2], NodeLifecyclePhase::Succeeded),
-            (5, begin_runtime_id, vec![1, 0], NodeLifecyclePhase::Succeeded),
-            (6, branch_runtime_id, vec![1, 1], NodeLifecyclePhase::Succeeded),
-            (7, select_runtime_id, vec![1, 2], NodeLifecyclePhase::Succeeded),
-            (8, optimize_runtime_id, vec![1, 3], NodeLifecyclePhase::Entered),
+            (
+                2,
+                begin_runtime_id,
+                vec![0, 0],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                3,
+                branch_runtime_id,
+                vec![0, 1],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                4,
+                skip_runtime_id,
+                vec![0, 2],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                5,
+                begin_runtime_id,
+                vec![1, 0],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                6,
+                branch_runtime_id,
+                vec![1, 1],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                7,
+                select_runtime_id,
+                vec![1, 2],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                8,
+                optimize_runtime_id,
+                vec![1, 3],
+                NodeLifecyclePhase::Entered,
+            ),
         ] {
             assert!(live.apply_update(JourneyUpdateEvent {
                 sequence_id,
@@ -4667,10 +4701,19 @@ mod tests {
             Some(&live),
             &model.derived.condition_successor_runtime_ids,
         );
-        assert_eq!(states.get(&select_id).copied(), Some(RuntimeState::Completed));
-        assert_eq!(states.get(&optimize_id).copied(), Some(RuntimeState::Running));
+        assert_eq!(
+            states.get(&select_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            states.get(&optimize_id).copied(),
+            Some(RuntimeState::Running)
+        );
         assert_eq!(states.get(&skip_id).copied(), Some(RuntimeState::Pending));
-        assert_eq!(states.get(&flatten_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(
+            states.get(&flatten_id).copied(),
+            Some(RuntimeState::Pending)
+        );
     }
 
     #[test]
@@ -4893,7 +4936,9 @@ mod tests {
 
         assert!(!live.finished_runtime_ids.contains(&finalize_runtime_id));
         assert!(!live.finished_runtime_ids.contains(&sleep_runtime_id));
-        assert!(!live.runtime_update_sequence.contains_key(&finalize_runtime_id));
+        assert!(!live
+            .runtime_update_sequence
+            .contains_key(&finalize_runtime_id));
         assert!(!live.runtime_update_sequence.contains_key(&sleep_runtime_id));
 
         let states = live_states_for_display(
@@ -4902,7 +4947,10 @@ mod tests {
             &model.derived.condition_successor_runtime_ids,
         );
         assert_eq!(states.get(&prompt_id).copied(), Some(RuntimeState::Running));
-        assert_eq!(states.get(&finalize_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(
+            states.get(&finalize_id).copied(),
+            Some(RuntimeState::Pending)
+        );
         assert_eq!(states.get(&sleep_id).copied(), Some(RuntimeState::Pending));
     }
 
@@ -6108,7 +6156,9 @@ mod tests {
                     label: branch_label,
                     metadata: "",
                     left: Box::new(JourneyAst::Sequence(vec![
-                        JourneyAst::Step { label: select_label },
+                        JourneyAst::Step {
+                            label: select_label,
+                        },
                         JourneyAst::Step {
                             label: optimize_label,
                         },
@@ -6128,8 +6178,20 @@ mod tests {
                 left: Box::new(JourneyAst::Join {
                     label: "PromptLeft",
                     metadata: "",
-                    left: Box::new(prompt_branch("Branch1", "Select1", "Optimize1", "Skip1", "Flatten1")),
-                    right: Box::new(prompt_branch("Branch2", "Select2", "Optimize2", "Skip2", "Flatten2")),
+                    left: Box::new(prompt_branch(
+                        "Branch1",
+                        "Select1",
+                        "Optimize1",
+                        "Skip1",
+                        "Flatten1",
+                    )),
+                    right: Box::new(prompt_branch(
+                        "Branch2",
+                        "Select2",
+                        "Optimize2",
+                        "Skip2",
+                        "Flatten2",
+                    )),
                 }),
                 right: Box::new(JourneyAst::Join {
                     label: "PromptRight",
@@ -6137,10 +6199,28 @@ mod tests {
                     left: Box::new(JourneyAst::Join {
                         label: "PromptRightPair",
                         metadata: "",
-                        left: Box::new(prompt_branch("Branch3", "Select3", "Optimize3", "Skip3", "Flatten3")),
-                        right: Box::new(prompt_branch("Branch4", "Select4", "Optimize4", "Skip4", "Flatten4")),
+                        left: Box::new(prompt_branch(
+                            "Branch3",
+                            "Select3",
+                            "Optimize3",
+                            "Skip3",
+                            "Flatten3",
+                        )),
+                        right: Box::new(prompt_branch(
+                            "Branch4",
+                            "Select4",
+                            "Optimize4",
+                            "Skip4",
+                            "Flatten4",
+                        )),
                     }),
-                    right: Box::new(prompt_branch("Branch5", "Select5", "Optimize5", "Skip5", "Flatten5")),
+                    right: Box::new(prompt_branch(
+                        "Branch5",
+                        "Select5",
+                        "Optimize5",
+                        "Skip5",
+                        "Flatten5",
+                    )),
                 }),
             },
             JourneyAst::Step { label: "Tail" },
@@ -6243,7 +6323,9 @@ mod tests {
                     label: branch_label,
                     metadata: "",
                     left: Box::new(JourneyAst::Sequence(vec![
-                        JourneyAst::Step { label: select_label },
+                        JourneyAst::Step {
+                            label: select_label,
+                        },
                         JourneyAst::Step {
                             label: optimize_label,
                         },
@@ -6267,8 +6349,20 @@ mod tests {
                     left: Box::new(JourneyAst::Join {
                         label: "PromptLeft",
                         metadata: "",
-                        left: Box::new(prompt_branch("Branch1", "Select1", "Optimize1", "Skip1", "Flatten1")),
-                        right: Box::new(prompt_branch("Branch2", "Select2", "Optimize2", "Skip2", "Flatten2")),
+                        left: Box::new(prompt_branch(
+                            "Branch1",
+                            "Select1",
+                            "Optimize1",
+                            "Skip1",
+                            "Flatten1",
+                        )),
+                        right: Box::new(prompt_branch(
+                            "Branch2",
+                            "Select2",
+                            "Optimize2",
+                            "Skip2",
+                            "Flatten2",
+                        )),
                     }),
                     right: Box::new(JourneyAst::Join {
                         label: "PromptRight",
@@ -6276,10 +6370,28 @@ mod tests {
                         left: Box::new(JourneyAst::Join {
                             label: "PromptRightPair",
                             metadata: "",
-                            left: Box::new(prompt_branch("Branch3", "Select3", "Optimize3", "Skip3", "Flatten3")),
-                            right: Box::new(prompt_branch("Branch4", "Select4", "Optimize4", "Skip4", "Flatten4")),
+                            left: Box::new(prompt_branch(
+                                "Branch3",
+                                "Select3",
+                                "Optimize3",
+                                "Skip3",
+                                "Flatten3",
+                            )),
+                            right: Box::new(prompt_branch(
+                                "Branch4",
+                                "Select4",
+                                "Optimize4",
+                                "Skip4",
+                                "Flatten4",
+                            )),
                         }),
-                        right: Box::new(prompt_branch("Branch5", "Select5", "Optimize5", "Skip5", "Flatten5")),
+                        right: Box::new(prompt_branch(
+                            "Branch5",
+                            "Select5",
+                            "Optimize5",
+                            "Skip5",
+                            "Flatten5",
+                        )),
                     }),
                 },
                 JourneyAst::Step { label: "Tail" },
@@ -6320,26 +6432,18 @@ mod tests {
 
         push_success(&mut live, &mut sequence_id, "Begin", vec![0, 0]);
         for (offset, label) in [
-            "Branch1",
-            "Skip1",
-            "Flatten1",
-            "Branch2",
-            "Skip2",
-            "Flatten2",
-            "Branch3",
-            "Skip3",
-            "Flatten3",
-            "Branch4",
-            "Skip4",
-            "Flatten4",
-            "Branch5",
-            "Skip5",
-            "Flatten5",
+            "Branch1", "Skip1", "Flatten1", "Branch2", "Skip2", "Flatten2", "Branch3", "Skip3",
+            "Flatten3", "Branch4", "Skip4", "Flatten4", "Branch5", "Skip5", "Flatten5",
         ]
         .into_iter()
         .enumerate()
         {
-            push_success(&mut live, &mut sequence_id, label, vec![0, 1 + offset as u64]);
+            push_success(
+                &mut live,
+                &mut sequence_id,
+                label,
+                vec![0, 1 + offset as u64],
+            );
         }
 
         push_success(&mut live, &mut sequence_id, "Begin", vec![1, 0]);
@@ -6365,7 +6469,12 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            push_success(&mut live, &mut sequence_id, label, vec![1, 1 + offset as u64]);
+            push_success(
+                &mut live,
+                &mut sequence_id,
+                label,
+                vec![1, 1 + offset as u64],
+            );
         }
 
         sequence_id += 1;
@@ -6426,7 +6535,9 @@ mod tests {
                     label: branch_label,
                     metadata: "",
                     left: Box::new(JourneyAst::Sequence(vec![
-                        JourneyAst::Step { label: select_label },
+                        JourneyAst::Step {
+                            label: select_label,
+                        },
                         JourneyAst::Step {
                             label: optimize_label,
                         },
@@ -6513,18 +6624,73 @@ mod tests {
         live.bind_model(&model);
         for (sequence_id, node_id, activation_path, phase) in [
             (1, loop_runtime_id, vec![0], NodeLifecyclePhase::Entered),
-            (2, begin_runtime_id, vec![0, 0], NodeLifecyclePhase::Succeeded),
-            (3, branch2_runtime_id, vec![0, 1], NodeLifecyclePhase::Succeeded),
-            (4, skip2_runtime_id, vec![0, 2], NodeLifecyclePhase::Succeeded),
+            (
+                2,
+                begin_runtime_id,
+                vec![0, 0],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                3,
+                branch2_runtime_id,
+                vec![0, 1],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                4,
+                skip2_runtime_id,
+                vec![0, 2],
+                NodeLifecyclePhase::Succeeded,
+            ),
             (5, loop_runtime_id, vec![1], NodeLifecyclePhase::Entered),
-            (6, begin_runtime_id, vec![1, 0], NodeLifecyclePhase::Succeeded),
-            (7, branch2_runtime_id, vec![1, 1], NodeLifecyclePhase::Succeeded),
-            (8, select2_runtime_id, vec![1, 2], NodeLifecyclePhase::Succeeded),
-            (9, optimize2_runtime_id, vec![1, 3], NodeLifecyclePhase::Entered),
-            (10, branch4_runtime_id, vec![1, 4], NodeLifecyclePhase::Succeeded),
-            (11, select4_runtime_id, vec![1, 5], NodeLifecyclePhase::Succeeded),
-            (12, optimize4_runtime_id, vec![1, 6], NodeLifecyclePhase::Entered),
-            (13, skip2_runtime_id, vec![0, 2], NodeLifecyclePhase::Succeeded),
+            (
+                6,
+                begin_runtime_id,
+                vec![1, 0],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                7,
+                branch2_runtime_id,
+                vec![1, 1],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                8,
+                select2_runtime_id,
+                vec![1, 2],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                9,
+                optimize2_runtime_id,
+                vec![1, 3],
+                NodeLifecyclePhase::Entered,
+            ),
+            (
+                10,
+                branch4_runtime_id,
+                vec![1, 4],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                11,
+                select4_runtime_id,
+                vec![1, 5],
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                12,
+                optimize4_runtime_id,
+                vec![1, 6],
+                NodeLifecyclePhase::Entered,
+            ),
+            (
+                13,
+                skip2_runtime_id,
+                vec![0, 2],
+                NodeLifecyclePhase::Succeeded,
+            ),
         ] {
             assert!(live.apply_update(JourneyUpdateEvent {
                 sequence_id,
@@ -6571,7 +6737,9 @@ mod tests {
                     label: branch_label,
                     metadata: "",
                     left: Box::new(JourneyAst::Sequence(vec![
-                        JourneyAst::Step { label: select_label },
+                        JourneyAst::Step {
+                            label: select_label,
+                        },
                         JourneyAst::Step {
                             label: optimize_label,
                         },
@@ -6600,7 +6768,9 @@ mod tests {
                         JourneyAst::Step {
                             label: set_taken_label,
                         },
-                        JourneyAst::Step { label: submit_label },
+                        JourneyAst::Step {
+                            label: submit_label,
+                        },
                     ])),
                     right: Box::new(JourneyAst::Sequence(vec![
                         JourneyAst::Step {
@@ -6794,7 +6964,12 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            push_success(&mut live, &mut sequence_id, label, vec![0, 1 + offset as u64]);
+            push_success(
+                &mut live,
+                &mut sequence_id,
+                label,
+                vec![0, 1 + offset as u64],
+            );
         }
 
         sequence_id += 1;
@@ -6854,7 +7029,12 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            push_success(&mut live, &mut sequence_id, label, vec![1, 1 + offset as u64]);
+            push_success(
+                &mut live,
+                &mut sequence_id,
+                label,
+                vec![1, 1 + offset as u64],
+            );
         }
 
         sequence_id += 1;

@@ -17,13 +17,15 @@ use uuid::Uuid;
 
 const WINDOW_WIDTH: f32 = 1840.0;
 const WINDOW_HEIGHT: f32 = 860.0;
-const PANEL_HEADER_HEIGHT: f32 = 52.0;
-const WINDOW_HEADER_HORIZONTAL_PADDING: u16 = 12;
+const DAG_HEADER_HEIGHT: f32 = SPECTROGRAM_OVERLAY_HEIGHT;
+const DAG_HEADER_HORIZONTAL_PADDING: u16 = 8;
 const SECTION_HORIZONTAL_PADDING: u16 = 0;
-const HEADER_VERTICAL_PADDING: u16 = 14;
 const SNAPSHOT_ROW_VERTICAL_PADDING: u16 = 0;
 const SNAPSHOT_GAP: f32 = 0.0;
 const SPECTROGRAM_OVERLAY_HEIGHT: f32 = 30.0;
+const HEADER_LABEL_TEXT_SIZE: u16 = 13;
+const HEADER_LABEL_VERTICAL_PADDING: u16 = 4;
+const HEADER_LABEL_HORIZONTAL_PADDING: u16 = 8;
 const SPECTROGRAM_HUE_ROTATION_DEGREES: i32 = -100;
 
 #[derive(Debug, Clone)]
@@ -57,7 +59,7 @@ pub fn run_ui<C>(
 where
     C: JungleClient + Clone + 'static,
 {
-    let title = "Lyrebird";
+    let title = "Lyrebird - Appetite for Deduction";
     iced::application(
         move || LyrebirdUi::new(client.clone(), journey_id, image_dump.clone()),
         LyrebirdUi::update,
@@ -275,14 +277,17 @@ impl LyrebirdUi {
             format!("Journey {}", short_journey_id)
         };
 
-        let header = column![text(summary).size(15)].spacing(6);
-
-        container(header)
-            .width(Length::Fill)
-            .height(Length::Fixed(PANEL_HEADER_HEIGHT))
-            .padding([HEADER_VERTICAL_PADDING, WINDOW_HEADER_HORIZONTAL_PADDING])
-            .style(header_style)
-            .into()
+        container(
+            text(summary)
+                .size(HEADER_LABEL_TEXT_SIZE)
+                .width(Length::Fill)
+                .align_x(alignment::Horizontal::Right),
+        )
+        .width(Length::Fill)
+        .height(Length::Fixed(DAG_HEADER_HEIGHT))
+        .padding([HEADER_LABEL_VERTICAL_PADDING, DAG_HEADER_HORIZONTAL_PADDING])
+        .style(header_style)
+        .into()
     }
 
     fn snapshot_panel(&self) -> Element<'_, Message> {
@@ -478,13 +483,16 @@ fn spectrogram_tile<'a>(
     let overlay = container(
         container(
             text(overlay_label.unwrap_or_default())
-                .size(13)
+                .size(HEADER_LABEL_TEXT_SIZE)
                 .width(Length::Fill)
                 .align_x(overlay_alignment),
         )
         .width(Length::Fill)
         .height(Length::Fixed(SPECTROGRAM_OVERLAY_HEIGHT))
-        .padding([4, 8])
+        .padding([
+            HEADER_LABEL_VERTICAL_PADDING,
+            HEADER_LABEL_HORIZONTAL_PADDING,
+        ])
         .style(spectrogram_overlay_style),
     )
     .width(Length::Fill)
