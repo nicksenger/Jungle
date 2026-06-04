@@ -842,7 +842,7 @@ impl Observe for Lyrebird {
 }
 
 #[derive(Animals)]
-pub struct PulseCodeParadiseAnimals(Lyrebird);
+pub struct PulseCodePurgatoryAnimals(Lyrebird);
 
 #[derive(Clone)]
 struct TokensApiTarget {
@@ -866,10 +866,10 @@ impl From<Url> for TokensApiConfig {
 }
 
 impl TokensApiConfig {
-    fn parse(value: &str) -> Result<Self, PulseCodeParadiseError> {
+    fn parse(value: &str) -> Result<Self, PulseCodePurgatoryError> {
         let value = value.trim();
         if value.is_empty() {
-            return Err(PulseCodeParadiseError::InvalidTokensApi {
+            return Err(PulseCodePurgatoryError::InvalidTokensApi {
                 value: value.to_owned(),
                 reason: "expected at least one endpoint".to_owned(),
             });
@@ -879,7 +879,7 @@ impl TokensApiConfig {
         let mut fallback = None;
         for entry in value.split(',').map(str::trim) {
             if entry.is_empty() {
-                return Err(PulseCodeParadiseError::InvalidTokensApi {
+                return Err(PulseCodePurgatoryError::InvalidTokensApi {
                     value: value.to_owned(),
                     reason: "empty entries are not allowed".to_owned(),
                 });
@@ -896,7 +896,7 @@ impl TokensApiConfig {
             };
 
             if raw_url.is_empty() {
-                return Err(PulseCodeParadiseError::InvalidTokensApi {
+                return Err(PulseCodePurgatoryError::InvalidTokensApi {
                     value: value.to_owned(),
                     reason: format!("missing endpoint for `{entry}`"),
                 });
@@ -906,7 +906,7 @@ impl TokensApiConfig {
             match instrument {
                 Some(instrument) => {
                     if routes.insert(instrument, tokens_url).is_some() {
-                        return Err(PulseCodeParadiseError::InvalidTokensApi {
+                        return Err(PulseCodePurgatoryError::InvalidTokensApi {
                             value: value.to_owned(),
                             reason: format!(
                                 "duplicate endpoint mapping for instrument `{}`",
@@ -917,7 +917,7 @@ impl TokensApiConfig {
                 }
                 None => {
                     if fallback.replace(tokens_url).is_some() {
-                        return Err(PulseCodeParadiseError::InvalidTokensApi {
+                        return Err(PulseCodePurgatoryError::InvalidTokensApi {
                             value: value.to_owned(),
                             reason: "multiple fallback endpoints are not allowed".to_owned(),
                         });
@@ -933,7 +933,7 @@ impl TokensApiConfig {
                 .map(|instrument| instrument.slug())
                 .collect::<Vec<_>>()
                 .join(",");
-            return Err(PulseCodeParadiseError::InvalidTokensApi {
+            return Err(PulseCodePurgatoryError::InvalidTokensApi {
                 value: value.to_owned(),
                 reason: format!(
                     "routing must either cover all instruments or include a fallback endpoint; missing `{missing}`"
@@ -954,7 +954,7 @@ impl TokensApiConfig {
 }
 
 #[derive(Clone)]
-pub struct PulseCodeParadise {
+pub struct PulseCodePurgatory {
     db: Arc<redb::Database>,
     db_path: PathBuf,
     runtime_session_id: String,
@@ -968,12 +968,12 @@ pub struct PulseCodeParadise {
     instrument_parallelism: usize,
 }
 
-impl PulseCodeParadise {
+impl PulseCodePurgatory {
     pub fn new(
         tokens_api: impl Into<TokensApiConfig>,
         tokens_token: Option<String>,
         db_path: Option<PathBuf>,
-    ) -> Result<Self, PulseCodeParadiseError> {
+    ) -> Result<Self, PulseCodePurgatoryError> {
         let tokens_api = tokens_api.into();
         let tokens_clients = tokens_api
             .unique_urls()
@@ -987,7 +987,7 @@ impl PulseCodeParadise {
                     },
                 ))
             })
-            .collect::<Result<BTreeMap<_, _>, PulseCodeParadiseError>>()?;
+            .collect::<Result<BTreeMap<_, _>, PulseCodePurgatoryError>>()?;
         let (db, db_path) = mcts::open_mcts_db(db_path)?;
 
         Ok(Self {
@@ -1033,13 +1033,13 @@ impl PulseCodeParadise {
     }
 }
 
-impl Ecosystem for PulseCodeParadise {
-    const NAME: &'static str = "pulse-code-paradise";
-    type Animals = PulseCodeParadiseAnimals;
+impl Ecosystem for PulseCodePurgatory {
+    const NAME: &'static str = "pulse-code-purgatory";
+    type Animals = PulseCodePurgatoryAnimals;
 }
 
 #[derive(Debug, Error)]
-pub enum PulseCodeParadiseError {
+pub enum PulseCodePurgatoryError {
     #[error("failed to construct tokens client: {0}")]
     Client(#[from] reqwest::Error),
     #[error("invalid tokens API mapping `{value}`: {reason}")]
@@ -1174,7 +1174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let selected_instruments = normalize_instrument_selection(cli.instruments.as_deref());
 
     let instrument_seeds = build_instrument_seeds(&workspace_root, &output_root).await?;
-    let ecosystem = PulseCodeParadise::new(cli.tokens_api, cli.tokens_token, cli.db_path)?
+    let ecosystem = PulseCodePurgatory::new(cli.tokens_api, cli.tokens_token, cli.db_path)?
         .with_tools(
             LyrebirdInstrument::ALL
                 .into_iter()
@@ -1208,7 +1208,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .await?;
     let client = FusedClient::builder()
-        .namespace(PulseCodeParadise::NAME)
+        .namespace(PulseCodePurgatory::NAME)
         .backend(backend)
         .build()
         .await?;
@@ -1277,7 +1277,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn build_instrument_seeds(
     workspace_root: &Path,
     output_root: &Path,
-) -> Result<Vec<LyrebirdInstrumentSeed>, PulseCodeParadiseError> {
+) -> Result<Vec<LyrebirdInstrumentSeed>, PulseCodePurgatoryError> {
     let mut seeds = Vec::with_capacity(LyrebirdInstrument::ALL.len());
     for instrument in LyrebirdInstrument::ALL {
         let dsp_source_path = workspace_root.join(instrument.relative_dsp_path());
@@ -1289,7 +1289,7 @@ async fn build_instrument_seeds(
             &target_sample_path.display().to_string(),
         )
         .map_err(|err| {
-            PulseCodeParadiseError::Bootstrap(format!(
+            PulseCodePurgatoryError::Bootstrap(format!(
                 "failed to analyze target sample for {}: {err}",
                 instrument.slug()
             ))
@@ -1299,7 +1299,7 @@ async fn build_instrument_seeds(
             &target_spectrogram_path.display().to_string(),
         )
         .map_err(|err| {
-            PulseCodeParadiseError::Bootstrap(format!(
+            PulseCodePurgatoryError::Bootstrap(format!(
                 "failed to generate target mel spectrogram for {}: {err}",
                 instrument.slug()
             ))
@@ -1313,7 +1313,7 @@ async fn build_instrument_seeds(
             &dsp_source_path,
         )
         .await
-        .map_err(PulseCodeParadiseError::Bootstrap)?;
+        .map_err(PulseCodePurgatoryError::Bootstrap)?;
         seeds.push(LyrebirdInstrumentSeed {
             instrument,
             disabled: false,
@@ -1354,11 +1354,11 @@ fn build_seed(
 
 fn restore_instrument_sources(
     instruments: &[LyrebirdInstrumentSeed],
-) -> Result<(), PulseCodeParadiseError> {
+) -> Result<(), PulseCodePurgatoryError> {
     for instrument in instruments {
         let path = PathBuf::from(&instrument.dsp_source_path);
         std::fs::write(&path, &instrument.initial_dsp_code.source).map_err(|source| {
-            PulseCodeParadiseError::RestoreDspSource {
+            PulseCodePurgatoryError::RestoreDspSource {
                 path: path.clone(),
                 source,
             }
@@ -1372,7 +1372,7 @@ async fn ensure_lyrebird_running(
     seed: &LyrebirdSeed,
 ) -> Result<Uuid, jungle_sdk::ExecutorError> {
     let journeys = client
-        .list_journeys(PulseCodeParadise::NAME.to_owned())
+        .list_journeys(PulseCodePurgatory::NAME.to_owned())
         .await?;
     let lyrebird_animal_id = <<Lyrebird as Animal>::Id as AnimalIdValue>::U32;
 
@@ -1439,14 +1439,14 @@ fn is_terminal(status: JourneyStatus) -> bool {
     matches!(status, JourneyStatus::Completed | JourneyStatus::Dead)
 }
 
-fn default_lyrebird_root() -> Result<PathBuf, PulseCodeParadiseError> {
-    let base_dirs = BaseDirs::new().ok_or(PulseCodeParadiseError::HomeDirUnavailable)?;
+fn default_lyrebird_root() -> Result<PathBuf, PulseCodePurgatoryError> {
+    let base_dirs = BaseDirs::new().ok_or(PulseCodePurgatoryError::HomeDirUnavailable)?;
     Ok(base_dirs.home_dir().join(".jungle").join("lyrebird"))
 }
 
-fn ensure_parent_dir_exists(path: &Path) -> Result<(), PulseCodeParadiseError> {
+fn ensure_parent_dir_exists(path: &Path) -> Result<(), PulseCodePurgatoryError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|source| PulseCodeParadiseError::CreateDbDir {
+        std::fs::create_dir_all(parent).map_err(|source| PulseCodePurgatoryError::CreateDbDir {
             path: parent.to_path_buf(),
             source,
         })?;
@@ -1454,11 +1454,11 @@ fn ensure_parent_dir_exists(path: &Path) -> Result<(), PulseCodeParadiseError> {
     Ok(())
 }
 
-fn validate_openai_api_base_url(tokens_url: &Url) -> Result<(), PulseCodeParadiseError> {
+fn validate_openai_api_base_url(tokens_url: &Url) -> Result<(), PulseCodePurgatoryError> {
     match tokens_url.scheme() {
         "http" | "https" => {}
         scheme => {
-            return Err(PulseCodeParadiseError::InvalidTokensUrl {
+            return Err(PulseCodePurgatoryError::InvalidTokensUrl {
                 url: tokens_url.to_string(),
                 reason: format!("unsupported URL scheme `{scheme}`"),
             });
@@ -1466,14 +1466,14 @@ fn validate_openai_api_base_url(tokens_url: &Url) -> Result<(), PulseCodeParadis
     }
 
     if tokens_url.query().is_some() {
-        return Err(PulseCodeParadiseError::InvalidTokensUrl {
+        return Err(PulseCodePurgatoryError::InvalidTokensUrl {
             url: tokens_url.to_string(),
             reason: "query parameters are not allowed".to_owned(),
         });
     }
 
     if tokens_url.fragment().is_some() {
-        return Err(PulseCodeParadiseError::InvalidTokensUrl {
+        return Err(PulseCodePurgatoryError::InvalidTokensUrl {
             url: tokens_url.to_string(),
             reason: "fragments are not allowed".to_owned(),
         });
@@ -1489,7 +1489,7 @@ fn validate_openai_api_base_url(tokens_url: &Url) -> Result<(), PulseCodeParadis
         .unwrap_or_default();
 
     if path_segments.ends_with(&["chat", "completions"]) {
-        return Err(PulseCodeParadiseError::InvalidTokensUrl {
+        return Err(PulseCodePurgatoryError::InvalidTokensUrl {
             url: tokens_url.to_string(),
             reason: "received the chat completions endpoint instead of the API base URL".to_owned(),
         });
@@ -1498,7 +1498,7 @@ fn validate_openai_api_base_url(tokens_url: &Url) -> Result<(), PulseCodeParadis
     Ok(())
 }
 
-fn parse_tokens_api_base_url(value: &str) -> Result<Url, PulseCodeParadiseError> {
+fn parse_tokens_api_base_url(value: &str) -> Result<Url, PulseCodePurgatoryError> {
     let value = value.trim();
     let candidate = if value.contains("://") {
         value.to_owned()
@@ -1506,7 +1506,7 @@ fn parse_tokens_api_base_url(value: &str) -> Result<Url, PulseCodeParadiseError>
         format!("http://{value}")
     };
     let tokens_url =
-        Url::parse(&candidate).map_err(|_| PulseCodeParadiseError::InvalidTokensUrl {
+        Url::parse(&candidate).map_err(|_| PulseCodePurgatoryError::InvalidTokensUrl {
             url: value.to_owned(),
             reason: "failed to parse as an HTTP(S) URL or host[:port] address".to_owned(),
         })?;
@@ -2140,7 +2140,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            PulseCodeParadiseError::InvalidTokensUrl { .. }
+            PulseCodePurgatoryError::InvalidTokensUrl { .. }
         ));
         assert!(err.to_string().contains("chat completions endpoint"));
     }
@@ -2171,7 +2171,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            PulseCodeParadiseError::InvalidTokensApi { .. }
+            PulseCodePurgatoryError::InvalidTokensApi { .. }
         ));
         assert!(err.to_string().contains("cover all instruments"));
     }
@@ -2655,7 +2655,7 @@ mod tests {
         };
 
         let ecosystem = Arc::new(
-            PulseCodeParadise::new(
+            PulseCodePurgatory::new(
                 Url::parse("http://localhost:1/v1")
                     .expect("lyrebird test tokens URL should parse"),
                 None,
@@ -2672,7 +2672,7 @@ mod tests {
             .with_instrument_parallelism(0),
         );
         let mut executor =
-            ContextExecutor::<PulseCodeParadise, Lyrebird>::new(ecosystem, LyrebirdState::default());
+            ContextExecutor::<PulseCodePurgatory, Lyrebird>::new(ecosystem, LyrebirdState::default());
         executor.set_journey_id(Uuid::new_v4());
         let label_by_runtime = jungle_vision::debug_render_states_for_animal::<Lyrebird>(
             std::iter::empty(),
@@ -2786,7 +2786,7 @@ mod tests {
         };
 
         let ecosystem = Arc::new(
-            PulseCodeParadise::new(
+            PulseCodePurgatory::new(
                 Url::parse("http://localhost:1/v1").expect("debug tokens URL should parse"),
                 None,
                 Some(root.join("mcts.redb")),
@@ -2802,7 +2802,7 @@ mod tests {
             .with_instrument_parallelism(0),
         );
         let mut executor =
-            ContextExecutor::<PulseCodeParadise, Lyrebird>::new(ecosystem, LyrebirdState::default());
+            ContextExecutor::<PulseCodePurgatory, Lyrebird>::new(ecosystem, LyrebirdState::default());
         let journey_id = Uuid::new_v4();
         executor.set_journey_id(journey_id);
         let label_by_runtime = jungle_vision::debug_render_states_for_animal::<Lyrebird>(

@@ -1,6 +1,6 @@
 use super::{
-    DspCode, LyrebirdBranchNode, LyrebirdInstrument, LyrebirdInstrumentTag, PulseCodeParadise,
-    PulseCodeParadiseError,
+    DspCode, LyrebirdBranchNode, LyrebirdInstrument, LyrebirdInstrumentTag, PulseCodePurgatory,
+    PulseCodePurgatoryError,
 };
 use directories_next::BaseDirs;
 use redb::{ReadableTable, TableDefinition};
@@ -58,16 +58,16 @@ struct StoredMctsNode {
 
 pub(crate) fn open_mcts_db(
     db_path: Option<PathBuf>,
-) -> Result<(Arc<redb::Database>, PathBuf), PulseCodeParadiseError> {
+) -> Result<(Arc<redb::Database>, PathBuf), PulseCodePurgatoryError> {
     let db_path = resolve_mcts_db_path(db_path)?;
     if let Some(parent) = db_path.parent() {
-        fs::create_dir_all(parent).map_err(|source| PulseCodeParadiseError::CreateDbDir {
+        fs::create_dir_all(parent).map_err(|source| PulseCodePurgatoryError::CreateDbDir {
             path: parent.to_path_buf(),
             source,
         })?;
     }
     let db = redb::Database::create(&db_path).map_err(|err| {
-        PulseCodeParadiseError::Persistence(format!(
+        PulseCodePurgatoryError::Persistence(format!(
             "failed to open mcts database {}: {err}",
             db_path.display()
         ))
@@ -76,22 +76,22 @@ pub(crate) fn open_mcts_db(
     Ok((Arc::new(db), db_path))
 }
 
-impl PulseCodeParadise {
+impl PulseCodePurgatory {
     pub(crate) fn select_lyrebird_branch_for_tag<Tag>(
         &self,
-    ) -> Result<Vec<LyrebirdBranchNode>, PulseCodeParadiseError>
+    ) -> Result<Vec<LyrebirdBranchNode>, PulseCodePurgatoryError>
     where
         Tag: LyrebirdInstrumentTag,
     {
         let instrument = Tag::INSTRUMENT;
         let write_tx = self.db.begin_write().map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("mcts select begin_write failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("mcts select begin_write failed: {err}"))
         })?;
         let tag = type_name::<Tag>();
         let (mut tree_state, nodes) = load_mcts_tree(&write_tx, tag)?;
         if let Some(pending_selected_node_id) = tree_state.pending_selected_node_id {
             if tree_state.pending_session_id.as_deref() == Some(self.runtime_session_id.as_str()) {
-                return Err(PulseCodeParadiseError::MctsProtocol(format!(
+                return Err(PulseCodePurgatoryError::MctsProtocol(format!(
                     "{} tree already has a pending selected node; submit must follow select",
                     instrument.slug()
                 )));
@@ -113,7 +113,7 @@ impl PulseCodeParadise {
             selected_node_id,
             &nodes,
             self.initial_dsp_codes.get(&instrument).ok_or_else(|| {
-                PulseCodeParadiseError::MctsProtocol(format!(
+                PulseCodePurgatoryError::MctsProtocol(format!(
                     "missing initial dsp code for {}",
                     instrument.slug()
                 ))
@@ -125,7 +125,7 @@ impl PulseCodeParadise {
         tree_state.pending_session_id = Some(self.runtime_session_id.clone());
         save_tree_state(&write_tx, tag, &tree_state)?;
         write_tx.commit().map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("mcts select commit failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("mcts select commit failed: {err}"))
         })?;
 
         Ok(selected_branch)
@@ -134,20 +134,20 @@ impl PulseCodeParadise {
     pub(crate) fn submit_lyrebird_branch_for_tag<Tag>(
         &self,
         submissions: Vec<Submission<Vec<LyrebirdBranchNode>>>,
-    ) -> Result<(), PulseCodeParadiseError>
+    ) -> Result<(), PulseCodePurgatoryError>
     where
         Tag: LyrebirdInstrumentTag,
     {
         let instrument = Tag::INSTRUMENT;
         for submission in &submissions {
             if !submission.score.is_finite() {
-                return Err(PulseCodeParadiseError::MctsProtocol(format!(
+                return Err(PulseCodePurgatoryError::MctsProtocol(format!(
                     "{} tree score must be finite",
                     instrument.slug()
                 )));
             }
             if submission.data.len() != 1 {
-                return Err(PulseCodeParadiseError::MctsProtocol(format!(
+                return Err(PulseCodePurgatoryError::MctsProtocol(format!(
                     "{} tree submit expects exactly one generated branch node per submission, got {}",
                     instrument.slug(),
                     submission.data.len()
@@ -156,18 +156,18 @@ impl PulseCodeParadise {
         }
 
         let write_tx = self.db.begin_write().map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("mcts submit begin_write failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("mcts submit begin_write failed: {err}"))
         })?;
         let tag = type_name::<Tag>();
         let (mut tree_state, mut nodes) = load_mcts_tree(&write_tx, tag)?;
         if tree_state.pending_session_id.as_deref() != Some(self.runtime_session_id.as_str()) {
-            return Err(PulseCodeParadiseError::MctsProtocol(format!(
+            return Err(PulseCodePurgatoryError::MctsProtocol(format!(
                 "{} tree pending selection does not belong to this runtime; select must precede submit",
                 instrument.slug()
             )));
         }
         let selected_node_id = tree_state.pending_selected_node_id.take().ok_or_else(|| {
-            PulseCodeParadiseError::MctsProtocol(format!(
+            PulseCodePurgatoryError::MctsProtocol(format!(
                 "{} tree has no pending selected node; select must precede submit",
                 instrument.slug()
             ))
@@ -176,7 +176,7 @@ impl PulseCodeParadise {
 
         let new_nodes = {
             let selected_node = nodes.get_mut(&selected_node_id).ok_or_else(|| {
-                PulseCodeParadiseError::Persistence(format!(
+                PulseCodePurgatoryError::Persistence(format!(
                     "selected node {selected_node_id} missing for {} tree",
                     instrument.slug()
                 ))
@@ -211,7 +211,7 @@ impl PulseCodeParadise {
         save_tree_state(&write_tx, tag, &tree_state)?;
         save_tree_nodes(&write_tx, tag, &nodes)?;
         write_tx.commit().map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("mcts submit commit failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("mcts submit commit failed: {err}"))
         })?;
 
         Ok(())
@@ -220,22 +220,22 @@ impl PulseCodeParadise {
     #[cfg(test)]
     fn load_tree_for_test<Tag>(
         &self,
-    ) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodeParadiseError>
+    ) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodePurgatoryError>
     where
         Tag: LyrebirdInstrumentTag,
     {
         let write_tx = self.db.begin_write().map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("mcts test begin_write failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("mcts test begin_write failed: {err}"))
         })?;
         let snapshot = load_mcts_tree(&write_tx, type_name::<Tag>())?;
         write_tx.commit().map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("mcts test commit failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("mcts test commit failed: {err}"))
         })?;
         Ok(snapshot)
     }
 }
 
-impl<Tag> SearchTree<Tag> for PulseCodeParadise
+impl<Tag> SearchTree<Tag> for PulseCodePurgatory
 where
     Tag: LyrebirdInstrumentTag + Send + Sync + 'static,
 {
@@ -260,11 +260,11 @@ where
     }
 }
 
-fn resolve_mcts_db_path(db_path: Option<PathBuf>) -> Result<PathBuf, PulseCodeParadiseError> {
+fn resolve_mcts_db_path(db_path: Option<PathBuf>) -> Result<PathBuf, PulseCodePurgatoryError> {
     match db_path {
         Some(path) => Ok(path),
         None => {
-            let base_dirs = BaseDirs::new().ok_or(PulseCodeParadiseError::HomeDirUnavailable)?;
+            let base_dirs = BaseDirs::new().ok_or(PulseCodePurgatoryError::HomeDirUnavailable)?;
             Ok(base_dirs
                 .home_dir()
                 .join(".jungle")
@@ -305,16 +305,16 @@ fn root_node() -> StoredMctsNode {
 fn load_mcts_tree(
     write_tx: &redb::WriteTransaction,
     tag: &str,
-) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodeParadiseError> {
+) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodePurgatoryError> {
     let tree_state = {
         let mut trees = write_tx.open_table(MCTS_TREES_TABLE).map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("open mcts trees table failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("open mcts trees table failed: {err}"))
         })?;
         let key = tree_key(tag);
         let existing = trees
             .get(key.as_slice())
             .map_err(|err| {
-                PulseCodeParadiseError::Persistence(format!(
+                PulseCodePurgatoryError::Persistence(format!(
                     "read tree state for {tag} failed: {err}"
                 ))
             })?
@@ -328,7 +328,7 @@ fn load_mcts_tree(
                 trees
                     .insert(key.as_slice(), encoded.as_slice())
                     .map_err(|err| {
-                        PulseCodeParadiseError::Persistence(format!(
+                        PulseCodePurgatoryError::Persistence(format!(
                             "initialize tree state for {tag} failed: {err}"
                         ))
                     })?;
@@ -340,7 +340,7 @@ fn load_mcts_tree(
     let mut nodes = HashMap::new();
     {
         let mut node_table = write_tx.open_table(MCTS_NODES_TABLE).map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("open mcts nodes table failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("open mcts nodes table failed: {err}"))
         })?;
 
         for node_id in &tree_state.node_ids {
@@ -348,7 +348,7 @@ fn load_mcts_tree(
             let existing = node_table
                 .get(key.as_slice())
                 .map_err(|err| {
-                    PulseCodeParadiseError::Persistence(format!(
+                    PulseCodePurgatoryError::Persistence(format!(
                         "read node {node_id} for tree {tag} failed: {err}"
                     ))
                 })?
@@ -364,14 +364,14 @@ fn load_mcts_tree(
                     node_table
                         .insert(key.as_slice(), encoded.as_slice())
                         .map_err(|err| {
-                            PulseCodeParadiseError::Persistence(format!(
+                            PulseCodePurgatoryError::Persistence(format!(
                                 "initialize root node for {tag} failed: {err}"
                             ))
                         })?;
                     nodes.insert(ROOT_NODE_ID, root);
                 }
                 None => {
-                    return Err(PulseCodeParadiseError::Persistence(format!(
+                    return Err(PulseCodePurgatoryError::Persistence(format!(
                         "node {node_id} missing for tree {tag}"
                     )));
                 }
@@ -386,16 +386,16 @@ fn save_tree_state(
     write_tx: &redb::WriteTransaction,
     tag: &str,
     tree_state: &StoredMctsTree,
-) -> Result<(), PulseCodeParadiseError> {
+) -> Result<(), PulseCodePurgatoryError> {
     let mut trees = write_tx.open_table(MCTS_TREES_TABLE).map_err(|err| {
-        PulseCodeParadiseError::Persistence(format!("open mcts trees table failed: {err}"))
+        PulseCodePurgatoryError::Persistence(format!("open mcts trees table failed: {err}"))
     })?;
     let key = tree_key(tag);
     let encoded = serde_json::to_vec(tree_state)?;
     trees
         .insert(key.as_slice(), encoded.as_slice())
         .map_err(|err| {
-            PulseCodeParadiseError::Persistence(format!("write tree state for {tag} failed: {err}"))
+            PulseCodePurgatoryError::Persistence(format!("write tree state for {tag} failed: {err}"))
         })?;
     Ok(())
 }
@@ -404,9 +404,9 @@ fn save_tree_nodes(
     write_tx: &redb::WriteTransaction,
     tag: &str,
     nodes: &HashMap<u64, StoredMctsNode>,
-) -> Result<(), PulseCodeParadiseError> {
+) -> Result<(), PulseCodePurgatoryError> {
     let mut node_table = write_tx.open_table(MCTS_NODES_TABLE).map_err(|err| {
-        PulseCodeParadiseError::Persistence(format!("open mcts nodes table failed: {err}"))
+        PulseCodePurgatoryError::Persistence(format!("open mcts nodes table failed: {err}"))
     })?;
     for (node_id, node) in nodes {
         let key = node_key(tag, *node_id);
@@ -414,7 +414,7 @@ fn save_tree_nodes(
         node_table
             .insert(key.as_slice(), encoded.as_slice())
             .map_err(|err| {
-                PulseCodeParadiseError::Persistence(format!(
+                PulseCodePurgatoryError::Persistence(format!(
                     "write node {node_id} for tree {tag} failed: {err}"
                 ))
             })?;
@@ -426,7 +426,7 @@ fn choose_expandable_node(
     nodes: &HashMap<u64, StoredMctsNode>,
     max_tree_depth: usize,
     instrument: LyrebirdInstrument,
-) -> Result<u64, PulseCodeParadiseError> {
+) -> Result<u64, PulseCodePurgatoryError> {
     let mut best: Option<(&StoredMctsNode, usize)> = None;
 
     for node in nodes.values() {
@@ -444,7 +444,7 @@ fn choose_expandable_node(
     }
 
     best.map(|(node, _)| node.id).ok_or_else(|| {
-        PulseCodeParadiseError::MctsProtocol(format!(
+        PulseCodePurgatoryError::MctsProtocol(format!(
             "{} tree has no selectable branches below max depth {max_tree_depth}",
             instrument.slug()
         ))
@@ -489,12 +489,12 @@ fn node_depth(
     node_id: u64,
     nodes: &HashMap<u64, StoredMctsNode>,
     instrument: LyrebirdInstrument,
-) -> Result<usize, PulseCodeParadiseError> {
+) -> Result<usize, PulseCodePurgatoryError> {
     let mut depth = 0usize;
     let mut current_node_id = Some(node_id);
     while let Some(id) = current_node_id {
         let node = nodes.get(&id).ok_or_else(|| {
-            PulseCodeParadiseError::Persistence(format!(
+            PulseCodePurgatoryError::Persistence(format!(
                 "node {id} missing while computing {} tree depth",
                 instrument.slug()
             ))
@@ -512,12 +512,12 @@ fn branch_for_node(
     nodes: &HashMap<u64, StoredMctsNode>,
     initial_dsp_code: &DspCode,
     instrument: LyrebirdInstrument,
-) -> Result<Vec<LyrebirdBranchNode>, PulseCodeParadiseError> {
+) -> Result<Vec<LyrebirdBranchNode>, PulseCodePurgatoryError> {
     let mut lineage = Vec::new();
     let mut current_node_id = Some(node_id);
     while let Some(id) = current_node_id {
         let node = nodes.get(&id).ok_or_else(|| {
-            PulseCodeParadiseError::Persistence(format!(
+            PulseCodePurgatoryError::Persistence(format!(
                 "node {id} missing while rebuilding {} branch",
                 instrument.slug()
             ))
@@ -534,7 +534,7 @@ fn branch_for_node(
             nodes
                 .get(&id)
                 .ok_or_else(|| {
-                    PulseCodeParadiseError::Persistence(format!(
+                    PulseCodePurgatoryError::Persistence(format!(
                         "node {id} missing while extending {} branch",
                         instrument.slug()
                     ))
@@ -552,11 +552,11 @@ fn backpropagate_mcts(
     start_node_id: u64,
     score: f64,
     instrument: LyrebirdInstrument,
-) -> Result<(), PulseCodeParadiseError> {
+) -> Result<(), PulseCodePurgatoryError> {
     let mut current_node_id = Some(start_node_id);
     while let Some(node_id) = current_node_id {
         let node = nodes.get_mut(&node_id).ok_or_else(|| {
-            PulseCodeParadiseError::Persistence(format!(
+            PulseCodePurgatoryError::Persistence(format!(
                 "node {node_id} missing while backpropagating {} tree",
                 instrument.slug()
             ))
@@ -616,14 +616,14 @@ mod tests {
         }
     }
 
-    fn ecosystem(name: &str, max_tree_depth: usize) -> PulseCodeParadise {
+    fn ecosystem(name: &str, max_tree_depth: usize) -> PulseCodePurgatory {
         let initial = LyrebirdInstrument::ALL.into_iter().map(|instrument| {
             (
                 instrument,
                 dsp_code(&format!("initial-{}", instrument.slug()), Some(0.1)),
             )
         });
-        PulseCodeParadise::new(
+        PulseCodePurgatory::new(
             Url::parse("https://api.openai.com/v1").unwrap(),
             None,
             Some(temp_db_path(name)),
@@ -633,9 +633,9 @@ mod tests {
     }
 
     fn select_for_instrument(
-        ecosystem: &PulseCodeParadise,
+        ecosystem: &PulseCodePurgatory,
         instrument: LyrebirdInstrument,
-    ) -> Result<Vec<LyrebirdBranchNode>, PulseCodeParadiseError> {
+    ) -> Result<Vec<LyrebirdBranchNode>, PulseCodePurgatoryError> {
         match instrument {
             LyrebirdInstrument::RhythmGuitar => {
                 ecosystem.select_lyrebird_branch_for_tag::<RhythmGuitarMarker>()
@@ -654,10 +654,10 @@ mod tests {
     }
 
     fn submit_for_instrument(
-        ecosystem: &PulseCodeParadise,
+        ecosystem: &PulseCodePurgatory,
         instrument: LyrebirdInstrument,
         submissions: Vec<Submission<Vec<LyrebirdBranchNode>>>,
-    ) -> Result<(), PulseCodeParadiseError> {
+    ) -> Result<(), PulseCodePurgatoryError> {
         match instrument {
             LyrebirdInstrument::RhythmGuitar => {
                 ecosystem.submit_lyrebird_branch_for_tag::<RhythmGuitarMarker>(submissions)
@@ -678,9 +678,9 @@ mod tests {
     }
 
     fn load_tree_for_instrument(
-        ecosystem: &PulseCodeParadise,
+        ecosystem: &PulseCodePurgatory,
         instrument: LyrebirdInstrument,
-    ) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodeParadiseError> {
+    ) -> Result<(StoredMctsTree, HashMap<u64, StoredMctsNode>), PulseCodePurgatoryError> {
         match instrument {
             LyrebirdInstrument::RhythmGuitar => {
                 ecosystem.load_tree_for_test::<RhythmGuitarMarker>()
@@ -706,14 +706,14 @@ mod tests {
         let tokens_url = Url::parse("https://api.openai.com/v1").unwrap();
         let initial = dsp_code("initial", Some(0.2));
 
-        let first = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
+        let first = PulseCodePurgatory::new(tokens_url.clone(), None, Some(db_path.clone()))
             .unwrap()
             .with_mcts_config([(LyrebirdInstrument::RhythmGuitar, initial.clone())], 8);
         let selected = select_for_instrument(&first, LyrebirdInstrument::RhythmGuitar).unwrap();
         assert_eq!(selected, vec![initial.clone().into()]);
         drop(first);
 
-        let second = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
+        let second = PulseCodePurgatory::new(tokens_url.clone(), None, Some(db_path.clone()))
             .unwrap()
             .with_mcts_config([(LyrebirdInstrument::RhythmGuitar, initial.clone())], 8);
         let recovered = select_for_instrument(&second, LyrebirdInstrument::RhythmGuitar).unwrap();
@@ -730,7 +730,7 @@ mod tests {
         .unwrap();
         drop(second);
 
-        let third = PulseCodeParadise::new(tokens_url, None, Some(db_path))
+        let third = PulseCodePurgatory::new(tokens_url, None, Some(db_path))
             .unwrap()
             .with_mcts_config([(LyrebirdInstrument::RhythmGuitar, initial)], 8);
         let (tree, nodes) =
@@ -798,14 +798,14 @@ mod tests {
         let tokens_url = Url::parse("https://api.openai.com/v1").unwrap();
         let initial = dsp_code("initial", Some(0.2));
 
-        let first = PulseCodeParadise::new(tokens_url.clone(), None, Some(db_path.clone()))
+        let first = PulseCodePurgatory::new(tokens_url.clone(), None, Some(db_path.clone()))
             .unwrap()
             .with_mcts_config([(LyrebirdInstrument::Bass, initial.clone())], 8);
         let selected = select_for_instrument(&first, LyrebirdInstrument::Bass).unwrap();
         assert_eq!(selected, vec![initial.clone().into()]);
         drop(first);
 
-        let second = PulseCodeParadise::new(tokens_url, None, Some(db_path))
+        let second = PulseCodePurgatory::new(tokens_url, None, Some(db_path))
             .unwrap()
             .with_mcts_config([(LyrebirdInstrument::Bass, initial.clone())], 8);
         let recovered = select_for_instrument(&second, LyrebirdInstrument::Bass).unwrap();

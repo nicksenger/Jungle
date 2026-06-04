@@ -1,4 +1,4 @@
-use super::{LyrebirdInstrument, PulseCodeParadise, PulseCodeParadiseError};
+use super::{LyrebirdInstrument, PulseCodePurgatory, PulseCodePurgatoryError};
 use base64::prelude::{Engine as _, BASE64_STANDARD};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -62,10 +62,10 @@ pub trait TokenPredictor {
 
 const DEFAULT_TOKENS_MODEL: &str = "codemonkey-d-luffy";
 
-impl PulseCodeParadise {
+impl PulseCodePurgatory {
     pub(crate) fn build_tokens_client(
         tokens_token: Option<&str>,
-    ) -> Result<reqwest::Client, PulseCodeParadiseError> {
+    ) -> Result<reqwest::Client, PulseCodePurgatoryError> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
@@ -78,7 +78,7 @@ impl PulseCodeParadise {
         reqwest::Client::builder()
             .default_headers(headers)
             .build()
-            .map_err(PulseCodeParadiseError::from)
+            .map_err(PulseCodePurgatoryError::from)
     }
 
     pub(crate) fn tokens_model_from_env() -> String {
@@ -88,24 +88,24 @@ impl PulseCodeParadise {
     fn tokens_target_for(
         &self,
         meta: Option<LyrebirdInstrument>,
-    ) -> Result<&super::TokensApiTarget, PulseCodeParadiseError> {
+    ) -> Result<&super::TokensApiTarget, PulseCodePurgatoryError> {
         let server = match meta {
             Some(instrument) => self
                 .tokens_routes
                 .get(&instrument)
                 .or(self.tokens_fallback_server.as_ref())
-                .ok_or_else(|| PulseCodeParadiseError::MissingTokensRoute {
+                .ok_or_else(|| PulseCodePurgatoryError::MissingTokensRoute {
                     instrument: instrument.slug().to_owned(),
                 })?,
             None => self
                 .tokens_fallback_server
                 .as_ref()
-                .ok_or(PulseCodeParadiseError::MissingTokensMeta)?,
+                .ok_or(PulseCodePurgatoryError::MissingTokensMeta)?,
         };
 
         self.tokens_clients
             .get(server)
-            .ok_or_else(|| PulseCodeParadiseError::MissingTokensClient {
+            .ok_or_else(|| PulseCodePurgatoryError::MissingTokensClient {
                 server: server.clone(),
             })
     }
@@ -117,7 +117,7 @@ impl PulseCodeParadise {
         )
     }
 
-    fn chat_completions_request(&self, prompt: &Prompt) -> Result<Value, PulseCodeParadiseError> {
+    fn chat_completions_request(&self, prompt: &Prompt) -> Result<Value, PulseCodePurgatoryError> {
         let mut request = json!({
             "model": self.tokens_model,
             "messages": prompt
@@ -137,8 +137,8 @@ impl PulseCodeParadise {
     }
 }
 
-impl TokenPredictor for PulseCodeParadise {
-    type Error = PulseCodeParadiseError;
+impl TokenPredictor for PulseCodePurgatory {
+    type Error = PulseCodePurgatoryError;
     type Meta = LyrebirdInstrument;
 
     fn predict(
@@ -215,14 +215,14 @@ impl OpenAiArguments {
     }
 }
 
-fn openai_message(message: &Message) -> Result<Value, PulseCodeParadiseError> {
+fn openai_message(message: &Message) -> Result<Value, PulseCodePurgatoryError> {
     Ok(json!({
         "role": message.role,
         "content": message.contents.iter().map(openai_content).collect::<Result<Vec<_>, _>>()?,
     }))
 }
 
-fn openai_content(content: &Content) -> Result<Value, PulseCodeParadiseError> {
+fn openai_content(content: &Content) -> Result<Value, PulseCodePurgatoryError> {
     match content {
         Content::Text(text) => Ok(json!({
             "type": "text",
@@ -248,8 +248,8 @@ fn openai_tool(tool: &Tool) -> Value {
     })
 }
 
-fn image_data_url(path: &Path) -> Result<String, PulseCodeParadiseError> {
-    let bytes = std::fs::read(path).map_err(|source| PulseCodeParadiseError::ReadImage {
+fn image_data_url(path: &Path) -> Result<String, PulseCodePurgatoryError> {
+    let bytes = std::fs::read(path).map_err(|source| PulseCodePurgatoryError::ReadImage {
         path: path.to_path_buf(),
         source,
     })?;
@@ -273,7 +273,7 @@ fn mime_type(path: &Path) -> &'static str {
 
 fn extract_tool_calls(
     response: OpenAiChatCompletionsResponse,
-) -> Result<Vec<ToolCall>, PulseCodeParadiseError> {
+) -> Result<Vec<ToolCall>, PulseCodePurgatoryError> {
     response
         .choices
         .into_iter()
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn appends_chat_completions_path() {
-        let ecosystem = PulseCodeParadise::new(
+        let ecosystem = PulseCodePurgatory::new(
             Url::parse("https://api.openai.com/v1").unwrap(),
             None,
             Some(temp_db_path("endpoint")),
@@ -314,7 +314,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            PulseCodeParadise::chat_completions_endpoint(
+            PulseCodePurgatory::chat_completions_endpoint(
                 &ecosystem
                     .tokens_target_for(Some(LyrebirdInstrument::Bass))
                     .unwrap()
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn routes_instruments_to_specific_and_fallback_tokens_apis() {
-        let ecosystem = PulseCodeParadise::new(
+        let ecosystem = PulseCodePurgatory::new(
             TokensApiConfig::parse("sologuitar:localhost:4567,bass:localhost:6789,localhost:9876")
                 .unwrap(),
             None,
@@ -336,7 +336,7 @@ mod tests {
 
         assert_eq!(ecosystem.tokens_clients.len(), 3);
         assert_eq!(
-            PulseCodeParadise::chat_completions_endpoint(
+            PulseCodePurgatory::chat_completions_endpoint(
                 &ecosystem
                     .tokens_target_for(Some(LyrebirdInstrument::GuitarSolo))
                     .unwrap()
@@ -345,7 +345,7 @@ mod tests {
             "http://localhost:4567/chat/completions"
         );
         assert_eq!(
-            PulseCodeParadise::chat_completions_endpoint(
+            PulseCodePurgatory::chat_completions_endpoint(
                 &ecosystem
                     .tokens_target_for(Some(LyrebirdInstrument::Bass))
                     .unwrap()
@@ -354,7 +354,7 @@ mod tests {
             "http://localhost:6789/chat/completions"
         );
         assert_eq!(
-            PulseCodeParadise::chat_completions_endpoint(
+            PulseCodePurgatory::chat_completions_endpoint(
                 &ecosystem
                     .tokens_target_for(Some(LyrebirdInstrument::Vocals))
                     .unwrap()
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn deduplicates_clients_for_shared_server_addresses() {
-        let ecosystem = PulseCodeParadise::new(
+        let ecosystem = PulseCodePurgatory::new(
             TokensApiConfig::parse("sologuitar:localhost:4567,bass:localhost:4567,localhost:9876")
                 .unwrap(),
             None,
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn request_uses_prompt_tools() {
-        let ecosystem = PulseCodeParadise::new(
+        let ecosystem = PulseCodePurgatory::new(
             Url::parse("https://api.openai.com/v1").unwrap(),
             None,
             Some(temp_db_path("request-tools")),

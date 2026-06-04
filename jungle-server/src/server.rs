@@ -915,7 +915,7 @@ mod tests {
     fn wait_for_worker_wake_uses_timeout_aware_request_threshold() {
         let request = WireIn::WaitForWorkerWake {
             owner_id: Uuid::nil(),
-            namespace: "pulse-code-paradise".to_owned(),
+            namespace: "pulse-code-purgatory".to_owned(),
             supported_animals: vec![],
             timeout_ms: 250,
         };

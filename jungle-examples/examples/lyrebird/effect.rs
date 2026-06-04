@@ -5,7 +5,7 @@ use crate::tokens::{Prompt, TokenPredictor, ToolCall};
 use crate::{
     aggregate_sample_score, DspCode, LyrebirdAudioMetricErrors, LyrebirdAudioMetrics,
     LyrebirdBranchNode, LyrebirdGeneratedCandidate, LyrebirdInstrument, LyrebirdInstrumentTag,
-    LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodeParadise, LYREBIRD_DURATION_SECS,
+    LyrebirdPatch, LyrebirdPreparedCandidate, PulseCodePurgatory, LYREBIRD_DURATION_SECS,
 };
 use futures::future::join_all;
 use image::ImageReader;
@@ -123,18 +123,18 @@ impl Effect<()> for PromptModel {
         _jungle: &(),
         _input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async { Err("PromptModel requires PulseCodeParadise runtime context".to_owned()) }
+        async { Err("PromptModel requires PulseCodePurgatory runtime context".to_owned()) }
     }
 }
 
 #[effect(id = 5)]
-impl Effect<PulseCodeParadise> for PromptModel {
+impl Effect<PulseCodePurgatory> for PromptModel {
     type In = PromptModelInput;
     type Out = Vec<ToolCall>;
     type Err = String;
 
     fn effect(
-        jungle: &PulseCodeParadise,
+        jungle: &PulseCodePurgatory,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move {
@@ -272,26 +272,26 @@ where
         _jungle: &(),
         _input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async { Err("SearchTreeSelect requires PulseCodeParadise runtime context".to_owned()) }
+        async { Err("SearchTreeSelect requires PulseCodePurgatory runtime context".to_owned()) }
     }
 }
 
 #[effect(id = 9)]
-impl<Marker> Effect<PulseCodeParadise> for SearchTreeSelect<Marker>
+impl<Marker> Effect<PulseCodePurgatory> for SearchTreeSelect<Marker>
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
-    <PulseCodeParadise as SearchTree<Marker>>::Data: Send + 'static,
-    <PulseCodeParadise as SearchTree<Marker>>::Error: Send + 'static,
+    <PulseCodePurgatory as SearchTree<Marker>>::Data: Send + 'static,
+    <PulseCodePurgatory as SearchTree<Marker>>::Error: Send + 'static,
 {
     type In = ();
-    type Out = <PulseCodeParadise as SearchTree<Marker>>::Data;
-    type Err = <PulseCodeParadise as SearchTree<Marker>>::Error;
+    type Out = <PulseCodePurgatory as SearchTree<Marker>>::Data;
+    type Err = <PulseCodePurgatory as SearchTree<Marker>>::Error;
 
     fn effect(
-        jungle: &PulseCodeParadise,
+        jungle: &PulseCodePurgatory,
         _input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { <PulseCodeParadise as SearchTree<Marker>>::select(jungle).await }
+        async move { <PulseCodePurgatory as SearchTree<Marker>>::select(jungle).await }
     }
 }
 
@@ -309,26 +309,26 @@ where
         _jungle: &(),
         _input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async { Err("SearchTreeSubmit requires PulseCodeParadise runtime context".to_owned()) }
+        async { Err("SearchTreeSubmit requires PulseCodePurgatory runtime context".to_owned()) }
     }
 }
 
 #[effect(id = 10)]
-impl<Marker> Effect<PulseCodeParadise> for SearchTreeSubmit<Marker>
+impl<Marker> Effect<PulseCodePurgatory> for SearchTreeSubmit<Marker>
 where
     Marker: LyrebirdInstrumentTag + Send + Sync + 'static,
-    <PulseCodeParadise as SearchTree<Marker>>::Data: Send + 'static,
-    <PulseCodeParadise as SearchTree<Marker>>::Error: Send + 'static,
+    <PulseCodePurgatory as SearchTree<Marker>>::Data: Send + 'static,
+    <PulseCodePurgatory as SearchTree<Marker>>::Error: Send + 'static,
 {
-    type In = Vec<Submission<<PulseCodeParadise as SearchTree<Marker>>::Data>>;
+    type In = Vec<Submission<<PulseCodePurgatory as SearchTree<Marker>>::Data>>;
     type Out = ();
-    type Err = <PulseCodeParadise as SearchTree<Marker>>::Error;
+    type Err = <PulseCodePurgatory as SearchTree<Marker>>::Error;
 
     fn effect(
-        jungle: &PulseCodeParadise,
+        jungle: &PulseCodePurgatory,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { <PulseCodeParadise as SearchTree<Marker>>::submit(jungle, input).await }
+        async move { <PulseCodePurgatory as SearchTree<Marker>>::submit(jungle, input).await }
     }
 }
 
@@ -363,18 +363,18 @@ impl Effect<()> for OptimizeInstrument {
         _jungle: &(),
         _input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async { Err("OptimizeInstrument requires PulseCodeParadise runtime context".to_owned()) }
+        async { Err("OptimizeInstrument requires PulseCodePurgatory runtime context".to_owned()) }
     }
 }
 
 #[effect(id = 16)]
-impl Effect<PulseCodeParadise> for OptimizeInstrument {
+impl Effect<PulseCodePurgatory> for OptimizeInstrument {
     type In = OptimizeInstrumentInput;
     type Out = OptimizeInstrumentOutcome;
     type Err = String;
 
     fn effect(
-        jungle: &PulseCodeParadise,
+        jungle: &PulseCodePurgatory,
         input: Self::In,
     ) -> impl Future<Output = Result<Self::Out, Self::Err>> {
         async move { optimize_instrument(jungle, input).await }
@@ -856,7 +856,7 @@ async fn finalize_iteration_samples(
 }
 
 async fn optimize_instrument(
-    jungle: &PulseCodeParadise,
+    jungle: &PulseCodePurgatory,
     input: OptimizeInstrumentInput,
 ) -> Result<OptimizeInstrumentOutcome, String> {
     let prompt = build_optimization_prompt(BuildOptimizationPromptInput {
@@ -946,14 +946,14 @@ async fn optimize_instrument(
 }
 
 async fn request_prompt_candidate(
-    jungle: &PulseCodeParadise,
+    jungle: &PulseCodePurgatory,
     prompt: Prompt,
     iteration_id: String,
     instrument: LyrebirdInstrument,
     prompt_attempt: u32,
     candidate_index: usize,
 ) -> Result<Vec<ToolCall>, String> {
-    <PromptModel as jungle_sdk::Effect<PulseCodeParadise>>::effect(
+    <PromptModel as jungle_sdk::Effect<PulseCodePurgatory>>::effect(
         jungle,
         PromptModelInput {
             prompt,
