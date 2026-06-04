@@ -231,7 +231,7 @@ impl LyrebirdUi {
         {
             Some(ImageDumpPanel::Spectrograms) => (0, 1),
             Some(ImageDumpPanel::Graph) => (1, 0),
-            None => (2, 1),
+            None => (1, 1),
         };
         let image_section = container(self.snapshot_panel())
             .width(Length::FillPortion(image_section_fill_portion))
