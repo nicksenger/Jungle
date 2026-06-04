@@ -1615,10 +1615,12 @@ impl LiveData {
 
         let mut changed = false;
         for runtime_id in descendants {
-            let Some(path) = self.runtime_activation_paths.get(&runtime_id) else {
-                continue;
-            };
-            if path.len() <= activation_path.len() || path.starts_with(activation_path) {
+            if self
+                .runtime_activation_paths
+                .get(&runtime_id)
+                .map(|path| path.len() <= activation_path.len() || path.starts_with(activation_path))
+                .unwrap_or(false)
+            {
                 continue;
             }
             changed |= self.active_runtime_ids.remove(&runtime_id);
@@ -4806,6 +4808,99 @@ mod tests {
             Some(RuntimeState::Pending)
         );
         assert!(live.active_runtime_ids.contains(&loop_runtime_id));
+    }
+
+    #[test]
+    fn node_lifecycle_reentry_clears_stale_effect_only_descendants_without_paths() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "Prompt" },
+                JourneyAst::Step { label: "Finalize" },
+                JourneyAst::Step { label: "Sleep" },
+            ])),
+        });
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let prompt_runtime_id = runtime_id_for(&model, "Prompt");
+        let finalize_runtime_id = runtime_id_for(&model, "Finalize");
+        let sleep_runtime_id = runtime_id_for(&model, "Sleep");
+        let prompt_id = node_by_label(&model, "Prompt").id;
+        let finalize_id = node_by_label(&model, "Finalize").id;
+        let sleep_id = node_by_label(&model, "Sleep").id;
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: loop_runtime_id,
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: prompt_runtime_id,
+                    activation_path: vec![0, 0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                3,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: finalize_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                4,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: sleep_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                5,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: loop_runtime_id,
+                    activation_path: vec![1],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                6,
+                RunnerUpdateOut::EffectInput {
+                    node_id: prompt_runtime_id,
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        assert!(!live.finished_runtime_ids.contains(&finalize_runtime_id));
+        assert!(!live.finished_runtime_ids.contains(&sleep_runtime_id));
+        assert!(!live.runtime_update_sequence.contains_key(&finalize_runtime_id));
+        assert!(!live.runtime_update_sequence.contains_key(&sleep_runtime_id));
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(states.get(&prompt_id).copied(), Some(RuntimeState::Running));
+        assert_eq!(states.get(&finalize_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(states.get(&sleep_id).copied(), Some(RuntimeState::Pending));
     }
 
     #[test]
