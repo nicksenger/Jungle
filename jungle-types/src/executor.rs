@@ -682,7 +682,8 @@ where
             .expect("carry must exist while waiting for completion");
         let mut state = state;
         let view = <<A as BoundAction<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
-        let emitted = match <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry) {
+        let emitted = match <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry)
+        {
             Ok(emitted) => emitted,
             Err(failure) => {
                 self.waiting_completion = false;
@@ -931,7 +932,8 @@ where
             .expect("carry must exist while waiting for completion");
         let mut state = state;
         let view = <<A as BoundAction<T>>::Aspect as StateCarrier<T::State>>::focus(&mut state);
-        let emitted = match <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry) {
+        let emitted = match <A as BoundAction<T>>::absorb_with_carry(view, typed_completion, carry)
+        {
             Ok(emitted) => emitted,
             Err(failure) => {
                 self.waiting_completion = false;

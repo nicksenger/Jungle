@@ -479,7 +479,10 @@ async fn consume_journey_updates(
                 failed += 1;
             }
             RunnerUpdateOut::NodeLifecycle(node) => {
-                assert_eq!(node.uuid, journey_id, "lifecycle must match subscribed journey");
+                assert_eq!(
+                    node.uuid, journey_id,
+                    "lifecycle must match subscribed journey"
+                );
             }
             RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {}
         }

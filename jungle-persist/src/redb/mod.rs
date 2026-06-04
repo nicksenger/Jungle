@@ -3,8 +3,8 @@ use crate::{JungleStore, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jungle_types::{
-    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, NodeLifecycle,
-    OwnerWake, RunnerOut, RunnerUpdateOut, SupportedAnimal, Work,
+    ClaimedPerturbable, JourneyRecord, JourneyStatus, JourneyUpdateEvent, NodeLifecycle, OwnerWake,
+    RunnerOut, RunnerUpdateOut, SupportedAnimal, Work,
 };
 use redb::{ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};

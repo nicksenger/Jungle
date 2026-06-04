@@ -203,8 +203,8 @@ async fn apply_completion_and_emit_appearance<T, A>(
 ) -> Result<(), ExecutorError>
 where
     T: 'static,
-        A: BoundAnimal + Observable,
-        BoundAnimalJourney<A>:
+    A: BoundAnimal + Observable,
+    BoundAnimalJourney<A>:
         BuildFlowWithContext<(Arc<T>, DynFlow<A::State>), Output = (Arc<T>, DynFlow<A::State>)>,
 {
     match &completion {

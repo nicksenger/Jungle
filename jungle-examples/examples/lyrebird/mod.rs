@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(feature = "viewer")]
+use std::time::Duration;
 use thiserror::Error;
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -1122,6 +1124,18 @@ struct Cli {
         value_parser = LyrebirdInstrument::parse_cli_selection
     )]
     instruments: Option<Vec<LyrebirdInstrument>>,
+    #[arg(
+        long = "img-dump",
+        help = "Capture the lyrebird UI to this PNG path and then exit"
+    )]
+    img_dump: Option<PathBuf>,
+    #[arg(
+        long = "img-dump-time-secs",
+        requires = "img_dump",
+        value_parser = parse_img_dump_time_secs,
+        help = "Seconds to wait after the UI starts before capturing --img-dump"
+    )]
+    img_dump_time_secs: Option<f64>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -1206,9 +1220,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "viewer")]
     {
-        tokio::task::block_in_place(|| ui::run_ui(client.clone(), journey_id))?;
+        let img_dump = cli.img_dump.map(|output_path| {
+            ui::ImageDumpConfig::new(
+                output_path,
+                Duration::from_secs_f64(cli.img_dump_time_secs.unwrap_or(0.0)),
+            )
+        });
+        tokio::task::block_in_place(|| ui::run_ui(client.clone(), journey_id, img_dump))?;
     }
 
+    #[cfg(not(feature = "viewer"))]
+    if cli.img_dump.is_some() {
+        warn!("--img-dump was ignored because lyrebird was built without the `viewer` feature");
+    }
     #[cfg(not(feature = "viewer"))]
     tokio::signal::ctrl_c().await?;
     #[cfg(not(feature = "viewer"))]
@@ -1500,6 +1524,16 @@ fn parse_instrument_parallelism(value: &str) -> Result<usize, String> {
     Ok(instrument_parallelism)
 }
 
+fn parse_img_dump_time_secs(value: &str) -> Result<f64, String> {
+    let secs = value
+        .parse::<f64>()
+        .map_err(|_| format!("invalid image dump time argument: {value}"))?;
+    if !secs.is_finite() || secs < 0.0 {
+        return Err("image dump time must be a finite value greater than or equal to 0".to_owned());
+    }
+    Ok(secs)
+}
+
 fn normalize_instrument_selection(
     selected: Option<&[LyrebirdInstrument]>,
 ) -> Vec<LyrebirdInstrument> {
@@ -1562,6 +1596,17 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::Duration;
+
+    #[test]
+    fn parses_non_negative_img_dump_time_secs() {
+        assert_eq!(parse_img_dump_time_secs("0").unwrap(), 0.0);
+        assert_eq!(parse_img_dump_time_secs("30.5").unwrap(), 30.5);
+    }
+
+    #[test]
+    fn rejects_negative_img_dump_time_secs() {
+        assert!(parse_img_dump_time_secs("-1").is_err());
+    }
 
     struct PromptJoinConcurrentRuntime {
         barrier: Mutex<Arc<tokio::sync::Barrier>>,

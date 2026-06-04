@@ -1,13 +1,17 @@
 use crate::{Lyrebird, LyrebirdInstrument, LyrebirdInstrumentState, LyrebirdState};
 use iced::widget::{button, column, container, image as iced_image, row, stack, text};
-use iced::{alignment, clipboard, ContentFit, Element, Font, Length, Subscription, Task};
+use iced::window;
+use iced::{
+    alignment, clipboard, window::Screenshot, ContentFit, Element, Font, Length, Subscription, Task,
+};
 use jungle_sdk::JungleClient;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::collections::BTreeMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufReader;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -22,13 +26,29 @@ const SNAPSHOT_GAP: f32 = 0.0;
 const SPECTROGRAM_OVERLAY_HEIGHT: f32 = 30.0;
 const SPECTROGRAM_HUE_ROTATION_DEGREES: i32 = -100;
 
-pub fn run_ui<C>(client: C, journey_id: Uuid) -> Result<(), iced::Error>
+#[derive(Debug, Clone)]
+pub struct ImageDumpConfig {
+    output_path: PathBuf,
+    delay: Duration,
+}
+
+impl ImageDumpConfig {
+    pub fn new(output_path: PathBuf, delay: Duration) -> Self {
+        Self { output_path, delay }
+    }
+}
+
+pub fn run_ui<C>(
+    client: C,
+    journey_id: Uuid,
+    image_dump: Option<ImageDumpConfig>,
+) -> Result<(), iced::Error>
 where
     C: JungleClient + Clone + 'static,
 {
     let title = "Lyrebird";
     iced::application(
-        move || LyrebirdUi::new(client.clone(), journey_id),
+        move || LyrebirdUi::new(client.clone(), journey_id, image_dump.clone()),
         LyrebirdUi::update,
         LyrebirdUi::view,
     )
@@ -50,9 +70,13 @@ enum SnapshotKind {
 
 #[derive(Debug, Clone)]
 enum Message {
+    AppStarted,
     Viewer(jungle_vision::EjectedViewerMessage),
     SnapshotLoaded(Result<Option<LyrebirdState>, String>),
     ActivateSpectrogram(LyrebirdInstrument, SnapshotKind),
+    CaptureView,
+    ViewCaptured(Screenshot),
+    ViewSaved(Result<PathBuf, String>),
 }
 
 struct LyrebirdUi {
@@ -63,10 +87,15 @@ struct LyrebirdUi {
     spectrogram_handles: BTreeMap<String, iced_image::Handle>,
     snapshot_error: Option<String>,
     audio: AudioPlayer,
+    image_dump: Option<ImageDumpConfig>,
 }
 
 impl LyrebirdUi {
-    fn new<C>(client: C, journey_id: Uuid) -> (Self, Task<Message>)
+    fn new<C>(
+        client: C,
+        journey_id: Uuid,
+        image_dump: Option<ImageDumpConfig>,
+    ) -> (Self, Task<Message>)
     where
         C: JungleClient + Clone + 'static,
     {
@@ -93,13 +122,22 @@ impl LyrebirdUi {
                 spectrogram_handles: BTreeMap::new(),
                 snapshot_error: None,
                 audio: AudioPlayer::new(),
+                image_dump,
             },
-            Task::perform(load_snapshot(client, journey_id), Message::SnapshotLoaded),
+            Task::batch([
+                Task::done(Message::AppStarted),
+                Task::perform(load_snapshot(client, journey_id), Message::SnapshotLoaded),
+            ]),
         )
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::AppStarted => self
+                .image_dump
+                .as_ref()
+                .map(|image_dump| schedule_capture(image_dump.delay))
+                .unwrap_or_else(Task::none),
             Message::Viewer(event) => {
                 let should_refresh = matches!(
                     event,
@@ -146,6 +184,26 @@ impl LyrebirdUi {
                 }
 
                 source.map_or_else(Task::none, clipboard::write)
+            }
+            Message::CaptureView => window::latest().then(|id| match id {
+                Some(id) => window::screenshot(id).map(Message::ViewCaptured),
+                None => Task::none(),
+            }),
+            Message::ViewCaptured(screenshot) => {
+                let Some(image_dump) = self.image_dump.clone() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    save_screenshot_png(image_dump.output_path, screenshot),
+                    Message::ViewSaved,
+                )
+            }
+            Message::ViewSaved(result) => {
+                match result {
+                    Ok(path) => println!("Wrote {}", path.display()),
+                    Err(error) => eprintln!("Failed to save screenshot: {error}"),
+                }
+                close_latest_window()
             }
         }
     }
@@ -338,6 +396,26 @@ impl LyrebirdUi {
             .and_then(|path| self.spectrogram_handles.get(path))
             .cloned()
     }
+}
+
+fn schedule_capture(delay: Duration) -> Task<Message> {
+    if delay.is_zero() {
+        Task::done(Message::CaptureView)
+    } else {
+        Task::perform(
+            async move {
+                tokio::time::sleep(delay).await;
+            },
+            |_| Message::CaptureView,
+        )
+    }
+}
+
+fn close_latest_window() -> Task<Message> {
+    window::latest().then(|id| match id {
+        Some(id) => window::close(id),
+        None => Task::none(),
+    })
 }
 
 fn spectrogram_tile<'a>(
@@ -568,6 +646,32 @@ async fn load_snapshot(
                 .map_err(|err| format!("failed to decode lyrebird state snapshot: {err}"))
         })
         .transpose()
+}
+
+async fn save_screenshot_png(path: PathBuf, screenshot: Screenshot) -> Result<PathBuf, String> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create screenshot directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+
+    let image = image::RgbaImage::from_raw(
+        screenshot.size.width,
+        screenshot.size.height,
+        screenshot.rgba.to_vec(),
+    )
+    .ok_or_else(|| "failed to build image buffer from screenshot".to_owned())?;
+
+    image
+        .save(&path)
+        .map_err(|error| format!("failed to save screenshot to {}: {error}", path.display()))?;
+    Ok(path)
 }
 
 fn build_spectrogram_handles(snapshot: &LyrebirdState) -> BTreeMap<String, iced_image::Handle> {
