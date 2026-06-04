@@ -55,7 +55,7 @@ pub fn synthesize_rhythm_guitar(note: &Note<ElectricGuitarArticulation>) -> (Arc
         // Add top-end resonance to match target spectral shape
         let top_end = sine(frequency_hz * 7.0, t) * tone.top_end;
 
-        let sample = (cab_lowpass + body_highpass * 0.5 + top_end * 0.4).clamp(-1.0, 1.0);
+        let sample = (cab_lowpass * 0.4 + body_highpass * 0.3 + top_end * 0.8).clamp(-1.0, 1.0);
         pcm.push(sample * velocity_gain);
     }
 

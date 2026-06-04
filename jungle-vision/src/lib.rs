@@ -54,15 +54,12 @@ static VISION_MAX_APPLY_ELAPSED_MS: AtomicUsize = AtomicUsize::new(0);
 
 fn graph_refresh_task<Message: Clone + Send + 'static>(
     graph_widget_id: iced_sugiyama::Id,
-    invalidate_layout: bool,
+    _invalidate_layout: bool,
 ) -> Task<Message> {
-    if invalidate_layout {
-        iced_sugiyama::invalidate::<Message>(graph_widget_id)
-    } else {
-        // Some live events only advance sequence/activation-path state. Those still affect
-        // repaired node phases, so the widget must review its cached node rendering.
-        iced_sugiyama::force_review::<Message>(graph_widget_id)
-    }
+    // Live repaired-state changes can advance the visible frontier without changing graph shape.
+    // Rebuilding the animated view on every event is more expensive, but it avoids stale node
+    // elements lingering in long-running live DAG sessions like lyrebird.
+    iced_sugiyama::invalidate::<Message>(graph_widget_id)
 }
 
 pub struct AnyAnimal;
@@ -4401,6 +4398,115 @@ mod tests {
             Some(RuntimeState::Pending)
         );
         assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn repaired_live_states_advance_across_sequential_conditionals() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Conditional {
+                label: "Branch1",
+                metadata: "",
+                left: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step { label: "Set1" },
+                    JourneyAst::Step { label: "Work1" },
+                ])),
+                right: Box::new(JourneyAst::Step { label: "Skip1" }),
+            },
+            JourneyAst::Step { label: "Flatten1" },
+            JourneyAst::Conditional {
+                label: "Branch2",
+                metadata: "",
+                left: Box::new(JourneyAst::Sequence(vec![
+                    JourneyAst::Step { label: "Set2" },
+                    JourneyAst::Step { label: "Work2" },
+                ])),
+                right: Box::new(JourneyAst::Step { label: "Skip2" }),
+            },
+            JourneyAst::Step { label: "Flatten2" },
+        ]));
+        let set1_id = node_by_label(&model, "Set1").id;
+        let work1_id = node_by_label(&model, "Work1").id;
+        let skip1_id = node_by_label(&model, "Skip1").id;
+        let flatten1_id = node_by_label(&model, "Flatten1").id;
+        let branch2_id = node_by_label(&model, "Branch2").id;
+        let set2_id = node_by_label(&model, "Set2").id;
+        let work2_id = node_by_label(&model, "Work2").id;
+        let skip2_id = node_by_label(&model, "Skip2").id;
+        let flatten2_id = node_by_label(&model, "Flatten2").id;
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, node_id) in [
+            (1, runtime_id_for(&model, "Branch1")),
+            (2, runtime_id_for(&model, "Set1")),
+            (3, runtime_id_for(&model, "Work1")),
+            (4, runtime_id_for(&model, "Flatten1")),
+            (5, runtime_id_for(&model, "Branch2")),
+            (6, runtime_id_for(&model, "Set2")),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id,
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            }));
+        }
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 7,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                node_id: runtime_id_for(&model, "Work2"),
+                activation_path: vec![0],
+                phase: NodeLifecyclePhase::Entered,
+                uuid: Uuid::nil(),
+            }),
+        }));
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&set1_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&work1_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&skip1_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            repaired.get(&flatten1_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&branch2_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&set2_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&work2_id).copied(),
+            Some(RuntimeState::Running)
+        );
+        assert_eq!(
+            repaired.get(&skip2_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            repaired.get(&flatten2_id).copied(),
+            Some(RuntimeState::Pending)
+        );
     }
 
     #[test]
