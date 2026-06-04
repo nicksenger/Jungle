@@ -705,6 +705,13 @@ async fn run_client_worker_streams_step_updates_end_to_end(listen_addr: SocketAd
                     failed_count += 1;
                     (update.sequence_id, uuid)
                 }
+                RunnerUpdateOut::NodeLifecycle(node) => {
+                    assert_eq!(
+                        node.uuid, journey_id,
+                        "lifecycle update should match journey"
+                    );
+                    continue;
+                }
                 RunnerUpdateOut::SleepScheduled { .. } | RunnerUpdateOut::SleepFired { .. } => {
                     continue;
                 }

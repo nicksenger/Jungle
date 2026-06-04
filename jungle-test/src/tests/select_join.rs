@@ -1271,6 +1271,7 @@ async fn conditional_join_then_tail_streams_events_and_completes_with_local_clie
                 RunnerUpdateOut::EffectInput { uuid, .. }
                 | RunnerUpdateOut::EffectSuccessOutput { uuid, .. }
                 | RunnerUpdateOut::EffectFailureOutput { uuid, .. } => (uuid, true),
+                RunnerUpdateOut::NodeLifecycle(node) => (node.uuid, false),
                 RunnerUpdateOut::SleepScheduled { uuid, .. }
                 | RunnerUpdateOut::SleepFired { uuid, .. } => (uuid, false),
             };
