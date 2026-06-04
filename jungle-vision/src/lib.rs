@@ -1877,6 +1877,13 @@ fn active_conditional_branch_sides(
     runtime_sequence_floors: &HashMap<u32, usize>,
     runtime_activation_prefixes: &HashMap<u32, Vec<u64>>,
 ) -> HashMap<u32, ConditionalSide> {
+    #[derive(Clone, Copy)]
+    struct BranchSignal {
+        best_priority: u8,
+        observed_count: usize,
+        latest_sequence: usize,
+    }
+
     let mut active = HashMap::new();
 
     for branch in &model.derived.conditional_branches {
@@ -1915,43 +1922,60 @@ fn active_conditional_branch_sides(
                 };
                 best_priority = best_priority.max(priority);
                 observed_count = observed_count.saturating_add(1);
-                latest_sequence = Some(
-                    latest_sequence
-                        .map(|current| current.max(sequence))
-                        .unwrap_or(sequence),
-                );
+                latest_sequence =
+                    Some(latest_sequence.map(|current| current.max(sequence)).unwrap_or(sequence));
             }
-            latest_sequence.map(|sequence| (best_priority, observed_count, sequence))
+            latest_sequence.map(|latest_sequence| BranchSignal {
+                best_priority,
+                observed_count,
+                latest_sequence,
+            })
         };
 
+        let left_root_signal = branch_signal_for_side(&branch.left_root_display_ids);
+        let right_root_signal = branch_signal_for_side(&branch.right_root_display_ids);
         let left_signal = branch_signal_for_side(&branch.left_member_display_ids);
         let right_signal = branch_signal_for_side(&branch.right_member_display_ids);
 
-        match (left_signal, right_signal) {
+        let selected_side = match (left_root_signal, right_root_signal) {
+            (Some(_), Some(_)) => Some(ConditionalSide::Left),
+            (Some(_), None) => Some(ConditionalSide::Left),
+            (None, Some(_)) => Some(ConditionalSide::Right),
+            (None, None) => None,
+        }
+        .or_else(|| match (left_signal, right_signal) {
             (Some(_), None) => {
-                active.insert(branch.condition_display_id, ConditionalSide::Left);
+                Some(ConditionalSide::Left)
             }
             (None, Some(_)) => {
-                active.insert(branch.condition_display_id, ConditionalSide::Right);
+                Some(ConditionalSide::Right)
             }
             (Some(left_signal), Some(right_signal)) => {
-                if left_signal.0 > right_signal.0
-                    || (left_signal.0 == right_signal.0 && left_signal.1 > right_signal.1)
-                    || (left_signal.0 == right_signal.0
-                        && left_signal.1 == right_signal.1
-                        && left_signal.2 > right_signal.2)
+                if left_signal.best_priority > right_signal.best_priority
+                    || (left_signal.best_priority == right_signal.best_priority
+                        && left_signal.observed_count > right_signal.observed_count)
+                    || (left_signal.best_priority == right_signal.best_priority
+                        && left_signal.observed_count == right_signal.observed_count
+                        && left_signal.latest_sequence > right_signal.latest_sequence)
                 {
-                    active.insert(branch.condition_display_id, ConditionalSide::Left);
-                } else if right_signal.0 > left_signal.0
-                    || (right_signal.0 == left_signal.0 && right_signal.1 > left_signal.1)
-                    || (right_signal.0 == left_signal.0
-                        && right_signal.1 == left_signal.1
-                        && right_signal.2 > left_signal.2)
+                    Some(ConditionalSide::Left)
+                } else if right_signal.best_priority > left_signal.best_priority
+                    || (right_signal.best_priority == left_signal.best_priority
+                        && right_signal.observed_count > left_signal.observed_count)
+                    || (right_signal.best_priority == left_signal.best_priority
+                        && right_signal.observed_count == left_signal.observed_count
+                        && right_signal.latest_sequence > left_signal.latest_sequence)
                 {
-                    active.insert(branch.condition_display_id, ConditionalSide::Right);
+                    Some(ConditionalSide::Right)
+                } else {
+                    None
                 }
             }
-            (None, None) => {}
+            (None, None) => None,
+        });
+
+        if let Some(side) = selected_side {
+            active.insert(branch.condition_display_id, side);
         }
     }
 
@@ -5804,6 +5828,82 @@ mod tests {
         assert_eq!(
             states.get(&node_by_label(&model, "Branch").id).copied(),
             Some(RuntimeState::Completed)
+        );
+    }
+
+    #[test]
+    fn live_states_prefer_earlier_root_branch_signal_over_later_skip_signal() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Conditional {
+                label: "Branch",
+                metadata: "",
+                left: Box::new(JourneyAst::Step { label: "Select" }),
+                right: Box::new(JourneyAst::Step { label: "Skip" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: runtime_id_for(&model, "Branch"),
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Select"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                3,
+                RunnerUpdateOut::EffectSuccessOutput {
+                    node_id: runtime_id_for(&model, "Skip"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+            (
+                4,
+                RunnerUpdateOut::EffectInput {
+                    node_id: runtime_id_for(&model, "Tail"),
+                    uuid: Uuid::nil(),
+                },
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            states.get(&node_by_label(&model, "Branch").id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            states.get(&node_by_label(&model, "Select").id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            states.get(&node_by_label(&model, "Skip").id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(
+            states.get(&node_by_label(&model, "Tail").id).copied(),
+            Some(RuntimeState::Running)
         );
     }
 
