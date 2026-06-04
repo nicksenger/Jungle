@@ -1617,6 +1617,7 @@ pub(crate) fn build_replace_tool(instrument: LyrebirdInstrument) -> Tool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::Duration;
@@ -1661,6 +1662,11 @@ mod tests {
                 })
             })
             .clone()
+    }
+
+    fn prompt_join_test_lock() -> &'static tokio::sync::Mutex<()> {
+        static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
     }
 
     struct PromptJoinConcurrentGuard(Arc<PromptJoinConcurrentRuntime>);
@@ -1993,6 +1999,7 @@ mod tests {
 
     #[tokio::test]
     async fn lyrebird_prompt_focus_branches_run_concurrently() {
+        let _guard = prompt_join_test_lock().lock().await;
         let runtime = prompt_join_concurrent_runtime();
         runtime.reset(2);
 
@@ -2018,6 +2025,70 @@ mod tests {
         assert_eq!(final_emitted, (4, 32));
         assert_eq!(executor.state().rhythm_guitar.state.prompt_attempt, 4);
         assert_eq!(executor.state().vocals.state.prompt_attempt, 32);
+    }
+
+    #[tokio::test]
+    async fn lyrebird_prompt_focus_join_streams_child_history_live() {
+        let _guard = prompt_join_test_lock().lock().await;
+        let runtime = prompt_join_concurrent_runtime();
+        runtime.reset(2);
+
+        let mut state = LyrebirdState::default();
+        state.rhythm_guitar.state.prompt_attempt = 1;
+        state.vocals.state.prompt_attempt = 2;
+
+        let mut executor = Executor::<ConcurrentLyrebirdPromptAnimal>::new(state);
+        executor.set_journey_id(Uuid::new_v4());
+        let mut request = executor
+            .next_executable_request(3)
+            .expect("focused lyrebird prompt join should produce an executable request");
+        let join_node_id = request.node_id();
+        let mut live_history = request
+            .take_live_history()
+            .expect("journey-bound prompt join should expose live child history");
+        let run = tokio::spawn(async move { request.run().await });
+
+        let deadline = tokio::time::sleep(Duration::from_millis(250));
+        tokio::pin!(deadline);
+        let mut saw_child_lifecycle = false;
+        let mut saw_child_effect_input = false;
+        loop {
+            tokio::select! {
+                maybe_event = live_history.next() => {
+                    let event = maybe_event.expect("live prompt join history should produce child events before completion");
+                    match event {
+                        jungle_sdk::RunnerOut::NodeLifecycle(node) if node.node_id != join_node_id => {
+                            saw_child_lifecycle = true;
+                        }
+                        jungle_sdk::RunnerOut::EffectInput { node_id, .. } if node_id != join_node_id => {
+                            saw_child_effect_input = true;
+                        }
+                        _ => {}
+                    }
+                    if saw_child_lifecycle && saw_child_effect_input {
+                        break;
+                    }
+                }
+                _ = &mut deadline => {
+                    panic!("timed out waiting for prompt join child history before completion");
+                }
+            }
+        }
+
+        let completion = run
+            .await
+            .expect("prompt join runner task should join")
+            .expect("prompt join runner should succeed");
+        let _ = executor
+            .complete_serialized(completion)
+            .expect("prompt join completion should still apply cleanly");
+        let replayed_updates = executor.take_node_lifecycle_updates();
+        assert!(
+            replayed_updates
+                .iter()
+                .all(|update| update.node_id == join_node_id),
+            "child lifecycle updates should not be replayed after live emission: {replayed_updates:?}"
+        );
     }
 
     #[test]

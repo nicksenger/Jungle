@@ -1,8 +1,10 @@
 use crate::{
     Animal, Attempt, BackendError, BoundAction, BoundAnimal, BoundAnimalJourney, BoundFlowStep,
     Conditional, Effect, EffectCompletion, EffectSchema, Either, Failure, Join, NodeLifecycle,
-    NodeLifecyclePhase, Noop, Running, Scoped, Select, StateCarrier, Transparent, While,
+    NodeLifecyclePhase, Noop, RunnerOut, Running, Scoped, Select, StateCarrier, Transparent, While,
 };
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::StreamExt;
 use inception::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -94,6 +96,10 @@ impl LifecycleState {
 
     fn current_activation_path(&self) -> Option<&[u64]> {
         self.current_activation_path.as_deref()
+    }
+
+    fn journey_id(&self) -> Option<uuid::Uuid> {
+        self.journey_id
     }
 
     fn take_updates(&mut self) -> Vec<NodeLifecycle> {
@@ -342,6 +348,7 @@ pub struct ExecutableEffectRequest {
     effect_type: &'static str,
     request: Serialized,
     runner: EffectRunner,
+    live_history_rx: Option<UnboundedReceiver<RunnerOut>>,
 }
 
 impl ExecutableEffectRequest {
@@ -356,6 +363,7 @@ impl ExecutableEffectRequest {
             effect_type,
             request,
             runner,
+            live_history_rx: None,
         }
     }
 
@@ -380,6 +388,15 @@ impl ExecutableEffectRequest {
 
     pub fn run(self) -> impl Future<Output = Result<SerializedCompletion, ExecutorError>> {
         (self.runner)()
+    }
+
+    pub fn take_live_history(&mut self) -> Option<UnboundedReceiver<RunnerOut>> {
+        self.live_history_rx.take()
+    }
+
+    fn with_live_history(mut self, live_history_rx: UnboundedReceiver<RunnerOut>) -> Self {
+        self.live_history_rx = Some(live_history_rx);
+        self
     }
 }
 
@@ -419,6 +436,10 @@ pub trait ErasedFlow<State>: Send {
 
     fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
         Vec::new()
+    }
+
+    fn node_id(&self) -> u32 {
+        0
     }
 
     fn assign_node_ids(&mut self, _next_id: &mut u32) {}
@@ -723,6 +744,10 @@ where
         self.lifecycle.take_updates()
     }
 
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
         self.lifecycle.set_node_id(self.node_id);
@@ -971,6 +996,10 @@ where
 
     fn take_node_lifecycle_updates(&mut self) -> Vec<NodeLifecycle> {
         self.lifecycle.take_updates()
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -1310,6 +1339,10 @@ where
         updates
     }
 
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
         self.lifecycle.set_node_id(self.node_id);
@@ -1357,6 +1390,7 @@ struct SelectErasedFlow<State> {
     pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
+    suppress_child_lifecycle_replay: bool,
 }
 
 impl<State> SelectErasedFlow<State> {
@@ -1376,6 +1410,7 @@ impl<State> SelectErasedFlow<State> {
             pending_input: None,
             waiting_completion: false,
             complete: false,
+            suppress_child_lifecycle_replay: false,
         }
     }
 }
@@ -1390,6 +1425,7 @@ struct SelectContextErasedFlow<State> {
     pending_input: Option<Serialized>,
     waiting_completion: bool,
     complete: bool,
+    suppress_child_lifecycle_replay: bool,
 }
 
 impl<State> SelectContextErasedFlow<State> {
@@ -1409,6 +1445,7 @@ impl<State> SelectContextErasedFlow<State> {
             pending_input: None,
             waiting_completion: false,
             complete: false,
+            suppress_child_lifecycle_replay: false,
         }
     }
 }
@@ -1637,15 +1674,78 @@ fn subflow_complete_serialized<State>(
     Ok((next_state, emitted))
 }
 
+fn emit_subflow_history(
+    live_history_tx: Option<&UnboundedSender<RunnerOut>>,
+    event: RunnerOut,
+) -> Result<(), ExecutorError> {
+    if let Some(tx) = live_history_tx {
+        tx.unbounded_send(event).map_err(|_| {
+            ExecutorError::ClientTransport(
+                "subflow live history receiver dropped before nested history could be forwarded"
+                    .to_string(),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn emit_subflow_lifecycle_updates<State>(
+    flow: &mut DynFlow<State>,
+    live_history_tx: Option<&UnboundedSender<RunnerOut>>,
+) -> Result<(), ExecutorError> {
+    let Some(tx) = live_history_tx else {
+        return Ok(());
+    };
+    for update in take_flow_node_lifecycle_updates(flow) {
+        emit_subflow_history(Some(tx), RunnerOut::NodeLifecycle(update))?;
+    }
+    Ok(())
+}
+
+async fn run_request_with_live_history(
+    mut request: ExecutableEffectRequest,
+    live_history_tx: Option<UnboundedSender<RunnerOut>>,
+) -> Result<SerializedCompletion, ExecutorError> {
+    let Some(mut live_history_rx) = request.take_live_history() else {
+        return request.run().await;
+    };
+    let mut completion = Box::pin(request.run());
+    loop {
+        match futures::future::select(completion, live_history_rx.next()).await {
+            futures::future::Either::Left((result, _)) => {
+                while let Some(event) = live_history_rx.next().await {
+                    emit_subflow_history(live_history_tx.as_ref(), event)?;
+                }
+                return result;
+            }
+            futures::future::Either::Right((maybe_event, next_completion)) => {
+                completion = next_completion;
+                match maybe_event {
+                    Some(event) => emit_subflow_history(live_history_tx.as_ref(), event)?,
+                    None => return completion.await,
+                }
+            }
+        }
+    }
+}
+
 async fn run_subflow_to_end_with_state<State>(
     mut flow: DynFlow<State>,
     mut state: State,
     input: Serialized,
+    start_node_id: u32,
+    journey_id: Option<uuid::Uuid>,
+    parent_activation_path: &[u64],
+    live_history_tx: Option<UnboundedSender<RunnerOut>>,
 ) -> Result<(State, FlowCompletionTrace), ExecutorError>
 where
     State: Clone,
 {
-    assign_flow_node_ids(&mut flow);
+    assign_flow_node_ids_starting_at(&mut flow, start_node_id);
+    if let Some(journey_id) = journey_id {
+        assign_flow_journey_id(&mut flow, journey_id);
+    }
+    assign_flow_parent_activation_path(&mut flow, parent_activation_path);
     let mut cursor = 0_usize;
     let mut completions = Vec::new();
     let mut last_emitted = input;
@@ -1656,6 +1756,7 @@ where
             {
                 Ok((next_state, request)) => {
                     state = next_state;
+                    emit_subflow_lifecycle_updates(&mut flow, live_history_tx.as_ref())?;
                     request
                 }
                 Err((next_state, ExecutorError::Complete)) => {
@@ -1665,6 +1766,7 @@ where
                         next_state,
                         &mut last_emitted,
                     )?;
+                    emit_subflow_lifecycle_updates(&mut flow, live_history_tx.as_ref())?;
                     if cursor < flow.len() {
                         return Err(ExecutorError::NoPendingRequest);
                     }
@@ -1676,9 +1778,43 @@ where
                         },
                     ));
                 }
-                Err((_next_state, err)) => return Err(err),
+                Err((_next_state, err)) => {
+                    emit_subflow_lifecycle_updates(&mut flow, live_history_tx.as_ref())?;
+                    return Err(err);
+                }
             };
-        let completion = request.run().await?;
+        if let Some(journey_id) = journey_id {
+            emit_subflow_history(
+                live_history_tx.as_ref(),
+                RunnerOut::EffectInput {
+                    node_id: request.node_id(),
+                    data: request.request_bytes().to_vec(),
+                    uuid: journey_id,
+                },
+            )?;
+        }
+        let request_node_id = request.node_id();
+        let completion = run_request_with_live_history(request, live_history_tx.clone()).await?;
+        if let Some(journey_id) = journey_id {
+            match &completion {
+                Ok(output) => emit_subflow_history(
+                    live_history_tx.as_ref(),
+                    RunnerOut::EffectSuccessOutput {
+                        node_id: request_node_id,
+                        data: output.clone(),
+                        uuid: journey_id,
+                    },
+                )?,
+                Err(error) => emit_subflow_history(
+                    live_history_tx.as_ref(),
+                    RunnerOut::EffectFailureOutput {
+                        node_id: request_node_id,
+                        data: error.clone(),
+                        uuid: journey_id,
+                    },
+                )?,
+            }
+        }
         let (next_state, emitted) = subflow_complete_serialized(
             &mut flow,
             &mut cursor,
@@ -1686,6 +1822,7 @@ where
             &mut last_emitted,
             completion.clone(),
         )?;
+        emit_subflow_lifecycle_updates(&mut flow, live_history_tx.as_ref())?;
         state = next_state;
         completions.push(completion);
         last_emitted = emitted;
@@ -1696,11 +1833,24 @@ async fn run_subflow_to_end<State>(
     flow: DynFlow<State>,
     state: State,
     input: Serialized,
+    start_node_id: u32,
+    journey_id: Option<uuid::Uuid>,
+    parent_activation_path: &[u64],
+    live_history_tx: Option<UnboundedSender<RunnerOut>>,
 ) -> Result<FlowCompletionTrace, ExecutorError>
 where
     State: Clone,
 {
-    let (_state, trace) = run_subflow_to_end_with_state(flow, state, input).await?;
+    let (_state, trace) = run_subflow_to_end_with_state(
+        flow,
+        state,
+        input,
+        start_node_id,
+        journey_id,
+        parent_activation_path,
+        live_history_tx,
+    )
+    .await?;
     Ok(trace)
 }
 
@@ -2055,6 +2205,10 @@ where
         let mut updates = self.lifecycle.take_updates();
         updates.extend(take_flow_node_lifecycle_updates(&mut self.inner));
         updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -2441,6 +2595,10 @@ where
         updates
     }
 
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
         self.lifecycle.set_node_id(self.node_id);
@@ -2755,6 +2913,10 @@ where
         updates
     }
 
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
         self.lifecycle.set_node_id(self.node_id);
@@ -2828,6 +2990,10 @@ where
                 (right_state, serialized)
             }
         };
+        if self.suppress_child_lifecycle_replay {
+            let _ = take_flow_node_lifecycle_updates(&mut self.left);
+            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        }
 
         self.waiting_completion = false;
         self.complete = true;
@@ -2862,11 +3028,38 @@ where
         let right_state = state.clone();
         let left_input = input.clone();
         let right_input = input.clone();
+        let left_start_node_id = first_flow_node_id(&self.left);
+        let right_start_node_id = first_flow_node_id(&self.right);
+        let journey_id = self.lifecycle.journey_id();
+        let parent_activation_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
+        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
+        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let left = run_subflow_to_end(left_flow, left_state, left_input);
-                let right = run_subflow_to_end(right_flow, right_state, right_input);
+                let left = run_subflow_to_end(
+                    left_flow,
+                    left_state,
+                    left_input,
+                    left_start_node_id,
+                    journey_id,
+                    &parent_activation_path,
+                    live_history_tx.clone(),
+                );
+                let right = run_subflow_to_end(
+                    right_flow,
+                    right_state,
+                    right_input,
+                    right_start_node_id,
+                    journey_id,
+                    &parent_activation_path,
+                    live_history_tx,
+                );
                 let selected = futures::future::select(
                     Box::pin(left) as Pin<Box<_>>,
                     Box::pin(right) as Pin<Box<_>>,
@@ -2888,10 +3081,13 @@ where
 
         self.waiting_completion = true;
         self.pending_input = Some(input);
-        Ok((
-            state,
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner),
-        ))
+        let request =
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner);
+        let request = match live_history {
+            Some((_tx, rx)) => request.with_live_history(rx),
+            None => request,
+        };
+        Ok((state, request))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -2921,6 +3117,10 @@ where
         updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
         updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
         updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -2999,6 +3199,10 @@ where
                 (right_state, serialized)
             }
         };
+        if self.suppress_child_lifecycle_replay {
+            let _ = take_flow_node_lifecycle_updates(&mut self.left);
+            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        }
 
         self.waiting_completion = false;
         self.complete = true;
@@ -3033,11 +3237,38 @@ where
         let right_state = state.clone();
         let left_input = input.clone();
         let right_input = input.clone();
+        let left_start_node_id = first_flow_node_id(&self.left);
+        let right_start_node_id = first_flow_node_id(&self.right);
+        let journey_id = self.lifecycle.journey_id();
+        let parent_activation_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
+        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
+        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
-                let left = run_subflow_to_end(left_flow, left_state, left_input);
-                let right = run_subflow_to_end(right_flow, right_state, right_input);
+                let left = run_subflow_to_end(
+                    left_flow,
+                    left_state,
+                    left_input,
+                    left_start_node_id,
+                    journey_id,
+                    &parent_activation_path,
+                    live_history_tx.clone(),
+                );
+                let right = run_subflow_to_end(
+                    right_flow,
+                    right_state,
+                    right_input,
+                    right_start_node_id,
+                    journey_id,
+                    &parent_activation_path,
+                    live_history_tx,
+                );
                 let selected = futures::future::select(
                     Box::pin(left) as Pin<Box<_>>,
                     Box::pin(right) as Pin<Box<_>>,
@@ -3059,10 +3290,13 @@ where
 
         self.waiting_completion = true;
         self.pending_input = Some(input);
-        Ok((
-            state,
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner),
-        ))
+        let request =
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Select", request, runner);
+        let request = match live_history {
+            Some((_tx, rx)) => request.with_live_history(rx),
+            None => request,
+        };
+        Ok((state, request))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -3092,6 +3326,10 @@ where
         updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
         updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
         updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -3126,6 +3364,7 @@ struct JoinErasedFlow<State> {
     focused_merge: bool,
     merge_left: Box<dyn Fn(&mut State, State) + Send>,
     merge_right: Box<dyn Fn(&mut State, State) + Send>,
+    suppress_child_lifecycle_replay: bool,
 }
 
 impl<State> JoinErasedFlow<State> {
@@ -3151,6 +3390,7 @@ impl<State> JoinErasedFlow<State> {
             focused_merge,
             merge_left,
             merge_right,
+            suppress_child_lifecycle_replay: false,
         }
     }
 }
@@ -3168,6 +3408,7 @@ struct JoinContextErasedFlow<State> {
     focused_merge: bool,
     merge_left: Box<dyn Fn(&mut State, State) + Send>,
     merge_right: Box<dyn Fn(&mut State, State) + Send>,
+    suppress_child_lifecycle_replay: bool,
 }
 
 impl<State> JoinContextErasedFlow<State> {
@@ -3193,6 +3434,7 @@ impl<State> JoinContextErasedFlow<State> {
             focused_merge,
             merge_left,
             merge_right,
+            suppress_child_lifecycle_replay: false,
         }
     }
 }
@@ -3267,6 +3509,10 @@ where
             emitted.extend_from_slice(&right_emitted);
             (right_state, emitted)
         };
+        if self.suppress_child_lifecycle_replay {
+            let _ = take_flow_node_lifecycle_updates(&mut self.left);
+            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        }
 
         self.waiting_completion = false;
         self.complete = true;
@@ -3306,18 +3552,61 @@ where
         let left_input = input.clone();
         let right_input = input.clone();
         let focused_merge = self.focused_merge;
+        let left_start_node_id = first_flow_node_id(&self.left);
+        let right_start_node_id = first_flow_node_id(&self.right);
+        let journey_id = self.lifecycle.journey_id();
+        let parent_activation_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
+        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
+        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let (left_trace, right_trace) = if focused_merge {
-                    let left = run_subflow_to_end(left_flow, left_state, left_input);
-                    let right = run_subflow_to_end(right_flow, right_state, right_input);
+                    let left = run_subflow_to_end(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    );
+                    let right = run_subflow_to_end(
+                        right_flow,
+                        right_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    );
                     futures::future::try_join(left, right).await?
                 } else {
-                    let (left_state, left_trace) =
-                        run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
-                    let (_right_state, right_trace) =
-                        run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                    let (left_state, left_trace) = run_subflow_to_end_with_state(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    )
+                    .await?;
+                    let (_right_state, right_trace) = run_subflow_to_end_with_state(
+                        right_flow,
+                        left_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    )
+                    .await?;
                     (left_trace, right_trace)
                 };
                 let envelope = JoinTraceEnvelope {
@@ -3332,10 +3621,13 @@ where
 
         self.waiting_completion = true;
         self.pending_input = Some(input);
-        Ok((
-            state,
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner),
-        ))
+        let request =
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner);
+        let request = match live_history {
+            Some((_tx, rx)) => request.with_live_history(rx),
+            None => request,
+        };
+        Ok((state, request))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -3365,6 +3657,10 @@ where
         updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
         updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
         updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -3448,6 +3744,10 @@ where
             emitted.extend_from_slice(&right_emitted);
             (right_state, emitted)
         };
+        if self.suppress_child_lifecycle_replay {
+            let _ = take_flow_node_lifecycle_updates(&mut self.left);
+            let _ = take_flow_node_lifecycle_updates(&mut self.right);
+        }
 
         self.waiting_completion = false;
         self.complete = true;
@@ -3487,18 +3787,61 @@ where
         let left_input = input.clone();
         let right_input = input.clone();
         let focused_merge = self.focused_merge;
+        let left_start_node_id = first_flow_node_id(&self.left);
+        let right_start_node_id = first_flow_node_id(&self.right);
+        let journey_id = self.lifecycle.journey_id();
+        let parent_activation_path = self
+            .lifecycle
+            .current_activation_path()
+            .unwrap_or(&[])
+            .to_vec();
+        let live_history = journey_id.map(|_| futures::channel::mpsc::unbounded());
+        let live_history_tx = live_history.as_ref().map(|(tx, _)| tx.clone());
+        self.suppress_child_lifecycle_replay = live_history_tx.is_some();
 
         let runner: EffectRunner = Box::new(move || {
             Box::pin(async move {
                 let (left_trace, right_trace) = if focused_merge {
-                    let left = run_subflow_to_end(left_flow, left_state, left_input);
-                    let right = run_subflow_to_end(right_flow, right_state, right_input);
+                    let left = run_subflow_to_end(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    );
+                    let right = run_subflow_to_end(
+                        right_flow,
+                        right_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    );
                     futures::future::try_join(left, right).await?
                 } else {
-                    let (left_state, left_trace) =
-                        run_subflow_to_end_with_state(left_flow, left_state, left_input).await?;
-                    let (_right_state, right_trace) =
-                        run_subflow_to_end_with_state(right_flow, left_state, right_input).await?;
+                    let (left_state, left_trace) = run_subflow_to_end_with_state(
+                        left_flow,
+                        left_state,
+                        left_input,
+                        left_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    )
+                    .await?;
+                    let (_right_state, right_trace) = run_subflow_to_end_with_state(
+                        right_flow,
+                        left_state,
+                        right_input,
+                        right_start_node_id,
+                        journey_id,
+                        &parent_activation_path,
+                        live_history_tx.clone(),
+                    )
+                    .await?;
                     (left_trace, right_trace)
                 };
                 let envelope = JoinTraceEnvelope {
@@ -3513,10 +3856,13 @@ where
 
         self.waiting_completion = true;
         self.pending_input = Some(input);
-        Ok((
-            state,
-            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner),
-        ))
+        let request =
+            ExecutableEffectRequest::new(self.node_id, "jungle_types::Join", request, runner);
+        let request = match live_history {
+            Some((_tx, rx)) => request.with_live_history(rx),
+            None => request,
+        };
+        Ok((state, request))
     }
 
     fn is_waiting_completion(&self) -> bool {
@@ -3546,6 +3892,10 @@ where
         updates.extend(take_flow_node_lifecycle_updates(&mut self.left));
         updates.extend(take_flow_node_lifecycle_updates(&mut self.right));
         updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -3950,6 +4300,10 @@ where
         let mut updates = self.lifecycle.take_updates();
         updates.extend(take_flow_node_lifecycle_updates(&mut self.active_body));
         updates
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node_id
     }
 
     fn assign_node_ids(&mut self, next_id: &mut u32) {
@@ -4907,6 +5261,10 @@ where
         updates
     }
 
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
         self.lifecycle.set_node_id(self.node_id);
@@ -5374,6 +5732,10 @@ where
         updates
     }
 
+    fn node_id(&self) -> u32 {
+        self.node_id
+    }
+
     fn assign_node_ids(&mut self, next_id: &mut u32) {
         self.node_id = *next_id;
         self.lifecycle.set_node_id(self.node_id);
@@ -5657,10 +6019,18 @@ where
 }
 
 fn assign_flow_node_ids<State>(steps: &mut DynFlow<State>) {
-    let mut next_id = 0_u32;
+    assign_flow_node_ids_starting_at(steps, 0);
+}
+
+fn assign_flow_node_ids_starting_at<State>(steps: &mut DynFlow<State>, start_id: u32) {
+    let mut next_id = start_id;
     for node in steps {
         node.assign_node_ids(&mut next_id);
     }
+}
+
+fn first_flow_node_id<State>(steps: &DynFlow<State>) -> u32 {
+    steps.first().map(|node| node.node_id()).unwrap_or(0)
 }
 
 fn assign_flow_journey_id<State>(steps: &mut DynFlow<State>, journey_id: uuid::Uuid) {

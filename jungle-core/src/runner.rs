@@ -1,5 +1,7 @@
 use futures::channel::oneshot;
+use futures::future;
 use futures::SinkExt;
+use futures::StreamExt;
 use jungle_client::{RunnerChannelMessage, RunnerChannelResponse, RunnerChannelTx};
 use jungle_types::{
     BoundAnimal, BoundAnimalJourney, BuildFlowWithContext, ContextExecutor, DynFlow, ExecutorError,
@@ -151,7 +153,7 @@ where
                 });
             }
 
-            let completion = request.run().await?;
+            let completion = run_request_with_live_history(&mut *tx, request).await?;
             if let Err(err) = apply_completion_and_emit_appearance::<T, A>(
                 executor, journey_id, tx, node_id, completion,
             )
@@ -191,6 +193,33 @@ where
         .await?;
         self.drive_until_sleep_or_complete::<A, _>(executor, (), journey_id, tx)
             .await
+    }
+}
+
+async fn run_request_with_live_history(
+    tx: &mut RunnerChannelTx,
+    mut request: jungle_types::ExecutableEffectRequest,
+) -> Result<Result<Vec<u8>, Vec<u8>>, ExecutorError> {
+    let Some(mut live_history_rx) = request.take_live_history() else {
+        return request.run().await;
+    };
+    let mut completion = Box::pin(request.run());
+    loop {
+        match future::select(completion, live_history_rx.next()).await {
+            future::Either::Left((result, _)) => {
+                while let Some(event) = live_history_rx.next().await {
+                    send_history(tx, event).await?;
+                }
+                return result;
+            }
+            future::Either::Right((maybe_event, next_completion)) => {
+                completion = next_completion;
+                match maybe_event {
+                    Some(event) => send_history(tx, event).await?,
+                    None => return completion.await,
+                }
+            }
+        }
     }
 }
 
