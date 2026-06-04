@@ -43,6 +43,7 @@ const SPECTRAL_ROLLOFF_FRACTION: f32 = 0.85;
 const SAMPLER_MANIFEST_PATH: &str = "jungle-examples/examples/lyrebird/sample/Cargo.toml";
 const SAMPLER_COMMAND_TIMEOUT: Duration = Duration::from_secs(180);
 const SAMPLER_BINARY_PATH: &str = "./target/release/lyrebird-sample";
+const FINALIZE_ITERATION_SAMPLES_DELAY: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Copy, Debug)]
 struct ScoredAudioSample {
@@ -425,7 +426,10 @@ impl<J> Effect<J> for FinalizeIterationSamples {
     type Err = String;
 
     fn effect(_jungle: &J, input: Self::In) -> impl Future<Output = Result<Self::Out, Self::Err>> {
-        async move { finalize_iteration_samples(input).await }
+        async move {
+            tokio::time::sleep(FINALIZE_ITERATION_SAMPLES_DELAY).await;
+            finalize_iteration_samples(input).await
+        }
     }
 }
 
