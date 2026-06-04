@@ -1563,7 +1563,7 @@ fn node_phase_for_display_with_runtime_floors(
     live_data: Option<&LiveData>,
     display_id: u32,
     runtime_id: Option<u32>,
-    _proxy_runtime_ids: &[u32],
+    proxy_runtime_ids: &[u32],
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
     runtime_sequence_floors: &HashMap<u32, usize>,
 ) -> Phase<RuntimeState> {
@@ -1584,7 +1584,31 @@ fn node_phase_for_display_with_runtime_floors(
             })
             .unwrap_or(RuntimeState::Pending),
     };
-    Phase::Live(state)
+
+    let mut newest = runtime_id.and_then(|id| {
+        live.runtime_update_sequence
+            .get(&id)
+            .copied()
+            .map(|sequence| (sequence, state))
+    });
+    for proxy_runtime_id in proxy_runtime_ids {
+        let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
+            continue;
+        };
+        let proxy_state =
+            runtime_state_for_live_data(live, *proxy_runtime_id, runtime_sequence_floors);
+        if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
+            continue;
+        }
+        if newest
+            .map(|(best_sequence, _)| sequence > best_sequence)
+            .unwrap_or(true)
+        {
+            newest = Some((sequence, proxy_state));
+        }
+    }
+
+    Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
 }
 
 fn repaired_live_states_for_display(
@@ -1592,35 +1616,151 @@ fn repaired_live_states_for_display(
     live_data: Option<&LiveData>,
     condition_successor_runtime_ids: &HashMap<u32, Vec<u32>>,
 ) -> HashMap<u32, RuntimeState> {
-    let Some(_live) = live_data else {
+    let Some(live) = live_data else {
         return HashMap::new();
     };
+    let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
 
-    model
-        .nodes
-        .iter()
-        .map(|node| {
-            let phase = node_phase_for_display(
-                live_data,
-                node.id,
-                node.runtime_node_id,
-                &node.proxy_runtime_ids,
-                condition_successor_runtime_ids,
-            );
-            let state = match phase {
-                Phase::Live(state) => state,
-                Phase::Static => RuntimeState::Pending,
+    let mut states = HashMap::<u32, RuntimeState>::new();
+    let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
+    for node in &model.nodes {
+        let mut latest_sequence = node
+            .runtime_node_id
+            .and_then(|runtime_id| live.runtime_update_sequence.get(&runtime_id).copied());
+        for proxy_runtime_id in &node.proxy_runtime_ids {
+            let Some(sequence) = live.runtime_update_sequence.get(proxy_runtime_id).copied() else {
+                continue;
             };
-            (node.id, state)
-        })
-        .collect()
+            let proxy_state =
+                runtime_state_for_live_data(live, *proxy_runtime_id, &runtime_sequence_floors);
+            if !matches!(proxy_state, RuntimeState::Running | RuntimeState::Failed) {
+                continue;
+            }
+            if latest_sequence
+                .map(|current| sequence > current)
+                .unwrap_or(true)
+            {
+                latest_sequence = Some(sequence);
+            }
+        }
+        if let Some(sequence) = latest_sequence {
+            latest_sequence_by_display_id.insert(node.id, sequence);
+        }
+
+        let phase = node_phase_for_display_with_runtime_floors(
+            Some(live),
+            node.id,
+            node.runtime_node_id,
+            &node.proxy_runtime_ids,
+            condition_successor_runtime_ids,
+            &runtime_sequence_floors,
+        );
+        let state = match phase {
+            Phase::Live(state) => state,
+            Phase::Static => RuntimeState::Pending,
+        };
+        states.insert(node.id, state);
+    }
+
+    let mut loop_back_edges = HashSet::<(u32, u32)>::new();
+    for cluster in &model.cluster_info {
+        if !matches!(cluster.kind, ClusterKind::While) {
+            continue;
+        }
+        let root_nodes = cluster.root_nodes.iter().copied().collect::<HashSet<_>>();
+        let member_nodes = cluster.nodes.iter().copied().collect::<HashSet<_>>();
+        for (from, to) in &model.edges {
+            if member_nodes.contains(from) && root_nodes.contains(to) {
+                loop_back_edges.insert((*from, *to));
+            }
+        }
+    }
+
+    let mut incoming = HashMap::<u32, Vec<u32>>::new();
+    for (from, to) in &model.edges {
+        if loop_back_edges.contains(&(*from, *to)) {
+            continue;
+        }
+        incoming.entry(*to).or_default().push(*from);
+    }
+
+    let mut queue = std::collections::VecDeque::<u32>::new();
+    let mut queued = HashSet::<u32>::new();
+    for (node_id, state) in &states {
+        if matches!(state, RuntimeState::Running | RuntimeState::Completed) {
+            queue.push_back(*node_id);
+            queued.insert(*node_id);
+        }
+    }
+
+    while let Some(node_id) = queue.pop_front() {
+        queued.remove(&node_id);
+        let Some(predecessors) = incoming.get(&node_id) else {
+            continue;
+        };
+        for predecessor in predecessors {
+            let predecessor_state = states
+                .get(predecessor)
+                .copied()
+                .unwrap_or(RuntimeState::Pending);
+            if !matches!(
+                predecessor_state,
+                RuntimeState::Pending | RuntimeState::Running
+            ) {
+                continue;
+            }
+            if matches!(predecessor_state, RuntimeState::Running) {
+                let can_promote_running = match (
+                    latest_sequence_by_display_id.get(&node_id).copied(),
+                    latest_sequence_by_display_id.get(predecessor).copied(),
+                ) {
+                    (Some(trigger_sequence), Some(predecessor_sequence)) => {
+                        trigger_sequence.saturating_sub(predecessor_sequence)
+                            >= RUNNING_REPAIR_PROMOTION_SEQUENCE_GAP
+                    }
+                    _ => true,
+                };
+                if !can_promote_running {
+                    continue;
+                }
+            }
+            states.insert(*predecessor, RuntimeState::Completed);
+            if queued.insert(*predecessor) {
+                queue.push_back(*predecessor);
+            }
+        }
+    }
+
+    states
 }
 
 fn runtime_sequence_floors_for_display(
-    _model: &GraphModel,
-    _live: &LiveData,
+    model: &GraphModel,
+    live: &LiveData,
 ) -> HashMap<u32, usize> {
-    HashMap::new()
+    let mut floors = HashMap::<u32, usize>::new();
+    for (index, cluster) in model.cluster_info.iter().enumerate() {
+        if !matches!(cluster.kind, ClusterKind::While) {
+            continue;
+        }
+
+        let iteration_start_sequence = model.derived.cluster_entry_runtime_ids[index]
+            .iter()
+            .filter_map(|runtime_id| live.runtime_update_sequence.get(runtime_id).copied())
+            .max();
+        let Some(iteration_start_sequence) = iteration_start_sequence else {
+            continue;
+        };
+
+        for runtime_id in &model.derived.cluster_member_runtime_ids[index] {
+            floors
+                .entry(*runtime_id)
+                .and_modify(|current| *current = (*current).max(iteration_start_sequence))
+                .or_insert(iteration_start_sequence);
+        }
+    }
+
+    floors
 }
 
 fn live_states_for_display(
@@ -1690,33 +1830,14 @@ fn cluster_phase_for_display(
     cluster: &ClusterInfo,
     repaired_live_states: &HashMap<u32, RuntimeState>,
 ) -> Phase<ClusterLive> {
-    let Some(live) = live_data else {
-        return Phase::Static;
-    };
-
-    let mut has_running = false;
-    let mut has_failed = false;
-    let mut has_completed = false;
-    for runtime_id in &cluster.member_runtime_ids {
-        match runtime_state_for_live_data(live, *runtime_id, &HashMap::new()) {
-            RuntimeState::Pending => {}
-            RuntimeState::Running => has_running = true,
-            RuntimeState::Completed => has_completed = true,
-            RuntimeState::Failed => has_failed = true,
-        }
-    }
-    if !has_running && !has_failed && !has_completed {
-        return Phase::Live(cluster_live_from_repaired_states(
+    if live_data.is_some() {
+        Phase::Live(cluster_live_from_repaired_states(
             cluster,
             repaired_live_states,
-        ));
+        ))
+    } else {
+        Phase::Static
     }
-
-    Phase::Live(ClusterLive {
-        has_running,
-        has_failed,
-        has_completed,
-    })
 }
 
 fn sidebar<'a>(
@@ -2870,46 +2991,43 @@ impl GraphBuilder {
             } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let node_label = if metadata.trim().is_empty() {
-                    short_type_name_str(label).to_string()
-                } else {
-                    format!("{} :: {}", short_type_name_str(label), metadata)
-                };
-                let select = self.push_layout_node(node_label, Some(runtime_id), |node| {
-                    node.is_select = true;
-                });
-                if !metadata.trim().is_empty() {
-                    self.mark(select, |node| node.metadata = Some((*metadata).to_string()));
-                }
+                let _ = (label, metadata);
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for target in &left_flow.roots {
-                    self.edges.push((select, *target));
-                }
-                for target in &right_flow.roots {
-                    self.edges.push((select, *target));
-                }
+                let mut roots = left_flow.roots;
+                roots.extend(right_flow.roots.iter().copied());
+                roots = dedup(roots);
                 let mut exits = left_flow.exits;
                 exits.extend(right_flow.exits.iter().copied());
                 exits = dedup(exits);
-                let mut members = vec![select];
+                let mut members = Vec::new();
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
                 members = dedup(members);
+                let mut root_runtime_ids = left_flow.root_runtime_ids;
+                root_runtime_ids.extend(right_flow.root_runtime_ids.iter().copied());
+                root_runtime_ids = dedup(root_runtime_ids);
                 let mut member_runtime_ids = vec![runtime_id];
                 member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
                 member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
                 member_runtime_ids = dedup(member_runtime_ids);
+                for member_id in &exits {
+                    self.mark(*member_id, |node| {
+                        if !node.proxy_runtime_ids.contains(&runtime_id) {
+                            node.proxy_runtime_ids.push(runtime_id);
+                        }
+                    });
+                }
                 let mut descendant_runtime_ids = left_flow.member_runtime_ids.clone();
                 descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
                 self.descendant_runtime_ids_by_runtime_id
                     .insert(runtime_id, dedup(descendant_runtime_ids));
 
                 Flattened {
-                    roots: vec![select],
+                    roots,
                     exits,
                     members,
-                    root_runtime_ids: vec![runtime_id],
+                    root_runtime_ids,
                     member_runtime_ids,
                 }
             }
@@ -2921,46 +3039,43 @@ impl GraphBuilder {
             } => {
                 let runtime_id = self.runtime_next_id;
                 self.runtime_next_id = self.runtime_next_id.saturating_add(1);
-                let node_label = if metadata.trim().is_empty() {
-                    short_type_name_str(label).to_string()
-                } else {
-                    format!("{} :: {}", short_type_name_str(label), metadata)
-                };
-                let join = self.push_layout_node(node_label, Some(runtime_id), |node| {
-                    node.is_join = true;
-                });
-                if !metadata.trim().is_empty() {
-                    self.mark(join, |node| node.metadata = Some((*metadata).to_string()));
-                }
+                let _ = (label, metadata);
                 let left_flow = self.flatten(left);
                 let right_flow = self.flatten(right);
-                for target in &left_flow.roots {
-                    self.edges.push((join, *target));
-                }
-                for target in &right_flow.roots {
-                    self.edges.push((join, *target));
-                }
+                let mut roots = left_flow.roots;
+                roots.extend(right_flow.roots.iter().copied());
+                roots = dedup(roots);
                 let mut exits = left_flow.exits;
                 exits.extend(right_flow.exits.iter().copied());
                 exits = dedup(exits);
-                let mut members = vec![join];
+                let mut members = Vec::new();
                 members.extend(left_flow.members.iter().copied());
                 members.extend(right_flow.members.iter().copied());
                 members = dedup(members);
+                let mut root_runtime_ids = left_flow.root_runtime_ids;
+                root_runtime_ids.extend(right_flow.root_runtime_ids.iter().copied());
+                root_runtime_ids = dedup(root_runtime_ids);
                 let mut member_runtime_ids = vec![runtime_id];
                 member_runtime_ids.extend(left_flow.member_runtime_ids.iter().copied());
                 member_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
                 member_runtime_ids = dedup(member_runtime_ids);
+                for member_id in &exits {
+                    self.mark(*member_id, |node| {
+                        if !node.proxy_runtime_ids.contains(&runtime_id) {
+                            node.proxy_runtime_ids.push(runtime_id);
+                        }
+                    });
+                }
                 let mut descendant_runtime_ids = left_flow.member_runtime_ids.clone();
                 descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
                 self.descendant_runtime_ids_by_runtime_id
                     .insert(runtime_id, dedup(descendant_runtime_ids));
 
                 Flattened {
-                    roots: vec![join],
+                    roots,
                     exits,
                     members,
-                    root_runtime_ids: vec![runtime_id],
+                    root_runtime_ids,
                     member_runtime_ids,
                 }
             }
@@ -3794,7 +3909,7 @@ mod tests {
     }
 
     #[test]
-    fn graph_model_renders_select_and_join_as_nodes() {
+    fn graph_model_hides_select_and_join_control_nodes() {
         let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
             JourneyAst::Step { label: "Start" },
             JourneyAst::Join {
@@ -3812,25 +3927,211 @@ mod tests {
             JourneyAst::Step { label: "Tail" },
         ]));
 
-        let start = node_by_label(&model, "Start").id;
-        let join = node_by_label(&model, "Join").id;
-        let join_l = node_by_label(&model, "JoinL").id;
-        let join_r = node_by_label(&model, "JoinR").id;
-        let select = node_by_label(&model, "Select").id;
-        let sel_l = node_by_label(&model, "SelL").id;
-        let sel_r = node_by_label(&model, "SelR").id;
-        let tail = node_by_label(&model, "Tail").id;
-        let edges = model.edges.iter().copied().collect::<HashSet<_>>();
+        assert!(model.nodes.iter().all(|node| node.label != "Join"));
+        assert!(model.nodes.iter().all(|node| node.label != "Select"));
 
-        assert!(edges.contains(&(start, join)));
-        assert!(edges.contains(&(join, join_l)));
-        assert!(edges.contains(&(join, join_r)));
-        assert!(edges.contains(&(join_l, select)));
-        assert!(edges.contains(&(join_r, select)));
-        assert!(edges.contains(&(select, sel_l)));
-        assert!(edges.contains(&(select, sel_r)));
-        assert!(edges.contains(&(sel_l, tail)));
-        assert!(edges.contains(&(sel_r, tail)));
+        let join_l = node_by_label(&model, "JoinL");
+        let join_r = node_by_label(&model, "JoinR");
+        let sel_l = node_by_label(&model, "SelL");
+        let sel_r = node_by_label(&model, "SelR");
+
+        let join_runtime_id = join_l
+            .proxy_runtime_ids
+            .first()
+            .copied()
+            .unwrap_or_else(|| panic!("JoinL should carry hidden join runtime"));
+        assert_eq!(join_r.proxy_runtime_ids, vec![join_runtime_id]);
+
+        let select_runtime_id = sel_l
+            .proxy_runtime_ids
+            .first()
+            .copied()
+            .unwrap_or_else(|| panic!("SelL should carry hidden select runtime"));
+        assert_eq!(sel_r.proxy_runtime_ids, vec![select_runtime_id]);
+    }
+
+    #[test]
+    fn repaired_live_states_backfill_pending_chain_when_downstream_runs() {
+        let ast = JourneyAst::Sequence(vec![
+            JourneyAst::Step { label: "A" },
+            JourneyAst::Step { label: "B" },
+            JourneyAst::Step { label: "C" },
+        ]);
+        let model = GraphModel::from_ast(ast);
+        let a_id = node_by_label(&model, "A").id;
+        let b_id = node_by_label(&model, "B").id;
+        let c_id = node_by_label(&model, "C").id;
+
+        let mut live = LiveData::default();
+        assert!(live.apply_update(JourneyUpdateEvent {
+            sequence_id: 1,
+            event_unix_ms: 0,
+            event: RunnerUpdateOut::EffectInput {
+                node_id: runtime_id_for(&model, "C"),
+                uuid: Uuid::nil(),
+            },
+        }));
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(repaired.get(&a_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&b_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(repaired.get(&c_id).copied(), Some(RuntimeState::Running));
+    }
+
+    #[test]
+    fn while_loop_current_iteration_running_node_keeps_ancestors_completed() {
+        let model = GraphModel::from_ast(JourneyAst::While {
+            label: "Loop",
+            metadata: "",
+            body: Box::new(JourneyAst::Sequence(vec![
+                JourneyAst::Step { label: "Begin" },
+                JourneyAst::Conditional {
+                    label: "Branch",
+                    metadata: "",
+                    left: Box::new(JourneyAst::Sequence(vec![
+                        JourneyAst::Step { label: "Select" },
+                        JourneyAst::Step { label: "Optimize" },
+                    ])),
+                    right: Box::new(JourneyAst::Step { label: "Skip" }),
+                },
+                JourneyAst::Step { label: "Flatten" },
+            ])),
+        });
+        let loop_runtime_id = model.cluster_info[0].runtime_node_id;
+        let begin_id = node_by_label(&model, "Begin").id;
+        let select_id = node_by_label(&model, "Select").id;
+        let optimize_id = node_by_label(&model, "Optimize").id;
+        let skip_id = node_by_label(&model, "Skip").id;
+        let flatten_id = node_by_label(&model, "Flatten").id;
+        let begin_runtime_id = runtime_id_for(&model, "Begin");
+        let select_runtime_id = runtime_id_for(&model, "Select");
+        let optimize_runtime_id = runtime_id_for(&model, "Optimize");
+        let flatten_runtime_id = runtime_id_for(&model, "Flatten");
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, event) in [
+            (
+                1,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: loop_runtime_id,
+                    activation_path: vec![0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                2,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: begin_runtime_id,
+                    activation_path: vec![0, 0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                3,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: select_runtime_id,
+                    activation_path: vec![0, 1],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                4,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: optimize_runtime_id,
+                    activation_path: vec![0, 2],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                5,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: flatten_runtime_id,
+                    activation_path: vec![0, 3],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                6,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: loop_runtime_id,
+                    activation_path: vec![1],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                7,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: begin_runtime_id,
+                    activation_path: vec![1, 0],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                8,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: begin_runtime_id,
+                    activation_path: vec![1, 0],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                9,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: select_runtime_id,
+                    activation_path: vec![1, 1],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                10,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: select_runtime_id,
+                    activation_path: vec![1, 1],
+                    phase: NodeLifecyclePhase::Succeeded,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+            (
+                11,
+                RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id: optimize_runtime_id,
+                    activation_path: vec![1, 2],
+                    phase: NodeLifecyclePhase::Entered,
+                    uuid: Uuid::nil(),
+                }),
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event,
+            }));
+        }
+
+        let states = live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(states.get(&begin_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(states.get(&select_id).copied(), Some(RuntimeState::Completed));
+        assert_eq!(states.get(&optimize_id).copied(), Some(RuntimeState::Running));
+        assert_eq!(states.get(&skip_id).copied(), Some(RuntimeState::Pending));
+        assert_eq!(states.get(&flatten_id).copied(), Some(RuntimeState::Pending));
     }
 
     #[test]
