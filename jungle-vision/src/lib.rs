@@ -1628,6 +1628,77 @@ fn node_phase_for_display_with_runtime_floors(
     Phase::Live(newest.map(|(_, inferred)| inferred).unwrap_or(state))
 }
 
+fn runtime_observed_in_current_iteration(
+    live: &LiveData,
+    runtime_id: u32,
+    runtime_sequence_floors: &HashMap<u32, usize>,
+) -> bool {
+    live.runtime_update_sequence
+        .get(&runtime_id)
+        .copied()
+        .map(|sequence| {
+            sequence
+                >= runtime_sequence_floors
+                    .get(&runtime_id)
+                    .copied()
+                    .unwrap_or_default()
+        })
+        .unwrap_or(false)
+}
+
+fn node_has_current_iteration_activity(
+    live: &LiveData,
+    node: &NodeDisplay,
+    runtime_sequence_floors: &HashMap<u32, usize>,
+) -> bool {
+    node.runtime_node_id
+        .into_iter()
+        .chain(node.proxy_runtime_ids.iter().copied())
+        .any(|runtime_id| {
+            runtime_observed_in_current_iteration(live, runtime_id, runtime_sequence_floors)
+        })
+}
+
+fn skipped_conditional_branch_nodes(
+    model: &GraphModel,
+    live: &LiveData,
+    runtime_sequence_floors: &HashMap<u32, usize>,
+) -> HashSet<u32> {
+    let mut skipped = HashSet::new();
+
+    for branch in &model.derived.conditional_branches {
+        let Some(_condition) = model.node_map.get(&branch.condition_display_id) else {
+            continue;
+        };
+        let left_active = branch.left_member_display_ids.iter().any(|display_id| {
+            model
+                .node_map
+                .get(display_id)
+                .map(|node| {
+                    node_has_current_iteration_activity(live, node, runtime_sequence_floors)
+                })
+                .unwrap_or(false)
+        });
+        let right_active = branch.right_member_display_ids.iter().any(|display_id| {
+            model
+                .node_map
+                .get(display_id)
+                .map(|node| {
+                    node_has_current_iteration_activity(live, node, runtime_sequence_floors)
+                })
+                .unwrap_or(false)
+        });
+
+        match (left_active, right_active) {
+            (true, false) => skipped.extend(branch.right_member_display_ids.iter().copied()),
+            (false, true) => skipped.extend(branch.left_member_display_ids.iter().copied()),
+            (false, false) | (true, true) => {}
+        }
+    }
+
+    skipped
+}
+
 fn repaired_live_states_for_display(
     model: &GraphModel,
     live_data: Option<&LiveData>,
@@ -1637,6 +1708,8 @@ fn repaired_live_states_for_display(
         return HashMap::new();
     };
     let runtime_sequence_floors = runtime_sequence_floors_for_display(model, live);
+    let skipped_conditional_branch_nodes =
+        skipped_conditional_branch_nodes(model, live, &runtime_sequence_floors);
 
     let mut states = HashMap::<u32, RuntimeState>::new();
     let mut latest_sequence_by_display_id = HashMap::<u32, usize>::new();
@@ -1716,6 +1789,9 @@ fn repaired_live_states_for_display(
             continue;
         };
         for predecessor in predecessors {
+            if skipped_conditional_branch_nodes.contains(predecessor) {
+                continue;
+            }
             let predecessor_state = states
                 .get(predecessor)
                 .copied()
@@ -1756,6 +1832,9 @@ fn repaired_live_states_for_display(
             .nodes
             .iter()
             .filter_map(|node| {
+                if skipped_conditional_branch_nodes.contains(&node.id) {
+                    return None;
+                }
                 if !matches!(states.get(&node.id), Some(RuntimeState::Pending)) {
                     return None;
                 }
@@ -1766,6 +1845,9 @@ fn repaired_live_states_for_display(
                 predecessors
                     .iter()
                     .all(|predecessor| {
+                        if skipped_conditional_branch_nodes.contains(predecessor) {
+                            return true;
+                        }
                         matches!(
                             states.get(predecessor),
                             Some(RuntimeState::Completed | RuntimeState::Failed)
@@ -2541,6 +2623,7 @@ impl GraphModel {
             &node_map,
             &edges,
             &cluster_info,
+            &builder.conditional_branches,
             &descendant_runtime_ids_by_runtime_id,
         );
 
@@ -2572,6 +2655,7 @@ impl GraphModel {
 #[derive(Clone)]
 struct GraphDerived {
     condition_successor_runtime_ids: HashMap<u32, Vec<u32>>,
+    conditional_branches: Vec<ConditionalBranchInfo>,
     cluster_member_runtime_ids: Vec<Vec<u32>>,
     cluster_successor_runtime_ids: Vec<Vec<u32>>,
     cluster_entry_runtime_ids: Vec<Vec<u32>>,
@@ -2588,6 +2672,7 @@ impl GraphDerived {
         node_map: &HashMap<u32, NodeDisplay>,
         edges: &[(u32, u32)],
         cluster_info: &[ClusterInfo],
+        conditional_branches: &[ConditionalBranchInfo],
         descendant_runtime_ids_by_runtime_id: &HashMap<u32, Vec<u32>>,
     ) -> Self {
         let mut condition_successor_runtime_ids = HashMap::<u32, Vec<u32>>::new();
@@ -2648,6 +2733,7 @@ impl GraphDerived {
 
         Self {
             condition_successor_runtime_ids,
+            conditional_branches: conditional_branches.to_vec(),
             cluster_member_runtime_ids,
             cluster_successor_runtime_ids: compute_cluster_successor_runtime_ids(
                 edges,
@@ -2676,6 +2762,7 @@ struct GraphBuilder {
     runtime_next_id: u32,
     display_next_id: u32,
     label_occurrences: HashMap<String, u32>,
+    conditional_branches: Vec<ConditionalBranchInfo>,
     descendant_runtime_ids_by_runtime_id: HashMap<u32, Vec<u32>>,
 }
 
@@ -2704,6 +2791,13 @@ struct ClusterInfo {
     member_runtime_ids: Vec<u32>,
     root_runtime_ids: Vec<u32>,
     depth: usize,
+}
+
+#[derive(Clone)]
+struct ConditionalBranchInfo {
+    condition_display_id: u32,
+    left_member_display_ids: Vec<u32>,
+    right_member_display_ids: Vec<u32>,
 }
 
 impl NodeDisplay {
@@ -2821,6 +2915,11 @@ impl GraphBuilder {
                 descendant_runtime_ids.extend(right_flow.member_runtime_ids.iter().copied());
                 self.descendant_runtime_ids_by_runtime_id
                     .insert(runtime_id, dedup(descendant_runtime_ids));
+                self.conditional_branches.push(ConditionalBranchInfo {
+                    condition_display_id: branch,
+                    left_member_display_ids: dedup(left_flow.members.clone()),
+                    right_member_display_ids: dedup(right_flow.members.clone()),
+                });
 
                 Flattened {
                     roots: vec![branch],
@@ -4240,6 +4339,68 @@ mod tests {
             Some(RuntimeState::Pending)
         );
         assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Pending));
+    }
+
+    #[test]
+    fn repaired_live_states_advance_past_untaken_conditional_branch() {
+        let model = GraphModel::from_ast(JourneyAst::Sequence(vec![
+            JourneyAst::Conditional {
+                label: "Branch",
+                metadata: "",
+                left: Box::new(JourneyAst::Step { label: "Left" }),
+                right: Box::new(JourneyAst::Step { label: "Right" }),
+            },
+            JourneyAst::Step { label: "Tail" },
+        ]));
+        let branch_id = node_by_label(&model, "Branch").id;
+        let left_id = node_by_label(&model, "Left").id;
+        let right_id = node_by_label(&model, "Right").id;
+        let tail_id = node_by_label(&model, "Tail").id;
+
+        let mut live = LiveData::default();
+        live.bind_model(&model);
+        for (sequence_id, node_id, phase) in [
+            (
+                1,
+                runtime_id_for(&model, "Branch"),
+                NodeLifecyclePhase::Succeeded,
+            ),
+            (
+                2,
+                runtime_id_for(&model, "Left"),
+                NodeLifecyclePhase::Succeeded,
+            ),
+        ] {
+            assert!(live.apply_update(JourneyUpdateEvent {
+                sequence_id,
+                event_unix_ms: 0,
+                event: RunnerUpdateOut::NodeLifecycle(jungle_types::NodeLifecycle {
+                    node_id,
+                    activation_path: vec![0],
+                    phase,
+                    uuid: Uuid::nil(),
+                }),
+            }));
+        }
+
+        let repaired = repaired_live_states_for_display(
+            &model,
+            Some(&live),
+            &model.derived.condition_successor_runtime_ids,
+        );
+        assert_eq!(
+            repaired.get(&branch_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&left_id).copied(),
+            Some(RuntimeState::Completed)
+        );
+        assert_eq!(
+            repaired.get(&right_id).copied(),
+            Some(RuntimeState::Pending)
+        );
+        assert_eq!(repaired.get(&tail_id).copied(), Some(RuntimeState::Running));
     }
 
     #[test]
