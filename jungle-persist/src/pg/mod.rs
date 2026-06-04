@@ -222,6 +222,7 @@ impl JungleStore for PgStore {
                 node_id,
                 CASE
                     WHEN kind IN (3, 4) THEN data
+                    WHEN kind = 5 THEN data
                     WHEN kind IN (0, 1, 2) AND node_id IS NULL THEN data
                     ELSE NULL
                 END AS data

@@ -627,7 +627,6 @@ impl JungleServer for Server {
                             crate::ServerError::Backend(BackendError::Message(err.to_string()))
                         })?;
                     match history {
-                        jungle_types::RunnerOut::NodeLifecycle(..) => {}
                         jungle_types::RunnerOut::Appearance { data, uuid } => {
                             let appearance_started_at = TokioInstant::now();
                             self.store

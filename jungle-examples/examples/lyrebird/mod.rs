@@ -1886,6 +1886,15 @@ mod tests {
         type Flow = HiddenJoinConditionalNoopJoin;
     }
 
+    #[derive(Animals)]
+    struct HiddenJoinConditionalNoopZoo(HiddenJoinConditionalNoopAnimal);
+
+    struct HiddenJoinConditionalNoopEcosystem;
+    impl Ecosystem for HiddenJoinConditionalNoopEcosystem {
+        const NAME: &'static str = "lyrebird-hidden-join-noop-zoo";
+        type Animals = HiddenJoinConditionalNoopZoo;
+    }
+
     #[test]
     fn accepts_openai_compatible_api_base_url() {
         let url = Url::parse("http://localhost:11434/v1").unwrap();
@@ -2260,6 +2269,53 @@ mod tests {
             seen_lifecycle_ids.len() >= 3,
             "expected hidden join live history to include conditional/noop child lifecycles before completion, saw {seen_lifecycle_ids:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn hidden_join_taken_noop_branch_lifecycle_reaches_step_update_subscription() {
+        let client = jungle_sdk::FusedClient::builder()
+            .namespace("lyrebird-hidden-join-noop")
+            .build()
+            .await
+            .expect("local client should build");
+
+        let worker = jungle_sdk::core::JungleWorker::new(
+            HiddenJoinConditionalNoopEcosystem,
+            client.clone(),
+        );
+        let worker_handle = tokio::spawn(async move {
+            let _ = worker.spawn().await;
+        });
+
+        let journey_id = client
+            .spawn::<HiddenJoinConditionalNoopAnimal>(&())
+            .await
+            .expect("journey should start")
+            .journey_id;
+        let mut subscription = client
+            .subscribe_step_updates(journey_id, None)
+            .await
+            .expect("subscribe_step_updates should succeed");
+
+        let seen_lifecycle_ids = tokio::time::timeout(Duration::from_secs(8), async {
+            let mut ids = std::collections::BTreeSet::new();
+            while let Some(next) = subscription.next().await {
+                let update = next.expect("streamed journey update should succeed");
+                if let RunnerUpdateOut::NodeLifecycle(node) = update.event {
+                    ids.insert(node.node_id);
+                }
+            }
+            ids
+        })
+        .await
+        .expect("journey update stream should finish before timeout");
+
+        assert!(
+            seen_lifecycle_ids.len() >= 4,
+            "expected subscription to include hidden-join conditional and taken Noop lifecycle nodes, saw {seen_lifecycle_ids:?}"
+        );
+
+        worker_handle.abort();
     }
 
     #[test]
